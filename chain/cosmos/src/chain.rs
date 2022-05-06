@@ -190,13 +190,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         &self,
         _logger: &Logger,
         block: codec::Block,
-        _filter: &TriggerFilter,
+        filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let shared_block = Arc::new(block.clone());
 
-        let header_only_block = codec::HeaderOnlyBlock {
-            header: block.header.clone(),
-        };
+        let header_only_block = codec::HeaderOnlyBlock::from(&block);
 
         let mut triggers: Vec<_> = shared_block
             .begin_block_events()
@@ -204,15 +202,25 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             // FIXME (Cosmos): Optimize. Should use an Arc instead of cloning the
             // block. This is not currently possible because EventData is automatically
             // generated.
-            .map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::BeginBlock)
+            .filter_map(|event| {
+                filter_event_trigger(filter, event, &header_only_block, EventOrigin::BeginBlock)
             })
-            .chain(shared_block.tx_events().cloned().map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::DeliverTx)
+            .chain(shared_block.tx_events().cloned().filter_map(|event| {
+                filter_event_trigger(filter, event, &header_only_block, EventOrigin::DeliverTx)
             }))
-            .chain(shared_block.end_block_events().cloned().map(|event| {
-                CosmosTrigger::with_event(event, header_only_block.clone(), EventOrigin::EndBlock)
-            }))
+            .chain(
+                shared_block
+                    .end_block_events()
+                    .cloned()
+                    .filter_map(|event| {
+                        filter_event_trigger(
+                            filter,
+                            event,
+                            &header_only_block,
+                            EventOrigin::EndBlock,
+                        )
+                    }),
+            )
             .collect();
 
         triggers.extend(
@@ -222,7 +230,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 .map(|tx| CosmosTrigger::with_transaction(tx, header_only_block.clone())),
         );
 
-        triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
+        if filter.block_filter.trigger_every_block {
+            triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
+        }
 
         Ok(BlockWithTriggers::new(block, triggers))
     }
@@ -246,6 +256,20 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
         }))
+    }
+}
+
+/// Returns a new event trigger only if the given event matches the event filter.
+fn filter_event_trigger(
+    filter: &TriggerFilter,
+    event: codec::Event,
+    block: &codec::HeaderOnlyBlock,
+    origin: EventOrigin,
+) -> Option<CosmosTrigger> {
+    if filter.event_type_filter.matches(&event.event_type) {
+        Some(CosmosTrigger::with_event(event, block.clone(), origin))
+    } else {
+        None
     }
 }
 
@@ -329,5 +353,227 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         self.endpoint
             .block_ptr_for_number::<codec::Block>(logger, block.number())
             .await
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use graph::prelude::{
+        slog::{o, Discard, Logger},
+        tokio,
+    };
+
+    use super::*;
+
+    use codec::{
+        Block, Event, Header, HeaderOnlyBlock, ResponseBeginBlock, ResponseDeliverTx,
+        ResponseEndBlock, TxResult,
+    };
+
+    #[tokio::test]
+    async fn test_trigger_filters() {
+        let adapter = TriggersAdapter {};
+        let logger = Logger::root(Discard, o!());
+
+        let block_with_events = Block::test_with_event_types(
+            vec!["begin_event_1", "begin_event_2", "begin_event_3"],
+            vec!["tx_event_1", "tx_event_2", "tx_event_3"],
+            vec!["end_event_1", "end_event_2", "end_event_3"],
+        );
+
+        let header_only_block = HeaderOnlyBlock::from(&block_with_events);
+
+        let cases = [
+            (
+                Block::test_new(),
+                TriggerFilter::test_new(false, &[]),
+                vec![],
+            ),
+            (
+                Block::test_new(),
+                TriggerFilter::test_new(true, &[]),
+                vec![CosmosTrigger::Block(Arc::new(Block::test_new()))],
+            ),
+            (
+                Block::test_new(),
+                TriggerFilter::test_new(false, &["event_1", "event_2", "event_3"]),
+                vec![],
+            ),
+            (
+                block_with_events.clone(),
+                TriggerFilter::test_new(false, &["begin_event_3", "tx_event_3", "end_event_3"]),
+                vec![
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("begin_event_3"),
+                        header_only_block.clone(),
+                        EventOrigin::BeginBlock,
+                    ),
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("tx_event_3"),
+                        header_only_block.clone(),
+                        EventOrigin::DeliverTx,
+                    ),
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("end_event_3"),
+                        header_only_block.clone(),
+                        EventOrigin::EndBlock,
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_1"),
+                        header_only_block.clone(),
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_2"),
+                        header_only_block.clone(),
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_3"),
+                        header_only_block.clone(),
+                    ),
+                ],
+            ),
+            (
+                block_with_events.clone(),
+                TriggerFilter::test_new(true, &["begin_event_3", "tx_event_2", "end_event_1"]),
+                vec![
+                    CosmosTrigger::Block(Arc::new(block_with_events.clone())),
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("begin_event_3"),
+                        header_only_block.clone(),
+                        EventOrigin::BeginBlock,
+                    ),
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("tx_event_2"),
+                        header_only_block.clone(),
+                        EventOrigin::DeliverTx,
+                    ),
+                    CosmosTrigger::with_event(
+                        Event::test_with_type("end_event_1"),
+                        header_only_block.clone(),
+                        EventOrigin::EndBlock,
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_1"),
+                        header_only_block.clone(),
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_2"),
+                        header_only_block.clone(),
+                    ),
+                    CosmosTrigger::with_transaction(
+                        TxResult::test_with_event_type("tx_event_3"),
+                        header_only_block.clone(),
+                    ),
+                ],
+            ),
+        ];
+
+        for (block, trigger_filter, expected_triggers) in cases {
+            let triggers = adapter
+                .triggers_in_block(&logger, block, &trigger_filter)
+                .await
+                .expect("failed to get triggers in block");
+
+            assert_eq!(
+                triggers.trigger_data.len(),
+                expected_triggers.len(),
+                "Expected trigger list to contain exactly {:?}, but it didn't: {:?}",
+                expected_triggers,
+                triggers.trigger_data
+            );
+
+            // they may not be in the same order
+            for trigger in expected_triggers {
+                assert!(
+                    triggers.trigger_data.contains(&trigger),
+                    "Expected trigger list to contain {:?}, but it only contains: {:?}",
+                    trigger,
+                    triggers.trigger_data
+                );
+            }
+        }
+    }
+
+    impl Block {
+        fn test_new() -> Block {
+            Block::test_with_event_types(vec![], vec![], vec![])
+        }
+
+        fn test_with_event_types(
+            begin_event_types: Vec<&str>,
+            tx_event_types: Vec<&str>,
+            end_event_types: Vec<&str>,
+        ) -> Block {
+            Block {
+                header: Some(Header {
+                    version: None,
+                    chain_id: "test".to_string(),
+                    height: 1,
+                    time: None,
+                    last_block_id: None,
+                    last_commit_hash: vec![],
+                    data_hash: vec![],
+                    validators_hash: vec![],
+                    next_validators_hash: vec![],
+                    consensus_hash: vec![],
+                    app_hash: vec![],
+                    last_results_hash: vec![],
+                    evidence_hash: vec![],
+                    proposer_address: vec![],
+                    hash: vec![],
+                }),
+                evidence: None,
+                last_commit: None,
+                result_begin_block: Some(ResponseBeginBlock {
+                    events: begin_event_types
+                        .into_iter()
+                        .map(Event::test_with_type)
+                        .collect(),
+                }),
+                result_end_block: Some(ResponseEndBlock {
+                    validator_updates: vec![],
+                    consensus_param_updates: None,
+                    events: end_event_types
+                        .into_iter()
+                        .map(Event::test_with_type)
+                        .collect(),
+                }),
+                transactions: tx_event_types
+                    .into_iter()
+                    .map(TxResult::test_with_event_type)
+                    .collect(),
+                validator_updates: vec![],
+            }
+        }
+    }
+
+    impl Event {
+        fn test_with_type(event_type: &str) -> Event {
+            Event {
+                event_type: event_type.to_string(),
+                attributes: vec![],
+            }
+        }
+    }
+
+    impl TxResult {
+        fn test_with_event_type(event_type: &str) -> TxResult {
+            TxResult {
+                height: 1,
+                index: 1,
+                tx: None,
+                result: Some(ResponseDeliverTx {
+                    code: 1,
+                    data: vec![],
+                    log: "".to_string(),
+                    info: "".to_string(),
+                    gas_wanted: 1,
+                    gas_used: 1,
+                    codespace: "".to_string(),
+                    events: vec![Event::test_with_type(event_type)],
+                }),
+                hash: vec![],
+            }
+        }
     }
 }

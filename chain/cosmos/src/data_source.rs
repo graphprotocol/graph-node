@@ -252,6 +252,18 @@ impl DataSource {
             })
             .cloned()
     }
+
+    pub(crate) fn has_block_handler(&self) -> bool {
+        !self.mapping.block_handlers.is_empty()
+    }
+
+    /// Return an iterator over all event types from event handlers.
+    pub(crate) fn events(&self) -> impl Iterator<Item = &str> {
+        self.mapping
+            .event_handlers
+            .iter()
+            .map(|handler| handler.event.as_str())
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]

@@ -8,6 +8,7 @@ fn main() {
                 "proto/firehose.proto",
                 "proto/ethereum/transforms.proto",
                 "proto/near/transforms.proto",
+                "proto/cosmos/transforms.proto",
             ],
             &["proto"],
         )
