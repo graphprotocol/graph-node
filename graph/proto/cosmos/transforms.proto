@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package fig.cosmos.transform.v1;
+package sf.cosmos.transform.v1;
 
-option go_package = "github.com/figment-networks/cosmos-protobuf-def/pbtransform";
+option go_package = "github.com/figment-networks/proto-cosmos/pb/sf/cosmos/transform/v1;pbtransform";
 
 message EventTypeFilter {
   repeated string event_types = 1;
