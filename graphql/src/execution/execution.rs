@@ -3,7 +3,7 @@ use crossbeam::atomic::AtomicCell;
 use graph::{
     data::{schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
-    util::timed_rw_lock::TimedMutex,
+    util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
 use parking_lot::MutexGuard;
@@ -164,6 +164,41 @@ fn lfu_cache(
     }
 }
 
+fn log_lfu_evict_stats(
+    logger: &Logger,
+    network: &str,
+    cache_key: &[u8; 32],
+    evict_stats: Option<EvictStats>,
+) {
+    let total_shards = ENV_VARS.graphql.query_lfu_cache_shards as usize;
+
+    if total_shards > 0 {
+        if let Some(EvictStats {
+            new_weight,
+            evicted_weight,
+            new_count,
+            evicted_count,
+        }) = evict_stats
+        {
+            {
+                let shard = (cache_key[0] as usize) % total_shards;
+                let network = network.to_string();
+                let logger = logger.clone();
+
+                graph::spawn(async move {
+                    debug!(logger, "Evicted LFU cache";
+                        "shard" => shard,
+                        "network" => network,
+                        "entries" => new_count,
+                        "entries_evicted" => evicted_count,
+                        "weight" => new_weight,
+                        "weight_evicted" => evicted_weight,
+                    )
+                });
+            }
+        }
+    }
+}
 /// Contextual information passed around during query execution.
 pub struct ExecutionContext<R>
 where
@@ -407,7 +442,12 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
             let max_mem = ENV_VARS.graphql.query_cache_max_mem
                 / ENV_VARS.graphql.query_lfu_cache_shards as usize;
-            cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
+
+            let evict_stats =
+                cache.evict_with_period(max_mem, ENV_VARS.graphql.query_cache_stale_period);
+
+            log_lfu_evict_stats(&ctx.logger, network, &key, evict_stats);
+
             cache.insert(
                 key,
                 WeightedResult {
