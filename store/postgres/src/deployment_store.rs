@@ -657,22 +657,26 @@ impl DeploymentStore {
     }
 
     /// Runs the SQL `ANALYZE` command in a table.
-    pub(crate) async fn analyze(
+    pub(crate) fn analyze(&self, site: Arc<Site>, entity_name: &str) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.analyze_with_conn(site, entity_name, &conn)
+    }
+
+    /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
+    pub(crate) fn analyze_with_conn(
         &self,
         site: Arc<Site>,
         entity_name: &str,
+        conn: &PgConnection,
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(move |conn, _| {
-            let layout = store.layout(conn, site)?;
-            let table = resolve_table_name(&layout, &entity_name)?;
-            let table_name = &table.qualified_name;
-            let sql = format!("analyze {table_name}");
-            conn.execute(&sql)?;
-            Ok(())
-        })
-        .await
+        let layout = store.layout(&conn, site)?;
+        let table = resolve_table_name(&layout, &entity_name)?;
+        let table_name = &table.qualified_name;
+        let sql = format!("analyze {table_name}");
+        conn.execute(&sql)?;
+        Ok(())
     }
 
     /// Creates a new index in the specified Entity table if it doesn't already exist.
@@ -1210,7 +1214,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         graft_src: Option<(Arc<Layout>, BlockPtr)>,
     ) -> Result<(), StoreError> {
-        let dst = self.find_layout(site)?;
+        let dst = self.find_layout(site.cheap_clone())?;
 
         // Do any cleanup to bring the subgraph into a known good state
         if let Some((src, block)) = graft_src {
@@ -1272,6 +1276,11 @@ impl DeploymentStore {
                 deployment::set_entity_count(&conn, &dst.site, &dst.count_query)?;
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
+
+                // Analyze all tables for this deployment
+                for entity_name in dst.tables.keys() {
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;
+                }
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft

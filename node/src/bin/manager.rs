@@ -967,7 +967,6 @@ async fn main() -> anyhow::Result<()> {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
                     commands::stats::analyze(subgraph_store, primary_pool, deployment, &entity)
-                        .await
                 }
             }
         }

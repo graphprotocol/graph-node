@@ -997,13 +997,13 @@ impl SubgraphStoreInner {
         .await;
     }
 
-    pub async fn analyze(
+    pub fn analyze(
         &self,
         deployment: &DeploymentLocator,
         entity_name: &str,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
-        store.analyze(site, entity_name).await
+        store.analyze(site, entity_name)
     }
 
     pub async fn create_manual_index(
