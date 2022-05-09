@@ -1279,7 +1279,7 @@ impl DeploymentStore {
 
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
-                    self.analyze(site.cheap_clone(), entity_name.as_str())?;
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;
                 }
 
                 // Set the block ptr to the graft point to signal that we successfully
