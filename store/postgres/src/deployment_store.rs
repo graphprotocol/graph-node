@@ -658,9 +658,19 @@ impl DeploymentStore {
 
     /// Runs the SQL `ANALYZE` command in a table.
     pub(crate) fn analyze(&self, site: Arc<Site>, entity_name: &str) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.analyze_with_conn(site, entity_name, &conn)
+    }
+
+    /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
+    pub(crate) fn analyze_with_conn(
+        &self,
+        site: Arc<Site>,
+        entity_name: &str,
+        conn: &PgConnection,
+    ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        let conn = self.get_conn()?;
         let layout = store.layout(&conn, site)?;
         let table = resolve_table_name(&layout, &entity_name)?;
         let table_name = &table.qualified_name;
