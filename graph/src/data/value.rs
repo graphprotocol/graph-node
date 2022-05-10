@@ -101,16 +101,6 @@ impl Object {
     pub fn extend(&mut self, other: Object) {
         self.0.extend(other.0)
     }
-
-    pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        match self.0.iter_mut().find(|entry| entry.has_key(&key)) {
-            Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
-            None => {
-                self.0.push(Entry::new(key.into(), value));
-                None
-            }
-        }
-    }
 }
 
 impl FromIterator<(String, Value)> for Object {
@@ -395,12 +385,9 @@ impl From<serde_json::Value> for Value {
                 Value::List(vals)
             }
             serde_json::Value::Object(map) => {
-                let mut rmap = Object::new();
-                for (key, value) in map.into_iter() {
-                    let value = Value::from(value);
-                    rmap.insert(key, value);
-                }
-                Value::Object(rmap)
+                let obj =
+                    Object::from_iter(map.into_iter().map(|(key, val)| (key, Value::from(val))));
+                Value::Object(obj)
             }
         }
     }

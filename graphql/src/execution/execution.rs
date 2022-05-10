@@ -495,7 +495,7 @@ fn execute_selection_set_to_map<'a>(
         None => None,
     };
     let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let mut result_map = Object::new();
+    let mut results = Vec::new();
 
     // Gather fields that appear more than once with the same response key.
     let multiple_response_keys = {
@@ -543,14 +543,11 @@ fn execute_selection_set_to_map<'a>(
             .flatten();
 
         if field.name.as_str() == "__typename" && field_value.is_none() {
-            result_map.insert(
-                response_key.to_owned(),
-                r::Value::String(object_type.name.clone()),
-            );
+            results.push((response_key, r::Value::String(object_type.name.clone())));
         } else {
             match execute_field(ctx, object_type, field_value, field, field_type) {
                 Ok(v) => {
-                    result_map.insert(response_key.to_owned(), v);
+                    results.push((response_key, v));
                 }
                 Err(mut e) => {
                     errors.append(&mut e);
@@ -560,7 +557,8 @@ fn execute_selection_set_to_map<'a>(
     }
 
     if errors.is_empty() {
-        Ok(result_map)
+        let obj = Object::from_iter(results.into_iter().map(|(k, v)| (k.to_owned(), v)));
+        Ok(obj)
     } else {
         Err(errors)
     }

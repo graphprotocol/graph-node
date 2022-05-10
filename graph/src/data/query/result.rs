@@ -337,9 +337,8 @@ fn multiple_data_items() {
     use serde_json::json;
 
     fn make_obj(key: &str, value: &str) -> Arc<QueryResult> {
-        let mut map = Object::new();
-        map.insert(key.to_owned(), r::Value::String(value.to_owned()));
-        Arc::new(map.into())
+        let obj = Object::from_iter([(key.to_owned(), r::Value::String(value.to_owned()))]);
+        Arc::new(obj.into())
     }
 
     let obj1 = make_obj("key1", "value1");
