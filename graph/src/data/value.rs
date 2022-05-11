@@ -66,7 +66,7 @@ impl Entry {
 }
 
 #[derive(Clone, PartialEq, Default)]
-pub struct Object(Vec<Entry>);
+pub struct Object(Box<[Entry]>);
 
 impl Object {
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -95,7 +95,9 @@ impl Object {
     }
 
     pub fn extend(&mut self, other: Object) {
-        self.0.extend(other.0)
+        let mut entries = std::mem::replace(&mut self.0, Box::new([])).into_vec();
+        entries.extend(other.0.into_vec());
+        self.0 = entries.into_boxed_slice();
     }
 }
 
@@ -105,7 +107,7 @@ impl FromIterator<(String, Value)> for Object {
         for (key, value) in iter {
             items.push(Entry::new(key.into(), value))
         }
-        Object(items)
+        Object(items.into_boxed_slice())
     }
 }
 
@@ -133,7 +135,7 @@ impl IntoIterator for Object {
 
     fn into_iter(self) -> Self::IntoIter {
         ObjectOwningIter {
-            iter: self.0.into_iter(),
+            iter: self.0.into_vec().into_iter(),
         }
     }
 }
@@ -145,7 +147,7 @@ pub struct ObjectIter<'a> {
 impl<'a> ObjectIter<'a> {
     fn new(object: &'a Object) -> Self {
         Self {
-            iter: object.0.as_slice().iter(),
+            iter: object.0.iter(),
         }
     }
 }
@@ -180,7 +182,7 @@ impl CacheWeight for Entry {
 
 impl CacheWeight for Object {
     fn indirect_weight(&self) -> usize {
-        self.0.indirect_weight()
+        self.0.iter().map(CacheWeight::indirect_weight).sum()
     }
 }
 
