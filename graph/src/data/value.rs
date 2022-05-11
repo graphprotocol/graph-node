@@ -69,10 +69,6 @@ impl Entry {
 pub struct Object(Vec<Entry>);
 
 impl Object {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.0
             .iter()
