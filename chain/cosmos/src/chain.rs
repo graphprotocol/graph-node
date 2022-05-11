@@ -159,7 +159,7 @@ impl Blockchain for Chain {
         };
 
         firehose_endpoint
-            .block_ptr_for_number::<codec::Block>(logger, number)
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
             .await
             .map_err(Into::into)
     }
@@ -340,7 +340,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
         self.endpoint
-            .block_ptr_for_number::<codec::Block>(logger, number)
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
             .await
     }
 
@@ -351,7 +351,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     ) -> Result<BlockPtr, Error> {
         // Cosmos provides instant block finality.
         self.endpoint
-            .block_ptr_for_number::<codec::Block>(logger, block.number())
+            .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, block.number())
             .await
     }
 }
