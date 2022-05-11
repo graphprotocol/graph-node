@@ -23,10 +23,6 @@ use diesel::{
     Connection as _,
 };
 use graph::{
-    components::store::DeploymentId as GraphDeploymentId,
-    prelude::{chrono, CancelHandle, CancelToken},
-};
-use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
     data::subgraph::status,
@@ -34,6 +30,10 @@ use graph::{
         anyhow, bigdecimal::ToPrimitive, serde_json, DeploymentHash, EntityChange,
         EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
     },
+};
+use graph::{
+    components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
+    prelude::{chrono, CancelHandle, CancelToken},
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
@@ -114,16 +114,6 @@ table! {
     }
 }
 
-/// We used to support different layout schemes. The old 'Split' scheme
-/// which used JSONB layout has been removed, and we will only deal
-/// with relational layout. Trying to do anything with a 'Split' subgraph
-/// will result in an error.
-#[derive(DbEnum, Debug, Clone, Copy)]
-pub enum DeploymentSchemaVersion {
-    Split,
-    Relational,
-}
-
 table! {
     deployment_schemas(id) {
         id -> Integer,
@@ -132,7 +122,7 @@ table! {
         name -> Text,
         shard -> Text,
         /// The subgraph layout scheme used for this subgraph
-        version -> crate::primary::DeploymentSchemaVersionMapping,
+        version -> Integer,
         network -> Text,
         /// If there are multiple entries for the same IPFS hash (`subgraph`)
         /// only one of them will be active. That's the one we use for
@@ -198,9 +188,7 @@ struct Schema {
     pub subgraph: String,
     pub name: String,
     pub shard: String,
-    /// The version currently in use. Always `Relational`, attempts to load
-    /// schemas from the database with `Split` produce an error
-    version: DeploymentSchemaVersion,
+    version: i32,
     pub network: String,
     pub(crate) active: bool,
 }
@@ -337,6 +325,8 @@ pub struct Site {
     /// exactly one for each `deployment`, i.e., other entries for that
     /// deployment have `active = false`
     pub(crate) active: bool,
+
+    schema_version: DeploymentSchemaVersion,
     /// Only the store and tests can create Sites
     _creation_disallowed: (),
 }
@@ -345,12 +335,6 @@ impl TryFrom<Schema> for Site {
     type Error = StoreError;
 
     fn try_from(schema: Schema) -> Result<Self, Self::Error> {
-        if matches!(schema.version, DeploymentSchemaVersion::Split) {
-            return Err(constraint_violation!(
-                "the subgraph {} uses JSONB layout which is not supported any longer",
-                schema.subgraph.as_str()
-            ));
-        }
         let deployment = DeploymentHash::new(&schema.subgraph)
             .map_err(|s| constraint_violation!("Invalid deployment id {}", s))?;
         let namespace = Namespace::new(schema.name.clone()).map_err(|nsp| {
@@ -361,6 +345,7 @@ impl TryFrom<Schema> for Site {
             )
         })?;
         let shard = Shard::new(schema.shard)?;
+        let schema_version = DeploymentSchemaVersion::try_from(schema.version)?;
         Ok(Self {
             id: schema.id,
             deployment,
@@ -368,6 +353,7 @@ impl TryFrom<Schema> for Site {
             shard,
             network: schema.network,
             active: schema.active,
+            schema_version,
             _creation_disallowed: (),
         })
     }
@@ -390,6 +376,7 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
         namespace,
         network,
         active: true,
+        schema_version: DeploymentSchemaVersion::V0,
         _creation_disallowed: (),
     }
 }
@@ -1050,10 +1037,10 @@ impl<'a> Connection<'a> {
         shard: Shard,
         deployment: DeploymentHash,
         network: String,
+        schema_version: DeploymentSchemaVersion,
         active: bool,
     ) -> Result<Site, StoreError> {
         use deployment_schemas as ds;
-        use DeploymentSchemaVersion as v;
 
         let conn = self.conn.as_ref();
 
@@ -1061,7 +1048,7 @@ impl<'a> Connection<'a> {
             .values((
                 ds::subgraph.eq(deployment.as_str()),
                 ds::shard.eq(shard.as_str()),
-                ds::version.eq(v::Relational),
+                ds::version.eq(schema_version as i32),
                 ds::network.eq(network.as_str()),
                 ds::active.eq(active),
             ))
@@ -1082,10 +1069,12 @@ impl<'a> Connection<'a> {
             namespace,
             network,
             active: true,
+            schema_version,
             _creation_disallowed: (),
         })
     }
 
+    /// Create a site for a brand new deployment.
     pub fn allocate_site(
         &self,
         shard: Shard,
@@ -1096,7 +1085,8 @@ impl<'a> Connection<'a> {
             return Ok(site);
         }
 
-        self.create_site(shard, subgraph.clone(), network, true)
+        let schema_version = DeploymentSchemaVersion::LATEST;
+        self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }
 
     pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
@@ -1113,7 +1103,21 @@ impl<'a> Connection<'a> {
             return Ok(site);
         }
 
-        self.create_site(shard, src.deployment.clone(), src.network.clone(), false)
+        if src.schema_version != DeploymentSchemaVersion::LATEST {
+            return Err(StoreError::Unknown(anyhow!(
+                "Attempted to copy from deployment {} which is on an old schema version.
+                This means a schema migration is ongoing, please try again later.",
+                src.id
+            )));
+        }
+
+        self.create_site(
+            shard,
+            src.deployment.clone(),
+            src.network.clone(),
+            src.schema_version,
+            false,
+        )
     }
 
     pub(crate) fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
