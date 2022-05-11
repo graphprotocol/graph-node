@@ -1,0 +1,24 @@
+[package]
+name = "graph-chain-arweave"
+version = "0.26.0"
+edition = "2021"
+
+[build-dependencies]
+tonic-build = { version = "0.7.1", features = ["prost"]}
+
+[dependencies]
+base64-url = "1.4.13"
+graph = { path = "../../graph" }
+prost = "0.10.1"
+prost-types = "0.10.1"
+serde = "1.0"
+
+graph-runtime-wasm = { path = "../../runtime/wasm" }
+graph-runtime-derive = { path = "../../runtime/derive" }
+
+[dev-dependencies]
+diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+graph-core = { path = "../../core" }
+graph-store-postgres = { path = "../../store/postgres" }
+pretty_assertions = "0.7.2"
+test-store = { path = "../../store/test-store" }

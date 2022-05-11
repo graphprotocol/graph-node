@@ -296,6 +296,23 @@ where
         })?;
 
         match kind {
+            BlockchainKind::Arweave => {
+                create_subgraph_version::<graph_chain_arweave::Chain, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    start_block,
+                    raw,
+                    node_id,
+                    debug_fork,
+                    self.version_switching_mode,
+                    &self.resolver,
+                )
+                .await?
+            }
+
             BlockchainKind::Ethereum => {
                 create_subgraph_version::<graph_chain_ethereum::Chain, _>(
                     &logger,

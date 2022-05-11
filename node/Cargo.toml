@@ -23,6 +23,7 @@ url = "2.2.1"
 crossbeam-channel = "0.5.4"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
+graph-chain-arweave = { path = "../chain/arweave" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
 graph-chain-tendermint = { path = "../chain/tendermint" }
