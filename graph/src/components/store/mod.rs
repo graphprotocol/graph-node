@@ -834,7 +834,7 @@ pub enum UnfailOutcome {
 pub struct StoredDynamicDataSource {
     pub name: String,
     pub address: Option<Address>,
-    pub context: Option<String>,
+    pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
 }
 

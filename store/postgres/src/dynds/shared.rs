@@ -13,7 +13,7 @@ use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
     prelude::{
-        bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, BlockNumber, BlockPtr,
+        bigdecimal::ToPrimitive, serde_json, web3::types::H160, BigDecimal, BlockNumber, BlockPtr,
         DeploymentHash, StoreError,
     },
 };
@@ -74,7 +74,7 @@ pub(super) fn load(
         let data_source = StoredDynamicDataSource {
             name,
             address,
-            context,
+            context: context.map(|ctx| serde_json::from_str(&ctx)).transpose()?,
             creation_block,
         };
 
@@ -123,7 +123,7 @@ pub(super) fn insert(
             Ok((
                 decds::deployment.eq(deployment.as_str()),
                 decds::name.eq(name),
-                decds::context.eq(context),
+                decds::context.eq(serde_json::to_string(context).unwrap()),
                 decds::address.eq(address),
                 decds::abi.eq(""),
                 decds::start_block.eq(0),

@@ -6,7 +6,7 @@ use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
-use graph::prelude::{Entity, Link, SubgraphManifestValidationError};
+use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
 use std::str::FromStr;
 use std::{convert::TryFrom, sync::Arc};
@@ -125,7 +125,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .context
                 .as_ref()
                 .as_ref()
-                .map(|ctx| serde_json::to_string(&ctx).unwrap()),
+                .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
         }
     }
@@ -141,9 +141,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             creation_block,
         } = stored;
 
-        let context = context
-            .map(|ctx| serde_json::from_str::<Entity>(&ctx))
-            .transpose()?;
+        let context = context.map(serde_json::from_value).transpose()?;
 
         let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
