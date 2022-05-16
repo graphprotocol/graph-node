@@ -2324,6 +2324,16 @@ impl<'a> FilterCollection<'a> {
         }
     }
 
+    fn all_mutable(&self) -> bool {
+        match self {
+            FilterCollection::All(entities) => entities.iter().all(|(table, ..)| !table.immutable),
+            FilterCollection::SingleWindow(window) => !window.table.immutable,
+            FilterCollection::MultiWindow(windows, _) => {
+                windows.iter().all(|window| !window.table.immutable)
+            }
+        }
+    }
+
     /// Return the id type of the fields in the parents for which the query
     /// produces children. This is `None` if there are no parents, i.e., for
     /// a toplevel query.
@@ -2391,7 +2401,7 @@ impl<'a> fmt::Display for SortKey<'a> {
 impl<'a> SortKey<'a> {
     fn new(
         order: EntityOrder,
-        table: &'a Table,
+        collection: &'a FilterCollection,
         filter: Option<&'a EntityFilter>,
         block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
@@ -2434,7 +2444,15 @@ impl<'a> SortKey<'a> {
             }
         }
 
-        let br_column = if ENV_VARS.store.order_by_block_range {
+        // If there is more than one table, we are querying an interface,
+        // and the order is on an attribute in that interface so that all
+        // tables have a column for that. It is therefore enough to just
+        // look at the first table to get the name
+        let table = collection
+            .first_table()
+            .expect("an entity query always contains at least one entity type/table");
+
+        let br_column = if collection.all_mutable() && ENV_VARS.store.order_by_block_range {
             Some(BlockRangeColumn::new(table, "c.", block))
         } else {
             None
@@ -2661,14 +2679,7 @@ impl<'a> FilterQuery<'a> {
         block: BlockNumber,
         query_id: Option<String>,
     ) -> Result<Self, QueryExecutionError> {
-        // Get the name of the column we order by; if there is more than one
-        // table, we are querying an interface, and the order is on an attribute
-        // in that interface so that all tables have a column for that. It is
-        // therefore enough to just look at the first table to get the name
-        let first_table = collection
-            .first_table()
-            .expect("an entity query always contains at least one entity type/table");
-        let sort_key = SortKey::new(order, first_table, filter, block)?;
+        let sort_key = SortKey::new(order, collection, filter, block)?;
 
         Ok(FilterQuery {
             collection,
