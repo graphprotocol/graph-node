@@ -59,6 +59,7 @@ async fn test_valid_module_and_store_with_timeout(
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
+    let logger = Logger::root(slog::Discard, o!());
     let subgraph_id_with_api_version =
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
@@ -80,7 +81,7 @@ async fn test_valid_module_and_store_with_timeout(
     )
     .await;
     let stopwatch_metrics = StopwatchMetrics::new(
-        Logger::root(slog::Discard, o!()),
+        logger.clone(),
         deployment_id.clone(),
         "test",
         metrics_registry.clone(),
@@ -96,7 +97,7 @@ async fn test_valid_module_and_store_with_timeout(
     };
 
     let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
+        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(
             deployment.clone(),
             data_source,
