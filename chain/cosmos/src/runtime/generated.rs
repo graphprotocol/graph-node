@@ -484,8 +484,8 @@ pub(crate) struct AscLightClientAttackEvidence {
     pub conflicting_block: AscPtr<AscLightBlock>,
     pub _padding: u32,
     pub common_height: i64,
-    pub byzantine_validators: AscPtr<AscValidatorArray>,
     pub total_voting_power: i64,
+    pub byzantine_validators: AscPtr<AscValidatorArray>,
     pub timestamp: AscPtr<AscTimestamp>,
 }
 

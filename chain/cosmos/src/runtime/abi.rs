@@ -273,8 +273,8 @@ impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence
             conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
             _padding: 0,
             common_height: self.common_height,
-            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
             total_voting_power: self.total_voting_power,
+            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
         })
     }
@@ -1087,10 +1087,12 @@ mod test {
             total_voting_power: 0,
             validator_power: 0,
             timestamp: AscPtr::<AscTimestamp>::null(),
+            _padding: 0,
         });
 
         assert_asc_size!(AscEventVote {
             event_vote_type: 0,
+            _padding: 0,
             height: 0,
             round: 0,
             block_id: AscPtr::<AscBlockID>::null(),
@@ -1102,9 +1104,10 @@ mod test {
 
         assert_asc_size!(AscLightClientAttackEvidence {
             conflicting_block: AscPtr::<AscLightBlock>::null(),
+            _padding: 0,
             common_height: 0,
-            byzantine_validators: AscPtr::<AscValidatorArray>::null(),
             total_voting_power: 0,
+            byzantine_validators: AscPtr::<AscValidatorArray>::null(),
             timestamp: AscPtr::<AscTimestamp>::null(),
         });
 
@@ -1195,6 +1198,7 @@ mod test {
         assert_asc_size!(AscEvidenceParams {
             max_age_num_blocks: 0,
             max_age_duration: AscPtr::<AscDuration>::null(),
+            _padding: 0,
             max_bytes: 0,
         });
 
