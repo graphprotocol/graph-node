@@ -15,7 +15,7 @@ use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
-use crate::store::connection::is_connection_type;
+use crate::schema::is_connection_type;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
 use crate::store::query::collect_entities_from_query_field;
