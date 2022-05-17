@@ -325,6 +325,8 @@ impl Resolver for StoreResolver {
             return Ok(meta);
         }
 
+        println!("resolve_object called, field={:?} , field_definition={:?} , prefetched_object={:?}", field, field_definition, prefetched_object);
+
         if let Some(r::Value::List(children)) = prefetched_object {
             // If we encounter a Connection type, we can safely resolve it as an object
             // while using the same prefetched objects, since it's fetched before.
@@ -357,7 +359,7 @@ impl Resolver for StoreResolver {
                         edge_map.insert("node".into(), child.clone());
                         edge_map.insert(
                             "cursor".into(),
-                            graph::data::value::Value::String("".to_string()),
+                            graph::data::value::Value::String(child.get_required("id").expect("missing id ")),
                         );
                         graph::data::value::Value::object(edge_map)
                     })
