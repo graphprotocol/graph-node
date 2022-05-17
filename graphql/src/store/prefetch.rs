@@ -30,8 +30,7 @@ use crate::metrics::GraphQLMetrics;
 use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
-
-use super::connection::is_connection_type;
+use crate::schema::is_connection_type;
 
 lazy_static! {
     static ref ARG_FIRST: String = String::from("first");

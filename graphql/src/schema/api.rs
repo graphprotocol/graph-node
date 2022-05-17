@@ -14,6 +14,8 @@ use graph::prelude::s::{Value, *};
 use graph::prelude::*;
 use thiserror::Error;
 
+use super::connection::is_connection_type;
+
 #[derive(Error, Debug)]
 pub enum APISchemaError {
     #[error("type {0} already exists in the input schema")]
@@ -91,6 +93,7 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_field_arguments(&mut schema, input_schema)?;
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
+    enrich_type_fields_with_connections(&mut schema);
 
     // Remove the `_Schema_` type from the generated schema.
     schema.definitions.retain(|d| match d {
@@ -214,6 +217,44 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
                 implements_interfaces: vec![],
             },
         )));
+}
+
+fn enrich_type_fields_with_connections(schema: &mut Document) {
+    for definition in schema.definitions.iter_mut() {
+        match definition {
+            Definition::TypeDefinition(TypeDefinition::Object(object_type)) => {
+              if !is_connection_type(&object_type.name) {
+                let fields_with_connections = object_type.fields.iter().flat_map(|f| {
+
+                  if ast::is_list_or_non_null_list_field(f) {
+                    let type_name = ast::get_base_type(&f.field_type);
+
+                    vec![
+                      f.clone(),
+                      Field {
+                          position: Pos::default(),
+                          description: None,
+                          name: format!("{}Connection", type_name.to_plural().to_camel_case()),
+                          arguments: f.arguments.clone(),
+                          field_type: Type::NonNullType(Box::new(Type::NamedType(format!(
+                              "{}Connection",
+                              type_name
+                          )))),
+                          directives: vec![],
+                      }
+                    ]
+                  } else {
+                    vec![f.clone()]
+                  }
+                }).collect();
+                
+                object_type.fields = fields_with_connections;
+              }
+
+            }
+            _ => (),
+        }
+    }
 }
 
 fn add_connection_types(schema: &mut Document, object_types: &Vec<&ObjectType>) -> () {

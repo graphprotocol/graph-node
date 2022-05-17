@@ -286,6 +286,17 @@ pub fn get_type_definition_from_type<'a>(
     }
 }
 
+/// Returns the base type.
+pub fn get_base_type<'a>(
+  t: &'a s::Type,
+) -> &'a String {
+  match t {
+      s::Type::NamedType(name) => name,
+      s::Type::ListType(inner) => get_base_type( inner),
+      s::Type::NonNullType(inner) => get_base_type( inner),
+  }
+}
+
 /// Looks up a directive in a object type, if it is provided.
 pub fn get_object_type_directive(
     object_type: &s::ObjectType,
@@ -363,7 +374,7 @@ pub fn is_list_or_non_null_list_field(field: &s::Field) -> bool {
     }
 }
 
-fn unpack_type<'a>(schema: &'a s::Document, t: &s::Type) -> Option<&'a s::TypeDefinition> {
+pub fn unpack_type<'a>(schema: &'a s::Document, t: &s::Type) -> Option<&'a s::TypeDefinition> {
     match t {
         s::Type::NamedType(name) => schema.get_named_type(name),
         s::Type::ListType(inner_type) => unpack_type(schema, inner_type),
