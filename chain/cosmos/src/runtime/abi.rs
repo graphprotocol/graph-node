@@ -227,6 +227,7 @@ impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
             total_voting_power: self.total_voting_power,
             validator_power: self.total_voting_power,
             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
+            _padding: 0,
         })
     }
 }
@@ -250,6 +251,7 @@ impl ToAscObj<AscEventVote> for codec::EventVote {
                     )))
                 }
             },
+            _padding: 0,
             height: self.height,
             round: self.round,
             block_id: asc_new_or_null(heap, &self.block_id, gas)?,
@@ -269,9 +271,10 @@ impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence
     ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
         Ok(AscLightClientAttackEvidence {
             conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
+            _padding: 0,
             common_height: self.common_height,
-            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
             total_voting_power: self.total_voting_power,
+            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
         })
     }
@@ -562,6 +565,7 @@ impl ToAscObj<AscEvidenceParams> for codec::EvidenceParams {
         Ok(AscEvidenceParams {
             max_age_num_blocks: self.max_age_num_blocks,
             max_age_duration: asc_new_or_null(heap, &self.max_age_duration, gas)?,
+            _padding: 0,
             max_bytes: self.max_bytes,
         })
     }
@@ -1083,10 +1087,12 @@ mod test {
             total_voting_power: 0,
             validator_power: 0,
             timestamp: AscPtr::<AscTimestamp>::null(),
+            _padding: 0,
         });
 
         assert_asc_size!(AscEventVote {
             event_vote_type: 0,
+            _padding: 0,
             height: 0,
             round: 0,
             block_id: AscPtr::<AscBlockID>::null(),
@@ -1098,9 +1104,10 @@ mod test {
 
         assert_asc_size!(AscLightClientAttackEvidence {
             conflicting_block: AscPtr::<AscLightBlock>::null(),
+            _padding: 0,
             common_height: 0,
-            byzantine_validators: AscPtr::<AscValidatorArray>::null(),
             total_voting_power: 0,
+            byzantine_validators: AscPtr::<AscValidatorArray>::null(),
             timestamp: AscPtr::<AscTimestamp>::null(),
         });
 
@@ -1191,6 +1198,7 @@ mod test {
         assert_asc_size!(AscEvidenceParams {
             max_age_num_blocks: 0,
             max_age_duration: AscPtr::<AscDuration>::null(),
+            _padding: 0,
             max_bytes: 0,
         });
 

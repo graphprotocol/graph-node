@@ -436,6 +436,7 @@ pub(crate) struct AscDuplicateVoteEvidence {
     pub total_voting_power: i64,
     pub validator_power: i64,
     pub timestamp: AscPtr<AscTimestamp>,
+    pub _padding: u32,
 }
 
 impl AscIndexId for AscDuplicateVoteEvidence {
@@ -446,6 +447,7 @@ impl AscIndexId for AscDuplicateVoteEvidence {
 #[derive(AscType)]
 pub(crate) struct AscEventVote {
     pub event_vote_type: i32,
+    pub _padding: u32,
     pub height: u64,
     pub round: i32,
     pub block_id: AscPtr<AscBlockID>,
@@ -480,9 +482,10 @@ impl Default for AscSignedMsgType {
 #[derive(AscType)]
 pub(crate) struct AscLightClientAttackEvidence {
     pub conflicting_block: AscPtr<AscLightBlock>,
+    pub _padding: u32,
     pub common_height: i64,
-    pub byzantine_validators: AscPtr<AscValidatorArray>,
     pub total_voting_power: i64,
+    pub byzantine_validators: AscPtr<AscValidatorArray>,
     pub timestamp: AscPtr<AscTimestamp>,
 }
 
@@ -680,6 +683,7 @@ impl AscIndexId for AscBlockParams {
 pub(crate) struct AscEvidenceParams {
     pub max_age_num_blocks: i64,
     pub max_age_duration: AscPtr<AscDuration>,
+    pub _padding: u32,
     pub max_bytes: i64,
 }
 
