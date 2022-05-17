@@ -3,7 +3,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::data::query::Trace;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
@@ -15,6 +15,7 @@ use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
+use crate::store::connection::is_connection_type;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
 use crate::store::query::collect_entities_from_query_field;
@@ -278,49 +279,54 @@ impl StoreResolver {
 }
 
 impl StoreResolver {
-  fn build_connection_object(&self, children: &Vec<graph::data::value::Value>) -> graph::data::value::Value {
-    let mut page_info_map = BTreeMap::new();
-    page_info_map.insert(
-          "hasNextPage".into(),
-          graph::data::value::Value::Boolean(false),
-      );
-      page_info_map.insert(
-          "startCursor".into(),
-          graph::data::value::Value::String("".to_string()),
-      );
-      page_info_map.insert(
-          "endCursor".into(),
-          graph::data::value::Value::String("".to_string()),
-      );
-      let page_info = graph::data::value::Value::object(page_info_map);
+  fn compose_cursor(&self, value: Option<&graph::data::value::Value>) -> r::Value {
+    value.and_then(|v| v.get_required("id").ok()).map(|v| r::Value::String(v)).unwrap_or(r::Value::Null)
+  }
 
-    let mut connection_response_map = BTreeMap::new();
+  fn build_connection_object(&self, field: &a::Field, children: Vec<r::Value>) -> Result<r::Value, QueryExecutionError> {
+    let first_arg = field.arguments.iter().find_map(|arg| match arg.0.eq("first") {
+      true => Some(arg.1.clone()),
+      false => None,
+    });
 
-      let as_edges = children
-          .iter()
-          .map(|child| {
-              let mut edge_map = BTreeMap::new();
-              edge_map.insert("node".into(), child.clone());
-              edge_map.insert(
-                  "cursor".into(),
-                  graph::data::value::Value::String(child.get_required("id").expect("missing id ")),
-              );
-              graph::data::value::Value::object(edge_map)
-          })
-          .collect();
+    match first_arg {
+      Some(r::Value::Int(first_arg_value)) => {
+        let (has_next_page, items) = match children.len() > first_arg_value.try_into().unwrap() {
+          true => (true, children[0..children.len() - 1].to_vec()),
+          false => (false, children),
+        };
 
-          connection_response_map.insert(
+        let mut connection_response_map = BTreeMap::new();
+        let start_cursor = self.compose_cursor(items.first());
+        let end_cursor = self.compose_cursor(items.last());
+
+        let mut page_info_map = BTreeMap::new();
+        page_info_map.insert("hasNextPage".into(), r::Value::Boolean(has_next_page));
+        page_info_map.insert("startCursor".into(), start_cursor);
+        page_info_map.insert("endCursor".into(), end_cursor);
+
+        connection_response_map.insert("pageInfo".into(), r::Value::object(page_info_map));
+        connection_response_map.insert(
           "edges".into(),
-          graph::data::value::Value::List(as_edges),
-      );
-      connection_response_map.insert(
-          "pageInfo".into(),
-          page_info,
-      );
-
-      let connection_response = graph::data::value::Value::object(connection_response_map);
-
-      return connection_response;
+          r::Value::List(items
+            .into_iter()
+            .map(|child| {
+                let mut edge_map = BTreeMap::<Word, r::Value>::new();
+                let cursor = self.compose_cursor(Some(&child));
+                edge_map.insert("node".into(), child);
+                edge_map.insert( "cursor".into(), cursor);
+  
+                r::Value::object(edge_map)
+            })
+            .collect::<Vec<r::Value>>()),
+        );
+  
+        return Ok(r::Value::object(connection_response_map));
+      },
+      _ => {
+        return Err(QueryExecutionError::InvalidFilterError);
+      }
+    }
   }
 }
 
@@ -372,15 +378,12 @@ impl Resolver for StoreResolver {
             return Ok(meta);
         }
 
-        println!("resolve_object called, field={:?} , field_definition={:?} , prefetched_object={:?}", field, field_definition, prefetched_object);
-
         if let Some(r::Value::List(children)) = prefetched_object {
             // If we encounter a Connection type, we can safely resolve it as an object
-            // while using the same prefetched objects, since it's fetched before.
-            if object_type.name().ends_with("Connection") {
-                let connection_response = self.build_connection_object(&children);
-                
-                return Ok(connection_response);
+            // while using the same prefetched objects, since it's fetched before. 
+            // We just need to construct that as a connectiono object, and calculate the PageInfo based on that response.
+            if is_connection_type(&object_type.name().to_string()) {
+                return self.build_connection_object(&field, children);
             }
 
             if children.len() > 1 {
@@ -400,7 +403,6 @@ impl Resolver for StoreResolver {
         } else if let Some(prefetched_object) = prefetched_object {
             Ok(prefetched_object)
         } else {
-            println!("oops, prefetched_object: {:?}", prefetched_object);
             return Err(QueryExecutionError::ResolveEntitiesError(format!(
                 "internal error resolving {}.{}: resolve_object \
                  expected prefetched result, but found nothing",

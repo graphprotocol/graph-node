@@ -10,6 +10,7 @@ use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::schema::ast::{self as sast, FilterOp};
+use crate::store::connection::is_connection_type;
 
 use super::prefetch::SelectedAttributes;
 
@@ -105,7 +106,12 @@ fn build_range(
     };
 
     Ok(EntityRange {
-        first: Some(first),
+        first: match is_connection_type(&field.name) {
+          // We are a bit overfetching to see ahead when dealing with connections.
+          // This way we can tell the user if there are more pages available.
+          true => Some(first + 1),
+          false => Some(first),
+        },
         skip,
     })
 }

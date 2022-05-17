@@ -32,6 +32,8 @@ use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
+use super::connection::is_connection_type;
+
 lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
     static ref ARG_SKIP: String = String::from("skip");
@@ -528,10 +530,6 @@ fn check_result_size<'a>(
     Ok(())
 }
 
-fn is_connection_type(field_name: &String) -> bool {
-  field_name.ends_with("Connection")
-}
-
 fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type: &'a ObjectType, field_name: &String) -> (Field<'static, String>, ObjectOrInterface<'a>) {
   let schema = &ctx.query.schema;
 
@@ -602,7 +600,6 @@ fn execute_selection_set<'a>(
 
         for field in fields {
             let (field_type, child_type) = extract_field_info(ctx, object_type, &field.name);
-            println!("field: {:?} , field_type: {:?} , child_type: {:?}", field.name, field_type.name, child_type.name());
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
