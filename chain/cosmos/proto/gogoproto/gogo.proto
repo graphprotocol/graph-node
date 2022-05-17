@@ -1,7 +1,5 @@
 // Protocol Buffers for Go with Gadgets
 //
-// Copied from https://github.com/gogo/protobuf/blob/master/gogoproto/gogo.proto
-//
 // Copyright (c) 2013, The GoGo Authors. All rights reserved.
 // http://github.com/gogo/protobuf
 //
@@ -144,4 +142,4 @@ extend google.protobuf.FieldOptions {
 	optional bool wktpointer = 65012;
 
 	optional string castrepeated = 65013;
-} 
+}

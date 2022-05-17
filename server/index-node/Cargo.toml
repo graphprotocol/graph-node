@@ -12,7 +12,7 @@ graph-graphql = { path = "../../graphql" }
 graph-chain-arweave = { path = "../../chain/arweave" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
-graph-chain-tendermint = { path = "../../chain/tendermint" }
+graph-chain-cosmos = { path = "../../chain/cosmos" }
 graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"

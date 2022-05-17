@@ -26,7 +26,7 @@ graph-core = { path = "../core" }
 graph-chain-arweave = { path = "../chain/arweave" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
-graph-chain-tendermint = { path = "../chain/tendermint" }
+graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }

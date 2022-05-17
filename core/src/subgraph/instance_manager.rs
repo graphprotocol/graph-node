@@ -60,9 +60,9 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await
                 }
-                BlockchainKind::Tendermint => {
+                BlockchainKind::Cosmos => {
                     instance_manager
-                        .start_subgraph_inner::<graph_chain_tendermint::Chain>(
+                        .start_subgraph_inner::<graph_chain_cosmos::Chain>(
                             logger, loc, manifest, stop_block,
                         )
                         .await

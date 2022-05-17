@@ -207,7 +207,7 @@ impl AscIndexId for AscActionEnum {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscPublicKey {
-    pub kind: u32,
+    pub kind: i32,
     pub bytes: AscPtr<Uint8Array>,
 }
 
@@ -218,7 +218,7 @@ impl AscIndexId for AscPublicKey {
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscSignature {
-    pub kind: u32,
+    pub kind: i32,
     pub bytes: AscPtr<Uint8Array>,
 }
 

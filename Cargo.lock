@@ -1531,6 +1531,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-cosmos"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "mockall",
+ "pretty_assertions 0.7.2",
+ "prost",
+ "prost-types",
+ "semver",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-chain-ethereum"
 version = "0.26.0"
 dependencies = [
@@ -1578,25 +1597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-tendermint"
-version = "0.26.0"
-dependencies = [
- "anyhow",
- "graph",
- "graph-core",
- "graph-runtime-derive",
- "graph-runtime-wasm",
- "mockall",
- "pretty_assertions 0.7.2",
- "prost",
- "prost-types",
- "semver",
- "serde",
- "test-store",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-core"
 version = "0.26.0"
 dependencies = [
@@ -1610,9 +1610,9 @@ dependencies = [
  "futures 0.3.16",
  "graph",
  "graph-chain-arweave",
+ "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-tendermint",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",
@@ -1671,9 +1671,9 @@ dependencies = [
  "git-testament",
  "graph",
  "graph-chain-arweave",
+ "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-tendermint",
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",
@@ -1768,9 +1768,9 @@ dependencies = [
  "futures 0.3.16",
  "graph",
  "graph-chain-arweave",
+ "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-tendermint",
  "graph-graphql",
  "graphql-parser",
  "http",

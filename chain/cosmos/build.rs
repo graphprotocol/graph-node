@@ -2,6 +2,6 @@ fn main() {
     println!("cargo:rerun-if-changed=proto");
     tonic_build::configure()
         .out_dir("src/protobuf")
-        .compile(&["proto/codec.proto"], &["proto"])
-        .expect("Failed to compile Firehose Tendermint proto(s)");
+        .compile(&["proto/type.proto"], &["proto"])
+        .expect("Failed to compile Firehose Cosmos proto(s)");
 }

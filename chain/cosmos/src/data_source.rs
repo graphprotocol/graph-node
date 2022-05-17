@@ -15,12 +15,12 @@ use graph::{
 
 use crate::chain::Chain;
 use crate::codec;
-use crate::trigger::TendermintTrigger;
+use crate::trigger::CosmosTrigger;
 
-pub const TENDERMINT_KIND: &str = "tendermint";
+pub const COSMOS_KIND: &str = "cosmos";
 
-const DYNAMIC_DATA_SOURCE_ERROR: &str = "Tendermint subgraphs do not support dynamic data sources";
-const TEMPLATE_ERROR: &str = "Tendermint subgraphs do not support templates";
+const DYNAMIC_DATA_SOURCE_ERROR: &str = "Cosmos subgraphs do not support dynamic data sources";
+const TEMPLATE_ERROR: &str = "Cosmos subgraphs do not support templates";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -56,17 +56,22 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         let handler = match trigger {
-            TendermintTrigger::Block(_) => match self.handler_for_block() {
+            CosmosTrigger::Block(_) => match self.handler_for_block() {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
             },
 
-            TendermintTrigger::Event { event_data, origin } => {
+            CosmosTrigger::Event { event_data, origin } => {
                 match self.handler_for_event(event_data.event(), *origin) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }
             }
+
+            CosmosTrigger::Transaction(_) => match self.handler_for_transaction() {
+                Some(handler) => handler.handler,
+                None => return Ok(None),
+            },
         };
 
         Ok(Some(TriggerWithHandler::new(
@@ -118,6 +123,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && source == &other.source
             && mapping.block_handlers == other.mapping.block_handlers
             && mapping.event_handlers == other.mapping.event_handlers
+            && mapping.transaction_handlers == other.mapping.transaction_handlers
             && context == &other.context
     }
 
@@ -135,10 +141,10 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn validate(&self) -> Vec<Error> {
         let mut errors = Vec::new();
 
-        if self.kind != TENDERMINT_KIND {
+        if self.kind != COSMOS_KIND {
             errors.push(anyhow!(
                 "data source has invalid `kind`, expected {} but found {}",
-                TENDERMINT_KIND,
+                COSMOS_KIND,
                 self.kind
             ))
         }
@@ -146,6 +152,11 @@ impl blockchain::DataSource<Chain> for DataSource {
         // Ensure there is only one block handler
         if self.mapping.block_handlers.len() > 1 {
             errors.push(anyhow!("data source has duplicated block handlers"));
+        }
+
+        // Ensure there is only one transaction handler
+        if self.mapping.transaction_handlers.len() > 1 {
+            errors.push(anyhow!("data source has duplicated transaction handlers"));
         }
 
         // Ensure that each event type + origin filter combination has only one handler
@@ -218,6 +229,10 @@ impl DataSource {
         self.mapping.block_handlers.first().cloned()
     }
 
+    fn handler_for_transaction(&self) -> Option<MappingTransactionHandler> {
+        self.mapping.transaction_handlers.first().cloned()
+    }
+
     fn handler_for_event(
         &self,
         event: &codec::Event,
@@ -236,6 +251,18 @@ impl DataSource {
                 }
             })
             .cloned()
+    }
+
+    pub(crate) fn has_block_handler(&self) -> bool {
+        !self.mapping.block_handlers.is_empty()
+    }
+
+    /// Return an iterator over all event types from event handlers.
+    pub(crate) fn events(&self) -> impl Iterator<Item = &str> {
+        self.mapping
+            .event_handlers
+            .iter()
+            .map(|handler| handler.event.as_str())
     }
 }
 
@@ -327,6 +354,8 @@ pub struct UnresolvedMapping {
     pub block_handlers: Vec<MappingBlockHandler>,
     #[serde(default)]
     pub event_handlers: Vec<MappingEventHandler>,
+    #[serde(default)]
+    pub transaction_handlers: Vec<MappingTransactionHandler>,
     pub file: Link,
 }
 
@@ -342,6 +371,7 @@ impl UnresolvedMapping {
             entities,
             block_handlers,
             event_handlers,
+            transaction_handlers,
             file: link,
         } = self;
 
@@ -356,6 +386,7 @@ impl UnresolvedMapping {
             entities,
             block_handlers: block_handlers.clone(),
             event_handlers: event_handlers.clone(),
+            transaction_handlers: transaction_handlers.clone(),
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -369,6 +400,7 @@ pub struct Mapping {
     pub entities: Vec<String>,
     pub block_handlers: Vec<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
+    pub transaction_handlers: Vec<MappingTransactionHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
@@ -382,6 +414,11 @@ pub struct MappingBlockHandler {
 pub struct MappingEventHandler {
     pub event: String,
     pub origin: Option<EventOrigin>,
+    pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingTransactionHandler {
     pub handler: String,
 }
 
@@ -483,7 +520,7 @@ mod tests {
     impl DataSource {
         fn with_event_handlers(event_handlers: Vec<MappingEventHandler>) -> DataSource {
             DataSource {
-                kind: "tendermint".to_string(),
+                kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
                 source: Source { start_block: 1 },
@@ -493,6 +530,7 @@ mod tests {
                     entities: vec![],
                     block_handlers: vec![],
                     event_handlers,
+                    transaction_handlers: vec![],
                     runtime: Arc::new(vec![]),
                     link: "test".to_string().into(),
                 },

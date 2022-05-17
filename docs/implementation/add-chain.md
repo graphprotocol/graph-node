@@ -36,7 +36,7 @@ It's here that you add the `protobuf` definitions with the specific types for th
 
 - [Ethereum](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/ethereum/proto/codec.proto)
 - [NEAR](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/near/proto/codec.proto)
-- [Tendermint](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/proto/codec.proto)
+- [Cosmos](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/proto/codec.proto)
 
 To compile those we use a crate called `tonic`, it will require a [`build.rs` file](https://doc.rust-lang.org/cargo/reference/build-scripts.html) like the one in the other folders/chains, eg:
 
@@ -247,7 +247,7 @@ Just like in the `server` crate, you'll just have to handle the new `BlockchainK
 ## Example Integrations (PRs)
 
 - [NEAR](https://github.com/graphprotocol/graph-node/pull/2820) by StreamingFast
-- [Tendermint](https://github.com/graphprotocol/graph-node/pull/3212) by Figment
+- [Cosmos](https://github.com/graphprotocol/graph-node/pull/3212) by Figment
 - [Solana](https://github.com/graphprotocol/graph-node/pull/3210) by StreamingFast
 
 ## What else?
@@ -263,7 +263,7 @@ For now this document doesn't include how to do that integration, here are a few
   - `graph-ts`
     - https://github.com/graphprotocol/graph-ts/pull/210
     - https://github.com/graphprotocol/graph-ts/pull/217
-- Tendermint
+- Cosmos
   - `graph-cli`
     - https://github.com/graphprotocol/graph-cli/pull/827
     - https://github.com/graphprotocol/graph-cli/pull/851

@@ -347,8 +347,8 @@ where
                 .await?
             }
 
-            BlockchainKind::Tendermint => {
-                create_subgraph_version::<graph_chain_tendermint::Chain, _>(
+            BlockchainKind::Cosmos => {
+                create_subgraph_version::<graph_chain_cosmos::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
