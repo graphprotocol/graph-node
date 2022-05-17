@@ -91,6 +91,31 @@ fn bytes_as_str(id: &str) -> String {
     id.trim_start_matches("\\x").to_owned()
 }
 
+impl IdType {
+    /// Add `ids` as a bind variable to `out`, using the right SQL type
+    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    where
+        S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
+    {
+        match self {
+            IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
+            IdType::Bytes => {
+                let ids = ids
+                    .iter()
+                    .map(|id| str_as_bytes(id.as_ref()))
+                    .collect::<Result<Vec<scalar::Bytes>, _>>()?;
+                let id_slices = ids.iter().map(|id| id.as_slice()).collect::<Vec<_>>();
+                out.push_bind_param::<Array<Binary>, _>(&id_slices)?;
+            }
+        }
+        // Generate '::text[]' or '::bytea[]'
+        out.push_sql("::");
+        out.push_sql(self.sql_type());
+        out.push_sql("[]");
+        Ok(())
+    }
+}
+
 /// Conveniences for handling foreign keys depending on whether we are using
 /// `IdType::Bytes` or `IdType::String` as the primary key
 ///
@@ -122,22 +147,7 @@ trait ForeignKeyClauses {
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
-        match self.column_type().id_type() {
-            IdType::String => out.push_bind_param::<Array<Text>, _>(&ids)?,
-            IdType::Bytes => {
-                let ids = ids
-                    .iter()
-                    .map(|id| str_as_bytes(id.as_ref()))
-                    .collect::<Result<Vec<scalar::Bytes>, _>>()?;
-                let id_slices = ids.iter().map(|id| id.as_slice()).collect::<Vec<_>>();
-                out.push_bind_param::<Array<Binary>, _>(&id_slices)?;
-            }
-        }
-        // Generate '::text[]' or '::bytea[]'
-        out.push_sql("::");
-        out.push_sql(self.column_type().sql_type());
-        out.push_sql("[]");
-        Ok(())
+        self.column_type().id_type().bind_ids(ids, out)
     }
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
@@ -2886,8 +2896,9 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("with matches as (");
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
-        out.push_bind_param::<Array<Text>, _>(&parent_ids)?;
-        out.push_sql("::text[]) as q(id)\n");
+        // windows always has at least 2 entries
+        windows[0].parent_type().bind_ids(&parent_ids, &mut out)?;
+        out.push_sql(") as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
             if i > 0 {

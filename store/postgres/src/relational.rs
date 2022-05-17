@@ -164,6 +164,15 @@ pub(crate) enum IdType {
     Bytes,
 }
 
+impl IdType {
+    pub fn sql_type(&self) -> &str {
+        match self {
+            IdType::String => "text",
+            IdType::Bytes => "bytea",
+        }
+    }
+}
+
 impl TryFrom<&s::ObjectType> for IdType {
     type Error = StoreError;
 
