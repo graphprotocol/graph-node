@@ -277,6 +277,53 @@ impl StoreResolver {
     }
 }
 
+impl StoreResolver {
+  fn build_connection_object(&self, children: &Vec<graph::data::value::Value>) -> graph::data::value::Value {
+    let mut page_info_map = BTreeMap::new();
+    page_info_map.insert(
+          "hasNextPage".into(),
+          graph::data::value::Value::Boolean(false),
+      );
+      page_info_map.insert(
+          "startCursor".into(),
+          graph::data::value::Value::String("".to_string()),
+      );
+      page_info_map.insert(
+          "endCursor".into(),
+          graph::data::value::Value::String("".to_string()),
+      );
+      let page_info = graph::data::value::Value::object(page_info_map);
+
+    let mut connection_response_map = BTreeMap::new();
+
+      let as_edges = children
+          .iter()
+          .map(|child| {
+              let mut edge_map = BTreeMap::new();
+              edge_map.insert("node".into(), child.clone());
+              edge_map.insert(
+                  "cursor".into(),
+                  graph::data::value::Value::String(child.get_required("id").expect("missing id ")),
+              );
+              graph::data::value::Value::object(edge_map)
+          })
+          .collect();
+
+          connection_response_map.insert(
+          "edges".into(),
+          graph::data::value::Value::List(as_edges),
+      );
+      connection_response_map.insert(
+          "pageInfo".into(),
+          page_info,
+      );
+
+      let connection_response = graph::data::value::Value::object(connection_response_map);
+
+      return connection_response;
+  }
+}
+
 #[async_trait]
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
@@ -331,51 +378,8 @@ impl Resolver for StoreResolver {
             // If we encounter a Connection type, we can safely resolve it as an object
             // while using the same prefetched objects, since it's fetched before.
             if object_type.name().ends_with("Connection") {
-              let mut page_info_map = BTreeMap::new();
-              page_info_map.insert(
-                    "hasNextPage".into(),
-                    graph::data::value::Value::Boolean(false),
-                );
-                page_info_map.insert(
-                    "hasPreviousPage".into(),
-                    graph::data::value::Value::Boolean(false),
-                );
-                page_info_map.insert(
-                    "startCursor".into(),
-                    graph::data::value::Value::String("".to_string()),
-                );
-                page_info_map.insert(
-                    "endCursor".into(),
-                    graph::data::value::Value::String("".to_string()),
-                );
-                let page_info = graph::data::value::Value::object(page_info_map);
-
-              let mut connection_response_map = BTreeMap::new();
-
-                let as_edges = children
-                    .iter()
-                    .map(|child| {
-                        let mut edge_map = BTreeMap::new();
-                        edge_map.insert("node".into(), child.clone());
-                        edge_map.insert(
-                            "cursor".into(),
-                            graph::data::value::Value::String(child.get_required("id").expect("missing id ")),
-                        );
-                        graph::data::value::Value::object(edge_map)
-                    })
-                    .collect();
-
-                    connection_response_map.insert(
-                    "edges".into(),
-                    graph::data::value::Value::List(as_edges),
-                );
-                connection_response_map.insert(
-                    "pageInfo".into(),
-                    page_info,
-                );
-
-                let connection_response = graph::data::value::Value::object(connection_response_map);
-
+                let connection_response = self.build_connection_object(&children);
+                
                 return Ok(connection_response);
             }
 

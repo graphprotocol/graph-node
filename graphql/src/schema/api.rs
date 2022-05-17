@@ -834,11 +834,6 @@ fn connection_collection_arguments_for_named_type(type_name: &str) -> Vec<InputV
             Type::NamedType("String".to_string()),
         ),
         input_value(
-            &"before".to_string(),
-            "",
-            Type::NamedType("String".to_string()),
-        ),
-        input_value(
             &"orderBy".to_string(),
             "",
             Type::NamedType(format!("{}_orderBy", type_name)),
