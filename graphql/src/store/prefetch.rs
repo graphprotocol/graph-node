@@ -6,8 +6,10 @@ use graph::constraint_violation;
 use graph::data::query::Trace;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
+use graph::prelude::s::{ObjectType};
 use graph::slog::warn;
 use graph::util::cache_weight;
+use graphql_parser::schema::Field;
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -526,6 +528,45 @@ fn check_result_size<'a>(
     Ok(())
 }
 
+fn is_connection_type(field_name: &String) -> bool {
+  field_name.ends_with("Connection")
+}
+
+fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type: &'a ObjectType, field_name: &String) -> (Field<'static, String>, ObjectOrInterface<'a>) {
+  let schema = &ctx.query.schema;
+
+  match is_connection_type(field_name) {
+    false => {
+      let field_type = object_type
+      .field(&field_name)
+      .expect("field names are valid");
+    let child_type = schema
+      .object_or_interface(field_type.field_type.get_base_type())
+      .expect("we only collect fields that are objects or interfaces");
+
+      return (field_type.clone(), child_type);
+    },
+    true => {
+      let connection_field_type = &schema
+      .object_or_interface(object_type
+        .field(&field_name).expect("field names are valid").field_type.get_base_type())
+      .expect("we only collect fields that are objects or interfaces");
+
+      let field_edge_type = connection_field_type.field("edges").expect("edges is missing");
+      let child_edge_type = schema
+      .object_or_interface(field_edge_type.field_type.get_base_type())
+      .expect("failed to find edges");
+
+      let field_type = child_edge_type.field("node").expect("node is missing");
+      let child_type = schema
+      .object_or_interface(field_type.field_type.get_base_type())
+      .expect("failed to find node");
+
+      return (field_type.clone(), child_type);
+    }
+  }
+}
+
 fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
@@ -560,12 +601,8 @@ fn execute_selection_set<'a>(
         }
 
         for field in fields {
-            let field_type = object_type
-                .field(&field.name)
-                .expect("field names are valid");
-            let child_type = schema
-                .object_or_interface(field_type.field_type.get_base_type())
-                .expect("we only collect fields that are objects or interfaces");
+            let (field_type, child_type) = extract_field_info(ctx, object_type, &field.name);
+            println!("field: {:?} , field_type: {:?} , child_type: {:?}", field.name, field_type.name, child_type.name());
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
@@ -573,8 +610,6 @@ fn execute_selection_set<'a>(
                 child_type,
                 &field.name,
             );
-
-            println!("created Join for field {}, join={:?}", field.name, join);
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,
@@ -592,7 +627,7 @@ fn execute_selection_set<'a>(
                 &parents,
                 &join,
                 field,
-                field_type,
+                &field_type,
                 collected_columns,
             ) {
                 Ok((children, trace)) => {
