@@ -224,6 +224,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "base64-url"
+version = "1.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67a99c239d0c7e77c85dddfa9cebce48704b3c49550fcd3b84dd637e4484899f"
+dependencies = [
+ "base64",
+]
+
+[[package]]
 name = "bigdecimal"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1503,6 +1512,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-arweave"
+version = "0.26.0"
+dependencies = [
+ "base64-url",
+ "diesel",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "graph-store-postgres",
+ "pretty_assertions 0.7.2",
+ "prost",
+ "prost-types",
+ "serde",
+ "test-store",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-chain-cosmos"
 version = "0.26.0"
 dependencies = [
@@ -1581,6 +1609,7 @@ dependencies = [
  "futures 0.1.31",
  "futures 0.3.16",
  "graph",
+ "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -1641,6 +1670,7 @@ dependencies = [
  "futures 0.3.16",
  "git-testament",
  "graph",
+ "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -1737,6 +1767,7 @@ dependencies = [
  "either",
  "futures 0.3.16",
  "graph",
+ "graph-chain-arweave",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -2598,9 +2629,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
+checksum = "578ede34cf02f8924ab9447f50c28075b4d3e5b269972345e7e0372b38c6cdcd"
 dependencies = [
  "autocfg",
 ]

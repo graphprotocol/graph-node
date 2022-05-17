@@ -481,13 +481,17 @@ pub fn run(
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
         result_size.observe(nodes.weight());
-        r::Value::Object(nodes.into_iter().fold(Object::default(), |mut map, node| {
-            // For root nodes, we only care about the children
-            for (key, nodes) in node.children.into_iter() {
-                map.insert(format!("prefetch:{}", key), node_list_as_value(nodes));
-            }
-            map
-        }))
+        let obj = Object::from_iter(
+            nodes
+                .into_iter()
+                .map(|node| {
+                    node.children.into_iter().map(|(key, nodes)| {
+                        (format!("prefetch:{}", key), node_list_as_value(nodes))
+                    })
+                })
+                .flatten(),
+        );
+        r::Value::Object(obj)
     })
 }
 

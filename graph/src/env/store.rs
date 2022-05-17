@@ -39,7 +39,9 @@ pub struct EnvVarsStore {
     /// When enabled, turns `ORDER BY id` into `ORDER BY id, block_range` in
     /// some relational queries.
     ///
-    /// Set by the flag `ORDER_BY_BLOCK_RANGE`.
+    /// Set by the flag `ORDER_BY_BLOCK_RANGE`. Not meant as a user-tunable,
+    /// only as an emergency setting for the hosted service. Remove after
+    /// 2022-07-01 if hosted service had no issues with it being `true`
     pub order_by_block_range: bool,
     /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
     /// and `desc` ordering produces reverse orders. Setting the flag turns the
@@ -146,7 +148,7 @@ pub struct InnerStore {
     typea_batch_size: usize,
     #[envconfig(from = "TYPED_CHILDREN_SET_SIZE", default = "150")]
     typed_children_set_size: usize,
-    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "false")]
+    #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "true")]
     order_by_block_range: EnvVarBoolean,
     #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
     reversible_order_by_off: EnvVarBoolean,

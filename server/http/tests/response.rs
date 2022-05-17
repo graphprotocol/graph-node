@@ -5,7 +5,7 @@ use graph_server_http::test_utils;
 
 #[test]
 fn generates_200_for_query_results() {
-    let data = Object::new();
+    let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();
     test_utils::assert_expected_headers(&query_result);
     test_utils::assert_successful_response(query_result);
@@ -13,7 +13,7 @@ fn generates_200_for_query_results() {
 
 #[test]
 fn generates_valid_json_for_an_empty_result() {
-    let data = Object::new();
+    let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();
     test_utils::assert_expected_headers(&query_result);
     let data = test_utils::assert_successful_response(query_result);

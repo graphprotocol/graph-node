@@ -1496,9 +1496,16 @@ impl ChainStoreTrait for ChainStore {
                     .map(|rows| {
                         rows.first()
                             .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                                (Some(hash), Some(number)) => {
-                                    Some((hash.parse().unwrap(), *number).into())
-                                }
+                                (Some(hash), Some(number)) => Some(
+                                    (
+                                        // FIXME:
+                                        //
+                                        // workaround for arweave
+                                        H256::from_slice(&hex::decode(hash).unwrap()[..32]),
+                                        *number,
+                                    )
+                                        .into(),
+                                ),
                                 (None, None) => None,
                                 _ => unreachable!(),
                             })

@@ -1,10 +1,9 @@
+use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
+use crate::prelude::QueryExecutionError;
 use anyhow::{anyhow, Error};
 use diesel::result::Error as DieselError;
 use thiserror::Error;
 use tokio::task::JoinError;
-
-use super::{BlockNumber, DeploymentHash};
-use crate::prelude::QueryExecutionError;
 
 #[derive(Error, Debug)]
 pub enum StoreError {
@@ -53,6 +52,12 @@ pub enum StoreError {
     Poisoned,
     #[error("panic in subgraph writer: {0}")]
     WriterPanic(JoinError),
+    #[error(
+        "found schema version {0} but this graph node only supports versions up to {}. \
+         Did you downgrade Graph Node?",
+        DeploymentSchemaVersion::LATEST
+    )]
+    UnsupportedDeploymentSchemaVersion(i32),
 }
 
 // Convenience to report a constraint violation

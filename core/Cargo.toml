@@ -13,6 +13,7 @@ futures = { version="0.3.4", features=["compat"] }
 graph = { path = "../graph" }
 # This dependency is temporary. The multiblockchain refactoring is not
 # finished as long as this dependency exists
+graph-chain-arweave = { path = "../chain/arweave" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
 graph-chain-cosmos = { path = "../chain/cosmos" }

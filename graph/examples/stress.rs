@@ -303,7 +303,7 @@ impl Template for HashMap<String, String> {
 }
 
 fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
-    let mut obj = Object::new();
+    let mut obj = Vec::new();
     let modulus = if *NESTED_MAP { 8 } else { 7 };
 
     for i in 0..size {
@@ -324,19 +324,19 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
                 r::Value::List(Vec::from_iter(vals))
             }
             7 => {
-                let mut obj = Object::new();
+                let mut obj = Vec::new();
                 for j in 0..(i % 51) {
-                    obj.insert(format!("key{}", j), r::Value::String(format!("value{}", j)));
+                    obj.push((format!("key{}", j), r::Value::String(format!("value{}", j))));
                 }
-                r::Value::Object(obj)
+                r::Value::Object(Object::from_iter(obj))
             }
             _ => unreachable!(),
         };
 
         let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
-        obj.insert(format!("val{}", key), value);
+        obj.push((format!("val{}", key), value));
     }
-    obj
+    Object::from_iter(obj)
 }
 
 fn make_domains(size: usize, _rng: Option<&mut SmallRng>) -> Object {

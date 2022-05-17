@@ -3,6 +3,7 @@ use priority_queue::PriorityQueue;
 use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
+use std::time::{Duration, Instant};
 
 // The number of `evict` calls without access after which an entry is considered stale.
 const STALE_PERIOD: u64 = 100;
@@ -66,6 +67,10 @@ pub struct EvictStats {
     pub new_count: usize,
     /// The number if entries that were evicted
     pub evicted_count: usize,
+    /// Whether we updated the stale status of entries
+    pub stale_update: bool,
+    /// How long eviction took
+    pub evict_time: Duration,
 }
 
 /// Each entry in the cache has a frequency, which is incremented by 1 on access. Entries also have
@@ -207,6 +212,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             return None;
         }
 
+        let start = Instant::now();
+
         self.stale_counter += 1;
         if self.stale_counter == stale_period {
             self.stale_counter = 0;
@@ -242,6 +249,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             evicted_weight: evicted,
             new_count: self.len(),
             evicted_count: old_len - self.len(),
+            stale_update: self.stale_counter == 0,
+            evict_time: start.elapsed(),
         })
     }
 }

@@ -168,16 +168,15 @@ impl SyncStore {
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
-            let store = &self.writable;
-
-            let graft_base = match store.graft_pending(&self.site.deployment)? {
+            let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
                     Some((src, base_ptr))
                 }
                 None => None,
             };
-            store.start_subgraph(logger, self.site.clone(), graft_base)?;
+            self.writable
+                .start_subgraph(logger, self.site.clone(), graft_base)?;
             self.store.primary_conn()?.copy_finished(self.site.as_ref())
         })
     }

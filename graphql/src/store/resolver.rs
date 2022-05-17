@@ -323,7 +323,7 @@ impl Resolver for StoreResolver {
             ErrorPolicy::Deny => {
                 let data = result.take_data();
                 let meta =
-                    data.and_then(|d| d.get("_meta").map(|m| ("_meta".to_string(), m.clone())));
+                    data.and_then(|mut d| d.remove("_meta").map(|m| ("_meta".to_string(), m)));
                 result.set_data(meta.map(|m| Object::from_iter(Some(m))));
             }
             ErrorPolicy::Allow => (),

@@ -143,7 +143,7 @@ pub fn show(
     Ok(())
 }
 
-pub async fn analyze(
+pub fn analyze(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
     search: DeploymentSearch,
@@ -151,8 +151,5 @@ pub async fn analyze(
 ) -> Result<(), anyhow::Error> {
     let locator = search.locate_unique(&pool)?;
     println!("Analyzing table sgd{}.{entity_name}", locator.id);
-    store
-        .analyze(&locator, entity_name)
-        .await
-        .map_err(|e| anyhow!(e))
+    store.analyze(&locator, entity_name).map_err(|e| anyhow!(e))
 }

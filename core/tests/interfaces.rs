@@ -1442,3 +1442,34 @@ async fn recursive_fragment() {
     let data = res.to_result().unwrap_err()[0].to_string();
     assert!(FOO_BAR_ERRORS.contains(&data.as_str()));
 }
+
+#[tokio::test]
+async fn mixed_mutability() {
+    let subgraph_id = "MixedMutability";
+    let schema = "interface Event { id: String! }
+                  type Mutable implements Event @entity { id: String!, name: String! }
+                  type Immutable implements Event @entity(immutable: true) { id: String!, name: String! }";
+
+    let query = "query { events { id } }";
+
+    let entities = vec![
+        ("Mutable", entity! { id: "mut0", name: "mut0" }),
+        ("Immutable", entity! { id: "immo0", name: "immo0" }),
+    ];
+
+    {
+        // We need to remove the subgraph since it contains immutable
+        // entities, and the trick the other tests use does not work for
+        // this. They rely on the EntityCache filtering out entity changes
+        // that are already in the store
+        let id = DeploymentHash::new(subgraph_id).unwrap();
+        remove_subgraph(&id);
+    }
+    let res = insert_and_query(subgraph_id, schema, entities, query)
+        .await
+        .unwrap();
+
+    let data = extract_data!(res).unwrap();
+    let exp = object! { events: vec![ object!{ id: "immo0" }, object! { id: "mut0" } ] };
+    assert_eq!(data, exp);
+}
