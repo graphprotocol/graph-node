@@ -70,4 +70,4 @@ maplit = "1.0.2"
 structopt = { version = "0.3" }
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"] }
+tonic-build = { version = "0.7.2", features = ["prost"] }

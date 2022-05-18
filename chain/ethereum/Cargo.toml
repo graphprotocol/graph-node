@@ -31,4 +31,4 @@ test-store = { path = "../../store/test-store" }
 base64 = "0.13.0"
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"] }
+tonic-build = { version = "0.7.2", features = ["prost"] }
