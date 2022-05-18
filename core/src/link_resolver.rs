@@ -12,7 +12,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use graph::{
-    ipfs_client::{IpfsClient, ObjectStatResponse},
+    ipfs_client::{DagStatResponse, IpfsClient},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
 
@@ -42,7 +42,7 @@ fn retry_policy<I: Send + Sync>(
 /// of clients where hopefully one already has the file, and just get the file
 /// from that.
 ///
-/// The strategy here then is to use the object_stat API as a proxy for "do you
+/// The strategy here then is to use the dag_stat API as a proxy for "do you
 /// have the file". Whichever client has or gets the file first wins. This API is
 /// a good choice, because it doesn't involve us actually starting to download
 /// the file from each client, which would be wasteful of bandwidth and memory in
@@ -54,7 +54,7 @@ async fn select_fastest_client_with_stat(
     path: String,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(ObjectStatResponse, Arc<IpfsClient>), Error> {
+) -> Result<(DagStatResponse, Arc<IpfsClient>), Error> {
     let mut err: Option<Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
@@ -63,10 +63,10 @@ async fn select_fastest_client_with_stat(
         .map(|(i, c)| {
             let c = c.cheap_clone();
             let path = path.clone();
-            retry_policy(do_retry, "object.stat", &logger).run(move || {
+            retry_policy(do_retry, "dag.stat", &logger).run(move || {
                 let path = path.clone();
                 let c = c.cheap_clone();
-                async move { c.object_stat(path, timeout).map_ok(move |s| (s, i)).await }
+                async move { c.dag_stat(path, timeout).map_ok(move |s| (s, i)).await }
             })
         })
         .collect();
@@ -91,16 +91,16 @@ async fn select_fastest_client_with_stat(
 // Returns an error if the stat is bigger than `max_file_bytes`
 fn restrict_file_size(
     path: &str,
-    stat: &ObjectStatResponse,
+    stat: &DagStatResponse,
     max_file_bytes: &Option<u64>,
 ) -> Result<(), Error> {
     if let Some(max_file_bytes) = max_file_bytes {
-        if stat.cumulative_size > *max_file_bytes {
+        if stat.size > *max_file_bytes {
             return Err(anyhow!(
                 "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
                 path,
                 max_file_bytes,
-                stat.cumulative_size
+                stat.size
             ));
         }
     }

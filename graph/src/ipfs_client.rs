@@ -11,13 +11,9 @@ use std::{str::FromStr, sync::Arc};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct ObjectStatResponse {
-    pub hash: String,
-    pub num_links: u64,
-    pub block_size: u64,
-    pub links_size: u64,
-    pub data_size: u64,
-    pub cumulative_size: u64,
+pub struct DagStatResponse {
+    pub num_blocks: u64,
+    pub size: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,13 +54,13 @@ impl IpfsClient {
         }
     }
 
-    /// Calls `object stat`.
-    pub async fn object_stat(
+    /// Calls `dag stat`.
+    pub async fn dag_stat(
         &self,
         path: String,
         timeout: Duration,
-    ) -> Result<ObjectStatResponse, reqwest::Error> {
-        self.call(self.url("object/stat", path), None, Some(timeout))
+    ) -> Result<DagStatResponse, reqwest::Error> {
+        self.call(self.url("dag/stat", path), None, Some(timeout))
             .await?
             .json()
             .await
