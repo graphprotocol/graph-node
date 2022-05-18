@@ -41,6 +41,13 @@ pub struct TransactionData {
     pub block: ::core::option::Option<HeaderOnlyBlock>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MessageData {
+    #[prost(message, optional, tag="1")]
+    pub message: ::core::option::Option<::prost_types::Any>,
+    #[prost(message, optional, tag="2")]
+    pub block: ::core::option::Option<HeaderOnlyBlock>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Header {
     #[prost(message, optional, tag="1")]
     pub version: ::core::option::Option<Consensus>,

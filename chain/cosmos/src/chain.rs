@@ -177,6 +177,14 @@ pub struct TriggersAdapter {}
 
 #[async_trait]
 impl TriggersAdapterTrait<Chain> for TriggersAdapter {
+    async fn ancestor_block(
+        &self,
+        _ptr: BlockPtr,
+        _offset: BlockNumber,
+    ) -> Result<Option<codec::Block>, Error> {
+        panic!("Should never be called since not used by FirehoseBlockStream")
+    }
+
     async fn scan_triggers(
         &self,
         _from: BlockNumber,
@@ -223,12 +231,21 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             )
             .collect();
 
-        triggers.extend(
-            shared_block
-                .transactions()
-                .cloned()
-                .map(|tx| CosmosTrigger::with_transaction(tx, header_only_block.clone())),
-        );
+        triggers.extend(shared_block.transactions().cloned().flat_map(|tx| {
+            let mut triggers: Vec<_> = Vec::new();
+            if let Some(tx) = tx.tx.clone() {
+                if let Some(tx_body) = tx.body {
+                    triggers.extend(tx_body.messages.into_iter().map(|message| {
+                        CosmosTrigger::with_message(message, header_only_block.clone())
+                    }));
+                }
+            }
+            triggers.push(CosmosTrigger::with_transaction(
+                tx,
+                header_only_block.clone(),
+            ));
+            triggers
+        }));
 
         if filter.block_filter.trigger_every_block {
             triggers.push(CosmosTrigger::Block(shared_block.cheap_clone()));
@@ -238,14 +255,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        panic!("Should never be called since not used by FirehoseBlockStream")
-    }
-
-    async fn ancestor_block(
-        &self,
-        _ptr: BlockPtr,
-        _offset: BlockNumber,
-    ) -> Result<Option<codec::Block>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 

@@ -139,3 +139,13 @@ impl TransactionData {
         self.block.as_ref().unwrap()
     }
 }
+
+impl MessageData {
+    pub fn message(&self) -> &prost_types::Any {
+        self.message.as_ref().unwrap()
+    }
+
+    pub fn block(&self) -> &HeaderOnlyBlock {
+        self.block.as_ref().unwrap()
+    }
+}
