@@ -340,6 +340,17 @@ impl AscIndexId for AscTransactionData {
 
 #[repr(C)]
 #[derive(AscType)]
+pub(crate) struct AscMessageData {
+    pub message: AscPtr<AscAny>,
+    pub block: AscPtr<AscHeaderOnlyBlock>,
+}
+
+impl AscIndexId for AscMessageData {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosMessageData;
+}
+
+#[repr(C)]
+#[derive(AscType)]
 pub(crate) struct AscHeader {
     pub version: AscPtr<AscConsensus>,
     pub chain_id: AscPtr<AscString>,

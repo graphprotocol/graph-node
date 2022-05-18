@@ -39,6 +39,11 @@ message TransactionData {
   HeaderOnlyBlock block = 2;
 }
 
+message MessageData {
+  google.protobuf.Any message = 1;
+  HeaderOnlyBlock block = 2;
+}
+
 message Header {
   Consensus version = 1 [(gogoproto.nullable) = false];
   string chain_id = 2 [(gogoproto.customname) = "ChainID"];
