@@ -1,6 +1,3 @@
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscBlock)]
-#[required(header,evidence)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     #[prost(message, optional, tag="1")]

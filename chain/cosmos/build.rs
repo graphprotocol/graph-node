@@ -21,7 +21,9 @@ fn main() {
      .out_dir("src/protobuf");
 
      for (name, ptype, ) in types{
-
+        if name == "Block"{
+            continue;
+        }
 
           builder = builder.type_attribute(name.clone(),
                 "#[derive(graph_runtime_derive::ToAscObj)]");
@@ -37,7 +39,7 @@ fn main() {
 
      }
      builder.compile(&["proto/type.proto"], &["proto"])
-     .expect("Failed to compile Firehose Tendermint proto(s)");
+     .expect("Failed to compile Firehose Cosmos proto(s)");
      
 
 }

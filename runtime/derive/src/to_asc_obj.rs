@@ -124,13 +124,19 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
     let expanded = quote! {
         #[automatically_derived]
         mod #mod_name{
-            use crate::codec::*;
-            //use crate::runtime::abi::Bytes;
-            use graph::prelude::Value::Bytes;
-            use graph::runtime::{
-                asc_new, gas::GasCounter, AscHeap,AscPtr, DeterministicHostError,ToAscObj,
-            };
+            use super::*;
 
+            use graph::runtime::{
+                asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError,
+                ToAscObj
+            };
+            use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
+            
+            use crate::codec;
+            
+            use crate::runtime::generated::*;
+            use crate::runtime::abi::*;
+            use graph::prelude::Value::Bytes;
 
             impl ToAscObj<crate::runtime::generated::#typ> for #name {
 

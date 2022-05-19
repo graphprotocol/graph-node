@@ -1,8 +1,3 @@
-pub(crate) use crate::protobuf::pbcodec::*;
-
-
-
-
 use anyhow::anyhow;
 use graph::runtime::{
     asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError,
@@ -14,35 +9,35 @@ use crate::codec;
 
 pub(crate) use super::generated::*;
 
-// impl ToAscObj<AscBlock> for codec::Block {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscBlock, DeterministicHostError> {
-//         Ok(AscBlock {
-//             header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
-//             evidence: asc_new_or_null(heap, &self.evidence, gas)?,
-//             last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
-//             result_begin_block: asc_new_or_missing(
-//                 heap,
-//                 &self.result_begin_block,
-//                 gas,
-//                 "Block",
-//                 "result_begin_block",
-//             )?,
-//             result_end_block: asc_new_or_missing(
-//                 heap,
-//                 &self.result_end_block,
-//                 gas,
-//                 "Block",
-//                 "result_end_block",
-//             )?,
-//             transactions: asc_new(heap, &self.transactions, gas)?,
-//             validator_updates: asc_new(heap, &self.validator_updates, gas)?,
-//         })
-//     }
-// }
+impl ToAscObj<AscBlock> for codec::Block {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscBlock, DeterministicHostError> {
+        Ok(AscBlock {
+            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
+            evidence: asc_new_or_null(heap, &self.evidence, gas)?,
+            last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
+            result_begin_block: asc_new_or_missing(
+                heap,
+                &self.result_begin_block,
+                gas,
+                "Block",
+                "result_begin_block",
+            )?,
+            result_end_block: asc_new_or_missing(
+                heap,
+                &self.result_end_block,
+                gas,
+                "Block",
+                "result_end_block",
+            )?,
+            transactions: asc_new(heap, &self.transactions, gas)?,
+            validator_updates: asc_new(heap, &self.validator_updates, gas)?,
+        })
+    }
+}
 
 // impl ToAscObj<AscHeaderOnlyBlock> for codec::HeaderOnlyBlock {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
