@@ -6,6 +6,62 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Fields, Item, ItemEnum, ItemStruct};
 
+
+
+
+#[derive(Debug)]
+struct TypeParam(syn::Ident);
+
+impl syn::parse::Parse for TypeParam {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let content;
+        syn::parenthesized!(content in input);
+        let typ = content.parse()?;
+        Ok(TypeParam(typ))
+    }
+}
+
+#[derive(Debug)]
+struct TypeParamList(Vec<syn::Ident>);
+
+impl syn::parse::Parse for TypeParamList {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let content;
+        syn::parenthesized!(content in input);
+
+        let mut params: Vec<syn::Ident> = Vec::new();
+        
+        while !content.is_empty() {
+            let typ = content.parse()?;
+            params.push(typ);
+
+            if !content.is_empty() {
+                let _comma: syn::Token![,] = content.parse()?;
+            }
+        }
+
+        Ok(TypeParamList(params))
+    }
+}
+
+
+
+
+//declarative macro is usable for tonic-build integration
+mod to_asc_obj;
+#[proc_macro_derive(ToAscObj, attributes(asc_obj_type, required))]
+pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
+    to_asc_obj::to_asc_obj_macro_derive(tokens)
+}
+
+
+
+
+
+
+
+
+
 #[proc_macro_derive(AscType)]
 pub fn asc_type_derive(input: TokenStream) -> TokenStream {
     let item: Item = syn::parse(input).unwrap();

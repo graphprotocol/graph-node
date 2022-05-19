@@ -1,0 +1,435 @@
+syntax = "proto3";
+
+package sf.ethereum.codec.v1;
+
+option go_package = "github.com/streamingfast/sf-ethereum/pb/sf/ethereum/codec/v1;pbcodec";
+
+import "google/protobuf/timestamp.proto";
+
+message Block {
+  int32 ver = 1;
+  bytes hash = 2;
+  uint64 number = 3;
+  uint64 size = 4;
+  BlockHeader header = 5;
+  repeated BlockHeader uncles = 6;
+
+  repeated TransactionTrace transaction_traces = 10;
+  repeated BalanceChange balance_changes = 11;
+  repeated CodeChange code_changes = 20;
+
+  // Wheter or not a filtering process was run on this block. The filtering process populated the
+  // `transaction_traces` according to the `filtering_include_filter_expr` and
+  // `filtering_exclude_filter_expr` CEL expressions. A transaction will be present in the `transaction_traces`
+  // array if it matched the `filtering_include_filter_expr` and did *NOT* match the `filtering_exclude_filter_expr`.
+  //
+  // Moreover, each matching call that brought the transaction to be in `transaction_traces`
+  // array will have a `filtering_matched` flag set on it to broadcast the fact that this call
+  // match the inclusion/exclusion list.
+  //
+  // This flag controls all `transaction_traces` elements on the Block structure and on
+  // substructures if present.
+  bool filtering_applied = 40;
+
+  // The CEL filter expression used to include transaction in `transaction_traces` array, works
+  // in combination with `filtering_exclude_filter_expr` value.
+  string filtering_include_filter_expr = 41;
+
+  // The CEL filter expression used to exclude transaction in `transaction_traces` array, works
+  // in combination with `filtering_include_filter_expr` value.
+  string filtering_exclude_filter_expr = 42;
+}
+
+// HeaderOnlyBlock is a standard [Block] structure where all other fields are
+// removed so that hydrating that object from a [Block] bytes payload will
+// drastically reduced allocated memory required to hold the full block.
+//
+// This can be used to unpack a [Block] when only the [BlockHeader] information
+// is required and greatly reduced required memory.
+message HeaderOnlyBlock {
+  BlockHeader header = 5;
+}
+
+// BlockWithRefs is a lightweight block, with traces and transactions
+// purged from the `block` within, and only.  It is used in transports
+// to pass block data around.
+message BlockWithRefs {
+  string id = 1;
+  Block block = 2;
+  TransactionRefs transaction_trace_refs = 3;
+  bool irreversible = 4;
+}
+
+message TransactionRefs {
+  repeated bytes hashes = 1;
+}
+
+message UnclesHeaders {
+  repeated BlockHeader uncles = 1;
+}
+
+message BlockRef {
+  bytes hash = 1;
+  uint64 number = 2;
+}
+
+message BlockHeader {
+  bytes parent_hash = 1; /* geth: ParentHash + parentHash, parity: parentHash */
+  bytes uncle_hash = 2; /* geth: sha3Uncles, but sha3 is badly worded, so we prefer `uncle_hash`, parity: uncleHash */
+  bytes coinbase = 3; /* geth: Coinbase + miner, parity: coinbase */
+  bytes state_root = 4; /* geth: Root + json=stateRoot, parity: stateRoot */
+  bytes transactions_root = 5; /* geth: TxHash + transactionsRoot, parity: transactionsTrie */
+  bytes receipt_root = 6; /* geth: ReceiptHash + receiptRoot, parity: receiptTrie */
+  bytes logs_bloom = 7; /* internally called `Bloom`, parity uses `bloom`, geth's json uses `logsBloom` */
+  BigInt difficulty = 8;
+  uint64 number = 9;
+  uint64 gas_limit = 10;
+  uint64 gas_used = 11;
+  google.protobuf.Timestamp timestamp = 12;
+  bytes extra_data = 13; /* geth: Extra []byte + extraData, parity: "0x"-prefixed extraData */
+  bytes mix_hash = 14;  /* geth: MixDigest + mixHash, parity: mixHash */
+  uint64 nonce = 15;
+  bytes hash = 16;
+}
+
+message BigInt {
+  bytes bytes = 1;
+}
+
+message TransactionState {
+  State previous_state = 1;
+  State current_state = 2;
+  Transition transition = 10;
+
+  bytes hash = 11;
+  Transaction trx = 3;
+  BlockHeader block_header = 4;
+  TransactionTrace transaction_traces = 5;
+  uint64 confirmation = 6;
+  BlockHeader head_block_header = 7;
+  bytes replaced_by_hash = 8;
+
+  google.protobuf.Timestamp pending_first_seen = 12;
+  google.protobuf.Timestamp pending_last_seen = 13;
+
+  enum Transition {
+    TRANS_INIT = 0;
+    TRANS_POOLED = 1;
+    TRANS_MINED = 2;
+    TRANS_FORKED = 3;
+    TRANS_CONFIRMED = 4;
+    TRANS_REPLACED = 5;
+    TRANS_SPECULATIVELY_EXECUTED = 6; // makes speculative traces available on a PENDING transaction. May not be emitted if the transaction is seen a block before
+  }
+
+  enum State {
+    STATE_UNKNOWN = 0;
+    STATE_PENDING = 1;
+    STATE_IN_BLOCK = 2;
+    STATE_REPLACED = 3;
+  }
+}
+
+// A Transaction not yet in block
+message Transaction {
+  // consensus
+  bytes to = 1;
+  uint64 nonce = 2;
+  BigInt gas_price = 3;
+  uint64 gas_limit = 4;
+  BigInt value = 5; /* amount of ETH transfered, in addition to used_gas * gas_price, sometimes referred to as `Amount` */
+  bytes input = 6;
+  bytes v = 7; /* signature values */
+  bytes r = 8;
+  bytes s = 9;
+
+  // meta
+  bytes hash = 21;
+  bytes from = 22;
+}
+
+message TransactionTrace {
+  // consensus
+  bytes to = 1;
+  uint64 nonce = 2;
+  BigInt gas_price = 3;
+  uint64 gas_limit = 4;
+  BigInt value = 5; /* amount of ETH transfered, in addition to used_gas * gas_price, sometimes referred to as `Amount` */
+  bytes input = 6;
+  bytes v = 7; /* signature values */
+  bytes r = 8;
+  bytes s = 9;
+  uint64 gas_used = 10;
+
+  // meta
+  uint32 index = 20;
+  bytes hash = 21;
+  bytes from = 22;
+  bytes return_data = 23;
+  bytes public_key = 24;
+
+  TransactionTraceStatus status = 30;
+  TransactionReceipt receipt = 31;
+  repeated Call calls = 32;
+}
+
+// TransactionTraceWithBlockRef
+message TransactionTraceWithBlockRef {
+  TransactionTrace trace = 1;
+  BlockRef block_ref = 2;
+}
+
+enum TransactionTraceStatus {
+  UNKNOWN = 0;
+  SUCCEEDED = 1;
+  FAILED = 2;
+  REVERTED = 3;
+}
+
+message TransactionReceipt {
+  // consensus
+  bytes state_root = 1; /* this was an intermediate state_root hash,
+                         * computed in-between transactions to make
+                         * SURE you could build a proof and point to
+                         * state in the middle of a block; geth:
+                         * PostState + root + PostStateOrStatus,
+                         * parity: status_code, root... this piles
+                         * hardforks, see (read the EIPs first):
+                         * https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147
+                         * and
+                         * https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86
+                         * and
+                         * https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md
+                         * and the notion of Outcome in parity, which
+                         * segregates the two concepts, which are
+                         * stored in the same field
+
+                         status_code can be computed based on such a
+                         hack of the `state_root` field, following
+                         EIP-658. This is optional before the
+                         BYZANTINIUM hardfork. */
+  uint64 cumulative_gas_used = 2;
+  bytes logs_bloom = 3;
+  repeated Log logs = 4;
+}
+
+message Log {
+  // consensus
+  bytes address = 1;
+  repeated bytes topics = 2;
+  bytes data = 3;
+
+  // supplement
+  uint32 index = 4; // position inside a trx
+  uint32 blockIndex = 6; // position inside a block
+}
+
+message Call {
+  uint32 index = 1;
+  uint32 parent_index = 2;
+  uint32 depth = 3;
+  CallType call_type = 4;
+  bytes caller = 5;
+  bytes address = 6;
+  BigInt value = 7;
+  uint64 gas_limit = 8;
+  uint64 gas_consumed = 9;
+  bytes return_data = 13;
+  bytes input = 14;
+  bool executed_code = 15;
+  bool suicide = 16;
+
+  /* hex representation of the hash -> preimage */
+  map<string, string> keccak_preimages = 20;
+  repeated StorageChange storage_changes = 21;
+  repeated BalanceChange balance_changes = 22;
+  repeated NonceChange nonce_changes = 24;
+  repeated Log logs = 25;
+  repeated CodeChange code_changes = 26;
+  repeated bytes created_accounts = 27;
+  repeated GasChange gas_changes = 28;
+  repeated GasEvent gas_events = 29;
+
+  // In Ethereum, a call can be either:
+  // - Successfull, execution passes without any problem encountered
+  // - Failed, execution failed, and remaining gas should be consumed
+  // - Reverted, execution failed, but only gas consumed so far is billed, remaining gas is refunded
+  //
+  // When a call is either `failed` or `reverted`, the `status_failed` field
+  // below is set to `true`. If the status is `reverted`, then both `status_failed`
+  // and `status_reverted` are going to be set to `true`.
+  bool status_failed = 10;
+  bool status_reverted = 12;
+
+  // Populated when a call either failed or reverted, so when `status_failed == true`,
+  // see above for details about those flags.
+  string failure_reason = 11;
+
+  // This field represents wheter or not the state changes performed
+  // by this call were correctly recorded by the blockchain.
+  //
+  // On Ethereum, a transaction can record state changes even if some
+  // of its inner nested calls failed. This is problematic however since
+  // a call will invalidate all its state changes as well as all state
+  // changes performed by its child call. This means that even if a call
+  // has a status of `SUCCESS`, the chain might have reverted all the state
+  // changes it performed.
+  //
+  // ```text
+  //   Trx 1
+  //    Call #1 <Failed>
+  //      Call #2 <Execution Success>
+  //      Call #3 <Execution Success>
+  //      |--- Failure here
+  //    Call #4
+  // ```
+  //
+  // In the transaction above, while Call #2 and Call #3 would have the
+  // status `EXECUTED`
+  bool state_reverted = 30;
+
+  repeated ERC20BalanceChange erc20_balance_changes = 50;
+  repeated ERC20TransferEvent erc20_transfer_events = 51;
+
+  // Whether this call trace was a successful match, present only when filtering was applied on block. This
+  // will be `true` if the Block `filtering_applied` is `true`, if the include CEL filter matched and
+  // if the exclude CEL filter did NOT match.
+  bool filtering_matched = 60;
+}
+
+message ERC20BalanceChange {
+  bytes holder_address = 1;
+  BigInt old_balance = 2;
+  BigInt new_balance = 3;
+}
+
+message ERC20TransferEvent {
+  bytes from = 1;
+  bytes to = 2;
+  BigInt amount = 3;
+}
+
+enum CallType {
+  UNSPECIFIED = 0;
+  CALL = 1; // direct? what's the name for `Call` alone?
+  CALLCODE = 2;
+  DELEGATE = 3;
+  STATIC = 4;
+  CREATE = 5; // create2 ? any other form of calls?
+}
+
+message StorageChange {
+  bytes address = 1;
+  bytes key = 2;
+  bytes old_value = 3;
+  bytes new_value = 4;
+}
+
+message BalanceChange {
+  bytes address = 1;
+  BigInt old_value = 2;
+  BigInt new_value = 3;
+  Reason reason = 4;
+
+  // Obtain all balanche change reasons under deep mind repository:
+  //
+  // ```shell
+  // ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
+  enum Reason {
+    REASON_UNKNOWN = 0;
+    REASON_REWARD_MINE_UNCLE = 1;
+    REASON_REWARD_MINE_BLOCK = 2;
+    REASON_DAO_REFUND_CONTRACT = 3;
+    REASON_DAO_ADJUST_BALANCE = 4;
+    REASON_TRANSFER = 5;
+    REASON_GENESIS_BALANCE = 6;
+    REASON_GAS_BUY = 7;
+    REASON_REWARD_TRANSACTION_FEE = 8;
+    REASON_REWARD_FEE_RESET = 14;
+    REASON_GAS_REFUND = 9;
+    REASON_TOUCH_ACCOUNT = 10;
+    REASON_SUICIDE_REFUND = 11;
+    REASON_SUICIDE_WITHDRAW = 13;
+    REASON_CALL_BALANCE_OVERRIDE = 12;
+  }
+}
+
+message NonceChange {
+  bytes address = 1;
+  uint64 old_value = 2;
+  uint64 new_value = 3;
+}
+
+message CodeChange {
+  bytes address = 1;
+  bytes old_hash = 2;
+  bytes old_code = 3;
+  bytes new_hash = 4;
+  bytes new_code = 5;
+}
+
+// The gas change model represents the reason why some gas cost has occurred.
+// The gas is computed per actual op codes. Doing them completely might prove
+// overwhelming in most cases.
+//
+// Hence, we only index some of them, those that are costy like all the calls
+// one, log events, return data, etc.
+message GasChange {
+  uint64 old_value = 1;
+  uint64 new_value = 2;
+  Reason reason = 3;
+
+  // Obtain all gas change reasons under deep mind repository:
+  //
+  // ```shell
+  // ack -ho 'GasChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
+  enum Reason {
+    REASON_UNKNOWN = 0;
+    REASON_CALL = 1;
+    REASON_CALL_CODE = 2;
+    REASON_CALL_DATA_COPY = 3;
+    REASON_CODE_COPY = 4;
+    REASON_CODE_STORAGE = 5;
+    REASON_CONTRACT_CREATION = 6;
+    REASON_CONTRACT_CREATION2 = 7;
+    REASON_DELEGATE_CALL = 8;
+    REASON_EVENT_LOG = 9;
+    REASON_EXT_CODE_COPY = 10;
+    REASON_FAILED_EXECUTION = 11;
+    REASON_INTRINSIC_GAS = 12;
+    REASON_PRECOMPILED_CONTRACT = 13;
+    REASON_REFUND_AFTER_EXECUTION = 14;
+    REASON_RETURN = 15;
+    REASON_RETURN_DATA_COPY = 16;
+    REASON_REVERT = 17;
+    REASON_SELF_DESTRUCT = 18;
+    REASON_STATIC_CALL = 19;
+
+    // Added in Berlin fork (Geth 1.10+)
+    REASON_STATE_COLD_ACCESS = 20;
+  }
+}
+
+// Gas events are emitted to faciliate gas tracking avoid the execution
+// call stack that happens while processing a transaction on the chain.
+//
+// We currently have events for tracing of gas amount before and after
+// each child call.
+message GasEvent {
+  Id id = 1;
+  uint64 gas = 2;
+  uint64 linked_call_index = 3;
+
+  // Obtain all gas change reasons under deep mind repository:
+  //
+  // ```shell
+  // ack -ho 'GasEventID\(".*"\)' | grep -Eo '".*"' | sort | uniq
+  // ```
+  enum Id {
+    ID_UNKNOWN = 0;
+    ID_AFTER_CALL = 1;
+    ID_BEFORE_CALL = 2;
+  }
+}
