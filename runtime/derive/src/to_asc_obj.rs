@@ -125,8 +125,8 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         #[automatically_derived]
         mod #mod_name{
             use crate::codec::*;
-            use crate::runtime::abi::Bytes;
-
+            //use crate::runtime::abi::Bytes;
+            use graph::prelude::Value::Bytes;
             use graph::runtime::{
                 asc_new, gas::GasCounter, AscHeap,AscPtr, DeterministicHostError,ToAscObj,
             };

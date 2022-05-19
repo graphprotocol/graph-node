@@ -1,6 +1,7 @@
-#[rustfmt::skip]
-#[path = "../protobuf/sf.cosmos.r#type.v1.rs"]
-mod pbcosmos;
+pub(crate) use crate::protobuf::pbcodec::*;
+
+
+
 
 use anyhow::anyhow;
 use graph::runtime::{

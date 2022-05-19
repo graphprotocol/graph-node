@@ -1,8 +1,6 @@
-#[rustfmt::skip]
-#[path = "protobuf/sf.cosmos.r#type.v1.rs"]
-mod pbcosmos;
+pub(crate) use crate::protobuf::pbcodec::*;
+//pub use crate::protobuf::pbcodec::EventList;
 
-pub use pbcosmos::*;
 
 use graph::blockchain::Block as BlockchainBlock;
 use graph::{blockchain::BlockPtr, prelude::BlockNumber};

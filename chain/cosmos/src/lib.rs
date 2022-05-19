@@ -5,6 +5,7 @@ pub mod codec;
 mod data_source;
 pub mod runtime;
 mod trigger;
+mod protobuf;
 
 pub use self::runtime::RuntimeAdapter;
 
@@ -14,4 +15,4 @@ pub use data_source::{DataSource, DataSourceTemplate};
 pub use crate::adapter::TriggerFilter;
 pub use crate::chain::Chain;
 
-pub use self::codec::Block;
+//pub use self::codec::Block;
