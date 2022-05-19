@@ -9,35 +9,35 @@ use crate::codec;
 
 pub(crate) use super::generated::*;
 
-impl ToAscObj<AscBlock> for codec::Block {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscBlock, DeterministicHostError> {
-        Ok(AscBlock {
-            header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
-            evidence: asc_new_or_null(heap, &self.evidence, gas)?,
-            last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
-            result_begin_block: asc_new_or_missing(
-                heap,
-                &self.result_begin_block,
-                gas,
-                "Block",
-                "result_begin_block",
-            )?,
-            result_end_block: asc_new_or_missing(
-                heap,
-                &self.result_end_block,
-                gas,
-                "Block",
-                "result_end_block",
-            )?,
-            transactions: asc_new(heap, &self.transactions, gas)?,
-            validator_updates: asc_new(heap, &self.validator_updates, gas)?,
-        })
-    }
-}
+// impl ToAscObj<AscBlock> for codec::Block {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscBlock, DeterministicHostError> {
+//         Ok(AscBlock {
+//             header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
+//             evidence: asc_new_or_null(heap, &self.evidence, gas)?,
+//             last_commit: asc_new_or_null(heap, &self.last_commit, gas)?,
+//             result_begin_block: asc_new_or_missing(
+//                 heap,
+//                 &self.result_begin_block,
+//                 gas,
+//                 "Block",
+//                 "result_begin_block",
+//             )?,
+//             result_end_block: asc_new_or_missing(
+//                 heap,
+//                 &self.result_end_block,
+//                 gas,
+//                 "Block",
+//                 "result_end_block",
+//             )?,
+//             transactions: asc_new(heap, &self.transactions, gas)?,
+//             validator_updates: asc_new(heap, &self.validator_updates, gas)?,
+//         })
+//     }
+// }
 
 // impl ToAscObj<AscHeaderOnlyBlock> for codec::HeaderOnlyBlock {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -397,27 +397,27 @@ impl ToAscObj<AscBlock> for codec::Block {
 //     }
 // }
 
-// impl ToAscObj<AscPublicKey> for codec::PublicKey {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscPublicKey, DeterministicHostError> {
-//         use codec::public_key::Sum;
+impl ToAscObj<AscPublicKey> for codec::PublicKey {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPublicKey, DeterministicHostError> {
+        use codec::public_key::Sum;
 
-//         let sum = self
-//             .sum
-//             .as_ref()
-//             .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
+        let sum = self
+            .sum
+            .as_ref()
+            .ok_or_else(|| missing_field_error("PublicKey", "sum"))?;
 
-//         let (ed25519, secp256k1) = match sum {
-//             Sum::Ed25519(e) => (asc_new(heap, &Bytes(e), gas)?, AscPtr::null()),
-//             Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s), gas)?),
-//         };
+        let (ed25519, secp256k1) = match sum {
+            Sum::Ed25519(e) => (asc_new(heap, &Bytes(e), gas)?, AscPtr::null()),
+            Sum::Secp256k1(s) => (AscPtr::null(), asc_new(heap, &Bytes(s), gas)?),
+        };
 
-//         Ok(AscPublicKey { ed25519, secp256k1 })
-//     }
-// }
+        Ok(AscPublicKey { ed25519, secp256k1 })
+    }
+}
 
 // impl ToAscObj<AscResponseBeginBlock> for codec::ResponseBeginBlock {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -913,7 +913,7 @@ impl ToAscObj<AscBlock> for codec::Block {
 //     }
 // }
 
-pub struct Bytes<'a>(&'a Vec<u8>);
+pub struct Bytes<'a>(pub &'a Vec<u8>);
 
 impl ToAscObj<Uint8Array> for Bytes<'_> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -1163,8 +1163,8 @@ mod test {
             key: AscPtr::<AscString>::null(),
             value: AscPtr::<AscString>::null(),
             index: false,
-            _padding: 0,
-            _padding2: 0
+            _padding0: 0,
+            _padding1: 0
         });
 
         assert_asc_size!(AscResponseEndBlock {

@@ -1,3 +1,6 @@
+#[derive(graph_runtime_derive::ToAscObj)]
+#[asc_obj_type(AscBlock)]
+#[required(header,evidence)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     #[prost(message, optional, tag="1")]
@@ -270,8 +273,6 @@ pub struct Validator {
     #[prost(int64, tag="4")]
     pub proposer_priority: i64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscPublicKey)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
     #[prost(oneof="public_key::Sum", tags="1, 2")]

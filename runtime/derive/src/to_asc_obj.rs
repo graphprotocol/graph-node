@@ -15,20 +15,27 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         ..
     }) = data
     {        
-        println!("Asc{}", name.to_string());
-        let size = 
+        let mut size = 
             named.iter().fold(0, |acc, f|{
                 let size = field_size(f);
-                let tp = field_type(f);
-                println!("\t{} [{}] {}", f.ident.as_ref().unwrap(), tp, size);
                 acc + size
             }); // for i32 const INDEX_ASC_TYPE_ID ???
 
-        println!("Asc{} total size:{} padding:{}", name.to_string(), size, size % 8);
+        let remainder  = size % 8;
 
-        // if size % 8 != 0{
-        //     println!("struct {} needs padding of {}",  name.to_string(), size % 8);
-        // }
+        while remainder > 0{
+            let range = (size/8 + 8) - size;
+
+            //4,2,1 
+
+
+        }
+
+
+
+
+
+
 
         (named, size % 8)
     } else {
@@ -136,7 +143,6 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             
             use crate::runtime::generated::*;
             use crate::runtime::abi::*;
-            use graph::prelude::Value::Bytes;
 
             impl ToAscObj<crate::runtime::generated::#typ> for #name {
 
@@ -181,20 +187,11 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
 fn is_scalar(fld: &syn::Field) -> bool{
     let nm = field_type(fld);
     match nm.as_ref(){
-        "i8" => true,
-        "u8" => true,
-        "i16" => true,
-        "u16" => true,
-        "i32" => true,
-        "u32" => true,
-        "i64" => true,
-        "u64" => true,
-        "usize" => true,
-        "isize" => true,
-        // "Option" => 24,
-        // "Vec" => 24,
-        // "String" => 24,
-        // "bool" => 1,
+        "i8" | "u8" =>     true,
+        "i16"| "u16" =>    true,
+        "i32"| "u32" =>    true,
+        "i64"| "u64" =>    true,
+        "usize"|"isize" =>  true,
         _ => false
     }
 
@@ -203,10 +200,8 @@ fn is_scalar(fld: &syn::Field) -> bool{
 fn field_size(fld: &syn::Field) -> usize{
     let nm = field_type(fld);
     match nm.as_ref(){
-        "i32" => 4,
-        "u32" => 4,
-        "i64" => 8,
-        "u64" => 8,
+        "i32"|"u32" => 4,
+        "i64"|"u64" => 8,
         "Option" => 24,
         "Vec" => 24,
         "String" => 24,
