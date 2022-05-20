@@ -956,6 +956,9 @@ pub fn create_deployment(
         m::features.eq(features),
         m::schema.eq(schema),
         m::graph_node_version_id.eq(graph_node_version_id),
+        // New subgraphs index only a prefix of bytea columns
+        // see: attr-bytea-prefix
+        m::use_bytea_prefix.eq(true),
     );
 
     if exists && replace {

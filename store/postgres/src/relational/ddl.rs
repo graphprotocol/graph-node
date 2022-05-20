@@ -206,6 +206,7 @@ impl Table {
                     // Postgres' limit on values that can go into a BTree.
                     // For those attributes, only index the first
                     // STRING_PREFIX_SIZE or BYTE_ARRAY_PREFIX_SIZE characters
+                    // see: attr-bytea-prefix
                     let index_expr = if column.use_prefix_comparison {
                         match column.column_type {
                             ColumnType::String => {

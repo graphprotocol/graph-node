@@ -1065,6 +1065,7 @@ impl Column {
         // generation needs to match how these columns are indexed, and we
         // therefore use that remembered value from `catalog` to determine
         // if we should use queries for prefixes or for the entire value.
+        // see: attr-bytea-prefix
         let use_prefix_comparison = !is_primary_key
             && !is_reference
             && !field.field_type.is_list()
