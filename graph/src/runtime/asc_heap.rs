@@ -81,6 +81,20 @@ pub trait ToAscObj<C: AscType> {
     ) -> Result<C, DeterministicHostError>;
 }
 
+pub trait AscFromRust<T>: AscType {
+    fn asc_from_rust<H: AscHeap + ?Sized>(
+        rust_type: T,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Self, DeterministicHostError>;
+}
+
+impl<T, C> ToAscObj<C> for T where C: AscFromRust<T> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(&self, heap: &mut H, gas: &GasCounter) -> Result<C, DeterministicHostError> {
+        C::asc_from_rust(self, heap, gas)
+    }
+}
+
 impl ToAscObj<bool> for bool {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
