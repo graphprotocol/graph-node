@@ -187,13 +187,36 @@ fn add_filter_type(
         None => {
             let mut generated_filter_fields = field_input_values(schema, fields)?;
             generated_filter_fields.push(block_changed_filter_argument());
-
+            generated_filter_fields.push(InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "AND".to_string(),
+                value_type: Type::NamedType(filter_type_name.to_owned()),
+                default_value: None,
+                directives: vec![],
+            });
+            generated_filter_fields.push(InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "AND".to_string(),
+                value_type: Type::NamedType(filter_type_name.to_owned()),
+                default_value: None,
+                directives: vec![],
+            });
+            generated_filter_fields.push(InputValue {
+                position: Pos::default(),
+                description: None,
+                name: "OR".to_string(),
+                value_type: Type::NamedType(filter_type_name.to_owned()),
+                default_value: None,
+                directives: vec![],
+            });
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
                 description: None,
                 name: filter_type_name,
                 directives: vec![],
-                fields: generated_filter_fields,
+                fields: generated_filter_fields.clone(),
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
