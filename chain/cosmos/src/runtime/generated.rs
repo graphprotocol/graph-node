@@ -5,6 +5,8 @@ use graph::semver::Version;
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, AscString, Uint8Array};
 
+use crate::protobuf::pbcodec::*;
+
 pub struct AscTxResultArray(pub(crate) Array<AscPtr<AscTxResult>>);
 
 impl AscType for AscTxResultArray {
@@ -362,28 +364,28 @@ impl AscIndexId for AscHeader {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosHeader;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscConsensus {
-    pub block: u64,
-    pub app: u64,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub(crate) struct AscConsensus {
+//     pub block: u64,
+//     pub app: u64,
+// }
 
-impl AscIndexId for AscConsensus {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosConsensus;
-}
+// impl AscIndexId for AscConsensus {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosConsensus;
+// }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscTimestamp {
-    pub seconds: i64,
-    pub nanos: i32,
-    pub _padding: u32,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub(crate) struct AscTimestamp {
+//     pub seconds: i64,
+//     pub nanos: i32,
+//     pub _padding: u32,
+// }
 
-impl AscIndexId for AscTimestamp {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosTimestamp;
-}
+// impl AscIndexId for AscTimestamp {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosTimestamp;
+// }
 
 #[repr(C)]
 #[derive(AscType)]

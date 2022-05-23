@@ -54,6 +54,11 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
     to_asc_obj::to_asc_obj_macro_derive(tokens)
 }
 
+mod from_protobuf_obj;
+#[proc_macro_derive(GenerateAscType, attributes(asc_obj_type, required, chain_name))]
+pub fn generate_asc_type_macro_derive(tokens: TokenStream) -> TokenStream {
+    from_protobuf_obj::from_protobuf_obj_macro_derive(tokens)
+}
 
 
 

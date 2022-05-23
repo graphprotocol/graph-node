@@ -83,17 +83,32 @@ pub trait ToAscObj<C: AscType> {
 
 pub trait AscFromRust<T>: AscType {
     fn asc_from_rust<H: AscHeap + ?Sized>(
-        rust_type: T,
+        rust_type: &T,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError>;
 }
 
-impl<T, C> ToAscObj<C> for T where C: AscFromRust<T> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(&self, heap: &mut H, gas: &GasCounter) -> Result<C, DeterministicHostError> {
-        C::asc_from_rust(self, heap, gas)
+// impl<T, C> ToAscObj<C> for T where C: AscFromRust<T> {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self, 
+//         heap: &mut H, 
+//         gas: &GasCounter
+//     ) -> Result<C, DeterministicHostError> {
+//         C::asc_from_rust(self, heap, gas)
+//     }
+// }
+
+impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
+    fn to_asc_obj<H: AscHeap + ?Sized>(&self, heap: &mut H, gas: &GasCounter,) -> Result<C, DeterministicHostError> {
+        (*self).to_asc_obj(heap, gas)
     }
 }
+
+
+
+
+
 
 impl ToAscObj<bool> for bool {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -105,15 +120,6 @@ impl ToAscObj<bool> for bool {
     }
 }
 
-impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<C, DeterministicHostError> {
-        (*self).to_asc_obj(heap, gas)
-    }
-}
 
 /// Type that can be converted from an Asc object of class `C`.
 pub trait FromAscObj<C: AscType> {

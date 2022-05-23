@@ -12,16 +12,14 @@ fn main() {
     println!("cargo:rerun-if-changed=proto");
 
     let types = common::parse_proto_file(PROT_FILE).expect("Unable ...");
-    //println!("{:#?}\n\n\n\n", types);
 
 
-    ///this has very specific implementations
     let types_to_skip = vec!["PublicKey"];
 
+    //this this temporary, for development
+    let types_to_include = vec!["Consensus", "Timestamp"]; //, "Block", "Header", "EvidenceList"];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
-
-
 
 
     for (name, ptype) in types {
@@ -31,10 +29,15 @@ fn main() {
             continue;
         }
 
+        if !types_to_include.contains(&name.as_str()){
+            continue;
+        }
 
+        //
+        builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::GenerateAscType)]");
+        builder = builder.type_attribute(name.clone(), "#[chain_name(Cosmos)]");
 
         builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::ToAscObj)]");
-
         let asc = format!("#[asc_obj_type(Asc{})]", name);
         builder = builder.type_attribute(name.clone(), asc);
 
@@ -42,6 +45,10 @@ fn main() {
             let flds = format!("#[required({})]", list);
             builder = builder.type_attribute(name.clone(), flds);
         }
+
+
+
+
     }
     builder
         .compile(&["proto/type.proto"], &["proto"])

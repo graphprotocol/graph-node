@@ -15,29 +15,14 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         ..
     }) = data
     {        
-        let mut size = 
+        let size = 
             named.iter().fold(0, |acc, f|{
                 let size = field_size(f);
                 acc + size
             }); // for i32 const INDEX_ASC_TYPE_ID ???
 
-        let remainder  = size % 8;
-
-        while remainder > 0{
-            let range = (size/8 + 8) - size;
-
-            //4,2,1 
-
-
-        }
-
-
-
-
-
-
-
-        (named, size % 8)
+        //(named, size % 4)
+        (named, if size/8 > 0 {size % 8} else {0})
     } else {
         panic!("No fields detected for type {}!", name.to_string())
     };
@@ -121,12 +106,16 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         setter        
     });
 
-    // if padding > 0{
-    //     let setter = quote! {
-    //         //validators: asc_new(heap, &self.validators, gas)?,
-    //         _padding: 0,
-    //     };
-    // }
+
+
+    let range = 0..padding;
+    let fld_padded = 
+            range.map(|i|{
+                let fld_name = format!("padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
+                quote! {
+                    #fld_name : 0,
+                }
+            });
 
     let expanded = quote! {
         #[automatically_derived]
@@ -141,43 +130,27 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             
             use crate::codec;
             
-            use crate::runtime::generated::*;
+            //use crate::runtime::generated::*;
             use crate::runtime::abi::*;
 
-            impl ToAscObj<crate::runtime::generated::#typ> for #name {
+            impl ToAscObj<#typ> for #name {
 
                 #[allow(unused_variables)]
                 fn to_asc_obj<H: AscHeap + ?Sized>(
                     &self,
                     heap: &mut H,
                     gas: &GasCounter,
-                ) -> Result<crate::runtime::generated::#typ, DeterministicHostError> {
+                ) -> Result<#typ, DeterministicHostError> {
                     Ok(
-                        crate::runtime::generated::#typ {
+                        #typ {
                             #(#methods)*
+
+                            #(#fld_padded)*
                         }
                     )
                 }
             }
         } // -------- end of mod
-
-        /*
-        
-        #[repr(C)]
-        #[derive(AscType)]
-        pub(crate) struct AscTimestamp {   //size_of::<AscTimestamp> = 16
-            pub seconds: i64,  //8
-            pub nanos: i32,    //4
-            pub _padding: u32, //4  < calc if padding needed  mem::size_of::<AscTimestamp>  - (size_of::<i64> + size::<i32>) = padding size
-        }
-
-        impl AscIndexId for AscTimestamp {
-            const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TendermintTimestamp;
-        }
-        
-        */
-        
-
     };
 
     expanded.into()
