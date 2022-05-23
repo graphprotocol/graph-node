@@ -9,10 +9,24 @@ use serde::Deserialize;
 use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 
+#[derive(Clone, Copy)]
+pub enum StatApi {
+    Block,
+    Dag,
+}
+
+impl StatApi {
+    fn route(&self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Dag => "dag",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct DagStatResponse {
-    pub num_blocks: u64,
+pub struct StatResponse {
     pub size: u64,
 }
 
@@ -54,13 +68,15 @@ impl IpfsClient {
         }
     }
 
-    /// Calls `dag stat`.
-    pub async fn dag_stat(
+    /// Calls stat for the given API route.
+    pub async fn stat(
         &self,
+        api: StatApi,
         path: String,
         timeout: Duration,
-    ) -> Result<DagStatResponse, reqwest::Error> {
-        self.call(self.url("dag/stat", path), None, Some(timeout))
+    ) -> Result<StatResponse, reqwest::Error> {
+        let route = format!("{}/stat", api.route());
+        self.call(self.url(&route, path), None, Some(timeout))
             .await?
             .json()
             .await
@@ -84,6 +100,14 @@ impl IpfsClient {
             .bytes_stream())
     }
 
+    pub async fn get_block(&self, cid: String) -> Result<Bytes, reqwest::Error> {
+        let form = multipart::Form::new().part("arg", multipart::Part::text(cid));
+        self.call(format!("{}api/v0/block/get", self.base), Some(form), None)
+            .await?
+            .bytes()
+            .await
+    }
+
     pub async fn test(&self) -> Result<(), reqwest::Error> {
         self.call(format!("{}api/v0/version", self.base), None, None)
             .await
@@ -99,7 +123,7 @@ impl IpfsClient {
             .await
     }
 
-    fn url(&self, route: &'static str, arg: String) -> String {
+    fn url(&self, route: &str, arg: String) -> String {
         // URL security: We control the base and the route, user-supplied input goes only into the
         // query parameters.
         format!("{}api/v0/{}?arg={}", self.base, route, arg)

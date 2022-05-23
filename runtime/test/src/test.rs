@@ -392,6 +392,32 @@ async fn ipfs_cat_v0_0_5() {
     test_ipfs_cat(API_VERSION_0_0_5).await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_ipfs_block() {
+    // Ipfs host functions use `block_on` which must be called from a sync context,
+    // so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        let _runtime_guard = runtime.enter();
+
+        let ipfs = IpfsClient::localhost();
+        let hash = graph::block_on(ipfs.add("42".into())).unwrap().hash;
+        let mut module = graph::block_on(test_module(
+            "ipfsBlock",
+            mock_data_source(
+                &wasm_file_path("ipfs_block.wasm", API_VERSION_0_0_5),
+                API_VERSION_0_0_5,
+            ),
+            API_VERSION_0_0_5,
+        ));
+        let converted: AscPtr<AscString> = module.invoke_export1("ipfsBlockHex", &hash);
+        let data: String = asc_get(&module, converted, &module.gas).unwrap();
+        assert_eq!(data, "0x0a080802120234321802");
+    })
+    .join()
+    .unwrap();
+}
+
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 

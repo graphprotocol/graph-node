@@ -12,7 +12,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use graph::{
-    ipfs_client::{DagStatResponse, IpfsClient},
+    ipfs_client::{IpfsClient, StatApi, StatResponse},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
 
@@ -42,19 +42,20 @@ fn retry_policy<I: Send + Sync>(
 /// of clients where hopefully one already has the file, and just get the file
 /// from that.
 ///
-/// The strategy here then is to use the dag_stat API as a proxy for "do you
-/// have the file". Whichever client has or gets the file first wins. This API is
-/// a good choice, because it doesn't involve us actually starting to download
-/// the file from each client, which would be wasteful of bandwidth and memory in
-/// the case multiple clients respond in a timely manner. In addition, we may
-/// make good use of the stat returned.
+/// The strategy here then is to use a stat API as a proxy for "do you have the
+/// file". Whichever client has or gets the file first wins. This API is a good
+/// choice, because it doesn't involve us actually starting to download the file
+/// from each client, which would be wasteful of bandwidth and memory in the
+/// case multiple clients respond in a timely manner. In addition, we may make
+/// good use of the stat returned.
 async fn select_fastest_client_with_stat(
     clients: Arc<Vec<Arc<IpfsClient>>>,
     logger: Logger,
+    api: StatApi,
     path: String,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(DagStatResponse, Arc<IpfsClient>), Error> {
+) -> Result<(StatResponse, Arc<IpfsClient>), Error> {
     let mut err: Option<Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
@@ -63,10 +64,10 @@ async fn select_fastest_client_with_stat(
         .map(|(i, c)| {
             let c = c.cheap_clone();
             let path = path.clone();
-            retry_policy(do_retry, "dag.stat", &logger).run(move || {
+            retry_policy(do_retry, "IPFS stat", &logger).run(move || {
                 let path = path.clone();
                 let c = c.cheap_clone();
-                async move { c.dag_stat(path, timeout).map_ok(move |s| (s, i)).await }
+                async move { c.stat(api, path, timeout).map_ok(move |s| (s, i)).await }
             })
         })
         .collect();
@@ -91,7 +92,7 @@ async fn select_fastest_client_with_stat(
 // Returns an error if the stat is bigger than `max_file_bytes`
 fn restrict_file_size(
     path: &str,
-    stat: &DagStatResponse,
+    stat: &StatResponse,
     max_file_bytes: &Option<u64>,
 ) -> Result<(), Error> {
     if let Some(max_file_bytes) = max_file_bytes {
@@ -174,6 +175,7 @@ impl LinkResolverTrait for LinkResolver {
         let (stat, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
+            StatApi::Dag,
             path.clone(),
             self.timeout,
             self.retry,
@@ -217,6 +219,36 @@ impl LinkResolverTrait for LinkResolver {
         Ok(data)
     }
 
+    async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
+        trace!(logger, "IPFS block get"; "hash" => &link.link);
+        let (stat, client) = select_fastest_client_with_stat(
+            self.clients.cheap_clone(),
+            logger.cheap_clone(),
+            StatApi::Block,
+            link.link.clone(),
+            self.timeout,
+            self.retry,
+        )
+        .await?;
+
+        let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
+        restrict_file_size(&link.link, &stat, &max_file_size)?;
+
+        let link = link.link.clone();
+        let data = retry_policy(self.retry, "ipfs.getBlock", &logger)
+            .run(move || {
+                let link = link.clone();
+                let client = client.clone();
+                async move {
+                    let data = client.get_block(link.clone()).await?.to_vec();
+                    Result::<Vec<u8>, reqwest::Error>::Ok(data)
+                }
+            })
+            .await?;
+
+        Ok(data)
+    }
+
     async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error> {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/");
@@ -224,6 +256,7 @@ impl LinkResolverTrait for LinkResolver {
         let (stat, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
+            StatApi::Dag,
             path.to_string(),
             self.timeout,
             self.retry,
