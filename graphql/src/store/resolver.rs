@@ -378,11 +378,14 @@ impl Resolver for StoreResolver {
             return Ok(meta);
         }
 
+        // println!("resolve_object called for field '{:?}', prefetched_object is: {:?}", field.name, prefetched_object);
+
         if let Some(r::Value::List(children)) = prefetched_object {
             // If we encounter a Connection type, we can safely resolve it as an object
             // while using the same prefetched objects, since it's fetched before. 
             // We just need to construct that as a connectiono object, and calculate the PageInfo based on that response.
             if is_connection_type(&object_type.name().to_string()) {
+              // println!("resolving connection, prefetched_object: {:?}", children);
                 return self.build_connection_object(&field, children);
             }
 
