@@ -25,7 +25,7 @@ use graph::{
     },
 };
 
-use crate::execution::{ast as a, ExecutionContext, Resolver};
+use crate::execution::{ast as a, ExecutionContext, Resolver,self};
 use crate::metrics::GraphQLMetrics;
 use crate::schema::ast as sast;
 use crate::store::query::build_query;
@@ -529,24 +529,28 @@ fn check_result_size<'a>(
     Ok(())
 }
 
-fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type: &'a ObjectType, field_name: &String) -> (Field<'static, String>, ObjectOrInterface<'a>) {
+/// Extracts the actual field, field type and child type from a given query root.
+/// In case of a Connection type, it fallsback into a structure that matches what prefetch is used to have:
+/// SomethingConnection -> [Something!]!
+/// This way, the rest of the prefetch flow works the same way, and can avoid overfetching. 
+fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type: &'a ObjectType, selection_field: &'a execution::ast::Field) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
   let schema = &ctx.query.schema;
 
-  match is_connection_type(field_name) {
+  match is_connection_type(&selection_field.name) {
     false => {
       let field_type = object_type
-      .field(&field_name)
+      .field(&selection_field.name)
       .expect("field names are valid");
     let child_type = schema
       .object_or_interface(field_type.field_type.get_base_type())
       .expect("we only collect fields that are objects or interfaces");
 
-      return (field_type.clone(), child_type);
+      return (selection_field.name.clone(), field_type.clone(), child_type);
     },
     true => {
+      let c_field_type = object_type.field(&selection_field.name).expect("field names are valid");
       let connection_field_type = &schema
-      .object_or_interface(object_type
-        .field(&field_name).expect("field names are valid").field_type.get_base_type())
+      .object_or_interface(c_field_type.field_type.get_base_type())
       .expect("we only collect fields that are objects or interfaces");
 
       let field_edge_type = connection_field_type.field("edges").expect("edges is missing");
@@ -559,7 +563,11 @@ fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type:
       .object_or_interface(field_type.field_type.get_base_type())
       .expect("failed to find node");
 
-      return (field_type.clone(), child_type);
+      let prefetch_field_name = selection_field.name.replace("Connection", "");
+      let mut cloned_field = c_field_type.clone();
+      cloned_field.field_type = s::Type::ListType(Box::new(c_field_type.field_type.clone()));
+
+      return (prefetch_field_name, cloned_field, child_type);
     }
   }
 }
@@ -598,13 +606,13 @@ fn execute_selection_set<'a>(
         }
 
         for field in fields {
-            let (field_type, child_type) = extract_field_info(ctx, object_type, &field.name);
+            let (field_name, field_type, child_type) = extract_field_info(ctx, object_type, &field);
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
                 object_type,
                 child_type,
-                &field.name,
+                &field_name,
             );
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
@@ -770,6 +778,7 @@ impl SelectedAttributes {
                     }
                 })
                 .collect();
+
             map.insert(
                 object_type.name().to_string(),
                 AttributeNames::Select(column_names),
