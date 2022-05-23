@@ -11,6 +11,8 @@ mod ddl;
 
 #[cfg(test)]
 mod ddl_tests;
+#[cfg(test)]
+mod query_tests;
 
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};

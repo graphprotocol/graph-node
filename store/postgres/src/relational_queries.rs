@@ -394,27 +394,6 @@ impl FromColumnValue for r::Value {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use graph::prelude::{r, serde_json as json};
-
-    use crate::{relational::ColumnType, relational_queries::FromColumnValue};
-
-    #[test]
-    fn gql_value_from_bytes() {
-        const EXP: &str = "0xdeadbeef";
-
-        let exp = r::Value::String(EXP.to_string());
-        for s in ["deadbeef", "\\xdeadbeef", "0xdeadbeef"] {
-            let act =
-                r::Value::from_column_value(&ColumnType::Bytes, json::Value::String(s.to_string()))
-                    .unwrap();
-
-            assert_eq!(exp, act);
-        }
-    }
-}
-
 impl FromColumnValue for graph::prelude::Value {
     fn is_null(&self) -> bool {
         self == &Value::Null
