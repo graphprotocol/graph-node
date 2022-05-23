@@ -1166,13 +1166,14 @@ impl<'a> QueryFilter<'a> {
             if column.use_prefix_comparison
                 && values.iter().all(|v| match v {
                     Value::String(s) => s.len() <= STRING_PREFIX_SIZE - 1,
+                    Value::Bytes(b) => b.len() <= BYTE_ARRAY_PREFIX_SIZE - 1,
                     _ => false,
                 })
             {
-                // If all values are shorter than STRING_PREFIX_SIZE - 1,
-                // only check the prefix of the column; that's a fairly common
-                // case and we present it in the best possible way for
-                // Postgres' query optimizer
+                // If all values are shorter than the prefix size only check
+                // the prefix of the column; that's a fairly common case and
+                // we present it in the best possible way for Postgres'
+                // query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
                 PrefixType::new(column)?.push_column_prefix(&mut out)?;
