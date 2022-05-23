@@ -218,12 +218,7 @@ impl LinkResolverTrait for LinkResolver {
     }
 
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
-        if let Some(data) = self.cache.lock().unwrap().get(&link.link) {
-            trace!(logger, "IPFS cache hit"; "hash" => &link.link);
-            return Ok(data.clone());
-        }
-        trace!(logger, "IPFS cache miss"; "hash" => &link.link);
-
+        trace!(logger, "IPFS block get"; "hash" => &link.link);
         let (stat, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
@@ -233,34 +228,16 @@ impl LinkResolverTrait for LinkResolver {
         )
         .await?;
 
-        let max_cache_file_size = self.env_vars.mappings.max_ipfs_cache_file_size;
         let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
         restrict_file_size(&link.link, &stat, &max_file_size)?;
 
         let link = link.link.clone();
-        let this = self.clone();
-        let logger = logger.clone();
-        let data = retry_policy(self.retry, "ipfs.cat", &logger)
+        let data = retry_policy(self.retry, "ipfs.getBlock", &logger)
             .run(move || {
                 let link = link.clone();
                 let client = client.clone();
-                let this = this.clone();
-                let logger = logger.clone();
                 async move {
                     let data = client.get_block(link.clone()).await?.to_vec();
-
-                    // Only cache files if they are not too large
-                    if data.len() <= max_cache_file_size {
-                        let mut cache = this.cache.lock().unwrap();
-                        if !cache.contains_key(&link) {
-                            cache.insert(link.to_owned(), data.clone());
-                        }
-                    } else {
-                        debug!(logger, "File too large for cache";
-                                    "link" => link,
-                                    "size" => data.len()
-                        );
-                    }
                     Result::<Vec<u8>, reqwest::Error>::Ok(data)
                 }
             })

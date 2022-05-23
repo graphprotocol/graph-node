@@ -471,22 +471,24 @@ impl<C: Blockchain> WasmInstance<C> {
         // automatic feature detection to work.
         //
         // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
-        link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
-        link!(
-            "ipfs.getBlock",
-            ipfs_get_block,
-            "host_export_ipfs_get_block",
-            hash_ptr
-        );
-        link!(
-            "ipfs.map",
-            ipfs_map,
-            "host_export_ipfs_map",
-            link_ptr,
-            callback,
-            user_data,
-            flags
-        );
+        if experimental_features.allow_non_deterministic_ipfs {
+            link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
+            link!(
+                "ipfs.getBlock",
+                ipfs_get_block,
+                "host_export_ipfs_get_block",
+                hash_ptr
+            );
+            link!(
+                "ipfs.map",
+                ipfs_map,
+                "host_export_ipfs_map",
+                link_ptr,
+                callback,
+                user_data,
+                flags
+            );
+        }
 
         link!("store.remove", store_remove, entity_ptr, id_ptr);
 
