@@ -59,6 +59,8 @@ impl DataSourcesTable {
                 params jsonb,
                 context jsonb
             );
+
+            create index gist_block_range_data_sources$ on {nsp}.data_sources$ using gist (block_range);
             ",
             nsp = self.namespace.to_string(),
             table = Self::TABLE_NAME
