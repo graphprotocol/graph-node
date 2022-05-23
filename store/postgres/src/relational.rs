@@ -10,7 +10,7 @@
 mod ddl;
 
 #[cfg(test)]
-mod tests;
+mod ddl_tests;
 
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
