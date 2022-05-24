@@ -47,7 +47,7 @@ tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util",
 tokio-stream = { version = "0.1.8", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
-prometheus = "0.13.0"
+prometheus = "0.13.1"
 priority-queue = "0.7.0"
 tonic = { version = "0.7.1", features = ["tls-roots"] }
 prost = "0.10.3"
