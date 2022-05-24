@@ -198,7 +198,7 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
             to: Some(self.trace.to.try_decode_proto("transaction to address")?),
             value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
             gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
-            gas: U256::from(self.trace.gas_used),
+            gas: U256::from(self.trace.gas_limit),
             input: Bytes::from(self.trace.input.clone()),
             v: None,
             r: None,
