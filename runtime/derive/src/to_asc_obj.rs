@@ -19,15 +19,11 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             named.iter().fold(0, |acc, f|{
                 let size = field_size(f);
                 acc + size
-            }); // for i32 const INDEX_ASC_TYPE_ID ???
-
-        //(named, size % 4)
+            });
         (named, if size/8 > 0 {size % 8} else {0})
     } else {
         panic!("No fields detected for type {}!", name.to_string())
     };
-
-
 
     let attr_required = 
         attrs
@@ -51,9 +47,6 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         .nth(0)
         .expect("\"asc_obj_type\" attribute required for deriving ToAscObj!");
 
-
-
-
     let parameters: super::TypeParam =
         syn::parse2(attribute.tokens.clone()).expect("Invalid generic type attribute!");
 
@@ -61,15 +54,11 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
 
     let methods = fields.iter().map(|f| {
 
-        // let nm = f.ident.as_ref().unwrap().to_string();
-        // let fld_name = Ident::new( &nm, f.ident.as_ref().unwrap().span());
         let fld_name = f.ident.as_ref().unwrap();
 
         let is_required = is_required(f, &required_flds);
         let self_ref = 
             if is_byte_array(f){
-                //next_validators_hash: asc_new(heap, &Bytes(&self.next_validators_hash), gas)?,
-
                 quote! { Bytes(&self.#fld_name) }
             }else{
                 quote!{ self.#fld_name }
@@ -81,12 +70,10 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
                 let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
                 let fld_nm = format!("\"{}\"", fld_name.to_string()).to_string().parse::<proc_macro2::TokenStream>().unwrap();
                 quote! {
-                    //header: asc_new_or_missing(heap, &self.header, gas, "Block", "header")?,
                     #fld_name: crate::runtime::abi::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
                 }
             }else{
                 quote! {
-                    //result: asc_new_or_null(heap, &self.result, gas)?,
                     #fld_name: crate::runtime::abi::asc_new_or_null(heap, &#self_ref, gas)?,
                 }
             }
@@ -97,8 +84,6 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
                 }
             }else{
                 quote! {
-                    //validators: asc_new(heap, &self.validators, gas)?,
-                    //hash: asc_new(heap, &Bytes(&self.hash), gas)?,
                     #fld_name: asc_new(heap, &#self_ref, gas)?,
                 }
             }
@@ -111,7 +96,7 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
     let range = 0..padding;
     let fld_padded = 
             range.map(|i|{
-                let fld_name = format!("padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
+                let fld_name = format!("_padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
                 quote! {
                     #fld_name : 0,
                 }
@@ -123,14 +108,13 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             use super::*;
 
             use graph::runtime::{
-                asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError,
+                asc_new, gas::GasCounter, AscHeap, AscPtr, AscType, DeterministicHostError, //AscIndexId, 
                 ToAscObj
             };
             use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
             
-            use crate::codec;
+            //use crate::codec;
             
-            //use crate::runtime::generated::*;
             use crate::runtime::abi::*;
 
             impl ToAscObj<#typ> for #name {

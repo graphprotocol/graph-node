@@ -540,18 +540,18 @@ impl ToAscObj<AscConsensusParams> for codec::ConsensusParams {
     }
 }
 
-impl ToAscObj<AscBlockParams> for codec::BlockParams {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<AscBlockParams, DeterministicHostError> {
-        Ok(AscBlockParams {
-            max_bytes: self.max_bytes,
-            max_gas: self.max_gas,
-        })
-    }
-}
+// impl ToAscObj<AscBlockParams> for codec::BlockParams {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         _heap: &mut H,
+//         _gas: &GasCounter,
+//     ) -> Result<AscBlockParams, DeterministicHostError> {
+//         Ok(AscBlockParams {
+//             max_bytes: self.max_bytes,
+//             max_gas: self.max_gas,
+//         })
+//     }
+// }
 
 impl ToAscObj<AscEvidenceParams> for codec::EvidenceParams {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -568,19 +568,19 @@ impl ToAscObj<AscEvidenceParams> for codec::EvidenceParams {
     }
 }
 
-impl ToAscObj<AscDuration> for codec::Duration {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<AscDuration, DeterministicHostError> {
-        Ok(AscDuration {
-            seconds: self.seconds,
-            nanos: self.nanos,
-            _padding: 0,
-        })
-    }
-}
+// impl ToAscObj<AscDuration> for codec::Duration {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         _heap: &mut H,
+//         _gas: &GasCounter,
+//     ) -> Result<AscDuration, DeterministicHostError> {
+//         Ok(AscDuration {
+//             seconds: self.seconds,
+//             nanos: self.nanos,
+//             _padding: 0,
+//         })
+//     }
+// }
 
 impl ToAscObj<AscValidatorParams> for codec::ValidatorParams {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -594,17 +594,17 @@ impl ToAscObj<AscValidatorParams> for codec::ValidatorParams {
     }
 }
 
-impl ToAscObj<AscVersionParams> for codec::VersionParams {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<AscVersionParams, DeterministicHostError> {
-        Ok(AscVersionParams {
-            app_version: self.app_version,
-        })
-    }
-}
+// impl ToAscObj<AscVersionParams> for codec::VersionParams {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         _heap: &mut H,
+//         _gas: &GasCounter,
+//     ) -> Result<AscVersionParams, DeterministicHostError> {
+//         Ok(AscVersionParams {
+//             app_version: self.app_version,
+//         })
+//     }
+// }
 
 impl ToAscObj<AscTxResult> for codec::TxResult {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -1055,10 +1055,10 @@ mod test {
         assert_asc_size!(AscTimestamp {
             seconds: 0, //8
             nanos: 0,   //4
-            padding0:0, //1
-            padding1:0, //1
-            padding2:0, //1
-            padding3:0, //1
+            _padding0:0, //1
+            _padding1:0, //1
+            _padding2:0, //1
+            _padding3:0, //1
 
         });
 
@@ -1205,7 +1205,11 @@ mod test {
         assert_asc_size!(AscDuration {
             seconds: 0,
             nanos: 0,
-            _padding: 0,
+            _padding0:0,
+            _padding1:0,
+            _padding2:0,
+            _padding3:0,
+
         });
 
         assert_asc_size!(AscValidatorParams {

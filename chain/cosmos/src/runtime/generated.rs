@@ -669,16 +669,16 @@ impl AscIndexId for AscConsensusParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosConsensusParams;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscBlockParams {
-    pub max_bytes: i64,
-    pub max_gas: i64,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub(crate) struct AscBlockParams {
+//     pub max_bytes: i64,
+//     pub max_gas: i64,
+// }
 
-impl AscIndexId for AscBlockParams {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBlockParams;
-}
+// impl AscIndexId for AscBlockParams {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBlockParams;
+// }
 
 #[repr(C)]
 #[derive(AscType)]
@@ -693,17 +693,17 @@ impl AscIndexId for AscEvidenceParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEvidenceParams;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscDuration {
-    pub seconds: i64,
-    pub nanos: i32,
-    pub _padding: u32,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub(crate) struct AscDuration {
+//     pub seconds: i64,
+//     pub nanos: i32,
+//     pub _padding: u32,
+// }
 
-impl AscIndexId for AscDuration {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosDuration;
-}
+// impl AscIndexId for AscDuration {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosDuration;
+// }
 
 #[repr(C)]
 #[derive(AscType)]
@@ -715,15 +715,15 @@ impl AscIndexId for AscValidatorParams {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosValidatorParams;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub(crate) struct AscVersionParams {
-    pub app_version: u64,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub(crate) struct AscVersionParams {
+//     pub app_version: u64,
+// }
 
-impl AscIndexId for AscVersionParams {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosVersionParams;
-}
+// impl AscIndexId for AscVersionParams {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosVersionParams;
+// }
 
 #[repr(C)]
 #[derive(AscType)]

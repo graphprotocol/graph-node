@@ -295,6 +295,10 @@ pub struct ConsensusParams {
     #[prost(message, optional, tag="4")]
     pub version: ::core::option::Option<VersionParams>,
 }
+#[derive(graph_runtime_derive::GenerateAscType)]
+#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscObj)]
+#[asc_obj_type(AscBlockParams)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockParams {
     #[prost(int64, tag="1")]
@@ -311,6 +315,10 @@ pub struct EvidenceParams {
     #[prost(int64, tag="3")]
     pub max_bytes: i64,
 }
+#[derive(graph_runtime_derive::GenerateAscType)]
+#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscObj)]
+#[asc_obj_type(AscDuration)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Duration {
     #[prost(int64, tag="1")]
@@ -323,6 +331,10 @@ pub struct ValidatorParams {
     #[prost(string, repeated, tag="1")]
     pub pub_key_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
+#[derive(graph_runtime_derive::GenerateAscType)]
+#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscObj)]
+#[asc_obj_type(AscVersionParams)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VersionParams {
     #[prost(uint64, tag="1")]

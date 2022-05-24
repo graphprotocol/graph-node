@@ -12,11 +12,8 @@ pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
         ident, data, attrs, ..
     } = syn::parse_macro_input!(tokens);
 
-
-    ////type: Block -> AscBlock
     let name = ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", ident.to_string()), Span::call_site());
-
 
     let (fields, padding) = if let syn::Data::Struct(syn::DataStruct {
         fields: syn::Fields::Named(syn::FieldsNamed { ref named, .. }),
@@ -32,7 +29,6 @@ pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
     } else {
         panic!("No fields detected for type {}!", name.to_string())
     };
-
 
     let attribute = attrs
         .iter()
@@ -55,14 +51,11 @@ pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
 
     let fld_padded = 
             range.map(|i|{
-                let fld_name = format!("padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
+                let fld_name = format!("_padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
                 quote! {
                     pub #fld_name : u8,
                 }
             });
-
-
-
 
     let index_asc_type_id = 
         format!("{}{}", chain_name.0, name.to_string())
@@ -72,12 +65,10 @@ pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
     let expanded = quote! {
         #[automatically_derived]
 
-
         #[repr(C)]
         #[derive(graph_runtime_derive::AscType)]
         pub struct #asc_name {
             #(#fields)*
-
             #(#fld_padded)*
         }
 
@@ -85,9 +76,6 @@ pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::#index_asc_type_id ;
         }
     };
-
-    println!("{}", expanded);
-
     expanded.into()
 }
 
@@ -125,7 +113,7 @@ fn field_type(fld: &syn::Field) -> String{
                 }
 
                 syn::PathArguments::None => name,
-                syn::PathArguments::Parenthesized(v) => {
+                syn::PathArguments::Parenthesized(_v) => {
                     !unimplemented!("syn::PathArguments::Parenthesized is not implemented")
                 }
             }

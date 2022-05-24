@@ -17,7 +17,11 @@ fn main() {
     let types_to_skip = vec!["PublicKey"];
 
     //this this temporary, for development
-    let types_to_include = vec!["Consensus", "Timestamp"]; //, "Block", "Header", "EvidenceList"];
+    let types_to_include = vec![
+        "Consensus", "Timestamp", "BlockParams",
+        "BlockParams", "Duration", "VersionParams",
+        //"Coin"
+    ]; //, "Block", "Header", "EvidenceList"];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
 
