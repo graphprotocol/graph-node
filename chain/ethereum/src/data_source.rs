@@ -118,9 +118,10 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
+        let param = self.address.map(|addr| addr.0.into());
         StoredDynamicDataSource {
             name: self.name.to_owned(),
-            address: self.address.clone(),
+            param,
             context: self
                 .context
                 .as_ref()
@@ -136,7 +137,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     ) -> Result<Self, Error> {
         let StoredDynamicDataSource {
             name: _,
-            address,
+            param,
             context,
             creation_block,
         } = stored;
@@ -145,6 +146,7 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
+        let address = param.map(|x| H160::from_slice(&x));
         Ok(DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
