@@ -4,7 +4,6 @@ mod traits;
 
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
-use ethabi::Address;
 use itertools::Itertools;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
@@ -24,6 +23,7 @@ use std::time::Duration;
 
 use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
+use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::prelude::*;
 
@@ -833,7 +833,7 @@ pub enum UnfailOutcome {
 #[derive(Clone)]
 pub struct StoredDynamicDataSource {
     pub name: String,
-    pub address: Option<Address>,
+    pub param: Option<Bytes>,
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
 }

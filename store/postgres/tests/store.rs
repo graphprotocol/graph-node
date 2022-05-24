@@ -1237,7 +1237,10 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Verify that the dynamic data source exists afterwards
         let loaded_dds = writable.load_dynamic_data_sources().await.unwrap();
         assert_eq!(1, loaded_dds.len());
-        assert_eq!(data_source.address, loaded_dds[0].address);
+        assert_eq!(
+            data_source.address.unwrap().0,
+            **loaded_dds[0].param.as_ref().unwrap()
+        );
 
         let subscription = subscribe(&deployment.hash, USER);
 

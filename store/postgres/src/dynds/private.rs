@@ -4,7 +4,8 @@
 
 use diesel::{
     pg::types::sql_types,
-    sql_types::{Integer, Jsonb},
+    sql_types::{Binary, Integer, Jsonb, Nullable},
+    types::Bytea,
     PgConnection, QueryDsl, RunQueryDsl,
 };
 use graph::{
@@ -23,9 +24,10 @@ pub(crate) struct DataSourcesTable {
     qname: String,
     table: DynTable,
     block_range: DynColumn<sql_types::Range<Integer>>,
+    causality_region: DynColumn<Integer>,
     manifest_idx: DynColumn<Integer>,
-    params: DynColumn<Jsonb>,
-    context: DynColumn<Jsonb>,
+    param: DynColumn<Nullable<Binary>>,
+    context: DynColumn<Nullable<Jsonb>>,
 }
 
 impl DataSourcesTable {
@@ -39,8 +41,9 @@ impl DataSourcesTable {
             qname: format!("{}.{}", namespace, Self::TABLE_NAME),
             namespace,
             block_range: table.column("block_range"),
+            causality_region: table.column("causality_region"),
             manifest_idx: table.column("manifest_idx"),
-            params: table.column("params"),
+            param: table.column("param"),
             context: table.column("context"),
             table,
         }
@@ -56,7 +59,7 @@ impl DataSourcesTable {
                 manifest_idx integer not null,
                 parent integer references {nsp}.{table},
                 id bytea,
-                params jsonb,
+                param bytea,
                 context jsonb
             );
 
@@ -79,7 +82,7 @@ impl DataSourcesTable {
         //     .select((
         //         self.block_range,
         //         self.manifest_idx,
-        //         self.params,
+        //         self.param,
         //         self.context,
         //     ))
         //     .load(conn)?;
