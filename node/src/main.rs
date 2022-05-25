@@ -177,6 +177,7 @@ async fn main() {
             endpoint: endpoint.clone(),
             username: opt.elasticsearch_user.clone(),
             password: opt.elasticsearch_password.clone(),
+            client: reqwest::Client::new(),
         });
 
     // Create a component and subgraph logger factory
