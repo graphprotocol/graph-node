@@ -44,7 +44,8 @@ message Header {
   string chain_id = 2 [(gogoproto.customname) = "ChainID"];
   uint64 height = 3;
   Timestamp time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  BlockID last_block_id = 5 [(gogoproto.nullable) = false];
+  //BlockID last_block_id = 5 [(gogoproto.nullable) = false];
+  BlockId last_block_id = 5 [(gogoproto.nullable) = false];
   bytes last_commit_hash = 6;
   bytes data_hash = 7;
   bytes validators_hash = 8;
@@ -69,7 +70,8 @@ message Timestamp {
   int32 nanos = 2;
 }
 
-message BlockID {
+//message BlockID {
+message BlockId {
   bytes hash = 1;
   PartSetHeader part_set_header = 2 [(gogoproto.nullable) = false];
 }
@@ -102,7 +104,8 @@ message EventVote {
   SignedMsgType event_vote_type = 1 [json_name = "type"];
   uint64 height = 2;
   int32 round = 3;
-  BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  //BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  BlockId block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   Timestamp timestamp = 5 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes validator_address = 6;
   int32 validator_index = 7;
@@ -140,7 +143,8 @@ message SignedHeader {
 message Commit {
   int64 height = 1;
   int32 round = 2;
-  BlockID block_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  //BlockID block_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+  BlockId block_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
   repeated CommitSig signatures = 4 [(gogoproto.nullable) = false];
 }
 

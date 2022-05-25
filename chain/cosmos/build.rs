@@ -14,32 +14,22 @@ fn main() {
     let types = common::parse_proto_file(PROT_FILE).expect("Unable ...");
 
 
-    let types_to_skip = vec!["PublicKey"];
-
-    //this this temporary, for development
-    let types_to_include = vec![
-        "Consensus", "Timestamp", "BlockParams",
-        "BlockParams", "Duration", "VersionParams",
-        //"Coin"
-    ]; //, "Block", "Header", "EvidenceList"];
+    let types_to_skip = vec![
+        "PublicKey",
+        "ModeInfo",
+        "Evidence",
+        "ModeInfoSingle",
+        "ModeInfo"
+    ];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
 
 
     for (name, ptype) in types {
-        // if name == "Block"{ continue;  }
 
         if types_to_skip.contains(&name.as_str()){
             continue;
         }
-
-        if !types_to_include.contains(&name.as_str()){
-            continue;
-        }
-
-        //
-        builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::GenerateAscType)]");
-        builder = builder.type_attribute(name.clone(), "#[chain_name(Cosmos)]");
 
         builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::ToAscObj)]");
         let asc = format!("#[asc_obj_type(Asc{})]", name);
@@ -49,6 +39,11 @@ fn main() {
             let flds = format!("#[required({})]", list);
             builder = builder.type_attribute(name.clone(), flds);
         }
+
+
+        builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::GenerateAscType)]");
+        builder = builder.type_attribute(name.clone(), "#[chain_name(Cosmos)]");
+
 
 
 

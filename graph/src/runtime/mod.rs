@@ -281,8 +281,14 @@ pub enum IndexForAscTypeId {
     CosmosArrayValidatorUpdate = 1512,
     CosmosAuthInfo = 1513,
     CosmosBlock = 1514,
-    CosmosBlockID = 1515,
-    CosmosBlockIDFlagEnum = 1516,
+    CosmosMyBlock = 9999, //jusk
+
+
+    
+    //CosmosBlockID = 1515,
+    CosmosBlockId = 1515,
+    //CosmosBlockIDFlagEnum = 1516,
+    CosmosBlockIdFlagEnum = 1516,
     CosmosBlockParams = 1517,
     CosmosCoin = 1518,
     CosmosCommit = 1519,

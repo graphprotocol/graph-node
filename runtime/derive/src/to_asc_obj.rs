@@ -20,7 +20,7 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
                 let size = field_size(f);
                 acc + size
             });
-        (named, if size/8 > 0 {size % 8} else {0})
+        (named, if size > 8 {size % 8} else {0})
     } else {
         panic!("No fields detected for type {}!", name.to_string())
     };
@@ -56,6 +56,7 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
 
         let fld_name = f.ident.as_ref().unwrap();
 
+
         let is_required = is_required(f, &required_flds);
         let self_ref = 
             if is_byte_array(f){
@@ -78,6 +79,8 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
                 }
             }
         } else {
+
+
             if is_scalar(f){
                 quote!{
                     #fld_name: #self_ref,
@@ -113,9 +116,9 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
             };
             use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
             
-            //use crate::codec;
-            
             use crate::runtime::abi::*;
+            //use crate::runtime::generated::*;
+            use crate::protobuf::*;
 
             impl ToAscObj<#typ> for #name {
 
@@ -143,26 +146,28 @@ pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
 
 fn is_scalar(fld: &syn::Field) -> bool{
     let nm = field_type(fld);
+
     match nm.as_ref(){
-        "i8" | "u8" =>     true,
-        "i16"| "u16" =>    true,
-        "i32"| "u32" =>    true,
-        "i64"| "u64" =>    true,
-        "usize"|"isize" =>  true,
+        "i8" | "u8"     => true,
+        "i16"| "u16"    => true,
+        "i32"| "u32"    => true,
+        "i64"| "u64"    => true,
+        "usize"|"isize" => true,
+        "bool"          => true,
+        //"String"        => false,
         _ => false
     }
 
 }
 
+//TODO - clone used in both macros, should be shared function
 fn field_size(fld: &syn::Field) -> usize{
     let nm = field_type(fld);
     match nm.as_ref(){
         "i32"|"u32" => 4,
         "i64"|"u64" => 8,
-        "Option" => 24,
-        "Vec" => 24,
-        "String" => 24,
         "bool" => 1,
+        "Option" | "Vec" | "String" => 4,
         _ => panic!("Unexpected field type:{}", nm)
     }
 }
