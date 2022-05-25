@@ -93,32 +93,8 @@ impl EntityFilterDerivative {
     }
 }
 
-/// Key by which an individual entity in the store can be accessed.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityKey {
-    /// ID of the subgraph.
-    pub subgraph_id: DeploymentHash,
-
-    /// Name of the entity type.
-    pub entity_type: EntityType,
-
-    /// ID of the individual entity.
-    pub entity_id: String,
-}
-
-impl EntityKey {
-    pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
-        Self {
-            subgraph_id,
-            entity_type: EntityType::new(entity_type),
-            entity_id,
-        }
-    }
-}
-
-/// Same as an `EntityKey`, but the deployment is known from context. That
-/// makes an `EntityRef` quite a bit more memory-efficient than an
-/// `EntityKey`
+/// Key by which an individual entity in the store can be accessed. Stores
+/// only the entity type and id. The deployment must be known from context.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityRef {
     /// Name of the entity type.
