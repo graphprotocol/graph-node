@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, EntityRef, WritableStore};
+use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
@@ -102,8 +102,8 @@ fn block_pointer(number: u8) -> BlockPtr {
     BlockPtr::from((hash, number as BlockNumber))
 }
 
-fn count_key(id: &str) -> EntityRef {
-    EntityRef::data(COUNTER.to_owned(), id.to_owned())
+fn count_key(id: &str) -> EntityKey {
+    EntityKey::data(COUNTER.to_owned(), id.to_owned())
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {

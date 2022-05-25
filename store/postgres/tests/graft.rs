@@ -5,7 +5,7 @@ use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
-    DeploymentLocator, EntityOrder, EntityQuery, EntityRef, EntityType,
+    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -263,7 +263,7 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityRef {
+        key: EntityKey {
             entity_type: EntityType::new(entity_type.to_string()),
             entity_id: id.into(),
         },
@@ -329,7 +329,7 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com");
     let op = EntityOperation::Set {
-        key: EntityRef {
+        key: EntityKey {
             entity_type: EntityType::new(USER.to_owned()),
             entity_id: "3".into(),
         },

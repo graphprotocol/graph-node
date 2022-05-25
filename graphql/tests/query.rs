@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graph::components::store::{EntityRef, EntityType};
+use graph::components::store::{EntityKey, EntityType};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
@@ -222,7 +222,7 @@ async fn insert_test_entities(
 
     async fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
-            key: EntityRef {
+            key: EntityKey {
                 entity_type: EntityType::new(
                     data.get("__typename").unwrap().clone().as_string().unwrap(),
                 ),

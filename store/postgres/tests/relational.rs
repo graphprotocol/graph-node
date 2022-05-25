@@ -1,7 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::components::store::EntityRef;
+use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::BlockNumber;
@@ -218,10 +218,10 @@ fn insert_entity_at(
     let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityRef::data(entity_type.to_owned(), entity.id().unwrap());
+            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
             (key, entity)
         })
-        .collect::<Vec<(EntityRef, Entity)>>();
+        .collect::<Vec<(EntityKey, Entity)>>();
     let mut entities_with_keys: Vec<_> = entities_with_keys_owned
         .iter()
         .map(|(key, entity)| (key, Cow::from(entity)))
@@ -254,10 +254,10 @@ fn update_entity_at(
     mut entities: Vec<Entity>,
     block: BlockNumber,
 ) {
-    let entities_with_keys_owned: Vec<(EntityRef, Entity)> = entities
+    let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityRef::data(entity_type.to_owned(), entity.id().unwrap());
+            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
             (key, entity)
         })
         .collect();
@@ -547,7 +547,7 @@ fn update() {
         entity.set("string", "updated");
         entity.remove("strings");
         entity.set("bool", Value::Null);
-        let key = EntityRef::data("Scalar".to_owned(), entity.id().unwrap().clone());
+        let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
 
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(&key, Cow::from(&entity))];
@@ -594,13 +594,13 @@ fn update_many() {
 
         // generate keys
         let entity_type = EntityType::from("Scalar");
-        let keys: Vec<EntityRef> = ["one", "two", "three"]
+        let keys: Vec<EntityKey> = ["one", "two", "three"]
             .iter()
-            .map(|id| EntityRef::data("Scalar".to_owned(), String::from(*id)))
+            .map(|id| EntityKey::data("Scalar".to_owned(), String::from(*id)))
             .collect();
 
         let entities_vec = vec![one, two, three];
-        let mut entities: Vec<(&EntityRef, Cow<'_, Entity>)> = keys
+        let mut entities: Vec<(&EntityKey, Cow<'_, Entity>)> = keys
             .iter()
             .zip(entities_vec.iter().map(|e| Cow::Borrowed(e)))
             .collect();
@@ -666,7 +666,7 @@ fn serialize_bigdecimal() {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d);
 
-            let key = EntityRef::data("Scalar".to_owned(), entity.id().unwrap().clone());
+            let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
             let entity_type = EntityType::from("Scalar");
             let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout
@@ -722,7 +722,7 @@ fn delete() {
         insert_entity(&conn, &layout, "Scalar", vec![two]);
 
         // Delete where nothing is getting deleted
-        let key = EntityRef::data("Scalar".to_owned(), "no such entity".to_owned());
+        let key = EntityKey::data("Scalar".to_owned(), "no such entity".to_owned());
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout

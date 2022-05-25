@@ -4,7 +4,7 @@ use anyhow::Error;
 use graph::{
     blockchain::{self, block_stream::BlockWithTriggers, BlockPtr},
     components::{
-        store::{DeploymentLocator, EntityRef, SubgraphFork},
+        store::{DeploymentLocator, EntityKey, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
     data::store::scalar::Bytes,
@@ -188,7 +188,7 @@ where
                     };
                     let entity_id: String = String::from_utf8(entity_change.id.clone())
                         .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?;
-                    let key = EntityRef::data(entity_type.to_string(), entity_id.clone());
+                    let key = EntityKey::data(entity_type.to_string(), entity_id.clone());
 
                     let mut data: HashMap<String, Value> = HashMap::from_iter(vec![]);
                     for field in entity_change.fields.iter() {
@@ -249,7 +249,7 @@ where
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = String::from_utf8(entity_change.id.clone())
                         .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?;
-                    let key = EntityRef::data(entity_type.to_string(), entity_id.clone());
+                    let key = EntityKey::data(entity_type.to_string(), entity_id.clone());
 
                     state.entity_cache.remove(key);
 

@@ -8,7 +8,7 @@ use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::components::store::{EntityRef, EntityType, StoredDynamicDataSource, WritableStore};
+use graph::components::store::{EntityKey, EntityType, StoredDynamicDataSource, WritableStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Value},
@@ -86,7 +86,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         match self.get_many_res.get(&key.entity_type) {
             Some(entities) => Ok(entities
                 .iter()
@@ -155,9 +155,9 @@ impl WritableStore for MockStore {
     }
 }
 
-fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityRef, Entity) {
+fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
     (
-        EntityRef {
+        EntityKey {
             entity_type: EntityType::new("Band".to_string()),
             entity_id: id.into(),
         },

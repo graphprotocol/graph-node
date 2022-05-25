@@ -399,7 +399,7 @@ pub fn is_list(field_type: &s::Type) -> bool {
 
 #[test]
 fn entity_validation() {
-    use graph::components::store::EntityRef;
+    use graph::components::store::EntityKey;
     use graph::data::store;
     use graph::prelude::{DeploymentHash, Entity};
 
@@ -435,7 +435,7 @@ fn entity_validation() {
         let schema =
             graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
-        let key = EntityRef::data("Thing".to_owned(), id.clone());
+        let key = EntityKey::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&schema, &key);
         if errmsg == "" {

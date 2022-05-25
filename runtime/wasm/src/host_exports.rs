@@ -11,7 +11,7 @@ use web3::types::H160;
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EnsLookup;
-use graph::components::store::{EntityRef, EntityType};
+use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::ensure;
@@ -150,7 +150,7 @@ impl<C: Blockchain> HostExports<C> {
         );
         poi_section.end();
 
-        let key = EntityRef {
+        let key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };
@@ -181,7 +181,7 @@ impl<C: Blockchain> HostExports<C> {
             &self.causality_region,
             logger,
         );
-        let key = EntityRef {
+        let key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };
@@ -200,7 +200,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_id: String,
         gas: &GasCounter,
     ) -> Result<Option<Entity>, anyhow::Error> {
-        let store_key = EntityRef {
+        let store_key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };

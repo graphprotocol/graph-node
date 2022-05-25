@@ -96,7 +96,7 @@ impl EntityFilterDerivative {
 /// Key by which an individual entity in the store can be accessed. Stores
 /// only the entity type and id. The deployment must be known from context.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityRef {
+pub struct EntityKey {
     /// Name of the entity type.
     pub entity_type: EntityType,
 
@@ -104,7 +104,7 @@ pub struct EntityRef {
     pub entity_id: Word,
 }
 
-impl EntityRef {
+impl EntityKey {
     pub fn data(entity_type: String, entity_id: String) -> Self {
         Self {
             entity_type: EntityType::new(entity_type),
@@ -536,7 +536,7 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(subgraph_id: DeploymentHash, key: EntityRef) -> Self {
+    pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
         Self::Data {
             subgraph_id: subgraph_id,
             entity_type: key.entity_type,
@@ -781,10 +781,10 @@ where
 pub enum EntityOperation {
     /// Locates the entity specified by `key` and sets its attributes according to the contents of
     /// `data`.  If no entity exists with this key, creates a new entity.
-    Set { key: EntityRef, data: Entity },
+    Set { key: EntityKey, data: Entity },
 
     /// Removes an entity with the specified key, if one exists.
-    Remove { key: EntityRef },
+    Remove { key: EntityKey },
 }
 
 #[derive(Debug, PartialEq)]
@@ -865,15 +865,15 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EntityModification {
     /// Insert the entity
-    Insert { key: EntityRef, data: Entity },
+    Insert { key: EntityKey, data: Entity },
     /// Update the entity by overwriting it
-    Overwrite { key: EntityRef, data: Entity },
+    Overwrite { key: EntityKey, data: Entity },
     /// Remove the entity
-    Remove { key: EntityRef },
+    Remove { key: EntityKey },
 }
 
 impl EntityModification {
-    pub fn entity_ref(&self) -> &EntityRef {
+    pub fn entity_ref(&self) -> &EntityKey {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,

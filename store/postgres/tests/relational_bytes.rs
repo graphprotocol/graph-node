@@ -1,7 +1,7 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::components::store::EntityRef;
+use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
@@ -87,7 +87,7 @@ fn remove_test_data(conn: &PgConnection) {
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityRef::data(entity_type.to_owned(), entity.id().unwrap());
+    let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
 
     let entity_type = EntityType::from(entity_type);
     let mut entities = vec![(&key, Cow::from(&entity))];
@@ -282,7 +282,7 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo");
-        let key = EntityRef::data("Thing".to_owned(), entity.id().unwrap().clone());
+        let key = EntityKey::data("Thing".to_owned(), entity.id().unwrap().clone());
 
         let entity_id = entity.id().unwrap().clone();
         let entity_type = key.entity_type.clone();
@@ -311,7 +311,7 @@ fn delete() {
         insert_entity(&conn, &layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let key = EntityRef::data("Thing".to_owned(), "ffff".to_owned());
+        let key = EntityKey::data("Thing".to_owned(), "ffff".to_owned());
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout

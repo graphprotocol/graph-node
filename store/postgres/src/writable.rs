@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::EntityRef;
+use graph::components::store::EntityKey;
 use graph::data::subgraph::schema;
 use graph::env::env_var;
 use graph::prelude::{
@@ -239,7 +239,7 @@ impl SyncStore {
         .await
     }
 
-    fn get(&self, key: &EntityRef, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
         self.retry("get", || {
             self.writable.get(self.site.cheap_clone(), key, block)
         })
@@ -624,7 +624,7 @@ impl Queue {
 
     /// Get the entity for `key` if it exists by looking at both the queue
     /// and the store
-    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         enum Op {
             Write(Entity),
             Remove,
@@ -864,7 +864,7 @@ impl Writer {
         }
     }
 
-    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX),
             Writer::Async(queue) => queue.get(key),
@@ -999,7 +999,7 @@ impl WritableStoreTrait for WritableStore {
         self.store.supports_proof_of_indexing().await
     }
 
-    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         self.writer.get(key)
     }
 

@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
-use graph::components::store::EntityRef;
+use graph::components::store::EntityKey;
 use graph::data::value::Word;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
@@ -1646,7 +1646,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a [(&'a EntityRef, Cow<'a, Entity>)],
+    entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     unique_columns: Vec<&'a Column>,
     br_column: BlockRangeColumn<'a>,
 }
@@ -1654,7 +1654,7 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut [(&'a EntityRef, Cow<Entity>)],
+        entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
@@ -1695,7 +1695,7 @@ impl<'a> InsertQuery<'a> {
     /// Build the column name list using the subset of all keys among present entities.
     fn unique_columns(
         table: &'a Table,
-        entities: &'a [(&'a EntityRef, Cow<'a, Entity>)],
+        entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
     ) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {

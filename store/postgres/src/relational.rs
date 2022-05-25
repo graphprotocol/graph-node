@@ -41,7 +41,7 @@ use crate::{
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::{EntityRef, EntityType};
+use graph::components::store::{EntityKey, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
@@ -555,7 +555,7 @@ impl Layout {
                 .expect("__typename expected; this is a bug");
 
             changes.push(EntityOperation::Set {
-                key: EntityRef {
+                key: EntityKey {
                     entity_type,
                     entity_id,
                 },
@@ -571,7 +571,7 @@ impl Layout {
             // about why this check is necessary.
             if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
                 changes.push(EntityOperation::Remove {
-                    key: EntityRef {
+                    key: EntityKey {
                         entity_type,
                         entity_id,
                     },
@@ -586,7 +586,7 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityRef, Cow<'a, Entity>)],
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -726,7 +726,7 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityRef, Cow<'a, Entity>)],
+        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {

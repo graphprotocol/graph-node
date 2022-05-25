@@ -1,7 +1,7 @@
 //! Various implementations of GasSizeOf;
 
 use crate::{
-    components::store::{EntityRef, EntityType},
+    components::store::{EntityKey, EntityType},
     data::store::{scalar::Bytes, Value},
     prelude::{BigDecimal, BigInt},
 };
@@ -162,7 +162,7 @@ impl GasSizeOf for usize {
     }
 }
 
-impl GasSizeOf for EntityRef {
+impl GasSizeOf for EntityKey {
     fn gas_size_of(&self) -> Gas {
         self.entity_type.gas_size_of() + self.entity_id.gas_size_of()
     }
