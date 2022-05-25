@@ -24,7 +24,6 @@ use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
 use crate::prelude::*;
-use crate::util::stable_hash_glue::impl_stable_hash;
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -94,8 +93,6 @@ impl EntityFilterDerivative {
     }
 }
 
-// Note: Do not modify fields without making a backward compatible change to
-// the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
@@ -108,12 +105,6 @@ pub struct EntityKey {
     /// ID of the individual entity.
     pub entity_id: String,
 }
-
-impl_stable_hash!(EntityKey {
-    subgraph_id,
-    entity_type: EntityType::as_str,
-    entity_id
-});
 
 impl EntityKey {
     pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
@@ -146,24 +137,6 @@ impl EntityRef {
     }
 }
 
-#[test]
-fn key_stable_hash() {
-    use stable_hash_legacy::crypto::SetHasher;
-    use stable_hash_legacy::utils::stable_hash;
-
-    #[track_caller]
-    fn hashes_to(key: &EntityKey, exp: &str) {
-        let hash = hex::encode(stable_hash::<SetHasher, _>(&key));
-        assert_eq!(exp, hash.as_str());
-    }
-
-    let id = DeploymentHash::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
-    let key = EntityKey::data(id.clone(), "Account".to_string(), "0xdeadbeef".to_string());
-    hashes_to(
-        &key,
-        "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
-    );
-}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Child {
     pub attr: Attribute,
