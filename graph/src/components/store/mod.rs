@@ -22,32 +22,33 @@ use std::time::Duration;
 use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
+use crate::data::value::Word;
 use crate::prelude::*;
 use crate::util::stable_hash_glue::impl_stable_hash;
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityType(String);
+pub struct EntityType(Word);
 
 impl EntityType {
     /// Construct a new entity type. Ideally, this is only called when
     /// `entity_type` either comes from the GraphQL schema, or from
     /// the database from fields that are known to contain a valid entity type
     pub fn new(entity_type: String) -> Self {
-        Self(entity_type)
+        Self(entity_type.into())
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 
     pub fn into_string(self) -> String {
-        self.0
+        self.0.to_string()
     }
 
     pub fn is_poi(&self) -> bool {
-        &self.0 == "Poi$"
+        self.0.as_str() == "Poi$"
     }
 }
 
