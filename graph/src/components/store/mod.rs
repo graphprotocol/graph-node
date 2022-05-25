@@ -566,9 +566,9 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(key: EntityKey) -> Self {
+    pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
         Self::Data {
-            subgraph_id: key.subgraph_id,
+            subgraph_id: subgraph_id,
             entity_type: key.entity_type,
         }
     }
@@ -609,23 +609,6 @@ pub struct StoreEvent {
     pub changes: HashSet<EntityChange>,
 }
 
-impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
-    fn from_iter<I: IntoIterator<Item = &'a EntityModification>>(mods: I) -> Self {
-        let changes: Vec<_> = mods
-            .into_iter()
-            .map(|op| {
-                use self::EntityModification::*;
-                match op {
-                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
-                        EntityChange::for_data(key.clone())
-                    }
-                }
-            })
-            .collect();
-        StoreEvent::new(changes)
-    }
-}
-
 impl StoreEvent {
     pub fn new(changes: Vec<EntityChange>) -> StoreEvent {
         static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
@@ -633,6 +616,24 @@ impl StoreEvent {
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
         let changes = changes.into_iter().collect();
         StoreEvent { tag, changes }
+    }
+
+    pub fn from_mods<'a, I: IntoIterator<Item = &'a EntityModification>>(
+        subgraph_id: &DeploymentHash,
+        mods: I,
+    ) -> Self {
+        let changes: Vec<_> = mods
+            .into_iter()
+            .map(|op| {
+                use self::EntityModification::*;
+                match op {
+                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
+                        EntityChange::for_data(subgraph_id.clone(), key.clone())
+                    }
+                }
+            })
+            .collect();
+        StoreEvent::new(changes)
     }
 
     /// Extend `ev1` with `ev2`. If `ev1` is `None`, just set it to `ev2`
