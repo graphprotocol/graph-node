@@ -5,10 +5,7 @@ use web3::types::{
     U64,
 };
 
-use crate::{
-    blockchain::BlockPtr,
-    prelude::{BlockNumber, DeploymentHash, EntityKey, ToEntityKey},
-};
+use crate::{blockchain::BlockPtr, prelude::BlockNumber};
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -171,11 +168,5 @@ impl<'a> From<&'a EthereumBlock> for BlockPtr {
 impl<'a> From<&'a EthereumCall> for BlockPtr {
     fn from(call: &'a EthereumCall) -> BlockPtr {
         BlockPtr::from((call.block_hash, call.block_number))
-    }
-}
-
-impl ToEntityKey for BlockPtr {
-    fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey {
-        EntityKey::data(subgraph, "Block".into(), self.hash_hex())
     }
 }

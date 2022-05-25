@@ -1,7 +1,7 @@
 use crate::{
     components::store::{DeploymentLocator, EntityRef, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
+    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError, Schema},
     runtime::gas::{Gas, GasSizeOf},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
@@ -880,11 +880,6 @@ pub trait TryIntoEntity {
 /// A value that can be converted to an `Entity` ID.
 pub trait ToEntityId {
     fn to_entity_id(&self) -> String;
-}
-
-/// A value that can be converted to an `Entity` key.
-pub trait ToEntityKey {
-    fn to_entity_key(&self, subgraph: DeploymentHash) -> EntityKey;
 }
 
 #[test]
