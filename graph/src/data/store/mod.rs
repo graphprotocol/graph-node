@@ -877,11 +877,6 @@ pub trait TryIntoEntity {
     fn try_into_entity(self) -> Result<Entity, Error>;
 }
 
-/// A value that can be converted to an `Entity` ID.
-pub trait ToEntityId {
-    fn to_entity_id(&self) -> String;
-}
-
 #[test]
 fn value_bytes() {
     let graphql_value = r::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
