@@ -6,6 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
+use graph::components::store::EntityRef;
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -298,7 +299,6 @@ where
             update_proof_of_indexing(
                 proof_of_indexing,
                 &self.metrics.host.stopwatch,
-                &self.inputs.deployment.hash,
                 &mut block_state.entity_cache,
             )
             .await?;
@@ -346,7 +346,7 @@ where
         // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
         if has_errors && !is_non_fatal_errors_active {
             let is_poi_entity =
-                |entity_mod: &EntityModification| entity_mod.entity_key().entity_type.is_poi();
+                |entity_mod: &EntityModification| entity_mod.entity_ref().entity_type.is_poi();
             mods.retain(is_poi_entity);
             // Confidence check
             assert!(
@@ -860,7 +860,6 @@ where
 async fn update_proof_of_indexing(
     proof_of_indexing: ProofOfIndexing,
     stopwatch: &StopwatchMetrics,
-    deployment_id: &DeploymentHash,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
@@ -869,10 +868,9 @@ async fn update_proof_of_indexing(
 
     for (causality_region, stream) in proof_of_indexing.drain() {
         // Create the special POI entity key specific to this causality_region
-        let entity_key = EntityKey {
-            subgraph_id: deployment_id.clone(),
+        let entity_key = EntityRef {
             entity_type: POI_OBJECT.to_owned(),
-            entity_id: causality_region,
+            entity_id: causality_region.into(),
         };
 
         // Grab the current digest attribute on this entity
@@ -892,7 +890,7 @@ async fn update_proof_of_indexing(
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
         let new_poi_entity = entity! {
-            id: entity_key.entity_id.clone(),
+            id: entity_key.entity_id.to_string(),
             digest: updated_proof_of_indexing,
         };
 

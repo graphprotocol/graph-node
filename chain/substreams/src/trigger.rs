@@ -4,13 +4,13 @@ use anyhow::Error;
 use graph::{
     blockchain::{self, block_stream::BlockWithTriggers, BlockPtr},
     components::{
-        store::{DeploymentLocator, EntityType, SubgraphFork},
+        store::{DeploymentLocator, EntityRef, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
     data::store::scalar::Bytes,
     prelude::{
         anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
-        EntityKey, RuntimeHostBuilder, Value,
+        RuntimeHostBuilder, Value,
     },
     slog::Logger,
     substreams::Modules,
@@ -188,11 +188,7 @@ where
                     };
                     let entity_id: String = String::from_utf8(entity_change.id.clone())
                         .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?;
-                    let key = EntityKey {
-                        subgraph_id: self.locator.hash.clone(),
-                        entity_type: EntityType::new(entity_type.into()),
-                        entity_id: entity_id.clone(),
-                    };
+                    let key = EntityRef::data(entity_type.to_string(), entity_id.clone());
 
                     let mut data: HashMap<String, Value> = HashMap::from_iter(vec![]);
                     for field in entity_change.fields.iter() {
@@ -253,11 +249,7 @@ where
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = String::from_utf8(entity_change.id.clone())
                         .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?;
-                    let key = EntityKey {
-                        subgraph_id: self.locator.hash.clone(),
-                        entity_type: EntityType::new(entity_type.into()),
-                        entity_id: entity_id.clone(),
-                    };
+                    let key = EntityRef::data(entity_type.to_string(), entity_id.clone());
 
                     state.entity_cache.remove(key);
 

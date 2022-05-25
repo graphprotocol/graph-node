@@ -125,6 +125,27 @@ impl EntityKey {
     }
 }
 
+/// Same as an `EntityKey`, but the deployment is known from context. That
+/// makes an `EntityRef` quite a bit more memory-efficient than an
+/// `EntityKey`
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EntityRef {
+    /// Name of the entity type.
+    pub entity_type: EntityType,
+
+    /// ID of the individual entity.
+    pub entity_id: Word,
+}
+
+impl EntityRef {
+    pub fn data(entity_type: String, entity_id: String) -> Self {
+        Self {
+            entity_type: EntityType::new(entity_type),
+            entity_id: entity_id.into(),
+        }
+    }
+}
+
 #[test]
 fn key_stable_hash() {
     use stable_hash_legacy::crypto::SetHasher;
@@ -566,7 +587,7 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
+    pub fn for_data(subgraph_id: DeploymentHash, key: EntityRef) -> Self {
         Self::Data {
             subgraph_id: subgraph_id,
             entity_type: key.entity_type,
@@ -811,10 +832,10 @@ where
 pub enum EntityOperation {
     /// Locates the entity specified by `key` and sets its attributes according to the contents of
     /// `data`.  If no entity exists with this key, creates a new entity.
-    Set { key: EntityKey, data: Entity },
+    Set { key: EntityRef, data: Entity },
 
     /// Removes an entity with the specified key, if one exists.
-    Remove { key: EntityKey },
+    Remove { key: EntityRef },
 }
 
 #[derive(Debug, PartialEq)]
@@ -895,15 +916,15 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EntityModification {
     /// Insert the entity
-    Insert { key: EntityKey, data: Entity },
+    Insert { key: EntityRef, data: Entity },
     /// Update the entity by overwriting it
-    Overwrite { key: EntityKey, data: Entity },
+    Overwrite { key: EntityRef, data: Entity },
     /// Remove the entity
-    Remove { key: EntityKey },
+    Remove { key: EntityRef },
 }
 
 impl EntityModification {
-    pub fn entity_key(&self) -> &EntityKey {
+    pub fn entity_ref(&self) -> &EntityRef {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,

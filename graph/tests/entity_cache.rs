@@ -8,10 +8,10 @@ use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::components::store::{EntityType, StoredDynamicDataSource, WritableStore};
+use graph::components::store::{EntityRef, EntityType, StoredDynamicDataSource, WritableStore};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
+    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Value},
 };
 
 lazy_static! {
@@ -86,11 +86,11 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError> {
         match self.get_many_res.get(&key.entity_type) {
             Some(entities) => Ok(entities
                 .iter()
-                .find(|entity| entity.id().ok().as_ref() == Some(&key.entity_id))
+                .find(|entity| entity.id().ok().as_deref() == Some(key.entity_id.as_str()))
                 .cloned()),
             None => Err(StoreError::Unknown(anyhow!(
                 "nothing for type {}",
@@ -155,15 +155,18 @@ impl WritableStore for MockStore {
     }
 }
 
-fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
+fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityRef, Entity) {
     (
-        EntityKey::data(SUBGRAPH_ID.clone(), "Band".to_string(), id.into()),
+        EntityRef {
+            entity_type: EntityType::new("Band".to_string()),
+            entity_id: id.into(),
+        },
         Entity::from(data),
     )
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
-    mods.sort_by_key(|m| m.entity_key().clone());
+    mods.sort_by_key(|m| m.entity_ref().clone());
     mods
 }
 

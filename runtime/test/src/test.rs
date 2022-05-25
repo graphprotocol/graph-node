@@ -418,23 +418,15 @@ async fn test_ipfs_block() {
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(
-    subgraph_id: &str,
-    id: &str,
-    value: &str,
-    api_version: Version,
-) -> (String, EntityModification) {
-    let subgraph_id_with_api_version = subgraph_id_with_api_version(subgraph_id, api_version);
-
+fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey::data(
-        DeploymentHash::new(&subgraph_id_with_api_version).unwrap(),
-        "Thing".to_string(),
-        id.to_string(),
-    );
+    let key = EntityRef {
+        entity_type: EntityType::new("Thing".to_string()),
+        entity_id: id.into(),
+    };
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },
@@ -486,9 +478,9 @@ async fn run_ipfs_map(
 
         // Bring the modifications into a predictable order (by entity_id)
         mods.sort_by(|a, b| {
-            a.entity_key()
+            a.entity_ref()
                 .entity_id
-                .partial_cmp(&b.entity_key().entity_id)
+                .partial_cmp(&b.entity_ref().entity_id)
                 .unwrap()
         });
         Ok(mods)
@@ -502,8 +494,8 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let subgraph_id = "ipfsMap";
 
     // Try it with two valid objects
-    let (str1, thing1) = make_thing(&subgraph_id, "one", "eins", api_version.clone());
-    let (str2, thing2) = make_thing(&subgraph_id, "two", "zwei", api_version.clone());
+    let (str1, thing1) = make_thing("one", "eins");
+    let (str2, thing2) = make_thing("two", "zwei");
     let ops = run_ipfs_map(
         ipfs.clone(),
         subgraph_id,

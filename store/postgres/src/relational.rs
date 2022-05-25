@@ -20,6 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
+use graph::data::value::Word;
 use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -40,15 +41,15 @@ use crate::{
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::EntityType;
+use graph::components::store::{EntityRef, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityKey, EntityOperation, EntityOrder, EntityRange, Logger,
-    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, QueryExecutionError,
+    StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -546,7 +547,7 @@ impl Layout {
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
             let mut data: Entity = entity_data.deserialize_with_layout(self, None, false)?;
-            let entity_id = data.id().expect("Invalid ID for entity.");
+            let entity_id = Word::from(data.id().expect("Invalid ID for entity."));
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             // `__typename` is not a real field.
@@ -554,8 +555,7 @@ impl Layout {
                 .expect("__typename expected; this is a bug");
 
             changes.push(EntityOperation::Set {
-                key: EntityKey {
-                    subgraph_id: self.site.deployment.cheap_clone(),
+                key: EntityRef {
                     entity_type,
                     entity_id,
                 },
@@ -565,14 +565,13 @@ impl Layout {
 
         for del in &deletions {
             let entity_type = del.entity_type();
-            let entity_id = del.id().to_string();
+            let entity_id = Word::from(del.id());
 
             // See the doc comment of `FindPossibleDeletionsQuery` for details
             // about why this check is necessary.
             if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
                 changes.push(EntityOperation::Remove {
-                    key: EntityKey {
-                        subgraph_id: self.site.deployment.cheap_clone(),
+                    key: EntityRef {
                         entity_type,
                         entity_id,
                     },
@@ -587,7 +586,7 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        entities: &'a mut [(&'a EntityRef, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -727,7 +726,7 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        entities: &'a mut [(&'a EntityRef, Cow<'a, Entity>)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {

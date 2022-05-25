@@ -11,14 +11,14 @@ use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, WritableStore};
+use graph::components::store::{DeploymentLocator, EntityRef, WritableStore};
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::{
     blockchain::DataSource,
     components::store::{
-        BlockStore as _, EntityFilter, EntityKey, EntityOrder, EntityQuery, EntityType,
-        StatusStore, SubscriptionManager as _,
+        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, EntityType, StatusStore,
+        SubscriptionManager as _,
     },
     prelude::ethabi::Contract,
 };
@@ -288,11 +288,7 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey::data(
-            TEST_SUBGRAPH_ID.clone(),
-            entity_type.to_owned(),
-            id.to_owned(),
-        ),
+        key: EntityRef::data(entity_type.to_owned(), id.to_owned()),
         data: test_entity,
     }
 }
@@ -315,7 +311,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u6
 #[test]
 fn delete_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned());
+        let entity_key = EntityRef::data(USER.to_owned(), "3".to_owned());
 
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
@@ -344,8 +340,8 @@ fn delete_entity() {
 /// Check that user 1 was inserted correctly
 #[test]
 fn get_entity_1() {
-    run_test(|_, writable, deployment| async move {
-        let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
+    run_test(|_, writable, _| async move {
+        let key = EntityRef::data(USER.to_owned(), "1".to_owned());
         let result = writable.get(&key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -374,8 +370,8 @@ fn get_entity_1() {
 /// Check that user 3 was updated correctly
 #[test]
 fn get_entity_3() {
-    run_test(|_, writable, deployment| async move {
-        let key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned());
+    run_test(|_, writable, _| async move {
+        let key = EntityRef::data(USER.to_owned(), "3".to_owned());
         let result = writable.get(&key).unwrap();
 
         let mut expected_entity = Entity::new();
@@ -404,7 +400,7 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "7".to_owned());
+        let entity_key = EntityRef::data(USER.to_owned(), "7".to_owned());
         let test_entity = create_test_entity(
             "7",
             USER,
@@ -434,7 +430,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
+        let entity_key = EntityRef::data(USER.to_owned(), "1".to_owned());
 
         let op = create_test_entity(
             "1",
@@ -480,7 +476,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
+        let entity_key = EntityRef::data(USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -1057,7 +1053,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "2".to_owned());
+        let del_key = EntityRef::data(USER.to_owned(), "2".to_owned());
 
         // Process deletion
         transact_and_wait(
@@ -1102,7 +1098,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
+        let entity_key = EntityRef::data(USER.to_owned(), "1".to_owned());
 
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
@@ -1200,7 +1196,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let subgraph_store = store.subgraph_store();
 
         // Create operations to add a user
-        let user_key = EntityKey::data(deployment.hash.clone(), USER.to_owned(), "1".to_owned());
+        let user_key = EntityRef::data(USER.to_owned(), "1".to_owned());
         let partial_entity = Entity::from(vec![
             ("id", Value::from("1")),
             ("name", Value::from("Johnny Boy")),
@@ -1343,7 +1339,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), id.to_owned()),
+                    key: EntityRef::data(USER.to_owned(), id.to_owned()),
                     data: data.to_owned(),
                 })
                 .collect(),
@@ -1357,13 +1353,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ("name", Value::from("Johnny")),
         ]);
         let update_op = EntityOperation::Set {
-            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "1".to_owned()),
+            key: EntityRef::data(USER.to_owned(), "1".to_owned()),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey::data(subgraph_id.clone(), USER.to_owned(), "2".to_owned()),
+            key: EntityRef::data(USER.to_owned(), "2".to_owned()),
         };
 
         // Commit update & delete ops
@@ -1550,7 +1546,7 @@ fn handle_large_string_with_index() {
         data.set("id", id);
         data.set(NAME, name);
 
-        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
+        let key = EntityRef::data(USER.to_owned(), id.to_owned());
 
         EntityModification::Insert { key, data }
     }
@@ -1642,7 +1638,7 @@ fn handle_large_bytea_with_index() {
         data.set("id", id);
         data.set(NAME, scalar::Bytes::from(name));
 
-        let key = EntityKey::data(TEST_SUBGRAPH_ID.clone(), USER.to_owned(), id.to_owned());
+        let key = EntityRef::data(USER.to_owned(), id.to_owned());
 
         EntityModification::Insert { key, data }
     }
@@ -1846,11 +1842,7 @@ fn window() {
         entity.set("age", age);
         entity.set("favorite_color", color);
         EntityOperation::Set {
-            key: EntityKey::data(
-                TEST_SUBGRAPH_ID.clone(),
-                entity_type.to_owned(),
-                id.to_owned(),
-            ),
+            key: EntityRef::data(entity_type.to_owned(), id.to_owned()),
             data: entity,
         }
     }

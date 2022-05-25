@@ -11,7 +11,7 @@ use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -661,7 +661,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 
     // First, we isolate updates and deletions with the same entity type.
     let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
-    let mut deletions: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<Word>> = BTreeMap::new();
 
     for change in entity_changes {
         match change {
@@ -705,7 +705,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
         deletions_graphql.push(object! {
             type: entity_type.to_string(),
             entities:
-                ids.into_iter().map(r::Value::String).collect::<Vec<r::Value>>(),
+                ids.into_iter().map(|s| s.to_string()).map(r::Value::String).collect::<Vec<r::Value>>(),
         });
     }
 

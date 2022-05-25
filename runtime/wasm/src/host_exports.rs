@@ -10,8 +10,8 @@ use web3::types::H160;
 
 use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
-use graph::components::store::EntityType;
-use graph::components::store::{EnsLookup, EntityKey};
+use graph::components::store::EnsLookup;
+use graph::components::store::{EntityRef, EntityType};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::ensure;
@@ -150,10 +150,9 @@ impl<C: Blockchain> HostExports<C> {
         );
         poi_section.end();
 
-        let key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
+        let key = EntityRef {
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
@@ -182,10 +181,9 @@ impl<C: Blockchain> HostExports<C> {
             &self.causality_region,
             logger,
         );
-        let key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
+        let key = EntityRef {
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         gas.consume_host_fn(gas::STORE_REMOVE.with_args(complexity::Size, &key))?;
@@ -202,10 +200,9 @@ impl<C: Blockchain> HostExports<C> {
         entity_id: String,
         gas: &GasCounter,
     ) -> Result<Option<Entity>, anyhow::Error> {
-        let store_key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
+        let store_key = EntityRef {
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         let result = state.entity_cache.get(&store_key)?;

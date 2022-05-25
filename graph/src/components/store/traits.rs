@@ -196,7 +196,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
     /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
+    fn get(&self, key: &EntityRef) -> Result<Option<Entity>, StoreError>;
 
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`

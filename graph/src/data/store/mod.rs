@@ -1,5 +1,5 @@
 use crate::{
-    components::store::{DeploymentLocator, EntityType},
+    components::store::{DeploymentLocator, EntityRef, EntityType},
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, q, r, s, CacheWeight, EntityKey, QueryExecutionError, Schema},
     runtime::gas::{Gas, GasSizeOf},
@@ -700,7 +700,7 @@ impl Entity {
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
-    pub fn validate(&self, schema: &Schema, key: &EntityKey) -> Result<(), anyhow::Error> {
+    pub fn validate(&self, schema: &Schema, key: &EntityRef) -> Result<(), anyhow::Error> {
         fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
             use s::TypeDefinition as t;
             match field_type {
@@ -948,11 +948,7 @@ fn entity_validation() {
         let schema =
             crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
-        let key = EntityKey::data(
-            DeploymentHash::new("doesntmatter").unwrap(),
-            "Thing".to_owned(),
-            id.to_owned(),
-        );
+        let key = EntityRef::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&schema, &key);
         if errmsg == "" {

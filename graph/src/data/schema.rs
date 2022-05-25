@@ -1,5 +1,5 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, SubgraphStore};
+use crate::components::store::{EntityRef, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
@@ -608,7 +608,7 @@ impl Schema {
     }
 
     /// Construct a value for the entity type's id attribute
-    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
+    pub fn id_value(&self, key: &EntityRef) -> Result<store::Value, Error> {
         let base_type = self
             .document
             .get_object_type_definition(key.entity_type.as_str())
@@ -626,7 +626,7 @@ impl Schema {
             .get_base_type();
 
         match base_type {
-            "ID" | "String" => Ok(store::Value::String(key.entity_id.clone())),
+            "ID" | "String" => Ok(store::Value::String(key.entity_id.to_string())),
             "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
                 &key.entity_id,
             )?)),
