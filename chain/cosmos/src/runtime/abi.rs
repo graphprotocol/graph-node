@@ -1006,7 +1006,11 @@ mod test {
 
             $(bytes.extend_from_slice(
                     &value.$field.to_asc_bytes()
-                    .expect("failed to turn {} {} field value to asc bytes"));)+
+                    .expect(&format!(
+                            "failed to turn {} {} field value to asc bytes",
+                            stringify!($struct_name),
+                            stringify!($field),
+                    )));)+
 
             assert_eq!(
                 mem_size,
