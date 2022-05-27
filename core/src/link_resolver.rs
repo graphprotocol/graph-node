@@ -186,35 +186,31 @@ impl LinkResolverTrait for LinkResolver {
         let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
         restrict_file_size(&path, size, &max_file_size)?;
 
-        let path = path.clone();
-        let this = self.clone();
+        let req_path = path.clone();
         let timeout = self.timeout;
-        let logger = logger.clone();
         let data = retry_policy(self.retry, "ipfs.cat", &logger)
             .run(move || {
-                let path = path.clone();
+                let path = req_path.clone();
                 let client = client.clone();
-                let this = this.clone();
-                let logger = logger.clone();
-                async move {
-                    let data = client.cat_all(path.clone(), timeout).await?.to_vec();
-
-                    // Only cache files if they are not too large
-                    if data.len() <= max_cache_file_size {
-                        let mut cache = this.cache.lock().unwrap();
-                        if !cache.contains_key(&path) {
-                            cache.insert(path.to_owned(), data.clone());
-                        }
-                    } else {
-                        debug!(logger, "File too large for cache";
-                                    "path" => path,
-                                    "size" => data.len()
-                        );
-                    }
-                    Result::<Vec<u8>, reqwest::Error>::Ok(data)
-                }
+                async move { Ok(client.cat_all(path.clone(), timeout).await?.to_vec()) }
             })
             .await?;
+
+        // The size reported by `files/stat` is not guaranteed to be exact, so check the limit again.
+        restrict_file_size(&path, data.len() as u64, &max_file_size)?;
+
+        // Only cache files if they are not too large
+        if data.len() <= max_cache_file_size {
+            let mut cache = self.cache.lock().unwrap();
+            if !cache.contains_key(&path) {
+                cache.insert(path.to_owned(), data.clone());
+            }
+        } else {
+            debug!(logger, "File too large for cache";
+                        "path" => path,
+                        "size" => data.len()
+            );
+        }
 
         Ok(data)
     }
