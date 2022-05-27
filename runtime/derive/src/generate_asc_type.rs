@@ -1,130 +1,73 @@
-
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{self, DeriveInput};
+use syn::{self, parse_macro_input, ItemStruct};
 use proc_macro2::{Span, Ident};
-///This macro will take struct generated from protobuf and create asc type
 
+pub fn generate_asc_type(_metadata: TokenStream, input: TokenStream) -> TokenStream {    
 
+    let item = parse_macro_input!(input as ItemStruct);
 
-pub fn from_protobuf_obj_macro_derive(tokens: TokenStream) -> TokenStream {
-    let DeriveInput {
-        ident, data, attrs, ..
-    } = syn::parse_macro_input!(tokens);
+    let name = item.ident.clone();
+    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
-    let name = ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", ident.to_string()), Span::call_site());
+    let fields = 
+        item.fields.iter().map(| f | {
+            let fld_name = f.ident.clone();
+            let fld_type = field_type_map(field_type(f)).parse::<proc_macro2::TokenStream>().unwrap();
 
-    let (fields, padding) = if let syn::Data::Struct(syn::DataStruct {
-        fields: syn::Fields::Named(syn::FieldsNamed { ref named, .. }),
-        ..
-    }) = data
-    {        
-        let size = 
-            named.iter().fold(0, |acc, f|{
-                acc + field_size(f)
-            });
-
-        (named, if size > 8 {size % 8} else {0})
-    } else {
-        panic!("No fields detected for type {}!", name.to_string())
-    };
-
-    let attribute = attrs
-        .iter()
-        .filter(|a| a.path.segments.len() == 1 && a.path.segments[0].ident == "chain_name")
-        .nth(0)
-        .expect("\"chain_name\" attribute required for deriving ToAscObj!");
-
-    let chain_name: super::TypeParam =
-        syn::parse2(attribute.tokens.clone()).expect("Invalid chain name attribute!");
-
-    let fields = fields.iter().map(|f| {
-        let fld_name = f.ident.as_ref().unwrap();
-        let fld_type = field_type_map(field_type(f)).parse::<proc_macro2::TokenStream>().unwrap();
-        quote! {
-            pub #fld_name : #fld_type ,
-        }
-    });
-
-    let range = 0..padding;
-
-    let fld_padded = 
-            range.map(|i|{
-                let fld_name = format!("_padding{}",i).parse::<proc_macro2::TokenStream>().unwrap();
-                quote! {
-                    pub #fld_name : u8,
-                }
-            });
-
-    let index_asc_type_id = 
-        format!("{}{}", chain_name.0, name.to_string())
-        .parse::<proc_macro2::TokenStream>().unwrap();
-
+            quote! {
+                pub #fld_name : #fld_type ,
+            }  
+        });
 
     let expanded = quote! {
+
+
         #[automatically_derived]
 
         #[repr(C)]
         #[derive(graph_runtime_derive::AscType)]
+        //#[graph_runtime_derive::asc_padding]
+        //#[graph_runtime_derive::generate_from_rust_type(#required)]   //build.rs
+        //#[graph_runtime_derive::generate_network_type_id(Cosmos)]     //build.rs
+        
+        #[derive(Debug)]
         pub struct #asc_name {
             #(#fields)*
-            #(#fld_padded)*
-        }
-
-        impl graph::runtime::AscIndexId for #asc_name {
-            const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::#index_asc_type_id ;
         }
     };
+
+
+    println!("=========================================>generate_asc_type:\n{}", expanded);
+
+
     expanded.into()
-}
-
-
-//TODO - clone used in both macros, should be shared function
-fn field_size(fld: &syn::Field) -> usize{
-    let nm = field_type(fld);
-    match nm.as_ref(){
-        "i32"|"u32" => 4,
-        "i64"|"u64" => 8,
-        "bool" => 1,
-        // "Option" => 4,
-        // "Vec" => 4,
-        // "String" => 4,
-        _ => 4 // T -> AscPtr<Asc[T]>
-        //_ => panic!("Unexpected field type:{}", nm)
-    }
 }
 
 fn is_scalar(nm: &str) -> bool{
 
     match nm{
-        "i8" | "u8"     => true,
-        "i16"| "u16"    => true,
-        "i32"| "u32"    => true,
-        "i64"| "u64"    => true,
-        "usize"|"isize" => true,
-        //"String"        => false,
-        _ => false
+         "i8"|"u8"    => true,
+        "i16"|"u16"   => true,
+        "i32"|"u32"   => true,
+        "i64"|"u64"   => true,
+      "usize"|"isize" => true,
+        //"String"    => false,
+        _             => false
     }
 }
-
 
 
 fn field_type_map(tp:String) -> String{
 
     if is_scalar(&tp){
-        return tp;
-    }
-
-    let nm = 
+        tp
+    }else{
         match tp.as_ref(){
             "String" => "graph_runtime_wasm::asc_abi::class::AscString".into(),
             _ => tp.to_owned()
-        };
-
-    //format!("graph::runtime::AscPtr<{}>", nm)
-    nm
-
+        }
+    }
 }
 
 fn field_type(fld: &syn::Field) -> String{

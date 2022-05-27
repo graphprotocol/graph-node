@@ -66,8 +66,8 @@ message Consensus {
 }
 
 message Timestamp {
-  int64 seconds = 1;
-  int32 nanos = 2;
+  int64 seconds = 1; //8
+  int32 nanos = 2;   //4
 }
 
 //message BlockID {

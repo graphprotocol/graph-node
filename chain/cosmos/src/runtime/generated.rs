@@ -508,38 +508,38 @@ impl AscIndexId for AscEvidence {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEvidence;
 }
 
-// #[repr(C)]
-// #[derive(AscType)]
-// pub  struct AscDuplicateVoteEvidence {
-//     pub vote_a: AscPtr<AscEventVote>,
-//     pub vote_b: AscPtr<AscEventVote>,
-//     pub total_voting_power: i64,
-//     pub validator_power: i64,
-//     pub timestamp: AscPtr<AscTimestamp>,
-//     pub _padding: u32,
-// }
+#[repr(C)]
+#[derive(AscType)]
+pub  struct AscDuplicateVoteEvidence {
+    pub vote_a: AscPtr<AscEventVote>,
+    pub vote_b: AscPtr<AscEventVote>,
+    pub total_voting_power: i64,
+    pub validator_power: i64,
+    pub timestamp: AscPtr<AscTimestamp>,
+    pub _padding: u32,
+}
 
-// impl AscIndexId for AscDuplicateVoteEvidence {
-//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosDuplicateVoteEvidence;
-// }
+impl AscIndexId for AscDuplicateVoteEvidence {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosDuplicateVoteEvidence;
+}
 
-// #[repr(C)]
-// #[derive(AscType)]
-// pub  struct AscEventVote {
-//     pub event_vote_type: i32,
-//     pub _padding: u32,
-//     pub height: u64,
-//     pub round: i32,
-//     pub block_id: AscPtr<AscBlockID>,
-//     pub timestamp: AscPtr<AscTimestamp>,
-//     pub validator_address: AscPtr<Uint8Array>,
-//     pub validator_index: i32,
-//     pub signature: AscPtr<Uint8Array>,
-// }
+#[repr(C)]
+#[derive(AscType)]
+pub  struct AscEventVote {
+    pub event_vote_type: i32,
+    pub _padding: u32,
+    pub height: u64,
+    pub round: i32,
+    pub block_id: AscPtr<AscBlockId>,
+    pub timestamp: AscPtr<AscTimestamp>,
+    pub validator_address: AscPtr<Uint8Array>,
+    pub validator_index: i32,
+    pub signature: AscPtr<Uint8Array>,
+}
 
-// impl AscIndexId for AscEventVote {
-//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEventVote;
-// }
+impl AscIndexId for AscEventVote {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEventVote;
+}
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]
@@ -558,20 +558,20 @@ impl Default for AscSignedMsgType {
     }
 }
 
-// #[repr(C)]
-// #[derive(AscType)]
-// pub  struct AscLightClientAttackEvidence {
-//     pub conflicting_block: AscPtr<AscLightBlock>,
-//     pub _padding: u32,
-//     pub common_height: i64,
-//     pub total_voting_power: i64,
-//     pub byzantine_validators: AscPtr<AscValidatorArray>,
-//     pub timestamp: AscPtr<AscTimestamp>,
-// }
+#[repr(C)]
+#[derive(AscType)]
+pub  struct AscLightClientAttackEvidence {
+    pub conflicting_block: AscPtr<AscLightBlock>,
+    pub _padding: u32,
+    pub common_height: i64,
+    pub total_voting_power: i64,
+    pub byzantine_validators: AscPtr<AscValidatorArray>,
+    pub timestamp: AscPtr<AscTimestamp>,
+}
 
-// impl AscIndexId for AscLightClientAttackEvidence {
-//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosLightClientAttackEvidence;
-// }
+impl AscIndexId for AscLightClientAttackEvidence {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosLightClientAttackEvidence;
+}
 
 // #[repr(C)]
 // #[derive(AscType)]
@@ -889,16 +889,16 @@ impl Default for AscSignMode {
     }
 }
 
-// #[repr(C)]
-// #[derive(AscType)]
-// pub  struct AscModeInfoMulti {
-//     pub bitarray: AscPtr<AscCompactBitArray>,
-//     pub mode_infos: AscPtr<AscModeInfoArray>,
-// }
+#[repr(C)]
+#[derive(AscType)]
+pub  struct AscModeInfoMulti {
+    pub bitarray: AscPtr<AscCompactBitArray>,
+    pub mode_infos: AscPtr<AscModeInfoArray>,
+}
 
-// impl AscIndexId for AscModeInfoMulti {
-//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosModeInfoMulti;
-// }
+impl AscIndexId for AscModeInfoMulti {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosModeInfoMulti;
+}
 
 // #[repr(C)]
 // #[derive(AscType)]

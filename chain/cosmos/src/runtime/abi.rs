@@ -268,8 +268,8 @@ impl ToAscObj<AscEvidence> for codec::Evidence {
         };
 
         Ok(AscEvidence {
-            duplicate_vote_evidence,
-            light_client_attack_evidence,
+            duplicate_vote_evidence:      if let Sum::DuplicateVoteEvidence(v) = self.sum.as_ref().unwrap() {asc_new(heap, v, gas)? } else {AscPtr::null()},
+            light_client_attack_evidence: if let Sum::LightClientAttackEvidence(v) = self.sum.as_ref().unwrap() { asc_new(heap, v, gas)? } else {AscPtr::null()} 
         })
     }
 }
@@ -334,48 +334,48 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
 //     }
 // }
 
-// impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
-//         Ok(AscLightClientAttackEvidence {
-//             conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
-//             _padding: 0,
-//             common_height: self.common_height,
-//             total_voting_power: self.total_voting_power,
-//             byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
-//             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
-//         })
-//     }
-// }
+impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
+        Ok(AscLightClientAttackEvidence {
+            conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
+            _padding: 0,
+            common_height: self.common_height,
+            total_voting_power: self.total_voting_power,
+            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
+        })
+    }
+}
 
-// impl ToAscObj<AscLightBlock> for codec::LightBlock {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscLightBlock, DeterministicHostError> {
-//         Ok(AscLightBlock {
-//             signed_header: asc_new_or_null(heap, &self.signed_header, gas)?,
-//             validator_set: asc_new_or_null(heap, &self.validator_set, gas)?,
-//         })
-//     }
-// }
+impl ToAscObj<AscLightBlock> for codec::LightBlock {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscLightBlock, DeterministicHostError> {
+        Ok(AscLightBlock {
+            signed_header: asc_new_or_null(heap, &self.signed_header, gas)?,
+            validator_set: asc_new_or_null(heap, &self.validator_set, gas)?,
+        })
+    }
+}
 
-// impl ToAscObj<AscSignedHeader> for codec::SignedHeader {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscSignedHeader, DeterministicHostError> {
-//         Ok(AscSignedHeader {
-//             header: asc_new_or_null(heap, &self.header, gas)?,
-//             commit: asc_new_or_null(heap, &self.commit, gas)?,
-//         })
-//     }
-// }
+impl ToAscObj<AscSignedHeader> for codec::SignedHeader {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscSignedHeader, DeterministicHostError> {
+        Ok(AscSignedHeader {
+            header: asc_new_or_null(heap, &self.header, gas)?,
+            commit: asc_new_or_null(heap, &self.commit, gas)?,
+        })
+    }
+}
 
 // impl ToAscObj<AscCommit> for codec::Commit {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -996,346 +996,346 @@ where
         None => Err(missing_field_error(type_name, field_name)),
     }
 }
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use graph_runtime_wasm::asc_abi::class::AscString;
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use graph_runtime_wasm::asc_abi::class::AscString;
+//     /// A macro that takes an ASc struct value definition and asserts that the struct size
+//     /// (mem::size_of) is the same as the sum of all its field ASc byte representation
+//     /// (to_asc_bytes) sizes.
+//     macro_rules! assert_asc_size {
+//         ($struct_name:ident {
+//             $($field:ident : $field_value:expr),+
+//             $(,)? // trailing
+//         }) => {
+//             let value = $struct_name {
+//                 $($field: $field_value),+
+//             };
 
-    /// A macro that takes an ASc struct value definition and asserts that the struct size
-    /// (mem::size_of) is the same as the sum of all its field ASc byte representation
-    /// (to_asc_bytes) sizes.
-    macro_rules! assert_asc_size {
-        ($struct_name:ident {
-            $($field:ident : $field_value:expr),+
-            $(,)? // trailing
-        }) => {
-            let value = $struct_name {
-                $($field: $field_value),+
-            };
+//             let mem_size = std::mem::size_of::<$struct_name>();
+//             let mut bytes = Vec::with_capacity(mem_size);
 
-            let mem_size = std::mem::size_of::<$struct_name>();
-            let mut bytes = Vec::with_capacity(mem_size);
+//             $(bytes.extend_from_slice(
+//                     &value.$field.to_asc_bytes()
+//                     .expect("failed to turn {} {} field value to asc bytes"));)+
 
-            $(bytes.extend_from_slice(
-                    &value.$field.to_asc_bytes()
-                    .expect("failed to turn {} {} field value to asc bytes"));)+
+//             assert_eq!(
+//                 mem_size,
+//                 bytes.len(),
+//                 "Expected {} to have size {}, but it was {}. \
+//                 Field reordering or padding needed",
+//                 stringify!($struct_name),
+//                 bytes.len(),
+//                 mem_size,
+//             );
+//         };
+//     }
 
-            assert_eq!(
-                mem_size,
-                bytes.len(),
-                "Expected {} to have size {}, but it was {}. \
-                Field reordering or padding needed",
-                stringify!($struct_name),
-                bytes.len(),
-                mem_size,
-            );
-        };
-    }
+//     #[ignore]
+//     #[test]
+//     fn test_asc_type_alignment() {
+//         // TODO: automatically generate these tests for each struct in generated module that derives
+//         // AscType
 
-    #[test]
-    fn test_asc_type_alignment() {
-        // TODO: automatically generate these tests for each struct in generated module that derives
-        // AscType
+//         assert_asc_size!(AscBlock {
+//             header: AscPtr::<AscHeader>::null(),
+//             evidence: AscPtr::<AscEvidenceList>::null(),
+//             last_commit: AscPtr::<AscCommit>::null(),
+//             result_begin_block: AscPtr::<AscResponseBeginBlock>::null(),
+//             result_end_block: AscPtr::<AscResponseEndBlock>::null(),
+//             transactions: AscPtr::<AscTxResultArray>::null(),
+//             validator_updates: AscPtr::<AscValidatorArray>::null(),
+//         });
 
-        assert_asc_size!(AscBlock {
-            header: AscPtr::<AscHeader>::null(),
-            evidence: AscPtr::<AscEvidenceList>::null(),
-            last_commit: AscPtr::<AscCommit>::null(),
-            result_begin_block: AscPtr::<AscResponseBeginBlock>::null(),
-            result_end_block: AscPtr::<AscResponseEndBlock>::null(),
-            transactions: AscPtr::<AscTxResultArray>::null(),
-            validator_updates: AscPtr::<AscValidatorArray>::null(),
-        });
+//         assert_asc_size!(AscHeaderOnlyBlock {
+//             header: AscPtr::<AscHeader>::null(),
+//         });
 
-        assert_asc_size!(AscHeaderOnlyBlock {
-            header: AscPtr::<AscHeader>::null(),
-        });
+//         assert_asc_size!(AscEventData {
+//             event: AscPtr::<AscEvent>::null(),
+//             block: AscPtr::<AscHeaderOnlyBlock>::null(),
+//         });
 
-        assert_asc_size!(AscEventData {
-            event: AscPtr::<AscEvent>::null(),
-            block: AscPtr::<AscHeaderOnlyBlock>::null(),
-        });
+//         assert_asc_size!(AscTransactionData {
+//             tx: AscPtr::<AscTxResult>::null(),
+//             block: AscPtr::<AscHeaderOnlyBlock>::null(),
+//         });
 
-        assert_asc_size!(AscTransactionData {
-            tx: AscPtr::<AscTxResult>::null(),
-            block: AscPtr::<AscHeaderOnlyBlock>::null(),
-        });
+//         assert_asc_size!(AscHeader {
+//             version: AscPtr::<AscConsensus>::null(),
+//             chain_id: AscPtr::<AscString>::null(),
+//             height: 0,
+//             time: AscPtr::<AscTimestamp>::null(),
+//             last_block_id: AscPtr::<AscBlockId>::null(),
+//             last_commit_hash: AscPtr::<Uint8Array>::null(),
+//             data_hash: AscPtr::<Uint8Array>::null(),
+//             validators_hash: AscPtr::<Uint8Array>::null(),
+//             next_validators_hash: AscPtr::<Uint8Array>::null(),
+//             consensus_hash: AscPtr::<Uint8Array>::null(),
+//             app_hash: AscPtr::<Uint8Array>::null(),
+//             last_results_hash: AscPtr::<Uint8Array>::null(),
+//             evidence_hash: AscPtr::<Uint8Array>::null(),
+//             proposer_address: AscPtr::<Uint8Array>::null(),
+//             hash: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscHeader {
-            version: AscPtr::<AscConsensus>::null(),
-            chain_id: AscPtr::<AscString>::null(),
-            height: 0,
-            time: AscPtr::<AscTimestamp>::null(),
-            last_block_id: AscPtr::<AscBlockId>::null(),
-            last_commit_hash: AscPtr::<Uint8Array>::null(),
-            data_hash: AscPtr::<Uint8Array>::null(),
-            validators_hash: AscPtr::<Uint8Array>::null(),
-            next_validators_hash: AscPtr::<Uint8Array>::null(),
-            consensus_hash: AscPtr::<Uint8Array>::null(),
-            app_hash: AscPtr::<Uint8Array>::null(),
-            last_results_hash: AscPtr::<Uint8Array>::null(),
-            evidence_hash: AscPtr::<Uint8Array>::null(),
-            proposer_address: AscPtr::<Uint8Array>::null(),
-            hash: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscConsensus { block: 0, app: 0 });
 
-        assert_asc_size!(AscConsensus { block: 0, app: 0 });
+//         assert_asc_size!(AscTimestamp {
+//             seconds: 0, //8
+//             nanos: 0,   //4
+//             _padding0:0, //1
+//             _padding1:0, //1
+//             _padding2:0, //1
+//             _padding3:0, //1
 
-        assert_asc_size!(AscTimestamp {
-            seconds: 0, //8
-            nanos: 0,   //4
-            _padding0:0, //1
-            _padding1:0, //1
-            _padding2:0, //1
-            _padding3:0, //1
+//         });
 
-        });
+//         assert_asc_size!(AscBlockId {
+//             hash: AscPtr::<Uint8Array>::null(),
+//             part_set_header: AscPtr::<AscPartSetHeader>::null(),
+//         });
 
-        assert_asc_size!(AscBlockId {
-            hash: AscPtr::<Uint8Array>::null(),
-            part_set_header: AscPtr::<AscPartSetHeader>::null(),
-        });
+//         assert_asc_size!(AscPartSetHeader {
+//             total: 0,
+//             hash: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscPartSetHeader {
-            total: 0,
-            hash: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscEvidenceList {
+//             evidence: AscPtr::<AscEvidenceArray>::null(),
+//         });
 
-        assert_asc_size!(AscEvidenceList {
-            evidence: AscPtr::<AscEvidenceArray>::null(),
-        });
+//         assert_asc_size!(AscEvidence {
+//             duplicate_vote_evidence: AscPtr::<AscDuplicateVoteEvidence>::null(),
+//             light_client_attack_evidence: AscPtr::<AscLightClientAttackEvidence>::null(),
+//         });
 
-        assert_asc_size!(AscEvidence {
-            duplicate_vote_evidence: AscPtr::<AscDuplicateVoteEvidence>::null(),
-            light_client_attack_evidence: AscPtr::<AscLightClientAttackEvidence>::null(),
-        });
+//         assert_asc_size!(AscDuplicateVoteEvidence {
+//             vote_a: AscPtr::<AscEventVote>::null(),
+//             vote_b: AscPtr::<AscEventVote>::null(),
+//             total_voting_power: 0,
+//             validator_power: 0,
+//             timestamp: AscPtr::<AscTimestamp>::null(),
 
-        assert_asc_size!(AscDuplicateVoteEvidence {
-            vote_a: AscPtr::<AscEventVote>::null(),
-            vote_b: AscPtr::<AscEventVote>::null(),
-            total_voting_power: 0,
-            validator_power: 0,
-            timestamp: AscPtr::<AscTimestamp>::null(),
+//             //_padding: 0,
+//         });
 
-            //_padding: 0,
-        });
+//         assert_asc_size!(AscEventVote {
+//             event_vote_type: 0,
+//             //_padding: 0,
+//             height: 0,
+//             round: 0,
+//             block_id: AscPtr::<AscBlockId>::null(),
+//             timestamp: AscPtr::<AscTimestamp>::null(),
+//             validator_address: AscPtr::<Uint8Array>::null(),
+//             validator_index: 0,
+//             signature: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscEventVote {
-            event_vote_type: 0,
-            //_padding: 0,
-            height: 0,
-            round: 0,
-            block_id: AscPtr::<AscBlockId>::null(),
-            timestamp: AscPtr::<AscTimestamp>::null(),
-            validator_address: AscPtr::<Uint8Array>::null(),
-            validator_index: 0,
-            signature: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscLightClientAttackEvidence {
+//             conflicting_block: AscPtr::<AscLightBlock>::null(),
+//             //_padding: 0,
+//             common_height: 0,
+//             total_voting_power: 0,
+//             byzantine_validators: AscPtr::<AscValidatorArray>::null(),
+//             timestamp: AscPtr::<AscTimestamp>::null(),
+//         });
 
-        assert_asc_size!(AscLightClientAttackEvidence {
-            conflicting_block: AscPtr::<AscLightBlock>::null(),
-            //_padding: 0,
-            common_height: 0,
-            total_voting_power: 0,
-            byzantine_validators: AscPtr::<AscValidatorArray>::null(),
-            timestamp: AscPtr::<AscTimestamp>::null(),
-        });
+//         assert_asc_size!(AscLightBlock {
+//             signed_header: AscPtr::<AscSignedHeader>::null(),
+//             validator_set: AscPtr::<AscValidatorSet>::null(),
+//         });
 
-        assert_asc_size!(AscLightBlock {
-            signed_header: AscPtr::<AscSignedHeader>::null(),
-            validator_set: AscPtr::<AscValidatorSet>::null(),
-        });
+//         assert_asc_size!(AscSignedHeader {
+//             header: AscPtr::<AscHeader>::null(),
+//             commit: AscPtr::<AscCommit>::null(),
+//         });
 
-        assert_asc_size!(AscSignedHeader {
-            header: AscPtr::<AscHeader>::null(),
-            commit: AscPtr::<AscCommit>::null(),
-        });
+//         assert_asc_size!(AscCommit {
+//             height: 0,
+//             round: 0,
+//             block_id: AscPtr::<AscBlockID>::null(),
+//             signatures: AscPtr::<AscCommitSigArray>::null(),
+//             //_padding: 0,
+//         });
 
-        assert_asc_size!(AscCommit {
-            height: 0,
-            round: 0,
-            block_id: AscPtr::<AscBlockID>::null(),
-            signatures: AscPtr::<AscCommitSigArray>::null(),
-            //_padding: 0,
-        });
+//         assert_asc_size!(AscCommitSig {
+//             block_id_flag: 0,
+//             validator_address: AscPtr::<Uint8Array>::null(),
+//             timestamp: AscPtr::<AscTimestamp>::null(),
+//             signature: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscCommitSig {
-            block_id_flag: 0,
-            validator_address: AscPtr::<Uint8Array>::null(),
-            timestamp: AscPtr::<AscTimestamp>::null(),
-            signature: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscValidatorSet {
+//             validators: AscPtr::<AscValidatorArray>::null(),
+//             proposer: AscPtr::<AscValidator>::null(),
+//             total_voting_power: 0,
+//         });
 
-        assert_asc_size!(AscValidatorSet {
-            validators: AscPtr::<AscValidatorArray>::null(),
-            proposer: AscPtr::<AscValidator>::null(),
-            total_voting_power: 0,
-        });
+//         assert_asc_size!(AscValidator {
+//             address: AscPtr::<Uint8Array>::null(),
+//             pub_key: AscPtr::<AscPublicKey>::null(),
+//             voting_power: 0,
+//             proposer_priority: 0,
+//         });
 
-        assert_asc_size!(AscValidator {
-            address: AscPtr::<Uint8Array>::null(),
-            pub_key: AscPtr::<AscPublicKey>::null(),
-            voting_power: 0,
-            proposer_priority: 0,
-        });
+//         assert_asc_size!(AscPublicKey {
+//             ed25519: AscPtr::<Uint8Array>::null(),
+//             secp256k1: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscPublicKey {
-            ed25519: AscPtr::<Uint8Array>::null(),
-            secp256k1: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscResponseBeginBlock {
+//             events: AscPtr::<AscEventArray>::null(),
+//         });
 
-        assert_asc_size!(AscResponseBeginBlock {
-            events: AscPtr::<AscEventArray>::null(),
-        });
+//         assert_asc_size!(AscEvent {
+//             event_type: AscPtr::<AscString>::null(),
+//             attributes: AscPtr::<AscEventAttributeArray>::null(),
+//         });
 
-        assert_asc_size!(AscEvent {
-            event_type: AscPtr::<AscString>::null(),
-            attributes: AscPtr::<AscEventAttributeArray>::null(),
-        });
+//         assert_asc_size!(AscEventAttribute {
+//             key: AscPtr::<AscString>::null(),
+//             value: AscPtr::<AscString>::null(),
+//             index: false,
+//             _padding0: 0,
+//             //_padding1: 0
+//         });
 
-        assert_asc_size!(AscEventAttribute {
-            key: AscPtr::<AscString>::null(),
-            value: AscPtr::<AscString>::null(),
-            index: false,
-            _padding0: 0,
-            //_padding1: 0
-        });
+//         assert_asc_size!(AscResponseEndBlock {
+//             validator_updates: AscPtr::<AscValidatorUpdateArray>::null(),
+//             consensus_param_updates: AscPtr::<AscConsensusParams>::null(),
+//             events: AscPtr::<AscEventArray>::null(),
+//         });
 
-        assert_asc_size!(AscResponseEndBlock {
-            validator_updates: AscPtr::<AscValidatorUpdateArray>::null(),
-            consensus_param_updates: AscPtr::<AscConsensusParams>::null(),
-            events: AscPtr::<AscEventArray>::null(),
-        });
+//         assert_asc_size!(AscValidatorUpdate {
+//             address: AscPtr::<Uint8Array>::null(),
+//             pub_key: AscPtr::<AscPublicKey>::null(),
+//             power: 0,
+//         });
 
-        assert_asc_size!(AscValidatorUpdate {
-            address: AscPtr::<Uint8Array>::null(),
-            pub_key: AscPtr::<AscPublicKey>::null(),
-            power: 0,
-        });
+//         assert_asc_size!(AscConsensusParams {
+//             block: AscPtr::<AscBlockParams>::null(),
+//             evidence: AscPtr::<AscEvidenceParams>::null(),
+//             validator: AscPtr::<AscValidatorParams>::null(),
+//             version: AscPtr::<AscVersionParams>::null(),
+//         });
 
-        assert_asc_size!(AscConsensusParams {
-            block: AscPtr::<AscBlockParams>::null(),
-            evidence: AscPtr::<AscEvidenceParams>::null(),
-            validator: AscPtr::<AscValidatorParams>::null(),
-            version: AscPtr::<AscVersionParams>::null(),
-        });
+//         assert_asc_size!(AscBlockParams {
+//             max_bytes: 0,
+//             max_gas: 0,
+//         });
 
-        assert_asc_size!(AscBlockParams {
-            max_bytes: 0,
-            max_gas: 0,
-        });
+//         assert_asc_size!(AscEvidenceParams {
+//             max_age_num_blocks: 0,
+//             max_age_duration: AscPtr::<AscDuration>::null(),
+//             //_padding: 0,
+//             max_bytes: 0,
+//         });
 
-        assert_asc_size!(AscEvidenceParams {
-            max_age_num_blocks: 0,
-            max_age_duration: AscPtr::<AscDuration>::null(),
-            //_padding: 0,
-            max_bytes: 0,
-        });
+//         assert_asc_size!(AscDuration {
+//             seconds: 0, //8
+//             nanos: 0,   //4
+//             //_padding0:0,
+//             //_padding1:0,
+//             //_padding2:0,
+//             //_padding3:0,
 
-        assert_asc_size!(AscDuration {
-            seconds: 0, //8
-            nanos: 0,   //4
-            //_padding0:0,
-            //_padding1:0,
-            //_padding2:0,
-            //_padding3:0,
+//         });
 
-        });
+//         assert_asc_size!(AscValidatorParams {
+//             pub_key_types: AscPtr::<Array<AscPtr<AscString>>>::null(),
+//         });
 
-        assert_asc_size!(AscValidatorParams {
-            pub_key_types: AscPtr::<Array<AscPtr<AscString>>>::null(),
-        });
+//         assert_asc_size!(AscVersionParams { app_version: 0 });
 
-        assert_asc_size!(AscVersionParams { app_version: 0 });
+//         assert_asc_size!(AscTxResult {
+//             height: 0,
+//             index: 0,
+//             tx: AscPtr::<AscTx>::null(),
+//             result: AscPtr::<AscResponseDeliverTx>::null(),
+//             hash: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscTxResult {
-            height: 0,
-            index: 0,
-            tx: AscPtr::<AscTx>::null(),
-            result: AscPtr::<AscResponseDeliverTx>::null(),
-            hash: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscTx {
+//             body: AscPtr::<AscTxBody>::null(),
+//             auth_info: AscPtr::<AscAuthInfo>::null(),
+//             signatures: AscPtr::<AscBytesArray>::null(),
+//         });
 
-        assert_asc_size!(AscTx {
-            body: AscPtr::<AscTxBody>::null(),
-            auth_info: AscPtr::<AscAuthInfo>::null(),
-            signatures: AscPtr::<AscBytesArray>::null(),
-        });
+//         assert_asc_size!(AscTxBody {
+//             messages: AscPtr::<AscAnyArray>::null(),
+//             memo: AscPtr::<AscString>::null(),
+//             timeout_height: 0,
+//             extension_options: AscPtr::<AscAnyArray>::null(),
+//             non_critical_extension_options: AscPtr::<AscAnyArray>::null(),
+//         });
 
-        assert_asc_size!(AscTxBody {
-            messages: AscPtr::<AscAnyArray>::null(),
-            memo: AscPtr::<AscString>::null(),
-            timeout_height: 0,
-            extension_options: AscPtr::<AscAnyArray>::null(),
-            non_critical_extension_options: AscPtr::<AscAnyArray>::null(),
-        });
+//         assert_asc_size!(AscAny {
+//             type_url: AscPtr::<AscString>::null(),
+//             value: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscAny {
-            type_url: AscPtr::<AscString>::null(),
-            value: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscAuthInfo {
+//             signer_infos: AscPtr::<AscSignerInfoArray>::null(),
+//             fee: AscPtr::<AscFee>::null(),
+//             tip: AscPtr::<AscTip>::null(),
+//         });
 
-        assert_asc_size!(AscAuthInfo {
-            signer_infos: AscPtr::<AscSignerInfoArray>::null(),
-            fee: AscPtr::<AscFee>::null(),
-            tip: AscPtr::<AscTip>::null(),
-        });
+//         assert_asc_size!(AscSignerInfo {
+//             public_key: AscPtr::<AscAny>::null(),
+//             mode_info: AscPtr::<AscModeInfo>::null(),
+//             sequence: 0,
+//         });
 
-        assert_asc_size!(AscSignerInfo {
-            public_key: AscPtr::<AscAny>::null(),
-            mode_info: AscPtr::<AscModeInfo>::null(),
-            sequence: 0,
-        });
+//         assert_asc_size!(AscModeInfo {
+//             single: AscPtr::<AscModeInfoSingle>::null(),
+//             multi: AscPtr::<AscModeInfoMulti>::null(),
+//         });
 
-        assert_asc_size!(AscModeInfo {
-            single: AscPtr::<AscModeInfoSingle>::null(),
-            multi: AscPtr::<AscModeInfoMulti>::null(),
-        });
+//         assert_asc_size!(AscModeInfoSingle { mode: 0 });
 
-        assert_asc_size!(AscModeInfoSingle { mode: 0 });
+//         assert_asc_size!(AscModeInfoMulti {
+//             bitarray: AscPtr::<AscCompactBitArray>::null(),
+//             mode_infos: AscPtr::<AscModeInfoArray>::null(),
+//         });
 
-        assert_asc_size!(AscModeInfoMulti {
-            bitarray: AscPtr::<AscCompactBitArray>::null(),
-            mode_infos: AscPtr::<AscModeInfoArray>::null(),
-        });
+//         assert_asc_size!(AscCompactBitArray {
+//             extra_bits_stored: 0,
+//             elems: AscPtr::<Uint8Array>::null(),
+//         });
 
-        assert_asc_size!(AscCompactBitArray {
-            extra_bits_stored: 0,
-            elems: AscPtr::<Uint8Array>::null(),
-        });
+//         assert_asc_size!(AscFee {
+//             amount: AscPtr::<AscCoinArray>::null(),
+//             //_padding: 0,
+//             gas_limit: 0,
+//             payer: AscPtr::<AscString>::null(),
+//             granter: AscPtr::<AscString>::null(),
+//         });
 
-        assert_asc_size!(AscFee {
-            amount: AscPtr::<AscCoinArray>::null(),
-            //_padding: 0,
-            gas_limit: 0,
-            payer: AscPtr::<AscString>::null(),
-            granter: AscPtr::<AscString>::null(),
-        });
+//         assert_asc_size!(AscCoin {
+//             denom: AscPtr::<AscString>::null(),
+//             amount: AscPtr::<AscString>::null(),
+//         });
 
-        assert_asc_size!(AscCoin {
-            denom: AscPtr::<AscString>::null(),
-            amount: AscPtr::<AscString>::null(),
-        });
+//         assert_asc_size!(AscTip {
+//             amount: AscPtr::<AscCoinArray>::null(),
+//             tipper: AscPtr::<AscString>::null(),
+//         });
 
-        assert_asc_size!(AscTip {
-            amount: AscPtr::<AscCoinArray>::null(),
-            tipper: AscPtr::<AscString>::null(),
-        });
+//         assert_asc_size!(AscResponseDeliverTx {
+//             code: 0,
+//             data: AscPtr::<Uint8Array>::null(),
+//             log: AscPtr::<AscString>::null(),
+//             info: AscPtr::<AscString>::null(),
+//             gas_wanted: 0,
+//             gas_used: 0,
+//             events: AscPtr::<AscEventArray>::null(),
+//             codespace: AscPtr::<AscString>::null(),
+//         });
 
-        assert_asc_size!(AscResponseDeliverTx {
-            code: 0,
-            data: AscPtr::<Uint8Array>::null(),
-            log: AscPtr::<AscString>::null(),
-            info: AscPtr::<AscString>::null(),
-            gas_wanted: 0,
-            gas_used: 0,
-            events: AscPtr::<AscEventArray>::null(),
-            codespace: AscPtr::<AscString>::null(),
-        });
-
-        assert_asc_size!(AscValidatorSetUpdates {
-            validator_updates: AscPtr::<AscValidatorArray>::null(),
-        });
-    }
-}
+//         assert_asc_size!(AscValidatorSetUpdates {
+//             validator_updates: AscPtr::<AscValidatorArray>::null(),
+//         });
+//     }
+// }

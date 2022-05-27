@@ -1,8 +1,5 @@
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscBlock)]
-#[required(header,evidence)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(header,evidence)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Block {
     #[prost(message, optional, tag="1")]
@@ -26,20 +23,15 @@ pub struct Block {
 ///
 /// This can be used to unpack a \[Block\] when only the \[Header\] information
 /// is required and greatly reduce required memory.
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscHeaderOnlyBlock)]
-#[required(header)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(header)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct HeaderOnlyBlock {
     #[prost(message, optional, tag="1")]
     pub header: ::core::option::Option<Header>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEventData)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventData {
     #[prost(message, optional, tag="1")]
@@ -47,10 +39,8 @@ pub struct EventData {
     #[prost(message, optional, tag="2")]
     pub block: ::core::option::Option<HeaderOnlyBlock>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTransactionData)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionData {
     #[prost(message, optional, tag="1")]
@@ -58,11 +48,8 @@ pub struct TransactionData {
     #[prost(message, optional, tag="2")]
     pub block: ::core::option::Option<HeaderOnlyBlock>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscHeader)]
-#[required(version,time,last_block_id)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(version,time,last_block_id)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Header {
     #[prost(message, optional, tag="1")]
@@ -97,10 +84,8 @@ pub struct Header {
     #[prost(bytes="vec", tag="15")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscConsensus)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Consensus {
     #[prost(uint64, tag="1")]
@@ -108,23 +93,20 @@ pub struct Consensus {
     #[prost(uint64, tag="2")]
     pub app: u64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTimestamp)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Timestamp {
+    ///8
     #[prost(int64, tag="1")]
     pub seconds: i64,
+    ///4
     #[prost(int32, tag="2")]
     pub nanos: i32,
 }
 ///message BlockID {
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscBlockId)]
-#[required(part_set_header)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(part_set_header)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockId {
     #[prost(bytes="vec", tag="1")]
@@ -132,10 +114,8 @@ pub struct BlockId {
     #[prost(message, optional, tag="2")]
     pub part_set_header: ::core::option::Option<PartSetHeader>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscPartSetHeader)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PartSetHeader {
     #[prost(uint32, tag="1")]
@@ -143,11 +123,8 @@ pub struct PartSetHeader {
     #[prost(bytes="vec", tag="2")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEvidenceList)]
-#[required(evidence)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(evidence)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EvidenceList {
     #[prost(message, repeated, tag="1")]
@@ -168,11 +145,6 @@ pub mod evidence {
         LightClientAttackEvidence(super::LightClientAttackEvidence),
     }
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscDuplicateVoteEvidence)]
-#[required(timestamp)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DuplicateVoteEvidence {
     #[prost(message, optional, tag="1")]
@@ -186,11 +158,8 @@ pub struct DuplicateVoteEvidence {
     #[prost(message, optional, tag="5")]
     pub timestamp: ::core::option::Option<Timestamp>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEventVote)]
-#[required(block_id,timestamp)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(block_id,timestamp)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventVote {
     #[prost(enumeration="SignedMsgType", tag="1")]
@@ -211,11 +180,6 @@ pub struct EventVote {
     #[prost(bytes="vec", tag="8")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscLightClientAttackEvidence)]
-#[required(timestamp)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightClientAttackEvidence {
     #[prost(message, optional, tag="1")]
@@ -229,10 +193,8 @@ pub struct LightClientAttackEvidence {
     #[prost(message, optional, tag="5")]
     pub timestamp: ::core::option::Option<Timestamp>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscLightBlock)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightBlock {
     #[prost(message, optional, tag="1")]
@@ -240,10 +202,8 @@ pub struct LightBlock {
     #[prost(message, optional, tag="2")]
     pub validator_set: ::core::option::Option<ValidatorSet>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscSignedHeader)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignedHeader {
     #[prost(message, optional, tag="1")]
@@ -251,11 +211,8 @@ pub struct SignedHeader {
     #[prost(message, optional, tag="2")]
     pub commit: ::core::option::Option<Commit>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscCommit)]
-#[required(block_id,signatures)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(block_id,signatures)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Commit {
     #[prost(int64, tag="1")]
@@ -268,11 +225,8 @@ pub struct Commit {
     #[prost(message, repeated, tag="4")]
     pub signatures: ::prost::alloc::vec::Vec<CommitSig>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscCommitSig)]
-#[required(timestamp)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(timestamp)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommitSig {
     #[prost(enumeration="BlockIdFlag", tag="1")]
@@ -284,10 +238,8 @@ pub struct CommitSig {
     #[prost(bytes="vec", tag="4")]
     pub signature: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscValidatorSet)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSet {
     #[prost(message, repeated, tag="1")]
@@ -297,11 +249,8 @@ pub struct ValidatorSet {
     #[prost(int64, tag="3")]
     pub total_voting_power: i64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscValidator)]
-#[required(pub_key)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(pub_key)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Validator {
     #[prost(bytes="vec", tag="1")]
@@ -328,21 +277,15 @@ pub mod public_key {
         Secp256k1(::prost::alloc::vec::Vec<u8>),
     }
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscResponseBeginBlock)]
-#[required(events)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(events)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseBeginBlock {
     #[prost(message, repeated, tag="1")]
     pub events: ::prost::alloc::vec::Vec<Event>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEvent)]
-#[required(attributes)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(attributes)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Event {
     #[prost(string, tag="1")]
@@ -350,10 +293,8 @@ pub struct Event {
     #[prost(message, repeated, tag="2")]
     pub attributes: ::prost::alloc::vec::Vec<EventAttribute>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEventAttribute)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EventAttribute {
     #[prost(string, tag="1")]
@@ -363,10 +304,8 @@ pub struct EventAttribute {
     #[prost(bool, tag="3")]
     pub index: bool,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscResponseEndBlock)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseEndBlock {
     #[prost(message, repeated, tag="1")]
@@ -376,11 +315,8 @@ pub struct ResponseEndBlock {
     #[prost(message, repeated, tag="3")]
     pub events: ::prost::alloc::vec::Vec<Event>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscValidatorUpdate)]
-#[required(pub_key)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(pub_key)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorUpdate {
     #[prost(bytes="vec", tag="1")]
@@ -390,11 +326,8 @@ pub struct ValidatorUpdate {
     #[prost(int64, tag="3")]
     pub power: i64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscConsensusParams)]
-#[required(block,evidence,validator,version)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(block,evidence,validator,version)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConsensusParams {
     #[prost(message, optional, tag="1")]
@@ -406,10 +339,8 @@ pub struct ConsensusParams {
     #[prost(message, optional, tag="4")]
     pub version: ::core::option::Option<VersionParams>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscBlockParams)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockParams {
     #[prost(int64, tag="1")]
@@ -417,11 +348,8 @@ pub struct BlockParams {
     #[prost(int64, tag="2")]
     pub max_gas: i64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscEvidenceParams)]
-#[required(max_age_duration)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(max_age_duration)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct EvidenceParams {
     #[prost(int64, tag="1")]
@@ -431,10 +359,8 @@ pub struct EvidenceParams {
     #[prost(int64, tag="3")]
     pub max_bytes: i64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscDuration)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Duration {
     #[prost(int64, tag="1")]
@@ -442,28 +368,22 @@ pub struct Duration {
     #[prost(int32, tag="2")]
     pub nanos: i32,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscValidatorParams)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorParams {
     #[prost(string, repeated, tag="1")]
     pub pub_key_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscVersionParams)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct VersionParams {
     #[prost(uint64, tag="1")]
     pub app_version: u64,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTxResult)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxResult {
     #[prost(uint64, tag="1")]
@@ -477,10 +397,8 @@ pub struct TxResult {
     #[prost(bytes="vec", tag="5")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTx)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Tx {
     #[prost(message, optional, tag="1")]
@@ -490,10 +408,8 @@ pub struct Tx {
     #[prost(bytes="vec", repeated, tag="3")]
     pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTxBody)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TxBody {
     #[prost(message, repeated, tag="1")]
@@ -507,10 +423,8 @@ pub struct TxBody {
     #[prost(message, repeated, tag="2047")]
     pub non_critical_extension_options: ::prost::alloc::vec::Vec<::prost_types::Any>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscAny)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Any {
     #[prost(string, tag="1")]
@@ -518,10 +432,8 @@ pub struct Any {
     #[prost(bytes="vec", tag="2")]
     pub value: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscAuthInfo)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AuthInfo {
     #[prost(message, repeated, tag="1")]
@@ -531,10 +443,8 @@ pub struct AuthInfo {
     #[prost(message, optional, tag="3")]
     pub tip: ::core::option::Option<Tip>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscSignerInfo)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignerInfo {
     #[prost(message, optional, tag="1")]
@@ -564,10 +474,6 @@ pub struct ModeInfoSingle {
     #[prost(enumeration="SignMode", tag="1")]
     pub mode: i32,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscModeInfoMulti)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModeInfoMulti {
     #[prost(message, optional, tag="1")]
@@ -575,10 +481,8 @@ pub struct ModeInfoMulti {
     #[prost(message, repeated, tag="2")]
     pub mode_infos: ::prost::alloc::vec::Vec<ModeInfo>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscCompactBitArray)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CompactBitArray {
     #[prost(uint32, tag="1")]
@@ -586,11 +490,8 @@ pub struct CompactBitArray {
     #[prost(bytes="vec", tag="2")]
     pub elems: ::prost::alloc::vec::Vec<u8>,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscFee)]
-#[required(amount)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(amount)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Fee {
     #[prost(message, repeated, tag="1")]
@@ -602,11 +503,8 @@ pub struct Fee {
     #[prost(string, tag="4")]
     pub granter: ::prost::alloc::string::String,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscCoin)]
-#[required(amount)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(amount)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Coin {
     #[prost(string, tag="1")]
@@ -614,11 +512,8 @@ pub struct Coin {
     #[prost(string, tag="2")]
     pub amount: ::prost::alloc::string::String,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscTip)]
-#[required(amount)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(amount)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Tip {
     #[prost(message, repeated, tag="1")]
@@ -626,11 +521,8 @@ pub struct Tip {
     #[prost(string, tag="2")]
     pub tipper: ::prost::alloc::string::String,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscResponseDeliverTx)]
-#[required(events)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type(events)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ResponseDeliverTx {
     #[prost(uint32, tag="1")]
@@ -650,10 +542,8 @@ pub struct ResponseDeliverTx {
     #[prost(string, tag="8")]
     pub codespace: ::prost::alloc::string::String,
 }
-#[derive(graph_runtime_derive::ToAscObj)]
-#[asc_obj_type(AscValidatorSetUpdates)]
-#[derive(graph_runtime_derive::GenerateAscType)]
-#[chain_name(Cosmos)]
+#[derive(graph_runtime_derive::ToAscType)]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ValidatorSetUpdates {
     #[prost(message, repeated, tag="1")]

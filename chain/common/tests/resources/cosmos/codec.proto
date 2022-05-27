@@ -153,7 +153,14 @@ message Evidence {
   oneof sum {
     DuplicateVoteEvidence     duplicate_vote_evidence       = 1;
     LightClientAttackEvidence light_client_attack_evidence  = 2;
-  }
+  } 
+  
+  uint64        height            = 3; // must be > 0
+  
+  oneof sum_a {
+    DuplicateVoteEvidence     duplicate_vote_evidence_a       = 4;
+    LightClientAttackEvidence light_client_attack_evidence_a  = 5;
+  } 
 }
 
 message EvidenceList {

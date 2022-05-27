@@ -3,6 +3,7 @@ use std::fmt::Debug;
 
 use protobuf::descriptor::FieldDescriptorProto;
 use protobuf::descriptor::DescriptorProto;
+use protobuf::descriptor::OneofDescriptorProto;
 use protobuf::UnknownValueRef;
 use protobuf::Message;
 use std::convert::From;
@@ -12,7 +13,11 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct Field{
     pub name:String,
+    pub type_name:String,
     pub required:bool,
+    pub is_enum:bool,
+    pub fields:Vec<Field>,
+
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +43,34 @@ impl PType{
             None
         }
     }
+
+    pub fn enum_fields_as_string(&self) -> Option<String>{
+
+        if !self.fields.iter().any(|f| f.is_enum){
+            return None;
+        }
+
+        Some(
+            self.fields
+            .iter()
+            .filter(|f| f.is_enum)
+            .map(|f| {
+                let pairs = 
+                    f.fields.iter()
+                    .fold(String::new(), |mut acc, f|{
+                        if !acc.is_empty(){
+                            acc = acc + ","
+                        }
+                        acc + &f.name +": "+ &f.type_name
+                    });
+
+                format!("{}[{}]", f.name, pairs)
+            })
+            .collect::<Vec<String>>().join(";")
+        )
+
+    }
+
 }
 
 
@@ -45,21 +78,59 @@ impl From<&FieldDescriptorProto> for Field {
     fn from(fd: &FieldDescriptorProto) -> Self {
         let options = fd.options.unknown_fields();
 
-        //(gogoproto.nullable) = false => 65001=0
-        //(gogoproto.nullable) = true  => 65001=1
 
         Field {
             name: fd.name().to_owned(),
+            type_name: fd.type_name().rsplit(".").next().unwrap().to_owned(),
             required: options.iter().find(|f| f.0 == 65001 && UnknownValueRef::Varint(0) == f.1 ).is_some(),
+            is_enum: false,
+            fields: vec![]
         }
     }
 }
 
+impl From<&OneofDescriptorProto> for Field {
+    fn from(fd: &OneofDescriptorProto) -> Self {
+        Field {
+            name: fd.name().to_owned(),
+            type_name: "".to_owned(),
+            required: false,
+            is_enum: true,
+            fields: vec![]
+
+        }
+    }
+}
+
+
 impl From<&DescriptorProto> for PType {
     fn from(dp: &DescriptorProto) -> Self {
+
+        let mut fields = dp.oneof_decl.iter()
+        .enumerate()
+        .map(|(index, fd)| {
+            let mut fld = Field::from(fd);
+
+            fld.fields = 
+                dp.field.iter()
+                    .filter(|fd| fd.oneof_index.is_some())
+                    .filter(|fd| *fd.oneof_index.as_ref().unwrap() as usize ==  index)
+                    .map(|fd| Field::from(fd)).collect::<Vec<Field>>();
+
+            fld
+        }).collect::<Vec<Field>>();
+
+
+        fields.extend(
+            dp.field.iter()
+                .filter(|fd| fd.oneof_index.is_none())
+                .map(|fd| Field::from(fd)).collect::<Vec<Field>>()
+        );
+
+
         PType {
             name: dp.name().to_owned(),
-            fields: dp.field.iter().map(|fd| Field::from(fd)).collect(),
+            fields: fields,
             descriptor: dp.clone()
         }
     }

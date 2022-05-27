@@ -47,19 +47,30 @@ impl syn::parse::Parse for TypeParamList {
 
 
 
-//declarative macro is usable for tonic-build integration
-mod to_asc_obj;
-#[proc_macro_derive(ToAscObj, attributes(asc_obj_type, required))]
-pub fn to_asc_obj_macro_derive(tokens: TokenStream) -> TokenStream {
-    to_asc_obj::to_asc_obj_macro_derive(tokens)
+mod generate_from_rust_type;
+#[proc_macro_attribute] // impl ToAscObj<Type> for Type
+pub fn generate_from_rust_type(args: TokenStream, input: TokenStream) -> TokenStream {
+    generate_from_rust_type::generate_from_rust_type(args, input)
 }
 
-mod from_protobuf_obj;
-#[proc_macro_derive(GenerateAscType, attributes(asc_obj_type, required, chain_name))]
-pub fn generate_asc_type_macro_derive(tokens: TokenStream) -> TokenStream {
-    from_protobuf_obj::from_protobuf_obj_macro_derive(tokens)
+
+mod generate_network_type_id;
+#[proc_macro_attribute] //graph::runtime::AscIndexId
+pub fn generate_network_type_id(args: TokenStream, input: TokenStream) -> TokenStream {
+    generate_network_type_id::generate_network_type_id(args, input)
 }
 
+mod generate_asc_type;
+#[proc_macro_attribute] //Asc<Type>
+pub fn generate_asc_type(args: TokenStream, input: TokenStream) -> TokenStream {    
+    generate_asc_type::generate_asc_type(args, input)
+}
+
+mod derive_asc_type;
+#[proc_macro_derive(ToAscType)] // impl ToAscObj<Type> for Type
+pub fn derive_to_asc_type(input: TokenStream) -> TokenStream {
+    derive_asc_type::derive_to_asc_type(input)
+}
 
 
 
