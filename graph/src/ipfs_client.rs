@@ -9,25 +9,31 @@ use serde::Deserialize;
 use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StatApi {
     Block,
-    Dag,
+    Files,
 }
 
 impl StatApi {
     fn route(&self) -> &'static str {
         match self {
             Self::Block => "block",
-            Self::Dag => "dag",
+            Self::Files => "files",
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct StatResponse {
-    pub size: u64,
+struct BlockStatResponse {
+    size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct FilesStatResponse {
+    cumulative_size: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,18 +74,24 @@ impl IpfsClient {
         }
     }
 
-    /// Calls stat for the given API route.
-    pub async fn stat(
+    /// Calls stat for the given API route, and returns the total size of the object.
+    pub async fn stat_size(
         &self,
         api: StatApi,
-        path: String,
+        mut cid: String,
         timeout: Duration,
-    ) -> Result<StatResponse, reqwest::Error> {
+    ) -> Result<u64, reqwest::Error> {
         let route = format!("{}/stat", api.route());
-        self.call(self.url(&route, path), None, Some(timeout))
-            .await?
-            .json()
-            .await
+        if api == StatApi::Files {
+            // files/stat requires a leading `/ipfs/`.
+            cid = format!("/ipfs/{}", cid);
+        }
+        let url = self.url(&route, cid);
+        let res = self.call(url, None, Some(timeout)).await?;
+        match api {
+            StatApi::Files => Ok(res.json::<FilesStatResponse>().await?.cumulative_size),
+            StatApi::Block => Ok(res.json::<BlockStatResponse>().await?.size),
+        }
     }
 
     /// Download the entire contents.

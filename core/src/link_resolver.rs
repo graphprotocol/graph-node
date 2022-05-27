@@ -12,7 +12,7 @@ use lru_time_cache::LruCache;
 use serde_json::Value;
 
 use graph::{
-    ipfs_client::{IpfsClient, StatApi, StatResponse},
+    ipfs_client::{IpfsClient, StatApi},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
 
@@ -55,7 +55,7 @@ async fn select_fastest_client_with_stat(
     path: String,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(StatResponse, Arc<IpfsClient>), Error> {
+) -> Result<(u64, Arc<IpfsClient>), Error> {
     let mut err: Option<Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
@@ -67,7 +67,11 @@ async fn select_fastest_client_with_stat(
             retry_policy(do_retry, "IPFS stat", &logger).run(move || {
                 let path = path.clone();
                 let c = c.cheap_clone();
-                async move { c.stat(api, path, timeout).map_ok(move |s| (s, i)).await }
+                async move {
+                    c.stat_size(api, path, timeout)
+                        .map_ok(move |s| (s, i))
+                        .await
+                }
             })
         })
         .collect();
@@ -90,18 +94,14 @@ async fn select_fastest_client_with_stat(
 }
 
 // Returns an error if the stat is bigger than `max_file_bytes`
-fn restrict_file_size(
-    path: &str,
-    stat: &StatResponse,
-    max_file_bytes: &Option<u64>,
-) -> Result<(), Error> {
+fn restrict_file_size(path: &str, size: u64, max_file_bytes: &Option<u64>) -> Result<(), Error> {
     if let Some(max_file_bytes) = max_file_bytes {
-        if stat.size > *max_file_bytes {
+        if size > *max_file_bytes {
             return Err(anyhow!(
                 "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
                 path,
                 max_file_bytes,
-                stat.size
+                size
             ));
         }
     }
@@ -172,10 +172,10 @@ impl LinkResolverTrait for LinkResolver {
         }
         trace!(logger, "IPFS cache miss"; "hash" => &path);
 
-        let (stat, client) = select_fastest_client_with_stat(
+        let (size, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
-            StatApi::Dag,
+            StatApi::Files,
             path.clone(),
             self.timeout,
             self.retry,
@@ -184,7 +184,7 @@ impl LinkResolverTrait for LinkResolver {
 
         let max_cache_file_size = self.env_vars.mappings.max_ipfs_cache_file_size;
         let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
-        restrict_file_size(&path, &stat, &max_file_size)?;
+        restrict_file_size(&path, size, &max_file_size)?;
 
         let path = path.clone();
         let this = self.clone();
@@ -221,7 +221,7 @@ impl LinkResolverTrait for LinkResolver {
 
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         trace!(logger, "IPFS block get"; "hash" => &link.link);
-        let (stat, client) = select_fastest_client_with_stat(
+        let (size, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
             StatApi::Block,
@@ -232,7 +232,7 @@ impl LinkResolverTrait for LinkResolver {
         .await?;
 
         let max_file_size = self.env_vars.mappings.max_ipfs_file_bytes.map(|n| n as u64);
-        restrict_file_size(&link.link, &stat, &max_file_size)?;
+        restrict_file_size(&link.link, size, &max_file_size)?;
 
         let link = link.link.clone();
         let data = retry_policy(self.retry, "ipfs.getBlock", &logger)
@@ -253,10 +253,10 @@ impl LinkResolverTrait for LinkResolver {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/");
 
-        let (stat, client) = select_fastest_client_with_stat(
+        let (size, client) = select_fastest_client_with_stat(
             self.clients.cheap_clone(),
             logger.cheap_clone(),
-            StatApi::Dag,
+            StatApi::Files,
             path.to_string(),
             self.timeout,
             self.retry,
@@ -264,7 +264,7 @@ impl LinkResolverTrait for LinkResolver {
         .await?;
 
         let max_file_size = Some(self.env_vars.mappings.max_ipfs_map_file_size as u64);
-        restrict_file_size(path, &stat, &max_file_size)?;
+        restrict_file_size(path, size, &max_file_size)?;
 
         let mut stream = client.cat(path.to_string()).await?.fuse().boxed().compat();
 
