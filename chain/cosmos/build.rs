@@ -18,7 +18,6 @@ fn main() {
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
 
-
     for (name, ptype) in types {
 
         if types_to_skip.contains(&name.as_str()){
@@ -26,23 +25,21 @@ fn main() {
         }
 
         //generate Asc<Type>
-        //builder = builder.type_attribute(name.clone(), "#[graph_runtime_derive::generate_asc_type]");
-        builder = builder.type_attribute(name.clone(), "#[derive(graph_runtime_derive::ToAscType)]");
+        builder = builder.type_attribute(name.clone(), 
+            "#[graph_runtime_derive::generate_asc_type]");
 
-        // //generate data index id
-        // builder = builder.type_attribute(name.clone(), "#[graph_runtime_derive::generate_network_type_id(Cosmos)]");
+        //generate data index id
+        builder = builder.type_attribute(name.clone(), 
+            "#[graph_runtime_derive::generate_network_type_id(Cosmos)]");
 
+        //generate conversion from rust type to asc
+        builder = builder.type_attribute(name.clone(), 
+            format!("#[graph_runtime_derive::generate_from_rust_type({})]", ptype.req_fields_as_string().unwrap_or_default())
+        );
 
-        let flds = format!("#[graph_runtime_derive::generate_from_rust_type({})]", ptype.req_fields_as_string().unwrap_or_default());
-        builder = builder.type_attribute(name.clone(), flds);
-
-
-        //     //handle struct with enumeration
-        //     if let Some(list) = ptype.enum_fields_as_string() {
-        //         let flds = format!("#[enum_data({})]", list);
-        //         builder = builder.type_attribute(name.clone(), flds);
-        //     }
-
+        // //fix padding
+        // builder = builder.type_attribute(name.clone(), 
+        //     "#[graph_runtime_derive::generate_padding]");
 
     }
 

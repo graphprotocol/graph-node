@@ -286,22 +286,22 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     }
 }
 
-// impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscDuplicateVoteEvidence, DeterministicHostError> {
-//         Ok(AscDuplicateVoteEvidence {
-//             vote_a: asc_new_or_null(heap, &self.vote_a, gas)?,
-//             vote_b: asc_new_or_null(heap, &self.vote_b, gas)?,
-//             total_voting_power: self.total_voting_power,
-//             validator_power: self.total_voting_power,
-//             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
-//             _padding: 0,
-//         })
-//     }
-// }
+impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscDuplicateVoteEvidence, DeterministicHostError> {
+        Ok(AscDuplicateVoteEvidence {
+            vote_a: asc_new_or_null(heap, &self.vote_a, gas)?,
+            vote_b: asc_new_or_null(heap, &self.vote_b, gas)?,
+            total_voting_power: self.total_voting_power,
+            validator_power: self.total_voting_power,
+            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
+            _padding: 0,
+        })
+    }
+}
 
 // impl ToAscObj<AscEventVote> for codec::EventVote {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -351,31 +351,31 @@ impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence
     }
 }
 
-impl ToAscObj<AscLightBlock> for codec::LightBlock {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscLightBlock, DeterministicHostError> {
-        Ok(AscLightBlock {
-            signed_header: asc_new_or_null(heap, &self.signed_header, gas)?,
-            validator_set: asc_new_or_null(heap, &self.validator_set, gas)?,
-        })
-    }
-}
+// impl ToAscObj<AscLightBlock> for codec::LightBlock {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscLightBlock, DeterministicHostError> {
+//         Ok(AscLightBlock {
+//             signed_header: asc_new_or_null(heap, &self.signed_header, gas)?,
+//             validator_set: asc_new_or_null(heap, &self.validator_set, gas)?,
+//         })
+//     }
+// }
 
-impl ToAscObj<AscSignedHeader> for codec::SignedHeader {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscSignedHeader, DeterministicHostError> {
-        Ok(AscSignedHeader {
-            header: asc_new_or_null(heap, &self.header, gas)?,
-            commit: asc_new_or_null(heap, &self.commit, gas)?,
-        })
-    }
-}
+// impl ToAscObj<AscSignedHeader> for codec::SignedHeader {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscSignedHeader, DeterministicHostError> {
+//         Ok(AscSignedHeader {
+//             header: asc_new_or_null(heap, &self.header, gas)?,
+//             commit: asc_new_or_null(heap, &self.commit, gas)?,
+//         })
+//     }
+// }
 
 // impl ToAscObj<AscCommit> for codec::Commit {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -832,18 +832,18 @@ impl ToAscObj<AscModeInfoSingle> for codec::ModeInfoSingle {
     }
 }
 
-// impl ToAscObj<AscModeInfoMulti> for codec::ModeInfoMulti {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<AscModeInfoMulti, DeterministicHostError> {
-//         Ok(AscModeInfoMulti {
-//             bitarray: asc_new_or_null(heap, &self.bitarray, gas)?,
-//             mode_infos: asc_new(heap, &self.mode_infos, gas)?,
-//         })
-//     }
-// }
+impl ToAscObj<AscModeInfoMulti> for codec::ModeInfoMulti {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscModeInfoMulti, DeterministicHostError> {
+        Ok(AscModeInfoMulti {
+            bitarray: asc_new_or_null(heap, &self.bitarray, gas)?,
+            mode_infos: asc_new(heap, &self.mode_infos, gas)?,
+        })
+    }
+}
 
 // impl ToAscObj<AscCompactBitArray> for codec::CompactBitArray {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(

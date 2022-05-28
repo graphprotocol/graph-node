@@ -523,23 +523,23 @@ impl AscIndexId for AscDuplicateVoteEvidence {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosDuplicateVoteEvidence;
 }
 
-#[repr(C)]
-#[derive(AscType)]
-pub  struct AscEventVote {
-    pub event_vote_type: i32,
-    pub _padding: u32,
-    pub height: u64,
-    pub round: i32,
-    pub block_id: AscPtr<AscBlockId>,
-    pub timestamp: AscPtr<AscTimestamp>,
-    pub validator_address: AscPtr<Uint8Array>,
-    pub validator_index: i32,
-    pub signature: AscPtr<Uint8Array>,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub  struct AscEventVote {
+//     pub event_vote_type: i32,
+//     pub _padding: u32,
+//     pub height: u64,
+//     pub round: i32,
+//     pub block_id: AscPtr<AscBlockId>,
+//     pub timestamp: AscPtr<AscTimestamp>,
+//     pub validator_address: AscPtr<Uint8Array>,
+//     pub validator_index: i32,
+//     pub signature: AscPtr<Uint8Array>,
+// // }
 
-impl AscIndexId for AscEventVote {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEventVote;
-}
+// impl AscIndexId for AscEventVote {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEventVote;
+// }
 
 #[repr(u32)]
 #[derive(AscType, Copy, Clone)]

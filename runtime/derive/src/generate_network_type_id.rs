@@ -5,8 +5,8 @@ use proc_macro2::{Span, Ident};
 
 pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> TokenStream {
 
-    let item = parse_macro_input!(input as ItemStruct);
-    let name = item.ident.clone();
+    let item_struct = parse_macro_input!(input as ItemStruct);
+    let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
     let args= parse_macro_input!(metadata as AttributeArgs);
@@ -29,14 +29,13 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
 
 
     let expanded = quote! {
+        #item_struct
+        
         #[automatically_derived]
         impl graph::runtime::AscIndexId for #asc_name {
             const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::#index_asc_type_id ;
         }
     };
-
-    println!("=======================================>generate_network_type_id:\n{}", expanded);
-
 
     expanded.into()
 }

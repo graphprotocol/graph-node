@@ -5,7 +5,7 @@ use syn::{self, parse_macro_input, ItemStruct, AttributeArgs, NestedMeta, Meta, 
 use proc_macro2::{Span, Ident};
 
 pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(input as ItemStruct);
+    let item_struct = parse_macro_input!(input as ItemStruct);
     let args= parse_macro_input!(metadata as AttributeArgs);
 
     let required_flds = 
@@ -19,11 +19,11 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         })
     .collect::<Vec<String>>();
 
-    let mod_name = Ident::new(&format!("__{}__", item.ident.to_string().to_lowercase()), item.ident.span());
-    let name = item.ident.clone();
+    let mod_name = Ident::new(&format!("__{}__", item_struct.ident.to_string().to_lowercase()), item_struct.ident.span());
+    let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
-    let methods = item.fields.iter().map(|f| {
+    let methods = item_struct.fields.iter().map(|f| {
         let fld_name = f.ident.as_ref().unwrap();
        
         let self_ref = 
@@ -50,7 +50,8 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 }
             } else {
 
-                if is_scalar(&f.ident.as_ref().unwrap().to_string()){
+   
+                if is_scalar(&field_type(f)){
                     quote!{
                         #fld_name: #self_ref,
                     }
@@ -66,16 +67,18 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     });
 
     let expanded = quote! {
+        #item_struct
+
         #[automatically_derived]
         mod #mod_name{
             use super::*;
 
             use graph::runtime::{
-                asc_new, gas::GasCounter, AscHeap, AscPtr, AscType, DeterministicHostError, //AscIndexId, 
+                asc_new, gas::GasCounter, AscHeap, AscPtr, AscType, DeterministicHostError, 
                 ToAscObj
             };
-            use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
-            
+            //use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
+            use graph_runtime_wasm::asc_abi::class::*;
             use crate::runtime::abi::*;
             use crate::protobuf::*;
 
@@ -97,7 +100,6 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         } // -------- end of mod
     };
 
-    println!("===========================================>generate_from_rust_type:\n{}", expanded);
     expanded.into()
 
 }
@@ -130,17 +132,17 @@ fn is_scalar(fld: &str) -> bool{
 //     }
 // }
 
-// fn field_type(fld: &syn::Field) -> String{
-//     if let syn::Type::Path(tp) = &fld.ty {
-//         if let Some(ps) = tp.path.segments.last(){
-//             return ps.ident.to_string();
-//         }else{
-//             "N/A".into()
-//         }
-//      }else{
-//          "N/A".into()
-//      }
-// }
+fn field_type(fld: &syn::Field) -> String{
+    if let syn::Type::Path(tp) = &fld.ty {
+        if let Some(ps) = tp.path.segments.last(){
+            return ps.ident.to_string();
+        }else{
+            "N/A".into()
+        }
+     }else{
+         "N/A".into()
+     }
+}
 
 
 fn is_required(fld: & syn::Field, req_list:&[String]) -> bool{

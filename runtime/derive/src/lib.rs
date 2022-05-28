@@ -66,15 +66,6 @@ pub fn generate_asc_type(args: TokenStream, input: TokenStream) -> TokenStream {
     generate_asc_type::generate_asc_type(args, input)
 }
 
-mod derive_asc_type;
-#[proc_macro_derive(ToAscType)] // impl ToAscObj<Type> for Type
-pub fn derive_to_asc_type(input: TokenStream) -> TokenStream {
-    derive_asc_type::derive_to_asc_type(input)
-}
-
-
-
-
 
 
 

@@ -1,17 +1,18 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{self, parse_macro_input, ItemStruct};
+use syn::{self, parse_macro_input, ItemStruct, parse};
 use proc_macro2::{Span, Ident};
 
-pub fn generate_asc_type(_metadata: TokenStream, input: TokenStream) -> TokenStream {    
+pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStream {    
 
-    let item = parse_macro_input!(input as ItemStruct);
+    let item_struct = parse_macro_input!(input as ItemStruct);
+    let _ = parse_macro_input!(metadata as parse::Nothing);
 
-    let name = item.ident.clone();
+    let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
     let fields = 
-        item.fields.iter().map(| f | {
+        item_struct.fields.iter().map(| f | {
             let fld_name = f.ident.clone();
             let fld_type = field_type_map(field_type(f)).parse::<proc_macro2::TokenStream>().unwrap();
 
@@ -21,7 +22,8 @@ pub fn generate_asc_type(_metadata: TokenStream, input: TokenStream) -> TokenStr
         });
 
     let expanded = quote! {
-
+        
+        #item_struct
 
         #[automatically_derived]
 
@@ -36,10 +38,6 @@ pub fn generate_asc_type(_metadata: TokenStream, input: TokenStream) -> TokenStr
             #(#fields)*
         }
     };
-
-
-    println!("=========================================>generate_asc_type:\n{}", expanded);
-
 
     expanded.into()
 }
