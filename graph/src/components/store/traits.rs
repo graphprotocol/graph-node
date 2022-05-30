@@ -136,6 +136,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// being set up
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
+    async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }

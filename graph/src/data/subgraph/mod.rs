@@ -474,22 +474,30 @@ impl Graft {
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match store.least_block_ptr(&self.base).await {
-            Err(e) => gbi!(e.to_string()),
-            Ok(None) => gbi!(format!(
+        match (
+            store.least_block_ptr(&self.base).await,
+            store.is_healthy(&self.base).await,
+        ) {
+            (Err(e1), Err(e2)) => gbi!(e1.to_string(), e2.to_string()),
+            (Err(e), _) | (_, Err(e)) => gbi!(e.to_string()),
+            (Ok(None), _) => gbi!(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
             )),
-            Ok(Some(ptr)) => {
-                if ptr.number < self.block {
-                    gbi!(format!(
-                        "failed to graft onto `{}` at block {} since it has only processed block {}",
-                        self.base, self.block, ptr.number
-                    ))
-                } else {
-                    vec![]
-                }
-            }
+            (Ok(Some(ptr)), Ok(true)) if ptr.number < self.block => gbi!(format!(
+                "failed to graft onto `{}` at block {} since it has only processed block {}",
+                self.base, self.block, ptr.number
+            )),
+            // If the base deployment is failed *and* the `graft.block` is not
+            // less than the `base.block`, the graft shouldn't be permitted.
+            //
+            // The developer should change their `graft.block` in the manifest
+            // to `base.block - 1` or less.
+            (Ok(Some(ptr)), Ok(false)) if !(self.block < ptr.number) => gbi!(format!(
+                "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
+                self.base, self.block, ptr.number - 1
+            )),
+            (Ok(Some(_)), Ok(_)) => vec![],
         }
     }
 }
