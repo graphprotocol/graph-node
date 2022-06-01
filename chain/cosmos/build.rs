@@ -9,11 +9,11 @@ fn main() {
     let types_to_skip = vec![
         "PublicKey", //complex decoding
         "ModeInfo", //oneof, enumeration
-        "Evidence", //oneof, enumeration
+        //"Evidence", //oneof, enumeration
         "ModeInfoSingle", //enumeration
         "ModeInfoMulti",
-        "DuplicateVoteEvidence",
-        "LightClientAttackEvidence"
+        //"DuplicateVoteEvidence",
+        //"LightClientAttackEvidence"
     ];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
@@ -24,9 +24,14 @@ fn main() {
             continue;
         }
 
+
         //generate Asc<Type>
         builder = builder.type_attribute(name.clone(), 
-            "#[graph_runtime_derive::generate_asc_type]");
+        format!("#[graph_runtime_derive::generate_asc_type({})]", ptype.enum_fields_as_string().unwrap_or_default()));
+
+        // //generate Asc<Type>
+        // builder = builder.type_attribute(name.clone(), 
+        //     "#[graph_runtime_derive::generate_asc_type]");
 
         //generate data index id
         builder = builder.type_attribute(name.clone(), 

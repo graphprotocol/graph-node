@@ -1,25 +1,94 @@
-use proc_macro::TokenStream;
+use std::collections::HashSet;
+
+use proc_macro::{TokenStream, Delimiter};
 use quote::quote;
-use syn::{self, parse_macro_input, ItemStruct, parse};
-use proc_macro2::{Span, Ident};
+use syn::{self, parse_macro_input, ItemStruct, parse::{Parse, ParseStream}, Token, Field, braced, punctuated::Punctuated, Type, FieldsNamed };
+use proc_macro2::{Span, Ident, Group};
+
+
+#[derive(Debug)]
+struct Args{
+    vars:Vec<EnumField>
+}
+
+#[derive(Debug)]
+struct AField {
+    ident: Ident,
+    colon_token: Token![:],
+    ty: Type,
+}
+impl Parse for AField {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(AField {
+            ident: input.parse()?,
+            colon_token: input.parse()?,
+            ty: input.parse()?,
+        })
+    }
+}
+
+
+#[derive(Debug)]
+struct EnumField{
+    ident:Ident,
+    fields:FieldsNamed
+}
+
+impl Parse for Args{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut idents = Vec::<EnumField>::new();
+
+        while input.peek(syn::Ident){
+            let ident= input.call(Ident::parse)?;
+            idents.push(
+                EnumField { 
+                    ident, 
+                    fields: input.call(FieldsNamed::parse)?
+                }
+            );
+            let _: Option<Token![,]> = input.parse()?;
+        }
+
+        Ok(Args {
+            vars: idents,
+        })
+    }
+}
+
+
 
 pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStream {    
 
     let item_struct = parse_macro_input!(input as ItemStruct);
-    let _ = parse_macro_input!(metadata as parse::Nothing);
+    let args=parse_macro_input!(metadata as Args);
 
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
-    let fields = 
-        item_struct.fields.iter().map(| f | {
-            let fld_name = f.ident.clone();
-            let fld_type = field_type_map(field_type(f)).parse::<proc_macro2::TokenStream>().unwrap();
 
-            quote! {
-                pub #fld_name : #fld_type ,
-            }  
-        });
+    let fields = 
+    if args.vars.len()> 0{
+        args.vars.iter()
+        .flat_map(|f| f.fields.named.iter())
+        .collect::<Vec<&Field>>()
+
+    }else{
+        item_struct.fields.iter().collect::<Vec<&Field>>()
+    };
+
+    if name.to_string() == "MyConsensus"{
+        println!("{:#?}", fields);
+    }
+
+    let fields = 
+        fields.iter().map(| f | {
+        let fld_name = f.ident.clone();
+        let fld_type = field_type_map(field_type(f)).parse::<proc_macro2::TokenStream>().unwrap();
+
+        quote! {
+            pub #fld_name : #fld_type ,
+        }  
+    });
 
     let expanded = quote! {
         
@@ -39,6 +108,11 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
         }
     };
 
+    if name.to_string() == "MyConsensus"{
+        println!("{}", expanded);
+    }
+
+
     expanded.into()
 }
 
@@ -50,6 +124,7 @@ fn is_scalar(nm: &str) -> bool{
         "i32"|"u32"   => true,
         "i64"|"u64"   => true,
       "usize"|"isize" => true,
+        "bool"        => true,
         //"String"    => false,
         _             => false
     }
@@ -128,7 +203,14 @@ fn field_type(fld: &syn::Field) -> String{
                     "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>".to_owned()
                 }
 
-                _ => name
+                _ => {
+                        if is_scalar(&name){
+                            name
+                        }else{
+                            format!("graph::runtime::AscPtr<Asc{}>", name)
+                        }
+
+                }
             }
         }else{
             "N/A".into()

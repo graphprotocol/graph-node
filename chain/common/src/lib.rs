@@ -64,9 +64,9 @@ impl PType{
                         acc + &f.name +": "+ &f.type_name
                     });
 
-                format!("{}[{}]", f.name, pairs)
+                format!("{}{{{}}}", f.name, pairs)
             })
-            .collect::<Vec<String>>().join(";")
+            .collect::<Vec<String>>().join(",")
         )
 
     }

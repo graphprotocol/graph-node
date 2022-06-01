@@ -3,8 +3,6 @@ const PROTO_FILE:&str = "tests/resources/cosmos/codec.proto";
 mod utils;
 use common::*;
 
-
-
 #[test]
 fn check_eventlist_type_field_count(){
   let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
@@ -15,7 +13,10 @@ fn check_eventlist_type_field_count(){
 
   let ptype = block.unwrap();
 
-  println!("{:#?}", ptype);
+  //println!("{:#?}", ptype);
+
+  println!("{}", ptype.enum_fields_as_string().unwrap());
+
 
   //println!("{:#?}", ptype.descriptor);
 
