@@ -309,7 +309,7 @@ async fn check_graft(
 
     assert_eq!(vec!["3", "1", "2"], ids);
 
-    // Make sure we caught Shqueena at block 1, before the change in
+    // Make sure we caught Shaqueeena at block 1, before the change in
     // email address
     let mut shaq = entities.first().unwrap().to_owned();
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
