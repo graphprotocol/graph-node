@@ -2,9 +2,13 @@ use crate::capabilities::NodeCapabilities;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::prelude::*;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
 const MATCH_ALL_WILDCARD: &str = "";
+// Size of sha256(pubkey)
+const SHA256_LEN: usize = 32;
+
 #[derive(Clone, Debug, Default)]
 pub struct TriggerFilter {
     pub(crate) block_filter: ArweaveBlockFilter,
@@ -41,13 +45,22 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 /// see docs: https://thegraph.com/docs/en/supported-networks/arweave/
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ArweaveTransactionFilter {
-    owners: HashSet<Vec<u8>>,
+    owners_pubkey: HashSet<Vec<u8>>,
+    owners_sha: HashSet<Vec<u8>>,
     match_all: bool,
 }
 
 impl ArweaveTransactionFilter {
     pub fn matches(&self, owner: &[u8]) -> bool {
-        self.match_all || self.owners.contains(owner)
+        if self.match_all {
+            return true;
+        }
+
+        if owner.len() == SHA256_LEN {
+            return self.owners_sha.contains(owner);
+        }
+
+        self.owners_pubkey.contains(owner) || self.owners_sha.contains(&sha256(owner))
     }
 
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
@@ -58,24 +71,44 @@ impl ArweaveTransactionFilter {
                     && !data_source.mapping.transaction_handlers.is_empty()
             })
             .map(|ds| match &ds.source.owner {
-                Some(str) if MATCH_ALL_WILDCARD.eq(str) => str.clone().into_bytes(),
+                Some(str) if MATCH_ALL_WILDCARD.eq(str) => MATCH_ALL_WILDCARD.as_bytes().to_owned(),
                 owner @ _ => {
                     base64_url::decode(&owner.clone().unwrap_or_default()).unwrap_or_default()
                 }
             })
             .collect();
 
-        let owners = HashSet::from_iter(owners);
+        let (owners_sha, long) = owners
+            .into_iter()
+            .partition::<Vec<Vec<u8>>, _>(|owner| owner.len() == SHA256_LEN);
+
+        let (owners_pubkey, wildcard) = long
+            .into_iter()
+            .partition::<Vec<Vec<u8>>, _>(|long| long.len() != MATCH_ALL_WILDCARD.len());
+
+        let match_all = wildcard.len() != 0;
+
+        let owners_sha: Vec<Vec<u8>> = owners_sha
+            .into_iter()
+            .chain::<Vec<Vec<u8>>>(owners_pubkey.iter().map(|long| sha256(&long)).collect())
+            .collect();
+
         Self {
-            match_all: owners.contains(MATCH_ALL_WILDCARD.as_bytes()),
-            owners,
+            match_all,
+            owners_pubkey: HashSet::from_iter(owners_pubkey),
+            owners_sha: HashSet::from_iter(owners_sha),
         }
     }
 
     pub fn extend(&mut self, other: ArweaveTransactionFilter) {
-        let ArweaveTransactionFilter { owners, match_all } = self;
+        let ArweaveTransactionFilter {
+            owners_pubkey,
+            owners_sha,
+            match_all,
+        } = self;
 
-        owners.extend(other.owners);
+        owners_pubkey.extend(other.owners_pubkey);
+        owners_sha.extend(other.owners_sha);
         *match_all = *match_all || other.match_all;
     }
 }
@@ -101,9 +134,16 @@ impl ArweaveBlockFilter {
     }
 }
 
+fn sha256(bs: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(bs);
+    let res = hasher.finalize();
+    res.to_vec()
+}
+
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, sync::Arc};
+    use std::sync::Arc;
 
     use graph::{prelude::Link, semver::Version};
 
@@ -111,12 +151,16 @@ mod test {
 
     use super::{ArweaveTransactionFilter, MATCH_ALL_WILDCARD};
 
+    const ARWEAVE_PUBKEY_EXAMPLE: &str = "x-62w7g2yKACOgP_d04bhG8IX-AWgPrxHl2JgZBDdNLfAsidiiAaoIZPeM8K5gGvl7-8QVk79YV4OC878Ey0gXi7Atj5BouRyXnFMjJcPVXVyBoYCBuG7rJDDmh4_Ilon6vVOuHVIZ47Vb0tcgsxgxdvVFC2mn9N_SBl23pbeICNJZYOH57kf36gicuV_IwYSdqlQ0HQ_psjmg8EFqO7xzvAMP5HKW3rqTrYZxbCew2FkM734ysWckT39TpDBPx3HrFOl6obUdQWkHNOeKyzcsKFDywNgVWZOb89CYU7JFYlwX20io39ZZv0UJUOEFNjtVHkT_s0_A2O9PltsrZLLlQXZUuYASdbAPD2g_qXfhmPBZ0SXPWCDY-UVwVN1ncwYmk1F_i35IA8kAKsajaltD2wWDQn9g5mgJAWWn2xhLqkbwGbdwQMRD0-0eeuy1uzCooJQCC_bPJksoqkYwB9SGOjkayf4r4oZ2QDY4FicCsswz4Od_gud30ZWyHjWgqGzSFYFzawDBS1Gr_nu_q5otFrv20ZGTxYqGsLHWq4VHs6KjsQvzgBjfyb0etqHQEPJJmbQmY3LSogR4bxdReUHhj2EK9xIB-RKzDvDdL7fT5K0V9MjbnC2uktA0VjLlvwJ64_RhbQhxdp_zR39r-zyCXT-brPEYW1-V7Ey9K3XUE";
+    const ARWEAVE_SHA_EXAMPLE: &str = "ahLxjCMCHr1ZE72VDDoaK4IKiLUUpeuo8t-M6y23DXw";
+
     #[test]
     fn transaction_filter_wildcard_matches_all() {
         let dss = vec![
             new_datasource(None, 10),
-            new_datasource(Some(MATCH_ALL_WILDCARD.into()), 10),
-            new_datasource(Some("owner".into()), 10),
+            new_datasource(Some(base64_url::encode(MATCH_ALL_WILDCARD.into())), 10),
+            new_datasource(Some(base64_url::encode("owner").into()), 10),
+            new_datasource(Some(ARWEAVE_PUBKEY_EXAMPLE.into()), 10),
         ];
 
         let dss: Vec<&DataSource> = dss.iter().collect();
@@ -129,17 +173,50 @@ mod test {
     fn transaction_filter_match() {
         let dss = vec![
             new_datasource(None, 10),
-            new_datasource(Some("owner".into()), 10),
+            new_datasource(Some(ARWEAVE_PUBKEY_EXAMPLE.into()), 10),
         ];
 
-        let x: Vec<&DataSource> = dss.iter().collect();
+        let dss: Vec<&DataSource> = dss.iter().collect();
 
-        let filter = ArweaveTransactionFilter::from_data_sources(x);
+        let filter = ArweaveTransactionFilter::from_data_sources(dss);
+        assert_eq!(false, filter.matches("asdas".as_bytes()));
         assert_eq!(
-            false,
-            filter.matches(base64_url::encode(&"asdas".to_string()).as_bytes())
+            true,
+            filter.matches(
+                &base64_url::decode(ARWEAVE_SHA_EXAMPLE).expect("failed to parse sha example")
+            )
         );
-        assert_eq!(true, filter.matches("owner".as_bytes()))
+        assert_eq!(
+            true,
+            filter.matches(
+                &base64_url::decode(ARWEAVE_PUBKEY_EXAMPLE).expect("failed to parse PK example")
+            )
+        )
+    }
+
+    #[test]
+    fn transaction_filter_extend_match() {
+        let dss = vec![
+            new_datasource(None, 10),
+            new_datasource(Some(ARWEAVE_SHA_EXAMPLE.into()), 10),
+        ];
+
+        let dss: Vec<&DataSource> = dss.iter().collect();
+
+        let filter = ArweaveTransactionFilter::from_data_sources(dss);
+        assert_eq!(false, filter.matches("asdas".as_bytes()));
+        assert_eq!(
+            true,
+            filter.matches(
+                &base64_url::decode(ARWEAVE_SHA_EXAMPLE).expect("failed to parse sha example")
+            )
+        );
+        assert_eq!(
+            true,
+            filter.matches(
+                &base64_url::decode(ARWEAVE_PUBKEY_EXAMPLE).expect("failed to parse PK example")
+            )
+        )
     }
 
     #[test]
@@ -152,13 +229,12 @@ mod test {
 
         let dss: Vec<&DataSource> = dss.iter().collect();
 
-        let mut filter = ArweaveTransactionFilter {
-            owners: HashSet::default(),
-            match_all: false,
-        };
+        let mut filter = ArweaveTransactionFilter::default();
 
         filter.extend(ArweaveTransactionFilter::from_data_sources(dss));
-        assert_eq!(true, filter.matches("asdas".as_bytes()))
+        assert_eq!(true, filter.matches("asdas".as_bytes()));
+        assert_eq!(true, filter.matches(ARWEAVE_PUBKEY_EXAMPLE.as_bytes()));
+        assert_eq!(true, filter.matches(ARWEAVE_SHA_EXAMPLE.as_bytes()))
     }
 
     fn new_datasource(owner: Option<String>, start_block: i32) -> DataSource {
@@ -166,10 +242,7 @@ mod test {
             kind: "".into(),
             network: None,
             name: "".into(),
-            source: Source {
-                owner: owner.map(|owner| base64_url::encode(&owner)),
-                start_block,
-            },
+            source: Source { owner, start_block },
             mapping: Mapping {
                 api_version: Version::new(1, 2, 3),
                 language: "".into(),
