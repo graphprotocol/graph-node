@@ -1354,6 +1354,8 @@ fn query_at_block() {
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
+    const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
+         up to block number 1 and data for block number 2 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
@@ -1362,7 +1364,7 @@ fn query_at_block() {
 
     musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
     musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&*BLOCK_TWO), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&*BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
     musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
@@ -1398,6 +1400,8 @@ fn query_at_block_with_vars() {
 
     const BLOCK_NOT_INDEXED: &str = "subgraph @DEPLOYMENT@ has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
+    const BLOCK_NOT_INDEXED2: &str = "subgraph @DEPLOYMENT@ has only indexed \
+         up to block number 1 and data for block number 2 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
     musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
@@ -1410,7 +1414,7 @@ fn query_at_block_with_vars() {
 
     musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
     musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCK_TWO, Err(BLOCK_NOT_INDEXED2), "h2");
     musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 

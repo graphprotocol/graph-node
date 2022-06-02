@@ -109,10 +109,9 @@ impl StoreResolver {
     ) -> Result<BlockPtr, QueryExecutionError> {
         fn check_ptr(
             subgraph: DeploymentHash,
-            ptr: Option<BlockPtr>,
+            ptr: BlockPtr,
             min: BlockNumber,
         ) -> Result<BlockPtr, QueryExecutionError> {
-            let ptr = ptr.expect("we should have already checked that the subgraph exists");
             if ptr.number < min {
                 return Err(QueryExecutionError::ValueParseError(
                     "block.number".to_owned(),
@@ -125,9 +124,16 @@ impl StoreResolver {
             }
             Ok(ptr)
         }
+
+        let subgraph_block_ptr = store
+            .block_ptr()
+            .await
+            .map_err(Into::into)
+            .map(|ptr| ptr.expect("we should have already checked that the subgraph exists"));
+
         match bc {
             BlockConstraint::Hash(hash) => {
-                store
+                let ptr = store
                     .block_number(hash)
                     .map_err(Into::into)
                     .and_then(|number| {
@@ -139,10 +145,15 @@ impl StoreResolver {
                                 )
                             })
                             .map(|number| BlockPtr::from((hash, number as u64)))
-                    })
+                    })?;
+
+                subgraph_block_ptr.and_then(|subgraph_ptr| {
+                    check_ptr(subgraph, subgraph_ptr, ptr.number)?;
+                    Ok(ptr)
+                })
             }
             BlockConstraint::Number(number) => {
-                store.block_ptr().await.map_err(Into::into).and_then(|ptr| {
+                subgraph_block_ptr.and_then(|ptr| {
                     check_ptr(subgraph, ptr, number)?;
                     // We don't have a way here to look the block hash up from
                     // the database, and even if we did, there is no guarantee
@@ -153,16 +164,10 @@ impl StoreResolver {
                     Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
                 })
             }
-            BlockConstraint::Min(number) => store
-                .block_ptr()
-                .await
-                .map_err(Into::into)
-                .and_then(|ptr| check_ptr(subgraph, ptr, number)),
-            BlockConstraint::Latest => {
-                store.block_ptr().await.map_err(Into::into).map(|ptr| {
-                    ptr.expect("we should have already checked that the subgraph exists")
-                })
+            BlockConstraint::Min(number) => {
+                subgraph_block_ptr.and_then(|ptr| check_ptr(subgraph, ptr, number))
             }
+            BlockConstraint::Latest => subgraph_block_ptr,
         }
     }
 
