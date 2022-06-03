@@ -1250,7 +1250,7 @@ impl DeploymentStore {
             conn.transaction(|| -> Result<(), StoreError> {
                 // Copy dynamic data sources and adjust their ID
                 let start = Instant::now();
-                let count = dynds::copy(&conn, &src.site, &dst.site, &block)?;
+                let count = dynds::copy(&conn, &src.site, &dst.site, block.number)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 

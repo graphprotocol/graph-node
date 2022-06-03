@@ -146,7 +146,7 @@ pub(super) fn copy(
     conn: &PgConnection,
     src: &Site,
     dst: &Site,
-    target_block: &BlockPtr,
+    target_block: BlockNumber,
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
@@ -183,7 +183,7 @@ pub(super) fn copy(
     Ok(sql_query(&query)
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
-        .bind::<Integer, _>(target_block.number)
+        .bind::<Integer, _>(target_block)
         .execute(conn)?)
 }
 

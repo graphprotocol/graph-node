@@ -42,7 +42,7 @@ pub(crate) fn copy(
     conn: &PgConnection,
     src: &Site,
     dst: &Site,
-    target_block: &BlockPtr,
+    target_block: BlockNumber,
 ) -> Result<usize, StoreError> {
     if src.schema_version != dst.schema_version {
         return Err(StoreError::ConstraintViolation(format!(
