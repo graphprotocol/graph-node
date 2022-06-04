@@ -1738,17 +1738,24 @@ impl ParentIds {
 #[derive(Debug, Clone)]
 enum TableLink<'a> {
     Direct(&'a Column, ChildMultiplicity),
-    Parent(ParentIds),
+    Parent(&'a Table, ParentIds),
 }
 
 impl<'a> TableLink<'a> {
-    fn new(child_table: &'a Table, link: EntityLink) -> Result<Self, QueryExecutionError> {
+    fn new(
+        layout: &'a Layout,
+        child_table: &'a Table,
+        link: EntityLink,
+    ) -> Result<Self, QueryExecutionError> {
         match link {
             EntityLink::Direct(attribute, multiplicity) => {
                 let column = child_table.column_for_field(attribute.name())?;
                 Ok(TableLink::Direct(column, multiplicity))
             }
-            EntityLink::Parent(parent_link) => Ok(TableLink::Parent(ParentIds::new(parent_link))),
+            EntityLink::Parent(parent_type, parent_link) => {
+                let parent_table = layout.table_for_entity(&parent_type)?;
+                Ok(TableLink::Parent(parent_table, ParentIds::new(parent_link)))
+            }
         }
     }
 }
@@ -1842,7 +1849,7 @@ impl<'a> FilterWindow<'a> {
         let query_filter = query_filter
             .map(|filter| QueryFilter::new(filter, table))
             .transpose()?;
-        let link = TableLink::new(table, link)?;
+        let link = TableLink::new(layout, table, link)?;
         Ok(FilterWindow {
             table,
             query_filter,
@@ -1855,7 +1862,7 @@ impl<'a> FilterWindow<'a> {
     fn parent_type(&self) -> IdType {
         match &self.link {
             TableLink::Direct(column, _) => column.column_type.id_type(),
-            TableLink::Parent(_) => self.table.primary_key().column_type.id_type(),
+            TableLink::Parent(parent_table, _) => parent_table.primary_key().column_type.id_type(),
         }
     }
 
@@ -2116,10 +2123,10 @@ impl<'a> FilterWindow<'a> {
                     }
                 }
             }
-            TableLink::Parent(ParentIds::List(child_ids)) => {
+            TableLink::Parent(_, ParentIds::List(child_ids)) => {
                 self.children_type_c(child_ids, limit, block, &mut out)
             }
-            TableLink::Parent(ParentIds::Scalar(child_ids)) => {
+            TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
                 self.child_type_d(child_ids, limit, block, &mut out)
             }
         }
@@ -2207,7 +2214,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                     TableLink::Direct(col, Many) => {
                         write!(f, "many:{}={}", col.name(), ids.join(","))?
                     }
-                    TableLink::Parent(ParentIds::List(css)) => {
+                    TableLink::Parent(_, ParentIds::List(css)) => {
                         let css = css
                             .into_iter()
                             .map(|cs| {
@@ -2218,7 +2225,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                             .join("],[");
                         write!(f, "uniq:id=[{}]", css)?
                     }
-                    TableLink::Parent(ParentIds::Scalar(cs)) => {
+                    TableLink::Parent(_, ParentIds::Scalar(cs)) => {
                         write!(f, "uniq:id={}", cs.join(","))?
                     }
                 };

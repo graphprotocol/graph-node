@@ -161,6 +161,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: @ID@!
         title: String!
         writtenBy: Musician!
+        publisher: Publisher!
         band: Band @derivedFrom(field: \"originalSongs\")
     }
 
@@ -168,6 +169,10 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: @ID@!
         song: Song @derivedFrom(field: \"id\")
         played: Int!
+    }
+
+    type Publisher {
+        id: Bytes!
     }
     ";
 
@@ -197,12 +202,13 @@ async fn insert_test_entities(
     let entities0 = vec![
         entity! { __typename: "Musician", id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
         entity! { __typename: "Musician", id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
+        entity! { __typename: "Publisher", id: "0xb1" },
         entity! { __typename: "Band", id: "b1", name: "The Musicians", originalSongs: vec![s[1], s[2]] },
         entity! { __typename: "Band", id: "b2", name: "The Amateurs",  originalSongs: vec![s[1], s[3], s[4]] },
-        entity! { __typename: "Song", id: s[1], title: "Cheesy Tune", writtenBy: "m1" },
-        entity! { __typename: "Song", id: s[2], title: "Rock Tune",   writtenBy: "m2" },
-        entity! { __typename: "Song", id: s[3], title: "Pop Tune",    writtenBy: "m1" },
-        entity! { __typename: "Song", id: s[4], title: "Folk Tune",   writtenBy: "m3" },
+        entity! { __typename: "Song", id: s[1], title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1" },
+        entity! { __typename: "Song", id: s[2], title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2" },
+        entity! { __typename: "Song", id: s[3], title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1" },
+        entity! { __typename: "Song", id: s[4], title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3" },
         entity! { __typename: "SongStat", id: s[1], played: 10 },
         entity! { __typename: "SongStat", id: s[2], played: 15 },
     ];
@@ -584,6 +590,51 @@ fn query_variables_are_used() {
             assert_eq!(data, exp);
         },
     );
+}
+
+#[test]
+fn mixed_parent_child_id() {
+    // Check that any combination of parent and child id type (String or
+    // Bytes) works in queries
+
+    // `Publisher` has `id` of type `Bytes`, which used to lead to
+    // `NonNullError` when `Song` used `String`
+    const QUERY: &str = "
+    query amxx {
+        songs(first: 2) {
+            publisher { id }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            songs: vec![
+                object! { publisher: object! { id: "0xb1" } },
+                object! { publisher: object! { id: "0xb1" } }
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+
+    const QUERY2: &str = "
+    query bytes_string {
+        songs(first: 2) {
+            writtenBy { id }
+        }
+    }
+    ";
+    run_query(QUERY2, |result, _| {
+        let exp = object! {
+            songs: vec![
+                object! { writtenBy: object! { id: "m1" } },
+                object! { writtenBy: object! { id: "m2" } }
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+        dbg!(&data);
+    })
 }
 
 #[test]

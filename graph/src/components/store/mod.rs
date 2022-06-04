@@ -364,7 +364,7 @@ pub enum EntityLink {
     /// The parent id is stored in this child attribute
     Direct(WindowAttribute, ChildMultiplicity),
     /// Join with the parents table to get at the parent id
-    Parent(ParentLink),
+    Parent(EntityType, ParentLink),
 }
 
 /// Window results of an `EntityQuery` query along the parent's id:

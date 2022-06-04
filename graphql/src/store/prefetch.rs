@@ -338,7 +338,10 @@ impl<'a> JoinCond<'a> {
                         (ids, ParentLink::List(child_ids))
                     }
                 };
-                (ids, EntityLink::Parent(parent_link))
+                (
+                    ids,
+                    EntityLink::Parent(self.parent_type.clone(), parent_link),
+                )
             }
         }
     }
