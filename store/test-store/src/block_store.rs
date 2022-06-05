@@ -6,7 +6,8 @@ use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block,
     prelude::{
-        serde_json, web3::types::H256, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
+        serde_json, web3::types::H256, BlockHash, BlockNumber, BlockPtr, EthereumBlock,
+        LightEthereumBlock,
     },
 };
 
@@ -63,12 +64,12 @@ impl FakeBlock {
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
-        H256::from_str(self.hash.as_str()).expect("invalid block hash")
+    pub fn block_hash(&self) -> BlockHash {
+        BlockHash::from_str(self.hash.as_str()).expect("invalid block hash")
     }
 
     pub fn block_ptr(&self) -> BlockPtr {
-        BlockPtr::from((self.block_hash(), self.number))
+        BlockPtr::new(self.block_hash(), self.number)
     }
 
     pub fn as_ethereum_block(&self) -> EthereumBlock {
@@ -77,7 +78,7 @@ impl FakeBlock {
         let mut block = LightEthereumBlock::default();
         block.number = Some(self.number.into());
         block.parent_hash = parent_hash;
-        block.hash = Some(self.block_hash());
+        block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
 
         EthereumBlock {
             block: Arc::new(block),

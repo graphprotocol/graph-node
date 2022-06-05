@@ -1,5 +1,6 @@
 //! Extension traits for graphql_parser::query structs
 
+use graph::blockchain::BlockHash;
 use graph::prelude::TryFromValue;
 use graphql_parser::Pos;
 
@@ -7,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::anyhow;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::{q, r, web3::types::H256, BlockNumber, Error};
+use graph::prelude::{q, r, BlockNumber, Error};
 
 pub trait ValueExt: Sized {
     fn as_object(&self) -> &BTreeMap<String, q::Value>;
@@ -56,7 +57,7 @@ impl ValueExt for q::Value {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum BlockConstraint {
-    Hash(H256),
+    Hash(BlockHash),
     Number(BlockNumber),
     /// Execute the query on the latest block only if the the subgraph has progressed to or past the
     /// given block number.

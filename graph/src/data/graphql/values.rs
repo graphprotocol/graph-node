@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
+use crate::blockchain::BlockHash;
 use crate::data::value::Object;
 use crate::prelude::{r, BigInt, Entity};
-use web3::types::{H160, H256};
+use web3::types::H160;
 
 pub trait TryFromValue: Sized {
     fn try_from_value(value: &r::Value) -> Result<Self, Error>;
@@ -91,16 +92,12 @@ impl TryFromValue for H160 {
     }
 }
 
-impl TryFromValue for H256 {
+impl TryFromValue for BlockHash {
     fn try_from_value(value: &r::Value) -> Result<Self, Error> {
         match value {
-            r::Value::String(s) => {
-                // `H256::from_str` takes a hex string with no leading `0x`.
-                let string = s.trim_start_matches("0x");
-                H256::from_str(string)
-                    .map_err(|e| anyhow!("Cannot parse H256 value from string `{}`: {}", s, e))
-            }
-            _ => Err(anyhow!("Cannot parse value into an H256: {:?}", value)),
+            r::Value::String(s) => BlockHash::from_str(s)
+                .map_err(|e| anyhow!("Cannot parse hex value from string `{}`: {}", s, e)),
+            _ => Err(anyhow!("Cannot parse non-string value: {:?}", value)),
         }
     }
 }
