@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
-use web3::types::{Address, H256};
+use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
@@ -156,7 +156,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .expect("Valid network required");
 
         let block_hash = field
-            .get_required::<H256>("blockHash")
+            .get_required::<BlockHash>("blockHash")
             .expect("Valid blockHash required");
 
         let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
@@ -171,7 +171,7 @@ impl<S: Store> IndexNodeResolver<S> {
             return Ok(r::Value::Null);
         };
 
-        let blocks_res = chain_store.blocks(&[block_hash]);
+        let blocks_res = chain_store.blocks(&[block_hash.cheap_clone()]);
         Ok(match blocks_res {
             Ok(blocks) if blocks.is_empty() => {
                 error!(
@@ -208,7 +208,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .expect("Valid network required");
 
         let block_hash = field
-            .get_required::<H256>("blockHash")
+            .get_required::<BlockHash>("blockHash")
             .expect("Valid blockHash required");
 
         let chain = if let Ok(c) = self
@@ -228,7 +228,7 @@ impl<S: Store> IndexNodeResolver<S> {
         let chain_store = chain.chain_store();
         let call_cache = chain.call_cache();
 
-        let block_number = match chain_store.block_number(block_hash) {
+        let block_number = match chain_store.block_number(&block_hash) {
             Ok(Some((_, n))) => n,
             Ok(None) => {
                 error!(
@@ -250,7 +250,7 @@ impl<S: Store> IndexNodeResolver<S> {
                 return Ok(r::Value::Null);
             }
         };
-        let block_ptr = BlockPtr::new(block_hash.into(), block_number);
+        let block_ptr = BlockPtr::new(block_hash.cheap_clone(), block_number);
 
         let calls = match call_cache.get_calls_in_block(block_ptr) {
             Ok(c) => c,
@@ -289,17 +289,17 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
 
-        let block_number: u64 = field
-            .get_required::<u64>("blockNumber")
+        let block_number: i32 = field
+            .get_required::<i32>("blockNumber")
             .expect("Valid blockNumber required")
             .try_into()
             .unwrap();
 
         let block_hash = field
-            .get_required::<H256>("blockHash")
+            .get_required::<BlockHash>("blockHash")
             .expect("Valid blockHash required");
 
-        let block = BlockPtr::from((block_hash, block_number));
+        let block = BlockPtr::new(block_hash, block_number);
 
         let mut indexer = field
             .get_optional::<Address>("indexer")

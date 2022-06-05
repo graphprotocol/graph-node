@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use graph::data::value::Word;
-use web3::types::H256;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::QueryStore as QueryStoreTrait;
@@ -59,7 +58,7 @@ impl QueryStoreTrait for QueryStore {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
 
-    fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError> {
+    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently

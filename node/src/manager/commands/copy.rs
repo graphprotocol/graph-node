@@ -104,20 +104,20 @@ pub async fn create(
         .block_store()
         .chain_store(&network)
         .ok_or_else(|| anyhow!("could not find chain store for network {}", network))?;
-    let hashes = chain_store.block_hashes_by_block_number(src_number)?;
+    let mut hashes = chain_store.block_hashes_by_block_number(src_number)?;
     let hash = match hashes.len() {
         0 => bail!(
             "could not find a block with number {} in our cache",
             src_number
         ),
-        1 => hashes[0],
+        1 => hashes.pop().unwrap(),
         n => bail!(
             "the cache contains {} hashes for block number {}",
             n,
             src_number
         ),
     };
-    let base_ptr = BlockPtr::from((hash, src_number));
+    let base_ptr = BlockPtr::new(hash, src_number);
 
     if !shards.contains(&shard) {
         bail!(
