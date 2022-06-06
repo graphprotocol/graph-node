@@ -451,18 +451,6 @@ pub struct Graft {
     pub block: BlockNumber,
 }
 
-macro_rules! gbi {
-    ( $( $x:expr ),* ) => {
-        {
-            vec![
-                $(
-                    SubgraphManifestValidationError::GraftBaseInvalid($x),
-                )*
-            ]
-        }
-    };
-}
-
 impl Graft {
     async fn validate<S: SubgraphStore>(
         &self,
@@ -478,25 +466,25 @@ impl Graft {
             store.least_block_ptr(&self.base).await,
             store.is_healthy(&self.base).await,
         ) {
-            (Err(e1), Err(e2)) => gbi!(e1.to_string(), e2.to_string()),
-            (Err(e), _) | (_, Err(e)) => gbi!(e.to_string()),
-            (Ok(None), _) => gbi!(format!(
+            (Err(e1), Err(e2)) => vec![SubgraphManifestValidationError::GraftBaseInvalid(e1.to_string()), SubgraphManifestValidationError::GraftBaseInvalid(e2.to_string())],
+            (Err(e), _) | (_, Err(e)) => vec![SubgraphManifestValidationError::GraftBaseInvalid(e.to_string())],
+            (Ok(None), _) => vec![SubgraphManifestValidationError::GraftBaseInvalid(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
-            )),
-            (Ok(Some(ptr)), Ok(true)) if ptr.number < self.block => gbi!(format!(
+            ))],
+            (Ok(Some(ptr)), Ok(true)) if ptr.number < self.block => vec![SubgraphManifestValidationError::GraftBaseInvalid(format!(
                 "failed to graft onto `{}` at block {} since it has only processed block {}",
                 self.base, self.block, ptr.number
-            )),
+            ))],
             // If the base deployment is failed *and* the `graft.block` is not
             // less than the `base.block`, the graft shouldn't be permitted.
             //
             // The developer should change their `graft.block` in the manifest
             // to `base.block - 1` or less.
-            (Ok(Some(ptr)), Ok(false)) if !(self.block < ptr.number) => gbi!(format!(
+            (Ok(Some(ptr)), Ok(false)) if !(self.block < ptr.number) => vec![SubgraphManifestValidationError::GraftBaseInvalid(format!(
                 "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
                 self.base, self.block, ptr.number - 1
-            )),
+            ))],
             (Ok(Some(_)), Ok(_)) => vec![],
         }
     }
