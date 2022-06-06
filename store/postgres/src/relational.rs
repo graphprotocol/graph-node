@@ -647,7 +647,7 @@ impl Layout {
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
-        // We add 1 to account for the `block_range` bind parameter
+        // We add 2 to account for the `block_range` and 'vid' bind parameters
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 2);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
@@ -794,7 +794,7 @@ impl Layout {
         // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
         // so we need to act in chunks whose size is defined by the number of entities times the
         // number of attributes each entity type has.
-        // We add 1 to account for the `block_range` bind parameter
+        // We add 2 to account for the `block_range` and 'vid' bind parameters
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 2);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
