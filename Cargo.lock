@@ -4823,8 +4823,9 @@ checksum = "2e0c4a743a309662d45f4ede961d7afa4ba4131a59a639f29b0069c3798bbcc2"
 
 [[package]]
 name = "wasm-instrument"
-version = "0.1.1"
-source = "git+https://github.com/edgeandnode/wasm-instrument?branch=master#7a02a05525ad4689b22f8d56f1cf6e6d67280896"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5728bf206e1c487a57128a102cb632cfee04a778b735a90de876fd63e7b3add"
 dependencies = [
  "parity-wasm",
 ]
