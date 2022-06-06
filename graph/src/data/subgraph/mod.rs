@@ -456,6 +456,8 @@ impl Graft {
         &self,
         store: Arc<S>,
     ) -> Result<(), SubgraphManifestValidationError> {
+        use SubgraphManifestValidationError::*;
+
         // We are being defensive here: we don't know which specific
         // instance of a subgraph we will use as the base for the graft,
         // since the notion of which of these instances is active can change
@@ -463,14 +465,14 @@ impl Graft {
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
         match (
-            store.least_block_ptr(&self.base).await.map_err(|e| SubgraphManifestValidationError::GraftBaseInvalid(e.to_string()))?,
-            store.is_healthy(&self.base).await.map_err(|e| SubgraphManifestValidationError::GraftBaseInvalid(e.to_string()))?,
+            store.least_block_ptr(&self.base).await.map_err(|e| GraftBaseInvalid(e.to_string()))?,
+            store.is_healthy(&self.base).await.map_err(|e| GraftBaseInvalid(e.to_string()))?,
         ) {
-            (None, _) => Err(SubgraphManifestValidationError::GraftBaseInvalid(format!(
+            (None, _) => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
             ))),
-            (Some(ptr), true) if ptr.number < self.block => Err(SubgraphManifestValidationError::GraftBaseInvalid(format!(
+            (Some(ptr), true) if ptr.number < self.block => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` at block {} since it has only processed block {}",
                 self.base, self.block, ptr.number
             ))),
@@ -479,7 +481,7 @@ impl Graft {
             //
             // The developer should change their `graft.block` in the manifest
             // to `base.block - 1` or less.
-            (Some(ptr), false) if !(self.block < ptr.number) => Err(SubgraphManifestValidationError::GraftBaseInvalid(format!(
+            (Some(ptr), false) if !(self.block < ptr.number) => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
                 self.base, self.block, ptr.number - 1
             ))),
