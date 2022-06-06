@@ -65,7 +65,7 @@ pub struct BlockRef {
 pub struct BlockHeader {
     #[prost(bytes="vec", tag="1")]
     pub parent_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Uncle hash of the block, some refenrece it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`
+    /// Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`
     #[prost(bytes="vec", tag="2")]
     pub uncle_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes="vec", tag="3")]
@@ -152,7 +152,7 @@ pub struct TransactionTrace {
     /// The value is always set even for transaction before Berlin fork because those before the fork are still legacy transactions.
     #[prost(enumeration="transaction_trace::Type", tag="12")]
     pub r#type: i32,
-    /// AcccessList represents the storage access this transaction has agreed to do in which case those storage
+    /// AccessList represents the storage access this transaction has agreed to do in which case those storage
     /// access cost less gas unit per access.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_ACCESS_LIST || TRX_TYPE_DYNAMIC_FEE` which
@@ -201,12 +201,12 @@ pub mod transaction_trace {
     pub enum Type {
         /// All transactions that ever existed prior Berlin fork before EIP-2718 was implemented.
         TrxTypeLegacy = 0,
-        /// Transaction that specicy an access list of contract/storage_keys that is going to be used
+        /// Transaction that specify an access list of contract/storage_keys that is going to be used
         /// in this transaction.
         ///
         /// Added in Berlin fork (EIP-2930).
         TrxTypeAccessList = 1,
-        /// Transaction that specifis an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
+        /// Transaction that specifies an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
         /// max base gas gee and max priority gas fee to pay for this transaction. Transaction's of those type are
         /// executed against EIP-1559 rules which dictates a dynamic gas cost based on the congestion of the network.
         TrxTypeDynamicFee = 2,
