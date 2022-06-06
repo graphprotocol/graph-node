@@ -458,16 +458,22 @@ impl Graft {
     ) -> Result<(), SubgraphManifestValidationError> {
         use SubgraphManifestValidationError::*;
 
+        let last_processed_block = store
+            .least_block_ptr(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+        let is_base_healthy = store
+            .is_healthy(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+
         // We are being defensive here: we don't know which specific
         // instance of a subgraph we will use as the base for the graft,
         // since the notion of which of these instances is active can change
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match (
-            store.least_block_ptr(&self.base).await.map_err(|e| GraftBaseInvalid(e.to_string()))?,
-            store.is_healthy(&self.base).await.map_err(|e| GraftBaseInvalid(e.to_string()))?,
-        ) {
+        match (last_processed_block, is_base_healthy) {
             (None, _) => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
