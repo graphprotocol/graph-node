@@ -1,7 +1,13 @@
 syntax = "proto3";
 
 package sf.ethereum.transform.v1;
-option go_package = "github.com/streamingfast/sf-ethereum/pb/sf/ethereum/transform/v1;pbtransform";
+option go_package = "github.com/streamingfast/sf-ethereum/types/pb/sf/ethereum/transform/v1;pbtransform";
+
+// Log and CallTo Filters, applied as 'inclusive OR'
+message CombinedFilter {
+  repeated LogFilter log_filters = 1;
+  repeated CallToFilter call_filters = 2;
+}
 
 // MultiLogFilter concatenates the results of each LogFilter (inclusive OR)
 message MultiLogFilter {

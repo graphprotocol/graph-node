@@ -1,3 +1,11 @@
+/// Log and CallTo Filters, applied as 'inclusive OR'
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CombinedFilter {
+    #[prost(message, repeated, tag="1")]
+    pub log_filters: ::prost::alloc::vec::Vec<LogFilter>,
+    #[prost(message, repeated, tag="2")]
+    pub call_filters: ::prost::alloc::vec::Vec<CallToFilter>,
+}
 /// MultiLogFilter concatenates the results of each LogFilter (inclusive OR)
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MultiLogFilter {

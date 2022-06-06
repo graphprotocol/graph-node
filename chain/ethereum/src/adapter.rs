@@ -3,9 +3,8 @@ use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
 use graph::firehose::CallToFilter;
+use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
-use graph::firehose::MultiCallToFilter;
-use graph::firehose::MultiLogFilter;
 use itertools::Itertools;
 use mockall::automock;
 use mockall::predicate::*;
@@ -26,10 +25,8 @@ use graph::{
     petgraph::{self, graphmap::GraphMap},
 };
 
-const MULTI_LOG_FILTER_TYPE_URL: &str =
-    "type.googleapis.com/sf.ethereum.transform.v1.MultiLogFilter";
-const MULTI_CALL_TO_FILTER_TYPE_URL: &str =
-    "type.googleapis.com/sf.ethereum.transform.v1.MultiCallToFilter";
+const COMBINED_FILTER_TYPE_URL: &str =
+    "type.googleapis.com/sf.ethereum.transform.v1.CombinedFilter";
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{BlockHandlerFilter, DataSource};
@@ -176,27 +173,23 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             return Vec::new();
         }
 
-        let mut filters = vec![];
-
+        let log_filters: Vec<LogFilter> = self.log.into();
         let mut call_filters: Vec<CallToFilter> = self.call.into();
         call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block));
 
-        if !call_filters.is_empty() {
-            filters.push(Any {
-                type_url: MULTI_CALL_TO_FILTER_TYPE_URL.into(),
-                value: MultiCallToFilter { call_filters }.encode_to_vec(),
-            });
+        if call_filters.is_empty() && log_filters.is_empty() {
+            return Vec::new();
         }
 
-        let log_filters: Vec<LogFilter> = self.log.into();
-        if !log_filters.is_empty() {
-            filters.push(Any {
-                type_url: MULTI_LOG_FILTER_TYPE_URL.into(),
-                value: MultiLogFilter { log_filters }.encode_to_vec(),
-            })
-        }
+        let combined_filter = CombinedFilter {
+            log_filters,
+            call_filters,
+        };
 
-        filters
+        vec![Any {
+            type_url: COMBINED_FILTER_TYPE_URL.into(),
+            value: combined_filter.encode_to_vec(),
+        }]
     }
 }
 
@@ -951,16 +944,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::FunctionSelector;
+    use crate::adapter::{FunctionSelector, COMBINED_FILTER_TYPE_URL};
 
-    use super::{
-        EthereumBlockFilter, LogFilterNode, MULTI_CALL_TO_FILTER_TYPE_URL,
-        MULTI_LOG_FILTER_TYPE_URL,
-    };
+    use super::{EthereumBlockFilter, LogFilterNode};
     use super::{EthereumCallFilter, EthereumLogFilter, TriggerFilter};
 
     use graph::blockchain::TriggerFilter as _;
-    use graph::firehose::{CallToFilter, LogFilter, MultiCallToFilter, MultiLogFilter};
+    use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
     use graph::prelude::ethabi::ethereum_types::H256;
     use graph::prelude::web3::types::Address;
@@ -1082,37 +1072,32 @@ mod tests {
             },
         };
 
-        let expected_call = MultiCallToFilter {
-            call_filters: vec![
-                CallToFilter {
-                    addresses: vec![address(0).to_fixed_bytes().to_vec()],
-                    signatures: vec![[0u8; 4].to_vec()],
-                },
-                CallToFilter {
-                    addresses: vec![address(1).to_fixed_bytes().to_vec()],
-                    signatures: vec![[1u8; 4].to_vec()],
-                },
-                CallToFilter {
-                    addresses: vec![address(2).to_fixed_bytes().to_vec()],
-                    signatures: vec![],
-                },
-                CallToFilter {
-                    addresses: vec![address(1000).to_fixed_bytes().to_vec()],
-                    signatures: vec![],
-                },
-                CallToFilter {
-                    addresses: vec![address(2000).to_fixed_bytes().to_vec()],
-                    signatures: vec![],
-                },
-                CallToFilter {
-                    addresses: vec![address(3000).to_fixed_bytes().to_vec()],
-                    signatures: vec![],
-                },
-            ],
-        };
-        let mut bs = &expected_call.encode_to_vec()[..];
-        let expected_call =
-            MultiCallToFilter::decode(&mut bs).expect("unable to decode multi call_to filter");
+        let expected_call_filters = vec![
+            CallToFilter {
+                addresses: vec![address(0).to_fixed_bytes().to_vec()],
+                signatures: vec![[0u8; 4].to_vec()],
+            },
+            CallToFilter {
+                addresses: vec![address(1).to_fixed_bytes().to_vec()],
+                signatures: vec![[1u8; 4].to_vec()],
+            },
+            CallToFilter {
+                addresses: vec![address(2).to_fixed_bytes().to_vec()],
+                signatures: vec![],
+            },
+            CallToFilter {
+                addresses: vec![address(1000).to_fixed_bytes().to_vec()],
+                signatures: vec![],
+            },
+            CallToFilter {
+                addresses: vec![address(2000).to_fixed_bytes().to_vec()],
+                signatures: vec![],
+            },
+            CallToFilter {
+                addresses: vec![address(3000).to_fixed_bytes().to_vec()],
+                signatures: vec![],
+            },
+        ];
 
         filter.log.contracts_and_events_graph.add_edge(
             LogFilterNode::Contract(address(10)),
@@ -1130,28 +1115,22 @@ mod tests {
             false,
         );
 
-        let expected_log = MultiLogFilter {
-            log_filters: vec![
-                LogFilter {
-                    addresses: vec![address(10).to_fixed_bytes().to_vec()],
-                    event_signatures: vec![sig(101).to_fixed_bytes().to_vec()],
-                },
-                LogFilter {
-                    addresses: vec![
-                        address(10).to_fixed_bytes().to_vec(),
-                        address(20).to_fixed_bytes().to_vec(),
-                    ],
-                    event_signatures: vec![sig(100).to_fixed_bytes().to_vec()],
-                },
-            ],
-        };
-
-        let mut bs = &expected_log.encode_to_vec()[..];
-        let expected_log =
-            MultiLogFilter::decode(&mut bs).expect("unable to decode multi log filter");
+        let expected_log_filters = vec![
+            LogFilter {
+                addresses: vec![address(10).to_fixed_bytes().to_vec()],
+                event_signatures: vec![sig(101).to_fixed_bytes().to_vec()],
+            },
+            LogFilter {
+                addresses: vec![
+                    address(10).to_fixed_bytes().to_vec(),
+                    address(20).to_fixed_bytes().to_vec(),
+                ],
+                event_signatures: vec![sig(100).to_fixed_bytes().to_vec()],
+            },
+        ];
 
         let firehose_filter = filter.clone().to_firehose_filter();
-        assert_eq!(2, firehose_filter.len());
+        assert_eq!(1, firehose_filter.len());
 
         let firehose_filter: HashMap<_, _> = HashMap::from_iter::<Vec<(String, Any)>>(
             firehose_filter
@@ -1159,35 +1138,31 @@ mod tests {
                 .map(|any| (any.type_url.clone(), any))
                 .collect_vec(),
         );
-        let mut actual_call_filter = &firehose_filter
-            .get(MULTI_CALL_TO_FILTER_TYPE_URL.into())
-            .unwrap()
+
+        let mut combined_filter = &firehose_filter
+            .get(COMBINED_FILTER_TYPE_URL.into())
+            .expect("a CombinedFilter")
             .value[..];
 
-        let mut actual_log_filter = &firehose_filter
-            .get(MULTI_LOG_FILTER_TYPE_URL.into())
-            .unwrap()
-            .value[..];
+        let combined_filter =
+            CombinedFilter::decode(&mut combined_filter).expect("combined filter to decode");
 
-        let mut actual_call_filter = MultiCallToFilter::decode(&mut actual_call_filter)
-            .expect("unable to decode multi call filter");
-        actual_call_filter
-            .call_filters
-            .sort_by(|a, b| a.addresses.cmp(&b.addresses));
-        for filter in actual_call_filter.call_filters.iter_mut() {
+        let CombinedFilter {
+            log_filters: mut actual_log_filters,
+            call_filters: mut actual_call_filters,
+        } = combined_filter;
+
+        actual_call_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_call_filters.iter_mut() {
             filter.signatures.sort();
         }
-        assert_eq!(expected_call, actual_call_filter);
+        assert_eq!(expected_call_filters, actual_call_filters);
 
-        let mut actual_log_filter = MultiLogFilter::decode(&mut actual_log_filter)
-            .expect("unable to decode multi log filter");
-        actual_log_filter
-            .log_filters
-            .sort_by(|a, b| a.addresses.cmp(&b.addresses));
-        for filter in actual_log_filter.log_filters.iter_mut() {
+        actual_log_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_log_filters.iter_mut() {
             filter.event_signatures.sort();
         }
-        assert_eq!(expected_log, actual_log_filter);
+        assert_eq!(expected_log_filters, actual_log_filters);
 
         filter.block.trigger_every_block = true;
         let firehose_filter = filter.to_firehose_filter();
