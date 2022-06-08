@@ -7,6 +7,7 @@ pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
 pub mod polling_block_stream;
+pub mod substreams_block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
