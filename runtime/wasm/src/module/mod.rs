@@ -752,7 +752,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     pub fn from_caller(
-        caller: wasmtime::Caller,
+        caller: wasmtime::Caller<'_, wasmtime::TypedFunc<i32, i32>>,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
