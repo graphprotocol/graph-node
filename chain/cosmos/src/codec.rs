@@ -5,93 +5,126 @@ mod pbcosmos;
 pub use pbcosmos::*;
 
 use graph::blockchain::Block as BlockchainBlock;
-use graph::{blockchain::BlockPtr, prelude::BlockNumber};
+use graph::{
+    blockchain::BlockPtr,
+    prelude::{anyhow::anyhow, BlockNumber, Error},
+};
 
 use std::convert::TryFrom;
 
 impl Block {
-    pub fn header(&self) -> &Header {
-        self.header.as_ref().unwrap()
-    }
-
-    pub fn events(&self) -> impl Iterator<Item = &Event> {
-        self.begin_block_events()
-            .chain(self.tx_events())
-            .chain(self.end_block_events())
-    }
-
-    pub fn begin_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.result_begin_block
+    pub fn header(&self) -> Result<&Header, Error> {
+        self.header
             .as_ref()
-            .map(|b| b.events.iter())
-            .into_iter()
-            .flatten()
+            .ok_or_else(|| anyhow!("block data missing header field"))
     }
 
-    pub fn tx_events(&self) -> impl Iterator<Item = &Event> {
-        self.transactions.iter().flat_map(|tx| {
+    pub fn events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
+        let events = self
+            .begin_block_events()?
+            .chain(self.tx_events()?)
+            .chain(self.end_block_events()?);
+
+        Ok(events)
+    }
+
+    pub fn begin_block_events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
+        let events = self
+            .result_begin_block
+            .as_ref()
+            .ok_or_else(|| anyhow!("block data missing result_begin_block field"))?
+            .events
+            .iter();
+
+        Ok(events)
+    }
+
+    pub fn tx_events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
+        if self.transactions.iter().any(|tx| tx.result.is_none()) {
+            return Err(anyhow!("block data transaction missing result field"));
+        }
+
+        let events = self.transactions.iter().flat_map(|tx| {
             tx.result
                 .as_ref()
                 .map(|b| b.events.iter())
                 .into_iter()
                 .flatten()
-        })
+        });
+
+        Ok(events)
     }
 
-    pub fn end_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.result_end_block
+    pub fn end_block_events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
+        let events = self
+            .result_end_block
             .as_ref()
-            .map(|b| b.events.iter())
-            .into_iter()
-            .flatten()
+            .ok_or_else(|| anyhow!("block data missing result_end_block field"))?
+            .events
+            .iter();
+
+        Ok(events)
     }
 
     pub fn transactions(&self) -> impl Iterator<Item = &TxResult> {
         self.transactions.iter()
     }
 
-    pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.header().last_block_id.as_ref().map(|last_block_id| {
-            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
-        })
+    pub fn parent_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        let header = self.header()?;
+
+        Ok(header
+            .last_block_id
+            .as_ref()
+            .map(|last_block_id| BlockPtr::from((last_block_id.hash.clone(), header.height - 1))))
     }
 }
 
-impl From<Block> for BlockPtr {
-    fn from(b: Block) -> BlockPtr {
-        (&b).into()
+impl TryFrom<Block> for BlockPtr {
+    type Error = Error;
+
+    fn try_from(b: Block) -> Result<BlockPtr, Error> {
+        BlockPtr::try_from(&b)
     }
 }
 
-impl<'a> From<&'a Block> for BlockPtr {
-    fn from(b: &'a Block) -> BlockPtr {
-        BlockPtr::from((b.header().hash.clone(), b.header().height))
+impl<'a> TryFrom<&'a Block> for BlockPtr {
+    type Error = Error;
+
+    fn try_from(b: &'a Block) -> Result<BlockPtr, Error> {
+        let header = b.header()?;
+        Ok(BlockPtr::from((header.hash.clone(), header.height)))
     }
 }
 
 impl BlockchainBlock for Block {
     fn number(&self) -> i32 {
-        BlockNumber::try_from(self.header().height).unwrap()
+        BlockNumber::try_from(self.header().unwrap().height).unwrap()
     }
 
     fn ptr(&self) -> BlockPtr {
-        self.into()
+        BlockPtr::try_from(self).unwrap()
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.parent_ptr()
+        self.parent_ptr().unwrap()
     }
 }
 
 impl HeaderOnlyBlock {
-    pub fn header(&self) -> &Header {
-        self.header.as_ref().unwrap()
+    pub fn header(&self) -> Result<&Header, Error> {
+        self.header
+            .as_ref()
+            .ok_or_else(|| anyhow!("block data missing header field"))
     }
 
-    pub fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.header().last_block_id.as_ref().map(|last_block_id| {
-            BlockPtr::from((last_block_id.hash.clone(), self.header().height - 1))
-        })
+    pub fn parent_ptr(&self) -> Result<Option<BlockPtr>, Error> {
+        let header = self.header()?;
+
+        Ok(header
+            .last_block_id
+            .as_ref()
+            .map(|last_block_id| BlockPtr::from((last_block_id.hash.clone(), header.height - 1))))
     }
 }
 
@@ -103,51 +136,68 @@ impl From<&Block> for HeaderOnlyBlock {
     }
 }
 
-impl From<HeaderOnlyBlock> for BlockPtr {
-    fn from(b: HeaderOnlyBlock) -> BlockPtr {
-        (&b).into()
+impl TryFrom<HeaderOnlyBlock> for BlockPtr {
+    type Error = Error;
+
+    fn try_from(b: HeaderOnlyBlock) -> Result<BlockPtr, Error> {
+        BlockPtr::try_from(&b)
     }
 }
 
-impl<'a> From<&'a HeaderOnlyBlock> for BlockPtr {
-    fn from(b: &'a HeaderOnlyBlock) -> BlockPtr {
-        BlockPtr::from((b.header().hash.clone(), b.header().height))
+impl<'a> TryFrom<&'a HeaderOnlyBlock> for BlockPtr {
+    type Error = Error;
+
+    fn try_from(b: &'a HeaderOnlyBlock) -> Result<BlockPtr, Error> {
+        let header = b.header()?;
+
+        Ok(BlockPtr::from((header.hash.clone(), header.height)))
     }
 }
 
 impl BlockchainBlock for HeaderOnlyBlock {
     fn number(&self) -> i32 {
-        BlockNumber::try_from(self.header().height).unwrap()
+        BlockNumber::try_from(self.header().unwrap().height).unwrap()
     }
 
     fn ptr(&self) -> BlockPtr {
-        self.into()
+        BlockPtr::try_from(self).unwrap()
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        self.parent_ptr()
+        self.parent_ptr().unwrap()
     }
 }
 
 impl EventData {
-    pub fn event(&self) -> &Event {
-        self.event.as_ref().unwrap()
+    pub fn event(&self) -> Result<&Event, Error> {
+        self.event
+            .as_ref()
+            .ok_or_else(|| anyhow!("event data missing event field"))
     }
-    pub fn block(&self) -> &HeaderOnlyBlock {
-        self.block.as_ref().unwrap()
+    pub fn block(&self) -> Result<&HeaderOnlyBlock, Error> {
+        self.block
+            .as_ref()
+            .ok_or_else(|| anyhow!("event data missing block field"))
     }
 }
 
 impl TransactionData {
-    pub fn tx_result(&self) -> &TxResult {
-        self.tx.as_ref().unwrap()
+    pub fn tx_result(&self) -> Result<&TxResult, Error> {
+        self.tx
+            .as_ref()
+            .ok_or_else(|| anyhow!("transaction data missing tx field"))
     }
 
-    pub fn response_deliver_tx(&self) -> &ResponseDeliverTx {
-        self.tx_result().result.as_ref().unwrap()
+    pub fn response_deliver_tx(&self) -> Result<&ResponseDeliverTx, Error> {
+        self.tx_result()?
+            .result
+            .as_ref()
+            .ok_or_else(|| anyhow!("transaction data missing result field"))
     }
 
-    pub fn block(&self) -> &HeaderOnlyBlock {
-        self.block.as_ref().unwrap()
+    pub fn block(&self) -> Result<&HeaderOnlyBlock, Error> {
+        self.block
+            .as_ref()
+            .ok_or_else(|| anyhow!("transaction data missing block field"))
     }
 }

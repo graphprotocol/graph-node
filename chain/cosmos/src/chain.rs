@@ -197,7 +197,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let header_only_block = codec::HeaderOnlyBlock::from(&block);
 
         let mut triggers: Vec<_> = shared_block
-            .begin_block_events()
+            .begin_block_events()?
             .cloned()
             // FIXME (Cosmos): Optimize. Should use an Arc instead of cloning the
             // block. This is not currently possible because EventData is automatically
@@ -205,12 +205,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .filter_map(|event| {
                 filter_event_trigger(filter, event, &header_only_block, EventOrigin::BeginBlock)
             })
-            .chain(shared_block.tx_events().cloned().filter_map(|event| {
+            .chain(shared_block.tx_events()?.cloned().filter_map(|event| {
                 filter_event_trigger(filter, event, &header_only_block, EventOrigin::DeliverTx)
             }))
             .chain(
                 shared_block
-                    .end_block_events()
+                    .end_block_events()?
                     .cloned()
                     .filter_map(|event| {
                         filter_event_trigger(
@@ -316,6 +316,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             ForkStep::StepUndo => {
                 let parent_ptr = sp
                     .parent_ptr()
+                    .map_err(FirehoseError::from)?
                     .expect("Genesis block should never be reverted");
 
                 Ok(BlockStreamEvent::Revert(
