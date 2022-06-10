@@ -68,6 +68,7 @@ impl StoreResolver {
     pub async fn at_block(
         logger: &Logger,
         store: Arc<dyn QueryStore>,
+        state: &DeploymentState,
         subscription_manager: Arc<dyn SubscriptionManager>,
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
@@ -75,8 +76,7 @@ impl StoreResolver {
         result_size: Arc<ResultSizeMetrics>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
-        let deployment2 = deployment.clone();
-        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, deployment2.clone()).await?;
+        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
         let has_non_fatal_errors = store
             .has_non_fatal_errors(Some(block_ptr.block_number()))
@@ -105,24 +105,17 @@ impl StoreResolver {
     async fn locate_block(
         store: &dyn QueryStore,
         bc: BlockConstraint,
-        subgraph: DeploymentHash,
+        state: &DeploymentState,
     ) -> Result<BlockPtr, QueryExecutionError> {
         fn check_ptr(
-            subgraph: DeploymentHash,
+            state: &DeploymentState,
             ptr: BlockPtr,
-            min: BlockNumber,
+            block: BlockNumber,
         ) -> Result<BlockPtr, QueryExecutionError> {
-            if ptr.number < min {
-                return Err(QueryExecutionError::ValueParseError(
-                    "block.number".to_owned(),
-                    format!(
-                        "subgraph {} has only indexed up to block number {} \
-                            and data for block number {} is therefore not yet available",
-                        subgraph, ptr.number, min
-                    ),
-                ));
-            }
-            Ok(ptr)
+            state
+                .block_queryable(block)
+                .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
+                .map(|()| ptr)
         }
 
         let subgraph_block_ptr = store
@@ -148,13 +141,13 @@ impl StoreResolver {
                     })?;
 
                 subgraph_block_ptr.and_then(|subgraph_ptr| {
-                    check_ptr(subgraph, subgraph_ptr, ptr.number)?;
+                    check_ptr(state, subgraph_ptr, ptr.number)?;
                     Ok(ptr)
                 })
             }
             BlockConstraint::Number(number) => {
                 subgraph_block_ptr.and_then(|ptr| {
-                    check_ptr(subgraph, ptr, number)?;
+                    check_ptr(state, ptr, number)?;
                     // We don't have a way here to look the block hash up from
                     // the database, and even if we did, there is no guarantee
                     // that we have the block in our cache. We therefore
@@ -165,7 +158,7 @@ impl StoreResolver {
                 })
             }
             BlockConstraint::Min(number) => {
-                subgraph_block_ptr.and_then(|ptr| check_ptr(subgraph, ptr, number))
+                subgraph_block_ptr.and_then(|ptr| check_ptr(state, ptr, number))
             }
             BlockConstraint::Latest => subgraph_block_ptr,
         }

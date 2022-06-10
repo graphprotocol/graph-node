@@ -792,6 +792,17 @@ impl DeploymentState {
     pub fn is_deployed(&self) -> bool {
         self.latest_ethereum_block_number > 0
     }
+
+    pub fn block_queryable(&self, block: BlockNumber) -> Result<(), String> {
+        if block > self.latest_ethereum_block_number {
+            return Err(format!(
+                "subgraph {} has only indexed up to block number {} \
+                        and data for block number {} is therefore not yet available",
+                self.id, self.latest_ethereum_block_number, block
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {

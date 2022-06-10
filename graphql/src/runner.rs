@@ -192,6 +192,7 @@ where
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
+                &state,
                 self.subscription_manager.cheap_clone(),
                 bc,
                 error_policy,
