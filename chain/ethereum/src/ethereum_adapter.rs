@@ -847,7 +847,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let web3 = self.web3.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
-        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
+        let retry_log_message = format!(
+            "eth_getBlockByNumber({}, false) RPC call",
+            ENV_VARS.genesis_block_number
+        );
+        let gen_block_hash_future = retry(retry_log_message, &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
@@ -856,7 +860,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let provider = provider.clone();
                 async move {
                     web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
+                        .block(BlockId::Number(Web3BlockNumber::Number(
+                            ENV_VARS.genesis_block_number.into(),
+                        )))
                         .await
                         .map_err(|e| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
