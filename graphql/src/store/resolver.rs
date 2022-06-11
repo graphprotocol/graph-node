@@ -7,8 +7,8 @@ use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
 };
+use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
-use graph::{constraint_violation, prelude::*};
 
 use crate::execution::ast as a;
 use crate::query::ext::BlockConstraint;
@@ -116,14 +116,6 @@ impl StoreResolver {
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
 
-        let subgraph_block_ptr = store
-            .block_ptr()
-            .await
-            .map_err(QueryExecutionError::from)?
-            .ok_or_else(|| {
-                constraint_violation!("we should have already checked that the subgraph exists")
-            })?;
-
         match bc {
             BlockConstraint::Hash(hash) => {
                 let ptr = store
@@ -155,9 +147,9 @@ impl StoreResolver {
             }
             BlockConstraint::Min(number) => {
                 check_ptr(state, number)?;
-                Ok(subgraph_block_ptr)
+                Ok(state.latest_block.cheap_clone())
             }
-            BlockConstraint::Latest => Ok(subgraph_block_ptr),
+            BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
         }
     }
 
