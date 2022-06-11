@@ -510,30 +510,6 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-/// Translate `latest` into a `BlockNumber`. If `latest` is `None` or does
-/// not represent an `i32`, return an error
-fn latest_as_block_number(
-    latest: Option<BigDecimal>,
-    subgraph: &str,
-) -> Result<BlockNumber, StoreError> {
-    match latest {
-        None => Err(StoreError::QueryExecutionError(format!(
-            "Subgraph `{}` has not started syncing yet. Wait for it to ingest \
-             a few blocks before querying it",
-            subgraph
-        ))),
-        Some(latest) => latest.to_i32().ok_or_else(|| {
-            constraint_violation!(
-                "Subgraph `{}` has an \
-                 invalid latest_ethereum_block_number `{:?}` that can not be \
-                 represented as an i32",
-                subgraph,
-                latest
-            )
-        }),
-    }
-}
-
 pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState, StoreError> {
     use subgraph_deployment as d;
 
@@ -544,26 +520,38 @@ pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState,
             d::reorg_count,
             d::max_reorg_depth,
             d::latest_ethereum_block_number,
+            d::latest_ethereum_block_hash,
         ))
-        .first::<(String, i32, i32, Option<BigDecimal>)>(conn)
+        .first::<(String, i32, i32, Option<BigDecimal>, Option<Vec<u8>>)>(conn)
         .optional()?
     {
         None => Err(StoreError::QueryExecutionError(format!(
             "No data found for subgraph {}",
             id
         ))),
-        Some((_, reorg_count, max_reorg_depth, latest_ethereum_block_number)) => {
+        Some((_, reorg_count, max_reorg_depth, latest_block_number, latest_block_hash)) => {
             let reorg_count = convert_to_u32(Some(reorg_count), "reorg_count", id.as_str())?;
             let max_reorg_depth =
                 convert_to_u32(Some(max_reorg_depth), "max_reorg_depth", id.as_str())?;
-            let latest_ethereum_block_number =
-                latest_as_block_number(latest_ethereum_block_number, id.as_str())?;
-
+            let latest_block = crate::detail::block(
+                id.as_str(),
+                "latest_block",
+                latest_block_hash,
+                latest_block_number,
+            )?
+            .ok_or_else(|| {
+                StoreError::QueryExecutionError(format!(
+                    "Subgraph `{}` has not started syncing yet. Wait for it to ingest \
+                 a few blocks before querying it",
+                    id
+                ))
+            })?
+            .to_ptr();
             Ok(DeploymentState {
                 id,
                 reorg_count,
                 max_reorg_depth,
-                latest_ethereum_block_number,
+                latest_block,
             })
         }
     }
