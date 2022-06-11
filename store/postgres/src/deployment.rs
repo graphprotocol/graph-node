@@ -521,15 +521,30 @@ pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState,
             d::max_reorg_depth,
             d::latest_ethereum_block_number,
             d::latest_ethereum_block_hash,
+            d::earliest_ethereum_block_number,
         ))
-        .first::<(String, i32, i32, Option<BigDecimal>, Option<Vec<u8>>)>(conn)
+        .first::<(
+            String,
+            i32,
+            i32,
+            Option<BigDecimal>,
+            Option<Vec<u8>>,
+            Option<BigDecimal>,
+        )>(conn)
         .optional()?
     {
         None => Err(StoreError::QueryExecutionError(format!(
             "No data found for subgraph {}",
             id
         ))),
-        Some((_, reorg_count, max_reorg_depth, latest_block_number, latest_block_hash)) => {
+        Some((
+            _,
+            reorg_count,
+            max_reorg_depth,
+            latest_block_number,
+            latest_block_hash,
+            earliest_block_number,
+        )) => {
             let reorg_count = convert_to_u32(Some(reorg_count), "reorg_count", id.as_str())?;
             let max_reorg_depth =
                 convert_to_u32(Some(max_reorg_depth), "max_reorg_depth", id.as_str())?;
@@ -547,11 +562,24 @@ pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState,
                 ))
             })?
             .to_ptr();
+            let earliest_block_number = earliest_block_number
+                .map(|number| {
+                    number.to_i32().ok_or_else(|| {
+                        constraint_violation!(
+                            "invalid value {:?} for earliest_block_number in subgraph {}",
+                            number,
+                            id
+                        )
+                    })
+                })
+                .transpose()?
+                .unwrap_or(0);
             Ok(DeploymentState {
                 id,
                 reorg_count,
                 max_reorg_depth,
                 latest_block,
+                earliest_block_number,
             })
         }
     }

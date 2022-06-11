@@ -786,6 +786,8 @@ pub struct DeploymentState {
     pub max_reorg_depth: u32,
     /// The last block that the subgraph has processed
     pub latest_block: BlockPtr,
+    /// The earliest block that the subgraph has processed
+    pub earliest_block_number: BlockNumber,
 }
 
 impl DeploymentState {
