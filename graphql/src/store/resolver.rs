@@ -7,8 +7,8 @@ use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
 };
-use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
+use graph::{constraint_violation, prelude::*};
 
 use crate::execution::ast as a;
 use crate::query::ext::BlockConstraint;
@@ -109,20 +109,20 @@ impl StoreResolver {
     ) -> Result<BlockPtr, QueryExecutionError> {
         fn check_ptr(
             state: &DeploymentState,
-            ptr: BlockPtr,
             block: BlockNumber,
-        ) -> Result<BlockPtr, QueryExecutionError> {
+        ) -> Result<(), QueryExecutionError> {
             state
                 .block_queryable(block)
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
-                .map(|()| ptr)
         }
 
         let subgraph_block_ptr = store
             .block_ptr()
             .await
-            .map_err(Into::into)
-            .map(|ptr| ptr.expect("we should have already checked that the subgraph exists"));
+            .map_err(QueryExecutionError::from)?
+            .ok_or_else(|| {
+                constraint_violation!("we should have already checked that the subgraph exists")
+            })?;
 
         match bc {
             BlockConstraint::Hash(hash) => {
@@ -140,27 +140,24 @@ impl StoreResolver {
                             .map(|number| BlockPtr::new(hash, number))
                     })?;
 
-                subgraph_block_ptr.and_then(|subgraph_ptr| {
-                    check_ptr(state, subgraph_ptr, ptr.number)?;
-                    Ok(ptr)
-                })
+                check_ptr(state, ptr.number)?;
+                Ok(ptr)
             }
             BlockConstraint::Number(number) => {
-                subgraph_block_ptr.and_then(|ptr| {
-                    check_ptr(state, ptr, number)?;
-                    // We don't have a way here to look the block hash up from
-                    // the database, and even if we did, there is no guarantee
-                    // that we have the block in our cache. We therefore
-                    // always return an all zeroes hash when users specify
-                    // a block number
-                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                    Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
-                })
+                check_ptr(state, number)?;
+                // We don't have a way here to look the block hash up from
+                // the database, and even if we did, there is no guarantee
+                // that we have the block in our cache. We therefore
+                // always return an all zeroes hash when users specify
+                // a block number
+                // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
             }
             BlockConstraint::Min(number) => {
-                subgraph_block_ptr.and_then(|ptr| check_ptr(state, ptr, number))
+                check_ptr(state, number)?;
+                Ok(subgraph_block_ptr)
             }
-            BlockConstraint::Latest => subgraph_block_ptr,
+            BlockConstraint::Latest => Ok(subgraph_block_ptr),
         }
     }
 
