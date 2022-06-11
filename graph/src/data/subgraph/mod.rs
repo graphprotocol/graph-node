@@ -804,6 +804,13 @@ impl DeploymentState {
                 self.id, self.latest_block.number, block
             ));
         }
+        if block < self.earliest_block_number {
+            return Err(format!(
+                "subgraph {} only has data starting at block number {} \
+                            and data for block number {} is therefore not yet available",
+                self.id, self.earliest_block_number, block
+            ));
+        }
         Ok(())
     }
 }
