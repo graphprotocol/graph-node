@@ -122,7 +122,11 @@ where
                     .await?
                 {
                     Action::Continue => continue,
-                    Action::Stop => return Ok(()),
+                    Action::Stop => {
+                        info!(self.logger, "Stopping subgraph");
+                        self.inputs.store.flush().await?;
+                        return Ok(());
+                    }
                     Action::Restart => break,
                 };
             }
@@ -532,8 +536,9 @@ where
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => self.handle_err(e, cancel_handle).await?,
-            // Scenario where this can happen: 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
-            None => unreachable!("The block stream stopped producing blocks"),
+            // If the block stream ends, that means that there is no more indexing to do.
+            // Typically block streams produce indefinitely, but tests are an example of finite block streams.
+            None => Action::Stop,
         };
 
         Ok(action)

@@ -1,9 +1,11 @@
+use graph_store_postgres::SubgraphStore;
+use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio::fs::read_to_string;
 
-use anyhow::anyhow;
 use anyhow::Error;
 use async_stream::stream;
 use ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger};
@@ -16,14 +18,14 @@ use graph::blockchain::{
     TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::store::{BlockStore, DeploymentId, DeploymentLocator};
-use graph::env::{EnvVars, ENV_VARS};
+use graph::components::store::{BlockStore, DeploymentLocator};
+use graph::env::ENV_VARS;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::{H256, U64};
 use graph::prelude::{
     async_trait, BlockNumber, DeploymentHash, LightEthereumBlock, LoggerFactory, MetricsRegistry,
-    NodeId, SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore,
+    NodeId, SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
     SubgraphVersionSwitchingMode,
 };
 use graph_chain_ethereum::{self as ethereum, Chain};
@@ -33,81 +35,114 @@ use graph_core::{
 };
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
-use graph_node::{
-    config::{Config, Opt},
-    store_builder::StoreBuilder,
-};
+use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_tests::helpers::run_cmd;
 use slog::{debug, info, Logger};
-use std::env;
+use std::process::Command;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_runner() -> anyhow::Result<()> {
-    let subgraph_name = SubgraphName::new("test1")
+async fn data_source_revert() -> anyhow::Result<()> {
+    let subgraph_name = SubgraphName::new("data-source-revert")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
 
-    let deployment = DeploymentLocator {
-        id: DeploymentId::new(1),
-        // ethereum-blocks
-        hash: DeploymentHash::new("QmUuqWUHTNaHkq6d333n7gCrZbwzLN2yophaHeeK9x6BjJ")
-            .expect("unable to parse hash"),
+    let ipfs = IpfsClient::localhost();
+    ipfs.test()
+        .await
+        .expect("Could not connect to IPFS, make sure it's running at port 5001");
+
+    // This setup can be run once for all tests.
+    run_cmd(Command::new("yarn").current_dir("./integration-tests"));
+
+    let deploy_output = run_cmd(
+        Command::new("yarn")
+            .arg("deploy:test")
+            .env("IPFS_URI", "http://127.0.0.1:5001")
+            .env("GRAPH_NODE_ADMIN_URI", "http://localhost:4242")
+            .current_dir("./integration-tests/data-source-revert"),
+    );
+
+    // Hack to extract deployment id from `graph deploy` output.
+    const ID_PREFIX: &str = "Build completed: ";
+    let hash = {
+        let line = deploy_output
+            .lines()
+            .find(|line| line.contains(ID_PREFIX))
+            .expect("found no matching line");
+        let line = &line[5..line.len() - 5]; // workaround for colored output
+        DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
     };
 
-    let start_block =
-        graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(LightEthereumBlock {
-            hash: Some(H256::from_low_u64_be(1)),
-            number: Some(U64::from(1)),
-            ..Default::default()
-        }));
-    let stop_block = 2;
+    let chain: Vec<BlockWithTriggers<Chain>> = {
+        let start_block_hash = H256::from_low_u64_be(0);
+        let start_block = BlockWithTriggers {
+            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
+                LightEthereumBlock {
+                    hash: Some(start_block_hash),
+                    number: Some(U64::from(0)),
+                    ..Default::default()
+                },
+            )),
+            trigger_data: vec![],
+        };
+        let block_2 = BlockWithTriggers::<Chain> {
+            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
+                LightEthereumBlock {
+                    hash: Some(H256::from_low_u64_be(1)),
+                    number: Some(U64::from(1)),
+                    parent_hash: start_block_hash,
+                    ..Default::default()
+                },
+            )),
+            trigger_data: vec![EthereumTrigger::Block(
+                test_ptr(1),
+                EthereumBlockTriggerType::Every,
+            )],
+        };
+        let block_2_reorged_hash = H256::from_low_u64_be(12);
+        let block_2_reorged = BlockWithTriggers::<Chain> {
+            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
+                LightEthereumBlock {
+                    hash: Some(block_2_reorged_hash),
+                    number: Some(U64::from(1)),
+                    parent_hash: start_block_hash,
+                    ..Default::default()
+                },
+            )),
+            trigger_data: vec![EthereumTrigger::Block(
+                BlockPtr {
+                    hash: block_2_reorged_hash.into(),
+                    number: 1,
+                },
+                EthereumBlockTriggerType::Every,
+            )],
+        };
+        vec![start_block, block_2, block_2_reorged]
+    };
+
+    let stop_block = chain.last().unwrap().block.ptr();
 
     let ctx = setup(
         subgraph_name.clone(),
-        &deployment,
-        start_block.clone(),
-        vec![
-            BlockStreamEvent::ProcessBlock(
-                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
-                    block: start_block.clone(),
-                    trigger_data: vec![],
-                },
-                None,
-            ),
-            BlockStreamEvent::ProcessBlock(
-                BlockWithTriggers::<graph_chain_ethereum::chain::Chain> {
-                    block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
-                        LightEthereumBlock {
-                            hash: Some(H256::from_low_u64_be(2)),
-                            number: Some(U64::from(2)),
-                            ..Default::default()
-                        },
-                    )),
-                    trigger_data: vec![EthereumTrigger::Block(
-                        BlockPtr {
-                            hash: H256::from_low_u64_be(2).into(),
-                            number: 2,
-                        },
-                        EthereumBlockTriggerType::Every,
-                    )],
-                },
-                None,
-            ),
-        ],
+        &hash,
+        "./integration-tests/config.simple.toml",
+        ipfs,
+        chain,
     )
     .await;
 
     let provider = ctx.provider.clone();
     let store = ctx.store.clone();
 
-    let logger = ctx.logger_factory.subgraph_logger(&deployment);
+    let logger = ctx.logger_factory.subgraph_logger(&ctx.deployment_locator);
 
-    SubgraphAssignmentProvider::start(provider.as_ref(), deployment.clone(), Some(stop_block))
+    SubgraphAssignmentProvider::start(provider.as_ref(), ctx.deployment_locator.clone(), None)
         .await
         .expect("unabel to start subgraph");
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
-        let block_ptr = match store.least_block_ptr(&deployment.hash).await {
+        let block_ptr = match store.least_block_ptr(&hash).await {
             Ok(Some(ptr)) => ptr,
             res => {
                 info!(&logger, "{:?}", res);
@@ -117,7 +152,7 @@ async fn test_runner() -> anyhow::Result<()> {
 
         debug!(&logger, "subgraph block: {:?}", block_ptr);
 
-        if block_ptr.number >= stop_block {
+        if block_ptr == stop_block {
             info!(
                 &logger,
                 "subgraph now at block {}, reached stop block {}", block_ptr.number, stop_block
@@ -126,17 +161,17 @@ async fn test_runner() -> anyhow::Result<()> {
         }
     }
 
-    // FIXME: wait for instance manager to stop.
-    // If we remove the subgraph first, it will panic on:
-    // 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
-    tokio::time::sleep(Duration::from_millis(4000)).await;
-
-    info!(&logger, "Removing subgraph {}", subgraph_name);
-    store.clone().remove_subgraph(subgraph_name)?;
+    cleanup(&ctx.store, &subgraph_name, &hash);
 
     Ok(())
 }
 
+fn test_ptr(n: BlockNumber) -> BlockPtr {
+    BlockPtr {
+        hash: H256::from_low_u64_be(n as u64).into(),
+        number: n,
+    }
+}
 struct TestContext {
     logger_factory: LoggerFactory,
     provider: Arc<
@@ -144,49 +179,59 @@ struct TestContext {
             SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
         >,
     >,
-    store: Arc<dyn SubgraphStore>,
+    store: Arc<SubgraphStore>,
+    deployment_locator: DeploymentLocator,
 }
 
 async fn setup(
     subgraph_name: SubgraphName,
-    deployment: &DeploymentLocator,
-    start_block: <Chain as Blockchain>::Block,
-    events: Vec<BlockStreamEvent<Chain>>,
+    hash: &DeploymentHash,
+    store_config_path: &str,
+    ipfs: IpfsClient,
+    chain: Vec<BlockWithTriggers<Chain>>,
 ) -> TestContext {
-    let logger = Logger::root(slog::Discard, slog::o!());
+    let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.clone(), None);
-    let mut opt = Opt::default();
-    let postgres_url = env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL")
-        .unwrap_or("postgresql://graph-node:let-me-in@127.0.0.1:5432/graph-node".into());
 
-    opt.postgres_url = Some(postgres_url);
-    let node_id = NodeId::new(opt.node_id.clone()).expect("invalid node_id");
-    let config = Config::load(&logger, &opt).expect("failed to create configuration");
+    let config = {
+        let config = read_to_string(store_config_path).await.unwrap();
+        let db_url = match std::env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL") {
+            Ok(url) => url,
+            Err(VarError::NotPresent) => panic!(
+                "to run end-to-end tests it is required to set \
+                                            $THEGRAPH_STORE_POSTGRES_DIESEL_URL to the test db url"
+            ),
+            Err(e) => panic!("{}", e.to_string()),
+        };
+        let config = config.replace("$THEGRAPH_STORE_POSTGRES_DIESEL_URL", &db_url);
+        Config::from_str(&config).expect("failed to create configuration")
+    };
 
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
 
-    let network_name: String = "mainnet".into();
+    let network_name: String = config.chains.chains.iter().next().unwrap().0.to_string();
+    let node_id = NodeId::new(&config.chains.ingestor).unwrap();
 
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
 
-    let ipfs =
-        IpfsClient::new("https://api.thegraph.com/ipfs/").expect("failed to start ipfs client");
-
-    let link_resolver = Arc::new(LinkResolver::new(vec![ipfs], Arc::new(EnvVars::default())));
-
     let chain_head_update_listener = store_builder.chain_head_update_listener();
 
-    let network_identifiers: Vec<(String, Vec<ChainIdentifier>)> = vec![(
-        "mainnet".into(),
+    let start_block = chain[0].ptr();
+    let network_identifiers = vec![(
+        network_name.clone(),
         (vec![ChainIdentifier {
             net_version: "".into(),
-            genesis_block_hash: start_block.hash(),
+            genesis_block_hash: start_block.hash.clone(),
         }]),
     )];
     let network_store = store_builder.network_store(network_identifiers);
 
     let subgraph_store = network_store.subgraph_store();
+
+    // Make sure we're starting from a clean state.
+    cleanup(&subgraph_store, &subgraph_name, hash);
+
     let chain_store = network_store
         .block_store()
         .chain_store(network_name.as_ref())
@@ -211,7 +256,7 @@ async fn setup(
         firehose_endpoints,
         ethereum::network::EthereumNetworkAdapters { adapters: vec![] },
         chain_head_update_listener,
-        Arc::new(StaticStreamBuilder { events }),
+        Arc::new(StaticStreamBuilder { chain }),
         Arc::new(NoopAdapterSelector {}),
         Arc::new(NoopRuntimeAdapter {}),
         ethereum::ENV_VARS.reorg_threshold,
@@ -224,6 +269,8 @@ async fn setup(
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
+    let link_resolver = Arc::new(LinkResolver::new(vec![ipfs], Default::default()));
+
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
@@ -235,11 +282,7 @@ async fn setup(
     );
 
     // Create IPFS-based subgraph provider
-    let subgraph_provider: Arc<
-        IpfsSubgraphAssignmentProvider<
-            SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
-        >,
-    > = Arc::new(IpfsSubgraphAssignmentProvider::new(
+    let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_instance_manager,
@@ -247,15 +290,7 @@ async fn setup(
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
-    let subgraph_registrar: Arc<
-        IpfsSubgraphRegistrar<
-            IpfsSubgraphAssignmentProvider<
-                SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
-            >,
-            graph_store_postgres::SubgraphStore,
-            PanicSubscriptionManager,
-        >,
-    > = Arc::new(IpfsSubgraphRegistrar::new(
+    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_provider.clone(),
@@ -270,16 +305,13 @@ async fn setup(
         .await
         .expect("unable to create subgraph");
 
-    SubgraphRegistrar::create_subgraph_version(
+    let deployment_locator = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
         subgraph_name.clone(),
-        deployment.hash.clone(),
+        hash.clone(),
         node_id.clone(),
         None,
-        Some(BlockPtr {
-            hash: start_block.hash(),
-            number: start_block.number(),
-        }),
+        None,
     )
     .await
     .expect("failed to create subgraph version");
@@ -288,11 +320,22 @@ async fn setup(
         logger_factory,
         provider: subgraph_provider,
         store: subgraph_store,
+        deployment_locator,
     }
 }
 
+fn cleanup(subgraph_store: &SubgraphStore, name: &SubgraphName, hash: &DeploymentHash) {
+    let locators = subgraph_store.locators(hash).unwrap();
+    subgraph_store.remove_subgraph(name.clone()).unwrap();
+    for locator in locators {
+        subgraph_store.remove_deployment(locator.id.into()).unwrap();
+    }
+}
+
+/// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the
+/// chain is not a descendant on the previous one, reorgs will be emitted until it is.
 struct StaticStreamBuilder<C: Blockchain> {
-    events: Vec<BlockStreamEvent<C>>,
+    chain: Vec<BlockWithTriggers<C>>,
 }
 
 #[async_trait]
@@ -306,12 +349,20 @@ where
         _deployment: DeploymentLocator,
         _block_cursor: Option<String>,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
-        _subgraph_current_block: Option<graph::blockchain::BlockPtr>,
+        current_block: Option<graph::blockchain::BlockPtr>,
         _filter: Arc<C::TriggerFilter>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        let current_idx = current_block.map(|current_block| {
+            self.chain
+                .iter()
+                .enumerate()
+                .find(|(_, b)| b.ptr() == current_block)
+                .unwrap()
+                .0 as usize
+        });
         Ok(Box::new(StaticStream {
-            stream: Box::pin(stream_events(self.events.clone())),
+            stream: Box::pin(stream_events(self.chain.clone(), current_idx)),
         }))
     }
 
@@ -324,9 +375,7 @@ where
         _filter: Arc<C::TriggerFilter>,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        Ok(Box::new(StaticStream {
-            stream: Box::pin(stream_events(self.events.clone())),
-        }))
+        unimplemented!("only firehose mode should be used for tests")
     }
 }
 
@@ -345,15 +394,35 @@ impl<C: Blockchain> Stream for StaticStream<C> {
 }
 
 fn stream_events<C: Blockchain>(
-    blocks: Vec<BlockStreamEvent<C>>,
-) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
+    blocks: Vec<BlockWithTriggers<C>>,
+    current_idx: Option<usize>,
+) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>>
+where
+    C::TriggerData: Clone,
+{
     stream! {
-        for event in blocks.into_iter() {
-            yield Ok(event);
-        }
-
-        loop {
-            yield Err(anyhow!("no more blocks"))
+        let current_block = current_idx.map(|idx| &blocks[idx]);
+        let mut current_ptr = current_block.map(|b| b.ptr());
+        let mut current_parent_ptr = current_block.and_then(|b| b.parent_ptr());
+        let skip = current_idx.map(|idx| idx + 1).unwrap_or(0);
+        let mut blocks_iter = blocks.iter().skip(skip).peekable();
+        while let Some(&block) = blocks_iter.peek() {
+            if block.parent_ptr() == current_ptr {
+                current_ptr = Some(block.ptr());
+                current_parent_ptr = block.parent_ptr();
+                blocks_iter.next(); // Block consumed, advance the iterator.
+                yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), None));
+            } else {
+                let revert_to = current_parent_ptr.unwrap();
+                current_ptr = Some(revert_to.clone());
+                current_parent_ptr = blocks
+                    .iter()
+                    .find(|b| b.ptr() == revert_to)
+                    .unwrap()
+                    .block
+                    .parent_ptr();
+                yield Ok(BlockStreamEvent::Revert(revert_to, None));
+            }
         }
     }
 }
@@ -406,10 +475,11 @@ impl TriggersAdapter<Chain> for NoopTriggersAdapter {
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        _block: <graph_chain_ethereum::Chain as Blockchain>::Block,
+        block: <graph_chain_ethereum::Chain as Blockchain>::Block,
         _filter: &<graph_chain_ethereum::Chain as Blockchain>::TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        todo!()
+        // Return no triggers on data source reprocessing.
+        Ok(BlockWithTriggers::new(block, Vec::new()))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
