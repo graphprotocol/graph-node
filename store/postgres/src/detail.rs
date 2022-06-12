@@ -49,8 +49,11 @@ pub struct DeploymentDetail {
     pub synced: bool,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
+    // Not used anymore; only written to keep backwards compatible
     earliest_ethereum_block_hash: Option<Bytes>,
     earliest_ethereum_block_number: Option<BigDecimal>,
+    // New tracker for earliest block number
+    earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
     last_healthy_ethereum_block_hash: Option<Bytes>,
@@ -342,6 +345,8 @@ struct StoredSubgraphManifest {
     schema: String,
     graph_node_version_id: Option<i32>,
     use_bytea_prefix: bool,
+    start_block_number: Option<i32>,
+    start_block_hash: Option<Bytes>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
