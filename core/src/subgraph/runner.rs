@@ -375,6 +375,7 @@ where
                 &self.metrics.host.stopwatch,
                 data_sources,
                 deterministic_errors,
+                self.inputs.manifest_idx_and_name.clone(),
             )
             .await
             .context("Failed to transact block operations")?;

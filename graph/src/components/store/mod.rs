@@ -19,7 +19,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
@@ -822,9 +821,9 @@ pub enum UnfailOutcome {
     Unfailed,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct StoredDynamicDataSource {
-    pub name: String,
+    pub manifest_idx: u32,
     pub param: Option<Bytes>,
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,

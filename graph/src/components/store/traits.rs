@@ -204,6 +204,7 @@ pub trait WritableStore: Send + Sync + 'static {
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
+        manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<(), StoreError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of
@@ -225,7 +226,10 @@ pub trait WritableStore: Send + Sync + 'static {
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+    async fn load_dynamic_data_sources(
+        &self,
+        manifest_idx_and_name: Vec<(u32, String)>,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring

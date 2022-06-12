@@ -40,6 +40,7 @@ pub(super) fn load(
     conn: &PgConnection,
     id: &str,
     block: BlockNumber,
+    manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
@@ -69,9 +70,14 @@ pub(super) fn load(
         ));
         }
 
+        let manifest_idx = manifest_idx_and_name
+            .iter()
+            .find(|(_, manifest_name)| manifest_name == &name)
+            .ok_or_else(|| constraint_violation!("data source name {} not found", name))?
+            .0;
         let creation_block = creation_block.to_i32();
         let data_source = StoredDynamicDataSource {
-            name,
+            manifest_idx,
             param: Some(address.into()),
             context: context.map(|ctx| serde_json::from_str(&ctx)).transpose()?,
             creation_block,
@@ -93,6 +99,7 @@ pub(super) fn insert(
     deployment: &DeploymentHash,
     data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
+    manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
@@ -105,7 +112,7 @@ pub(super) fn insert(
         .into_iter()
         .map(|ds| {
             let StoredDynamicDataSource {
-                name,
+                manifest_idx: _,
                 param,
                 context,
                 creation_block: _,
@@ -114,11 +121,16 @@ pub(super) fn insert(
                 Some(param) => param,
                 None => {
                     return Err(constraint_violation!(
-                        "dynamic data sources must have an address, but `{}` has none",
-                        name
+                        "dynamic data sources must have an addres",
                     ));
                 }
             };
+            let name = manifest_idx_and_name
+                .iter()
+                .find(|(idx, _)| *idx == ds.manifest_idx)
+                .ok_or_else(|| constraint_violation!("manifest idx {} not found", ds.manifest_idx))?
+                .1
+                .clone();
             Ok((
                 decds::deployment.eq(deployment.as_str()),
                 decds::name.eq(name),

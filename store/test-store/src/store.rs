@@ -233,6 +233,7 @@ pub async fn transact_errors(
             &stopwatch_metrics,
             Vec::new(),
             errs,
+            Vec::new(),
         )
         .await?;
     flush(deployment).await
@@ -245,8 +246,15 @@ pub async fn transact_entity_operations(
     block_ptr_to: BlockPtr,
     ops: Vec<EntityOperation>,
 ) -> Result<(), StoreError> {
-    transact_entities_and_dynamic_data_sources(store, deployment.clone(), block_ptr_to, vec![], ops)
-        .await
+    transact_entities_and_dynamic_data_sources(
+        store,
+        deployment.clone(),
+        block_ptr_to,
+        vec![],
+        ops,
+        vec![],
+    )
+    .await
 }
 
 /// Convenience to transact EntityOperation instead of EntityModification and wait for the store to process the operations
@@ -262,6 +270,7 @@ pub async fn transact_and_wait(
         block_ptr_to,
         vec![],
         ops,
+        vec![],
     )
     .await?;
     flush(deployment).await
@@ -273,6 +282,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     block_ptr_to: BlockPtr,
     data_sources: Vec<StoredDynamicDataSource>,
     ops: Vec<EntityOperation>,
+    manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<(), StoreError> {
     let store =
         futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))?;
@@ -297,6 +307,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
             &stopwatch_metrics,
             data_sources,
             Vec::new(),
+            manifest_idx_and_name,
         )
         .await
 }

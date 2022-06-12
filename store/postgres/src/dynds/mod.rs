@@ -15,10 +15,11 @@ pub fn load(
     conn: &PgConnection,
     site: &Site,
     block: BlockNumber,
+    manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).load(conn, block),
-        false => shared::load(conn, site.deployment.as_str(), block),
+        false => shared::load(conn, site.deployment.as_str(), block, manifest_idx_and_name),
     }
 }
 
@@ -27,6 +28,7 @@ pub(crate) fn insert(
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
+    manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).insert(
@@ -34,7 +36,13 @@ pub(crate) fn insert(
             data_sources,
             block_ptr.number,
         ),
-        false => shared::insert(conn, &site.deployment, data_sources, block_ptr),
+        false => shared::insert(
+            conn,
+            &site.deployment,
+            data_sources,
+            block_ptr,
+            manifest_idx_and_name,
+        ),
     }
 }
 
@@ -52,7 +60,11 @@ pub(crate) fn copy(
         )));
     }
     match src.schema_version.private_data_sources() {
-        true => todo!(),
+        true => DataSourcesTable::new(src.namespace.clone()).copy_to(
+            conn,
+            &DataSourcesTable::new(dst.namespace.clone()),
+            target_block,
+        ),
         false => shared::copy(conn, src, dst, target_block),
     }
 }

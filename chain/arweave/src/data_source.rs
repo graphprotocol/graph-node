@@ -215,6 +215,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<DataSource, Error> {
         let UnresolvedDataSource {
             kind,
@@ -261,6 +262,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<DataSourceTemplate, Error> {
         let UnresolvedDataSourceTemplate {
             kind,
@@ -291,6 +293,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         Some(self.mapping.runtime.cheap_clone())
+    }
+
+    fn manifest_idx(&self) -> u32 {
+        unreachable!("arweave does not support dynamic data sources")
     }
 }
 

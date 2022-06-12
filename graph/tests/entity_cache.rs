@@ -107,6 +107,7 @@ impl WritableStore for MockStore {
         _: &StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,
         _: Vec<SubgraphError>,
+        _: Vec<(u32, String)>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -126,7 +127,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
+    async fn load_dynamic_data_sources(
+        &self,
+        _manifest_idx_and_name: Vec<(u32, String)>,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         unimplemented!()
     }
 
