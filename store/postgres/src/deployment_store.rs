@@ -1337,7 +1337,7 @@ impl DeploymentStore {
             use deployment::SubgraphHealth::*;
             // Decide status based on if there are any errors for the previous/parent block
             let prev_health =
-                if deployment::has_non_fatal_errors(conn, deployment_id, Some(parent_ptr.number))? {
+                if deployment::has_deterministic_errors(conn, deployment_id, Some(parent_ptr.number))? {
                     Unhealthy
                 } else {
                     Healthy

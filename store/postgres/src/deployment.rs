@@ -652,7 +652,7 @@ pub fn fail(
 }
 
 /// If `block` is `None`, assumes the latest block.
-pub(crate) fn has_non_fatal_errors(
+pub(crate) fn has_deterministic_errors(
     conn: &PgConnection,
     id: &DeploymentHash,
     block: Option<BlockNumber>,
@@ -732,7 +732,7 @@ pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<us
 }
 
 /// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
-/// block if `None`, based on the presence of non-fatal errors. Has no effect on failed subgraphs.
+/// block if `None`, based on the presence of deterministic errors. Has no effect on failed subgraphs.
 fn check_health(
     conn: &PgConnection,
     id: &DeploymentHash,
@@ -740,7 +740,7 @@ fn check_health(
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    let has_errors = has_non_fatal_errors(conn, id, Some(block))?;
+    let has_errors = has_deterministic_errors(conn, id, Some(block))?;
 
     let (new, old) = match has_errors {
         true => (SubgraphHealth::Unhealthy, SubgraphHealth::Healthy),

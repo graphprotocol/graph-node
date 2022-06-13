@@ -89,7 +89,7 @@ impl QueryStoreTrait for QueryStore {
         let id = self.site.deployment.clone();
         self.store
             .with_conn(move |conn, _| {
-                crate::deployment::has_non_fatal_errors(conn, &id, block).map_err(|e| e.into())
+                crate::deployment::has_deterministic_errors(conn, &id, block).map_err(|e| e.into())
             })
             .await
     }
