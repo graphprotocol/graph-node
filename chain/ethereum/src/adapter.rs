@@ -1201,9 +1201,9 @@ mod tests {
         );
 
         assert_eq!(
-            false,
+            true,
             filter.matches(&call(address(1), vec![1; 32])),
-            "call with correct address & signature, but with incorrect input size should be ignored"
+            "call with correct address & signature, but with incorrect input size should match"
         );
 
         assert_eq!(
