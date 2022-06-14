@@ -628,6 +628,7 @@ impl DataSource {
                     },
                 ) {
                     Ok(val) => val,
+                    // See also 280b0108-a96e-4738-bb37-60ce11eeb5bf
                     Err(err) => {
                         warn!(logger, "Failed parsing inputs, skipping"; "error" => &err.to_string());
                         return Ok(None);
