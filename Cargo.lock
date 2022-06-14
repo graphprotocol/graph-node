@@ -1750,7 +1750,7 @@ dependencies = [
  "semver",
  "strum",
  "strum_macros",
- "uuid 1.0.0",
+ "uuid 1.1.2",
  "wasm-instrument",
  "wasmtime",
 ]
@@ -1863,7 +1863,7 @@ dependencies = [
  "serde",
  "stable-hash 0.3.2",
  "test-store",
- "uuid 1.0.0",
+ "uuid 1.1.2",
 ]
 
 [[package]]
@@ -4695,9 +4695,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.0.0"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cfcd319456c4d6ea10087ed423473267e1a071f3bc0aa89f80d60997843c6f0"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
 dependencies = [
  "getrandom",
 ]
