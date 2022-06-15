@@ -45,6 +45,14 @@ table! {
         name -> Text,
     }
 }
+// Readonly; only mapping the columns we want
+table! {
+    pg_database(datname) {
+        datname -> Text,
+        datcollate -> Text,
+        datctype -> Text,
+    }
+}
 
 // Readonly; not all columns are mapped
 table! {
@@ -113,6 +121,56 @@ lazy_static! {
 const CREATE_EXCLUSION_CONSTRAINT: bool = true;
 #[cfg(not(debug_assertions))]
 const CREATE_EXCLUSION_CONSTRAINT: bool = false;
+
+pub struct Locale {
+    collate: String,
+    ctype: String,
+    encoding: String,
+}
+
+impl Locale {
+    /// Load locale information for current database
+    pub fn load(conn: &PgConnection) -> Result<Locale, StoreError> {
+        use diesel::dsl::sql;
+        use pg_database as db;
+
+        let (collate, ctype, encoding) = db::table
+            .filter(db::datname.eq(sql("current_database()")))
+            .select((
+                db::datcollate,
+                db::datctype,
+                sql::<Text>("pg_encoding_to_char(encoding)::text"),
+            ))
+            .get_result::<(String, String, String)>(conn)?;
+        Ok(Locale {
+            collate,
+            ctype,
+            encoding,
+        })
+    }
+
+    pub fn suitable(&self) -> Result<(), String> {
+        if self.collate != "C" {
+            return Err(format!(
+                "database collation is `{}` but must be `C`",
+                self.collate
+            ));
+        }
+        if self.ctype != "C" {
+            return Err(format!(
+                "database ctype is `{}` but must be `C`",
+                self.ctype
+            ));
+        }
+        if self.encoding != "UTF8" {
+            return Err(format!(
+                "database encoding is `{}` but must be `UTF8`",
+                self.encoding
+            ));
+        }
+        Ok(())
+    }
+}
 
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]

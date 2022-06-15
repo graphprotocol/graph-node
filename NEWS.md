@@ -8,6 +8,7 @@
   - The two affected deployments are: `Qmccst5mbV5a6vT6VvJMLPKMAA1VRgT6NGbxkLL8eDRsE7` and `Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg`;
   - Here's an example [manifest](https://ipfs.io/ipfs/Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg), taking a look at the data sources of name `ERC721` and `CryptoKitties`, both listen to the `Transfer(...)` event. Considering a block where there's only one occurence of this event, `graph-node` would duplicate it and call `handleTransfer` twice. Now this is fixed and it will be called only once per event/call that happened on chain.
   - In the case you're indexing one of those, you should first upgrade the `graph-node` version, then rewind the affected subgraphs to the smallest `startBlock` of their subgraph manifest. To achieve that the `graphman rewind` CLI command can be used.
+- We now check that the database uses the `C` locale and `UTF8` character encoding. For new installations, `graph-node` will panic on startup if the database uses any other locale. The easiest way to make sure this check passes is to create the database cluster with `initdb -E UTF8 --locale C`. We will provide instructions on migrating existing installations in the future.
 
 ## v0.28.2
 
@@ -42,7 +43,7 @@ Yanked. Please migrate to `v0.28.2`.
   E.g. `$ graphman --node-id index_node_0 --config graph-node.toml config provider mainnet`
 - Experimental support for GraphQL API versioning has landed. [#3185](https://github.com/graphprotocol/graph-node/pull/3185)
 - Progress towards experimental support for off-chain data sources. [#3791](https://github.com/graphprotocol/graph-node/pull/3791)
-- Experimental integration for substreams. [#3777](https://github.com/graphprotocol/graph-node/pull/3777), [#3784](https://github.com/graphprotocol/graph-node/pull/3784), [#3897](https://github.com/graphprotocol/graph-node/pull/3897), [#3765](https://github.com/graphprotocol/graph-node/pull/3765), and others 
+- Experimental integration for substreams. [#3777](https://github.com/graphprotocol/graph-node/pull/3777), [#3784](https://github.com/graphprotocol/graph-node/pull/3784), [#3897](https://github.com/graphprotocol/graph-node/pull/3897), [#3765](https://github.com/graphprotocol/graph-node/pull/3765), and others
 
 ### Bug fixes
 

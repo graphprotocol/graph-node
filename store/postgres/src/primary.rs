@@ -1519,6 +1519,17 @@ impl<'a> Connection<'a> {
     }
 }
 
+/// Return `true` if we deem this installation to be empty, defined as
+/// having no deployments and no subgraph names in the database
+pub fn is_empty(conn: &PgConnection) -> Result<bool, StoreError> {
+    use deployment_schemas as ds;
+    use subgraph as s;
+
+    let empty = ds::table.count().get_result::<i64>(conn)? == 0
+        && s::table.count().get_result::<i64>(conn)? == 0;
+    Ok(empty)
+}
+
 /// A struct that reads from pools in order, trying each pool in turn until
 /// a query returns either success or anything but a
 /// `Err(StoreError::DatabaseUnavailable)`. This only works for tables that
