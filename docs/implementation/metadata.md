@@ -18,11 +18,6 @@ List of all known subgraph names. Maintained in the primary, but there is a back
 
 The `id` is used by the hosted explorer to reference the subgraph.
 
-**Changes**
-- remove `vid` and `block_range`
-- make `created_at` a `timestamp with timezone`
-- get rid of `id` and either make `name` the primary key, or use an `int4`
-  id
 
 ### `subgraphs.subgraph_version`
 
@@ -37,10 +32,6 @@ Mapping of subgraph names from `subgraph` to IPFS hashes. Maintained in the prim
 | `vid`         | `int8!`      | unused                  |
 | `block_range` | `int4range!` | unused                  |
 
-**Changes**
-- remove `vid` and `block_range`
-- make `created_at` a `timestamp with timezone`
-- make `id` an `int4`
 
 ## Managing a deployment
 
@@ -98,17 +89,6 @@ set during indexing. They are used to determine whether a reorg happened
 while a query was running, and whether that reorg could have affected the
 query.
 
-**Changes**
-- move `graft_base`, `graft_block_hash`, and `graft_block_number` to
-  `subgraph_manifest`
-- move `debug_fork` to `subgraph_manifest`
-- replace `failed` and `synced` with `failed_at` and `synced_at` columns
-  that are timestamps
-- move `earliest_ethereum_block_*` to `subgraph_manifest` and call it
-  `start_block_*`
-- add a column `earliest_block_number int4` that tracks the first block for
-  which the subgraph has data
-
 ### `subgraph_manifest`
 
 Details about a deployment that rarely change. Maintained in the
@@ -137,9 +117,6 @@ primary to all other shards.
 | node_id | text! | name of index node                          |
 
 This table could simply be a column on `deployment_schemas`.
-
-**Changes**
-- get rid of this table and make `node_id` a column on `deployment_schemas`
 
 ### `dynamic_ethereum_contract_data_source`
 
