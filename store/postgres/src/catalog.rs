@@ -37,6 +37,13 @@ table! {
         nspname -> Text,
     }
 }
+// Readonly; only mapping the columns we want
+table! {
+    pg_database(datname) {
+        datname -> Text,
+        datcollate -> Text,
+    }
+}
 
 table! {
     subgraphs.table_stats {
@@ -45,6 +52,17 @@ table! {
         table_name -> Text,
         is_account_like -> Nullable<Bool>,
     }
+}
+
+/// Get collate for current database
+pub fn get_collation(conn: &PgConnection) -> Result<String, StoreError> {
+    use pg_database as db;
+
+    return db::table
+        .filter(db::datname.eq(diesel::dsl::sql("current_database()")))
+        .select(db::datcollate)
+        .get_result(conn)
+        .map_err(StoreError::from);
 }
 
 /// Information about what tables and columns we have in the database

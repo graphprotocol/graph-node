@@ -977,6 +977,11 @@ impl PoolInner {
         let pool = self.clone();
         let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
+        let db_locale = catalog::get_collation(&conn)?;
+        if !db_locale.eq("en_US.utf8") {
+            panic!("Database locale is not 'en_US.utf8', but {}", db_locale);
+        }
+
         advisory_lock::lock_migration(&conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
         let result = pool
