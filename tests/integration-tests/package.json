@@ -2,8 +2,10 @@
   "private": true,
   "workspaces": [
     "api-version-v0-0-4",
+    "data-source",
     "data-source-context",
     "data-source-revert",
+    "eth-transfers",
     "fatal-error",
     "ganache-reverts",
     "host-exports",

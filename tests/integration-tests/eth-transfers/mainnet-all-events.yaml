@@ -1,0 +1,25 @@
+specVersion: 0.0.2
+description: Tracking WETH token transfers on ETH Mainnet using CALLs
+repository: https://github.com/streamingfast/graph-node-dev.git
+schema:
+  file: ./gql/transfer.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: transfer
+    network: eth-mainnet
+    source:
+      abi: transfer
+      startBlock: 11000000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./src/transfer.ts
+      entities:
+        - Payment
+      abis:
+        - name: transfer
+          file: ./abis/transfer_erc20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransferEvent

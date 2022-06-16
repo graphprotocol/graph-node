@@ -1,0 +1,30 @@
+type Factory @entity {
+  id: ID!
+  poolCount: BigInt!
+  txCount: BigInt!
+}
+
+type Pool @entity {
+  id: ID!
+  createdAtTimestamp: BigInt!
+  createdAtBlockNumber: BigInt!
+  txCount: BigInt!
+}
+
+type Swap @entity {
+  id: ID!
+  transaction: Transaction!
+  timestamp: BigInt!
+  pool: Pool!
+  sender: Bytes!
+  recipient: Bytes!
+  origin: Bytes!
+  logIndex: BigInt
+}
+
+type Transaction @entity {
+  id: ID!
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  swaps: [Swap!]! @derivedFrom(field: "transaction")
+}
