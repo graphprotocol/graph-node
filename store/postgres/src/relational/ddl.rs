@@ -62,10 +62,16 @@ impl Table {
     fn as_ddl(&self, out: &mut String, layout: &Layout) -> fmt::Result {
         fn columns_ddl(table: &Table) -> Result<String, fmt::Error> {
             let mut cols = String::new();
+            let mut first = true;
             for column in &table.columns {
+                if !first {
+                    writeln!(cols, ",")?;
+                } else {
+                    writeln!(cols)?;
+                }
                 write!(cols, "    ")?;
                 column.as_ddl(&mut cols)?;
-                writeln!(cols, ",")?;
+                first = false;
             }
             Ok(cols)
         }
@@ -78,7 +84,7 @@ impl Table {
                 create table {nsp}.{name} (
                     {vid}                  bigserial primary key,
                     {block}                int not null,
-                    {cols}
+                    {cols},
                     unique({id})
                 );
                 "#,
@@ -97,7 +103,6 @@ impl Table {
                     {vid}                  bigserial primary key,
                     {block_range}          int4range not null,
                     {cols}
-                    exclude using gist   (id with =, {block_range} with &&)
                 );
                 "#,
                     nsp = layout.catalog.site.namespace,
@@ -105,6 +110,12 @@ impl Table {
                     cols = columns_ddl(table)?,
                     vid = VID_COLUMN,
                     block_range = BLOCK_RANGE_COLUMN
+                )?;
+
+                table.exclusion_ddl(
+                    out,
+                    layout.catalog.site.namespace.as_str(),
+                    layout.catalog.create_exclusion_constraint(),
                 )
             }
         }
@@ -249,6 +260,35 @@ impl Table {
         create_table(self, out, layout)?;
         create_time_travel_indexes(self, out, layout)?;
         create_attribute_indexes(self, out, layout)
+    }
+
+    pub fn exclusion_ddl(&self, out: &mut String, nsp: &str, as_constraint: bool) -> fmt::Result {
+        if as_constraint {
+            writeln!(
+                out,
+                r#"
+        alter table {nsp}.{name}
+          add constraint {bare_name}_{id}_{block_range}_excl exclude using gist ({id} with =, {block_range} with &&);
+               "#,
+                name = self.name.quoted(),
+                bare_name = self.name,
+                id = self.primary_key().name,
+                block_range = BLOCK_RANGE_COLUMN
+            )?;
+        } else {
+            writeln!(
+                out,
+                r#"
+        create index {bare_name}_{id}_{block_range}_excl on {nsp}.{name}
+         using gist ({id}, {block_range});
+               "#,
+                name = self.name.quoted(),
+                bare_name = self.name,
+                id = self.primary_key().name,
+                block_range = BLOCK_RANGE_COLUMN
+            )?;
+        }
+        Ok(())
     }
 }
 
