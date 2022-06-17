@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
-use web3::types::{Address, H256};
+use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
@@ -27,7 +27,7 @@ impl TryFromValue for PublicProofOfIndexingRequest {
             r::Value::Object(o) => Ok(Self {
                 deployment: DeploymentHash::new(o.get_required::<String>("deployment")?).unwrap(),
                 block: BlockPtr::new(
-                    BlockHash::from(o.get_required::<H256>("blockHash")?),
+                    BlockHash::from(o.get_required::<BlockHash>("blockHash")?),
                     o.get_required::<BlockNumber>("blockNumber")?,
                 ),
             }),
