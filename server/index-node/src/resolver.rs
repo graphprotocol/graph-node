@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
-use web3::types::Address;
+use web3::types::{Address, H256};
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
