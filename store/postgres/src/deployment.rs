@@ -110,6 +110,7 @@ table! {
         schema -> Text,
         graph_node_version_id -> Nullable<Integer>,
         use_bytea_prefix -> Bool,
+        /// Parent of the smallest start block from the manifest
         start_block_number -> Nullable<Integer>,
         start_block_hash -> Nullable<Binary>,
     }
@@ -469,7 +470,7 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
 
 /// Initialize the subgraph's block pointer. If the block pointer in
 /// `latest_ethereum_block` is set already, do nothing. If it is still
-/// `null`, set it to `earliest_ethereum_block`
+/// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
 pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
     use subgraph_manifest as m;

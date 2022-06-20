@@ -94,18 +94,18 @@ query.
 Details about a deployment that rarely change. Maintained in the
 shard alongside the deployment's data in `sgdNNN`.
 
-| Column                  | Type       | Use                                          |
-|-------------------------|------------|----------------------------------------------|
-| `id`                    | `integer!` | primary key, same as `deployment_schemas.id` |
-| `spec_version`          | `text!`    |                                              |
-| `description`           | `text`     |                                              |
-| `repository`            | `text`     |                                              |
-| `schema`                | `text!`    | GraphQL schema                               |
-| `features`              | `text[]!`  |                                              |
-| `graph_node_version_id` | `integer`  |                                              |
-| `use_bytea_prefix`      | `boolean!` |                                              |
-| `start_block_hash`      | `bytea`    | Start block from the manifest                |
-| `start_block_number`    | `int4`     |                                              |
+| Column                  | Type       | Use                                                  |
+|-------------------------|------------|------------------------------------------------------|
+| `id`                    | `integer!` | primary key, same as `deployment_schemas.id`         |
+| `spec_version`          | `text!`    |                                                      |
+| `description`           | `text`     |                                                      |
+| `repository`            | `text`     |                                                      |
+| `schema`                | `text!`    | GraphQL schema                                       |
+| `features`              | `text[]!`  |                                                      |
+| `graph_node_version_id` | `integer`  |                                                      |
+| `use_bytea_prefix`      | `boolean!` |                                                      |
+| `start_block_hash`      | `bytea`    | Parent of the smallest start block from the manifest |
+| `start_block_number`    | `int4`     |                                                      |
 
 ### `subgraph_deployment_assignment`
 
