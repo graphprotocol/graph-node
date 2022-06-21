@@ -1,5 +1,11 @@
 use crate::protobuf::*;
 use anyhow::anyhow;
+use graph_runtime_derive::AscType;
+
+pub use graph::runtime::{
+    asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
+    DeterministicHostError, IndexForAscTypeId, ToAscObj
+};
 
 /******************************************************************** */
 // pub struct AscEvidenceArray(pub  Array<AscPtr<AscEvidence>>);

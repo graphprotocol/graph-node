@@ -36,10 +36,12 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         .filter(|f| enum_names.contains(&f.ident.as_ref().unwrap().to_string()))
         .collect::<Vec<&Field>>();
 
+    //module name
     let mod_name = Ident::new(
         &format!("__{}__", item_struct.ident.to_string().to_lowercase()),
         item_struct.ident.span(),
     );
+
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
     let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
@@ -49,56 +51,56 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         let fld_name = f.ident.as_ref().unwrap();
         let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
         let fld_nm = format!("\"{}\"", fld_name.to_string()).to_string().parse::<proc_macro2::TokenStream>().unwrap();
-        quote! {
-            // let #fld_name = self.#fld_name.as_ref()
-            //     .ok_or_else(|| missing_field_error(#type_nm, #fld_nm))?;
-            // }
 
+        quote! {
             let #fld_name = self.#fld_name.as_ref()
-                .ok_or_else(||  DeterministicHostError::from(anyhow!("{} missing {}", #type_nm, #fld_nm)))?;
+                .ok_or_else(||  graph::runtime::DeterministicHostError::from(anyhow::anyhow!("{} missing {}", #type_nm, #fld_nm)))?;
             }
     });
 
     let mut methods:Vec<proc_macro2::TokenStream> =
-    fields.iter().map(|f| {
-        let fld_name = f.ident.as_ref().unwrap();
-        let self_ref =
-            if is_byte_array(f){
-                quote! { Bytes(&self.#fld_name) }
-            }else{
-                quote!{ self.#fld_name }
-            };
-
-        let is_required = is_required(f, &required_flds);
-
-        let setter =
-            if is_nullable(&f) {
-                if is_required{
-                    let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-                    let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-
-                    quote! {
-                        #fld_name: crate::protobuf::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
-                    }
+        fields.iter().map(|f| {
+            let fld_name = f.ident.as_ref().unwrap();
+            let self_ref =
+                if is_byte_array(f){
+                    //FIXME - where are Bytes come from?
+                    quote! { Bytes(&self.#fld_name) }
                 }else{
-                    quote! {
-                        #fld_name: crate::protobuf::asc_new_or_null(heap, &#self_ref, gas)?,
+                    quote!{ self.#fld_name }
+                };
+
+            let is_required = is_required(f, &required_flds);
+
+            let setter =
+                if is_nullable(&f) {
+                    if is_required{
+                        let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+                        let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+
+                        quote! {
+                            //TODO - move it to where asc_new - graph::runtime::
+                            #fld_name: crate::protobuf::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
+                        }
+                    }else{
+                        quote! {
+                            //TODO - move it to where asc_new - graph::runtime::
+                            #fld_name: crate::protobuf::asc_new_or_null(heap, &#self_ref, gas)?,
+                        }
                     }
-                }
-            } else {
-                if is_scalar(&field_type(f)){
-                    quote!{
-                        #fld_name: #self_ref,
+                } else {
+                    if is_scalar(&field_type(f)){
+                        quote!{
+                            #fld_name: #self_ref,
+                        }
+                    }else{
+                        quote! {
+                            #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
+                        }
                     }
-                }else{
-                    quote! {
-                        #fld_name: asc_new(heap, &#self_ref, gas)?,
-                    }
-                }
-            };
-        setter
-    })
-    .collect();
+                };
+            setter
+        })
+        .collect();
 
     for var in args.vars {
         let var_nm = var.ident.to_string();
@@ -121,15 +123,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
             let setter =
                 quote! {
-                    #fld_nm: if let #varian_type_name(v) = #var_nm {asc_new(heap, v, gas)? } else {AscPtr::null()},
+                    #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
                 };
 
             setter
         })
         .for_each(|ts| methods.push(ts));
     }
-
-    //println!("{:#?}", methods);
 
     let expanded = quote! {
         #item_struct
@@ -138,21 +138,18 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         mod #mod_name{
             use super::*;
 
-            use graph::runtime::{
-                asc_new, gas::GasCounter, AscHeap, AscPtr, AscType, DeterministicHostError,
-                ToAscObj
-            };
-            use graph_runtime_wasm::asc_abi::class::*;
+            //use graph_runtime_wasm::asc_abi::class::*;
+            //use anyhow::anyhow;
             use crate::protobuf::*;
 
-            impl ToAscObj<#asc_name> for #name {
+            impl graph::runtime::ToAscObj<#asc_name> for #name {
 
                 #[allow(unused_variables)]
-                fn to_asc_obj<H: AscHeap + ?Sized>(
+                fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
                     &self,
                     heap: &mut H,
-                    gas: &GasCounter,
-                ) -> Result<#asc_name, DeterministicHostError> {
+                    gas: &graph::runtime::gas::GasCounter,
+                ) -> Result<#asc_name, graph::runtime::DeterministicHostError> {
 
                     #(#enum_validation)*
 
@@ -163,33 +160,33 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     )
                 }
             }
-
-
         } // -------- end of mod
 
         pub struct #asc_name_array(pub  crate::protobuf::Array<graph::runtime::AscPtr<#asc_name>>);
 
-        impl crate::protobuf::ToAscObj<#asc_name_array> for Vec<#name> {
+        impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {
             fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
                 &self,
                 heap: &mut H,
                 gas: &graph::runtime::gas::GasCounter,
-            ) -> Result<#asc_name_array, crate::protobuf::DeterministicHostError> {
-                let content: Result<Vec<_>, _> = self.iter().map(|x| crate::protobuf::asc_new(heap, x, gas)).collect();
+            ) -> Result<#asc_name_array, graph::runtime::DeterministicHostError> {
+                let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
 
+                //TODO - verify Array import
                 Ok(#asc_name_array(crate::protobuf::Array::new(&content?, heap, gas)?))
             }
         }
 
         impl graph::runtime::AscType for #asc_name_array {
-            fn to_asc_bytes(&self) -> Result<Vec<u8>, crate::protobuf::DeterministicHostError> {
+            fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 self.0.to_asc_bytes()
             }
 
             fn from_asc_bytes(
                 asc_obj: &[u8],
-                api_version: &crate::protobuf::Version,
-            ) -> Result<Self, crate::protobuf::DeterministicHostError> {
+                api_version: &graph::semver::Version,
+            ) -> Result<Self, graph::runtime::DeterministicHostError> {
+                //TODO - verify Array import
                 Ok(Self(crate::protobuf::Array::from_asc_bytes(asc_obj, api_version)?))
             }
         }
@@ -207,22 +204,9 @@ fn is_scalar(fld: &str) -> bool {
         "i64" | "u64" => true,
         "usize" | "isize" => true,
         "bool" => true,
-        //"String"        => false,
         _ => false,
     }
 }
-
-// fn field_type_map(tp:String) -> String{
-
-//     if is_scalar(&tp){
-//         tp
-//     }else{
-//         match tp.as_ref(){
-//             "String" => "graph_runtime_wasm::asc_abi::class::AscString".into(),
-//             _ => tp.to_owned()
-//         }
-//     }
-// }
 
 fn field_type(fld: &syn::Field) -> String {
     if let syn::Type::Path(tp) = &fld.ty {
@@ -242,8 +226,6 @@ fn is_required(fld: &syn::Field, req_list: &[String]) -> bool {
 }
 
 fn is_nullable(fld: &syn::Field) -> bool {
-    //println!("{} - is byte array:{}", fld.ident.as_ref().unwrap().to_string(), is_byte_array(fld));
-
     if let syn::Type::Path(tp) = &fld.ty {
         if let Some(last) = tp.path.segments.last() {
             return last.ident == "Option";
