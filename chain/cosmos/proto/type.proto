@@ -298,6 +298,7 @@ message ModeInfo {
   }
 }
 
+
 message ModeInfoSingle {
   SignMode mode = 1;
 }

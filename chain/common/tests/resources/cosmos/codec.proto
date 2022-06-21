@@ -290,3 +290,34 @@ message VersionParams {
 
   uint64 app_version = 1;
 }
+
+
+message ModeInfo {
+  oneof sum {
+    ModeInfoSingle single = 1;
+    ModeInfoMulti multi = 2;
+  }
+}
+
+message ModeInfoSingle {
+  SignMode mode = 1;
+}
+
+enum SignMode {
+  SIGN_MODE_UNSPECIFIED = 0;
+  SIGN_MODE_DIRECT = 1;
+  SIGN_MODE_TEXTUAL = 2;
+  SIGN_MODE_LEGACY_AMINO_JSON = 127;
+}
+
+message ModeInfoMulti {
+  CompactBitArray bitarray = 1;
+  repeated ModeInfo mode_infos = 2;
+}
+
+message CompactBitArray {
+  option (gogoproto.goproto_stringer) = false;
+
+  uint32 extra_bits_stored = 1;
+  bytes elems = 2;
+}

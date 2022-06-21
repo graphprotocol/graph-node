@@ -7,7 +7,6 @@ use graph::{blockchain::BlockPtr, prelude::BlockNumber};
 
 use std::convert::TryFrom;
 
-
 impl crate::protobuf::pbcodec::Block {
     pub fn header(&self) -> &Header {
         self.header.as_ref().unwrap()

@@ -272,6 +272,7 @@ pub enum IndexForAscTypeId {
     CosmosArrayCoin = 1503,
     CosmosArrayCommitSig = 1504,
     CosmosArrayEvent = 1505,
+
     CosmosArrayEventAttribute = 1506,
     CosmosArrayEvidence = 1507,
     CosmosArrayModeInfo = 1508,
@@ -283,8 +284,6 @@ pub enum IndexForAscTypeId {
     CosmosBlock = 1514,
     CosmosMyBlock = 9999, //jusk
 
-
-    
     //CosmosBlockID = 1515,
     CosmosBlockId = 1515,
     //CosmosBlockIDFlagEnum = 1516,

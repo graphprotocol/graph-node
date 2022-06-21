@@ -249,30 +249,30 @@ use crate::protobuf::*;
 //     }
 // }
 
-impl ToAscObj<AscEvidence> for codec::Evidence {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEvidence, DeterministicHostError> {
-        use codec::evidence::Sum;
+// impl ToAscObj<AscEvidence> for codec::Evidence {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscEvidence, DeterministicHostError> {
+//         use codec::evidence::Sum;
 
-        let sum = self
-            .sum
-            .as_ref()
-            .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
+//         let sum = self
+//             .sum
+//             .as_ref()
+//             .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
 
-        let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
-            Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d, gas)?, AscPtr::null()),
-            Sum::LightClientAttackEvidence(l) => (AscPtr::null(), asc_new(heap, l, gas)?),
-        };
+//         // let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
+//         //     Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d, gas)?, AscPtr::null()),
+//         //     Sum::LightClientAttackEvidence(l) => (AscPtr::null(), asc_new(heap, l, gas)?),
+//         // };
 
-        Ok(AscEvidence {
-            duplicate_vote_evidence:      if let Sum::DuplicateVoteEvidence(v) = self.sum.as_ref().unwrap() {asc_new(heap, v, gas)? } else {AscPtr::null()},
-            light_client_attack_evidence: if let Sum::LightClientAttackEvidence(v) = self.sum.as_ref().unwrap() { asc_new(heap, v, gas)? } else {AscPtr::null()} 
-        })
-    }
-}
+//         Ok(AscEvidence {
+//             duplicate_vote_evidence:      if let Sum::DuplicateVoteEvidence(v) = self.sum.as_ref().unwrap() {asc_new(heap, v, gas)? } else {AscPtr::null()},
+//             light_client_attack_evidence: if let Sum::LightClientAttackEvidence(v) = self.sum.as_ref().unwrap() { asc_new(heap, v, gas)? } else {AscPtr::null()} 
+//         })
+//     }
+// }
 
 impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -286,22 +286,22 @@ impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     }
 }
 
-impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscDuplicateVoteEvidence, DeterministicHostError> {
-        Ok(AscDuplicateVoteEvidence {
-            vote_a: asc_new_or_null(heap, &self.vote_a, gas)?,
-            vote_b: asc_new_or_null(heap, &self.vote_b, gas)?,
-            total_voting_power: self.total_voting_power,
-            validator_power: self.total_voting_power,
-            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
-            _padding: 0,
-        })
-    }
-}
+// impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscDuplicateVoteEvidence, DeterministicHostError> {
+//         Ok(AscDuplicateVoteEvidence {
+//             vote_a: asc_new_or_null(heap, &self.vote_a, gas)?,
+//             vote_b: asc_new_or_null(heap, &self.vote_b, gas)?,
+//             total_voting_power: self.total_voting_power,
+//             validator_power: self.total_voting_power,
+//             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
+//             _padding: 0,
+//         })
+//     }
+// }
 
 // impl ToAscObj<AscEventVote> for codec::EventVote {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -334,22 +334,22 @@ impl ToAscObj<AscDuplicateVoteEvidence> for codec::DuplicateVoteEvidence {
 //     }
 // }
 
-impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
-        Ok(AscLightClientAttackEvidence {
-            conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
-            _padding: 0,
-            common_height: self.common_height,
-            total_voting_power: self.total_voting_power,
-            byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
-            timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
-        })
-    }
-}
+// impl ToAscObj<AscLightClientAttackEvidence> for codec::LightClientAttackEvidence {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscLightClientAttackEvidence, DeterministicHostError> {
+//         Ok(AscLightClientAttackEvidence {
+//             conflicting_block: asc_new_or_null(heap, &self.conflicting_block, gas)?,
+//             _padding: 0,
+//             common_height: self.common_height,
+//             total_voting_power: self.total_voting_power,
+//             byzantine_validators: asc_new(heap, &self.byzantine_validators, gas)?,
+//             timestamp: asc_new_or_null(heap, &self.timestamp, gas)?,
+//         })
+//     }
+// }
 
 // impl ToAscObj<AscLightBlock> for codec::LightBlock {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -797,17 +797,17 @@ impl ToAscObj<AscModeInfo> for codec::ModeInfo {
     }
 }
 
-impl ToAscObj<AscModeInfoArray> for Vec<codec::ModeInfo> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscModeInfoArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+// impl ToAscObj<AscModeInfoArray> for Vec<codec::ModeInfo> {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscModeInfoArray, DeterministicHostError> {
+//         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
 
-        Ok(AscModeInfoArray(Array::new(&content?, heap, gas)?))
-    }
-}
+//         Ok(AscModeInfoArray(Array::new(&content?, heap, gas)?))
+//     }
+// }
 
 impl ToAscObj<AscModeInfoSingle> for codec::ModeInfoSingle {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -875,17 +875,17 @@ impl ToAscObj<AscModeInfoMulti> for codec::ModeInfoMulti {
 // }
 
 
-impl ToAscObj<AscCoinArray> for Vec<codec::Coin> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscCoinArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+// impl ToAscObj<AscCoinArray> for Vec<codec::Coin> {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscCoinArray, DeterministicHostError> {
+//         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
 
-        Ok(AscCoinArray(Array::new(&content?, heap, gas)?))
-    }
-}
+//         Ok(AscCoinArray(Array::new(&content?, heap, gas)?))
+//     }
+// }
 
 // impl ToAscObj<AscTip> for codec::Tip {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(

@@ -3,9 +3,9 @@ mod capabilities;
 pub mod chain;
 pub mod codec;
 mod data_source;
+mod protobuf;
 pub mod runtime;
 mod trigger;
-mod protobuf;
 
 pub use self::runtime::RuntimeAdapter;
 

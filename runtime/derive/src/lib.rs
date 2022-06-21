@@ -4,10 +4,40 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Fields, Item, ItemEnum, ItemStruct};
+use syn::{
+    parse::{Parse, ParseStream},
+    Fields, FieldsNamed, Ident, Item, ItemEnum, ItemStruct, Token,
+};
 
+const REQUIRED_IDENT_NAME: &str = "__required__";
 
+#[derive(Debug)]
+struct Args {
+    vars: Vec<ArgsField>,
+}
 
+#[derive(Debug)]
+struct ArgsField {
+    ident: Ident,
+    fields: FieldsNamed,
+}
+
+impl Parse for Args {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut idents = Vec::<ArgsField>::new();
+
+        while input.peek(syn::Ident) {
+            let ident = input.call(Ident::parse)?;
+            idents.push(ArgsField {
+                ident,
+                fields: input.call(FieldsNamed::parse)?,
+            });
+            let _: Option<Token![,]> = input.parse()?;
+        }
+
+        Ok(Args { vars: idents })
+    }
+}
 
 #[derive(Debug)]
 struct TypeParam(syn::Ident);
@@ -30,7 +60,7 @@ impl syn::parse::Parse for TypeParamList {
         syn::parenthesized!(content in input);
 
         let mut params: Vec<syn::Ident> = Vec::new();
-        
+
         while !content.is_empty() {
             let typ = content.parse()?;
             params.push(typ);
@@ -44,15 +74,11 @@ impl syn::parse::Parse for TypeParamList {
     }
 }
 
-
-
-
 mod generate_from_rust_type;
 #[proc_macro_attribute] // impl ToAscObj<Type> for Type
 pub fn generate_from_rust_type(args: TokenStream, input: TokenStream) -> TokenStream {
     generate_from_rust_type::generate_from_rust_type(args, input)
 }
-
 
 mod generate_network_type_id;
 #[proc_macro_attribute] //graph::runtime::AscIndexId
@@ -62,12 +88,9 @@ pub fn generate_network_type_id(args: TokenStream, input: TokenStream) -> TokenS
 
 mod generate_asc_type;
 #[proc_macro_attribute] //Asc<Type>
-pub fn generate_asc_type(args: TokenStream, input: TokenStream) -> TokenStream {    
+pub fn generate_asc_type(args: TokenStream, input: TokenStream) -> TokenStream {
     generate_asc_type::generate_asc_type(args, input)
 }
-
-
-
 
 #[proc_macro_derive(AscType)]
 pub fn asc_type_derive(input: TokenStream) -> TokenStream {
