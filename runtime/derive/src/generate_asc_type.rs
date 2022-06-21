@@ -13,7 +13,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
 
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
-    //let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
 
     let enum_names = 
         args.vars.iter()
@@ -51,10 +50,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
 
         #[repr(C)]
         #[derive(graph_runtime_derive::AscType)]
-        //#[graph_runtime_derive::asc_padding]
-        //#[graph_runtime_derive::generate_from_rust_type(#required)]   //build.rs
-        //#[graph_runtime_derive::generate_network_type_id(Cosmos)]     //build.rs
-        
         #[derive(Debug)]
         pub struct #asc_name {
             #(#fields)*
@@ -124,7 +119,7 @@ fn field_type(fld: &syn::Field) -> String{
         
                         syn::PathArguments::None => name,
                         syn::PathArguments::Parenthesized(_v) => {
-                            !unimplemented!("syn::PathArguments::Parenthesized is not implemented")
+                            panic!("syn::PathArguments::Parenthesized is not implemented")
                         }
                     }
 
@@ -147,7 +142,7 @@ fn field_type(fld: &syn::Field) -> String{
         
                         syn::PathArguments::None => name,
                         syn::PathArguments::Parenthesized(_v) => {
-                            !unimplemented!("syn::PathArguments::Parenthesized is not implemented")
+                            panic!("syn::PathArguments::Parenthesized is not implemented")
                         }
                     }
         
