@@ -1,9 +1,8 @@
-use anyhow::anyhow;
 use crate::protobuf::*;
+use anyhow::anyhow;
 
 /******************************************************************** */
 // pub struct AscEvidenceArray(pub  Array<AscPtr<AscEvidence>>);
-
 
 // impl ToAscObj<AscEvidenceArray> for Vec<Evidence> {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -16,7 +15,6 @@ use crate::protobuf::*;
 //         Ok(AscEvidenceArray(Array::new(&content?, heap, gas)?))
 //     }
 // }
-
 
 // impl AscType for AscEvidenceArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -36,15 +34,7 @@ impl AscIndexId for AscEvidenceArray {
 }
 
 //************************************************************** */
-
-
-
-
-
-
-
 //******************************************************* */
-
 // pub struct AscTxResultArray(pub  Array<AscPtr<AscTxResult>>);
 
 // impl ToAscObj<AscTxResultArray> for Vec<codec::TxResult> {
@@ -58,7 +48,6 @@ impl AscIndexId for AscEvidenceArray {
 //         Ok(AscTxResultArray(Array::new(&content?, heap, gas)?))
 //     }
 // }
-
 
 // impl AscType for AscTxResultArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -113,7 +102,6 @@ impl AscIndexId for AscValidatorArray {
 /*************************************************************** */
 // pub struct AscCommitSigArray(pub  Array<AscPtr<AscCommitSig>>);
 
-
 // impl ToAscObj<AscCommitSigArray> for Vec<codec::CommitSig> {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
 //         &self,
@@ -125,7 +113,6 @@ impl AscIndexId for AscValidatorArray {
 //         Ok(AscCommitSigArray(Array::new(&content?, heap, gas)?))
 //     }
 // }
-
 
 // impl AscType for AscCommitSigArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -160,8 +147,6 @@ impl AscIndexId for AscCommitSigArray {
 //     }
 // }
 
-
-
 // impl AscType for AscEventArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
 //         self.0.to_asc_bytes()
@@ -181,7 +166,6 @@ impl AscIndexId for AscEventArray {
 
 /***************************************************************** */
 // pub struct AscEventAttributeArray(pub  Array<AscPtr<AscEventAttribute>>);
-
 
 // impl ToAscObj<AscEventAttributeArray> for Vec<codec::EventAttribute> {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -215,7 +199,6 @@ impl AscIndexId for AscEventAttributeArray {
 /************************************************************************ */
 // pub struct AscValidatorUpdateArray(pub  Array<AscPtr<AscValidatorUpdate>>);
 
-
 // impl ToAscObj<AscValidatorUpdateArray> for Vec<codec::ValidatorUpdate> {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
 //         &self,
@@ -227,7 +210,6 @@ impl AscIndexId for AscEventAttributeArray {
 //         Ok(AscValidatorUpdateArray(Array::new(&content?, heap, gas)?))
 //     }
 // }
-
 
 // impl AscType for AscValidatorUpdateArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -247,7 +229,7 @@ impl AscIndexId for AscValidatorUpdateArray {
 }
 
 /******************************************************************************* */
-pub struct AscBytesArray(pub  Array<AscPtr<Uint8Array>>);
+pub struct AscBytesArray(pub Array<AscPtr<Uint8Array>>);
 
 impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -261,7 +243,6 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         Ok(AscBytesArray(Array::new(&content?, heap, gas)?))
     }
 }
-
 
 impl AscType for AscBytesArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -280,12 +261,10 @@ impl AscIndexId for AscBytesArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosArrayBytes;
 }
 
-
 /************************************************************************** */
 
 //there is also another Any in protobuf
 impl ToAscObj<AscAny> for prost_types::Any {
-
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -301,7 +280,6 @@ impl ToAscObj<AscAny> for prost_types::Any {
 //AscAnyArray is generated for protobuf
 // pub struct AscAnyArray(pub  Array<AscPtr<AscAny>>);
 
-
 impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -313,7 +291,6 @@ impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
         Ok(AscAnyArray(Array::new(&content?, heap, gas)?))
     }
 }
-
 
 // impl AscType for AscAnyArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -348,7 +325,6 @@ impl AscIndexId for AscAnyArray {
 //     }
 // }
 
-
 // impl AscType for AscSignerInfoArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
 //         self.0.to_asc_bytes()
@@ -380,7 +356,6 @@ impl AscIndexId for AscSignerInfoArray {
 //         Ok(AscModeInfoArray(Array::new(&content?, heap, gas)?))
 //     }
 // }
-
 
 // impl AscType for AscModeInfoArray {
 //     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -433,13 +408,9 @@ impl AscIndexId for AscCoinArray {
 }
 /********************************************************************** */
 
-
-
-
-
 #[repr(C)]
 #[derive(AscType)]
-pub  struct AscPublicKey {
+pub struct AscPublicKey {
     pub ed25519: AscPtr<Uint8Array>,
     pub secp256k1: AscPtr<Uint8Array>,
 }
@@ -469,8 +440,6 @@ impl ToAscObj<AscPublicKey> for crate::codec::PublicKey {
         Ok(AscPublicKey { ed25519, secp256k1 })
     }
 }
-
-
 
 pub struct Bytes<'a>(pub &'a Vec<u8>);
 

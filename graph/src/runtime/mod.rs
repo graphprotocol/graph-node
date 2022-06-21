@@ -284,8 +284,6 @@ pub enum IndexForAscTypeId {
     CosmosBlock = 1514,
     CosmosMyBlock = 9999, //jusk
 
-
-    
     //CosmosBlockID = 1515,
     CosmosBlockId = 1515,
     //CosmosBlockIDFlagEnum = 1516,

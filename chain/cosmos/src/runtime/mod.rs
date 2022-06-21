@@ -85,4 +85,3 @@ pub mod utils;
 // // impl graph::runtime::AscIndexId for MyAscCoin {
 // //     const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::CosmosCoin;
 // // }
-
