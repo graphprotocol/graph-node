@@ -59,11 +59,10 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             }
     });
 
-    let mut methods:Vec<proc_macro2::TokenStream> = 
+    let mut methods:Vec<proc_macro2::TokenStream> =
     fields.iter().map(|f| {
         let fld_name = f.ident.as_ref().unwrap();
-       
-        let self_ref = 
+        let self_ref =
             if is_byte_array(f){
                 quote! { Bytes(&self.#fld_name) }
             }else{
@@ -72,11 +71,9 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
         let is_required = is_required(f, &required_flds);
 
-        let setter = 
+        let setter =
             if is_nullable(&f) {
-                
                 if is_required{
-
                     let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
                     let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
 
@@ -89,7 +86,6 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     }
                 }
             } else {
-  
                 if is_scalar(&field_type(f)){
                     quote!{
                         #fld_name: #self_ref,
@@ -100,9 +96,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     }
                 }
             };
-
-
-        setter        
+        setter
     })
     .collect();
 
@@ -116,18 +110,16 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         let var_type_name = c.next().unwrap().to_uppercase().collect::<String>() + c.as_str();
 
         var.fields.named.iter().map(|f|{
-            
             let fld_nm = f.ident.as_ref().unwrap();
             let var_nm = var.ident.clone();
 
             use convert_case::{Case, Casing};
 
             let varian_type_name = fld_nm.to_string().to_case(Case::Pascal);
-        
             let mod_name = item_struct.ident.to_string().to_case(Case::Snake);
             let varian_type_name = format!("{}::{}::{}",mod_name, var_type_name, varian_type_name).parse::<proc_macro2::TokenStream>().unwrap();
 
-            let setter = 
+            let setter =
                 quote! {
                     #fld_nm: if let #varian_type_name(v) = #var_nm {asc_new(heap, v, gas)? } else {AscPtr::null()},
                 };
