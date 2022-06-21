@@ -8,10 +8,10 @@ fn main() {
 
     let types_to_skip = vec![
         "PublicKey", //complex decoding
-        "ModeInfo", //oneof, enumeration
+        //"ModeInfo", //oneof, enumeration
         //"Evidence", //oneof, enumeration
-        "ModeInfoSingle", //enumeration
-        "ModeInfoMulti",
+        //"ModeInfoSingle", //enumeration
+        //"ModeInfoMulti",
         //"DuplicateVoteEvidence",
         //"LightClientAttackEvidence"
     ];
@@ -27,11 +27,9 @@ fn main() {
 
         //generate Asc<Type>
         builder = builder.type_attribute(name.clone(), 
-        format!("#[graph_runtime_derive::generate_asc_type({})]", ptype.enum_fields_as_string().unwrap_or_default()));
-
-        // //generate Asc<Type>
-        // builder = builder.type_attribute(name.clone(), 
-        //     "#[graph_runtime_derive::generate_asc_type]");
+            format!("#[graph_runtime_derive::generate_asc_type({})]", 
+            ptype.fields().unwrap_or_default())
+        );
 
         //generate data index id
         builder = builder.type_attribute(name.clone(), 
@@ -39,7 +37,9 @@ fn main() {
 
         //generate conversion from rust type to asc
         builder = builder.type_attribute(name.clone(), 
-            format!("#[graph_runtime_derive::generate_from_rust_type({})]", ptype.req_fields_as_string().unwrap_or_default())
+            format!("#[graph_runtime_derive::generate_from_rust_type({})]", 
+                ptype.fields().unwrap_or_default()
+            )
         );
 
         // //fix padding

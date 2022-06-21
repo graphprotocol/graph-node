@@ -6,16 +6,18 @@ use common::*;
 #[test]
 fn check_eventlist_type_field_count(){
   let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
-  let block = types.get("Evidence");
+  //let block = types.get("PublicKey");
+  let block = types.get("ModeInfo");
+ 
   //let block = types.get("EventTx");
   
   assert!(block.is_some());
 
   let ptype = block.unwrap();
 
-  //println!("{:#?}", ptype);
+  println!("{:#?}", ptype);
 
-  println!("{}", ptype.enum_fields_as_string().unwrap());
+  //println!("{}", ptype.enum_fields_as_string().unwrap());
 
 
   //println!("{:#?}", ptype.descriptor);

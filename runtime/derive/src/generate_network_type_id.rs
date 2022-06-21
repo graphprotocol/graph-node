@@ -7,7 +7,22 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
 
     let item_struct = parse_macro_input!(input as ItemStruct);
     let name = item_struct.ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+
+    let asc_name = 
+        if name.to_string().to_uppercase().starts_with("ASC"){
+            name.clone()
+        }else{
+            Ident::new(&format!("Asc{}", name.to_string()), Span::call_site())
+        };
+
+    let no_asc_name = 
+        if name.to_string().to_uppercase().starts_with("ASC"){
+            name.to_string()[3..].to_owned()
+        }else{
+            name.to_string()
+        };
+
+
 
     let args= parse_macro_input!(metadata as AttributeArgs);
 
@@ -25,8 +40,8 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
     assert!(args.len() > 0,"arguments not found! generate_network_type_id(<network-name>)");
 
     //first element - network
-    let index_asc_type_id = format!("{}{}", args[0], name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-
+    //let index_asc_type_id = format!("{}{}", args[0], name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+    let index_asc_type_id = format!("{}{}", args[0], no_asc_name).parse::<proc_macro2::TokenStream>().unwrap();
 
     let expanded = quote! {
         #item_struct

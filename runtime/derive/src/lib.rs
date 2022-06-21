@@ -4,7 +4,41 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Fields, Item, ItemEnum, ItemStruct};
+use syn::{Fields, Item, ItemEnum, ItemStruct, parse::{Parse, ParseStream}, Token, Ident, FieldsNamed};
+
+const REQUIRED_IDENT_NAME:&str = "__required__";
+
+#[derive(Debug)]
+struct Args{
+    vars:Vec<ArgsField>
+}
+
+#[derive(Debug)]
+struct ArgsField{
+    ident:Ident,
+    fields:FieldsNamed
+}
+
+impl Parse for Args{
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut idents = Vec::<ArgsField>::new();
+
+        while input.peek(syn::Ident){
+            let ident= input.call(Ident::parse)?;
+            idents.push(
+                ArgsField { 
+                    ident,
+                    fields: input.call(FieldsNamed::parse)?
+                }
+            );
+            let _: Option<Token![,]> = input.parse()?;
+        }
+
+        Ok(Args {
+            vars: idents,
+        })
+    }
+}
 
 
 

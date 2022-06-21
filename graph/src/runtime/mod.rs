@@ -272,6 +272,7 @@ pub enum IndexForAscTypeId {
     CosmosArrayCoin = 1503,
     CosmosArrayCommitSig = 1504,
     CosmosArrayEvent = 1505,
+
     CosmosArrayEventAttribute = 1506,
     CosmosArrayEvidence = 1507,
     CosmosArrayModeInfo = 1508,

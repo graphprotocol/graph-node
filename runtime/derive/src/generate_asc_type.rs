@@ -1,84 +1,37 @@
-use std::collections::HashSet;
 
-use proc_macro::{TokenStream, Delimiter};
+use proc_macro::TokenStream;
 use quote::quote;
-use syn::{self, parse_macro_input, ItemStruct, parse::{Parse, ParseStream}, Token, Field, braced, punctuated::Punctuated, Type, FieldsNamed };
-use proc_macro2::{Span, Ident, Group};
-
-
-#[derive(Debug)]
-struct Args{
-    vars:Vec<EnumField>
-}
-
-#[derive(Debug)]
-struct AField {
-    ident: Ident,
-    colon_token: Token![:],
-    ty: Type,
-}
-impl Parse for AField {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(AField {
-            ident: input.parse()?,
-            colon_token: input.parse()?,
-            ty: input.parse()?,
-        })
-    }
-}
-
-
-#[derive(Debug)]
-struct EnumField{
-    ident:Ident,
-    fields:FieldsNamed
-}
-
-impl Parse for Args{
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut idents = Vec::<EnumField>::new();
-
-        while input.peek(syn::Ident){
-            let ident= input.call(Ident::parse)?;
-            idents.push(
-                EnumField { 
-                    ident, 
-                    fields: input.call(FieldsNamed::parse)?
-                }
-            );
-            let _: Option<Token![,]> = input.parse()?;
-        }
-
-        Ok(Args {
-            vars: idents,
-        })
-    }
-}
+use syn::{self, parse_macro_input, ItemStruct, Field};
+use proc_macro2::{Span, Ident};
 
 
 
 pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStream {    
 
     let item_struct = parse_macro_input!(input as ItemStruct);
-    let args=parse_macro_input!(metadata as Args);
+    let args=parse_macro_input!(metadata as super::Args);
 
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+    //let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
 
-
-    let fields = 
-    if args.vars.len()> 0{
+    let enum_names = 
         args.vars.iter()
-        .flat_map(|f| f.fields.named.iter())
-        .collect::<Vec<&Field>>()
+        .filter(|f|f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .map(|f| f.ident.to_string())
+        .collect::<Vec<String>>();
 
-    }else{
-        item_struct.fields.iter().collect::<Vec<&Field>>()
-    };
+    //struct's fields -> need to skip enum fields
+    let mut fields = item_struct.fields.iter()
+    .filter(|f| !enum_names.contains(&f.ident.as_ref().unwrap().to_string()))
+    .collect::<Vec<&Field>>();
 
-    if name.to_string() == "MyConsensus"{
-        println!("{:#?}", fields);
-    }
+    //extend fields list with enum's variants
+    args.vars.iter()
+    .filter(|f|f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+    .flat_map(|f| f.fields.named.iter())
+    .for_each(|f| fields.push(f));
+
 
     let fields = 
         fields.iter().map(| f | {
@@ -107,11 +60,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
             #(#fields)*
         }
     };
-
-    if name.to_string() == "MyConsensus"{
-        println!("{}", expanded);
-    }
-
 
     expanded.into()
 }
@@ -184,8 +132,14 @@ fn field_type(fld: &syn::Field) -> String{
                 "Option" => {
                     match  &ps.arguments{
                         syn::PathArguments::AngleBracketed(v) => {
+
                             if let syn::GenericArgument::Type(syn::Type::Path(p)) = &v.args[0]{
-                                format!("graph::runtime::AscPtr<crate::protobuf::Asc{}>", path_to_string(&p.path))
+                                let tp_nm = path_to_string(&p.path);
+                                if is_scalar(&tp_nm){
+                                    format!("Option<{}>", tp_nm)
+                                }else{
+                                    format!("graph::runtime::AscPtr<crate::protobuf::Asc{}>", tp_nm)
+                                }
                             }else{
                                 name
                             }

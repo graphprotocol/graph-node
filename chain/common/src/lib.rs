@@ -28,25 +28,50 @@ pub struct PType{
 }
 
 impl PType{
+    pub fn fields(&self) -> Option<String>{
+        let mut v = Vec::new();
+        if let Some(vv) = self.req_fields_as_string(){
+            v.push(vv);
+        }
+        if let Some(vv) = self.enum_fields_as_string(){
+            v.push(vv);
+        }
+
+        if v.len() < 1{
+            None
+        }else{
+            Some(v.join(","))
+        }
+    }
+
     pub fn has_req_fields(&self) -> bool{
         self.fields.iter().any(|f| f.required)
     }
 
     pub fn req_fields_as_string(&self) -> Option<String>{
         if self.has_req_fields(){
-            Some(self.fields.iter()
-                .filter(|f| f.required)
-                .map(|f| f.name.clone())
-                .collect::<Vec<String>>().join(",")
+
+            Some(
+                format!("__required__{{{}}}",
+                    self.fields.iter()
+                    .filter(|f| f.required)
+                    .map(|f| format!("{}: {}",f.name, f.type_name))
+                    .collect::<Vec<String>>().join(",")
+                )
             )
+
         }else{
             None
         }
     }
 
+    pub fn has_enum(&self) -> bool{
+        self.fields.iter().any(|f| f.is_enum)
+    }
+
     pub fn enum_fields_as_string(&self) -> Option<String>{
 
-        if !self.fields.iter().any(|f| f.is_enum){
+        if !self.has_enum(){
             return None;
         }
 
@@ -57,14 +82,10 @@ impl PType{
             .map(|f| {
                 let pairs = 
                     f.fields.iter()
-                    .fold(String::new(), |mut acc, f|{
-                        if !acc.is_empty(){
-                            acc = acc + ","
-                        }
-                        acc + &f.name +": "+ &f.type_name
-                    });
+                    .map(|f| format!("{}: {}",f.name, f.type_name))
+                    .collect::<Vec<String>>().join(",");
 
-                format!("{}{{{}}}", f.name, pairs)
+                format!("{}{{{}}}", f.name,pairs)
             })
             .collect::<Vec<String>>().join(",")
         )
@@ -77,11 +98,20 @@ impl PType{
 impl From<&FieldDescriptorProto> for Field {
     fn from(fd: &FieldDescriptorProto) -> Self {
         let options = fd.options.unknown_fields();
-
+        
+        let type_name = 
+        if let Some(type_name) = fd.type_name.as_ref(){
+            type_name.to_owned()
+        }else{
+            use convert_case::{Case, Casing};
+            fd.name().to_case(Case::Pascal)
+            // let mut c = fd.name().chars();
+            // c.next().unwrap().to_uppercase().collect::<String>() + c.as_str()
+        };
 
         Field {
             name: fd.name().to_owned(),
-            type_name: fd.type_name().rsplit(".").next().unwrap().to_owned(),
+            type_name: type_name.rsplit(".").next().unwrap().to_owned(),
             required: options.iter().find(|f| f.0 == 65001 && UnknownValueRef::Varint(0) == f.1 ).is_some(),
             is_enum: false,
             fields: vec![]
@@ -130,7 +160,7 @@ impl From<&DescriptorProto> for PType {
 
         PType {
             name: dp.name().to_owned(),
-            fields: fields,
+            fields,
             descriptor: dp.clone()
         }
     }

@@ -492,16 +492,16 @@ impl AscIndexId for AscSignModeEnum {
 //     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEvidenceList;
 // }
 
-#[repr(C)]
-#[derive(AscType)]
-pub  struct AscEvidence {
-    pub duplicate_vote_evidence: AscPtr<AscDuplicateVoteEvidence>,
-    pub light_client_attack_evidence: AscPtr<AscLightClientAttackEvidence>,
-}
+// #[repr(C)]
+// #[derive(AscType)]
+// pub  struct AscEvidence {
+//     pub duplicate_vote_evidence: AscPtr<AscDuplicateVoteEvidence>,
+//     pub light_client_attack_evidence: AscPtr<AscLightClientAttackEvidence>,
+// }
 
-impl AscIndexId for AscEvidence {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEvidence;
-}
+// impl AscIndexId for AscEvidence {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosEvidence;
+// }
 
 // #[repr(C)]
 // #[derive(AscType)]

@@ -249,30 +249,30 @@ use crate::protobuf::*;
 //     }
 // }
 
-impl ToAscObj<AscEvidence> for codec::Evidence {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscEvidence, DeterministicHostError> {
-        use codec::evidence::Sum;
+// impl ToAscObj<AscEvidence> for codec::Evidence {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscEvidence, DeterministicHostError> {
+//         use codec::evidence::Sum;
 
-        let sum = self
-            .sum
-            .as_ref()
-            .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
+//         let sum = self
+//             .sum
+//             .as_ref()
+//             .ok_or_else(|| missing_field_error("Evidence", "sum"))?;
 
-        let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
-            Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d, gas)?, AscPtr::null()),
-            Sum::LightClientAttackEvidence(l) => (AscPtr::null(), asc_new(heap, l, gas)?),
-        };
+//         // let (duplicate_vote_evidence, light_client_attack_evidence) = match sum {
+//         //     Sum::DuplicateVoteEvidence(d) => (asc_new(heap, d, gas)?, AscPtr::null()),
+//         //     Sum::LightClientAttackEvidence(l) => (AscPtr::null(), asc_new(heap, l, gas)?),
+//         // };
 
-        Ok(AscEvidence {
-            duplicate_vote_evidence:      if let Sum::DuplicateVoteEvidence(v) = self.sum.as_ref().unwrap() {asc_new(heap, v, gas)? } else {AscPtr::null()},
-            light_client_attack_evidence: if let Sum::LightClientAttackEvidence(v) = self.sum.as_ref().unwrap() { asc_new(heap, v, gas)? } else {AscPtr::null()} 
-        })
-    }
-}
+//         Ok(AscEvidence {
+//             duplicate_vote_evidence:      if let Sum::DuplicateVoteEvidence(v) = self.sum.as_ref().unwrap() {asc_new(heap, v, gas)? } else {AscPtr::null()},
+//             light_client_attack_evidence: if let Sum::LightClientAttackEvidence(v) = self.sum.as_ref().unwrap() { asc_new(heap, v, gas)? } else {AscPtr::null()} 
+//         })
+//     }
+// }
 
 impl ToAscObj<AscEvidenceArray> for Vec<codec::Evidence> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -797,17 +797,17 @@ impl ToAscObj<AscModeInfo> for codec::ModeInfo {
     }
 }
 
-impl ToAscObj<AscModeInfoArray> for Vec<codec::ModeInfo> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscModeInfoArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+// impl ToAscObj<AscModeInfoArray> for Vec<codec::ModeInfo> {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscModeInfoArray, DeterministicHostError> {
+//         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
 
-        Ok(AscModeInfoArray(Array::new(&content?, heap, gas)?))
-    }
-}
+//         Ok(AscModeInfoArray(Array::new(&content?, heap, gas)?))
+//     }
+// }
 
 impl ToAscObj<AscModeInfoSingle> for codec::ModeInfoSingle {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -875,17 +875,17 @@ impl ToAscObj<AscModeInfoMulti> for codec::ModeInfoMulti {
 // }
 
 
-impl ToAscObj<AscCoinArray> for Vec<codec::Coin> {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscCoinArray, DeterministicHostError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+// impl ToAscObj<AscCoinArray> for Vec<codec::Coin> {
+//     fn to_asc_obj<H: AscHeap + ?Sized>(
+//         &self,
+//         heap: &mut H,
+//         gas: &GasCounter,
+//     ) -> Result<AscCoinArray, DeterministicHostError> {
+//         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
 
-        Ok(AscCoinArray(Array::new(&content?, heap, gas)?))
-    }
-}
+//         Ok(AscCoinArray(Array::new(&content?, heap, gas)?))
+//     }
+// }
 
 // impl ToAscObj<AscTip> for codec::Tip {
 //     fn to_asc_obj<H: AscHeap + ?Sized>(
