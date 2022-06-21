@@ -113,6 +113,11 @@ chain. For each provider, the following information must be given:
 * `features`: an array of features that the provider supports, either empty
   or any combination of `traces` and `archive`
 * `headers`: HTTP headers to be added on every request. Defaults to none.
+* `limit`: the maximum number of subgraphs that can use this provider.
+  Defaults to unlimited. At least one provider should be unlimited,
+  otherwise `graph-node` might not be able to handle all subgraphs. The
+  tracking for this is approximate, and a small amount of deviation from
+  this value should be expected. The deviation will be less than 10.
 
 The following example configures two chains, `mainnet` and `kovan`, where
 blocks for `mainnet` are stored in the `vip` shard and blocks for `kovan`
