@@ -15,6 +15,11 @@ use crate::EthereumAdapter;
 pub struct EthereumNetworkAdapter {
     pub capabilities: NodeCapabilities,
     adapter: Arc<EthereumAdapter>,
+    /// The maximum number of times this adapter can be used. We use the
+    /// strong_count on `adapter` to determine whether the adapter is above
+    /// that limit. That's a somewhat imprecise but convenient way to
+    /// determine the number of connections
+    limit: usize,
 }
 
 #[derive(Clone)]
@@ -37,6 +42,7 @@ impl EthereumNetworkAdapters {
         self.adapters
             .iter()
             .filter(|adapter| Some(&adapter.capabilities) == cheapest_sufficient_capability)
+            .filter(|adapter| Arc::strong_count(&adapter.adapter) < adapter.limit)
             .choose(&mut rand::thread_rng())
             .map(|adapter| adapter.adapter.cheap_clone())
             .with_context(|| {
@@ -79,6 +85,7 @@ impl EthereumNetworks {
         name: String,
         capabilities: NodeCapabilities,
         adapter: Arc<EthereumAdapter>,
+        limit: usize,
     ) {
         let network_adapters = self
             .networks
@@ -87,6 +94,7 @@ impl EthereumNetworks {
         network_adapters.adapters.push(EthereumNetworkAdapter {
             capabilities,
             adapter: adapter.clone(),
+            limit,
         });
     }
 
