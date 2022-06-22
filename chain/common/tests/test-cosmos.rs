@@ -6,8 +6,8 @@ use common::*;
 #[test]
 fn check_eventlist_type_field_count() {
     let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
-    //let block = types.get("PublicKey");
-    let block = types.get("ModeInfo");
+    let block = types.get("PublicKey");
+    //let block = types.get("ModeInfo");
 
     //let block = types.get("EventTx");
 

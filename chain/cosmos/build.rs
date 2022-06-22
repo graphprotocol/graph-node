@@ -6,13 +6,7 @@ fn main() {
     let types = common::parse_proto_file(PROT_FILE).expect("Unable ...");
 
     let types_to_skip = vec![
-        "PublicKey", //complex decoding
-                     //"ModeInfo", //oneof, enumeration
-                     //"Evidence", //oneof, enumeration
-                     //"ModeInfoSingle", //enumeration
-                     //"ModeInfoMulti",
-                     //"DuplicateVoteEvidence",
-                     //"LightClientAttackEvidence"
+        //"PublicKey", //cannot introspect enum type
     ];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");

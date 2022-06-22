@@ -26,7 +26,10 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     let fields = item_struct
         .fields
         .iter()
-        .filter(|f| !enum_names.contains(&f.ident.as_ref().unwrap().to_string()))
+        .filter(|f| {
+            let nm = f.ident.as_ref().unwrap().to_string();
+            !enum_names.contains(&nm) && nm.starts_with("_")
+        })
         .collect::<Vec<&Field>>();
 
     //struct's enum fields
@@ -48,7 +51,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
     //generate enum fields validator
     let enum_validation = enum_fields.iter().map(|f|{
-        let fld_name = f.ident.as_ref().unwrap();
+        let fld_name = f.ident.as_ref().unwrap(); //empty, maybe call it "sum"?
         let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
         let fld_nm = format!("\"{}\"", fld_name.to_string()).to_string().parse::<proc_macro2::TokenStream>().unwrap();
 
@@ -63,8 +66,8 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let fld_name = f.ident.as_ref().unwrap();
             let self_ref =
                 if is_byte_array(f){
-                    //FIXME - where are Bytes come from?
-                    quote! { Bytes(&self.#fld_name) }
+                    //FIXME - Bytes should be shared (???)
+                    quote! { crate::protobuf::Bytes(&self.#fld_name) }
                 }else{
                     quote!{ self.#fld_name }
                 };
@@ -112,6 +115,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         let var_type_name = c.next().unwrap().to_uppercase().collect::<String>() + c.as_str();
 
         var.fields.named.iter().map(|f|{
+
             let fld_nm = f.ident.as_ref().unwrap();
             let var_nm = var.ident.clone();
 
@@ -122,8 +126,14 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let varian_type_name = format!("{}::{}::{}",mod_name, var_type_name, varian_type_name).parse::<proc_macro2::TokenStream>().unwrap();
 
             let setter =
-                quote! {
-                    #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
+                if is_byte_array(f){
+                    quote! {
+                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
+                    }
+                }else{
+                    quote! {
+                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
+                    }
                 };
 
             setter
@@ -138,8 +148,6 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         mod #mod_name{
             use super::*;
 
-            //use graph_runtime_wasm::asc_abi::class::*;
-            //use anyhow::anyhow;
             use crate::protobuf::*;
 
             impl graph::runtime::ToAscObj<#asc_name> for #name {
@@ -156,12 +164,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     Ok(
                          #asc_name {
                             #(#methods)*
+                            ..Default::default()
                         }
                     )
                 }
             }
         } // -------- end of mod
-
+        //graph_runtime_wasm::asc_abi::class::Array
         pub struct #asc_name_array(pub  crate::protobuf::Array<graph::runtime::AscPtr<#asc_name>>);
 
         impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {
@@ -173,6 +182,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
 
                 //TODO - verify Array import
+                //graph_runtime_wasm::asc_abi::class::Array
                 Ok(#asc_name_array(crate::protobuf::Array::new(&content?, heap, gas)?))
             }
         }

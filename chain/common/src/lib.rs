@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Error;
+use protobuf::descriptor::field_descriptor_proto::Type;
 use protobuf::descriptor::DescriptorProto;
 use protobuf::descriptor::FieldDescriptorProto;
 use protobuf::descriptor::OneofDescriptorProto;
@@ -99,10 +100,12 @@ impl From<&FieldDescriptorProto> for Field {
         let type_name = if let Some(type_name) = fd.type_name.as_ref() {
             type_name.to_owned()
         } else {
-            use convert_case::{Case, Casing};
-            fd.name().to_case(Case::Pascal)
-            // let mut c = fd.name().chars();
-            // c.next().unwrap().to_uppercase().collect::<String>() + c.as_str()
+            if let Type::TYPE_BYTES = fd.type_() {
+                "Vec<u8>".to_owned()
+            } else {
+                use convert_case::{Case, Casing};
+                fd.name().to_case(Case::Pascal)
+            }
         };
 
         Field {
