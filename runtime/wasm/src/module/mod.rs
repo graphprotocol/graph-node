@@ -67,10 +67,14 @@ impl<C: Blockchain> Drop for WasmInstance<C> {
 }
 
 /// Proxies to the WasmInstanceContext.
-unsafe impl<C: Blockchain> AscHeap for WasmInstance<C> {
+impl<C: Blockchain> AscHeap for WasmInstance<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
         ctx.raw_new(bytes, gas)
+    }
+
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+        self.instance_ctx().read_u32(offset, gas)
     }
 
     fn init<'s, 'a>(
@@ -605,7 +609,7 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 }
 
-unsafe impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
+impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
@@ -651,6 +655,19 @@ unsafe impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         self.arena_free_size -= size;
 
         Ok(ptr as u32)
+    }
+
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * 4))?;
+        let mut bytes = [0; 4];
+        self.memory.read(offset as usize, &mut bytes).map_err(|_| {
+            DeterministicHostError::from(anyhow!(
+                "Heap access out of bounds. Offset: {} Size: {}",
+                offset,
+                4
+            ))
+        })?;
+        Ok(u32::from_le_bytes(bytes))
     }
 
     fn init<'s, 'a>(

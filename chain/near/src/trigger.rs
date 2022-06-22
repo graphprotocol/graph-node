@@ -438,7 +438,7 @@ mod tests {
         }
     }
 
-    unsafe impl AscHeap for BytesHeap {
+    impl AscHeap for BytesHeap {
         fn raw_new(
             &mut self,
             bytes: &[u8],
@@ -446,6 +446,12 @@ mod tests {
         ) -> Result<u32, DeterministicHostError> {
             self.memory.extend_from_slice(bytes);
             Ok((self.memory.len() - bytes.len()) as u32)
+        }
+
+        fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+            let mut data = [std::mem::MaybeUninit::<u8>::uninit(); 4];
+            let init = self.init(offset, &mut data, gas)?;
+            Ok(u32::from_le_bytes(init.try_into().unwrap()))
         }
 
         fn init<'s, 'a>(

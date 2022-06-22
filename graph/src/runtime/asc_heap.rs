@@ -9,18 +9,18 @@ use super::{
 /// for reading and writing Rust structs from and to Asc.
 ///
 /// The implementor must provide the direct Asc interface with `raw_new` and `get`.
-pub unsafe trait AscHeap {
+pub trait AscHeap {
     /// Allocate new space and write `bytes`, return the allocated address.
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
-    /// Safety: The implementation MUST initialize all bytes in the buffer if Ok is returned.
-    /// Otherwise, the bytes may not be initialized.
     fn init<'s, 'a>(
         &'s self,
         offset: u32,
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
     ) -> Result<&'a mut [u8], DeterministicHostError>;
+
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
     fn api_version(&self) -> Version;
 
@@ -62,25 +62,6 @@ where
     T: FromAscObj<C>,
 {
     T::from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas)
-}
-
-pub fn asc_get_array<H: AscHeap + ?Sized, const LEN: usize>(
-    heap: &H,
-    offset: u32,
-    gas: &GasCounter,
-) -> Result<[u8; LEN], DeterministicHostError> {
-    let mut array = [MaybeUninit::<u8>::uninit(); LEN];
-    unsafe {
-        // Safety: The AscHeap trait is unsafe, and specifies the invariant
-        // that if Ok is returned the buffer will be fully initialized.
-        heap.init(offset, &mut array, gas)?;
-
-        // Ideally we would use MaybeUninit::array_assume_init
-        // But, that is currently on nightly. So instead we copy-paste
-        // that, and have to comment out the intrinsic.
-        // intrinsics::assert_inhabited::<[u8; LEN]>();
-        Ok((&array as *const _ as *const [u8; LEN]).read())
-    }
 }
 
 /// Type that can be converted to an Asc object of class `C`.

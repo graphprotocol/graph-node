@@ -1,7 +1,7 @@
 use super::gas::GasCounter;
 use super::{padding_to_16, DeterministicHostError};
 
-use super::{asc_get_array, AscHeap, AscIndexId, AscType, IndexForAscTypeId};
+use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
@@ -116,8 +116,7 @@ impl<C: AscType> AscPtr<C> {
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
-        let u32_bytes = asc_get_array(heap, self.0, gas)?;
-        Ok(u32::from_le_bytes(u32_bytes))
+        heap.read_u32(self.0, gas)
     }
 
     /// Helper that generates an AssemblyScript header.
@@ -180,8 +179,7 @@ impl<C: AscType> AscPtr<C> {
             ))
         })?;
 
-        let u32_bytes = asc_get_array(heap, start_of_rt_size, gas)?;
-        Ok(u32::from_le_bytes(u32_bytes))
+        heap.read_u32(start_of_rt_size, gas)
     }
 
     /// Conversion to `u64` for use with `AscEnum`.
