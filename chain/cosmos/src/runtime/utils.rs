@@ -7,6 +7,7 @@ pub use graph::runtime::{
     DeterministicHostError, IndexForAscTypeId, ToAscObj,
 };
 
+//this can be moved to runtime
 pub struct Bytes<'a>(pub &'a Vec<u8>);
 
 impl ToAscObj<Uint8Array> for Bytes<'_> {
@@ -20,6 +21,8 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
 }
 
 /******************************************************************************* */
+//this can be moved to runtime
+
 pub struct AscBytesArray(pub Array<AscPtr<Uint8Array>>);
 
 impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
@@ -35,6 +38,7 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
     }
 }
 
+//this can be moved to runtime
 impl AscType for AscBytesArray {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         self.0.to_asc_bytes()
@@ -48,13 +52,14 @@ impl AscType for AscBytesArray {
     }
 }
 
+//we will have to keep this chain specific
 impl AscIndexId for AscBytesArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBytesArray;
 }
 
 /************************************************************************** */
 
-//there is also another Any in protobuf
+//this one (whole thing) is weird, there is also another Any in protobuf
 impl ToAscObj<AscAny> for prost_types::Any {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -101,6 +106,7 @@ impl AscIndexId for AscAnyArray {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosAnyArray;
 }
 
+/****************** move this two to runtime *****************************/
 /// Create an error for a missing field in a type.
 fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {
     DeterministicHostError::from(anyhow!("{} missing {}", type_name, field_name))
