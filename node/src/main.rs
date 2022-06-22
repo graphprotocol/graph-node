@@ -133,8 +133,8 @@ async fn main() {
         std::process::exit(0);
     }
 
-    let node_id =
-        NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
+    let node_id = NodeId::new(opt.node_id.clone())
+        .expect("Node ID must be between 1 and 63 characters in length");
     let query_only = config.query_only(&node_id);
 
     // Obtain subgraph related command-line arguments
