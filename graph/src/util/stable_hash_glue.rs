@@ -9,54 +9,12 @@ use stable_hash_legacy::prelude::{
 #[macro_export]
 macro_rules! _impl_stable_hash {
     ($T:ident$(<$lt:lifetime>)? {$($field:ident$(:$e:path)?),*}) => {
-        // Only this first impl commented, the same comments apply throughout
-        impl stable_hash::StableHash for $T$(<$lt>)? {
-            // This suppressed warning is for the final index + 1, which is unused
-            // in the next "iteration of the loop"
-            #[allow(unused_assignments)]
-            fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-                // Destructuring ensures we have all of the fields. If a field is added to the struct,
-                // it must be added to the macro or it will fail to compile.
-                let $T { $($field,)* } = self;
-                let mut index = 0;
-                $(
-                    // We might need to "massage" the value, for example, to wrap
-                    // it in AsBytes. So we provide a way to inject those.
-                    $(let $field = $e($field);)?
-                    stable_hash::StableHash::stable_hash(&$field, stable_hash::FieldAddress::child(&field_address, index), state);
-                    index += 1;
-                )*
-            }
-        }
-
-        impl stable_hash_legacy::StableHash for $T$(<$lt>)? {
-            fn stable_hash<H: stable_hash_legacy::StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-                let $T { $($field,)* } = self;
-                $(
-                    $(let $field = $e($field);)*
-                    stable_hash_legacy::StableHash::stable_hash(&$field, stable_hash_legacy::SequenceNumber::next_child(&mut sequence_number), state);
-                )*
-            }
-        }
+        ::stable_hash::impl_stable_hash!($T$(<$lt>)? {$($field$(:$e)?),*});
+        ::stable_hash_legacy::impl_stable_hash!($T$(<$lt>)? {$($field$(:$e)?),*});
     };
     ($T:ident$(<$lt:lifetime>)? (transparent$(:$e:path)?)) => {
-        impl stable_hash::StableHash for $T$(<$lt>)? {
-            #[allow(unused_assignments)]
-            fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-                let Self(transparent) = self;
-                $(let transparent = $e(transparent);)?
-                stable_hash::StableHash::stable_hash(&transparent, field_address, state);
-            }
-        }
-
-        impl stable_hash_legacy::StableHash for $T$(<$lt>)? {
-            fn stable_hash<H: stable_hash_legacy::StableHasher>(&self, sequence_number: H::Seq, state: &mut H,
-            ) {
-                let Self(transparent) = self;
-                $(let transparent = $e(transparent);)*
-                stable_hash_legacy::StableHash::stable_hash(&transparent, sequence_number, state);
-            }
-        }
+        ::stable_hash::impl_stable_hash!($T$(<$lt>)? (transparent$(:$e)?));
+        ::stable_hash_legacy::impl_stable_hash!($T$(<$lt>)? (transparent$(:$e)?));
     };
 }
 pub use crate::_impl_stable_hash as impl_stable_hash;
