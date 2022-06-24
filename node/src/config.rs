@@ -64,6 +64,8 @@ impl Default for Opt {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
+    #[serde(skip, default = "default_node_id")]
+    pub node: NodeId,
     pub general: Option<GeneralSection>,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
@@ -173,8 +175,11 @@ impl Config {
         let deployment = Deployment::from_opt(opt);
         let mut stores = BTreeMap::new();
         let chains = ChainSection::from_opt(opt)?;
+        let node = NodeId::new(opt.node_id.to_string())
+            .map_err(|()| anyhow!("invalid node id {}", opt.node_id))?;
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
+            node,
             general: None,
             stores,
             chains,
