@@ -6,7 +6,6 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
-use fail::fail_point;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
@@ -468,7 +467,6 @@ where
                     runtime_hosts.push(host);
                 }
                 None => {
-                    fail_point!("error_on_duplicate_ds", |_| Err(anyhow!("duplicate ds")));
                     warn!(
                         self.logger,
                         "no runtime hosted created, there is already a runtime host instantiated for \

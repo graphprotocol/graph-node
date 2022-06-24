@@ -20,7 +20,6 @@ reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
 ethabi = "17.0"
 hex = "0.4.3"
 http = "0.2.3"
-fail = { version = "0.5", features = ["failpoints"] }
 futures = "0.1.21"
 graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
