@@ -132,6 +132,18 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
 //         Self { key, value }
 //     }
 // }
+//
+// padding logic inspired by:
+// https://doc.rust-lang.org/reference/type-layout.html#reprc-structs
+//
+// start with offset 0
+// for each field:
+//     * if offset is not multiple of field alignment add padding bytes with size needed to fill
+//     the gap to the next alignment multiple: alignment - (offset % alignment)
+//     * increase offset by size of padding, if any
+//     * increase offset by size of field bytes
+//     * keep track of maximum field alignment to determine alignment of struct
+// if end offset is not multiple of struct alignment add padding field with required size.
 fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
     let struct_name = &item_struct.ident;
     let (impl_generics, ty_generics, where_clause) = item_struct.generics.split_for_impl();
@@ -149,18 +161,50 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
         Fields::Named(fields) => fields.named.iter().map(|field| &field.ty),
         _ => panic!("AscType can only be derived for structs with named fields"),
     };
+    let field_types2 = field_types.clone();
 
     TokenStream::from(quote! {
         impl #impl_generics graph::runtime::AscType for #struct_name #ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
                 let in_memory_byte_count = std::mem::size_of::<Self>();
                 let mut bytes = Vec::with_capacity(in_memory_byte_count);
-                #(bytes.extend_from_slice(&self.#field_names.to_asc_bytes()?);)*
 
-                // Right now we do not properly implement the alignment rules dicted by
-                // AssemblyScript. As such, we here enforce that the structure is tighly
-                // packed and that no implicit padding has been added.
-                //
+                let mut offset = 0;
+                // max field alignment will also be struct alignment which we need to pad the end
+                let mut max_align = 0;
+
+                #(
+                    let field_align = std::mem::align_of::<#field_types>();
+                    let misalignment = offset % field_align;
+
+                    if misalignment > 0 {
+                        let padding_size = field_align - misalignment;
+
+                        bytes.extend_from_slice(&vec![0; padding_size]);
+
+                        offset += padding_size;
+                    }
+
+                    let field_bytes = self.#field_names.to_asc_bytes()?;
+
+                    bytes.extend_from_slice(&field_bytes);
+
+                    offset += field_bytes.len();
+
+                    if max_align < field_align {
+                        max_align = field_align;
+                    }
+                )*
+
+                // pad end of struct data if needed
+                let struct_misalignment = offset % max_align;
+
+                if struct_misalignment > 0 {
+                    let padding_size = max_align - struct_misalignment;
+
+                    bytes.extend_from_slice(&vec![0; padding_size]);
+                }
+
                 // **Important** AssemblyScript and `repr(C)` in Rust does not follow exactly
                 // the same rules always. One caveats is that some struct are packed in AssemblyScript
                 // but padded for alignment in `repr(C)` like a struct `{ one: AscPtr, two: AscPtr, three: AscPtr, four: u64 }`,
@@ -202,12 +246,21 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
                 let mut offset = 0;
 
                 #(
-                let field_size = std::mem::size_of::<#field_types>();
-                let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
-                    graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Attempted to read past end of array"))
-                })?;
-                let #field_names2 = graph::runtime::AscType::from_asc_bytes(&field_data, api_version)?;
-                offset += field_size;
+                    // skip padding
+                    let field_align = std::mem::align_of::<#field_types2>();
+                    let misalignment = offset % field_align;
+                    if misalignment > 0 {
+                        let padding_size = field_align - misalignment;
+
+                        offset += padding_size;
+                    }
+
+                    let field_size = std::mem::size_of::<#field_types2>();
+                    let field_data = asc_obj.get(offset..(offset + field_size)).ok_or_else(|| {
+                        graph::runtime::DeterministicHostError::from(graph::prelude::anyhow::anyhow!("Attempted to read past end of array"))
+                    })?;
+                    let #field_names2 = graph::runtime::AscType::from_asc_bytes(&field_data, api_version)?;
+                    offset += field_size;
                 )*
 
                 Ok(Self {
