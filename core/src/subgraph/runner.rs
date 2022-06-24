@@ -736,12 +736,8 @@ where
                         //
                         // If we don't do this check we would keep adding the same error to the
                         // database.
-                        let should_fail_subgraph = self
-                            .inputs
-                            .store
-                            .health(&self.inputs.deployment.hash)
-                            .await?
-                            != SubgraphHealth::Failed;
+                        let should_fail_subgraph =
+                            self.inputs.store.health().await? != SubgraphHealth::Failed;
 
                         if should_fail_subgraph {
                             // Fail subgraph:

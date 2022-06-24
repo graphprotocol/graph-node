@@ -1,7 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::detail::GraphNodeVersion;
+use crate::{detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
@@ -782,14 +782,11 @@ fn check_health(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn health(
-    conn: &PgConnection,
-    id: &DeploymentHash,
-) -> Result<SubgraphHealth, StoreError> {
+pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHealth, StoreError> {
     use subgraph_deployment as d;
 
     d::table
-        .filter(d::deployment.eq(id.as_str()))
+        .filter(d::id.eq(id))
         .select(d::health)
         .get_result(conn)
         .map_err(|e| e.into())
