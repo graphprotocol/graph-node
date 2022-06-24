@@ -6,7 +6,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::fs::read_to_string;
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use async_stream::stream;
 use ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 use futures03::{Stream, StreamExt};
@@ -159,7 +159,13 @@ async fn data_source_revert() -> anyhow::Result<()> {
             );
             break;
         }
+
+        if !store.is_healthy(&hash).await.unwrap() {
+            return Err(anyhow!("subgraph failed unexpectedly"));
+        }
     }
+
+    assert!(store.is_healthy(&hash).await.unwrap());
 
     cleanup(&ctx.store, &subgraph_name, &hash);
 
