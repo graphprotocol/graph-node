@@ -24,9 +24,8 @@ lazy_static::lazy_static! {
 }
 
 /// All integration tests subdirectories to run
-pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 10] = [
+pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
     "api-version-v0-0-4",
-    "data-source-revert",
     "fatal-error",
     "ganache-reverts",
     "host-exports",
