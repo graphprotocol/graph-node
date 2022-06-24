@@ -67,11 +67,13 @@ async fn data_source_revert() -> anyhow::Result<()> {
     // Hack to extract deployment id from `graph deploy` output.
     const ID_PREFIX: &str = "Build completed: ";
     let hash = {
-        let line = deploy_output
+        let mut line = deploy_output
             .lines()
             .find(|line| line.contains(ID_PREFIX))
             .expect("found no matching line");
-        let line = &line[5..line.len() - 5]; // workaround for colored output
+        if !line.starts_with(ID_PREFIX) {
+            line = &line[5..line.len() - 5]; // workaround for colored output
+        }
         DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
     };
 
