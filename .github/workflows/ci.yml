@@ -120,7 +120,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- test_runner --nocapture
+          args: --verbose --package graph-tests -- --nocapture --skip parallel_integration_tests
 
   integration-tests:
     name: Run integration tests
@@ -175,7 +175,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- --nocapture --skip test_runner
+          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
         continue-on-error: true
       - name: Run integration tests (round 2)
         id: integration-tests-2
@@ -187,7 +187,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- --nocapture --skip test_runner
+          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
 
   rustfmt:
     name: Check rustfmt style
