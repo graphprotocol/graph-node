@@ -11,12 +11,10 @@ use syn::{
 
 const REQUIRED_IDENT_NAME: &str = "__required__";
 
-#[derive(Debug)]
 struct Args {
     vars: Vec<ArgsField>,
 }
 
-#[derive(Debug)]
 struct ArgsField {
     ident: Ident,
     fields: FieldsNamed,
