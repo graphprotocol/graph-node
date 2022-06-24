@@ -1,7 +1,5 @@
 # Advanced Graph Node configuration
 
-**This feature is considered experimental. In particular, the format of the configuration file might still change in backwards-incompatible ways**
-
 A TOML configuration file can be used to set more complex configurations than those exposed in the
 CLI. The location of the file is passed with the `--config` command line switch. When using a
 configuration file, it is not possible to use the options `--postgres-url`,
@@ -137,6 +135,37 @@ provider = [
 shard = "primary"
 provider = [ { label = "kovan", url = "http://..", features = [] } ]
 ```
+
+### Controlling the number of subgraphs using a provider
+
+**This feature is experimental and might be removed in a future release**
+
+Each provider can set a limit for the number of subgraphs that can use this
+provider. The measurement of the number of subgraphs using a provider is
+approximate and can differ from the true number by a small amount
+(generally less than 10)
+
+The limit is set through rules that match on the node name. If a node's
+name does not match any rule, the corresponding provider can be used for an
+unlimited number of subgraphs. It is recommended that at least one provider
+is generally unlimited. The limit is set in the following way:
+
+```toml
+[chains.mainnet]
+shard = "vip"
+provider = [
+  { label = "mainnet-0", url = "http://..", features = [] },
+  { label = "mainnet-1", url = "http://..", features = [],
+    match = [
+      { name = "some_node_.*", limit = 10 },
+      { name = "other_node_.*", limit = 0 } ] } ]
+```
+
+Nodes named `some_node_.*` will use `mainnet-1` for at most 10 subgraphs,
+and `mainnet-0` for everything else, nodes named `other_node_.*` will never
+use `mainnet-1` and always `mainnet-0`. Any node whose name does not match
+one of these patterns will use `mainnet-0` and `mainnet-1` for an unlimited
+number of subgraphs.
 
 ## Controlling Deployment
 
