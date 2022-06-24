@@ -44,12 +44,6 @@ where
     AscPtr::alloc_obj(obj, heap, gas)
 }
 
-
-
-
-
-
-
 ///  Read the rust representation of an Asc object of class `C`.
 ///
 ///  This operation is expensive as it requires a call to `get` for every
