@@ -28,7 +28,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         .iter()
         .filter(|f| {
             let nm = f.ident.as_ref().unwrap().to_string();
-            !enum_names.contains(&nm) && nm.starts_with("_")
+            !enum_names.contains(&nm) && !nm.starts_with("_")
         })
         .collect::<Vec<&Field>>();
 
@@ -171,6 +171,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             }
         } // -------- end of mod
         //graph_runtime_wasm::asc_abi::class::Array
+        
         pub struct #asc_name_array(pub  crate::protobuf::Array<graph::runtime::AscPtr<#asc_name>>);
 
         impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {

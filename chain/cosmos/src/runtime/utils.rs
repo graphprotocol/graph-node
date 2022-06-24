@@ -7,9 +7,10 @@ pub use graph::runtime::{
     DeterministicHostError, IndexForAscTypeId, ToAscObj,
 };
 
-//this can be moved to runtime
+/****************** move this two to runtime graph/runtime/src/asc_heap.rs *****************************/
 pub struct Bytes<'a>(pub &'a Vec<u8>);
 
+/****************** move this two to runtime graph/runtime/src/asc_heap.rs *****************************/
 impl ToAscObj<Uint8Array> for Bytes<'_> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
@@ -20,8 +21,7 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
     }
 }
 
-/******************************************************************************* */
-//this can be moved to runtime
+/****************** this can be moved to runtime graph/runtime/src/asc_heap.rs, but  IndexForAscTypeId::CosmosBytesArray *******/
 
 pub struct AscBytesArray(pub Array<AscPtr<Uint8Array>>);
 
@@ -54,7 +54,7 @@ impl AscType for AscBytesArray {
 
 //we will have to keep this chain specific
 impl AscIndexId for AscBytesArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBytesArray;
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBytesArray; //12345
 }
 
 /************************************************************************** */
@@ -102,16 +102,17 @@ impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
 //     }
 // }
 
-impl AscIndexId for AscAnyArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosAnyArray;
-}
+// impl AscIndexId for AscAnyArray {
+//     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosAnyArray;
+// }
 
-/****************** move this two to runtime *****************************/
+/****************** move this two to runtime graph/runtime/src/asc_heap.rs *****************************/
 /// Create an error for a missing field in a type.
 fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {
     DeterministicHostError::from(anyhow!("{} missing {}", type_name, field_name))
 }
 
+/****************** move this two to runtime graph/runtime/src/asc_heap.rs *****************************/
 /// Map an optional object to its Asc equivalent if Some, otherwise return null.
 pub fn asc_new_or_null<H, O, A>(
     heap: &mut H,
@@ -129,6 +130,7 @@ where
     }
 }
 
+/****************** move this two to runtime graph/runtime/src/asc_heap.rs *****************************/
 /// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.
 pub fn asc_new_or_missing<H, O, A>(
     heap: &mut H,
