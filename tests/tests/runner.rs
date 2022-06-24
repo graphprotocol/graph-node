@@ -53,12 +53,15 @@ async fn data_source_revert() -> anyhow::Result<()> {
     // This setup can be run once for all tests.
     run_cmd(Command::new("yarn").current_dir("./integration-tests"));
 
+    let test_dir = format!("./integration-tests/{}", subgraph_name);
+    run_cmd(Command::new("yarn").arg("codegen").current_dir(&test_dir));
+
     let deploy_output = run_cmd(
         Command::new("yarn")
             .arg("deploy:test")
             .env("IPFS_URI", "http://127.0.0.1:5001")
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:4242")
-            .current_dir("./integration-tests/data-source-revert"),
+            .current_dir(test_dir),
     );
 
     // Hack to extract deployment id from `graph deploy` output.
