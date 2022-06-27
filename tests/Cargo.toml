@@ -3,21 +3,24 @@ name = "graph-tests"
 version = "0.26.0"
 edition = "2021"
 
-[dev-dependencies]
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
-bollard = "0.10"
-tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
-tokio-stream = "0.1"
+[dependencies]
 port_check = "0.1.5"
-anyhow = "1.0.57"
-lazy_static = "1.4.0"
+anyhow = "1.0"
+futures = { version = "0.3", features = ["compat"] }
+graph = { path = "../graph" }
+tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
+graph-chain-ethereum = { path = "../chain/ethereum" }
+async-stream = "0.3.3"
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
-graph = { path = "../graph" }
 graph-mock = { path = "../mock" }
 graph-store-postgres = { path = "../store/postgres" }
+slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+
+[dev-dependencies]
+bollard = "0.10"
+anyhow = "1.0.57"
+lazy_static = "1.4.0"
+tokio-stream = "0.1"
 serde_yaml = "0.8"
-graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
-async-stream = "0.3.3"
-futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }

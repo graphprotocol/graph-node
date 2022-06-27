@@ -16,8 +16,6 @@ use super::{Block, BlockPtr, Blockchain};
 use crate::components::store::BlockNumber;
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::prelude::*;
-#[cfg(debug_assertions)]
-use fail::fail_point;
 
 // A high number here forces a slow start.
 const STARTING_PREVIOUS_TRIGGERS_PER_BLOCK: f64 = 1_000_000.0;
@@ -411,12 +409,6 @@ where
             let subgraph_ptr =
                 subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
-            #[cfg(debug_assertions)]
-            if test_reorg(subgraph_ptr.clone()) {
-                let parent = self.parent_ptr(&subgraph_ptr).await?;
-                return Ok(ReconciliationStep::Revert(parent));
-            }
-
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
             let offset = head_ptr.number - subgraph_ptr.number - 1;
@@ -617,28 +609,4 @@ impl<C: Blockchain> Stream for PollingBlockStream<C> {
 
         result
     }
-}
-
-// This always returns `false` in a normal build. A test may configure reorg by enabling
-// "test_reorg" fail point with the number of the block that should be reorged.
-#[cfg(debug_assertions)]
-#[allow(unused_variables)]
-fn test_reorg(ptr: BlockPtr) -> bool {
-    fail_point!("test_reorg", |reorg_at| {
-        use std::str::FromStr;
-
-        static REORGED: std::sync::Once = std::sync::Once::new();
-
-        if REORGED.is_completed() {
-            return false;
-        }
-        let reorg_at = BlockNumber::from_str(&reorg_at.unwrap()).unwrap();
-        let should_reorg = ptr.number == reorg_at;
-        if should_reorg {
-            REORGED.call_once(|| {})
-        }
-        should_reorg
-    });
-
-    false
 }

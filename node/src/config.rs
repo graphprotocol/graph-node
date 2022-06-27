@@ -148,11 +148,7 @@ impl Config {
     /// a config from the command line arguments in `opt`
     pub fn load(logger: &Logger, opt: &Opt) -> Result<Config> {
         if let Some(config) = &opt.config {
-            info!(logger, "Reading configuration file `{}`", config);
-            let config = read_to_string(config)?;
-            let mut config: Config = toml::from_str(&config)?;
-            config.validate()?;
-            Ok(config)
+            Self::from_file(logger, config)
         } else {
             info!(
                 logger,
@@ -160,6 +156,17 @@ impl Config {
             );
             Self::from_opt(opt)
         }
+    }
+
+    pub fn from_file(logger: &Logger, path: &str) -> Result<Config> {
+        info!(logger, "Reading configuration file `{}`", path);
+        Self::from_str(&read_to_string(path)?)
+    }
+
+    pub fn from_str(config: &str) -> Result<Config> {
+        let mut config: Config = toml::from_str(&config)?;
+        config.validate()?;
+        Ok(config)
     }
 
     fn from_opt(opt: &Opt) -> Result<Config> {

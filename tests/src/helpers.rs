@@ -2,7 +2,10 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::{self, BufRead};
 use std::path::Path;
+use std::process::Command;
 use std::sync::atomic::{AtomicU16, Ordering};
+
+use anyhow::Context;
 
 /// A counter for uniquely naming Ganache containers
 static GANACHE_CONTAINER_COUNT: AtomicU16 = AtomicU16::new(0);
@@ -135,4 +138,23 @@ pub fn contains_subslice<T: PartialEq>(data: &[T], needle: &[T]) -> bool {
 
 pub fn postgres_test_database_name(unique_id: &u16) -> String {
     format!("test_database_{}", unique_id)
+}
+
+/// Returns captured stdout
+pub fn run_cmd(command: &mut Command) -> String {
+    let program = command.get_program().to_str().unwrap().to_owned();
+    let output = command
+        .output()
+        .context(format!("failed to run {}", program))
+        .unwrap();
+    println!(
+        "stdout {}",
+        pretty_output(&output.stdout, &format!("[{}:stdout] ", program))
+    );
+    println!(
+        "stderr {}",
+        pretty_output(&output.stderr, &format!("[{}:stderr] ", program))
+    );
+
+    String::from_utf8(output.stdout).unwrap()
 }

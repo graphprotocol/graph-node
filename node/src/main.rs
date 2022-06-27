@@ -80,10 +80,6 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
 async fn main() {
     env_logger::init();
 
-    // Allow configuring fail points on debug builds. Used for integration tests.
-    #[cfg(debug_assertions)]
-    std::mem::forget(fail::FailScenario::setup());
-
     let opt = opt::Opt::from_args();
 
     // Set up logger

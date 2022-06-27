@@ -142,7 +142,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn health(&self, _: &DeploymentHash) -> Result<SubgraphHealth, StoreError> {
+    async fn health(&self) -> Result<SubgraphHealth, StoreError> {
         unimplemented!()
     }
 
