@@ -1,7 +1,7 @@
 mod common;
 use anyhow::Context;
 use common::docker::{pull_images, DockerTestClient, TestContainerService};
-use futures03::StreamExt;
+use futures::StreamExt;
 use graph_tests::helpers::{
     basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
     make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts, MappedPorts,

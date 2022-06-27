@@ -1,4 +1,6 @@
+use graph_chain_ethereum::chain::BlockFinality;
 use graph_store_postgres::SubgraphStore;
+use graph_tests::fixture::build_subgraph;
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -9,7 +11,7 @@ use tokio::fs::read_to_string;
 use anyhow::{anyhow, Error};
 use async_stream::stream;
 use ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger};
-use futures03::{Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
 };
@@ -36,68 +38,35 @@ use graph_core::{
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
-use graph_tests::helpers::run_cmd;
 use slog::{debug, info, Logger};
-use std::process::Command;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn data_source_revert() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("data-source-revert")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
 
-    let ipfs = IpfsClient::localhost();
-    ipfs.test()
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
-
-    // This setup can be run once for all tests.
-    run_cmd(Command::new("yarn").current_dir("./integration-tests"));
-
-    let test_dir = format!("./integration-tests/{}", subgraph_name);
-    run_cmd(Command::new("yarn").arg("codegen").current_dir(&test_dir));
-
-    let deploy_output = run_cmd(
-        Command::new("yarn")
-            .arg("deploy:test")
-            .env("IPFS_URI", "http://127.0.0.1:5001")
-            .env("GRAPH_NODE_ADMIN_URI", "http://localhost:4242")
-            .current_dir(test_dir),
-    );
-
-    // Hack to extract deployment id from `graph deploy` output.
-    const ID_PREFIX: &str = "Build completed: ";
     let hash = {
-        let mut line = deploy_output
-            .lines()
-            .find(|line| line.contains(ID_PREFIX))
-            .expect("found no matching line");
-        if !line.starts_with(ID_PREFIX) {
-            line = &line[5..line.len() - 5]; // workaround for colored output
-        }
-        DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        build_subgraph(&test_dir).await
     };
 
     let chain: Vec<BlockWithTriggers<Chain>> = {
         let start_block_hash = H256::from_low_u64_be(0);
         let start_block = BlockWithTriggers {
-            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
-                LightEthereumBlock {
-                    hash: Some(start_block_hash),
-                    number: Some(U64::from(0)),
-                    ..Default::default()
-                },
-            )),
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+                hash: Some(start_block_hash),
+                number: Some(U64::from(0)),
+                ..Default::default()
+            })),
             trigger_data: vec![],
         };
         let block_2 = BlockWithTriggers::<Chain> {
-            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
-                LightEthereumBlock {
-                    hash: Some(H256::from_low_u64_be(1)),
-                    number: Some(U64::from(1)),
-                    parent_hash: start_block_hash,
-                    ..Default::default()
-                },
-            )),
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+                hash: Some(H256::from_low_u64_be(1)),
+                number: Some(U64::from(1)),
+                parent_hash: start_block_hash,
+                ..Default::default()
+            })),
             trigger_data: vec![EthereumTrigger::Block(
                 test_ptr(1),
                 EthereumBlockTriggerType::Every,
@@ -105,14 +74,12 @@ async fn data_source_revert() -> anyhow::Result<()> {
         };
         let block_2_reorged_hash = H256::from_low_u64_be(12);
         let block_2_reorged = BlockWithTriggers::<Chain> {
-            block: graph_chain_ethereum::chain::BlockFinality::Final(Arc::new(
-                LightEthereumBlock {
-                    hash: Some(block_2_reorged_hash),
-                    number: Some(U64::from(1)),
-                    parent_hash: start_block_hash,
-                    ..Default::default()
-                },
-            )),
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+                hash: Some(block_2_reorged_hash),
+                number: Some(U64::from(1)),
+                parent_hash: start_block_hash,
+                ..Default::default()
+            })),
             trigger_data: vec![EthereumTrigger::Block(
                 BlockPtr {
                     hash: block_2_reorged_hash.into(),
@@ -130,7 +97,6 @@ async fn data_source_revert() -> anyhow::Result<()> {
         subgraph_name.clone(),
         &hash,
         "./integration-tests/config.simple.toml",
-        ipfs,
         chain,
     )
     .await;
@@ -198,7 +164,6 @@ async fn setup(
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     store_config_path: &str,
-    ipfs: IpfsClient,
     chain: Vec<BlockWithTriggers<Chain>>,
 ) -> TestContext {
     let logger = graph::log::logger(true);
@@ -280,6 +245,7 @@ async fn setup(
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
+    let ipfs = IpfsClient::localhost();
     let link_resolver = Arc::new(LinkResolver::new(vec![ipfs], Default::default()));
 
     let blockchain_map = Arc::new(blockchain_map);
@@ -344,7 +310,8 @@ fn cleanup(subgraph_store: &SubgraphStore, name: &SubgraphName, hash: &Deploymen
 }
 
 /// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the
-/// chain is not a descendant on the previous one, reorgs will be emitted until it is.
+/// chain is not a descendant of the previous one, reorgs will be emitted until it is.
+/// See also: static-stream-builder
 struct StaticStreamBuilder<C: Blockchain> {
     chain: Vec<BlockWithTriggers<C>>,
 }
@@ -411,6 +378,7 @@ fn stream_events<C: Blockchain>(
 where
     C::TriggerData: Clone,
 {
+    // See also: static-stream-builder
     stream! {
         let current_block = current_idx.map(|idx| &blocks[idx]);
         let mut current_ptr = current_block.map(|b| b.ptr());
