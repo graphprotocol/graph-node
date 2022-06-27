@@ -24,3 +24,5 @@ pub mod backoff;
 pub mod bounded_queue;
 
 pub mod stable_hash_glue;
+
+pub mod mem;

@@ -5,11 +5,7 @@ use graph::cheap_clone::CheapClone;
 use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
-use graph::runtime::asc_new;
-use graph::runtime::gas::GasCounter;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -146,7 +142,7 @@ pub struct ReceiptWithOutcome {
 
 #[cfg(test)]
 mod tests {
-    use std::{convert::TryFrom, mem::MaybeUninit};
+    use std::convert::TryFrom;
 
     use super::*;
 
@@ -155,6 +151,7 @@ mod tests {
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::gas::GasCounter,
+        util::mem::init_slice,
     };
     use second_stack::Stack;
 
@@ -495,15 +492,7 @@ mod tests {
 
             let src = &self.memory[start_offset..end_offset_exclusive];
 
-            // See also 6d2f040c-9361-4cf9-8b3c-426f87cc0b21
-            unsafe {
-                let uninit_src: &[MaybeUninit<u8>] = std::mem::transmute(src);
-                buffer.copy_from_slice(uninit_src);
-                // This is copied from slice_assume_init_mut, which is
-                // currently an unstable API
-                let buffer = &mut *(buffer as *mut [MaybeUninit<u8>] as *mut [u8]);
-                Ok(buffer)
-            }
+            Ok(init_slice(src, buffer))
         }
 
         fn api_version(&self) -> graph::semver::Version {

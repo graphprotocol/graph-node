@@ -16,16 +16,16 @@ use wasmtime::{Memory, Trap};
 
 use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
+use graph::data::subgraph::schema::SubgraphError;
 use graph::prelude::*;
-use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
 use graph::runtime::{
-    AscHeap, AscIndexId, AscType, FromAscObj, HostExportError, IndexForAscTypeId, ToAscObj,
+    asc_get, asc_new,
+    gas::{self, Gas, GasCounter, SaturatingInto},
+    AscHeap, AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError,
+    IndexForAscTypeId, ToAscObj,
 };
+use graph::util::mem::init_slice;
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
-use graph::{
-    data::subgraph::schema::SubgraphError,
-    runtime::{asc_get, asc_new, DeterministicHostError},
-};
 pub use into_wasm_ret::IntoWasmRet;
 pub use stopwatch::TimeoutStopwatch;
 
@@ -691,15 +691,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
                     buffer.len()
                 )))?;
 
-            // See also 6d2f040c-9361-4cf9-8b3c-426f87cc0b21
-            // When MaybeUninit::write_slice is stabilized, this won't
-            // require any unsafe code and will be a one-liner
-            let uninit_src: &[MaybeUninit<u8>] = std::mem::transmute(src);
-            buffer.copy_from_slice(uninit_src);
-            // This is copied from slice_assume_init_mut, which is
-            // currently an unstable API
-            let buffer = &mut *(buffer as *mut [MaybeUninit<u8>] as *mut [u8]);
-            Ok(buffer)
+            Ok(init_slice(src, buffer))
         }
     }
 
