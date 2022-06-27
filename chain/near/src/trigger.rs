@@ -450,7 +450,7 @@ mod tests {
 
         fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
             let mut data = [std::mem::MaybeUninit::<u8>::uninit(); 4];
-            let init = self.init(offset, &mut data, gas)?;
+            let init = self.read(offset, &mut data, gas)?;
             Ok(u32::from_le_bytes(init.try_into().unwrap()))
         }
 
@@ -458,8 +458,8 @@ mod tests {
             &self.stack
         }
 
-        fn init<'s, 'a>(
-            &'s self,
+        fn read<'a>(
+            &self,
             offset: u32,
             buffer: &'a mut [std::mem::MaybeUninit<u8>],
             _gas: &GasCounter,

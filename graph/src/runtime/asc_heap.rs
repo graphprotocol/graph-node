@@ -16,8 +16,8 @@ pub trait AscHeap {
 
     fn stack(&self) -> &Stack;
 
-    fn init<'s, 'a>(
-        &'s self,
+    fn read<'a>(
+        &self,
         offset: u32,
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,

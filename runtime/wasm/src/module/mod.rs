@@ -664,8 +664,8 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         Ok(u32::from_le_bytes(bytes))
     }
 
-    fn init<'s, 'a>(
-        &'s self,
+    fn read<'a>(
+        &self,
         offset: u32,
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
