@@ -49,7 +49,7 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     let table = layout
         .table_for_entity(&EntityType::new("Thing".to_string()))
         .unwrap();
-    let filter = QueryFilter::new(&filter, table.as_ref()).unwrap();
+    let filter = QueryFilter::new(&filter, table.as_ref(), &layout, Default::default()).unwrap();
     let query = debug_query::<Pg, _>(&filter);
     assert!(
         query.to_string().contains(sql),
