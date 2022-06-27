@@ -163,9 +163,27 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
     };
     let field_types2 = field_types.clone();
 
+    // if no fields, return immediately
+    let (no_fields_return_bytes, no_fields_return_self) = if field_names.is_empty() {
+        (
+            quote! {
+                #![allow(unreachable_code)]
+                return Ok(Vec::new());
+            },
+            quote! {
+                #![allow(unreachable_code)]
+                return Ok(Self {});
+            },
+        )
+    } else {
+        (quote! {}, quote! {})
+    };
+
     TokenStream::from(quote! {
         impl #impl_generics graph::runtime::AscType for #struct_name #ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
+                #no_fields_return_bytes
+
                 let in_memory_byte_count = std::mem::size_of::<Self>();
                 let mut bytes = Vec::with_capacity(in_memory_byte_count);
 
@@ -220,6 +238,8 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
 
             #[allow(unused_variables)]
             fn from_asc_bytes(asc_obj: &[u8], api_version: &graph::semver::Version) -> Result<Self, graph::runtime::DeterministicHostError> {
+                #no_fields_return_self
+
                 // Sanity check
                 match api_version {
                     api_version if *api_version <= graph::semver::Version::new(0, 0, 4) => {
