@@ -1,5 +1,6 @@
 use std::mem::MaybeUninit;
 
+use second_stack::Stack;
 use semver::Version;
 
 use super::{
@@ -12,6 +13,8 @@ use super::{
 pub trait AscHeap {
     /// Allocate new space and write `bytes`, return the allocated address.
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError>;
+
+    fn stack(&self) -> &Stack;
 
     fn init<'s, 'a>(
         &'s self,

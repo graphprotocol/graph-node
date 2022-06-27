@@ -79,7 +79,7 @@ async fn test_abi_array(api_version: Version, gas_used: u64) {
         "4".to_owned(),
     ];
     let new_vec_obj: AscPtr<Array<AscPtr<AscString>>> = module.invoke_export1("test_array", &vec);
-    let new_vec: Vec<String> = asc_get(&module, new_vec_obj, &module.gas).unwrap();
+    let new_vec: Vec<String> = module.asc_get(new_vec_obj).unwrap();
 
     assert_eq!(module.gas_used(), gas_used);
     assert_eq!(
@@ -118,7 +118,7 @@ async fn test_abi_subarray(api_version: Version) {
     let vec: Vec<u8> = vec![1, 2, 3, 4];
     let new_vec_obj: AscPtr<TypedArray<u8>> =
         module.invoke_export1("byte_array_third_quarter", vec.as_slice());
-    let new_vec: Vec<u8> = asc_get(&module, new_vec_obj, &module.gas).unwrap();
+    let new_vec: Vec<u8> = module.asc_get(new_vec_obj).unwrap();
 
     assert_eq!(new_vec, vec![3]);
 }
@@ -148,7 +148,7 @@ async fn test_abi_bytes_and_fixed_bytes(api_version: Version) {
     let new_vec_obj: AscPtr<Uint8Array> = module.invoke_export2("concat", &*bytes1, &*bytes2);
 
     // This should be bytes1 and bytes2 concatenated.
-    let new_vec: Vec<u8> = asc_get(&module, new_vec_obj, &module.gas).unwrap();
+    let new_vec: Vec<u8> = module.asc_get(new_vec_obj).unwrap();
 
     let mut concated = bytes1.clone();
     concated.extend(bytes2.clone());
@@ -175,7 +175,6 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
         api_version,
     )
     .await;
-    let gas = module.gas.cheap_clone();
 
     // Token::Address
     let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
@@ -185,7 +184,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
         module.invoke_export1("token_to_address", &token_address);
 
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_address", new_address_obj);
-    let new_token = asc_get(&module, new_token_ptr, &gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_address, new_token);
 
@@ -193,7 +192,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     let token_bytes = Token::Bytes(vec![42, 45, 7, 245, 45]);
     let new_bytes_obj: AscPtr<ArrayBuffer> = module.invoke_export1("token_to_bytes", &token_bytes);
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_bytes", new_bytes_obj);
-    let new_token = asc_get(&module, new_token_ptr, &gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_bytes, new_token);
 
@@ -202,7 +201,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     let new_int_obj: AscPtr<ArrayBuffer> = module.invoke_export1("token_to_int", &int_token);
 
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_int", new_int_obj);
-    let new_token = asc_get(&module, new_token_ptr, &gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(int_token, new_token);
 
@@ -211,7 +210,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
 
     let new_uint_obj: AscPtr<ArrayBuffer> = module.invoke_export1("token_to_uint", &uint_token);
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_uint", new_uint_obj);
-    let new_token = asc_get(&module, new_token_ptr, &module.gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(uint_token, new_token);
     assert_ne!(uint_token, int_token);
@@ -219,12 +218,12 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     // Token::Bool
     let token_bool = Token::Bool(true);
 
-    let token_bool_ptr = asc_new(&mut module, &token_bool, &gas).unwrap();
+    let token_bool_ptr = module.asc_new(&token_bool).unwrap();
     let func = module.get_func("token_to_bool").typed().unwrap().clone();
     let boolean: i32 = func.call(token_bool_ptr.wasm_ptr()).unwrap();
 
     let new_token_ptr = module.takes_val_returns_ptr("token_from_bool", boolean);
-    let new_token = asc_get(&module, new_token_ptr, &module.gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_bool, new_token);
 
@@ -232,7 +231,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     let token_string = Token::String("漢字Go🇧🇷".into());
     let new_string_obj: AscPtr<AscString> = module.invoke_export1("token_to_string", &token_string);
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_string", new_string_obj);
-    let new_token = asc_get(&module, new_token_ptr, &module.gas).unwrap();
+    let new_token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(token_string, new_token);
 
@@ -243,7 +242,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
         module.invoke_export1("token_to_array", &token_array_nested);
 
     let new_token_ptr = module.takes_ptr_returns_ptr("token_from_array", new_array_obj);
-    let new_token: Token = asc_get(&module, new_token_ptr, &module.gas).unwrap();
+    let new_token: Token = module.asc_get(new_token_ptr).unwrap();
 
     assert_eq!(new_token, token_array_nested);
 }
@@ -277,51 +276,50 @@ async fn test_abi_store_value(api_version: Version) {
     let func = module.get_func("value_null").typed().unwrap().clone();
     let ptr: u32 = func.call(()).unwrap();
     let null_value_ptr: AscPtr<AscEnum<StoreValueKind>> = ptr.into();
-    let null_value: Value = asc_get(&module, null_value_ptr, &module.gas).unwrap();
+    let null_value: Value = module.asc_get(null_value_ptr).unwrap();
     assert_eq!(null_value, Value::Null);
 
     // Value::String
     let string = "some string";
     let new_value_ptr = module.invoke_export1("value_from_string", string);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::from(string));
 
     // Value::Int
     let int = i32::min_value();
     let new_value_ptr = module.takes_val_returns_ptr("value_from_int", int);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
     let new_value_ptr = module.invoke_export1("value_from_big_decimal", &big_decimal);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(big_decimal));
 
     let big_decimal = BigDecimal::new(10.into(), 5);
     let new_value_ptr = module.invoke_export1("value_from_big_decimal", &big_decimal);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::BigDecimal(1_000_000.into()));
 
     // Value::Bool
     let boolean = true;
     let new_value_ptr =
         module.takes_val_returns_ptr("value_from_bool", if boolean { 1 } else { 0 });
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bool(boolean));
 
     // Value::List
-    let gas = module.gas.cheap_clone();
     let func = module
         .get_func("array_from_values")
         .typed()
         .unwrap()
         .clone();
     let new_value_ptr: u32 = func
-        .call((asc_new(&mut module, string, &gas).unwrap().wasm_ptr(), int))
+        .call((module.asc_new(string).unwrap().wasm_ptr(), int))
         .unwrap();
     let new_value_ptr = AscPtr::from(new_value_ptr);
-    let new_value: Value = asc_get(&module, new_value_ptr, &gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![Value::from(string), Value::Int(int)])
@@ -332,7 +330,7 @@ async fn test_abi_store_value(api_version: Version) {
         Value::String("bar".to_owned()),
     ];
     let new_value_ptr = module.invoke_export1("value_from_array", array);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::List(vec![
@@ -344,13 +342,13 @@ async fn test_abi_store_value(api_version: Version) {
     // Value::Bytes
     let bytes: &[u8] = &[0, 2, 5];
     let new_value_ptr = module.invoke_export1("value_from_bytes", bytes);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bytes(bytes.into()));
 
     // Value::BigInt
     let bytes: &[u8] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
     let new_value_ptr = module.invoke_export1("value_from_bigint", bytes);
-    let new_value: Value = asc_get(&module, new_value_ptr, &module.gas).unwrap();
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
         Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes))
@@ -383,7 +381,7 @@ async fn test_abi_h160(api_version: Version) {
     let new_address_obj: AscPtr<Uint8Array> = module.invoke_export1("test_address", &address);
 
     // This should have 1 added to the first and last byte.
-    let new_address: H160 = asc_get(&module, new_address_obj, &module.gas).unwrap();
+    let new_address: H160 = module.asc_get(new_address_obj).unwrap();
 
     assert_eq!(
         new_address,
@@ -413,7 +411,7 @@ async fn test_string(api_version: Version) {
     .await;
     let string = "    漢字Double_Me🇧🇷  ";
     let trimmed_string_obj: AscPtr<AscString> = module.invoke_export1("repeat_twice", string);
-    let doubled_string: String = asc_get(&module, trimmed_string_obj, &module.gas).unwrap();
+    let doubled_string: String = module.asc_get(trimmed_string_obj).unwrap();
     assert_eq!(doubled_string, string.repeat(2));
 }
 
@@ -442,7 +440,7 @@ async fn test_abi_big_int(api_version: Version) {
     let old_uint = U256::zero();
     let new_uint_obj: AscPtr<AscBigInt> =
         module.invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint));
-    let new_uint: BigInt = asc_get(&module, new_uint_obj, &module.gas).unwrap();
+    let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1 as i32));
     let new_uint = new_uint.to_unsigned_u256();
     assert_eq!(new_uint, U256([1, 0, 0, 0]));
@@ -450,7 +448,7 @@ async fn test_abi_big_int(api_version: Version) {
     // Test passing in -50 and increment it by 1
     let old_uint = BigInt::from(-50);
     let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", &old_uint);
-    let new_uint: BigInt = asc_get(&module, new_uint_obj, &module.gas).unwrap();
+    let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(-49 as i32));
     let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
     assert_eq!(new_uint, new_uint_from_u256);
@@ -480,7 +478,7 @@ async fn test_big_int_to_string(api_version: Version) {
     let big_int_str = "30145144166666665000000000000000000";
     let big_int = BigInt::from_str(big_int_str).unwrap();
     let string_obj: AscPtr<AscString> = module.invoke_export1("big_int_to_string", &big_int);
-    let string: String = asc_get(&module, string_obj, &module.gas).unwrap();
+    let string: String = module.asc_get(string_obj).unwrap();
     assert_eq!(string, big_int_str);
 }
 
@@ -511,7 +509,7 @@ async fn test_invalid_discriminant(api_version: Version) {
         .unwrap()
         .clone();
     let ptr: u32 = func.call(()).unwrap();
-    let _value: Value = asc_get(&module, ptr.into(), &module.gas).unwrap();
+    let _value: Value = module.asc_get(ptr.into()).unwrap();
 }
 
 // This should panic rather than exhibiting UB. It's hard to test for UB, but

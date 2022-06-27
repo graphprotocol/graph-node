@@ -1,7 +1,8 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -9,6 +10,7 @@ use std::time::Instant;
 use anyhow::anyhow;
 use anyhow::Error;
 use never::Never;
+use second_stack::Stack;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
@@ -16,8 +18,9 @@ use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
 use graph::data::store;
 use graph::prelude::*;
 use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
-use graph::runtime::HostExportError;
-use graph::runtime::{AscHeap, IndexForAscTypeId};
+use graph::runtime::{
+    AscHeap, AscIndexId, AscType, FromAscObj, HostExportError, IndexForAscTypeId, ToAscObj,
+};
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 use graph::{
     data::subgraph::schema::SubgraphError,
@@ -66,35 +69,24 @@ impl<C: Blockchain> Drop for WasmInstance<C> {
     }
 }
 
-/// Proxies to the WasmInstanceContext.
-impl<C: Blockchain> AscHeap for WasmInstance<C> {
-    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
-        let mut ctx = RefMut::map(self.instance_ctx.borrow_mut(), |i| i.as_mut().unwrap());
-        ctx.raw_new(bytes, gas)
+impl<C: Blockchain> WasmInstance<C> {
+    pub fn asc_get<T, P>(&self, asc_ptr: AscPtr<P>) -> Result<T, DeterministicHostError>
+    where
+        P: AscType + AscIndexId,
+        T: FromAscObj<P>,
+    {
+        asc_get(self.instance_ctx().deref(), asc_ptr, &self.gas)
     }
 
-    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
-        self.instance_ctx().read_u32(offset, gas)
-    }
-
-    fn init<'s, 'a>(
-        &'s self,
-        offset: u32,
-        buffer: &'a mut [MaybeUninit<u8>],
-        gas: &GasCounter,
-    ) -> Result<&'a mut [u8], DeterministicHostError> {
-        self.instance_ctx().init(offset, buffer, gas)
-    }
-
-    fn api_version(&self) -> Version {
-        self.instance_ctx().api_version()
-    }
-
-    fn asc_type_id(
+    pub fn asc_new<P, T: ?Sized>(
         &mut self,
-        type_id_index: IndexForAscTypeId,
-    ) -> Result<u32, DeterministicHostError> {
-        self.instance_ctx_mut().asc_type_id(type_id_index)
+        rust_obj: &T,
+    ) -> Result<AscPtr<P>, DeterministicHostError>
+    where
+        P: AscType + AscIndexId,
+        T: ToAscObj<P>,
+    {
+        asc_new(self.instance_ctx_mut().deref_mut(), rust_obj, &self.gas)
     }
 }
 
@@ -106,8 +98,8 @@ impl<C: Blockchain> WasmInstance<C> {
         user_data: &store::Value,
     ) -> Result<BlockState<C>, anyhow::Error> {
         let gas = GasCounter::default();
-        let value = asc_new(&mut self, value, &gas)?;
-        let user_data = asc_new(&mut self, user_data, &gas)?;
+        let value = asc_new(self.instance_ctx_mut().deref_mut(), value, &gas)?;
+        let user_data = asc_new(self.instance_ctx_mut().deref_mut(), user_data, &gas)?;
 
         self.instance_ctx_mut().ctx.state.enter_handler();
 
@@ -130,7 +122,7 @@ impl<C: Blockchain> WasmInstance<C> {
     ) -> Result<(BlockState<C>, Gas), MappingError> {
         let handler_name = trigger.handler_name().to_owned();
         let gas = self.gas.clone();
-        let asc_trigger = trigger.to_asc_ptr(&mut self, &gas)?;
+        let asc_trigger = trigger.to_asc_ptr(self.instance_ctx_mut().deref_mut(), &gas)?;
         self.invoke_handler(&handler_name, asc_trigger)
     }
 
@@ -275,6 +267,8 @@ pub struct WasmInstanceContext<C: Blockchain> {
     pub deterministic_host_trap: bool,
 
     pub(crate) experimental_features: ExperimentalFeatures,
+
+    stack: Stack,
 }
 
 impl<C: Blockchain> WasmInstance<C> {
@@ -709,6 +703,10 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         }
     }
 
+    fn stack(&self) -> &Stack {
+        &self.stack
+    }
+
     fn api_version(&self) -> Version {
         self.ctx.host_exports.api_version.clone()
     }
@@ -779,6 +777,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
+            stack: Stack::new(),
         })
     }
 
@@ -835,6 +834,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
+            stack: Stack::new(),
         })
     }
 }

@@ -64,7 +64,7 @@ impl<C: AscType> AscPtr<C> {
             _ => self.read_len(heap, gas),
         }?;
 
-        second_stack::uninit_slice(len as usize, |buffer| {
+        heap.stack().uninit_slice(len as usize, |buffer| {
             let buffer = heap.init(self.0, buffer, gas)?;
             C::from_asc_bytes(buffer, &heap.api_version())
         })
