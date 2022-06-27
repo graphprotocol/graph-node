@@ -43,33 +43,40 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     // let mut current_offset = 0;
     // let mut pad_index = 0;
 
-    let mut m_fields = Vec::<proc_macro2::TokenStream>::new();
+    //let mut m_fields = Vec::<proc_macro2::TokenStream>::new();
 
-    fields.iter().for_each(|f| {
-        let fld_name = f.ident.clone();
-        let typ = field_type_map(field_type(f));
-        let fld_type = typ.parse::<proc_macro2::TokenStream>().unwrap();
+    let m_fields: Vec<proc_macro2::TokenStream> = fields
+        .iter()
+        .map(|f| {
+            let fld_name = f.ident.clone().unwrap();
+            let typ = field_type_map(field_type(f));
+            let fld_type = typ.parse::<proc_macro2::TokenStream>().unwrap();
 
-        // let pad_size = padding_needed_for(current_offset, struct_align);
+            // let pad_size = padding_needed_for(current_offset, struct_align);
 
-        // if pad_size > 0 {
-        //     for _ in 0..pad_size {
-        //         let pad_fld_name = Ident::new(&format!("_pad{}_", pad_index), Span::call_site());
-        //         pad_index += 1;
+            // if pad_size > 0 {
+            //     for _ in 0..pad_size {
+            //         let pad_fld_name = Ident::new(&format!("_pad{}_", pad_index), Span::call_site());
+            //         pad_index += 1;
 
-        //         m_fields.push(quote! {
-        //             pub #pad_fld_name : #pad_fld_type ,
-        //         });
-        //     }
-        //     current_offset += pad_size;
-        // }
+            //         m_fields.push(quote! {
+            //             pub #pad_fld_name : #pad_fld_type ,
+            //         });
+            //     }
+            //     current_offset += pad_size;
+            // }
 
-        // current_offset += size_of(&typ);
+            // current_offset += size_of(&typ);
 
-        m_fields.push(quote! {
-            pub #fld_name : #fld_type ,
-        });
-    });
+            //m_fields.push(snip);
+            // m_fields.push(quote! {
+            //     pub #fld_name : #fld_type ,
+            // });
+            quote! {
+                pub #fld_name : #fld_type ,
+            }
+        })
+        .collect();
 
     let expanded = quote! {
 
@@ -206,33 +213,33 @@ fn path_to_string(path: &syn::Path) -> String {
     }
 }
 
-fn size_of(tp: &str) -> usize {
-    match tp {
-        "i8" | "u8" => std::mem::size_of::<i8>(),
-        "i16" | "u16" => std::mem::size_of::<i16>(),
+// fn size_of(tp: &str) -> usize {
+//     match tp {
+//         "i8" | "u8" => std::mem::size_of::<i8>(),
+//         "i16" | "u16" => std::mem::size_of::<i16>(),
 
-        "i32" | "u32" => std::mem::size_of::<i32>(),
+//         "i32" | "u32" => std::mem::size_of::<i32>(),
 
-        "i64" | "u64" => std::mem::size_of::<i64>(),
-        "i128" | "u128" => std::mem::size_of::<i128>(),
+//         "i64" | "u64" => std::mem::size_of::<i64>(),
+//         "i128" | "u128" => std::mem::size_of::<i128>(),
 
-        "f32" => std::mem::size_of::<f32>(),
-        "f64" => std::mem::size_of::<f64>(),
+//         "f32" => std::mem::size_of::<f32>(),
+//         "f64" => std::mem::size_of::<f64>(),
 
-        "isize" | "usize" => std::mem::size_of::<isize>(),
-        "bool" => std::mem::size_of::<bool>(),
-        "char" => std::mem::size_of::<char>(),
-        _ => std::mem::size_of::<i32>(), //pointer
-    }
-}
+//         "isize" | "usize" => std::mem::size_of::<isize>(),
+//         "bool" => std::mem::size_of::<bool>(),
+//         "char" => std::mem::size_of::<char>(),
+//         _ => std::mem::size_of::<i32>(), //pointer
+//     }
+// }
 
-fn padding_needed_for(offset: usize, alignment: usize) -> usize {
-    let misalignment = offset % alignment;
-    if misalignment > 0 {
-        // round up to next multiple of `alignment`
-        alignment - misalignment
-    } else {
-        // already a multiple of `alignment`
-        0
-    }
-}
+// fn padding_needed_for(offset: usize, alignment: usize) -> usize {
+//     let misalignment = offset % alignment;
+//     if misalignment > 0 {
+//         // round up to next multiple of `alignment`
+//         alignment - misalignment
+//     } else {
+//         // already a multiple of `alignment`
+//         0
+//     }
+// }

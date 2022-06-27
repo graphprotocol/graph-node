@@ -5,16 +5,16 @@ fn main() {
 
     let types = common::parse_proto_file(PROT_FILE).expect("Unable ...");
 
-    let types_to_skip = vec![
-        //"PublicKey", //cannot introspect enum type
-    ];
+    // let types_to_skip = vec![
+    //     //"PublicKey", //cannot introspect enum type
+    // ];
 
     let mut builder = tonic_build::configure().out_dir("src/protobuf");
 
     for (name, ptype) in types {
-        if types_to_skip.contains(&name.as_str()) {
-            continue;
-        }
+        //if types_to_skip.contains(&name.as_str()) {
+        //continue;
+        //}
 
         //generate Asc<Type>
         builder = builder.type_attribute(
