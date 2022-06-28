@@ -6,7 +6,6 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
-use fail::fail_point;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
@@ -122,7 +121,11 @@ where
                     .await?
                 {
                     Action::Continue => continue,
-                    Action::Stop => return Ok(()),
+                    Action::Stop => {
+                        info!(self.logger, "Stopping subgraph");
+                        self.inputs.store.flush().await?;
+                        return Ok(());
+                    }
                     Action::Restart => break,
                 };
             }
@@ -464,7 +467,6 @@ where
                     runtime_hosts.push(host);
                 }
                 None => {
-                    fail_point!("error_on_duplicate_ds", |_| Err(anyhow!("duplicate ds")));
                     warn!(
                         self.logger,
                         "no runtime hosted created, there is already a runtime host instantiated for \
@@ -532,8 +534,9 @@ where
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => self.handle_err(e, cancel_handle).await?,
-            // Scenario where this can happen: 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
-            None => unreachable!("The block stream stopped producing blocks"),
+            // If the block stream ends, that means that there is no more indexing to do.
+            // Typically block streams produce indefinitely, but tests are an example of finite block streams.
+            None => Action::Stop,
         };
 
         Ok(action)
@@ -731,12 +734,8 @@ where
                         //
                         // If we don't do this check we would keep adding the same error to the
                         // database.
-                        let should_fail_subgraph = self
-                            .inputs
-                            .store
-                            .health(&self.inputs.deployment.hash)
-                            .await?
-                            != SubgraphHealth::Failed;
+                        let should_fail_subgraph =
+                            self.inputs.store.health().await? != SubgraphHealth::Failed;
 
                         if should_fail_subgraph {
                             // Fail subgraph:

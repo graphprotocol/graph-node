@@ -59,30 +59,30 @@ shard alongside the deployment's data in `sgdNNN`. The table should only
 contain frequently changing data, but for historical reasons contains also
 static data.
 
-| Column                               | Type       | Use                       |
-|--------------------------------------|------------|---------------------------|
-| `id`                                 | `integer!` | primary key, same as `deployment_schemas.id`               |
-| `deployment`                         | `text!`    | IPFS hash                 |
-| `failed`                             | `boolean!` |                           |
-| `synced`                             | `boolean!` |                           |
-| `earliest_ethereum_block_hash`       | `bytea`    | start block from manifest |
-| `earliest_ethereum_block_number`     | `numeric`  |                           |
-| `latest_ethereum_block_hash`         | `bytea`    | current subgraph head     |
-| `latest_ethereum_block_number`       | `numeric`  |                           |
-| `entity_count`                       | `numeric!` | total number of entities  |
-| `graft_base`                         | `text`     | IPFS hash of graft base   |
-| `graft_block_hash`                   | `bytea`    | graft block               |
-| `graft_block_number`                 | `numeric`  |                           |
-| `reorg_count`                        | `integer!` |                           |
-| `current_reorg_depth`                | `integer!` |                           |
-| `max_reorg_depth`                    | `integer!` |                           |
-| `fatal_error`                        | `text`     |                           |
-| `non_fatal_errors`                   | `text[]`   |                           |
-| `health`                             | `health!`  |                           |
-| `last_healthy_ethereum_block_hash`   | `bytea`    |                           |
-| `last_healthy_ethereum_block_number` | `numeric`  |                           |
-| `firehose_cursor`                    | `text`     |                           |
-| `debug_fork`                         | `text`     |                           |
+| Column                               | Type       | Use                                          |
+|--------------------------------------|------------|----------------------------------------------|
+| `id`                                 | `integer!` | primary key, same as `deployment_schemas.id` |
+| `deployment`                         | `text!`    | IPFS hash                                    |
+| `failed`                             | `boolean!` |                                              |
+| `synced`                             | `boolean!` |                                              |
+| `earliest_ethereum_block_hash`       | `bytea`    | start block from manifest (to be removed)    |
+| `earliest_ethereum_block_number`     | `numeric`  |                                              |
+| `latest_ethereum_block_hash`         | `bytea`    | current subgraph head                        |
+| `latest_ethereum_block_number`       | `numeric`  |                                              |
+| `entity_count`                       | `numeric!` | total number of entities                     |
+| `graft_base`                         | `text`     | IPFS hash of graft base                      |
+| `graft_block_hash`                   | `bytea`    | graft block                                  |
+| `graft_block_number`                 | `numeric`  |                                              |
+| `reorg_count`                        | `integer!` |                                              |
+| `current_reorg_depth`                | `integer!` |                                              |
+| `max_reorg_depth`                    | `integer!` |                                              |
+| `fatal_error`                        | `text`     |                                              |
+| `non_fatal_errors`                   | `text[]`   |                                              |
+| `health`                             | `health!`  |                                              |
+| `last_healthy_ethereum_block_hash`   | `bytea`    |                                              |
+| `last_healthy_ethereum_block_number` | `numeric`  |                                              |
+| `firehose_cursor`                    | `text`     |                                              |
+| `debug_fork`                         | `text`     |                                              |
 
 The columns `reorg_count`, `current_reorg_depth`, and `max_reorg_depth` are
 set during indexing. They are used to determine whether a reorg happened
@@ -94,16 +94,18 @@ query.
 Details about a deployment that rarely change. Maintained in the
 shard alongside the deployment's data in `sgdNNN`.
 
-| Column                  | Type       | Use            |
-|-------------------------|------------|----------------|
-| `id`                    | `integer!` | primary key, same as `deployment_schemas.id`    |
-| `spec_version`          | `text!`    |                |
-| `description`           | `text`     |                |
-| `repository`            | `text`     |                |
-| `schema`                | `text!`    | GraphQL schema |
-| `features`              | `text[]!`  |                |
-| `graph_node_version_id` | `integer`  |                |
-| `use_bytea_prefix`      | `boolean!` |                |
+| Column                  | Type       | Use                                                  |
+|-------------------------|------------|------------------------------------------------------|
+| `id`                    | `integer!` | primary key, same as `deployment_schemas.id`         |
+| `spec_version`          | `text!`    |                                                      |
+| `description`           | `text`     |                                                      |
+| `repository`            | `text`     |                                                      |
+| `schema`                | `text!`    | GraphQL schema                                       |
+| `features`              | `text[]!`  |                                                      |
+| `graph_node_version_id` | `integer`  |                                                      |
+| `use_bytea_prefix`      | `boolean!` |                                                      |
+| `start_block_hash`      | `bytea`    | Parent of the smallest start block from the manifest |
+| `start_block_number`    | `int4`     |                                                      |
 
 ### `subgraph_deployment_assignment`
 

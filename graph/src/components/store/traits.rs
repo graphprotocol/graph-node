@@ -233,7 +233,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
 
-    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
+    async fn health(&self) -> Result<SubgraphHealth, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
 

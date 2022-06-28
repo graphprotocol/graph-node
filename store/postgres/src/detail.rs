@@ -49,8 +49,11 @@ pub struct DeploymentDetail {
     pub synced: bool,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
+    // Not used anymore; only written to keep backwards compatible
     earliest_ethereum_block_hash: Option<Bytes>,
     earliest_ethereum_block_number: Option<BigDecimal>,
+    // New tracker for earliest block number
+    earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
     last_healthy_ethereum_block_hash: Option<Bytes>,
@@ -190,8 +193,7 @@ pub(crate) fn info_from_details(
         synced,
         fatal_error: _,
         non_fatal_errors: _,
-        earliest_ethereum_block_hash,
-        earliest_ethereum_block_number,
+        earliest_block_number,
         latest_ethereum_block_hash,
         latest_ethereum_block_number,
         entity_count,
@@ -209,12 +211,6 @@ pub(crate) fn info_from_details(
     // This needs to be filled in later since it lives in a
     // different shard
     let chain_head_block = None;
-    let earliest_block = block(
-        &deployment,
-        "earliest_ethereum_block",
-        earliest_ethereum_block_hash,
-        earliest_ethereum_block_number,
-    )?;
     let latest_block = block(
         &deployment,
         "latest_ethereum_block",
@@ -225,7 +221,7 @@ pub(crate) fn info_from_details(
     let chain = status::ChainInfo {
         network: site.network.clone(),
         chain_head_block,
-        earliest_block,
+        earliest_block_number,
         latest_block,
     };
     let entity_count = entity_count.to_u64().ok_or_else(|| {
@@ -342,6 +338,8 @@ struct StoredSubgraphManifest {
     schema: String,
     graph_node_version_id: Option<i32>,
     use_bytea_prefix: bool,
+    start_block_number: Option<i32>,
+    start_block_hash: Option<Bytes>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {

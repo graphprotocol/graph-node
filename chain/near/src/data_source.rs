@@ -14,7 +14,7 @@ use graph::{
 use std::{convert::TryFrom, sync::Arc};
 
 use crate::chain::Chain;
-use crate::trigger::NearTrigger;
+use crate::trigger::{NearTrigger, ReceiptWithOutcome};
 
 pub const NEAR_KIND: &str = "near";
 
@@ -49,6 +49,38 @@ impl blockchain::DataSource<Chain> for DataSource {
             return Ok(None);
         }
 
+        fn account_matches(ds: &DataSource, receipt: &Arc<ReceiptWithOutcome>) -> bool {
+            if Some(&receipt.receipt.receiver_id) == ds.source.account.as_ref() {
+                return true;
+            }
+
+            if let Some(partial_accounts) = &ds.source.accounts {
+                let matches_prefix = if partial_accounts.prefixes.is_empty() {
+                    true
+                } else {
+                    partial_accounts
+                        .prefixes
+                        .iter()
+                        .any(|prefix| receipt.receipt.receiver_id.starts_with(prefix))
+                };
+
+                let matches_suffix = if partial_accounts.suffixes.is_empty() {
+                    true
+                } else {
+                    partial_accounts
+                        .suffixes
+                        .iter()
+                        .any(|suffix| receipt.receipt.receiver_id.ends_with(suffix))
+                };
+
+                if matches_prefix && matches_suffix {
+                    return true;
+                }
+            }
+
+            false
+        }
+
         let handler = match trigger {
             // A block trigger matches if a block handler is present.
             NearTrigger::Block(_) => match self.handler_for_block() {
@@ -59,7 +91,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             // A receipt trigger matches if the receiver matches `source.account` and a receipt
             // handler is present.
             NearTrigger::Receipt(receipt) => {
-                if Some(&receipt.receipt.receiver_id) != self.source.account.as_ref() {
+                if !account_matches(self, receipt) {
                     return Ok(None);
                 }
 
@@ -147,10 +179,30 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         // Validate that there is a `source` address if there are receipt handlers
         let no_source_address = self.address().is_none();
+
+        // Validate that there are no empty PartialAccount.
+        let no_partial_addresses = match &self.source.accounts {
+            None => true,
+            Some(addrs) => addrs.is_empty(),
+        };
+
         let has_receipt_handlers = !self.mapping.receipt_handlers.is_empty();
-        if no_source_address && has_receipt_handlers {
+
+        // Validate not both address and partial addresses are empty.
+        if (no_source_address && no_partial_addresses) && has_receipt_handlers {
             errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
+
+        // Validate empty lines not allowed in suffix or prefix
+        if let Some(partial_accounts) = self.source.accounts.as_ref() {
+            if partial_accounts.prefixes.iter().any(|x| x.is_empty()) {
+                errors.push(anyhow!("partial account prefixes can't have empty values"))
+            }
+
+            if partial_accounts.suffixes.iter().any(|x| x.is_empty()) {
+                errors.push(anyhow!("partial account suffixes can't have empty values"))
+            }
+        }
 
         // Validate that there are no more than one of both block handlers and receipt handlers
         if self.mapping.block_handlers.len() > 1 {
@@ -390,13 +442,28 @@ pub struct MappingBlockHandler {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct ReceiptHandler {
-    handler: String,
+    pub(crate) handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize, Default)]
+pub(crate) struct PartialAccounts {
+    #[serde(default)]
+    pub(crate) prefixes: Vec<String>,
+    #[serde(default)]
+    pub(crate) suffixes: Vec<String>,
+}
+
+impl PartialAccounts {
+    pub fn is_empty(&self) -> bool {
+        self.prefixes.is_empty() && self.suffixes.is_empty()
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub(crate) struct Source {
-    // A data source that does not have an account can only have block handlers.
+    // A data source that does not have an account or accounts can only have block handlers.
     pub(crate) account: Option<String>,
     #[serde(rename = "startBlock", default)]
     pub(crate) start_block: BlockNumber,
+    pub(crate) accounts: Option<PartialAccounts>,
 }

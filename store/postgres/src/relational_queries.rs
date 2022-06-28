@@ -873,7 +873,10 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 #[derive(Debug, Clone)]
 pub struct QueryFilter<'a> {
     filter: &'a EntityFilter,
+    layout: &'a Layout,
     table: &'a Table,
+    table_prefix: &'a str,
+    block: BlockNumber,
 }
 
 /// String representation that is useful for debugging when `walk_ast` fails
@@ -884,24 +887,56 @@ impl<'a> fmt::Display for QueryFilter<'a> {
 }
 
 impl<'a> QueryFilter<'a> {
-    pub fn new(filter: &'a EntityFilter, table: &'a Table) -> Result<Self, StoreError> {
-        Self::valid_attributes(filter, table)?;
-        Ok(QueryFilter { filter, table })
+    pub fn new(
+        filter: &'a EntityFilter,
+        table: &'a Table,
+        layout: &'a Layout,
+        block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        Self::valid_attributes(filter, table, layout, false)?;
+
+        Ok(QueryFilter {
+            filter,
+            table,
+            layout,
+            block,
+            table_prefix: "c.",
+        })
     }
 
-    fn valid_attributes(filter: &'a EntityFilter, table: &'a Table) -> Result<(), StoreError> {
+    fn valid_attributes(
+        filter: &'a EntityFilter,
+        table: &'a Table,
+        layout: &'a Layout,
+        child_filter_ancestor: bool,
+    ) -> Result<(), StoreError> {
         use EntityFilter::*;
         match filter {
             And(filters) | Or(filters) => {
                 for filter in filters {
-                    Self::valid_attributes(filter, table)?;
+                    Self::valid_attributes(filter, table, layout, child_filter_ancestor)?;
                 }
             }
+            Child(child) => {
+                if child_filter_ancestor {
+                    return Err(StoreError::QueryExecutionError(
+                        "Child filters can not be nested".to_string(),
+                    ));
+                }
 
+                // Make sure that the attribute name is valid for the given table
+                table.column_for_field(child.attr.as_str())?;
+
+                Self::valid_attributes(
+                    &child.filter,
+                    layout.table_for_entity(&child.entity_type)?,
+                    layout,
+                    true,
+                )?;
+            }
             // This is a special case since we want to allow passing "block" column filter, but we dont
             // want to fail/error when this is passed here, since this column is not really an entity column.
             ChangeBlockGte(..) => {}
-
             Contains(attr, _)
             | ContainsNoCase(attr, _)
             | NotContains(attr, _)
@@ -932,7 +967,109 @@ impl<'a> QueryFilter<'a> {
         QueryFilter {
             filter,
             table: self.table,
+            layout: self.layout,
+            block: self.block,
+            table_prefix: self.table_prefix.clone(),
         }
+    }
+
+    fn child(
+        &self,
+        attribute: &Attribute,
+        entity_type: &'a EntityType,
+        filter: &'a EntityFilter,
+        derived: bool,
+        mut out: AstPass<Pg>,
+    ) -> QueryResult<()> {
+        let child_table = self
+            .layout
+            .table_for_entity(entity_type)
+            .expect("Table for child entity not found");
+
+        let child_prefix = "i.";
+        let parent_prefix = "c.";
+
+        out.push_sql("exists (select 1 from ");
+        out.push_sql(child_table.qualified_name.as_str());
+        out.push_sql(" as i");
+
+        out.push_sql(" where ");
+
+        // Join tables
+        if derived {
+            // If the parent is derived,
+            // the child column is picked based on the provided attribute
+            // and the parent column is the primary key of the parent table
+            let child_column = child_table
+                .column_for_field(attribute)
+                .expect("Column for an attribute not found");
+            let parent_column = self.table.primary_key();
+
+            if child_column.is_list() {
+                // Type A: c.id = any(i.{parent_field})
+                out.push_sql(parent_prefix);
+                out.push_identifier(parent_column.name.as_str())?;
+                out.push_sql(" = any(");
+                out.push_sql(child_prefix);
+                out.push_identifier(child_column.name.as_str())?;
+                out.push_sql(")");
+            } else {
+                // Type B: c.id = i.{parent_field}
+                out.push_sql(parent_prefix);
+                out.push_identifier(parent_column.name.as_str())?;
+                out.push_sql(" = ");
+                out.push_sql(child_prefix);
+                out.push_identifier(child_column.name.as_str())?;
+            }
+        } else {
+            // If the parent is not derived, we do the opposite.
+            // The parent column is picked based on the provided attribute
+            // and the child column is the primary key of the child table
+            let parent_column = self
+                .table
+                .column_for_field(attribute)
+                .expect("Column for an attribute not found");
+            let child_column = child_table.primary_key();
+
+            if parent_column.is_list() {
+                // Type C: i.id = any(c.child_ids)
+                out.push_sql(child_prefix);
+                out.push_identifier(child_column.name.as_str())?;
+                out.push_sql(" = any(");
+                out.push_sql(parent_prefix);
+                out.push_identifier(parent_column.name.as_str())?;
+                out.push_sql(")");
+            } else {
+                // Type D: i.id = c.child_id
+                out.push_sql(child_prefix);
+                out.push_identifier(child_column.name.as_str())?;
+                out.push_sql(" = ");
+                out.push_sql(parent_prefix);
+                out.push_identifier(parent_column.name.as_str())?;
+            }
+        }
+
+        out.push_sql(" and ");
+
+        // Match by block
+        BlockRangeColumn::new(&child_table, child_prefix, self.block).contains(&mut out)?;
+
+        out.push_sql(" and ");
+
+        // Child filters
+        let query_filter = QueryFilter {
+            filter,
+            table: child_table,
+            layout: self.layout,
+            block: self.block,
+            table_prefix: child_prefix,
+        };
+
+        query_filter.walk_ast(out.reborrow())?;
+
+        out.push_sql(")");
+
+        Ok(())
     }
 
     fn column(&self, attribute: &Attribute) -> &'a Column {
@@ -980,6 +1117,7 @@ impl<'a> QueryFilter<'a> {
         };
         match value {
             Value::String(s) => {
+                out.push_sql(self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
                 out.push_sql(operation);
                 if s.starts_with('%') || s.ends_with('%') {
@@ -993,6 +1131,7 @@ impl<'a> QueryFilter<'a> {
                 out.push_sql("position(");
                 out.push_bind_param::<Binary, _>(&b.as_slice())?;
                 out.push_sql(" in ");
+                out.push_sql(&self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
                 if negated {
                     out.push_sql(") = 0")
@@ -1003,9 +1142,11 @@ impl<'a> QueryFilter<'a> {
             Value::List(_) => {
                 if negated {
                     out.push_sql(" not ");
+                    out.push_sql(&self.table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" && ");
                 } else {
+                    out.push_sql(&self.table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" @> ");
                 }
@@ -1051,10 +1192,12 @@ impl<'a> QueryFilter<'a> {
         } else if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
+            out.push_sql(&self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(Comparison::Match.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
         } else {
+            out.push_sql(&self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
@@ -1074,6 +1217,7 @@ impl<'a> QueryFilter<'a> {
         if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else {
+            out.push_sql(&self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             match value {
@@ -1129,6 +1273,7 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_nulls {
+            out.push_sql(&self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             if negated {
                 out.push_sql(" is not null");
@@ -1157,6 +1302,7 @@ impl<'a> QueryFilter<'a> {
                 // is happening here
                 PrefixType::new(column)?.push_column_prefix(&mut out)?;
             } else {
+                out.push_sql(&self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
             }
             if negated {
@@ -1201,6 +1347,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
+        out.push_sql(&self.table_prefix);
         out.push_identifier(column.name.as_str())?;
         out.push_sql(op);
         match value {
@@ -1279,6 +1426,13 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
                 self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
             }
             ChangeBlockGte(block_number) => self.filter_block_gte(block_number, out)?,
+            Child(child) => self.child(
+                &child.attr,
+                &child.entity_type,
+                &child.filter,
+                child.derived,
+                out,
+            )?,
         }
         Ok(())
     }
@@ -1829,7 +1983,8 @@ impl<'a> FilterWindow<'a> {
     fn new(
         layout: &'a Layout,
         window: EntityWindow,
-        query_filter: Option<&'a EntityFilter>,
+        entity_filter: Option<&'a EntityFilter>,
+        block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
         let EntityWindow {
             child_type,
@@ -1846,8 +2001,8 @@ impl<'a> FilterWindow<'a> {
             }
         }
 
-        let query_filter = query_filter
-            .map(|filter| QueryFilter::new(filter, table))
+        let query_filter = entity_filter
+            .map(|filter| QueryFilter::new(&filter, table, layout, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
         Ok(FilterWindow {
@@ -2263,6 +2418,7 @@ impl<'a> FilterCollection<'a> {
         layout: &'a Layout,
         collection: EntityCollection,
         filter: Option<&'a EntityFilter>,
+        block: BlockNumber,
     ) -> Result<Self, QueryExecutionError> {
         match collection {
             EntityCollection::All(entities) => {
@@ -2278,7 +2434,7 @@ impl<'a> FilterCollection<'a> {
                             .map(|rc| rc.as_ref())
                             .and_then(|table| {
                                 filter
-                                    .map(|filter| QueryFilter::new(filter, table))
+                                    .map(|filter| QueryFilter::new(filter, table, layout, block))
                                     .transpose()
                                     .map(|filter| (table, filter, column_names.clone()))
                             })
@@ -2289,7 +2445,7 @@ impl<'a> FilterCollection<'a> {
             EntityCollection::Window(windows) => {
                 let windows = windows
                     .into_iter()
-                    .map(|window| FilterWindow::new(layout, window, filter))
+                    .map(|window| FilterWindow::new(layout, window, filter, block))
                     .collect::<Result<Vec<_>, _>>()?;
                 let collection = if windows.len() == 1 {
                     let mut windows = windows;
@@ -2702,6 +2858,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("\n  from ");
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
+
         out.push_sql("\n where ");
         BlockRangeColumn::new(&table, "c.", self.block).contains(&mut out)?;
         if let Some(filter) = table_filter {

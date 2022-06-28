@@ -1209,7 +1209,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         let (store, site) = self.store(id)?;
-        let health = store.health(&site.deployment).await?;
+        let health = store.health(&site).await?;
         Ok(matches!(health, SubgraphHealth::Healthy))
     }
 
