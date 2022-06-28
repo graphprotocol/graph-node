@@ -66,8 +66,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let fld_name = f.ident.as_ref().unwrap();
             let self_ref =
                 if is_byte_array(f){
-                    //FIXME - Bytes should be shared (???)
-                    quote! { crate::protobuf::Bytes(&self.#fld_name) }
+                    quote! { graph_runtime_wasm::asc_abi::class::Bytes(&self.#fld_name) }
                 }else{
                     quote!{ self.#fld_name }
                 };
@@ -81,13 +80,11 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                         let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
 
                         quote! {
-                            //TODO - move it to where asc_new - graph::runtime::
-                            #fld_name: crate::protobuf::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
+                            #fld_name: graph::runtime::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
                         }
                     }else{
                         quote! {
-                            //TODO - move it to where asc_new - graph::runtime::
-                            #fld_name: crate::protobuf::asc_new_or_null(heap, &#self_ref, gas)?,
+                            #fld_name: graph::runtime::asc_new_or_null(heap, &#self_ref, gas)?,
                         }
                     }
                 } else {
@@ -128,7 +125,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let setter =
                 if is_byte_array(f){
                     quote! {
-                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
+                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &graph_runtime_wasm::asc_abi::class::Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
                     }
                 }else{
                     quote! {
@@ -170,9 +167,8 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 }
             }
         } // -------- end of mod
-        //graph_runtime_wasm::asc_abi::class::Array
 
-        pub struct #asc_name_array(pub  crate::protobuf::Array<graph::runtime::AscPtr<#asc_name>>);
+        pub struct #asc_name_array(pub  graph_runtime_wasm::asc_abi::class::Array<graph::runtime::AscPtr<#asc_name>>);
 
         impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {
             fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
@@ -182,9 +178,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             ) -> Result<#asc_name_array, graph::runtime::DeterministicHostError> {
                 let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
 
-                //TODO - verify Array import
-                //graph_runtime_wasm::asc_abi::class::Array
-                Ok(#asc_name_array(crate::protobuf::Array::new(&content?, heap, gas)?))
+                Ok(#asc_name_array(graph_runtime_wasm::asc_abi::class::Array::new(&content?, heap, gas)?))
             }
         }
 
@@ -197,8 +191,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 asc_obj: &[u8],
                 api_version: &graph::semver::Version,
             ) -> Result<Self, graph::runtime::DeterministicHostError> {
-                //TODO - verify Array import
-                Ok(Self(crate::protobuf::Array::from_asc_bytes(asc_obj, api_version)?))
+                Ok(Self(graph_runtime_wasm::asc_abi::class::Array::from_asc_bytes(asc_obj, api_version)?))
             }
         }
 

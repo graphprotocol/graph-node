@@ -44,6 +44,47 @@ where
     AscPtr::alloc_obj(obj, heap, gas)
 }
 
+/// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.
+pub fn asc_new_or_missing<H, O, A>(
+    heap: &mut H,
+    object: &Option<O>,
+    gas: &GasCounter,
+    type_name: &str,
+    field_name: &str,
+) -> Result<AscPtr<A>, DeterministicHostError>
+where
+    H: AscHeap + ?Sized,
+    O: ToAscObj<A>,
+    A: AscType + AscIndexId,
+{
+    match object {
+        Some(o) => asc_new(heap, o, gas),
+        None => Err(missing_field_error(type_name, field_name)),
+    }
+}
+
+/// Map an optional object to its Asc equivalent if Some, otherwise return null.
+pub fn asc_new_or_null<H, O, A>(
+    heap: &mut H,
+    object: &Option<O>,
+    gas: &GasCounter,
+) -> Result<AscPtr<A>, DeterministicHostError>
+where
+    H: AscHeap + ?Sized,
+    O: ToAscObj<A>,
+    A: AscType + AscIndexId,
+{
+    match object {
+        Some(o) => asc_new(heap, o, gas),
+        None => Ok(AscPtr::null()),
+    }
+}
+
+/// Create an error for a missing field in a type.
+fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {
+    DeterministicHostError::from(anyhow::anyhow!("{} missing {}", type_name, field_name))
+}
+
 ///  Read the rust representation of an Asc object of class `C`.
 ///
 ///  This operation is expensive as it requires a call to `get` for every
@@ -80,24 +121,6 @@ pub trait ToAscObj<C: AscType> {
         gas: &GasCounter,
     ) -> Result<C, DeterministicHostError>;
 }
-
-// pub trait AscFromRust<T>: AscType {
-//     fn asc_from_rust<H: AscHeap + ?Sized>(
-//         rust_type: &T,
-//         heap: &mut H,
-//         gas: &GasCounter,
-//     ) -> Result<Self, DeterministicHostError>;
-// }
-
-// impl<T, C> ToAscObj<C> for T where C: AscFromRust<T> {
-//     fn to_asc_obj<H: AscHeap + ?Sized>(
-//         &self,
-//         heap: &mut H,
-//         gas: &GasCounter
-//     ) -> Result<C, DeterministicHostError> {
-//         C::asc_from_rust(self, heap, gas)
-//     }
-// }
 
 impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -137,3 +160,4 @@ pub trait TryFromAscObj<C: AscType>: Sized {
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError>;
 }
+

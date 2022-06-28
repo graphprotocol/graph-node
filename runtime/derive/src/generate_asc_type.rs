@@ -10,6 +10,16 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
+    let test_mod_name = Ident::new(
+        &format!("__test_{}__", item_struct.ident.to_string().to_lowercase()),
+        item_struct.ident.span(),
+    );
+
+    let test_fun_name = Ident::new(
+        &format!("{}_test_alignement_ok", name.to_string()),
+        Span::call_site(),
+    );
+
     let enum_names = args
         .vars
         .iter()
@@ -31,20 +41,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
         .flat_map(|f| f.fields.named.iter())
         .for_each(|f| fields.push(f));
 
-    // let struct_align = item_struct
-    //     .fields
-    //     .iter()
-    //     .map(|f| size_of(&field_type(f)))
-    //     .max()
-    //     .unwrap();
-
-    // let pad_fld_type = "u8".parse::<proc_macro2::TokenStream>().unwrap();
-
-    // let mut current_offset = 0;
-    // let mut pad_index = 0;
-
-    //let mut m_fields = Vec::<proc_macro2::TokenStream>::new();
-
     let m_fields: Vec<proc_macro2::TokenStream> = fields
         .iter()
         .map(|f| {
@@ -52,28 +48,19 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
             let typ = field_type_map(field_type(f));
             let fld_type = typ.parse::<proc_macro2::TokenStream>().unwrap();
 
-            // let pad_size = padding_needed_for(current_offset, struct_align);
-
-            // if pad_size > 0 {
-            //     for _ in 0..pad_size {
-            //         let pad_fld_name = Ident::new(&format!("_pad{}_", pad_index), Span::call_site());
-            //         pad_index += 1;
-
-            //         m_fields.push(quote! {
-            //             pub #pad_fld_name : #pad_fld_type ,
-            //         });
-            //     }
-            //     current_offset += pad_size;
-            // }
-
-            // current_offset += size_of(&typ);
-
-            //m_fields.push(snip);
-            // m_fields.push(quote! {
-            //     pub #fld_name : #fld_type ,
-            // });
             quote! {
                 pub #fld_name : #fld_type ,
+            }
+        })
+        .collect();
+
+    let t_fields: Vec<proc_macro2::TokenStream> = fields
+        .iter()
+        .map(|f| {
+            let fld_name = f.ident.clone().unwrap();
+
+            quote! {
+                #fld_name
             }
         })
         .collect();
@@ -89,6 +76,48 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
         #[derive(Debug, Default)]
         pub struct #asc_name {
             #(#m_fields)*
+        }
+
+
+        #[cfg(test)]
+        mod #test_mod_name{
+             use super::*;
+             use crate::protobuf::*;
+             use graph::runtime::AscType;
+
+            #[test]
+            fn #test_fun_name(){
+
+                let mem_size = std::mem::size_of::<#asc_name>();
+                let mut bytes:Vec<u8> = Vec::with_capacity(mem_size);
+
+                let value = #asc_name::default();
+
+                let c = value.to_asc_bytes();
+
+                #(
+                    bytes.extend_from_slice(
+                        &value.#t_fields.to_asc_bytes()
+                            .expect(
+                                &format!(
+                                    "failed to turn {} {} field value to asc bytes",
+                                    stringify!(#asc_name),
+                                    stringify!(#t_fields)
+                                )
+                            )
+                    );
+                )*
+
+                assert_eq!(
+                    mem_size,
+                    bytes.len(),
+                    "Expected {} to have size {}, but it was {}. \
+                    Field reordering or padding needed",
+                    stringify!(#asc_name),
+                    bytes.len(),
+                    mem_size,
+                );
+            }
         }
     };
 
@@ -138,6 +167,7 @@ fn field_type(fld: &syn::Field) -> String {
 
                                 match nm.as_ref(){
                                     "u8" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::Uint8Array>".to_owned(),
+                                    //"Vec<u8>" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscBytesArray>".to_owned(),
                                     "Vec<u8>" => "graph::runtime::AscPtr<crate::protobuf::AscBytesArray>".to_owned(),
                                     "String" => "graph::runtime::AscPtr<crate::protobuf::Array<graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>>>".to_owned(),
                                     _ => format!("graph::runtime::AscPtr<crate::protobuf::Asc{}Array>", path_to_string(&p.path))
