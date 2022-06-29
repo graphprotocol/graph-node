@@ -1184,7 +1184,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
         };
 
-        trace!(logger, "eth_call";
+        debug!(logger, "eth_call";
             "address" => hex::encode(&call.address),
             "data" => hex::encode(&call_data)
         );
