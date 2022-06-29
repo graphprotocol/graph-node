@@ -7,7 +7,7 @@ use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
 
 const POSTGRES_IMAGE: &'static str = "postgres:latest";
-const IPFS_IMAGE: &'static str = "ipfs/go-ipfs:v0.4.23";
+const IPFS_IMAGE: &'static str = "ipfs/go-ipfs:v0.10.0";
 const GANACHE_IMAGE: &'static str = "trufflesuite/ganache-cli:latest";
 type DockerError = bollard::errors::Error;
 

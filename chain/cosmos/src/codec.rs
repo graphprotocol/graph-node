@@ -19,17 +19,29 @@ impl crate::protobuf::pbcodec::Block {
     }
 
     pub fn begin_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.result_begin_block.as_ref().unwrap().events.iter()
+        self.result_begin_block
+            .as_ref()
+            .map(|b| b.events.iter())
+            .into_iter()
+            .flatten()
     }
 
     pub fn tx_events(&self) -> impl Iterator<Item = &Event> {
-        self.transactions
-            .iter()
-            .flat_map(|tx| tx.result.as_ref().unwrap().events.iter())
+        self.transactions.iter().flat_map(|tx| {
+            tx.result
+                .as_ref()
+                .map(|b| b.events.iter())
+                .into_iter()
+                .flatten()
+        })
     }
 
     pub fn end_block_events(&self) -> impl Iterator<Item = &Event> {
-        self.result_end_block.as_ref().unwrap().events.iter()
+        self.result_end_block
+            .as_ref()
+            .map(|b| b.events.iter())
+            .into_iter()
+            .flatten()
     }
 
     pub fn transactions(&self) -> impl Iterator<Item = &TxResult> {

@@ -23,7 +23,7 @@ before_install:
   # Install Node.js 11.x
   - nvm install 11 && nvm use 11
   # Install IPFS
-  - wget "https://dist.ipfs.io/go-ipfs/v0.4.17/go-ipfs_v0.4.17_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
+  - wget "https://dist.ipfs.io/go-ipfs/v0.10.0/go-ipfs_v0.10.0_linux-amd64.tar.gz" -O /tmp/ipfs.tar.gz
   - pushd . && cd $HOME/bin && tar -xzvf /tmp/ipfs.tar.gz && popd
   - export PATH="$HOME/bin/go-ipfs:$PATH"
   - ipfs init

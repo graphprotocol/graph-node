@@ -36,7 +36,7 @@ fn block_ptr(
         None => bail!("can not find chain store for {}", chain),
         Some(store) => store,
     };
-    if let Some((_, number)) = chain_store.block_number(block_ptr_to.hash_as_h256())? {
+    if let Some((_, number)) = chain_store.block_number(&block_ptr_to.hash)? {
         if number != block_ptr_to.number {
             bail!(
                 "the given hash is for block number {} but the command specified block number {}",

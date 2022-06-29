@@ -1,7 +1,7 @@
 version: '3'
 services:
   ipfs:
-    image: ipfs/go-ipfs:v0.4.23
+    image: ipfs/go-ipfs:v0.10.0
     ports:
       - '5001:5001'
     volumes:

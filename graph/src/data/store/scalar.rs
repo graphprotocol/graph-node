@@ -617,6 +617,18 @@ impl<'de> Deserialize<'de> for Bytes {
     }
 }
 
+impl<const N: usize> From<[u8; N]> for Bytes {
+    fn from(array: [u8; N]) -> Bytes {
+        Bytes(array.into())
+    }
+}
+
+impl From<Vec<u8>> for Bytes {
+    fn from(vec: Vec<u8>) -> Self {
+        Bytes(vec.into())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::{BigDecimal, BigInt, Bytes};

@@ -59,6 +59,7 @@ async fn test_valid_module_and_store_with_timeout(
     Arc<impl SubgraphStore>,
     DeploymentLocator,
 ) {
+    let logger = Logger::root(slog::Discard, o!());
     let subgraph_id_with_api_version =
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
@@ -80,7 +81,7 @@ async fn test_valid_module_and_store_with_timeout(
     )
     .await;
     let stopwatch_metrics = StopwatchMetrics::new(
-        Logger::root(slog::Discard, o!()),
+        logger.clone(),
         deployment_id.clone(),
         "test",
         metrics_registry.clone(),
@@ -96,7 +97,7 @@ async fn test_valid_module_and_store_with_timeout(
     };
 
     let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(data_source.mapping.runtime.as_ref()).unwrap()),
+        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref()).unwrap()),
         mock_context(
             deployment.clone(),
             data_source,
@@ -390,6 +391,32 @@ async fn ipfs_cat_v0_0_4() {
 #[tokio::test(flavor = "multi_thread")]
 async fn ipfs_cat_v0_0_5() {
     test_ipfs_cat(API_VERSION_0_0_5).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_ipfs_block() {
+    // Ipfs host functions use `block_on` which must be called from a sync context,
+    // so we replicate what we do `spawn_module`.
+    let runtime = tokio::runtime::Handle::current();
+    std::thread::spawn(move || {
+        let _runtime_guard = runtime.enter();
+
+        let ipfs = IpfsClient::localhost();
+        let hash = graph::block_on(ipfs.add("42".into())).unwrap().hash;
+        let mut module = graph::block_on(test_module(
+            "ipfsBlock",
+            mock_data_source(
+                &wasm_file_path("ipfs_block.wasm", API_VERSION_0_0_5),
+                API_VERSION_0_0_5,
+            ),
+            API_VERSION_0_0_5,
+        ));
+        let converted: AscPtr<AscString> = module.invoke_export1("ipfsBlockHex", &hash);
+        let data: String = asc_get(&module, converted, &module.gas).unwrap();
+        assert_eq!(data, "0x0a080802120234321802");
+    })
+    .join()
+    .unwrap();
 }
 
 // The user_data value we use with calls to ipfs_map

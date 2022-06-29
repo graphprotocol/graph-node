@@ -33,6 +33,9 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     /// Fetches the link contents as bytes.
     async fn cat(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
 
+    /// Fetches the IPLD block contents as bytes.
+    async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
+
     /// Read the contents of `link` and deserialize them into a stream of JSON
     /// values. The values must each be on a single line; newlines are significant
     /// as they are used to split the file contents and each line is deserialized

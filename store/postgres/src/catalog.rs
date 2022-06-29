@@ -84,6 +84,7 @@ impl Catalog {
             // DDL generation creates a POI table
             use_poi: true,
             // DDL generation creates indexes for prefixes of bytes columns
+            // see: attr-bytea-prefix
             use_bytea_prefix: true,
         }
     }

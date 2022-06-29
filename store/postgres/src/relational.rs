@@ -10,7 +10,9 @@
 mod ddl;
 
 #[cfg(test)]
-mod tests;
+mod ddl_tests;
+#[cfg(test)]
+mod query_tests;
 
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
@@ -848,11 +850,11 @@ impl Layout {
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
         conn: &PgConnection,
-        subgraph: &DeploymentHash,
+        site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        crate::dynds::revert(conn, subgraph, block)?;
-        crate::deployment::revert_subgraph_errors(conn, subgraph, block)?;
+        crate::dynds::revert(conn, site, block)?;
+        crate::deployment::revert_subgraph_errors(conn, &site.deployment, block)?;
 
         Ok(())
     }
@@ -1065,6 +1067,7 @@ impl Column {
         // generation needs to match how these columns are indexed, and we
         // therefore use that remembered value from `catalog` to determine
         // if we should use queries for prefixes or for the entire value.
+        // see: attr-bytea-prefix
         let use_prefix_comparison = !is_primary_key
             && !is_reference
             && !field.field_type.is_list()

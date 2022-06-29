@@ -497,10 +497,10 @@ fn query() {
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING.clone(),
             ids: vec![ROOT.to_owned()],
-            link: EntityLink::Parent(ParentLink::List(vec![vec![
-                CHILD1.to_owned(),
-                CHILD2.to_owned(),
-            ]])),
+            link: EntityLink::Parent(
+                THING.clone(),
+                ParentLink::List(vec![vec![CHILD1.to_owned(), CHILD2.to_owned()]]),
+            ),
             column_names: AttributeNames::All,
         }]);
         let things = fetch(conn, layout, coll);
@@ -512,7 +512,10 @@ fn query() {
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
-            link: EntityLink::Parent(ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()])),
+            link: EntityLink::Parent(
+                THING.clone(),
+                ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()]),
+            ),
             column_names: AttributeNames::All,
         }]);
         let things = fetch(conn, layout, coll);

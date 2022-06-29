@@ -158,13 +158,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .await
             .context("Failed to resolve subgraph from IPFS")?;
 
-            let data_sources = load_dynamic_data_sources::<C>(
-                store.clone(),
-                logger.clone(),
-                manifest.templates.clone(),
-            )
-            .await
-            .context("Failed to load dynamic data sources")?;
+            let data_sources = load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
+                .await
+                .context("Failed to load dynamic data sources")?;
 
             info!(logger, "Successfully resolved subgraph files using IPFS");
 

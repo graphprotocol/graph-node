@@ -136,6 +136,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// being set up
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
+    async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
@@ -321,7 +323,7 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
+    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
@@ -345,14 +347,14 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<Option<(BlockNumber, usize)>, Error>;
 
     /// Return the hashes of all blocks with the given number
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;
+    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error>;
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error>;
+    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
 
     /// Find the block with `block_hash` and return the network name and number
-    fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
+    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
@@ -397,7 +399,7 @@ pub trait QueryStore: Send + Sync {
 
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
-    fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
+    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError>;
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 

@@ -41,16 +41,16 @@ strum_macros = "0.21.1"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
-petgraph = "0.6.0"
+petgraph = "0.6.2"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.8", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
-prometheus = "0.13.0"
+prometheus = "0.13.1"
 priority-queue = "0.7.0"
 tonic = { version = "0.7.1", features = ["tls-roots"] }
-prost = "0.10.3"
+prost = "0.10.4"
 prost-types = "0.10.1"
 
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }

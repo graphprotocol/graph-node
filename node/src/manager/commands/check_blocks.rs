@@ -72,7 +72,7 @@ async fn run(
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
 ) -> anyhow::Result<()> {
-    let cached_block = steps::fetch_single_cached_block(block_hash, &chain_store)?;
+    let cached_block = steps::fetch_single_cached_block(*block_hash, &chain_store)?;
     let provider_block =
         steps::fetch_single_provider_block(&block_hash, ethereum_adapter, logger).await?;
     let diff = steps::diff_block_pair(&cached_block, &provider_block);
@@ -97,18 +97,19 @@ mod steps {
         chain_store: &ChainStore,
     ) -> anyhow::Result<H256> {
         let block_hashes = chain_store.block_hashes_by_block_number(number)?;
-        helpers::get_single_item("block hash", block_hashes)
-            .with_context(|| format!("Failed to locate block number {} in store", number))
+        let hash = helpers::get_single_item("block hash", block_hashes)
+            .with_context(|| format!("Failed to locate block number {} in store", number))?;
+        Ok(H256(hash.as_slice().try_into()?))
     }
 
     /// Queries the [`ChainStore`] for a cached block given a block hash.
     ///
     /// Errors on a non-unary result.
     pub(super) fn fetch_single_cached_block(
-        block_hash: &H256,
+        block_hash: H256,
         chain_store: &ChainStore,
     ) -> anyhow::Result<Value> {
-        let blocks = chain_store.blocks(&[*block_hash])?;
+        let blocks = chain_store.blocks(&[block_hash.into()])?;
         if blocks.is_empty() {
             bail!("Could not find a block with hash={block_hash:?} in cache")
         }
@@ -191,8 +192,7 @@ mod helpers {
     /// Tries to parse a [`H256`] from a hex string.
     pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<H256> {
         let hash = hash.trim_start_matches("0x");
-        let hash = hex::decode(hash)
-            .with_context(|| format!("Cannot parse H256 value from string `{}`", hash))?;
+        let hash = hex::decode(hash)?;
         Ok(H256::from_slice(&hash))
     }
 

@@ -12,10 +12,9 @@ use diesel::{insert_into, pg::PgConnection};
 use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
-    data::subgraph::Source,
     prelude::{
-        bigdecimal::ToPrimitive, web3::types::H160, BigDecimal, BlockNumber, BlockPtr,
-        DeploymentHash, StoreError,
+        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, BlockPtr, DeploymentHash,
+        StoreError,
     },
 };
 
@@ -37,30 +36,7 @@ table! {
     }
 }
 
-fn to_source(
-    deployment: &str,
-    vid: i64,
-    address: Vec<u8>,
-    abi: String,
-    start_block: BlockNumber,
-) -> Result<Source, StoreError> {
-    if address.len() != 20 {
-        return Err(constraint_violation!(
-            "Data source address 0x`{:?}` for dynamic data source {} in deployment {} should have be 20 bytes long but is {} bytes long",
-            address, vid, deployment,
-            address.len()
-        ));
-    }
-    let address = Some(H160::from_slice(address.as_slice()));
-
-    Ok(Source {
-        address,
-        abi,
-        start_block,
-    })
-}
-
-pub fn load(
+pub(super) fn load(
     conn: &PgConnection,
     id: &str,
     block: BlockNumber,
@@ -77,30 +53,27 @@ pub fn load(
             decds::name,
             decds::context,
             decds::address,
-            decds::abi,
-            decds::start_block,
             decds::ethereum_block_number,
         ))
         .filter(decds::ethereum_block_number.le(sql(&format!("{}::numeric", block))))
         .order_by((decds::ethereum_block_number, decds::vid))
-        .load::<(
-            i64,
-            String,
-            Option<String>,
-            Vec<u8>,
-            String,
-            BlockNumber,
-            BigDecimal,
-        )>(conn)?;
+        .load::<(i64, String, Option<String>, Vec<u8>, BigDecimal)>(conn)?;
 
     let mut data_sources: Vec<StoredDynamicDataSource> = Vec::new();
-    for (vid, name, context, address, abi, start_block, creation_block) in dds.into_iter() {
-        let source = to_source(id, vid, address, abi, start_block)?;
+    for (vid, name, context, address, creation_block) in dds.into_iter() {
+        if address.len() != 20 {
+            return Err(constraint_violation!(
+                "Data source address `0x{:?}` for dynamic data source {} should be 20 bytes long but is {} bytes long",
+                address, vid,
+            address.len()
+        ));
+        }
+
         let creation_block = creation_block.to_i32();
         let data_source = StoredDynamicDataSource {
             name,
-            source,
-            context,
+            param: Some(address.into()),
+            context: context.map(|ctx| serde_json::from_str(&ctx)).transpose()?,
             creation_block,
         };
 
@@ -115,7 +88,7 @@ pub fn load(
     Ok(data_sources)
 }
 
-pub(crate) fn insert(
+pub(super) fn insert(
     conn: &PgConnection,
     deployment: &DeploymentHash,
     data_sources: &[StoredDynamicDataSource],
@@ -133,17 +106,12 @@ pub(crate) fn insert(
         .map(|ds| {
             let StoredDynamicDataSource {
                 name,
-                source:
-                    Source {
-                        address,
-                        abi,
-                        start_block,
-                    },
+                param,
                 context,
                 creation_block: _,
             } = ds;
-            let address = match address {
-                Some(address) => address.as_bytes().to_vec(),
+            let address = match param {
+                Some(param) => param,
                 None => {
                     return Err(constraint_violation!(
                         "dynamic data sources must have an address, but `{}` has none",
@@ -154,10 +122,12 @@ pub(crate) fn insert(
             Ok((
                 decds::deployment.eq(deployment.as_str()),
                 decds::name.eq(name),
-                decds::context.eq(context),
-                decds::address.eq(address),
-                decds::abi.eq(abi),
-                decds::start_block.eq(start_block),
+                decds::context.eq(context
+                    .as_ref()
+                    .map(|ctx| serde_json::to_string(ctx).unwrap())),
+                decds::address.eq(&**address),
+                decds::abi.eq(""),
+                decds::start_block.eq(0),
                 decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
                 decds::ethereum_block_hash.eq(block_ptr.hash_slice()),
             ))
@@ -172,7 +142,7 @@ pub(crate) fn insert(
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
-pub(crate) fn copy(
+pub(super) fn copy(
     conn: &PgConnection,
     src: &Site,
     dst: &Site,
@@ -217,7 +187,7 @@ pub(crate) fn copy(
         .execute(conn)?)
 }
 
-pub(crate) fn revert(
+pub(super) fn revert(
     conn: &PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,

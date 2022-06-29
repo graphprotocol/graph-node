@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::SPEC_VERSION_0_0_4;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
@@ -53,6 +54,10 @@ impl LinkResolverTrait for TextResolver {
             .get(&link.link)
             .ok_or(anyhow!("No text for {}", &link.link))
             .map(Clone::clone)
+    }
+
+    async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, anyhow::Error> {
+        unimplemented!()
     }
 
     async fn json_stream(
@@ -137,6 +142,82 @@ specVersion: 0.0.2
 }
 
 #[test]
+fn graft_failed_subgraph() {
+    const YAML: &str = "
+dataSources: []
+schema:
+  file:
+    /: /ipfs/Qmschema
+graft:
+  base: Qmbase
+  block: 0
+specVersion: 0.0.2
+";
+
+    test_store::run_test_sequentially(|store| async move {
+        let subgraph_store = store.subgraph_store();
+
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let subgraph = DeploymentHash::new("Qmbase").unwrap();
+
+        // Creates base subgraph at block 0 (genesis).
+        let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA).await;
+
+        // Adds an example entity.
+        let mut thing = Entity::new();
+        thing.set("id", "datthing");
+        test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
+            .await
+            .unwrap();
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "deterministic error".to_string(),
+            block_ptr: Some(test_store::BLOCKS[1].clone()),
+            handler: None,
+            deterministic: true,
+        };
+
+        // Fails the base subgraph at block 1 (and advances the pointer).
+        test_store::transact_errors(
+            &store,
+            &deployment,
+            test_store::BLOCKS[1].clone(),
+            vec![error],
+        )
+        .await
+        .unwrap();
+
+        // Make sure there are no GraftBaseInvalid errors.
+        //
+        // This is allowed because:
+        // - base:  failed at block 1
+        // - graft: starts at block 0
+        //
+        // Meaning that the graft will fail just like it's parent
+        // but it started at a valid previous block.
+        assert!(
+            unvalidated
+                .validate(subgraph_store.clone(), true)
+                .await
+                .expect_err("Validation must fail")
+                .into_iter()
+                .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
+                .is_none(),
+            "There shouldn't be a GraftBaseInvalid error"
+        );
+
+        // Resolve the graft normally.
+        let manifest = resolve_manifest(YAML).await;
+
+        assert_eq!("Qmmanifest", manifest.id.as_str());
+        let graft = manifest.graft.expect("The manifest has a graft base");
+        assert_eq!("Qmbase", graft.base.as_str());
+        assert_eq!(0, graft.block);
+    })
+}
+
+#[test]
 fn graft_invalid_manifest() {
     const YAML: &str = "
 dataSources: []
@@ -150,7 +231,7 @@ specVersion: 0.0.2
 ";
 
     test_store::run_test_sequentially(|store| async move {
-        let store = store.subgraph_store();
+        let subgraph_store = store.subgraph_store();
 
         let unvalidated = resolve_unvalidated(YAML).await;
         let subgraph = DeploymentHash::new("Qmbase").unwrap();
@@ -164,7 +245,7 @@ specVersion: 0.0.2
         // would be a bit more work; we just want to make sure that
         // graft-related checks work
         let msg = unvalidated
-            .validate(store.clone(), true)
+            .validate(subgraph_store.clone(), true)
             .await
             .expect_err("Validation must fail")
             .into_iter()
@@ -186,7 +267,7 @@ specVersion: 0.0.2
         // Validation against subgraph that has not reached the graft point fails
         let unvalidated = resolve_unvalidated(YAML).await;
         let msg = unvalidated
-            .validate(store, true)
+            .validate(subgraph_store.clone(), true)
             .await
             .expect_err("Validation must fail")
             .into_iter()
@@ -196,6 +277,48 @@ specVersion: 0.0.2
         assert_eq!(
             "the graft base is invalid: failed to graft onto `Qmbase` \
             at block 1 since it has only processed block 0",
+            msg
+        );
+
+        let error = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "deterministic error".to_string(),
+            block_ptr: Some(test_store::BLOCKS[1].clone()),
+            handler: None,
+            deterministic: true,
+        };
+
+        test_store::transact_errors(
+            &store,
+            &deployment,
+            test_store::BLOCKS[1].clone(),
+            vec![error],
+        )
+        .await
+        .unwrap();
+
+        // This check is bit awkward, but we just want to be sure there is a
+        // GraftBaseInvalid error.
+        //
+        // The validation error happens because:
+        // - base:  failed at block 1
+        // - graft: starts at block 1
+        //
+        // Since we start grafts at N + 1, we can't allow a graft to be created
+        // at the failed block. They (developers) should choose a previous valid
+        // block.
+        let unvalidated = resolve_unvalidated(YAML).await;
+        let msg = unvalidated
+            .validate(subgraph_store, true)
+            .await
+            .expect_err("Validation must fail")
+            .into_iter()
+            .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
+            .expect("There must be a GraftBaseInvalid error")
+            .to_string();
+        assert_eq!(
+            "the graft base is invalid: failed to graft onto `Qmbase` \
+            at block 1 since it's not healthy. You can graft it starting at block 0 backwards",
             msg
         );
     })

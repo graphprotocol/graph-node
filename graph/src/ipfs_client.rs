@@ -9,15 +9,31 @@ use serde::Deserialize;
 use std::time::Duration;
 use std::{str::FromStr, sync::Arc};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum StatApi {
+    Block,
+    Files,
+}
+
+impl StatApi {
+    fn route(&self) -> &'static str {
+        match self {
+            Self::Block => "block",
+            Self::Files => "files",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct ObjectStatResponse {
-    pub hash: String,
-    pub num_links: u64,
-    pub block_size: u64,
-    pub links_size: u64,
-    pub data_size: u64,
-    pub cumulative_size: u64,
+struct BlockStatResponse {
+    size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct FilesStatResponse {
+    cumulative_size: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,16 +74,24 @@ impl IpfsClient {
         }
     }
 
-    /// Calls `object stat`.
-    pub async fn object_stat(
+    /// Calls stat for the given API route, and returns the total size of the object.
+    pub async fn stat_size(
         &self,
-        path: String,
+        api: StatApi,
+        mut cid: String,
         timeout: Duration,
-    ) -> Result<ObjectStatResponse, reqwest::Error> {
-        self.call(self.url("object/stat", path), None, Some(timeout))
-            .await?
-            .json()
-            .await
+    ) -> Result<u64, reqwest::Error> {
+        let route = format!("{}/stat", api.route());
+        if api == StatApi::Files {
+            // files/stat requires a leading `/ipfs/`.
+            cid = format!("/ipfs/{}", cid);
+        }
+        let url = self.url(&route, cid);
+        let res = self.call(url, None, Some(timeout)).await?;
+        match api {
+            StatApi::Files => Ok(res.json::<FilesStatResponse>().await?.cumulative_size),
+            StatApi::Block => Ok(res.json::<BlockStatResponse>().await?.size),
+        }
     }
 
     /// Download the entire contents.
@@ -88,6 +112,14 @@ impl IpfsClient {
             .bytes_stream())
     }
 
+    pub async fn get_block(&self, cid: String) -> Result<Bytes, reqwest::Error> {
+        let form = multipart::Form::new().part("arg", multipart::Part::text(cid));
+        self.call(format!("{}api/v0/block/get", self.base), Some(form), None)
+            .await?
+            .bytes()
+            .await
+    }
+
     pub async fn test(&self) -> Result<(), reqwest::Error> {
         self.call(format!("{}api/v0/version", self.base), None, None)
             .await
@@ -103,7 +135,7 @@ impl IpfsClient {
             .await
     }
 
-    fn url(&self, route: &'static str, arg: String) -> String {
+    fn url(&self, route: &str, arg: String) -> String {
         // URL security: We control the base and the route, user-supplied input goes only into the
         // query parameters.
         format!("{}api/v0/{}?arg={}", self.base, route, arg)

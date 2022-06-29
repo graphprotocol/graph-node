@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-use graph::blockchain::{Block, ChainIdentifier};
+use graph::blockchain::{Block, BlockHash, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
@@ -61,7 +61,6 @@ mod data {
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
     };
-    use diesel_dynamic_schema as dds;
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -143,8 +142,8 @@ mod data {
         }
     }
 
-    type DynTable = dds::Table<String>;
-    type DynColumn<ST> = dds::Column<DynTable, &'static str, ST>;
+    type DynTable = diesel_dynamic_schema::Table<String>;
+    type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
 
     /// The table that holds blocks when we store a chain in its own
     /// dedicated database schema
@@ -162,7 +161,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             BlocksTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
@@ -196,7 +196,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             CallMetaTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
@@ -221,7 +222,8 @@ mod data {
         fn new(namespace: &str) -> Self {
             CallCacheTable {
                 qname: format!("{}.{}", namespace, Self::TABLE_NAME),
-                table: dds::schema(namespace.to_string()).table(Self::TABLE_NAME.to_string()),
+                table: diesel_dynamic_schema::schema(namespace.to_string())
+                    .table(Self::TABLE_NAME.to_string()),
             }
         }
 
@@ -485,7 +487,7 @@ mod data {
             &self,
             conn: &PgConnection,
             chain: &str,
-            hashes: &[H256],
+            hashes: &[BlockHash],
         ) -> Result<Vec<json::Value>, Error> {
             use diesel::dsl::any;
 
@@ -514,7 +516,7 @@ mod data {
                     .filter(
                         blocks
                             .hash()
-                            .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_bytes())))),
+                            .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_slice())))),
                     )
                     .load::<json::Value>(conn),
             }
@@ -526,7 +528,7 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             number: BlockNumber,
-        ) -> Result<Vec<H256>, Error> {
+        ) -> Result<Vec<BlockHash>, Error> {
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
@@ -538,18 +540,17 @@ mod data {
                         .get_results::<String>(conn)?
                         .into_iter()
                         .map(|h| h.parse())
-                        .collect::<Result<Vec<H256>, _>>()
+                        .collect::<Result<Vec<BlockHash>, _>>()
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
+                Storage::Private(Schema { blocks, .. }) => Ok(blocks
                     .table()
                     .select(blocks.hash())
                     .filter(blocks.number().eq(number as i64))
                     .get_results::<Vec<u8>>(conn)?
                     .into_iter()
-                    .map(|hash| h256_from_bytes(hash.as_slice()))
-                    .collect::<Result<Vec<H256>, _>>()
-                    .map_err(Error::from),
+                    .map(|hash| BlockHash::from(hash))
+                    .collect::<Vec<BlockHash>>()),
             }
         }
 
@@ -558,7 +559,7 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             number: BlockNumber,
-            hash: &H256,
+            hash: &BlockHash,
         ) -> Result<usize, Error> {
             let number = number as i64;
 
@@ -581,7 +582,7 @@ mod data {
                     );
                     sql_query(query)
                         .bind::<BigInt, _>(number)
-                        .bind::<Bytea, _>(hash.as_bytes())
+                        .bind::<Bytea, _>(hash.as_slice())
                         .execute(conn)
                         .map_err(Error::from)
                 }
@@ -591,7 +592,7 @@ mod data {
         pub(super) fn block_number(
             &self,
             conn: &PgConnection,
-            hash: H256,
+            hash: &BlockHash,
         ) -> Result<Option<BlockNumber>, StoreError> {
             let number = match self {
                 Storage::Shared => {
@@ -606,7 +607,7 @@ mod data {
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
                     .select(blocks.number())
-                    .filter(blocks.hash().eq(hash.as_bytes()))
+                    .filter(blocks.hash().eq(hash.as_slice()))
                     .first::<i64>(conn)
                     .optional()?,
             };
@@ -1580,7 +1581,7 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<json::Value>, Error> {
+    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
         let conn = self.get_conn()?;
         self.storage.blocks(&conn, &self.chain, hashes)
     }
@@ -1674,19 +1675,19 @@ impl ChainStoreTrait for ChainStore {
             .map_err(Into::into)
     }
 
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error> {
+    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
         let conn = self.get_conn()?;
         self.storage
             .block_hashes_by_block_number(&conn, &self.chain, number)
     }
 
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error> {
+    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error> {
         let conn = self.get_conn()?;
         self.storage
             .confirm_block_hash(&conn, &self.chain, number, hash)
     }
 
-    fn block_number(&self, hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError> {
+    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError> {
         let conn = self.get_conn()?;
         Ok(self
             .storage

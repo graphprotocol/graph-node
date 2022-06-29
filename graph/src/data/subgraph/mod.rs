@@ -455,10 +455,17 @@ impl Graft {
     async fn validate<S: SubgraphStore>(
         &self,
         store: Arc<S>,
-    ) -> Vec<SubgraphManifestValidationError> {
-        fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
-            vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
-        }
+    ) -> Result<(), SubgraphManifestValidationError> {
+        use SubgraphManifestValidationError::*;
+
+        let last_processed_block = store
+            .least_block_ptr(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+        let is_base_healthy = store
+            .is_healthy(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
 
         // We are being defensive here: we don't know which specific
         // instance of a subgraph we will use as the base for the graft,
@@ -466,22 +473,25 @@ impl Graft {
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match store.least_block_ptr(&self.base).await {
-            Err(e) => gbi(e.to_string()),
-            Ok(None) => gbi(format!(
+        match (last_processed_block, is_base_healthy) {
+            (None, _) => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
-            )),
-            Ok(Some(ptr)) => {
-                if ptr.number < self.block {
-                    gbi(format!(
-                        "failed to graft onto `{}` at block {} since it has only processed block {}",
-                        self.base, self.block, ptr.number
-                    ))
-                } else {
-                    vec![]
-                }
-            }
+            ))),
+            (Some(ptr), true) if ptr.number < self.block => Err(GraftBaseInvalid(format!(
+                "failed to graft onto `{}` at block {} since it has only processed block {}",
+                self.base, self.block, ptr.number
+            ))),
+            // If the base deployment is failed *and* the `graft.block` is not
+            // less than the `base.block`, the graft shouldn't be permitted.
+            //
+            // The developer should change their `graft.block` in the manifest
+            // to `base.block - 1` or less.
+            (Some(ptr), false) if !(self.block < ptr.number) => Err(GraftBaseInvalid(format!(
+                "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
+                self.base, self.block, ptr.number - 1
+            ))),
+            (Some(_), _) => Ok(()),
         }
     }
 }
@@ -599,7 +609,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 ));
             }
             if validate_graft_base {
-                errors.extend(graft.validate(store).await);
+                if let Err(graft_err) = graft.validate(store).await {
+                    errors.push(graft_err);
+                }
             }
         }
 
