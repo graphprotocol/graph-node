@@ -72,18 +72,30 @@ impl syn::parse::Parse for TypeParamList {
     }
 }
 
+//intended use is in build.rs with tonic_build's type_attribute(<...>, <...>) to generate type implementation of graph::runtime::ToAscObj
+//attributes: optional list of required fields '__required__{name:TypeName}' and enumerations field decraration with types, i.e. sum{single: ModeInfoSingle,multi: ModeInfoMulti}
 mod generate_from_rust_type;
-#[proc_macro_attribute] // impl ToAscObj<Type> for Type
+#[proc_macro_attribute]
 pub fn generate_from_rust_type(args: TokenStream, input: TokenStream) -> TokenStream {
     generate_from_rust_type::generate_from_rust_type(args, input)
 }
 
+//intended use is in build.rs with tonic_build's type_attribute(<...>, <...>) to generate type implementation of graph::runtime::AscIndexId
+//takes network name attribute to form variant name graph::runtime::IndexForAscTypeId::<NetworkName>+<TypeName>
+//Example:
+//builder = builder.type_attribute(
+//     name.clone(),
+//     "#[graph_runtime_derive::generate_network_type_id(Cosmos)]",
+// );
+
 mod generate_network_type_id;
-#[proc_macro_attribute] //graph::runtime::AscIndexId
+#[proc_macro_attribute]
 pub fn generate_network_type_id(args: TokenStream, input: TokenStream) -> TokenStream {
     generate_network_type_id::generate_network_type_id(args, input)
 }
 
+//intended use is in build.rs with tonic_build's type_attribute(<...>, <...>) to generate type's Asc<...type name...>
+//attributes: optional list of required fields '__required__{name:TypeName}' and enumerations field decraration with types, i.e. sum{single: ModeInfoSingle,multi: ModeInfoMulti}
 mod generate_asc_type;
 #[proc_macro_attribute] //Asc<Type>
 pub fn generate_asc_type(args: TokenStream, input: TokenStream) -> TokenStream {

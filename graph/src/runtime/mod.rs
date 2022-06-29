@@ -338,6 +338,56 @@ pub enum IndexForAscTypeId {
     CosmosValidatorSetUpdates = 1559,
     CosmosValidatorUpdate = 1560,
     CosmosVersionParams = 1561,
+
+    //for auto generated array types
+    CosmosBlockArray = 1562,
+    CosmosHeaderOnlyBlockArray = 1563,
+    CosmosEventDataArray = 1564,
+    CosmosTransactionDataArray = 1565,
+    CosmosHeaderArray = 1566,
+    CosmosConsensusArray = 1567,
+    CosmosTimestampArray = 1568,
+    CosmosBlockIdArray = 1569,
+    CosmosPartSetHeaderArray = 1570,
+    CosmosEvidenceListArray = 1571,
+    //CosmosEvidenceArray = 1507 - already defined, out of order
+    CosmosDuplicateVoteEvidenceArray = 1572,
+    CosmosEventVoteArray = 1573,
+    CosmosLightClientAttackEvidenceArray = 1574,
+    CosmosLightBlockArray = 1575,
+    CosmosSignedHeaderArray = 1576,
+    CosmosCommitArray = 1577,
+    //CosmosCommitSigArray = 1504,- already defined, out of order
+    CosmosValidatorSetArray = 1578,
+    //CosmosValidatorArray = 1511,- already defined, out of order
+    CosmosPublicKeyArray = 1579,
+    CosmosResponseBeginBlockArray = 1580,
+    // CosmosEventArray = 1505,- already defined, out of order
+    // CosmosEventAttributeArray = 1506,- already defined, out of order
+    CosmosResponseEndBlockArray = 1581,
+    //CosmosValidatorUpdateArray = 1512,- already defined, out of order
+    CosmosConsensusParamsArray = 1582,
+    CosmosBlockParamsArray = 1583,
+    CosmosEvidenceParamsArray = 1584,
+    CosmosDurationArray = 1585,
+    CosmosValidatorParamsArray = 1586,
+    CosmosVersionParamsArray = 1587,
+    //CosmosTxResultArray = 1510,- already defined, out of order
+    CosmosTxArray = 1588,
+    CosmosTxBodyArray = 1589,
+    //CosmosAnyArray = 1501,- already defined, out of order
+    CosmosAuthInfoArray = 1590,
+    //CosmosSignerInfoArray = 1509,- already defined, out of order
+    //CosmosModeInfoArray = 1508,- already defined, out of order
+    CosmosModeInfoSingleArray = 1591,
+    CosmosModeInfoMultiArray = 1592,
+    CosmosCompactBitArrayArray = 1593,
+    CosmosFeeArray = 1594,
+    //CosmosCoinArray = 1503,- already defined, out of order
+    CosmosTipArray = 1595,
+    CosmosResponseDeliverTxArray = 1596,
+    CosmosValidatorSetUpdatesArray = 1597,
+
     // Continue to add more Cosmos type IDs here.
     // e.g.:
     // NextCosmosType = 1562,

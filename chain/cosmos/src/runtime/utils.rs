@@ -1,13 +1,14 @@
 use crate::protobuf::*;
 pub use graph::semver::Version;
 
-//pub use graph_runtime_wasm::asc_abi::class::Bytes;
-//pub graph_runtime_wasm::asc_abi::class::Uint8Array;
 pub use graph::runtime::{
     asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
     DeterministicHostError, IndexForAscTypeId, ToAscObj,
 };
-/****************** this can be moved to runtime graph/runtime/src/asc_heap.rs, but  IndexForAscTypeId::CosmosBytesArray *******/
+/*
+TODO: AscBytesArray seem to be generic to all chains, but AscIndexId pins it to Cosmos
+****************** this can be moved to runtime graph/runtime/src/asc_heap.rs, but  IndexForAscTypeId::CosmosBytesArray ******
+*/
 pub struct AscBytesArray(pub Array<AscPtr<Uint8Array>>);
 
 impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
@@ -45,7 +46,7 @@ impl AscIndexId for AscBytesArray {
 }
 
 /************************************************************************** */
-
+//TODO - naming conflict with pbcodec::Any  (sf.cosmos.r#type.v1.rs)
 //this can be moved to runtime - prost_types::Any
 impl ToAscObj<AscAny> for prost_types::Any {
     fn to_asc_obj<H: AscHeap + ?Sized>(

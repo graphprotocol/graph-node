@@ -10,16 +10,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
 
-    let test_mod_name = Ident::new(
-        &format!("__test_{}__", item_struct.ident.to_string().to_lowercase()),
-        item_struct.ident.span(),
-    );
-
-    let test_fun_name = Ident::new(
-        &format!("{}_test_alignement_ok", name.to_string()),
-        Span::call_site(),
-    );
-
     let enum_names = args
         .vars
         .iter()
@@ -54,17 +44,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
         })
         .collect();
 
-    let t_fields: Vec<proc_macro2::TokenStream> = fields
-        .iter()
-        .map(|f| {
-            let fld_name = f.ident.clone().unwrap();
-
-            quote! {
-                #fld_name
-            }
-        })
-        .collect();
-
     let expanded = quote! {
 
         #item_struct
@@ -76,48 +55,6 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
         #[derive(Debug, Default)]
         pub struct #asc_name {
             #(#m_fields)*
-        }
-
-
-        #[cfg(test)]
-        mod #test_mod_name{
-             use super::*;
-             use crate::protobuf::*;
-             use graph::runtime::AscType;
-
-            #[test]
-            fn #test_fun_name(){
-
-                let mem_size = std::mem::size_of::<#asc_name>();
-                let mut bytes:Vec<u8> = Vec::with_capacity(mem_size);
-
-                let value = #asc_name::default();
-
-                let c = value.to_asc_bytes();
-
-                #(
-                    bytes.extend_from_slice(
-                        &value.#t_fields.to_asc_bytes()
-                            .expect(
-                                &format!(
-                                    "failed to turn {} {} field value to asc bytes",
-                                    stringify!(#asc_name),
-                                    stringify!(#t_fields)
-                                )
-                            )
-                    );
-                )*
-
-                assert_eq!(
-                    mem_size,
-                    bytes.len(),
-                    "Expected {} to have size {}, but it was {}. \
-                    Field reordering or padding needed",
-                    stringify!(#asc_name),
-                    bytes.len(),
-                    mem_size,
-                );
-            }
         }
     };
 
@@ -132,7 +69,6 @@ fn is_scalar(nm: &str) -> bool {
         "i64" | "u64" => true,
         "usize" | "isize" => true,
         "bool" => true,
-        //"String"    => false,
         _ => false,
     }
 }
