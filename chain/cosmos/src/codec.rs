@@ -1,6 +1,4 @@
 pub(crate) use crate::protobuf::pbcodec::*;
-//pub use crate::protobuf::pbcodec::EventList;
-//use crate::protobuf::pbcodec::*;
 
 use graph::blockchain::Block as BlockchainBlock;
 use graph::{blockchain::BlockPtr, prelude::BlockNumber};
