@@ -194,7 +194,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 Ok(Self(graph_runtime_wasm::asc_abi::class::Array::from_asc_bytes(asc_obj, api_version)?))
             }
         }
-        
+
     };
 
     expanded.into()
