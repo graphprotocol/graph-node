@@ -446,12 +446,14 @@ async fn execute_subgraph_query_internal(
         .query_store(deployment.into(), false)
         .await
         .unwrap();
+    let state = store.deployment_state().await.unwrap();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let resolver = return_err!(
             StoreResolver::at_block(
                 &logger,
                 store.clone(),
+                &state,
                 SUBSCRIPTION_MANAGER.clone(),
                 bc,
                 error_policy,

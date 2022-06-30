@@ -554,6 +554,63 @@ fn can_query_many_to_many_relationship() {
 }
 
 #[test]
+fn can_query_with_child_filter_on_list_type_field() {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { bands_: { name: \"The Amateurs\" } }) {
+            name
+            bands(first: 100, orderBy: id) {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let the_musicians = object! {
+            name: "The Musicians",
+        };
+
+        let the_amateurs = object! {
+            name: "The Amateurs",
+        };
+
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
+                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_child_filter_on_named_type_field() {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { mainBand_: { name_contains: \"The Amateurs\" } }) {
+            name
+            mainBand {
+                id
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "Tom", mainBand: object! { id: "b2"} }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn root_fragments_are_expanded() {
     const QUERY: &str = r#"
     fragment Musicians on Query {
@@ -1420,6 +1477,12 @@ fn query_at_block_with_vars() {
 
 #[test]
 fn query_detects_reorg() {
+    async fn query_at(deployment: &DeploymentLocator, block: i32) -> QueryResult {
+        let query =
+            format!("query {{ musician(id: \"m1\", block: {{ number: {block} }}) {{ id }} }}");
+        execute_query(&deployment, &query).await
+    }
+
     run_test_sequentially(|store| async move {
         let deployment = setup(
             store.as_ref(),
@@ -1428,7 +1491,7 @@ fn query_detects_reorg() {
             IdType::String,
         )
         .await;
-        let query = "query { musician(id: \"m1\") { id } }";
+        // Initial state with latest block at block 1
         let state = deployment_state(STORE.as_ref(), &deployment.hash).await;
 
         // Inject a fake initial state; c435c25decbc4ad7bbbadf8e0ced0ff2
@@ -1437,7 +1500,7 @@ fn query_detects_reorg() {
             .unwrap() = Some(state);
 
         // When there is no revert, queries work fine
-        let result = execute_query(&deployment, query).await;
+        let result = query_at(&deployment, 1).await;
 
         assert_eq!(
             extract_data!(result),
@@ -1446,19 +1509,20 @@ fn query_detects_reorg() {
 
         // Revert one block
         revert_block(&*STORE, &deployment, &*GENESIS_PTR).await;
-        // A query is still fine since we implicitly query at block 0; we were
-        // at block 1 when we got `state`, and reorged once by one block, which
-        // can not affect block 0, and it's therefore ok to query at block 0
+
+        // A query is still fine since we query at block 0; we were at block
+        // 1 when we got `state`, and reorged once by one block, which can
+        // not affect block 0, and it's therefore ok to query at block 0
         // even with a concurrent reorg
-        let result = execute_query(&deployment, query).await;
+        let result = query_at(&deployment, 0).await;
         assert_eq!(
             extract_data!(result),
             Some(object!(musician: object!(id: "m1")))
         );
 
-        // We move the subgraph head forward, which will execute the query at block 1
-        // But the state we have is also for block 1, but with a smaller reorg count
-        // and we therefore report an error
+        // We move the subgraph head forward. The state we have is also for
+        // block 1, but with a smaller reorg count and we therefore report
+        // an error
         test_store::transact_and_wait(
             &STORE.subgraph_store(),
             &deployment,
@@ -1468,7 +1532,7 @@ fn query_detects_reorg() {
         .await
         .unwrap();
 
-        let result = execute_query(&deployment, query).await;
+        let result = query_at(&deployment, 1).await;
         match result.to_result().unwrap_err()[0] {
             QueryError::ExecutionError(QueryExecutionError::DeploymentReverted) => { /* expected */
             }

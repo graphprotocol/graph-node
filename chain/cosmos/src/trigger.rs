@@ -2,7 +2,7 @@ use std::{cmp::Ordering, sync::Arc};
 
 use graph::blockchain::{Block, BlockHash, MappingTrigger, TriggerData};
 use graph::cheap_clone::CheapClone;
-use graph::prelude::BlockNumber;
+use graph::prelude::{BlockNumber, Error};
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
 
 use crate::codec;
@@ -24,7 +24,7 @@ impl std::fmt::Debug for CosmosTrigger {
         let trigger_without_block = match self {
             CosmosTrigger::Block(_) => MappingTriggerWithoutBlock::Block,
             CosmosTrigger::Event { event_data, origin } => MappingTriggerWithoutBlock::Event {
-                event_type: &event_data.event().event_type,
+                event_type: &event_data.event().map_err(|_| std::fmt::Error)?.event_type,
                 origin: *origin,
             },
             CosmosTrigger::Transaction(_) => MappingTriggerWithoutBlock::Transaction,
@@ -91,8 +91,11 @@ impl PartialEq for CosmosTrigger {
                     origin: b_origin,
                 },
             ) => {
-                a_event_data.event().event_type == b_event_data.event().event_type
-                    && a_origin == b_origin
+                if let (Ok(a_event), Ok(b_event)) = (a_event_data.event(), b_event_data.event()) {
+                    a_event.event_type == b_event.event_type && a_origin == b_origin
+                } else {
+                    false
+                }
             }
             (Self::Transaction(a_ptr), Self::Transaction(b_ptr)) => a_ptr == b_ptr,
             _ => false,
@@ -127,19 +130,23 @@ impl CosmosTrigger {
         }))
     }
 
-    pub fn block_number(&self) -> BlockNumber {
+    pub fn block_number(&self) -> Result<BlockNumber, Error> {
         match self {
-            CosmosTrigger::Block(block) => block.number(),
-            CosmosTrigger::Event { event_data, .. } => event_data.block().number(),
-            CosmosTrigger::Transaction(transaction_data) => transaction_data.block().number(),
+            CosmosTrigger::Block(block) => Ok(block.number()),
+            CosmosTrigger::Event { event_data, .. } => event_data.block().map(|b| b.number()),
+            CosmosTrigger::Transaction(transaction_data) => {
+                transaction_data.block().map(|b| b.number())
+            }
         }
     }
 
-    pub fn block_hash(&self) -> BlockHash {
+    pub fn block_hash(&self) -> Result<BlockHash, Error> {
         match self {
-            CosmosTrigger::Block(block) => block.hash(),
-            CosmosTrigger::Event { event_data, .. } => event_data.block().hash(),
-            CosmosTrigger::Transaction(transaction_data) => transaction_data.block().hash(),
+            CosmosTrigger::Block(block) => Ok(block.hash()),
+            CosmosTrigger::Event { event_data, .. } => event_data.block().map(|b| b.hash()),
+            CosmosTrigger::Transaction(transaction_data) => {
+                transaction_data.block().map(|b| b.hash())
+            }
         }
     }
 }
@@ -160,7 +167,11 @@ impl Ord for CosmosTrigger {
 
             // Transactions are ordered by their index inside the block
             (Self::Transaction(a), Self::Transaction(b)) => {
-                a.tx_result().index.cmp(&b.tx_result().index)
+                if let (Ok(a_tx_result), Ok(b_tx_result)) = (a.tx_result(), b.tx_result()) {
+                    a_tx_result.index.cmp(&b_tx_result.index)
+                } else {
+                    Ordering::Equal
+                }
             }
 
             // When comparing events and transactions, transactions go first
@@ -180,24 +191,38 @@ impl TriggerData for CosmosTrigger {
     fn error_context(&self) -> std::string::String {
         match self {
             CosmosTrigger::Block(..) => {
-                format!("block #{}, hash {}", self.block_number(), self.block_hash())
+                if let (Ok(block_number), Ok(block_hash)) = (self.block_number(), self.block_hash())
+                {
+                    format!("block #{block_number}, hash {block_hash}")
+                } else {
+                    "block".to_string()
+                }
             }
             CosmosTrigger::Event { event_data, origin } => {
-                format!(
-                    "event type {}, origin: {:?}, block #{}, hash {}",
-                    event_data.event().event_type,
-                    origin,
-                    self.block_number(),
-                    self.block_hash(),
-                )
+                if let (Ok(event), Ok(block_number), Ok(block_hash)) =
+                    (event_data.event(), self.block_number(), self.block_hash())
+                {
+                    format!(
+                        "event type {}, origin: {:?}, block #{block_number}, hash {block_hash}",
+                        event.event_type, origin,
+                    )
+                } else {
+                    "event in block".to_string()
+                }
             }
             CosmosTrigger::Transaction(transaction_data) => {
-                format!(
-                    "block #{}, hash {}, transaction log: {}",
+                if let (Ok(block_number), Ok(block_hash), Ok(response_deliver_tx)) = (
                     self.block_number(),
                     self.block_hash(),
-                    transaction_data.response_deliver_tx().log
-                )
+                    transaction_data.response_deliver_tx(),
+                ) {
+                    format!(
+                        "block #{block_number}, hash {block_hash}, transaction log: {}",
+                        response_deliver_tx.log
+                    )
+                } else {
+                    "transaction block".to_string()
+                }
             }
         }
     }

@@ -1488,10 +1488,10 @@ impl DeploymentStore {
 
     pub(crate) async fn health(
         &self,
-        id: &DeploymentHash,
+        site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
-        let id = id.clone();
-        self.with_conn(move |conn, _| deployment::health(conn, &id).map_err(Into::into))
+        let id = site.id.clone();
+        self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
     }
 }

@@ -404,11 +404,12 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, vec};
+    use std::{collections::HashSet, sync::Arc, vec};
 
     use graph::{
-        blockchain::{block_stream::BlockWithTriggers, TriggersAdapter as _},
-        prelude::tokio,
+        blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
+        prelude::{tokio, Link},
+        semver::Version,
         slog::{self, o, Logger},
     };
 
@@ -417,14 +418,321 @@ mod test {
         codec::{
             self, execution_outcome,
             receipt::{self},
-            BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
+            Block, BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
             IndexerExecutionOutcomeWithReceipt, IndexerShard, ReceiptAction,
             SuccessValueExecutionStatus,
         },
+        data_source::{DataSource, Mapping, PartialAccounts, ReceiptHandler, NEAR_KIND},
+        trigger::{NearTrigger, ReceiptWithOutcome},
         Chain,
     };
 
     use super::TriggersAdapter;
+
+    #[test]
+    fn validate_empty() {
+        let ds = new_data_source(None, None);
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 1, "{:?}", ds);
+        assert_eq!(errs[0].to_string(), "subgraph source address is required");
+    }
+
+    #[test]
+    fn validate_empty_account_none_partial() {
+        let ds = new_data_source(None, Some(PartialAccounts::default()));
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 1, "{:?}", ds);
+        assert_eq!(errs[0].to_string(), "subgraph source address is required");
+    }
+
+    #[test]
+    fn validate_empty_account() {
+        let ds = new_data_source(
+            None,
+            Some(PartialAccounts {
+                prefixes: vec![],
+                suffixes: vec!["x.near".to_string()],
+            }),
+        );
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 0, "{:?}", ds);
+    }
+
+    #[test]
+    fn validate_empty_prefix_and_suffix_values() {
+        let ds = new_data_source(
+            None,
+            Some(PartialAccounts {
+                prefixes: vec!["".to_string()],
+                suffixes: vec!["".to_string()],
+            }),
+        );
+        let errs: Vec<String> = ds
+            .validate()
+            .into_iter()
+            .map(|err| err.to_string())
+            .collect();
+        assert_eq!(errs.len(), 2, "{:?}", ds);
+
+        let expected_errors = vec![
+            "partial account prefixes can't have empty values".to_string(),
+            "partial account suffixes can't have empty values".to_string(),
+        ];
+        assert_eq!(
+            true,
+            expected_errors.iter().all(|err| errs.contains(err)),
+            "{:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn validate_empty_partials() {
+        let ds = new_data_source(Some("x.near".to_string()), None);
+        let errs = ds.validate();
+        assert_eq!(errs.len(), 0, "{:?}", ds);
+    }
+
+    #[test]
+    fn receipt_filter_from_ds() {
+        struct Case {
+            name: String,
+            account: Option<String>,
+            partial_accounts: Option<PartialAccounts>,
+            expected: HashSet<(Option<String>, Option<String>)>,
+        }
+
+        let cases = vec![
+            Case {
+                name: "2 prefix && 1 suffix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string(), "b".to_string()],
+                    suffixes: vec!["d".to_string()],
+                }),
+                expected: HashSet::from_iter(vec![
+                    (Some("a".to_string()), Some("d".to_string())),
+                    (Some("b".to_string()), Some("d".to_string())),
+                ]),
+            },
+            Case {
+                name: "1 prefix && 2 suffix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string()],
+                    suffixes: vec!["c".to_string(), "d".to_string()],
+                }),
+                expected: HashSet::from_iter(vec![
+                    (Some("a".to_string()), Some("c".to_string())),
+                    (Some("a".to_string()), Some("d".to_string())),
+                ]),
+            },
+            Case {
+                name: "no prefix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec![],
+                    suffixes: vec!["c".to_string(), "d".to_string()],
+                }),
+                expected: HashSet::from_iter(vec![
+                    (None, Some("c".to_string())),
+                    (None, Some("d".to_string())),
+                ]),
+            },
+            Case {
+                name: "no suffix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string(), "b".to_string()],
+                    suffixes: vec![],
+                }),
+                expected: HashSet::from_iter(vec![
+                    (Some("a".to_string()), None),
+                    (Some("b".to_string()), None),
+                ]),
+            },
+        ];
+
+        for case in cases.into_iter() {
+            let ds1 = new_data_source(case.account, None);
+            let ds2 = new_data_source(None, case.partial_accounts);
+
+            let receipt = NearReceiptFilter::from_data_sources(vec![&ds1, &ds2]);
+            assert_eq!(
+                receipt.partial_accounts.len(),
+                case.expected.len(),
+                "name: {}\npartial_accounts: {:?}",
+                case.name,
+                receipt.partial_accounts,
+            );
+            assert_eq!(
+                true,
+                case.expected
+                    .iter()
+                    .all(|x| receipt.partial_accounts.contains(&x)),
+                "name: {}\npartial_accounts: {:?}",
+                case.name,
+                receipt.partial_accounts,
+            );
+        }
+    }
+
+    #[test]
+    fn data_source_match_and_decode() {
+        struct Request {
+            account: String,
+            matches: bool,
+        }
+        struct Case {
+            name: String,
+            account: Option<String>,
+            partial_accounts: Option<PartialAccounts>,
+            expected: Vec<Request>,
+        }
+
+        let cases = vec![
+            Case {
+                name: "2 prefix && 1 suffix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string(), "b".to_string()],
+                    suffixes: vec!["d".to_string()],
+                }),
+                expected: vec![
+                    Request {
+                        account: "ssssssd".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asasdasdas".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asd".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "bsd".to_string(),
+                        matches: true,
+                    },
+                ],
+            },
+            Case {
+                name: "1 prefix && 2 suffix".into(),
+                account: None,
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string()],
+                    suffixes: vec!["c".to_string(), "d".to_string()],
+                }),
+                expected: vec![
+                    Request {
+                        account: "ssssssd".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asasdasdas".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asdc".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "absd".to_string(),
+                        matches: true,
+                    },
+                ],
+            },
+            Case {
+                name: "no prefix with exact match".into(),
+                account: Some("bsda".to_string()),
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec![],
+                    suffixes: vec!["c".to_string(), "d".to_string()],
+                }),
+                expected: vec![
+                    Request {
+                        account: "ssssss".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asasdasdas".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asdasdasdasdc".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "bsd".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "bsda".to_string(),
+                        matches: true,
+                    },
+                ],
+            },
+            Case {
+                name: "no suffix with exact match".into(),
+                account: Some("zbsd".to_string()),
+                partial_accounts: Some(PartialAccounts {
+                    prefixes: vec!["a".to_string(), "b".to_string()],
+                    suffixes: vec![],
+                }),
+                expected: vec![
+                    Request {
+                        account: "ssssssd".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "zasdasdas".to_string(),
+                        matches: false,
+                    },
+                    Request {
+                        account: "asa".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "bsb".to_string(),
+                        matches: true,
+                    },
+                    Request {
+                        account: "zbsd".to_string(),
+                        matches: true,
+                    },
+                ],
+            },
+        ];
+
+        let logger = Logger::root(slog::Discard, o!());
+        for case in cases.into_iter() {
+            let ds = new_data_source(case.account, case.partial_accounts);
+            let filter = NearReceiptFilter::from_data_sources(vec![&ds]);
+
+            for req in case.expected {
+                let res = filter.matches(&req.account);
+                assert_eq!(
+                    res, req.matches,
+                    "name: {} request:{} failed",
+                    case.name, req.account
+                );
+
+                let block = Arc::new(new_success_block(11, &req.account));
+                let receipt = Arc::new(new_receipt_with_outcome(&req.account, block.clone()));
+                let res = ds
+                    .match_and_decode(&NearTrigger::Receipt(receipt.clone()), &block, &logger)
+                    .expect("unable to process block");
+                assert_eq!(
+                    req.matches,
+                    res.is_some(),
+                    "case name: {} req: {}",
+                    case.name,
+                    req.account
+                );
+            }
+        }
+    }
 
     #[tokio::test]
     async fn test_trigger_filter_empty() {
@@ -482,6 +790,7 @@ mod test {
         let filter = TriggerFilter {
             receipt_filter: NearReceiptFilter {
                 accounts: HashSet::from_iter(vec![account1]),
+                partial_accounts: HashSet::new(),
             },
             ..Default::default()
         };
@@ -541,6 +850,62 @@ mod test {
                 ..Default::default()
             }],
             ..Default::default()
+        }
+    }
+
+    fn new_data_source(
+        account: Option<String>,
+        partial_accounts: Option<PartialAccounts>,
+    ) -> DataSource {
+        DataSource {
+            kind: NEAR_KIND.to_string(),
+            network: None,
+            name: "asd".to_string(),
+            source: crate::data_source::Source {
+                account,
+                start_block: 10,
+                accounts: partial_accounts,
+            },
+            mapping: Mapping {
+                api_version: Version::parse("1.0.0").expect("unable to parse version"),
+                language: "".to_string(),
+                entities: vec![],
+                block_handlers: vec![],
+                receipt_handlers: vec![ReceiptHandler {
+                    handler: "asdsa".to_string(),
+                }],
+                runtime: Arc::new(vec![]),
+                link: Link::default(),
+            },
+            context: Arc::new(None),
+            creation_block: None,
+        }
+    }
+
+    fn new_receipt_with_outcome(receiver_id: &String, block: Arc<Block>) -> ReceiptWithOutcome {
+        ReceiptWithOutcome {
+            outcome: ExecutionOutcomeWithId {
+                outcome: Some(ExecutionOutcome {
+                    status: Some(execution_outcome::Status::SuccessValue(
+                        SuccessValueExecutionStatus::default(),
+                    )),
+
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            receipt: codec::Receipt {
+                receipt: Some(receipt::Receipt::Action(ReceiptAction {
+                    output_data_receivers: vec![DataReceiver {
+                        receiver_id: receiver_id.clone(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                })),
+                receiver_id: receiver_id.clone(),
+                ..Default::default()
+            },
+            block,
         }
     }
 }

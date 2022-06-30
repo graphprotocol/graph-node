@@ -268,7 +268,7 @@ where
         node_id: NodeId,
         debug_fork: Option<DeploymentHash>,
         start_block: Option<BlockPtr>,
-    ) -> Result<(), SubgraphRegistrarError> {
+    ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
         // fake locator
@@ -295,7 +295,7 @@ where
             SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))
         })?;
 
-        match kind {
+        let deployment_locator = match kind {
             BlockchainKind::Arweave => {
                 create_subgraph_version::<graph_chain_arweave::Chain, _>(
                     &logger,
@@ -372,7 +372,7 @@ where
             "subgraph_hash" => hash.to_string(),
         );
 
-        Ok(())
+        Ok(deployment_locator)
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
@@ -537,7 +537,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     debug_fork: Option<DeploymentHash>,
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
-) -> Result<(), SubgraphRegistrarError> {
+) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment,
         raw,
@@ -609,5 +609,4 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             version_switching_mode,
         )
         .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
-        .map(|_| ())
 }

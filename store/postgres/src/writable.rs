@@ -345,9 +345,9 @@ impl SyncStore {
         self.site.shard.as_str()
     }
 
-    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+    async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
         self.retry_async("health", || async {
-            self.writable.health(id).await.map(Into::into)
+            self.writable.health(&self.site).await.map(Into::into)
         })
         .await
     }
@@ -1048,8 +1048,8 @@ impl WritableStoreTrait for WritableStore {
         self.store.shard()
     }
 
-    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
-        self.store.health(id).await
+    async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
+        self.store.health().await
     }
 
     fn input_schema(&self) -> Arc<Schema> {

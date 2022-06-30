@@ -128,7 +128,7 @@ where
             // there is only one reorg of one block, and we therefore avoid
             // flagging a lot of queries a bit behind the head
             let n_blocks = new_state.max_reorg_depth * (new_state.reorg_count - state.reorg_count);
-            if latest_block + n_blocks as u64 > state.latest_ethereum_block_number as u64 {
+            if latest_block + n_blocks as u64 > state.latest_block.number as u64 {
                 return Err(QueryExecutionError::DeploymentReverted);
             }
         }
@@ -192,6 +192,7 @@ where
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
+                &state,
                 self.subscription_manager.cheap_clone(),
                 bc,
                 error_policy,

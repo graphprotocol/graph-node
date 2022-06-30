@@ -13,14 +13,14 @@ name = "graphman"
 path = "src/bin/manager.rs"
 
 [dependencies]
-clap = "3.1.18"
+clap = "3.2.1"
 env_logger = "0.9.0"
 git-testament = "0.2"
 graphql-parser = "0.4.0"
 futures = { version = "0.3.1", features = ["compat"] }
 lazy_static = "1.2.0"
 url = "2.2.1"
-crossbeam-channel = "0.5.4"
+crossbeam-channel = "0.5.5"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-arweave = { path = "../chain/arweave" }
@@ -42,7 +42,6 @@ structopt = { version = "0.3.26", features = ["wrap_help"] }
 toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
-fail = "0.5"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
 prometheus = { version ="0.13.1", features = ["push"] }
 json-structural-diff = {version = "0.1", features = ["colorize"] }

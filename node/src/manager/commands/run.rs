@@ -233,11 +233,6 @@ pub async fn run(
         }
     }
 
-    // FIXME: wait for instance manager to stop.
-    // If we remove the subgraph first, it will panic on:
-    // 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
-    tokio::time::sleep(Duration::from_millis(4000)).await;
-
     info!(&logger, "Removing subgraph {}", name);
     subgraph_store.clone().remove_subgraph(subgraph_name)?;
 
@@ -395,6 +390,7 @@ async fn create_ethereum_networks(
                         )
                         .await,
                     ),
+                    web3.limit_for(&config.node),
                 );
             }
         }

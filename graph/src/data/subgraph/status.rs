@@ -61,8 +61,8 @@ pub struct ChainInfo {
     pub network: String,
     /// The current head block of the chain.
     pub chain_head_block: Option<EthereumBlock>,
-    /// The earliest block available for this subgraph.
-    pub earliest_block: Option<EthereumBlock>,
+    /// The earliest block available for this subgraph (only the number).
+    pub earliest_block_number: BlockNumber,
     /// The latest block that the subgraph has synced to.
     pub latest_block: Option<EthereumBlock>,
 }
@@ -72,7 +72,7 @@ impl IntoValue for ChainInfo {
         let ChainInfo {
             network,
             chain_head_block,
-            earliest_block,
+            earliest_block_number,
             latest_block,
         } = self;
         object! {
@@ -81,7 +81,11 @@ impl IntoValue for ChainInfo {
             __typename: "EthereumIndexingStatus",
             network: network,
             chainHeadBlock: chain_head_block,
-            earliestBlock: earliest_block,
+            earliestBlock: object! {
+                __typename: "EarliestBlock",
+                number: earliest_block_number,
+                hash: "0x0"
+            },
             latestBlock: latest_block,
         }
     }

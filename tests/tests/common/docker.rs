@@ -1,7 +1,7 @@
-use crate::common::helpers::{contains_subslice, postgres_test_database_name, MappedPorts};
 use bollard::image::CreateImageOptions;
 use bollard::models::HostConfig;
 use bollard::{container, Docker};
+use graph_tests::helpers::{contains_subslice, postgres_test_database_name, MappedPorts};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
@@ -183,7 +183,7 @@ impl DockerTestClient {
                 unexpected_response
             ),
         };
-        let mapped_ports: MappedPorts = ports.to_vec().into();
+        let mapped_ports: MappedPorts = to_mapped_ports(ports.to_vec());
         Ok(mapped_ports)
     }
 
@@ -265,23 +265,21 @@ impl DockerTestClient {
     }
 }
 
-impl From<Vec<bollard::models::Port>> for MappedPorts {
-    fn from(input: Vec<bollard::models::Port>) -> Self {
-        let mut hashmap = HashMap::new();
+fn to_mapped_ports(input: Vec<bollard::models::Port>) -> MappedPorts {
+    let mut hashmap = HashMap::new();
 
-        for port in &input {
-            if let bollard::models::Port {
-                private_port,
-                public_port: Some(public_port),
-                ..
-            } = port
-            {
-                hashmap.insert(*private_port as u16, *public_port as u16);
-            }
+    for port in &input {
+        if let bollard::models::Port {
+            private_port,
+            public_port: Some(public_port),
+            ..
+        } = port
+        {
+            hashmap.insert(*private_port as u16, *public_port as u16);
         }
-        if hashmap.is_empty() {
-            panic!("Container exposed no ports. Input={:?}", input)
-        }
-        MappedPorts(hashmap)
     }
+    if hashmap.is_empty() {
+        panic!("Container exposed no ports. Input={:?}", input)
+    }
+    MappedPorts(hashmap)
 }

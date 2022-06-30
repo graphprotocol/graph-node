@@ -51,6 +51,8 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   database. In production environments, it will cause multiple downloads of
   the same blocks and therefore slow the system down. This setting can not
   be used if the store uses more than one shard.
+- `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`: Specify genesis block number. If the flag
+  is not set, the default value will be `0`.
 
 ## Running mapping handlers
 

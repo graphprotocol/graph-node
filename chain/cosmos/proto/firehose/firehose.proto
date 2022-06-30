@@ -1,15 +1,10 @@
-package figment;
+package firehose;
 
 import "google/protobuf/descriptor.proto";
 
 //66K range is arbitrary picked number, might be conflict
-extend google.protobuf.MessageOptions {
-	optional int64 type_id = 66201; 
-}
 
 extend google.protobuf.FieldOptions {
-	optional bool special = 66201;
-
-
-    
+	optional bool required = 66001;
+   
 }

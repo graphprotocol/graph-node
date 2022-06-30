@@ -114,7 +114,7 @@ pub mod prelude {
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
-        AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, ChildMultiplicity,
+        AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, Child, ChildMultiplicity,
         EntityCache, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
         EntityKey, EntityLink, EntityModification, EntityOperation, EntityOrder, EntityQuery,
         EntityRange, EntityWindow, EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats,

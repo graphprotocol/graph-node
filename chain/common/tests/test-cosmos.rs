@@ -1,4 +1,4 @@
-const PROTO_FILE: &str = "tests/resources/cosmos/codec.proto";
+const PROTO_FILE: &str = "tests/resources/cosmos/type.proto";
 
 mod utils;
 use common::*;
@@ -6,7 +6,7 @@ use common::*;
 #[test]
 fn check_type_count() {
     let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
-    assert_eq!(41, types.len());
+    assert_eq!(47, types.len());
 }
 
 #[test]
@@ -16,17 +16,34 @@ fn check_block_type_field_count() {
     assert!(block.is_some());
 
     let ptype = block.unwrap();
-    assert_eq!(4, ptype.fields.len());
+    assert_eq!(7, ptype.fields.len());
 
     ptype.fields.iter().for_each(|f| {
         match f.name.as_ref() {
             "header" => assert!(f.required, "Block.header field should be required!"),
-            "data" => assert!(f.required, "Block.data field should be required!"),
             "evidence" => assert!(f.required, "Block.evidence field should be required!"),
             "last_commit" => assert!(
                 !f.required,
                 "Block.last_commit field should NOT be required!"
             ),
+            "result_begin_block" => assert!(
+                !f.required,
+                "Block.result_begin_block field should NOT be required!"
+            ),
+            "result_end_block" => assert!(
+                !f.required,
+                "Block.result_end_block field should NOT be required!"
+            ),
+
+            "transactions" => assert!(
+                !f.required,
+                "Block.transactions field should NOT be required!"
+            ),
+            "validator_updates" => assert!(
+                !f.required,
+                "Block.validator_updates field should NOT be required!"
+            ),
+
             _ => assert!(false, "Unexpected message field [{}]!", f.name),
         };
     });
@@ -42,7 +59,7 @@ fn check_block_type_req_fld_string() {
 
     assert!(ptype.has_req_fields());
     assert_eq!(
-        "__required__{header: Header,data: Data,evidence: EvidenceList}",
+        "__required__{header: Header,evidence: EvidenceList}",
         ptype.req_fields_as_string().unwrap()
     );
 }

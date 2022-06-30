@@ -6,15 +6,15 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
-ethabi = "17.0"
+ethabi = "17.1"
 futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-semver = "1.0.9"
+semver = "1.0.10"
 lazy_static = "1.4"
-uuid = { version = "1.0.0", features = ["v4"] }
+uuid = { version = "1.1.2", features = ["v4"] }
 strum = "0.21.0"
 strum_macros = "0.21.1"
 bytes = "1.0"

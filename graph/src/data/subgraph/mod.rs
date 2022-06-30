@@ -25,6 +25,7 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
 
+use crate::blockchain::BlockPtr;
 use crate::data::store::Entity;
 use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
@@ -783,14 +784,34 @@ pub struct DeploymentState {
     /// The maximum number of blocks we ever reorged without moving a block
     /// forward in between
     pub max_reorg_depth: u32,
-    /// The number of the last block that the subgraph has processed
-    pub latest_ethereum_block_number: BlockNumber,
+    /// The last block that the subgraph has processed
+    pub latest_block: BlockPtr,
+    /// The earliest block that the subgraph has processed
+    pub earliest_block_number: BlockNumber,
 }
 
 impl DeploymentState {
     /// Is this subgraph deployed and has it processed any blocks?
     pub fn is_deployed(&self) -> bool {
-        self.latest_ethereum_block_number > 0
+        self.latest_block.number > 0
+    }
+
+    pub fn block_queryable(&self, block: BlockNumber) -> Result<(), String> {
+        if block > self.latest_block.number {
+            return Err(format!(
+                "subgraph {} has only indexed up to block number {} \
+                        and data for block number {} is therefore not yet available",
+                self.id, self.latest_block.number, block
+            ));
+        }
+        if block < self.earliest_block_number {
+            return Err(format!(
+                "subgraph {} only has data starting at block number {} \
+                            and data for block number {} is therefore not available",
+                self.id, self.earliest_block_number, block
+            ));
+        }
+        Ok(())
     }
 }
 

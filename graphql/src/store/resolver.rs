@@ -68,6 +68,7 @@ impl StoreResolver {
     pub async fn at_block(
         logger: &Logger,
         store: Arc<dyn QueryStore>,
+        state: &DeploymentState,
         subscription_manager: Arc<dyn SubscriptionManager>,
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
@@ -75,8 +76,7 @@ impl StoreResolver {
         result_size: Arc<ResultSizeMetrics>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
-        let deployment2 = deployment.clone();
-        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, deployment2.clone()).await?;
+        let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
         let has_non_fatal_errors = store
             .has_non_fatal_errors(Some(block_ptr.block_number()))
@@ -105,31 +105,16 @@ impl StoreResolver {
     async fn locate_block(
         store: &dyn QueryStore,
         bc: BlockConstraint,
-        subgraph: DeploymentHash,
+        state: &DeploymentState,
     ) -> Result<BlockPtr, QueryExecutionError> {
         fn check_ptr(
-            subgraph: DeploymentHash,
-            ptr: BlockPtr,
-            min: BlockNumber,
-        ) -> Result<BlockPtr, QueryExecutionError> {
-            if ptr.number < min {
-                return Err(QueryExecutionError::ValueParseError(
-                    "block.number".to_owned(),
-                    format!(
-                        "subgraph {} has only indexed up to block number {} \
-                            and data for block number {} is therefore not yet available",
-                        subgraph, ptr.number, min
-                    ),
-                ));
-            }
-            Ok(ptr)
+            state: &DeploymentState,
+            block: BlockNumber,
+        ) -> Result<(), QueryExecutionError> {
+            state
+                .block_queryable(block)
+                .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
-
-        let subgraph_block_ptr = store
-            .block_ptr()
-            .await
-            .map_err(Into::into)
-            .map(|ptr| ptr.expect("we should have already checked that the subgraph exists"));
 
         match bc {
             BlockConstraint::Hash(hash) => {
@@ -147,27 +132,24 @@ impl StoreResolver {
                             .map(|number| BlockPtr::new(hash, number))
                     })?;
 
-                subgraph_block_ptr.and_then(|subgraph_ptr| {
-                    check_ptr(subgraph, subgraph_ptr, ptr.number)?;
-                    Ok(ptr)
-                })
+                check_ptr(state, ptr.number)?;
+                Ok(ptr)
             }
             BlockConstraint::Number(number) => {
-                subgraph_block_ptr.and_then(|ptr| {
-                    check_ptr(subgraph, ptr, number)?;
-                    // We don't have a way here to look the block hash up from
-                    // the database, and even if we did, there is no guarantee
-                    // that we have the block in our cache. We therefore
-                    // always return an all zeroes hash when users specify
-                    // a block number
-                    // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                    Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
-                })
+                check_ptr(state, number)?;
+                // We don't have a way here to look the block hash up from
+                // the database, and even if we did, there is no guarantee
+                // that we have the block in our cache. We therefore
+                // always return an all zeroes hash when users specify
+                // a block number
+                // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
+                Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
             }
             BlockConstraint::Min(number) => {
-                subgraph_block_ptr.and_then(|ptr| check_ptr(subgraph, ptr, number))
+                check_ptr(state, number)?;
+                Ok(state.latest_block.cheap_clone())
             }
-            BlockConstraint::Latest => subgraph_block_ptr,
+            BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
         }
     }
 

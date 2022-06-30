@@ -1,4 +1,4 @@
-specVersion: 0.0.2
+specVersion: 0.0.4
 repository: https://github.com/graphprotocol/example-subgraph
 schema:
   file: ./schema.graphql
