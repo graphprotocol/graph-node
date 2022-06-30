@@ -40,7 +40,7 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         "arguments not found! generate_network_type_id(<network-name>)"
     );
 
-    ///type_id variant name
+    //type_id variant name
     let index_asc_type_id = format!("{}{}", args[0], no_asc_name)
         .parse::<proc_macro2::TokenStream>()
         .unwrap();
