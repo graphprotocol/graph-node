@@ -4,8 +4,7 @@ use semver::Version;
 use graph::{
     data::store,
     runtime::{
-        asc_new, gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId,
-        ToAscObj,
+        gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, ToAscObj,
     },
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
