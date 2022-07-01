@@ -262,12 +262,19 @@ fn build_child_filter_from_object(
         .object_or_interface(type_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
     let filter = build_filter_from_object(child_entity, object, schema)?;
+    let derived = field.is_derived();
 
     Ok(EntityFilter::Child(Child {
-        attr: field_name,
+        attr: match derived {
+            true => sast::get_derived_from_field(child_entity, field)
+                .ok_or(QueryExecutionError::InvalidFilterError)?
+                .name
+                .to_string(),
+            false => field_name,
+        },
         entity_type: EntityType::new(type_name.to_string()),
         filter: Box::new(filter),
-        derived: field.is_derived(),
+        derived,
     }))
 }
 
