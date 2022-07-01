@@ -22,10 +22,7 @@ fn check_block_type_field_count() {
         match f.name.as_ref() {
             "header" => assert!(f.required, "Block.header field should be required!"),
             "evidence" => assert!(f.required, "Block.evidence field should be required!"),
-            "last_commit" => assert!(
-                !f.required,
-                "Block.last_commit field should NOT be required!"
-            ),
+            "last_commit" => assert!(f.required, "Block.last_commit field should be required!"),
             "result_begin_block" => assert!(
                 !f.required,
                 "Block.result_begin_block field should NOT be required!"

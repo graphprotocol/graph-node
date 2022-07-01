@@ -13,7 +13,7 @@ import "cosmos.proto";
 message Block {
   Header header = 1 [(gogoproto.nullable) = false, (firehose.required) = true];
   EvidenceList evidence = 2 [(gogoproto.nullable) = false, (firehose.required) = true];
-  Commit last_commit = 3;
+  Commit last_commit = 3 [(firehose.required) = true];
   ResponseBeginBlock result_begin_block = 4;
   ResponseEndBlock result_end_block = 5;
   repeated TxResult transactions = 7;

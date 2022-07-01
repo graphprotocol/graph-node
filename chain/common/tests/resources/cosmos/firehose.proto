@@ -6,5 +6,4 @@ import "google/protobuf/descriptor.proto";
 
 extend google.protobuf.FieldOptions {
 	optional bool required = 66001;
-   
 }
