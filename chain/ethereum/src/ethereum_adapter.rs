@@ -474,6 +474,7 @@ impl EthereumAdapter {
 
                     const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                     const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    const XDAI_REVERT: &str = "revert";
 
                     // Deterministic Geth execution errors. We might need to expand this as
                     // subgraphs come across other errors. See
@@ -534,7 +535,8 @@ impl EthereumAdapter {
                                         || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
                                         || data == PARITY_BAD_INSTRUCTION_FD
-                                        || data == PARITY_OUT_OF_GAS =>
+                                        || data == PARITY_OUT_OF_GAS
+                                        || data == XDAI_REVERT =>
                                 {
                                     let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                         PARITY_BAD_INSTRUCTION_FE.to_owned()
@@ -1184,7 +1186,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
         };
 
-        trace!(logger, "eth_call";
+        debug!(logger, "eth_call";
             "address" => hex::encode(&call.address),
             "data" => hex::encode(&call_data)
         );

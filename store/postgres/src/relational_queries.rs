@@ -924,15 +924,23 @@ impl<'a> QueryFilter<'a> {
                     ));
                 }
 
-                // Make sure that the attribute name is valid for the given table
-                table.column_for_field(child.attr.as_str())?;
+                if child.derived {
+                    let derived_table = layout.table_for_entity(&child.entity_type)?;
+                    // Make sure that the attribute name is valid for the given table
+                    derived_table.column_for_field(child.attr.as_str())?;
 
-                Self::valid_attributes(
-                    &child.filter,
-                    layout.table_for_entity(&child.entity_type)?,
-                    layout,
-                    true,
-                )?;
+                    Self::valid_attributes(&child.filter, derived_table, layout, true)?;
+                } else {
+                    // Make sure that the attribute name is valid for the given table
+                    table.column_for_field(child.attr.as_str())?;
+
+                    Self::valid_attributes(
+                        &child.filter,
+                        layout.table_for_entity(&child.entity_type)?,
+                        layout,
+                        true,
+                    )?;
+                }
             }
             // This is a special case since we want to allow passing "block" column filter, but we dont
             // want to fail/error when this is passed here, since this column is not really an entity column.
