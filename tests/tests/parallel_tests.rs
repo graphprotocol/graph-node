@@ -1,11 +1,11 @@
 mod common;
 use anyhow::Context;
 use common::docker::{pull_images, DockerTestClient, TestContainerService};
-use common::helpers::{
+use futures::StreamExt;
+use graph_tests::helpers::{
     basename, get_unique_ganache_counter, get_unique_postgres_counter, make_ganache_uri,
     make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts, MappedPorts,
 };
-use futures03::StreamExt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,10 +24,8 @@ lazy_static::lazy_static! {
 }
 
 /// All integration tests subdirectories to run
-pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 11] = [
+pub const INTEGRATION_TESTS_DIRECTORIES: [&str; 9] = [
     "api-version-v0-0-4",
-    "data-source-context",
-    "data-source-revert",
     "fatal-error",
     "ganache-reverts",
     "host-exports",
@@ -377,16 +375,6 @@ async fn run_graph_node(test_setup: &IntegrationTestSetup) -> anyhow::Result<Chi
         // metrics  port
         .arg("--metrics-port")
         .arg(test_setup.graph_node_ports.metrics.to_string());
-
-    // add test specific environment variables
-    // TODO: it might be interesting to refactor this conditional into a new datatype that ties
-    // the test name and its environment variables together.
-    if test_setup.test_name().as_str() == "data-source-revert" {
-        command.env(
-            "FAILPOINTS",
-            "test_reorg=return(2);error_on_duplicate_ds=return",
-        );
-    }
 
     command
         .spawn()

@@ -93,7 +93,8 @@ impl FirehoseEndpoint {
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
         let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
+
             None => None,
         };
 
@@ -182,7 +183,7 @@ impl FirehoseEndpoint {
         request: firehose::Request,
     ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
         let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
             None => None,
         };
 

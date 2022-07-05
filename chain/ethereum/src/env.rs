@@ -83,6 +83,12 @@ pub struct EnvVars {
     /// `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`. The default value is
     /// 100.
     pub target_triggers_per_block_range: u64,
+    /// These are some chains, the genesis block is start from 1 not 0. If this
+    /// flag is not set, the default value will be 0.
+    ///
+    /// Set by the flag `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`. The default value
+    /// is 0.
+    pub genesis_block_number: u64,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -124,6 +130,7 @@ impl From<Inner> for EnvVars {
                 .unwrap_or(cfg!(target_os = "macos")),
             cleanup_blocks: x.cleanup_blocks.0,
             target_triggers_per_block_range: x.target_triggers_per_block_range,
+            genesis_block_number: x.genesis_block_number,
         }
     }
 }
@@ -172,4 +179,6 @@ struct Inner {
         default = "100"
     )]
     target_triggers_per_block_range: u64,
+    #[envconfig(from = "GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER", default = "0")]
+    genesis_block_number: u64,
 }

@@ -17,10 +17,9 @@ envconfig = "0.10.0"
 Inflector = "0.11.3"
 isatty = "0.1.9"
 reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
-ethabi = "17.0"
+ethabi = "17.1"
 hex = "0.4.3"
 http = "0.2.3"
-fail = { version = "0.5", features = ["failpoints"] }
 futures = "0.1.21"
 graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
@@ -28,7 +27,7 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.1"
 num-traits = "0.2.15"
 rand = "0.8.4"
-semver = { version = "1.0.9", features = ["serde"] }
+semver = { version = "1.0.10", features = ["serde"] }
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
@@ -44,7 +43,7 @@ slog-term = "2.7.0"
 petgraph = "0.6.2"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
-tokio-stream = { version = "0.1.8", features = ["sync"] }
+tokio-stream = { version = "0.1.9", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.2.1"
 prometheus = "0.13.1"
@@ -56,7 +55,7 @@ prost-types = "0.10.1"
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
-parking_lot = "0.12.0"
+parking_lot = "0.12.1"
 itertools = "0.10.3"
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.

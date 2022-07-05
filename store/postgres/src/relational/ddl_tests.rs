@@ -77,6 +77,28 @@ fn generate_ddl() {
 }
 
 #[test]
+fn exlusion_ddl() {
+    let layout = test_layout(THING_GQL);
+    let table = layout
+        .table_for_entity(&EntityType::new("Thing".to_string()))
+        .unwrap();
+
+    // When `as_constraint` is false, just create an index
+    let mut out = String::new();
+    table
+        .exclusion_ddl(&mut out, "sgd0815", false)
+        .expect("can write exclusion DDL");
+    assert_eq!("create index thing_id_block_range_excl on sgd0815.\"thing\"\n         using gist (id, block_range);", out.trim());
+
+    // When `as_constraint` is true, add an exclusion constraint
+    let mut out = String::new();
+    table
+        .exclusion_ddl(&mut out, "sgd0815", true)
+        .expect("can write exclusion DDL");
+    assert_eq!("alter table sgd0815.\"thing\"\n          add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);", out.trim());
+}
+
+#[test]
 fn forward_enum() {
     let layout = test_layout(FORWARD_ENUM_GQL);
     let table = layout
@@ -180,10 +202,10 @@ create table sgd0815.\"thing\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         \"id\"                 text not null,
-        \"big_thing\"          text not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"big_thing\"          text not null
 );
+alter table sgd0815.\"thing\"
+  add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_thing
     on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -205,10 +227,10 @@ create table sgd0815.\"scalar\" (
         \"string\"             text,
         \"bytes\"              bytea,
         \"big_int\"            numeric,
-        \"color\"              \"sgd0815\".\"color\",
-
-        exclude using gist   (id with =, block_range with &&)
+        \"color\"              \"sgd0815\".\"color\"
 );
+alter table sgd0815.\"scalar\"
+  add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_scalar
     on sgd0815.scalar
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -267,10 +289,10 @@ const MUSIC_DDL: &str = "create table sgd0815.\"musician\" (
         \"id\"                 text not null,
         \"name\"               text not null,
         \"main_band\"          text,
-        \"bands\"              text[] not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"bands\"              text[] not null
 );
+alter table sgd0815.\"musician\"
+  add constraint musician_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_musician
     on sgd0815.musician
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -291,10 +313,10 @@ create table sgd0815.\"band\" (
         block_range          int4range not null,
         \"id\"                 text not null,
         \"name\"               text not null,
-        \"original_songs\"     text[] not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"original_songs\"     text[] not null
 );
+alter table sgd0815.\"band\"
+  add constraint band_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_band
     on sgd0815.band
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -329,10 +351,10 @@ create table sgd0815.\"song_stat\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         \"id\"                 text not null,
-        \"played\"             integer not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"played\"             integer not null
 );
+alter table sgd0815.\"song_stat\"
+  add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_song_stat
     on sgd0815.song_stat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -371,10 +393,10 @@ const FOREST_DDL: &str = "create table sgd0815.\"animal\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         \"id\"                 text not null,
-        \"forest\"             text,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"forest\"             text
 );
+alter table sgd0815.\"animal\"
+  add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_animal
     on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -389,10 +411,10 @@ create index attr_0_1_animal_forest
 create table sgd0815.\"forest\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
-        \"id\"                 text not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"id\"               text not null
 );
+alter table sgd0815.\"forest\"
+  add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_forest
     on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -407,10 +429,10 @@ create table sgd0815.\"habitat\" (
         block_range          int4range not null,
         \"id\"                 text not null,
         \"most_common\"        text not null,
-        \"dwellers\"           text[] not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"dwellers\"           text[] not null
 );
+alter table sgd0815.\"habitat\"
+  add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_habitat
     on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -463,10 +485,10 @@ const FULLTEXT_DDL: &str = "create table sgd0815.\"animal\" (
         \"name\"               text not null,
         \"species\"            text not null,
         \"forest\"             text,
-        \"search\"             tsvector,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"search\"             tsvector
 );
+alter table sgd0815.\"animal\"
+  add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_animal
     on sgd0815.animal
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -487,10 +509,11 @@ create index attr_0_4_animal_search
 create table sgd0815.\"forest\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
-        \"id\"                 text not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"id\"                 text not null
 );
+alter table sgd0815.\"forest\"
+  add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
+
 create index brin_forest
     on sgd0815.forest
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -505,10 +528,10 @@ create table sgd0815.\"habitat\" (
         block_range          int4range not null,
         \"id\"                 text not null,
         \"most_common\"        text not null,
-        \"dwellers\"           text[] not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"dwellers\"           text[] not null
 );
+alter table sgd0815.\"habitat\"
+  add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_habitat
     on sgd0815.habitat
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -541,10 +564,10 @@ create table sgd0815.\"thing\" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         \"id\"                 text not null,
-        \"orientation\"        \"sgd0815\".\"orientation\" not null,
-
-        exclude using gist   (id with =, block_range with &&)
+        \"orientation\"        \"sgd0815\".\"orientation\" not null
 );
+alter table sgd0815.\"thing\"
+  add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_thing
     on sgd0815.thing
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);

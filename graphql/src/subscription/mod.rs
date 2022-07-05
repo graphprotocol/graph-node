@@ -183,20 +183,32 @@ async fn execute_subscription_event(
     max_skip: u32,
     result_size: Arc<ResultSizeMetrics>,
 ) -> Arc<QueryResult> {
-    let resolver = match StoreResolver::at_block(
-        &logger,
-        store,
-        subscription_manager,
-        BlockConstraint::Latest,
-        ErrorPolicy::Deny,
-        query.schema.id().clone(),
-        result_size,
-    )
-    .await
-    {
-        Ok(resolver) => resolver,
-        Err(e) => return Arc::new(e.into()),
-    };
+    async fn make_resolver(
+        store: Arc<dyn QueryStore>,
+        logger: &Logger,
+        subscription_manager: Arc<dyn SubscriptionManager>,
+        query: &Arc<crate::execution::Query>,
+        result_size: Arc<ResultSizeMetrics>,
+    ) -> Result<StoreResolver, QueryExecutionError> {
+        let state = store.deployment_state().await?;
+        StoreResolver::at_block(
+            logger,
+            store,
+            &state,
+            subscription_manager,
+            BlockConstraint::Latest,
+            ErrorPolicy::Deny,
+            query.schema.id().clone(),
+            result_size,
+        )
+        .await
+    }
+
+    let resolver =
+        match make_resolver(store, &logger, subscription_manager, &query, result_size).await {
+            Ok(resolver) => resolver,
+            Err(e) => return Arc::new(e.into()),
+        };
 
     let block_ptr = resolver.block_ptr.clone();
 

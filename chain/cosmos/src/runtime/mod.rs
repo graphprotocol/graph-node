@@ -3,7 +3,6 @@ pub use runtime_adapter::RuntimeAdapter;
 pub mod runtime_adapter;
 pub mod utils;
 
-
 //pub mod abi;
 //pub mod generated;
 

@@ -62,7 +62,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             },
 
             CosmosTrigger::Event { event_data, origin } => {
-                match self.handler_for_event(event_data.event(), *origin) {
+                match self.handler_for_event(event_data.event()?, *origin) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }

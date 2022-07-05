@@ -2015,7 +2015,7 @@ fn reorg_tracking() {
             assert_eq!($reorg_count, state.reorg_count, "reorg_count");
             assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
             assert_eq!(
-                $latest_ethereum_block_number, state.latest_ethereum_block_number,
+                $latest_ethereum_block_number, state.latest_block.number,
                 "latest_ethereum_block_number"
             );
         };

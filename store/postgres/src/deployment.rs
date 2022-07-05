@@ -1,10 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{
-    detail::GraphNodeVersion,
-    functions::{coalesce_binary, coalesce_numeric},
-};
+use crate::{detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
@@ -70,8 +67,10 @@ table! {
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
+        // Not used anymore; only written to keep backwards compatible
         earliest_ethereum_block_hash -> Nullable<Binary>,
         earliest_ethereum_block_number -> Nullable<Numeric>,
+        earliest_block_number -> Integer,
         latest_ethereum_block_hash -> Nullable<Binary>,
         latest_ethereum_block_number -> Nullable<Numeric>,
         last_healthy_ethereum_block_hash -> Nullable<Binary>,
@@ -111,6 +110,9 @@ table! {
         schema -> Text,
         graph_node_version_id -> Nullable<Integer>,
         use_bytea_prefix -> Bool,
+        /// Parent of the smallest start block from the manifest
+        start_block_number -> Nullable<Integer>,
+        start_block_hash -> Nullable<Binary>,
     }
 }
 
@@ -126,7 +128,7 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error);
+allow_tables_to_appear_in_same_query!(subgraph_deployment, subgraph_error, subgraph_manifest);
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it. If `pending_only` is `true`, only return `Some(_)` if the
@@ -468,31 +470,41 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
 
 /// Initialize the subgraph's block pointer. If the block pointer in
 /// `latest_ethereum_block` is set already, do nothing. If it is still
-/// `null`, set it to `earliest_ethereum_block`
+/// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
 pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
+    use subgraph_manifest as m;
 
-    let init_hash = coalesce_binary(
-        d::latest_ethereum_block_hash,
-        d::earliest_ethereum_block_hash,
-    );
-    let init_number = coalesce_numeric(
-        d::latest_ethereum_block_number,
-        d::earliest_ethereum_block_number,
-    );
-    // Avoid an unnecessary update by filtering for null block pointers
-    update(
-        d::table
-            .filter(d::id.eq(site.id))
-            .filter(d::latest_ethereum_block_hash.is_null()),
-    )
-    .set((
-        d::latest_ethereum_block_hash.eq(init_hash),
-        d::latest_ethereum_block_number.eq(init_number),
-    ))
-    .execute(conn)
-    .map(|_| ())
-    .map_err(|e| e.into())
+    let needs_init = d::table
+        .filter(d::id.eq(site.id))
+        .filter(d::latest_ethereum_block_hash.is_null())
+        .select(d::id)
+        .first::<i32>(conn)
+        .optional()?
+        .is_some();
+
+    if needs_init {
+        if let (Some(hash), Some(number)) = m::table
+            .filter(m::id.eq(site.id))
+            .select((m::start_block_hash, m::start_block_number))
+            .first::<(Option<Vec<u8>>, Option<BlockNumber>)>(conn)?
+        {
+            let number = format!("{}::numeric", number);
+
+            update(d::table.filter(d::id.eq(site.id)))
+                .set((
+                    d::latest_ethereum_block_hash.eq(&hash),
+                    d::latest_ethereum_block_number.eq(sql(&number)),
+                ))
+                .execute(conn)
+                .map(|_| ())
+                .map_err(|e| e.into())
+        } else {
+            Ok(())
+        }
+    } else {
+        Ok(())
+    }
 }
 
 fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u32, StoreError> {
@@ -510,30 +522,6 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-/// Translate `latest` into a `BlockNumber`. If `latest` is `None` or does
-/// not represent an `i32`, return an error
-fn latest_as_block_number(
-    latest: Option<BigDecimal>,
-    subgraph: &str,
-) -> Result<BlockNumber, StoreError> {
-    match latest {
-        None => Err(StoreError::QueryExecutionError(format!(
-            "Subgraph `{}` has not started syncing yet. Wait for it to ingest \
-             a few blocks before querying it",
-            subgraph
-        ))),
-        Some(latest) => latest.to_i32().ok_or_else(|| {
-            constraint_violation!(
-                "Subgraph `{}` has an \
-                 invalid latest_ethereum_block_number `{:?}` that can not be \
-                 represented as an i32",
-                subgraph,
-                latest
-            )
-        }),
-    }
-}
-
 pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState, StoreError> {
     use subgraph_deployment as d;
 
@@ -544,26 +532,54 @@ pub fn state(conn: &PgConnection, id: DeploymentHash) -> Result<DeploymentState,
             d::reorg_count,
             d::max_reorg_depth,
             d::latest_ethereum_block_number,
+            d::latest_ethereum_block_hash,
+            d::earliest_block_number,
         ))
-        .first::<(String, i32, i32, Option<BigDecimal>)>(conn)
+        .first::<(
+            String,
+            i32,
+            i32,
+            Option<BigDecimal>,
+            Option<Vec<u8>>,
+            BlockNumber,
+        )>(conn)
         .optional()?
     {
         None => Err(StoreError::QueryExecutionError(format!(
             "No data found for subgraph {}",
             id
         ))),
-        Some((_, reorg_count, max_reorg_depth, latest_ethereum_block_number)) => {
+        Some((
+            _,
+            reorg_count,
+            max_reorg_depth,
+            latest_block_number,
+            latest_block_hash,
+            earliest_block_number,
+        )) => {
             let reorg_count = convert_to_u32(Some(reorg_count), "reorg_count", id.as_str())?;
             let max_reorg_depth =
                 convert_to_u32(Some(max_reorg_depth), "max_reorg_depth", id.as_str())?;
-            let latest_ethereum_block_number =
-                latest_as_block_number(latest_ethereum_block_number, id.as_str())?;
-
+            let latest_block = crate::detail::block(
+                id.as_str(),
+                "latest_block",
+                latest_block_hash,
+                latest_block_number,
+            )?
+            .ok_or_else(|| {
+                StoreError::QueryExecutionError(format!(
+                    "Subgraph `{}` has not started syncing yet. Wait for it to ingest \
+                 a few blocks before querying it",
+                    id
+                ))
+            })?
+            .to_ptr();
             Ok(DeploymentState {
                 id,
                 reorg_count,
                 max_reorg_depth,
-                latest_ethereum_block_number,
+                latest_block,
+                earliest_block_number,
             })
         }
     }
@@ -766,14 +782,11 @@ fn check_health(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn health(
-    conn: &PgConnection,
-    id: &DeploymentHash,
-) -> Result<SubgraphHealth, StoreError> {
+pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHealth, StoreError> {
     use subgraph_deployment as d;
 
     d::table
-        .filter(d::deployment.eq(id.as_str()))
+        .filter(d::id.eq(id))
         .select(d::health)
         .get_result(conn)
         .map_err(|e| e.into())
@@ -926,6 +939,7 @@ pub fn create_deployment(
         graft_block,
         debug_fork,
     } = deployment;
+    let earliest_block_number = earliest_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
 
     let deployment_values = (
         d::id.eq(site.id),
@@ -937,6 +951,7 @@ pub fn create_deployment(
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
         d::earliest_ethereum_block_hash.eq(b(&earliest_block)),
         d::earliest_ethereum_block_number.eq(n(&earliest_block)),
+        d::earliest_block_number.eq(earliest_block_number),
         d::latest_ethereum_block_hash.eq(sql("null")),
         d::latest_ethereum_block_number.eq(sql("null")),
         d::entity_count.eq(sql("0")),
@@ -959,6 +974,8 @@ pub fn create_deployment(
         // New subgraphs index only a prefix of bytea columns
         // see: attr-bytea-prefix
         m::use_bytea_prefix.eq(true),
+        m::start_block_hash.eq(b(&earliest_block)),
+        m::start_block_number.eq(earliest_block_number),
     );
 
     if exists && replace {

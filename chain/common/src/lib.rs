@@ -11,6 +11,8 @@ use protobuf::UnknownValueRef;
 use std::convert::From;
 use std::path::Path;
 
+const REQUIRED_ID: u32 = 66001;
+
 #[derive(Debug, Clone)]
 pub struct Field {
     pub name: String,
@@ -113,7 +115,8 @@ impl From<&FieldDescriptorProto> for Field {
             type_name: type_name.rsplit(".").next().unwrap().to_owned(),
             required: options
                 .iter()
-                .find(|f| f.0 == 65001 && UnknownValueRef::Varint(0) == f.1)
+                //(firehose.required) = true,  UnknownValueRef::Varint(0) => false, UnknownValueRef::Varint(1) => true
+                .find(|f| f.0 == REQUIRED_ID && UnknownValueRef::Varint(1) == f.1)
                 .is_some(),
             is_enum: false,
             fields: vec![],
@@ -197,50 +200,7 @@ where
         .file
         .iter() //should be just 1 file
         .flat_map(|f| f.message_type.iter())
-        .map(|dp| {
-            //this is message type
-
-            /*
-             ----- cosmos/codec.proto
-             not sure what do we do with oneof
-            message Evidence {
-                oneof sum {
-                  DuplicateVoteEvidence     duplicate_vote_evidence       = 1;
-                  LightClientAttackEvidence light_client_attack_evidence  = 2;
-                }
-            }
-
-            pub struct Evidence {
-                #[prost(oneof="evidence::Sum", tags="1, 2")]
-                pub sum: ::core::option::Option<evidence::Sum>,
-            }
-
-
-            let is_enum = dp.oneof_decl.len() > 0;
-
-            oneof_decl: [
-                    OneofDescriptorProto {
-                        name: Some(
-                            "sum",
-                        ),
-                        options: MessageField(
-                            None,
-                        ),
-                        special_fields: SpecialFields {
-                            unknown_fields: UnknownFields {
-                                fields: None,
-                            },
-                            cached_size: CachedSize {
-                                size: 0,
-                            },
-                        },
-                    },
-                ],
-
-            */
-
-            (dp.name().to_owned(), PType::from(dp))
-        })
+        .map(|dp| (dp.name().to_owned(), PType::from(dp)))
         .collect::<HashMap<String, PType>>();
 
     Ok(ret_val)

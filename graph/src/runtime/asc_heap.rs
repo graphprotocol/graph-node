@@ -160,4 +160,3 @@ pub trait TryFromAscObj<C: AscType>: Sized {
         gas: &GasCounter,
     ) -> Result<Self, DeterministicHostError>;
 }
-

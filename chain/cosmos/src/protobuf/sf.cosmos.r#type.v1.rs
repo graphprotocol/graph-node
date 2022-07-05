@@ -65,7 +65,6 @@ pub struct Header {
     pub height: u64,
     #[prost(message, optional, tag="4")]
     pub time: ::core::option::Option<Timestamp>,
-    ///BlockID last_block_id = 5 [(gogoproto.nullable) = false];
     #[prost(message, optional, tag="5")]
     pub last_block_id: ::core::option::Option<BlockId>,
     #[prost(bytes="vec", tag="6")]
@@ -185,7 +184,7 @@ pub struct EventVote {
     pub height: u64,
     #[prost(int32, tag="3")]
     pub round: i32,
-    ///BlockID block_id = 4 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+    ///BlockID block_id = 4 [(gogoproto.nullable) = false, (firehose.required) = true, (gogoproto.customname) = "BlockID"];
     #[prost(message, optional, tag="4")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, optional, tag="5")]
@@ -242,7 +241,7 @@ pub struct Commit {
     pub height: i64,
     #[prost(int32, tag="2")]
     pub round: i32,
-    ///BlockID block_id = 3 [(gogoproto.nullable) = false, (gogoproto.customname) = "BlockID"];
+    ///BlockID block_id = 3 [(gogoproto.nullable) = false, (firehose.required) = true, (gogoproto.customname) = "BlockID"];
     #[prost(message, optional, tag="3")]
     pub block_id: ::core::option::Option<BlockId>,
     #[prost(message, repeated, tag="4")]
@@ -360,9 +359,9 @@ pub struct ValidatorUpdate {
     #[prost(int64, tag="3")]
     pub power: i64,
 }
-#[graph_runtime_derive::generate_asc_type(__required__{block: BlockParams,evidence: EvidenceParams,validator: ValidatorParams,version: VersionParams})]
+#[graph_runtime_derive::generate_asc_type()]
 #[graph_runtime_derive::generate_network_type_id(Cosmos)]
-#[graph_runtime_derive::generate_from_rust_type(__required__{block: BlockParams,evidence: EvidenceParams,validator: ValidatorParams,version: VersionParams})]
+#[graph_runtime_derive::generate_from_rust_type()]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConsensusParams {
     #[prost(message, optional, tag="1")]

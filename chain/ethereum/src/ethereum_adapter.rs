@@ -474,6 +474,7 @@ impl EthereumAdapter {
 
                     const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                     const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    const XDAI_REVERT: &str = "revert";
 
                     // Deterministic Geth execution errors. We might need to expand this as
                     // subgraphs come across other errors. See
@@ -534,7 +535,8 @@ impl EthereumAdapter {
                                         || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
                                         || data == PARITY_BAD_INSTRUCTION_FD
-                                        || data == PARITY_OUT_OF_GAS =>
+                                        || data == PARITY_OUT_OF_GAS
+                                        || data == XDAI_REVERT =>
                                 {
                                     let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                         PARITY_BAD_INSTRUCTION_FE.to_owned()
@@ -847,7 +849,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let web3 = self.web3.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
-        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
+        let retry_log_message = format!(
+            "eth_getBlockByNumber({}, false) RPC call",
+            ENV_VARS.genesis_block_number
+        );
+        let gen_block_hash_future = retry(retry_log_message, &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
@@ -856,7 +862,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let provider = provider.clone();
                 async move {
                     web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
+                        .block(BlockId::Number(Web3BlockNumber::Number(
+                            ENV_VARS.genesis_block_number.into(),
+                        )))
                         .await
                         .map_err(|e| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
@@ -1178,7 +1186,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
         };
 
-        trace!(logger, "eth_call";
+        debug!(logger, "eth_call";
             "address" => hex::encode(&call.address),
             "data" => hex::encode(&call_data)
         );

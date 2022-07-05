@@ -151,6 +151,7 @@ pub async fn create_ethereum_networks(
                         )
                         .await,
                     ),
+                    web3.limit_for(&config.node),
                 );
             }
         }
