@@ -91,6 +91,10 @@ pub struct EnvVarsStore {
     /// once the new behavior has run in the hosted service for a few days
     /// without issues.
     pub disable_error_for_toplevel_parents: bool,
+
+    /// This is used to mandate what locale the Database run.
+    /// Set by the environment variable `GRAPH_STORE_LOCALE`.
+    pub store_locale: String,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -128,6 +132,7 @@ impl From<InnerStore> for EnvVarsStore {
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
             disable_error_for_toplevel_parents: x.disable_error_for_toplevel_parents.0,
+            store_locale: x.store_locale,
         }
     }
 }
@@ -173,4 +178,6 @@ pub struct InnerStore {
     write_queue_size: usize,
     #[envconfig(from = "GRAPH_DISABLE_ERROR_FOR_TOPLEVEL_PARENTS", default = "false")]
     disable_error_for_toplevel_parents: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_STORE_LOCALE", default = "en_US.utf8")]
+    store_locale: String,
 }

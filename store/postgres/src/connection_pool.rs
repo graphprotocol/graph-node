@@ -978,8 +978,12 @@ impl PoolInner {
         let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
         let db_locale = catalog::get_collation(&conn)?;
-        if !db_locale.eq("en_US.utf8") {
-            panic!("Database locale is not 'en_US.utf8', but {}", db_locale);
+
+        if !db_locale.eq(&ENV_VARS.store.store_locale) {
+            panic!(
+                "Database locale is not '{}', but {}",
+                ENV_VARS.store.store_locale, db_locale
+            );
         }
 
         advisory_lock::lock_migration(&conn)

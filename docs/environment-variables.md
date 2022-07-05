@@ -187,3 +187,4 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
+- `GRAPH_STORE_LOCAL`: default is `en_US.utf8`. This is used to mandate the locale for database. This is useful for comparing strings fields.
