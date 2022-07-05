@@ -47,14 +47,20 @@ use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
 
-fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
+fn read_expensive_queries(
+    logger: &Logger,
+    expensive_queries_filename: String,
+) -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     // A file with a list of expensive queries, one query per line
     // Attempts to run these queries will return a
     // QueryExecutionError::TooExpensive to clients
-    const EXPENSIVE_QUERIES: &str = "/etc/graph-node/expensive-queries.txt";
-    let path = Path::new(EXPENSIVE_QUERIES);
+    let path = Path::new(&expensive_queries_filename);
     let mut queries = Vec::new();
     if path.exists() {
+        info!(
+            logger,
+            "Reading expensive queries file: {}", expensive_queries_filename
+        );
         let file = std::fs::File::open(path)?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
@@ -63,7 +69,7 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",
-                        EXPENSIVE_QUERIES,
+                        expensive_queries_filename,
                         e.to_string(),
                         line
                     );
@@ -72,6 +78,11 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
                 .into_static();
             queries.push(Arc::new(query));
         }
+    } else {
+        warn!(
+            logger,
+            "Expensive queries file not set to a valid file: {}", expensive_queries_filename
+        );
     }
     Ok(queries)
 }
@@ -220,7 +231,9 @@ async fn main() {
 
     let contention_logger = logger.clone();
 
-    let expensive_queries = read_expensive_queries().unwrap();
+    // TODO: make option loadable from configuration TOML and environment:
+    let expensive_queries =
+        read_expensive_queries(&logger, opt.expensive_queries_filename).unwrap();
 
     let store_builder = StoreBuilder::new(
         &logger,
