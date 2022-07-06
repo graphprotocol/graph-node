@@ -508,16 +508,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "common"
-version = "0.26.0"
-dependencies = [
- "anyhow",
- "convert_case 0.5.0",
- "protobuf 3.1.0",
- "protobuf-parse",
-]
-
-[[package]]
 name = "console"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1506,12 +1496,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-common"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "convert_case 0.5.0",
+ "protobuf 3.1.0",
+ "protobuf-parse",
+]
+
+[[package]]
 name = "graph-chain-cosmos"
 version = "0.26.0"
 dependencies = [
  "anyhow",
- "common",
  "graph",
+ "graph-chain-common",
  "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",

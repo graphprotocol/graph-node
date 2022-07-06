@@ -15,4 +15,5 @@ pub use data_source::{DataSource, DataSourceTemplate};
 pub use crate::adapter::TriggerFilter;
 pub use crate::chain::Chain;
 
+pub use protobuf::pbcodec;
 pub use protobuf::pbcodec::Block;

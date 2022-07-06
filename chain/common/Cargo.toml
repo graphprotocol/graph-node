@@ -1,5 +1,5 @@
 [package]
-name = "common"
+name = "graph-chain-common"
 version = "0.26.0"
 edition = "2021"
 
