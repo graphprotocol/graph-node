@@ -50,6 +50,7 @@ wait_for_ipfs() {
 }
 
 run_graph_node() {
+    fork_base="${fork_base:-https://api.thegraph.com/subgraphs/id/}"
     if [ -n "$GRAPH_NODE_CONFIG" ]
     then
         # Start with a configuration file; we don't do a check whether
@@ -59,7 +60,8 @@ run_graph_node() {
         graph-node \
             --node-id "${node_id//-/_}" \
             --config "$GRAPH_NODE_CONFIG" \
-            --ipfs "$ipfs"
+            --ipfs "$ipfs" \
+            --fork-base "$fork_base"
     else
         unset GRAPH_NODE_CONFIG
         postgres_port=${postgres_port:-5432}
@@ -73,7 +75,8 @@ run_graph_node() {
             --node-id "${node_id//-/_}" \
             --postgres-url "$postgres_url" \
             --ethereum-rpc $ethereum \
-            --ipfs "$ipfs"
+            --ipfs "$ipfs" \
+            --fork-base "$fork_base"
     fi
 }
 
