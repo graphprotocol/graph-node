@@ -178,34 +178,3 @@ fn path_to_string(path: &syn::Path) -> String {
         panic!("path_to_string - can't get last segment!")
     }
 }
-
-// fn size_of(tp: &str) -> usize {
-//     match tp {
-//         "i8" | "u8" => std::mem::size_of::<i8>(),
-//         "i16" | "u16" => std::mem::size_of::<i16>(),
-
-//         "i32" | "u32" => std::mem::size_of::<i32>(),
-
-//         "i64" | "u64" => std::mem::size_of::<i64>(),
-//         "i128" | "u128" => std::mem::size_of::<i128>(),
-
-//         "f32" => std::mem::size_of::<f32>(),
-//         "f64" => std::mem::size_of::<f64>(),
-
-//         "isize" | "usize" => std::mem::size_of::<isize>(),
-//         "bool" => std::mem::size_of::<bool>(),
-//         "char" => std::mem::size_of::<char>(),
-//         _ => std::mem::size_of::<i32>(), //pointer
-//     }
-// }
-
-// fn padding_needed_for(offset: usize, alignment: usize) -> usize {
-//     let misalignment = offset % alignment;
-//     if misalignment > 0 {
-//         // round up to next multiple of `alignment`
-//         alignment - misalignment
-//     } else {
-//         // already a multiple of `alignment`
-//         0
-//     }
-// }
