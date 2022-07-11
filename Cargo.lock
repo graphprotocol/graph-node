@@ -1491,7 +1491,7 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "stable-hash 0.3.2",
- "stable-hash 0.4.1",
+ "stable-hash 0.4.2",
  "structopt",
  "strum",
  "strum_macros",
@@ -1643,7 +1643,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "pretty_assertions 1.2.1",
  "stable-hash 0.3.2",
- "stable-hash 0.4.1",
+ "stable-hash 0.4.2",
  "test-store",
 ]
 
@@ -3929,9 +3929,9 @@ dependencies = [
 
 [[package]]
 name = "stable-hash"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442fcfd15605146b373dafa4bea8368e98d9b51350e5da5a44ab2923c5ac3ca8"
+checksum = "af75bd21beb162eab69de76abbb803d4111735ead00d5086dcc6f4ddb3b53cc9"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.5.0",
