@@ -42,11 +42,10 @@ impl AscType for AscBytesArray {
 
 //we will have to keep this chain specific (Inner/Outer)
 impl AscIndexId for AscBytesArray {
-    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBytesArray; //12345
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::CosmosBytesArray;
 }
 
 /************************************************************************** */
-// TODO - naming conflict with pbcodec::Any  (sf.cosmos.r#type.v1.rs)
 // this can be moved to runtime - prost_types::Any
 impl ToAscObj<AscAny> for prost_types::Any {
     fn to_asc_obj<H: AscHeap + ?Sized>(

@@ -1,12 +1,7 @@
 pub use runtime_adapter::RuntimeAdapter;
 
-pub mod runtime_adapter;
 pub mod abi;
-
-
-
-
-
+pub mod runtime_adapter;
 
 #[cfg(test)]
 mod test {
