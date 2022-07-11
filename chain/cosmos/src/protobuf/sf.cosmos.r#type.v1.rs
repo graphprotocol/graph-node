@@ -282,9 +282,9 @@ pub struct Validator {
     #[prost(int64, tag="4")]
     pub proposer_priority: i64,
 }
-#[graph_runtime_derive::generate_asc_type(sum{ed25519: Vec<u8>,secp256_k1: Vec<u8>})]
+#[graph_runtime_derive::generate_asc_type(sum{ed25519: Vec<u8>,secp256k1: Vec<u8>})]
 #[graph_runtime_derive::generate_network_type_id(Cosmos)]
-#[graph_runtime_derive::generate_from_rust_type(sum{ed25519: Vec<u8>,secp256_k1: Vec<u8>})]
+#[graph_runtime_derive::generate_from_rust_type(sum{ed25519: Vec<u8>,secp256k1: Vec<u8>})]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PublicKey {
     #[prost(oneof="public_key::Sum", tags="1, 2")]
@@ -297,7 +297,7 @@ pub mod public_key {
         #[prost(bytes, tag="1")]
         Ed25519(::prost::alloc::vec::Vec<u8>),
         #[prost(bytes, tag="2")]
-        Secp256K1(::prost::alloc::vec::Vec<u8>),
+        Secp256k1(::prost::alloc::vec::Vec<u8>),
     }
 }
 #[graph_runtime_derive::generate_asc_type()]

@@ -116,10 +116,10 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let fld_nm = f.ident.as_ref().unwrap();
             let var_nm = var.ident.clone();
 
-            use convert_case::{Case, Casing};
+            use heck::{ToUpperCamelCase, ToSnakeCase};
 
-            let varian_type_name = fld_nm.to_string().to_case(Case::Pascal);
-            let mod_name = item_struct.ident.to_string().to_case(Case::Snake);
+            let varian_type_name = fld_nm.to_string().to_upper_camel_case();
+            let mod_name = item_struct.ident.to_string().to_snake_case();
             let varian_type_name = format!("{}::{}::{}",mod_name, var_type_name, varian_type_name).parse::<proc_macro2::TokenStream>().unwrap();
 
             let setter =

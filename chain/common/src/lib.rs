@@ -105,8 +105,8 @@ impl From<&FieldDescriptorProto> for Field {
             if let Type::TYPE_BYTES = fd.type_() {
                 "Vec<u8>".to_owned()
             } else {
-                use convert_case::{Case, Casing};
-                fd.name().to_case(Case::Pascal)
+                use heck::ToUpperCamelCase;
+                fd.name().to_string().to_upper_camel_case()
             }
         };
 
