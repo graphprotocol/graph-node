@@ -181,7 +181,7 @@ mod test {
 
         assert_asc_bytes!(AscPublicKey {
             ed25519: new_asc_ptr(),
-            secp256_k1: new_asc_ptr(),
+            secp256k1: new_asc_ptr(),
         });
 
         assert_asc_bytes!(AscResponseBeginBlock {
