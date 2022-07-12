@@ -22,7 +22,6 @@ anyhow = "1.0"
 wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
-second-stack = "0.3.3"
 
 wasm-instrument = { version = "0.2.0", features = ["std", "sign_ext"] }
 

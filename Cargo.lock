@@ -1480,7 +1480,6 @@ dependencies = [
  "prost-types",
  "rand",
  "reqwest",
- "second-stack",
  "semver",
  "serde",
  "serde_derive",
@@ -1590,7 +1589,6 @@ dependencies = [
  "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
- "second-stack",
  "serde",
  "test-store",
  "tonic-build",
@@ -1735,7 +1733,6 @@ dependencies = [
  "lazy_static",
  "never",
  "parity-wasm",
- "second-stack",
  "semver",
  "strum",
  "strum_macros",
@@ -3586,12 +3583,6 @@ dependencies = [
  "ring",
  "untrusted",
 ]
-
-[[package]]
-name = "second-stack"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f4c110c6371f7ca1a06d3166b235c3237ac48a8c688196f5967091990f1e3f76"
 
 [[package]]
 name = "secp256k1"

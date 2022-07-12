@@ -10,7 +10,6 @@ use std::time::Instant;
 use anyhow::anyhow;
 use anyhow::Error;
 use never::Never;
-use second_stack::Stack;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
@@ -267,8 +266,6 @@ pub struct WasmInstanceContext<C: Blockchain> {
     pub deterministic_host_trap: bool,
 
     pub(crate) experimental_features: ExperimentalFeatures,
-
-    stack: Stack,
 }
 
 impl<C: Blockchain> WasmInstance<C> {
@@ -695,10 +692,6 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         }
     }
 
-    fn stack(&self) -> &Stack {
-        &self.stack
-    }
-
     fn api_version(&self) -> Version {
         self.ctx.host_exports.api_version.clone()
     }
@@ -769,7 +762,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
-            stack: Stack::new(),
         })
     }
 
@@ -826,7 +818,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
-            stack: Stack::new(),
         })
     }
 }

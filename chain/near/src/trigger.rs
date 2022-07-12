@@ -153,7 +153,6 @@ mod tests {
         runtime::gas::GasCounter,
         util::mem::init_slice,
     };
-    use second_stack::Stack;
 
     #[test]
     fn block_trigger_to_asc_ptr() {
@@ -424,7 +423,6 @@ mod tests {
 
     struct BytesHeap {
         api_version: graph::semver::Version,
-        stack: Stack,
         memory: Vec<u8>,
     }
 
@@ -433,7 +431,6 @@ mod tests {
             Self {
                 api_version,
                 memory: vec![],
-                stack: Stack::new(),
             }
         }
     }
@@ -452,10 +449,6 @@ mod tests {
             let mut data = [std::mem::MaybeUninit::<u8>::uninit(); 4];
             let init = self.read(offset, &mut data, gas)?;
             Ok(u32::from_le_bytes(init.try_into().unwrap()))
-        }
-
-        fn stack(&self) -> &Stack {
-            &self.stack
         }
 
         fn read<'a>(

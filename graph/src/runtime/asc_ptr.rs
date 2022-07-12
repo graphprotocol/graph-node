@@ -5,6 +5,7 @@ use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 
 /// The `rt_size` field contained in an AssemblyScript header has a size of 4 bytes.
 const SIZE_OF_RT_SIZE: u32 = 4;
@@ -64,10 +65,20 @@ impl<C: AscType> AscPtr<C> {
             _ => self.read_len(heap, gas),
         }?;
 
-        heap.stack().uninit_slice(len as usize, |buffer| {
+        let using_buffer = |buffer: &mut [MaybeUninit<u8>]| {
             let buffer = heap.read(self.0, buffer, gas)?;
             C::from_asc_bytes(buffer, &heap.api_version())
-        })
+        };
+
+        let len = len as usize;
+
+        if len <= 32 {
+            let mut buffer = [MaybeUninit::<u8>::uninit(); 32];
+            using_buffer(&mut buffer[..len])
+        } else {
+            let mut buffer = Vec::with_capacity(len);
+            using_buffer(buffer.spare_capacity_mut())
+        }
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
