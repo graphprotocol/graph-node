@@ -105,7 +105,7 @@ fi
 
 trap save_coredumps EXIT
 
-export PGAPPNAME="${node_id-$HOSTNAME}"
+export PGAPPNAME="${node_id:-$HOSTNAME}"
 
 # Set custom poll interval
 if [ -n "$ethereum_polling_interval" ]; then
