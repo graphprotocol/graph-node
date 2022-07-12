@@ -24,6 +24,7 @@ const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
 const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
 const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
+const FILE: &str = "{}";
 
 #[derive(Default, Debug, Clone)]
 struct TextResolver {
@@ -77,6 +78,7 @@ async fn resolve_manifest(text: &str) -> SubgraphManifest<graph_chain_ethereum::
     resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
     resolver.add("/ipfs/Qmabi", &ABI);
     resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
+    resolver.add("/ipfs/Qmfile", &FILE);
 
     let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
 
@@ -118,6 +120,36 @@ specVersion: 0.0.2
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
     assert!(manifest.graft.is_none());
+}
+
+#[tokio::test]
+async fn ipfs_manifest() {
+    const YAML: &str = "
+schema:
+  file:
+    /: /ipfs/Qmschema
+dataSources:
+  - name: IpfsSource
+    kind: file/ipfs
+    source:
+      file:
+        /: /ipfs/Qmfile
+    mapping:
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      handler: handleFile
+specVersion: 0.0.2
+";
+
+    let manifest = resolve_manifest(YAML).await;
+
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+    assert_eq!(manifest.offchain_data_sources.len(), 1);
+    assert_eq!(manifest.data_sources.len(), 0);
 }
 
 #[tokio::test]
