@@ -12,7 +12,7 @@ hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-semver = "1.0.10"
+semver = "1.0.12"
 lazy_static = "1.4"
 uuid = { version = "1.1.2", features = ["v4"] }
 strum = "0.21.0"

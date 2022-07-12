@@ -587,6 +587,27 @@ fn can_query_with_child_filter_on_list_type_field() {
 }
 
 #[test]
+fn can_query_with_child_filter_on_derived_list_type_field() {
+    const QUERY: &str = "
+    query {
+        musicians(first: 100, orderBy: id, where: { writtenSongs_: { title_contains: \"Rock\" } }) {
+            name
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "Lisa" },
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
 fn can_query_with_child_filter_on_named_type_field() {
     const QUERY: &str = "
     query {
@@ -602,6 +623,28 @@ fn can_query_with_child_filter_on_named_type_field() {
         let exp = object! {
             musicians: vec![
                 object! { name: "Tom", mainBand: object! { id: "b2"} }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_child_filter_on_derived_named_type_field() {
+    const QUERY: &str = "
+    query {
+        songs(first: 100, orderBy: id, where: { band_: { name_contains: \"The Musicians\" } }) {
+            title
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            songs: vec![
+                object! { title: "Cheesy Tune" },
+                object! { title: "Rock Tune" },
             ]
         };
 
