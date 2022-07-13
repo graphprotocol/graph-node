@@ -110,7 +110,7 @@ pub struct EnvVars {
     /// are enabled.
     pub allow_non_deterministic_fulltext_search: bool,
     /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
-    /// value is `0.0.5`.
+    /// value is `0.0.6`.
     pub max_spec_version: Version,
     /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
     pub disable_grafts: bool,
@@ -310,7 +310,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.5")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.6")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
     disable_grafts: EnvVarBoolean,
