@@ -1110,14 +1110,6 @@ impl<'a> Connection<'a> {
             return Ok(site);
         }
 
-        if src.schema_version != DeploymentSchemaVersion::LATEST {
-            return Err(StoreError::Unknown(anyhow!(
-                "Attempted to copy from deployment {} which is on an old schema version.
-                This means a schema migration is ongoing, please try again later.",
-                src.id
-            )));
-        }
-
         self.create_site(
             shard,
             src.deployment.clone(),

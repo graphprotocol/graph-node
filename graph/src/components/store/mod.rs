@@ -1047,7 +1047,7 @@ pub enum DeploymentSchemaVersion {
 
 impl DeploymentSchemaVersion {
     // Latest schema version supported by this version of graph node.
-    pub const LATEST: Self = Self::V0;
+    pub const LATEST: Self = Self::V1;
 
     pub fn private_data_sources(self) -> bool {
         use DeploymentSchemaVersion::*;
