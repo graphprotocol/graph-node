@@ -106,7 +106,7 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   value for both is unlimited.
 - `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
   operations per WebSocket connection. Any operation created after the limit
-  will return an error to the client. Default: unlimited.
+  will return an error to the client. Default: 1000.
 - `GRAPH_GRAPHQL_HTTP_PORT` : Port for the GraphQL HTTP server
 - `GRAPH_GRAPHQL_WS_PORT` : Port for the GraphQL WebSocket server
 - `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
