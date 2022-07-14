@@ -22,7 +22,7 @@ use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
 
 use graph::components::store::EntityCollection;
-use graph::components::subgraph::ProofOfIndexingFinisher;
+use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
@@ -892,7 +892,13 @@ impl DeploymentStore {
             })
             .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-        let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
+        // TODO: (Fast PoI) This should also support the Fast
+        // variant when indicated by the subgraph manifest.
+        // See also a0a79c0f-919f-4d97-a82a-439a1ff78230
+        let version = ProofOfIndexingVersion::Legacy;
+
+        let mut finisher =
+            ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer, version);
         for (name, region) in by_causality_region.drain() {
             finisher.add_causality_region(&name, &region);
         }

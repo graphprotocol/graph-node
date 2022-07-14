@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use semver::Version;
 
 use super::{
@@ -11,12 +13,14 @@ pub trait AscHeap {
     /// Allocate new space and write `bytes`, return the allocated address.
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
-    fn get(
+    fn read<'a>(
         &self,
         offset: u32,
-        size: u32,
+        buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
-    ) -> Result<Vec<u8>, DeterministicHostError>;
+    ) -> Result<&'a mut [u8], DeterministicHostError>;
+
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
     fn api_version(&self) -> Version;
 
@@ -60,18 +64,6 @@ where
     T::from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas)
 }
 
-pub fn try_asc_get<T, C, H: AscHeap + ?Sized>(
-    heap: &H,
-    asc_ptr: AscPtr<C>,
-    gas: &GasCounter,
-) -> Result<T, DeterministicHostError>
-where
-    C: AscType + AscIndexId,
-    T: TryFromAscObj<C>,
-{
-    T::try_from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas)
-}
-
 /// Type that can be converted to an Asc object of class `C`.
 pub trait ToAscObj<C: AscType> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
@@ -102,18 +94,8 @@ impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
 }
 
 /// Type that can be converted from an Asc object of class `C`.
-pub trait FromAscObj<C: AscType> {
+pub trait FromAscObj<C: AscType>: Sized {
     fn from_asc_obj<H: AscHeap + ?Sized>(
-        obj: C,
-        heap: &H,
-        gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError>
-    where
-        Self: Sized;
-}
-
-pub trait TryFromAscObj<C: AscType>: Sized {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
         obj: C,
         heap: &H,
         gas: &GasCounter,
