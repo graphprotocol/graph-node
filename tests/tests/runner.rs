@@ -42,7 +42,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     SubgraphAssignmentProvider::start(provider.as_ref(), ctx.deployment_locator.clone(), None)
         .await
-        .expect("unabel to start subgraph");
+        .expect("unable to start subgraph");
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;
