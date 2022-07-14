@@ -13,13 +13,10 @@ export function handleBlock(block: ethereum.Block): void {
     let example = new ExampleEntity("1234");
     example.save();
     assert(example.get("__typename") == null, "__typename should still be null");
-  // At Block 3, we load the merged Entity, which should bring
-  // the __typename field wrongly.
+  // At Block 3, we load the merged Entity, which should NOT bring
+  // the __typename field.
   } else if (block.number == BigInt.fromI32(3)) {
     let example = ExampleEntity.load("1234")!;
-    assert(
-      example.getString("__typename") == "ExampleEntity",
-      "wrong __typename: " + example.getString("__typename")
-    );
+    assert(example.get("__typename") == null, "__typename should still be null");
   }
 }

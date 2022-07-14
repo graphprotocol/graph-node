@@ -255,14 +255,13 @@ impl EntityCache {
 
         for (subgraph_id, keys) in missing_by_subgraph {
             for (entity_type, entities) in self.store.get_many(keys)? {
-                for entity in entities {
+                for mut entity in entities {
                     let key = EntityKey {
                         subgraph_id: subgraph_id.clone(),
                         entity_type: entity_type.clone(),
                         entity_id: entity.id().unwrap(),
                     };
-                    // FIXME: __typename should be removed here.
-                    // entity.remove("__typename");
+                    entity.remove("__typename");
                     self.current.insert(key, Some(entity));
                 }
             }
@@ -341,7 +340,6 @@ impl LfuCache<EntityKey, Option<Entity>> {
                 self.insert(key.clone(), entity.clone());
                 Ok(entity)
             }
-            // TODO: __typename is not being removed in this code path.
             Some(data) => Ok(data.to_owned()),
         }
     }
