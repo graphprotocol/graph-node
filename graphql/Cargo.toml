@@ -11,7 +11,7 @@ graphql-tools = "0.0.19"
 indexmap = "1.9"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
-once_cell = "1.12.1"
+once_cell = "1.13.0"
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 stable-hash = { version = "0.4.2"}
 defer = "0.1"
