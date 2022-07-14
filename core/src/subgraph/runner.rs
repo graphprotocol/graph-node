@@ -10,10 +10,7 @@ use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
-    subgraph::{
-        CausalityRegion, MappingError, ProofOfIndexing, ProofOfIndexingVersion,
-        SharedProofOfIndexing,
-    },
+    subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{
@@ -165,10 +162,7 @@ where
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
-                // TODO: (Fast PoI) This should also support the Fast
-                // variant when indicated by the subgraph manifest.
-                // See also a0a79c0f-919f-4d97-a82 a-439a1ff78230
-                ProofOfIndexingVersion::Legacy,
+                self.ctx.instance.poi_version.clone(),
             ))))
         } else {
             None
