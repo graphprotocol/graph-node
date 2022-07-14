@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `GRAPH_MAX_GAS_PER_HANDLER` is set to a very high value by default,
+  effectively disabling handler gas limits until the costs are better
+  benchmarked and refined.
 - Pipeline store writes #3084 #3177
 
 ## 0.26.0
