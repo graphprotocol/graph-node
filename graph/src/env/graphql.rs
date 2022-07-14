@@ -4,8 +4,10 @@ use super::*;
 
 #[derive(Clone)]
 pub struct EnvVarsGraphQl {
-    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
+    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. On by default.
     pub enable_validations: bool,
+    /// Set by the flag `SILENT_GRAPHQL_VALIDATIONS`. On by default.
+    pub silent_graphql_validations: bool,
     pub subscription_throttle_interval: Duration,
     /// This is the timeout duration for SQL queries.
     ///
@@ -95,6 +97,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
     fn from(x: InnerGraphQl) -> Self {
         Self {
             enable_validations: x.enable_validations.0,
+            silent_graphql_validations: x.silent_graphql_validations.0,
             subscription_throttle_interval: Duration::from_millis(
                 x.subscription_throttle_interval_in_ms,
             ),
@@ -131,8 +134,10 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
 
 #[derive(Clone, Debug, Envconfig)]
 pub struct InnerGraphQl {
-    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
+    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "true")]
     enable_validations: EnvVarBoolean,
+    #[envconfig(from = "SILENT_GRAPHQL_VALIDATIONS", default = "true")]
+    silent_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
     subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
