@@ -71,7 +71,7 @@ impl QueryStoreTrait for QueryStore {
         let subgraph_network = self.network_name();
         self.chain_store
             .block_number(block_hash)?
-            .map(|(network_name, number)| {
+            .map(|(network_name, number, _timestamp)| {
                 if network_name == subgraph_network {
                     Ok(number)
                 } else {

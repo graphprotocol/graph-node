@@ -4174,6 +4174,7 @@ dependencies = [
  "graphql-parser",
  "hex-literal",
  "lazy_static",
+ "serde",
 ]
 
 [[package]]

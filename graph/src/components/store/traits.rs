@@ -361,8 +361,14 @@ pub trait ChainStore: Send + Sync + 'static {
     /// may purge any other blocks with that number
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
 
-    /// Find the block with `block_hash` and return the network name and number
-    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError>;
+    /// Find the block with `block_hash` and return the network name, number and timestamp if present.
+    /// Currently, the timestamp is only returned if it's present in the top level block. This format is
+    /// depends on the chain and the implementation of Blockchain::Block for the specific chain.
+    /// eg: {"block": { "timestamp": 123123123 } }
+    fn block_number(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<(String, BlockNumber, Option<String>)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(

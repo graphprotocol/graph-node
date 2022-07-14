@@ -230,8 +230,8 @@ impl<S: Store> IndexNodeResolver<S> {
         let chain_store = chain.chain_store();
         let call_cache = chain.call_cache();
 
-        let block_number = match chain_store.block_number(&block_hash) {
-            Ok(Some((_, n))) => n,
+        let (block_number, timestamp) = match chain_store.block_number(&block_hash) {
+            Ok(Some((_, n, timestamp))) => (n, timestamp),
             Ok(None) => {
                 error!(
                     self.logger,
@@ -277,6 +277,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         block: object! {
                             hash: cached_call.block_ptr.hash.hash_hex(),
                             number: cached_call.block_ptr.number,
+                            timestamp: timestamp.clone(),
                         },
                         contractAddress: &cached_call.contract_address[..],
                         returnValue: &cached_call.return_value[..],
