@@ -261,6 +261,8 @@ impl EntityCache {
                         entity_type: entity_type.clone(),
                         entity_id: entity.id().unwrap(),
                     };
+                    // FIXME: __typename should be removed here.
+                    // entity.remove("__typename");
                     self.current.insert(key, Some(entity));
                 }
             }
@@ -339,6 +341,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
                 self.insert(key.clone(), entity.clone());
                 Ok(entity)
             }
+            // TODO: __typename is not being removed in this code path.
             Some(data) => Ok(data.to_owned()),
         }
     }
