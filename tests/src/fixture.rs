@@ -1,3 +1,6 @@
+pub mod ethereum;
+
+use std::marker::PhantomData;
 use std::process::Command;
 
 use crate::helpers::run_cmd;
@@ -14,14 +17,12 @@ use graph::blockchain::{
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::env::ENV_VARS;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
     async_trait, BlockNumber, DeploymentHash, LoggerFactory, MetricsRegistry, NodeId, SubgraphName,
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
-use graph_chain_ethereum::{self as ethereum, Chain};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -29,13 +30,15 @@ use graph_core::{
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
-use graph_store_postgres::SubgraphStore;
+use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use slog::Logger;
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::fs::read_to_string;
+
+const NODE_ID: &str = "default";
 
 pub async fn build_subgraph(dir: &str) -> DeploymentHash {
     // Test that IPFS is up.
@@ -89,15 +92,14 @@ pub struct TestContext {
     pub deployment_locator: DeploymentLocator,
 }
 
-pub async fn setup(
-    subgraph_name: SubgraphName,
-    hash: &DeploymentHash,
-    store_config_path: &str,
-    chain: Vec<BlockWithTriggers<Chain>>,
-) -> TestContext {
-    let logger = graph::log::logger(true);
-    let logger_factory = LoggerFactory::new(logger.clone(), None);
+pub struct Stores {
+    network_name: String,
+    chain_head_listener: Arc<ChainHeadUpdateListener>,
+    network_store: Arc<Store>,
+    chain_store: Arc<ChainStore>,
+}
 
+pub async fn stores(store_config_path: &str) -> Stores {
     let config = {
         let config = read_to_string(store_config_path).await.unwrap();
         let db_url = match std::env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL") {
@@ -112,65 +114,52 @@ pub async fn setup(
         Config::from_str(&config).expect("failed to create configuration")
     };
 
+    let logger = graph::log::logger(true);
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
-
-    let network_name: String = config.chains.chains.iter().next().unwrap().0.to_string();
-    let node_id = NodeId::new(&config.chains.ingestor).unwrap();
-
+    let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
 
-    let chain_head_update_listener = store_builder.chain_head_update_listener();
-
-    let start_block = chain[0].ptr();
+    let network_name: String = config.chains.chains.iter().next().unwrap().0.to_string();
+    let chain_head_listener = store_builder.chain_head_update_listener();
     let network_identifiers = vec![(
         network_name.clone(),
         (vec![ChainIdentifier {
             net_version: "".into(),
-            genesis_block_hash: start_block.hash.clone(),
+            genesis_block_hash: test_ptr(0).hash,
         }]),
     )];
     let network_store = store_builder.network_store(network_identifiers);
-
-    let subgraph_store = network_store.subgraph_store();
-
-    // Make sure we're starting from a clean state.
-    cleanup(&subgraph_store, &subgraph_name, hash);
-
     let chain_store = network_store
         .block_store()
         .chain_store(network_name.as_ref())
         .expect(format!("No chain store for {}", &network_name).as_ref());
 
-    // This is needed bacause the stream builder only works for firehose and this will only be called if there
-    // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
-    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(
-        FirehoseEndpoint::new(logger.clone(), "", "https://example.com", None, true)
-            .await
-            .expect("unable to create endpoint"),
-    )]
-    .into();
-
-    let chain = ethereum::Chain::new(
-        logger_factory.clone(),
-        network_name.clone(),
-        node_id.clone(),
-        mock_registry.clone(),
-        chain_store.cheap_clone(),
+    Stores {
+        network_name,
+        chain_head_listener,
+        network_store,
         chain_store,
-        firehose_endpoints,
-        ethereum::network::EthereumNetworkAdapters { adapters: vec![] },
-        chain_head_update_listener,
-        Arc::new(StaticStreamBuilder { chain }),
-        Arc::new(NoopAdapterSelector {}),
-        Arc::new(NoopRuntimeAdapter {}),
-        ethereum::ENV_VARS.reorg_threshold,
-        // We assume the tested chain is always ingestible for now
-        true,
-    );
+    }
+}
+
+pub async fn setup<C: Blockchain>(
+    subgraph_name: SubgraphName,
+    hash: &DeploymentHash,
+    stores: &Stores,
+    chain: C,
+) -> TestContext {
+    let logger = graph::log::logger(true);
+    let logger_factory = LoggerFactory::new(logger.clone(), None);
+    let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
+    let node_id = NodeId::new(NODE_ID).unwrap();
+
+    // Make sure we're starting from a clean state.
+    let subgraph_store = stores.network_store.subgraph_store();
+    cleanup(&subgraph_store, &subgraph_name, hash);
 
     let mut blockchain_map = BlockchainMap::new();
-    blockchain_map.insert(network_name.clone(), Arc::new(chain));
+    blockchain_map.insert(stores.network_name.clone(), Arc::new(chain));
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
@@ -335,39 +324,45 @@ where
     }
 }
 
-struct NoopRuntimeAdapter {}
+struct NoopRuntimeAdapter<C> {
+    x: PhantomData<C>,
+}
 
-impl RuntimeAdapter<Chain> for NoopRuntimeAdapter {
+impl<C: Blockchain> RuntimeAdapter<C> for NoopRuntimeAdapter<C> {
     fn host_fns(
         &self,
-        _ds: &<Chain as Blockchain>::DataSource,
+        _ds: &<C as Blockchain>::DataSource,
     ) -> Result<Vec<graph::blockchain::HostFn>, Error> {
         Ok(vec![])
     }
 }
 
-struct NoopAdapterSelector {}
+struct NoopAdapterSelector<C> {
+    x: PhantomData<C>,
+}
 
-impl TriggersAdapterSelector<Chain> for NoopAdapterSelector {
+impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,
-        _capabilities: &<graph_chain_ethereum::Chain as Blockchain>::NodeCapabilities,
+        _capabilities: &<C as Blockchain>::NodeCapabilities,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
-    ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<Chain>>, Error> {
-        Ok(Arc::new(NoopTriggersAdapter {}))
+    ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<C>>, Error> {
+        Ok(Arc::new(NoopTriggersAdapter { x: PhantomData }))
     }
 }
 
-struct NoopTriggersAdapter {}
+struct NoopTriggersAdapter<C> {
+    x: PhantomData<C>,
+}
 
 #[async_trait]
-impl TriggersAdapter<Chain> for NoopTriggersAdapter {
+impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
     async fn ancestor_block(
         &self,
         _ptr: BlockPtr,
         _offset: BlockNumber,
-    ) -> Result<Option<<graph_chain_ethereum::Chain as Blockchain>::Block>, Error> {
+    ) -> Result<Option<<C as Blockchain>::Block>, Error> {
         todo!()
     }
 
@@ -375,17 +370,17 @@ impl TriggersAdapter<Chain> for NoopTriggersAdapter {
         &self,
         _from: BlockNumber,
         _to: BlockNumber,
-        _filter: &<graph_chain_ethereum::Chain as Blockchain>::TriggerFilter,
-    ) -> Result<Vec<BlockWithTriggers<Chain>>, Error> {
+        _filter: &<C as Blockchain>::TriggerFilter,
+    ) -> Result<Vec<BlockWithTriggers<C>>, Error> {
         todo!()
     }
 
     async fn triggers_in_block(
         &self,
         _logger: &Logger,
-        block: <graph_chain_ethereum::Chain as Blockchain>::Block,
-        _filter: &<graph_chain_ethereum::Chain as Blockchain>::TriggerFilter,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        block: <C as Blockchain>::Block,
+        _filter: &<C as Blockchain>::TriggerFilter,
+    ) -> Result<BlockWithTriggers<C>, Error> {
         // Return no triggers on data source reprocessing.
         Ok(BlockWithTriggers::new(block, Vec::new()))
     }
