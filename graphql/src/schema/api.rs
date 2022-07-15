@@ -228,7 +228,7 @@ fn field_filter_input_values(
                 .get_named_type(name)
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
-                TypeDefinition::Object(_) => {
+                TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
                     let mut input_values = match ast::get_derived_from_directive(field) {
                         // Only add `where` filter fields for object and interface fields
                         // if they are not @derivedFrom
@@ -245,23 +245,6 @@ fn field_filter_input_values(
                     };
                     extend_with_child_filter_input_value(field, name, &mut input_values);
                     input_values
-                }
-                TypeDefinition::Interface(_) => {
-                    // Only add `where` filter fields for object and interface fields
-                    // if they are not @derivedFrom
-                    if ast::get_derived_from_directive(field).is_some() {
-                        vec![]
-                    } else {
-                        // We allow filtering with `where: { other: "some-id" }` and
-                        // `where: { others: ["some-id", "other-id"] }`. In both cases,
-                        // we allow ID strings as the values to be passed to these
-                        // filters.
-                        field_scalar_filter_input_values(
-                            schema,
-                            field,
-                            &ScalarType::new(String::from("String")),
-                        )
-                    }
                 }
                 TypeDefinition::Scalar(ref t) => field_scalar_filter_input_values(schema, field, t),
                 TypeDefinition::Enum(ref t) => field_enum_filter_input_values(schema, field, t),
@@ -381,11 +364,14 @@ fn field_list_filter_input_values(
                     )
                 }
             }
-            TypeDefinition::Interface(_) => {
+            TypeDefinition::Interface(parent) => {
                 if ast::get_derived_from_directive(field).is_some() {
-                    (None, None)
+                    (None, Some(parent.name.clone()))
                 } else {
-                    (Some(Type::NamedType("String".into())), None)
+                    (
+                        Some(Type::NamedType("String".into())),
+                        Some(parent.name.clone()),
+                    )
                 }
             }
             TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.to_owned())), None),
@@ -1174,6 +1160,7 @@ mod tests {
                 "name_ends_with_nocase",
                 "name_not_ends_with",
                 "name_not_ends_with_nocase",
+                "pets_",
                 "favoritePet",
                 "favoritePet_not",
                 "favoritePet_gt",
@@ -1194,6 +1181,7 @@ mod tests {
                 "favoritePet_ends_with_nocase",
                 "favoritePet_not_ends_with",
                 "favoritePet_not_ends_with_nocase",
+                "favoritePet_",
                 "_change_block"
             ]
             .iter()

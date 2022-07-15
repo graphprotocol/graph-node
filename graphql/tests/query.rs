@@ -42,6 +42,8 @@ use test_store::{
 const NETWORK_NAME: &str = "fake_network";
 const SONGS_STRING: [&str; 5] = ["s0", "s1", "s2", "s3", "s4"];
 const SONGS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
+const REVIEWS_STRING: [&str; 5] = ["r0", "r1", "r2", "r3", "r4"];
+const REVIEWS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
 
 #[derive(Clone, Copy, Debug)]
 enum IdType {
@@ -55,6 +57,13 @@ impl IdType {
         match self {
             IdType::String => SONGS_STRING.as_slice(),
             IdType::Bytes => SONGS_BYTES.as_slice(),
+        }
+    }
+
+    fn reviews(&self) -> &[&str] {
+        match self {
+            IdType::String => REVIEWS_STRING.as_slice(),
+            IdType::Bytes => REVIEWS_BYTES.as_slice(),
         }
     }
 
@@ -155,6 +164,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: ID!
         name: String!
         members: [Musician!]! @derivedFrom(field: \"bands\")
+        reviews: [BandReview] @derivedFrom(field: \"band\")
         originalSongs: [Song!]!
     }
 
@@ -164,6 +174,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         writtenBy: Musician!
         publisher: Publisher!
         band: Band @derivedFrom(field: \"originalSongs\")
+        reviews: [SongReview] @derivedFrom(field: \"song\")
     }
 
     type SongStat @entity {
@@ -174,6 +185,34 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
 
     type Publisher {
         id: Bytes!
+    }
+
+    interface Review {
+        id: ID!
+        body: String!
+        author: User!
+    }
+
+    type SongReview implements Review @entity {
+        id: ID!
+        body: String!
+        song: Song
+        author: User!
+    }
+
+    type BandReview implements Review @entity {
+        id: ID!
+        body: String!
+        band: Band
+        author: User!
+    }
+
+    type User @entity {
+        id: ID!
+        name: String!
+        bandReviews: [BandReview] @derivedFrom(field: \"author\")
+        songReviews: [SongReview] @derivedFrom(field: \"author\")
+        reviews: [Review] @derivedFrom(field: \"author\")
     }
     ";
 
@@ -200,6 +239,7 @@ async fn insert_test_entities(
         .unwrap();
 
     let s = id_type.songs();
+    let r = id_type.reviews();
     let entities0 = vec![
         entity! { __typename: "Musician", id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
         entity! { __typename: "Musician", id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
@@ -212,6 +252,12 @@ async fn insert_test_entities(
         entity! { __typename: "Song", id: s[4], title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3" },
         entity! { __typename: "SongStat", id: s[1], played: 10 },
         entity! { __typename: "SongStat", id: s[2], played: 15 },
+        entity! { __typename: "BandReview", id: r[1], body: "Bad musicians", band: "b1", author: "u1" },
+        entity! { __typename: "BandReview", id: r[2], body: "Good amateurs", band: "b2", author: "u2" },
+        entity! { __typename: "SongReview", id: r[3], body: "Bad", song: s[2], author: "u1" },
+        entity! { __typename: "SongReview", id: r[4], body: "Good", song: s[3], author: "u2" },
+        entity! { __typename: "User", id: "u1", name: "Baden" },
+        entity! { __typename: "User", id: "u2", name: "Goodwill"},
     ];
 
     let entities1 = vec![
@@ -653,6 +699,55 @@ fn can_query_with_child_filter_on_derived_named_type_field() {
             songs: vec![
                 object! { title: "Cheesy Tune" },
                 object! { title: "Rock Tune" },
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_an_interface_with_child_filter_on_named_type_field() {
+    const QUERY: &str = "
+    query {
+        reviews(first: 100, orderBy: id, where: { author_: { name_starts_with: \"Good\" } }) {
+            body
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            reviews: vec![
+                object! { body: "Good amateurs", author: object! { name: "Goodwill" } },
+                object! { body: "Good", author: object! { name: "Goodwill" } },
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_child_filter_on_interface_field() {
+    const QUERY: &str = "
+    query {
+        users(first: 100, orderBy: id, where: { reviews_: { body_starts_with: \"Good\" } }) {
+            name
+            reviews {
+                body
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            users: vec![
+                object! { name: "Goodwill", reviews: vec![ object! { body: "Good amateurs" }, object! { body: "Good" } ] },
             ]
         };
 

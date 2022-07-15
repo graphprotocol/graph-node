@@ -261,21 +261,40 @@ fn build_child_filter_from_object(
     let child_entity = schema
         .object_or_interface(type_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
-    let filter = build_filter_from_object(child_entity, object, schema)?;
+    let filter = Box::new(build_filter_from_object(child_entity, object, schema)?);
     let derived = field.is_derived();
+    let attr = match derived {
+        true => sast::get_derived_from_field(child_entity, field)
+            .ok_or(QueryExecutionError::InvalidFilterError)?
+            .name
+            .to_string(),
+        false => field_name,
+    };
 
-    Ok(EntityFilter::Child(Child {
-        attr: match derived {
-            true => sast::get_derived_from_field(child_entity, field)
-                .ok_or(QueryExecutionError::InvalidFilterError)?
-                .name
-                .to_string(),
-            false => field_name,
-        },
-        entity_type: EntityType::new(type_name.to_string()),
-        filter: Box::new(filter),
-        derived,
-    }))
+    if child_entity.is_interface() {
+        Ok(EntityFilter::Or(
+            child_entity
+                .object_types(schema.schema())
+                .expect("Interface is not implemented by any types")
+                .iter()
+                .map(|object_type| {
+                    EntityFilter::Child(Child {
+                        attr: attr.clone(),
+                        entity_type: EntityType::new(object_type.name.to_string()),
+                        filter: filter.clone(),
+                        derived,
+                    })
+                })
+                .collect(),
+        ))
+    } else {
+        Ok(EntityFilter::Child(Child {
+            attr,
+            entity_type: EntityType::new(type_name.to_string()),
+            filter,
+            derived,
+        }))
+    }
 }
 
 /// Parses a list of GraphQL values into a vector of entity field values.
