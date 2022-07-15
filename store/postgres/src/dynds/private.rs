@@ -1,14 +1,10 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
-
 use std::ops::Bound;
 
 use diesel::{
     pg::types::sql_types,
     sql_query,
     sql_types::{Binary, Integer, Jsonb, Nullable},
-    ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl,
+    PgConnection, QueryDsl, RunQueryDsl,
 };
 
 use graph::{
@@ -17,7 +13,7 @@ use graph::{
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
-use crate::{layout_for_tests::BlockRange, primary::Namespace};
+use crate::primary::Namespace;
 
 type DynTable = diesel_dynamic_schema::Table<String, Namespace>;
 type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
@@ -28,7 +24,7 @@ pub(crate) struct DataSourcesTable {
     qname: String,
     table: DynTable,
     block_range: DynColumn<sql_types::Range<Integer>>,
-    causality_region: DynColumn<Integer>,
+    _causality_region: DynColumn<Integer>,
     manifest_idx: DynColumn<Integer>,
     param: DynColumn<Nullable<Binary>>,
     context: DynColumn<Nullable<Jsonb>>,
@@ -45,7 +41,7 @@ impl DataSourcesTable {
             qname: format!("{}.{}", namespace, Self::TABLE_NAME),
             namespace,
             block_range: table.column("block_range"),
-            causality_region: table.column("causality_region"),
+            _causality_region: table.column("causality_region"),
             manifest_idx: table.column("manifest_idx"),
             param: table.column("param"),
             context: table.column("context"),
@@ -91,6 +87,7 @@ impl DataSourcesTable {
         let tuples = self
             .table
             .clone()
+            .filter(diesel::dsl::sql("block_range @> ").bind::<Integer, _>(block))
             .select((
                 &self.block_range,
                 &self.manifest_idx,
