@@ -8,7 +8,7 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName, SubgraphStore as _};
 use slog::{debug, info};
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("data-source-revert")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
@@ -77,7 +77,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn data_source_revert2() -> anyhow::Result<()> {
     let subgraph_name = SubgraphName::new("data-source-revert2")
         .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
