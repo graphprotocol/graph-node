@@ -160,7 +160,7 @@ fn field_type(fld: &syn::Field) -> String {
     }
 }
 
-//recurcive
+//recursive
 fn path_to_string(path: &syn::Path) -> String {
     if let Some(ps) = path.segments.last() {
         let nm = ps.ident.to_string();

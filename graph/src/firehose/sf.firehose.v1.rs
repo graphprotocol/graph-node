@@ -157,9 +157,9 @@ pub mod stream_client {
             &mut self,
             request: impl tonic::IntoRequest<super::Request>,
         ) -> Result<
-            tonic::Response<tonic::codec::Streaming<super::Response>>,
-            tonic::Status,
-        > {
+                tonic::Response<tonic::codec::Streaming<super::Response>>,
+                tonic::Status,
+            > {
             self.inner
                 .ready()
                 .await
