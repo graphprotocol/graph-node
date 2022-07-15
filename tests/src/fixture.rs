@@ -3,6 +3,7 @@ pub mod ethereum;
 use std::marker::PhantomData;
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::helpers::run_cmd;
 use anyhow::Error;
@@ -32,7 +33,7 @@ use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
-use slog::Logger;
+use slog::{info, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -240,6 +241,35 @@ pub fn cleanup(subgraph_store: &SubgraphStore, name: &SubgraphName, hash: &Deplo
     for locator in locators {
         subgraph_store.remove_deployment(locator.id.into()).unwrap();
     }
+}
+
+pub async fn wait_for_sync(
+    logger: &Logger,
+    store: &SubgraphStore,
+    hash: &DeploymentHash,
+    stop_block: BlockPtr,
+) -> Result<(), Error> {
+    loop {
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+
+        let block_ptr = match store.least_block_ptr(&hash).await {
+            Ok(Some(ptr)) => ptr,
+            res => {
+                info!(&logger, "{:?}", res);
+                continue;
+            }
+        };
+
+        if block_ptr == stop_block {
+            break;
+        }
+
+        if !store.is_healthy(&hash).await.unwrap() {
+            return Err(anyhow::anyhow!("subgraph failed unexpectedly"));
+        }
+    }
+
+    Ok(())
 }
 
 /// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the
