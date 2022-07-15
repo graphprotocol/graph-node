@@ -4,6 +4,7 @@
     "api-version-v0-0-4",
     "data-source-context",
     "data-source-revert",
+    "data-source-revert2",
     "fatal-error",
     "ganache-reverts",
     "host-exports",
