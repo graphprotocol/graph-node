@@ -11,7 +11,7 @@ those.
 ## JSON-RPC configuration for EVM chains
 
 - `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
-happens, subgraphs might process inconsistent data. Defaults to 250.
+  happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
   defaults to 500ms)
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
@@ -37,9 +37,9 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   so it can be low. This limit guards against scenarios such as requesting a
   block hash that has been reorged. Defaults to 10.
 - `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`:
-   The maximum number of concurrent requests made against Ethereum for
-   requesting transaction receipts during block ingestion.
-   Defaults to 1,000.
+  The maximum number of concurrent requests made against Ethereum for
+  requesting transaction receipts during block ingestion.
+  Defaults to 1,000.
 - `GRAPH_ETHEREUM_FETCH_TXN_RECEIPTS_IN_BATCHES`: Set to `true` to
   disable fetching receipts from the Ethereum node concurrently during
   block ingestion. This will use fewer, batched requests. This is always set to `true`
@@ -106,7 +106,7 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   value for both is unlimited.
 - `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`: maximum number of GraphQL
   operations per WebSocket connection. Any operation created after the limit
-  will return an error to the client. Default: unlimited.
+  will return an error to the client. Default: 1000.
 - `GRAPH_GRAPHQL_HTTP_PORT` : Port for the GraphQL HTTP server
 - `GRAPH_GRAPHQL_WS_PORT` : Port for the GraphQL WebSocket server
 - `GRAPH_SQL_STATEMENT_TIMEOUT`: the maximum number of seconds an
@@ -116,12 +116,17 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   mechanism that is used to trigger updates on GraphQL subscriptions. When
   this variable is set to any value, `graph-node` will still accept GraphQL
   subscriptions, but they won't receive any updates.
+- `ENABLE_GRAPHQL_VALIDATIONS`: enables GraphQL validations, based on the GraphQL specification.
+  This will validate and ensure every query executes follows the execution rules.
+- `SILENT_GRAPHQL_VALIDATIONS`: If `ENABLE_GRAPHQL_VALIDATIONS` is enabled, you are also able to just
+  silently print the GraphQL validation errors, without failing the actual query. Note: queries
+  might still fail as part of the later stage validations running, during GraphQL engine execution.
 
 ### GraphQL caching
 
 - `GRAPH_CACHED_SUBGRAPH_IDS`: when set to `*`, cache all subgraphs (default behavior). Otherwise, a comma-separated list of subgraphs for which to cache queries.
 - `GRAPH_QUERY_CACHE_BLOCKS`: How many recent blocks per network should be kept in the query cache. This should be kept small since the lookup time and the cache memory usage are proportional to this value. Set to 0 to disable the cache. Defaults to 1.
-- `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query cache, in MB. The total amount of memory used for caching will be twice this value - once for recent blocks, divided evenly among the `GRAPH_QUERY_CACHE_BLOCKS`, and once for frequent queries against older blocks.  The default is plenty for most loads, particularly if `GRAPH_QUERY_CACHE_BLOCKS` is kept small. Defaults to 1000, which corresponds to 1GB.
+- `GRAPH_QUERY_CACHE_MAX_MEM`: Maximum total memory to be used by the query cache, in MB. The total amount of memory used for caching will be twice this value - once for recent blocks, divided evenly among the `GRAPH_QUERY_CACHE_BLOCKS`, and once for frequent queries against older blocks. The default is plenty for most loads, particularly if `GRAPH_QUERY_CACHE_BLOCKS` is kept small. Defaults to 1000, which corresponds to 1GB.
 - `GRAPH_QUERY_CACHE_STALE_PERIOD`: Number of queries after which a cache entry can be considered stale. Defaults to 100.
 
 ## Miscellaneous
@@ -178,8 +183,8 @@ happens, subgraphs might process inconsistent data. Defaults to 250.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
-- `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set 
-  to `synced` to only switch a named subgraph to a new deployment once it 
+- `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set
+  to `synced` to only switch a named subgraph to a new deployment once it
   has synced, making the new deployment the "Pending" version.
 - `GRAPH_REMOVE_UNUSED_INTERVAL`: How long to wait before removing an
   unused deployment. The system periodically checks and marks deployments

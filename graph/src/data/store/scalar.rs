@@ -4,7 +4,7 @@ use diesel_derives::{AsExpression, FromSqlRow};
 use hex;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
-use stable_hash::utils::{AsBytes, AsInt};
+use stable_hash::utils::AsInt;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
 use thiserror::Error;
@@ -19,6 +19,7 @@ use std::str::FromStr;
 pub use num_bigint::Sign as BigIntSign;
 
 use crate::blockchain::BlockHash;
+use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 
 /// All operations on `BigDecimal` return a normalized value.
 // Caveat: The exponent is currently an i64 and may overflow. See
@@ -542,21 +543,7 @@ impl fmt::Debug for Bytes {
     }
 }
 
-impl stable_hash_legacy::StableHash for Bytes {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        stable_hash_legacy::utils::AsBytes(&self.0).stable_hash(sequence_number, state);
-    }
-}
-
-impl StableHash for Bytes {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        AsBytes(&self.0).stable_hash(field_address, state);
-    }
-}
+impl_stable_hash!(Bytes(transparent: AsBytes));
 
 impl Bytes {
     pub fn as_slice(&self) -> &[u8] {

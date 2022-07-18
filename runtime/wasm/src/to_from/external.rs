@@ -1,16 +1,11 @@
 use ethabi;
 
+use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{
-    asc_get, asc_new, try_asc_get, AscIndexId, AscPtr, AscType, AscValue, ToAscObj,
-};
+use graph::runtime::{asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, ToAscObj};
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
-use graph::{
-    prelude::{BigDecimal, BigInt},
-    runtime::TryFromAscObj,
-};
 
 use crate::asc_abi::class::*;
 
@@ -106,8 +101,8 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
     }
 }
 
-impl TryFromAscObj<AscBigDecimal> for BigDecimal {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
+impl FromAscObj<AscBigDecimal> for BigDecimal {
+    fn from_asc_obj<H: AscHeap + ?Sized>(
         big_decimal: AscBigDecimal,
         heap: &H,
         gas: &GasCounter,
@@ -238,8 +233,8 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     }
 }
 
-impl TryFromAscObj<AscEnum<StoreValueKind>> for store::Value {
-    fn try_from_asc_obj<H: AscHeap + ?Sized>(
+impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
+    fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_enum: AscEnum<StoreValueKind>,
         heap: &H,
         gas: &GasCounter,
@@ -255,12 +250,12 @@ impl TryFromAscObj<AscEnum<StoreValueKind>> for store::Value {
             StoreValueKind::Int => Value::Int(i32::from(payload)),
             StoreValueKind::BigDecimal => {
                 let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
-                Value::BigDecimal(try_asc_get(heap, ptr, gas)?)
+                Value::BigDecimal(asc_get(heap, ptr, gas)?)
             }
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
-                Value::List(try_asc_get(heap, ptr, gas)?)
+                Value::List(asc_get(heap, ptr, gas)?)
             }
             StoreValueKind::Null => Value::Null,
             StoreValueKind::Bytes => {

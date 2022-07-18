@@ -110,7 +110,7 @@ pub struct EnvVars {
     /// are enabled.
     pub allow_non_deterministic_fulltext_search: bool,
     /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
-    /// value is `0.0.5`.
+    /// value is `0.0.6`.
     pub max_spec_version: Version,
     /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
     pub disable_grafts: bool,
@@ -310,7 +310,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.5")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.6")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
     disable_grafts: EnvVarBoolean,
@@ -324,7 +324,12 @@ struct Inner {
     elastic_search_max_retries: usize,
     #[envconfig(from = "GRAPH_LOCK_CONTENTION_LOG_THRESHOLD_MS", default = "100")]
     lock_contention_log_threshold_in_ms: u64,
-    #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "")]
+
+    // For now this is set absurdly high by default because we've seen many cases of gas being
+    // overestimated and failing otherwise legit subgraphs. Once gas costs have been better
+    // benchmarked and adjusted, and out of gas has been made a deterministic error, this default
+    // should be removed and this should somehow be gated on `UNSAFE_CONFIG`.
+    #[envconfig(from = "GRAPH_MAX_GAS_PER_HANDLER", default = "1_000_000_000_000_000")]
     max_gas_per_handler:
         WithDefaultUsize<NoUnderscores<u64>, { CONST_MAX_GAS_PER_HANDLER as usize }>,
     #[envconfig(from = "GRAPH_LOG_QUERY_TIMING", default = "")]

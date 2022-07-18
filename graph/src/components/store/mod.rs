@@ -5,8 +5,6 @@ mod traits;
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
 use itertools::Itertools;
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
 pub use traits::*;
 
 use futures::stream::poll_fn;
@@ -26,6 +24,7 @@ use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::prelude::*;
+use crate::util::stable_hash_glue::impl_stable_hash;
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -110,46 +109,11 @@ pub struct EntityKey {
     pub entity_id: String,
 }
 
-impl stable_hash_legacy::StableHash for EntityKey {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let Self {
-            subgraph_id,
-            entity_type,
-            entity_id,
-        } = self;
-
-        stable_hash_legacy::StableHash::stable_hash(
-            subgraph_id,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(
-            &entity_type.as_str(),
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(entity_id, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for EntityKey {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let Self {
-            subgraph_id,
-            entity_type,
-            entity_id,
-        } = self;
-
-        subgraph_id.stable_hash(field_address.child(0), state);
-
-        stable_hash::StableHash::stable_hash(&entity_type.as_str(), field_address.child(1), state);
-        stable_hash::StableHash::stable_hash(entity_id, field_address.child(2), state);
-    }
-}
+impl_stable_hash!(EntityKey {
+    subgraph_id,
+    entity_type: EntityType::as_str,
+    entity_id
+});
 
 impl EntityKey {
     pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {

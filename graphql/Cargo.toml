@@ -8,12 +8,12 @@ crossbeam = "0.8"
 graph = { path = "../graph" }
 graphql-parser = "0.4.0"
 graphql-tools = "0.0.19"
-indexmap = "1.8"
+indexmap = "1.9"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
-stable-hash_legacy = { version = "0.3.2", package = "stable-hash" }
-stable-hash = { version = "0.4.1"}
-once_cell = "1.12.0"
+once_cell = "1.12.1"
+stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
+stable-hash = { version = "0.4.2"}
 defer = "0.1"
 parking_lot = "0.12"
 anyhow = "1.0"

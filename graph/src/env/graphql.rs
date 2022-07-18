@@ -4,8 +4,10 @@ use super::*;
 
 #[derive(Clone)]
 pub struct EnvVarsGraphQl {
-    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. Off by default.
+    /// Set by the flag `ENABLE_GRAPHQL_VALIDATIONS`. On by default.
     pub enable_validations: bool,
+    /// Set by the flag `SILENT_GRAPHQL_VALIDATIONS`. On by default.
+    pub silent_graphql_validations: bool,
     pub subscription_throttle_interval: Duration,
     /// This is the timeout duration for SQL queries.
     ///
@@ -79,9 +81,9 @@ pub struct EnvVarsGraphQl {
     /// Set by the environment variable `GRAPH_GRAPHQL_ERROR_RESULT_SIZE`. The
     /// default value is [`usize::MAX`].
     pub error_result_size: usize,
-    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`. No
-    /// default is provided.
-    pub max_operations_per_connection: Option<usize>,
+    /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`.
+    /// Defaults to 1000.
+    pub max_operations_per_connection: usize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -95,6 +97,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
     fn from(x: InnerGraphQl) -> Self {
         Self {
             enable_validations: x.enable_validations.0,
+            silent_graphql_validations: x.silent_graphql_validations.0,
             subscription_throttle_interval: Duration::from_millis(
                 x.subscription_throttle_interval_in_ms,
             ),
@@ -131,8 +134,10 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
 
 #[derive(Clone, Debug, Envconfig)]
 pub struct InnerGraphQl {
-    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
+    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "true")]
     enable_validations: EnvVarBoolean,
+    #[envconfig(from = "SILENT_GRAPHQL_VALIDATIONS", default = "true")]
+    silent_graphql_validations: EnvVarBoolean,
     #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
     subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
@@ -166,6 +171,6 @@ pub struct InnerGraphQl {
     warn_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_ERROR_RESULT_SIZE", default = "")]
     error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
-    #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION")]
-    max_operations_per_connection: Option<usize>,
+    #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION", default = "1000")]
+    max_operations_per_connection: usize,
 }

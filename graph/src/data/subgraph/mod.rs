@@ -63,8 +63,6 @@ where
         .map(Some)
 }
 
-// Note: This has a StableHash impl. Do not modify fields without a backward
-// compatible change to the StableHash impl (below)
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -77,13 +75,15 @@ impl stable_hash_legacy::StableHash for DeploymentHash {
         mut sequence_number: H::Seq,
         state: &mut H,
     ) {
-        stable_hash_legacy::StableHash::stable_hash(&self.0, sequence_number.next_child(), state);
+        let Self(inner) = self;
+        stable_hash_legacy::StableHash::stable_hash(inner, sequence_number.next_child(), state);
     }
 }
 
 impl StableHash for DeploymentHash {
     fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        stable_hash::StableHash::stable_hash(&self.0, field_address.child(0), state);
+        let Self(inner) = self;
+        stable_hash::StableHash::stable_hash(inner, field_address.child(0), state);
     }
 }
 

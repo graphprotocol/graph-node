@@ -585,9 +585,6 @@ where
     }
 }
 
-// Note: Do not modify fields without making a backward compatible change to the
-//  StableHash impl (below) An entity is represented as a map of attribute names
-//  to values.
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
@@ -600,13 +597,15 @@ impl stable_hash_legacy::StableHash for Entity {
         state: &mut H,
     ) {
         use stable_hash_legacy::SequenceNumber;
-        stable_hash_legacy::StableHash::stable_hash(&self.0, sequence_number.next_child(), state);
+        let Self(inner) = self;
+        stable_hash_legacy::StableHash::stable_hash(inner, sequence_number.next_child(), state);
     }
 }
 
 impl StableHash for Entity {
     fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        StableHash::stable_hash(&self.0, field_address.child(0), state);
+        let Self(inner) = self;
+        StableHash::stable_hash(inner, field_address.child(0), state);
     }
 }
 

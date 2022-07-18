@@ -27,14 +27,14 @@ num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.13.1"
 num-traits = "0.2.15"
 rand = "0.8.4"
-semver = { version = "1.0.10", features = ["serde"] }
+semver = { version = "1.0.12", features = ["serde"] }
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_yaml = "0.8"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
-stable-hash_legacy = { version = "0.3.2", package = "stable-hash" }
-stable-hash = { version = "0.4.1"}
+stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
+stable-hash = { version = "0.4.2"}
 strum = "0.21.0"
 strum_macros = "0.21.1"
 slog-async = "2.5.0"

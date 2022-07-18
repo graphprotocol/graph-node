@@ -5,7 +5,7 @@ use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem::size_of;
+use std::mem::MaybeUninit;
 
 /// The `rt_size` field contained in an AssemblyScript header has a size of 4 bytes.
 const SIZE_OF_RT_SIZE: u32 = 4;
@@ -59,11 +59,26 @@ impl<C: AscType> AscPtr<C> {
         gas: &GasCounter,
     ) -> Result<C, DeterministicHostError> {
         let len = match heap.api_version() {
+            // TODO: The version check here conflicts with the comment on C::asc_size,
+            // which states "Only used for version <= 0.0.3."
             version if version <= Version::new(0, 0, 4) => C::asc_size(self, heap, gas),
             _ => self.read_len(heap, gas),
         }?;
-        let bytes = heap.get(self.0, len, gas)?;
-        C::from_asc_bytes(&bytes, &heap.api_version())
+
+        let using_buffer = |buffer: &mut [MaybeUninit<u8>]| {
+            let buffer = heap.read(self.0, buffer, gas)?;
+            C::from_asc_bytes(buffer, &heap.api_version())
+        };
+
+        let len = len as usize;
+
+        if len <= 32 {
+            let mut buffer = [MaybeUninit::<u8>::uninit(); 32];
+            using_buffer(&mut buffer[..len])
+        } else {
+            let mut buffer = Vec::with_capacity(len);
+            using_buffer(buffer.spare_capacity_mut())
+        }
     }
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
@@ -112,10 +127,7 @@ impl<C: AscType> AscPtr<C> {
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
-        let raw_bytes = heap.get(self.0, size_of::<u32>() as u32, gas)?;
-        let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
-        u32_bytes.copy_from_slice(&raw_bytes);
-        Ok(u32::from_le_bytes(u32_bytes))
+        heap.read_u32(self.0, gas)
     }
 
     /// Helper that generates an AssemblyScript header.
@@ -177,10 +189,8 @@ impl<C: AscType> AscPtr<C> {
                 self.0
             ))
         })?;
-        let raw_bytes = heap.get(start_of_rt_size, size_of::<u32>() as u32, gas)?;
-        let mut u32_bytes: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
-        u32_bytes.copy_from_slice(&raw_bytes);
-        Ok(u32::from_le_bytes(u32_bytes))
+
+        heap.read_u32(start_of_rt_size, gas)
     }
 
     /// Conversion to `u64` for use with `AscEnum`.

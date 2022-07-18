@@ -15,7 +15,9 @@ use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
-use graph::prelude::{info, o, q, r, s, BlockNumber, CheapClone, Logger, TryFromValue, ENV_VARS};
+use graph::prelude::{
+    info, o, q, r, s, warn, BlockNumber, CheapClone, Logger, TryFromValue, ENV_VARS,
+};
 
 use crate::execution::ast as a;
 use crate::query::{ast as qast, ext::BlockConstraint};
@@ -152,12 +154,25 @@ impl Query {
             validate(schema.document(), &query.document, &GRAPHQL_VALIDATION_PLAN);
 
         if !validation_errors.is_empty() {
-            return Err(validation_errors
-                .into_iter()
-                .map(|e| {
-                    QueryExecutionError::ValidationError(e.locations.first().cloned(), e.message)
-                })
-                .collect());
+            if !ENV_VARS.graphql.silent_graphql_validations {
+                return Err(validation_errors
+                    .into_iter()
+                    .map(|e| {
+                        QueryExecutionError::ValidationError(
+                            e.locations.first().cloned(),
+                            e.message,
+                        )
+                    })
+                    .collect());
+            } else {
+                warn!(
+                  &logger,
+                  "GraphQL Validation failure";
+                  "query" => &query.query_text,
+                  "variables" => &query.variables_text,
+                  "errors" => format!("[{:?}]", validation_errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join(", "))
+                );
+            }
         }
 
         let mut operation = None;
