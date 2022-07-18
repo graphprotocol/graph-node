@@ -15,7 +15,10 @@ use graph::{
     cheap_clone::CheapClone,
     components::{
         server::index_node::VersionInfo,
-        store::{self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, SubgraphFork},
+        store::{
+            self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
+            EnsLookup as EnsLookupTrait, SubgraphFork,
+        },
     },
     constraint_violation,
     data::query::QueryTarget,
@@ -495,6 +498,12 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
+        let graft_base = deployment
+            .graft_base
+            .as_ref()
+            .map(|base| self.layout(base))
+            .transpose()?;
+
         let (site, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
@@ -507,18 +516,16 @@ impl SubgraphStoreInner {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
+            let schema_version = match &graft_base {
+                None => DeploymentSchemaVersion::LATEST,
+                Some(src_layout) => src_layout.site.schema_version,
+            };
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard, &schema.id, network_name)?;
+            let site = conn.allocate_site(shard, &schema.id, network_name, schema_version)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
         };
         let site = Arc::new(site);
-
-        let graft_base = deployment
-            .graft_base
-            .as_ref()
-            .map(|base| self.layout(base))
-            .transpose()?;
 
         if let Some(graft_base) = &graft_base {
             self.primary_conn()?

@@ -1087,12 +1087,12 @@ impl<'a> Connection<'a> {
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
+        schema_version: DeploymentSchemaVersion,
     ) -> Result<Site, StoreError> {
         if let Some(site) = queries::find_active_site(self.conn.as_ref(), subgraph)? {
             return Ok(site);
         }
 
-        let schema_version = DeploymentSchemaVersion::LATEST;
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }
 

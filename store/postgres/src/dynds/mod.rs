@@ -52,13 +52,6 @@ pub(crate) fn copy(
     dst: &Site,
     target_block: BlockNumber,
 ) -> Result<usize, StoreError> {
-    if src.schema_version != dst.schema_version {
-        return Err(StoreError::ConstraintViolation(format!(
-            "attempted to copy between different schema versions, \
-             source version is {} but destination version is {}",
-            src.schema_version, dst.schema_version
-        )));
-    }
     match src.schema_version.private_data_sources() {
         true => DataSourcesTable::new(src.namespace.clone()).copy_to(
             conn,
