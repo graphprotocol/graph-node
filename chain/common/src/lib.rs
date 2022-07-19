@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Error;
+use protobuf::descriptor::field_descriptor_proto::Label;
 use protobuf::descriptor::field_descriptor_proto::Type;
 use protobuf::descriptor::DescriptorProto;
 use protobuf::descriptor::FieldDescriptorProto;
@@ -19,6 +20,7 @@ pub struct Field {
     pub type_name: String,
     pub required: bool,
     pub is_enum: bool,
+    pub is_array: bool,
     pub fields: Vec<Field>,
 }
 
@@ -119,6 +121,7 @@ impl From<&FieldDescriptorProto> for Field {
                 .find(|f| f.0 == REQUIRED_ID && UnknownValueRef::Varint(1) == f.1)
                 .is_some(),
             is_enum: false,
+            is_array: Label::LABEL_REPEATED == fd.label(),
             fields: vec![],
         }
     }
@@ -131,6 +134,7 @@ impl From<&OneofDescriptorProto> for Field {
             type_name: "".to_owned(),
             required: false,
             is_enum: true,
+            is_array: false,
             fields: vec![],
         }
     }

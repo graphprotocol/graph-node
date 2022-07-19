@@ -47,7 +47,6 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
     let name = item_struct.ident.clone();
     let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
-    let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
 
     //generate enum fields validator
     let enum_validation = enum_fields.iter().map(|f|{
@@ -168,32 +167,6 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             }
         } // -------- end of mod
 
-        pub struct #asc_name_array(pub  graph_runtime_wasm::asc_abi::class::Array<graph::runtime::AscPtr<#asc_name>>);
-
-        impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {
-            fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
-                &self,
-                heap: &mut H,
-                gas: &graph::runtime::gas::GasCounter,
-            ) -> Result<#asc_name_array, graph::runtime::DeterministicHostError> {
-                let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
-
-                Ok(#asc_name_array(graph_runtime_wasm::asc_abi::class::Array::new(&content?, heap, gas)?))
-            }
-        }
-
-        impl graph::runtime::AscType for #asc_name_array {
-            fn to_asc_bytes(&self) -> Result<Vec<u8>, graph::runtime::DeterministicHostError> {
-                self.0.to_asc_bytes()
-            }
-
-            fn from_asc_bytes(
-                asc_obj: &[u8],
-                api_version: &graph::semver::Version,
-            ) -> Result<Self, graph::runtime::DeterministicHostError> {
-                Ok(Self(graph_runtime_wasm::asc_abi::class::Array::from_asc_bytes(asc_obj, api_version)?))
-            }
-        }
 
     };
 

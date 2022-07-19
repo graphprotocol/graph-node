@@ -13,8 +13,6 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         Ident::new(&format!("Asc{}", name.to_string()), Span::call_site())
     };
 
-    let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
-
     let no_asc_name = if name.to_string().to_uppercase().starts_with("ASC") {
         name.to_string()[3..].to_owned()
     } else {
@@ -45,10 +43,6 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         .parse::<proc_macro2::TokenStream>()
         .unwrap();
 
-    let index_asc_type_id_array = format!("{}{}Array", args[0], no_asc_name)
-        .parse::<proc_macro2::TokenStream>()
-        .unwrap();
-
     let expanded = quote! {
         #item_struct
 
@@ -56,18 +50,6 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         impl graph::runtime::AscIndexId for #asc_name {
             const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::#index_asc_type_id ;
         }
-
-        #[automatically_derived]
-        impl graph::runtime::AscIndexId for #asc_name_array {
-            const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::#index_asc_type_id_array ;
-        }
-
-        // #[automatically_derived]
-        // impl graph::runtime::AscIndexId for #asc_name_array {
-        //     const INDEX_ASC_TYPE_ID: graph::runtime::IndexForAscTypeId = graph::runtime::IndexForAscTypeId::CosmosMyBlock ;
-
-        // }
-
     };
 
     expanded.into()

@@ -112,6 +112,12 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
     }
 }
 
+mod generate_array_type;
+#[proc_macro_attribute]
+pub fn generate_array_type(args: TokenStream, input: TokenStream) -> TokenStream {
+    generate_array_type::generate_array_type(args, input)
+}
+
 // Example input:
 // #[repr(C)]
 // #[derive(AscType)]

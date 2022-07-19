@@ -3,6 +3,24 @@ const PROTO_FILE: &str = "tests/resources/acme.proto";
 use graph_chain_common::*;
 
 #[test]
+fn check_repeated_type_ok() {
+    let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
+
+    let array_types = types
+        .iter()
+        .flat_map(|(_, t)| t.fields.iter())
+        .filter(|t| t.is_array)
+        .map(|t| t.type_name.clone())
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut array_types = array_types.into_iter().collect::<Vec<String>>();
+    array_types.sort();
+
+    assert_eq!(3, array_types.len());
+    assert_eq!(array_types, vec!["Attribute", "Event", "Transaction"]);
+}
+
+#[test]
 fn check_type_count_ok() {
     let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
     assert_eq!(7, types.len());
