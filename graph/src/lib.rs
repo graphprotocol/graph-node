@@ -20,6 +20,8 @@ pub mod ipfs_client;
 
 pub mod blockchain;
 
+pub mod offchain;
+
 pub mod runtime;
 
 pub mod firehose;
