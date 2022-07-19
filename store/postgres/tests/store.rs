@@ -473,7 +473,6 @@ fn update_existing() {
             _ => unreachable!(),
         };
 
-        new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
     })
