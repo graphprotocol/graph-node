@@ -655,26 +655,32 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Inject the IPFS hash as the ID of the subgraph into the definition.
         raw.insert("id".into(), id.to_string().into());
 
-        // Separate offchain data sources (where `kind` starts with "file").
-        let data_sources: Vec<serde_yaml::Value> = raw
-            .remove(&serde_yaml::Value::from("dataSources"))
-            .and_then(|mut v| v.as_sequence_mut().map(take))
-            .unwrap_or_default();
-        let mut onchain_data_sources = Vec::new();
-        let mut offchain_data_sources = Vec::new();
-        for data_source in data_sources {
-            let kind = data_source
-                .get(&serde_yaml::Value::from("kind"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if kind.starts_with("file") {
-                offchain_data_sources.push(data_source);
-            } else {
-                onchain_data_sources.push(data_source);
+        let spec_version = raw
+            .get(&"specVersion".into())
+            .and_then(|v| v.as_str()?.parse::<Version>().ok());
+
+        if spec_version >= Some(SPEC_VERSION_0_0_7) {
+            // Separate offchain data sources (where `kind` starts with "file").
+            let data_sources: Vec<serde_yaml::Value> = raw
+                .remove(&serde_yaml::Value::from("dataSources"))
+                .and_then(|mut v| v.as_sequence_mut().map(take))
+                .unwrap_or_default();
+            let mut onchain_data_sources = Vec::new();
+            let mut offchain_data_sources = Vec::new();
+            for data_source in data_sources {
+                let kind = data_source
+                    .get(&serde_yaml::Value::from("kind"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if kind.starts_with("file") {
+                    offchain_data_sources.push(data_source);
+                } else {
+                    onchain_data_sources.push(data_source);
+                }
             }
+            raw.insert("dataSources".into(), onchain_data_sources.into());
+            raw.insert("offchainDataSources".into(), offchain_data_sources.into());
         }
-        raw.insert("dataSources".into(), onchain_data_sources.into());
-        raw.insert("offchainDataSources".into(), offchain_data_sources.into());
 
         // Parse the YAML data into an UnresolvedSubgraphManifest
         let unresolved: UnresolvedSubgraphManifest<C> = serde_yaml::from_value(raw.into())?;
