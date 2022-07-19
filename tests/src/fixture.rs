@@ -48,7 +48,13 @@ pub async fn build_subgraph(dir: &str) -> DeploymentHash {
         .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Make sure dependencies are present.
-    run_cmd(Command::new("yarn").current_dir("./integration-tests"));
+    run_cmd(
+        Command::new("yarn")
+            .arg("install")
+            .arg("--mutex")
+            .arg("file:.yarn-mutex")
+            .current_dir("./integration-tests"),
+    );
 
     // Run codegen.
     run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
