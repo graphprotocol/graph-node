@@ -2027,6 +2027,37 @@ fn parse_timestamp() {
 }
 
 #[test]
+/// checks if retrieving the timestamp from the data blob works.
+/// on ethereum, the block has timestamp as U256 so it will always have a value
+fn parse_null_timestamp() {
+    run_test(|store, _, _| async move {
+        use block_store::*;
+        // The test subgraph is at block 2. Since we don't ever delete
+        // the genesis block, the only block eligible for cleanup is BLOCK_ONE
+        // and the first retained block is block 2.
+        block_store::set_chain(
+            vec![
+                &*GENESIS_BLOCK,
+                &*BLOCK_ONE,
+                &*BLOCK_TWO,
+                &*BLOCK_THREE_NO_TIMESTAMP,
+            ],
+            NETWORK_NAME,
+        );
+        let chain_store = store
+            .block_store()
+            .chain_store(NETWORK_NAME)
+            .expect("fake chain store");
+
+        let (_network, number, timestamp) = chain_store
+            .block_number(&BLOCK_THREE_NO_TIMESTAMP.block_hash())
+            .expect("block_number to return correct number and timestamp")
+            .unwrap();
+        assert_eq!(number, 3);
+        assert_eq!(true, timestamp.is_none());
+    })
+}
+#[test]
 fn reorg_tracking() {
     async fn update_john(
         store: &Arc<DieselSubgraphStore>,

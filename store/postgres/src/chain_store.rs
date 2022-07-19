@@ -606,14 +606,14 @@ mod data {
                     b::table
                         .select((b::number, sql(TIMESTAMP_QUERY)))
                         .filter(b::hash.eq(format!("{:x}", hash)))
-                        .first::<(i64, String)>(conn)
+                        .first::<(i64, Option<String>)>(conn)
                         .optional()?
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
                     .select((blocks.number(), sql(TIMESTAMP_QUERY)))
                     .filter(blocks.hash().eq(hash.as_slice()))
-                    .first::<(i64, String)>(conn)
+                    .first::<(i64, Option<String>)>(conn)
                     .optional()?,
             };
 
@@ -622,7 +622,7 @@ mod data {
                 Some((number, ts)) => {
                     let number = BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
-                    Ok(Some((number, Some(ts))))
+                    Ok(Some((number, ts)))
                 }
             }
         }

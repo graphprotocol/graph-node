@@ -415,6 +415,14 @@ pub trait QueryStore: Send + Sync {
 
     fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError>;
 
+    /// Returns the blocknumber as well as the timestamp. Timestamp depends on the chain block type
+    /// and can have multiple formats, it can also not be prevent. For now this is only available
+    /// for EVM chains both firehose and rpc.
+    fn block_number_with_timestamp(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<(BlockNumber, Option<String>)>, StoreError>;
+
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 
     async fn has_deterministic_errors(&self, block: BlockNumber) -> Result<bool, StoreError>;
