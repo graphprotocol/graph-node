@@ -156,9 +156,6 @@ pub trait WritableStore: Send + Sync + 'static {
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
     async fn block_cursor(&self) -> FirehoseCursor;
 
-    /// Deletes the current Firehose `cursor` this deployment is currently at.
-    async fn delete_block_cursor(&self) -> Result<(), StoreError>;
-
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 

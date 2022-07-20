@@ -385,19 +385,6 @@ pub fn forward_block_ptr(
     }
 }
 
-pub fn delete_subgraph_firehose_cursor(
-    conn: &PgConnection,
-    site: Arc<Site>,
-) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
-    update(d::table.filter(d::deployment.eq(site.deployment.as_str())))
-        .set(d::firehose_cursor.eq::<Option<&str>>(None))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
-}
-
 pub fn get_subgraph_firehose_cursor(
     conn: &PgConnection,
     site: Arc<Site>,

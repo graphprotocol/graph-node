@@ -164,12 +164,6 @@ impl SyncStore {
             .map(FirehoseCursor::from)
     }
 
-    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
-        self.writable
-            .delete_block_cursor(self.site.cheap_clone())
-            .await
-    }
-
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
@@ -927,12 +921,6 @@ impl WritableStoreTrait for WritableStore {
 
     async fn block_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
-    }
-
-    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
-        self.store.delete_block_cursor().await?;
-        *self.block_cursor.lock().unwrap() = FirehoseCursor::None;
-        Ok(())
     }
 
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {

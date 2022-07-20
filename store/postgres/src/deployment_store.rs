@@ -799,17 +799,6 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) async fn delete_block_cursor(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let site = site.cheap_clone();
-
-        self.with_conn(|conn, cancel| {
-            cancel.check_cancel()?;
-
-            deployment::delete_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
-        })
-        .await
-    }
-
     pub(crate) async fn supports_proof_of_indexing<'a>(
         &self,
         site: Arc<Site>,
