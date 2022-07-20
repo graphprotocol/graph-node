@@ -6,7 +6,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
-use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
+use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
@@ -138,7 +138,7 @@ where
         &mut self,
         block_stream_cancel_handle: &CancelHandle,
         block: BlockWithTriggers<C>,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<Action, BlockProcessingError> {
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
@@ -555,13 +555,13 @@ trait StreamEventHandler<C: Blockchain> {
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
     ) -> Result<Action, Error>;
     async fn handle_err(
         &mut self,
@@ -579,7 +579,7 @@ where
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let block_ptr = block.ptr();
@@ -613,9 +613,7 @@ where
 
         let start = Instant::now();
 
-        let res = self
-            .process_block(&cancel_handle, block, cursor.into())
-            .await;
+        let res = self.process_block(&cancel_handle, block, cursor).await;
 
         let elapsed = start.elapsed().as_secs_f64();
         self.metrics
@@ -779,7 +777,7 @@ where
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
     ) -> Result<Action, Error> {
         // Current deployment head in the database / WritableAgent Mutex cache.
         //
@@ -796,7 +794,7 @@ where
         if let Err(e) = self
             .inputs
             .store
-            .revert_block_operations(revert_to_ptr, cursor.as_deref())
+            .revert_block_operations(revert_to_ptr, cursor)
             .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
