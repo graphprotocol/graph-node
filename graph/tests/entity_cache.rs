@@ -70,7 +70,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         _: &BlockPtr,
         _: &BlockPtr,

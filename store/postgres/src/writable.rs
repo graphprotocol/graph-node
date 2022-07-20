@@ -957,7 +957,7 @@ impl WritableStoreTrait for WritableStore {
         self.writer.revert(block_ptr_to, firehose_cursor).await
     }
 
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
@@ -967,7 +967,8 @@ impl WritableStoreTrait for WritableStore {
             .unfail_deterministic_error(current_ptr, parent_ptr)?;
 
         if let UnfailOutcome::Unfailed = outcome {
-            *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+            *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
+            *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
         }
 
         Ok(outcome)
