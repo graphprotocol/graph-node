@@ -13,7 +13,6 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     schema::{DeploymentCreate, SubgraphManifestEntity},
     SubgraphFeature,
@@ -22,6 +21,7 @@ use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
+use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
 use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
 use std::{str::FromStr, sync::Arc};
@@ -279,7 +279,7 @@ pub fn transact_block(
     conn: &PgConnection,
     site: &Site,
     ptr: &BlockPtr,
-    firehose_cursor: Option<&str>,
+    firehose_cursor: &FirehoseCursor,
     full_count_query: &str,
     count: i32,
 ) -> Result<(), StoreError> {
@@ -296,15 +296,6 @@ pub fn transact_block(
         entity_count_sql(full_count_query, count)
     };
 
-    // Treat a cursor of "" as null; not absolutely necessary for
-    // correctness since the firehose treats both as the same, but makes it
-    // a little clearer.
-    let firehose_cursor = if firehose_cursor == Some("") {
-        None
-    } else {
-        firehose_cursor
-    };
-
     let row_count = update(
         d::table.filter(d::id.eq(site.id)).filter(
             // Asserts that the processing direction is forward.
@@ -316,7 +307,7 @@ pub fn transact_block(
     .set((
         d::latest_ethereum_block_number.eq(sql(&number)),
         d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
-        d::firehose_cursor.eq(firehose_cursor),
+        d::firehose_cursor.eq(firehose_cursor.as_ref()),
         d::entity_count.eq(sql(&count_sql)),
         d::current_reorg_depth.eq(0),
     ))
@@ -394,19 +385,6 @@ pub fn forward_block_ptr(
     }
 }
 
-pub fn delete_subgraph_firehose_cursor(
-    conn: &PgConnection,
-    site: Arc<Site>,
-) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
-    update(d::table.filter(d::deployment.eq(site.deployment.as_str())))
-        .set(d::firehose_cursor.eq::<Option<&str>>(None))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
-}
-
 pub fn get_subgraph_firehose_cursor(
     conn: &PgConnection,
     site: Arc<Site>,
@@ -421,24 +399,11 @@ pub fn get_subgraph_firehose_cursor(
     res
 }
 
-pub fn update_firehose_cursor(
-    conn: &PgConnection,
-    id: &DeploymentHash,
-    cursor: &str,
-) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
-    update(d::table.filter(d::deployment.eq(id.as_str())))
-        .set(d::firehose_cursor.eq(cursor))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
-}
-
 pub fn revert_block_ptr(
     conn: &PgConnection,
     id: &DeploymentHash,
     ptr: BlockPtr,
+    firehose_cursor: &FirehoseCursor,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -449,6 +414,7 @@ pub fn revert_block_ptr(
         .set((
             d::latest_ethereum_block_number.eq(sql(&number)),
             d::latest_ethereum_block_hash.eq(ptr.hash_slice()),
+            d::firehose_cursor.eq(firehose_cursor.as_ref()),
             d::reorg_count.eq(d::reorg_count + 1),
             d::current_reorg_depth.eq(d::current_reorg_depth + 1),
             d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),

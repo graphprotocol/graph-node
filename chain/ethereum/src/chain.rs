@@ -55,7 +55,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<<Chain as Blockchain>::TriggerFilter>,
@@ -277,7 +277,7 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -623,7 +623,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::ProcessBlock(
                     block_with_triggers,
-                    FirehoseCursor::Some(response.cursor.clone()),
+                    FirehoseCursor::from(response.cursor.clone()),
                 ))
             }
 
@@ -634,7 +634,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     parent_ptr,
-                    FirehoseCursor::Some(response.cursor.clone()),
+                    FirehoseCursor::from(response.cursor.clone()),
                 ))
             }
 

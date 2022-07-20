@@ -8,7 +8,7 @@ use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
@@ -243,7 +243,7 @@ where
         &self,
         _chain: &C,
         _deployment: DeploymentLocator,
-        _block_cursor: Option<String>,
+        _block_cursor: FirehoseCursor,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
         current_block: Option<graph::blockchain::BlockPtr>,
         _filter: Arc<C::TriggerFilter>,
@@ -308,7 +308,7 @@ where
                 current_ptr = Some(block.ptr());
                 current_parent_ptr = block.parent_ptr();
                 blocks_iter.next(); // Block consumed, advance the iterator.
-                yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), None));
+                yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), FirehoseCursor::None));
             } else {
                 let revert_to = current_parent_ptr.unwrap();
                 current_ptr = Some(revert_to.clone());
@@ -318,7 +318,7 @@ where
                     .unwrap()
                     .block
                     .parent_ptr();
-                yield Ok(BlockStreamEvent::Revert(revert_to, None));
+                yield Ok(BlockStreamEvent::Revert(revert_to, FirehoseCursor::None));
             }
         }
     }

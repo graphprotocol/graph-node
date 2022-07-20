@@ -30,7 +30,7 @@ use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
 };
-use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder};
+use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor};
 
 pub struct NearStreamBuilder {}
 
@@ -40,7 +40,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<<Chain as Blockchain>::TriggerFilter>,
@@ -161,7 +161,7 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -354,7 +354,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         match step {
             StepNew => Ok(BlockStreamEvent::ProcessBlock(
                 adapter.triggers_in_block(logger, block, filter).await?,
-                Some(response.cursor.clone()),
+                FirehoseCursor::from(response.cursor.clone()),
             )),
 
             StepUndo => {
@@ -365,7 +365,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     parent_ptr,
-                    Some(response.cursor.clone()),
+                    FirehoseCursor::from(response.cursor.clone()),
                 ))
             }
 
