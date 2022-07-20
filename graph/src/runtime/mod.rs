@@ -333,8 +333,8 @@ pub enum IndexForAscTypeId {
 
     // Continue to add more Cosmos type IDs here.
     // e.g.:
-    // NextCosmosType = 1598,
-    // AnotherCosmosType = 1599,
+    // NextCosmosType = 1562,
+    // AnotherCosmosType = 1563,
     // ...
     // LastCosmosType = 2499,
 
