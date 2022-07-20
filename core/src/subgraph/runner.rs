@@ -81,7 +81,8 @@ where
                 let _outcome = self
                     .inputs
                     .store
-                    .unfail_deterministic_error(&current_ptr, &parent_ptr).await?;
+                    .unfail_deterministic_error(&current_ptr, &parent_ptr)
+                    .await?;
             }
         }
 
