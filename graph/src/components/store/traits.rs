@@ -173,7 +173,7 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
