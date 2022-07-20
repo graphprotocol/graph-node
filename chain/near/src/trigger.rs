@@ -5,11 +5,7 @@ use graph::cheap_clone::CheapClone;
 use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
-use graph::runtime::asc_new;
-use graph::runtime::gas::GasCounter;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -155,6 +151,7 @@ mod tests {
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::gas::GasCounter,
+        util::mem::init_slice,
     };
 
     #[test]
@@ -448,12 +445,18 @@ mod tests {
             Ok((self.memory.len() - bytes.len()) as u32)
         }
 
-        fn get(
+        fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+            let mut data = [std::mem::MaybeUninit::<u8>::uninit(); 4];
+            let init = self.read(offset, &mut data, gas)?;
+            Ok(u32::from_le_bytes(init.try_into().unwrap()))
+        }
+
+        fn read<'a>(
             &self,
             offset: u32,
-            size: u32,
+            buffer: &'a mut [std::mem::MaybeUninit<u8>],
             _gas: &GasCounter,
-        ) -> Result<Vec<u8>, DeterministicHostError> {
+        ) -> Result<&'a mut [u8], DeterministicHostError> {
             let memory_byte_count = self.memory.len();
             if memory_byte_count == 0 {
                 return Err(DeterministicHostError::from(anyhow!(
@@ -462,7 +465,7 @@ mod tests {
             }
 
             let start_offset = offset as usize;
-            let end_offset_exclusive = start_offset + size as usize;
+            let end_offset_exclusive = start_offset + buffer.len();
 
             if start_offset >= memory_byte_count {
                 return Err(DeterministicHostError::from(anyhow!(
@@ -480,7 +483,9 @@ mod tests {
                 )));
             }
 
-            return Ok(Vec::from(&self.memory[start_offset..end_offset_exclusive]));
+            let src = &self.memory[start_offset..end_offset_exclusive];
+
+            Ok(init_slice(src, buffer))
         }
 
         fn api_version(&self) -> graph::semver::Version {

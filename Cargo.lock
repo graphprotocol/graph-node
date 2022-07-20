@@ -1490,8 +1490,8 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "stable-hash 0.3.2",
- "stable-hash 0.4.1",
+ "stable-hash 0.3.3",
+ "stable-hash 0.4.2",
  "structopt",
  "strum",
  "strum_macros",
@@ -1653,8 +1653,8 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "pretty_assertions 1.2.1",
- "stable-hash 0.3.2",
- "stable-hash 0.4.1",
+ "stable-hash 0.3.3",
+ "stable-hash 0.4.2",
  "test-store",
 ]
 
@@ -1860,7 +1860,7 @@ dependencies = [
  "postgres-openssl",
  "rand",
  "serde",
- "stable-hash 0.3.2",
+ "stable-hash 0.3.3",
  "test-store",
  "uuid 1.1.2",
 ]
@@ -2676,9 +2676,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.12.1"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac8b1a9b2518dc799a2271eff1688707eb315f0d4697aa6b0871369ca4c4da55"
+checksum = "18a6dbe30758c9f83eb00cbea4ac95966305f5a7772f3f42ebfc7fc7eddbd8e1"
 
 [[package]]
 name = "opaque-debug"
@@ -2688,9 +2688,9 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
-version = "0.10.40"
+version = "0.10.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb81a6430ac911acb25fe5ac8f1d2af1b4ea8a4fdfda0f1ee4292af2e2d8eb0e"
+checksum = "618febf65336490dfcf20b73f885f5651a0c89c64c2d4a8c3662585a70bf5bd0"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
@@ -2720,9 +2720,9 @@ checksum = "28988d872ab76095a6e6ac88d99b54fd267702734fd7ffe610ca27f533ddb95a"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.73"
+version = "0.9.75"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d5fd19fb3e0a8191c1e34935718976a3e70c112ab9a24af6d7cadccd9d90bc0"
+checksum = "e5f9bd0c2710541a3cda73d6f9ac4f1b240de4ae261065d309dbe73d9dceb42f"
 dependencies = [
  "autocfg",
  "cc",
@@ -3964,9 +3964,9 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2dfeb73d08f4ae1f48059f31f53a3768fad3dc54622631e0a3eff1d07a4ca19"
+checksum = "10196e68950ed99c0d2db7a30ffaf4dfe0bbf2f9af2ae0457ee8ad396e0a2dd7"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.4.6",
@@ -3978,9 +3978,9 @@ dependencies = [
 
 [[package]]
 name = "stable-hash"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442fcfd15605146b373dafa4bea8368e98d9b51350e5da5a44ab2923c5ac3ca8"
+checksum = "af75bd21beb162eab69de76abbb803d4111735ead00d5086dcc6f4ddb3b53cc9"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.5.0",

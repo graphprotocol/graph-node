@@ -9,8 +9,7 @@ mod asc_heap;
 mod asc_ptr;
 
 pub use asc_heap::{
-    asc_get, asc_new, asc_new_or_missing, asc_new_or_null, try_asc_get, AscHeap, FromAscObj,
-    ToAscObj, TryFromAscObj,
+    asc_get, asc_new, asc_new_or_missing, asc_new_or_null, AscHeap, FromAscObj, ToAscObj,
 };
 pub use asc_ptr::AscPtr;
 

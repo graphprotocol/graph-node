@@ -239,15 +239,25 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<(Schema, bool), StoreE
 pub fn manifest_info(
     conn: &PgConnection,
     site: &Site,
-) -> Result<(Schema, Option<String>, Option<String>), StoreError> {
+) -> Result<(Schema, Option<String>, Option<String>, String), StoreError> {
     use subgraph_manifest as sm;
-    let (s, description, repository): (String, Option<String>, Option<String>) = sm::table
-        .select((sm::schema, sm::description, sm::repository))
+    let (s, description, repository, spec_version): (
+        String,
+        Option<String>,
+        Option<String>,
+        String,
+    ) = sm::table
+        .select((
+            sm::schema,
+            sm::description,
+            sm::repository,
+            sm::spec_version,
+        ))
         .filter(sm::id.eq(site.id))
         .first(conn)?;
     Schema::parse(s.as_str(), site.deployment.clone())
         .map_err(|e| StoreError::Unknown(e))
-        .map(|schema| (schema, description, repository))
+        .map(|schema| (schema, description, repository, spec_version))
 }
 
 #[allow(dead_code)]

@@ -162,6 +162,7 @@ where
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
+                self.ctx.instance.poi_version.clone(),
             ))))
         } else {
             None

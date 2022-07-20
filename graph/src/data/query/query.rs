@@ -143,7 +143,9 @@ impl Query {
     pub fn new(document: q::Document, variables: Option<QueryVariables>) -> Self {
         let shape_hash = shape_hash(&document);
 
-        let (query_text, variables_text) = if ENV_VARS.log_gql_timing() {
+        let (query_text, variables_text) = if ENV_VARS.log_gql_timing()
+            || (ENV_VARS.graphql.enable_validations && ENV_VARS.graphql.silent_graphql_validations)
+        {
             (
                 document
                     .format(graphql_parser::Style::default().indent(0))

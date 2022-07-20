@@ -285,7 +285,11 @@ impl EthereumAdapter {
             );
         }
 
-        let step_size = ENV_VARS.trace_stream_step_size;
+        // Go one block at a time if requesting all traces, to not overload the RPC.
+        let step_size = match addresses.is_empty() {
+            false => ENV_VARS.trace_stream_step_size,
+            true => 1,
+        };
 
         let eth = self.clone();
         let logger = logger.to_owned();
@@ -697,7 +701,7 @@ impl EthereumAdapter {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
         let eth = self.clone();
 
-        let addresses: Vec<H160> = call_filter
+        let mut addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()
             .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
@@ -710,6 +714,12 @@ impl EthereumAdapter {
             // The filter has no started data sources in the requested range, nothing to do.
             // This prevents an expensive call to `trace_filter` with empty `addresses`.
             return Box::new(stream::empty());
+        }
+
+        if addresses.len() > 100 {
+            // If the address list is large, request all traces, this avoids generating huge
+            // requests and potentially getting 413 errors.
+            addresses = vec![];
         }
 
         Box::new(

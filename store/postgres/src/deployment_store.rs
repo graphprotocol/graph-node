@@ -5,11 +5,12 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::components::store::{EntityType, StoredDynamicDataSource};
-use graph::data::subgraph::status;
+use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
+use graph::semver::Version;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::borrow::Cow;
@@ -18,11 +19,12 @@ use std::convert::Into;
 use std::iter::FromIterator;
 use std::ops::Bound;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
 
 use graph::components::store::EntityCollection;
-use graph::components::subgraph::ProofOfIndexingFinisher;
+use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
@@ -71,6 +73,7 @@ pub(crate) struct SubgraphInfo {
     pub(crate) debug_fork: Option<DeploymentHash>,
     pub(crate) description: Option<String>,
     pub(crate) repository: Option<String>,
+    pub(crate) poi_version: ProofOfIndexingVersion,
 }
 
 pub struct StoreInner {
@@ -539,7 +542,8 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository) = deployment::manifest_info(conn, site)?;
+        let (input_schema, description, repository, spec_version) =
+            deployment::manifest_info(conn, site)?;
 
         let graft_block =
             deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
@@ -553,6 +557,13 @@ impl DeploymentStore {
             api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
         schema.add_subgraph_id_directives(site.deployment.clone());
 
+        let spec_version = Version::from_str(&spec_version).map_err(anyhow::Error::from)?;
+        let poi_version = if spec_version.ge(&SPEC_VERSION_0_0_6) {
+            ProofOfIndexingVersion::Fast
+        } else {
+            ProofOfIndexingVersion::Legacy
+        };
+
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(ApiSchema::from_api_schema(schema)?),
@@ -560,6 +571,7 @@ impl DeploymentStore {
             debug_fork,
             description,
             repository,
+            poi_version,
         };
 
         // Insert the schema into the cache.
@@ -819,6 +831,7 @@ impl DeploymentStore {
         let indexer = *indexer;
         let site3 = site.cheap_clone();
         let site4 = site.cheap_clone();
+        let site5 = site.cheap_clone();
         let store = self.cheap_clone();
         let block2 = block.cheap_clone();
 
@@ -892,7 +905,14 @@ impl DeploymentStore {
             })
             .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-        let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
+        let info = self.subgraph_info(&site5).map_err(anyhow::Error::from)?;
+
+        let mut finisher = ProofOfIndexingFinisher::new(
+            &block2,
+            &site3.deployment,
+            &indexer,
+            info.poi_version.clone(),
+        );
         for (name, region) in by_causality_region.drain() {
             finisher.add_causality_region(&name, &region);
         }

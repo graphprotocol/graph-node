@@ -1,4 +1,6 @@
 use futures01::sync::mpsc::Sender;
+use graph::components::subgraph::ProofOfIndexingVersion;
+use graph::data::subgraph::SPEC_VERSION_0_0_6;
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -18,6 +20,7 @@ use super::metrics::SubgraphInstanceMetrics;
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
+    pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
 
     /// Runtime hosts, one for each data source mapping.
@@ -45,12 +48,19 @@ where
         let network = manifest.network_name();
         let templates = Arc::new(manifest.templates);
 
+        let poi_version = if manifest.spec_version.ge(&SPEC_VERSION_0_0_6) {
+            ProofOfIndexingVersion::Fast
+        } else {
+            ProofOfIndexingVersion::Legacy
+        };
+
         let mut this = SubgraphInstance {
             host_builder,
             subgraph_id,
             network,
             hosts: Vec::new(),
             module_cache: HashMap::new(),
+            poi_version,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
