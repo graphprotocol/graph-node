@@ -22,26 +22,34 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::TriggerProcessor;
+
 const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
-    ctx: IndexingContext<T, C>,
+pub struct SubgraphRunner<C, T, TP>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
+{
+    ctx: IndexingContext<C, T, TP>,
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     metrics: RunnerMetrics,
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     pub fn new(
         inputs: IndexingInputs<C>,
-        ctx: IndexingContext<T, C>,
+        ctx: IndexingContext<C, T, TP>,
         logger: Logger,
         metrics: RunnerMetrics,
     ) -> Self {
@@ -518,10 +526,11 @@ where
     }
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_stream_event(
         &mut self,
@@ -575,10 +584,11 @@ trait StreamEventHandler<C: Blockchain> {
 }
 
 #[async_trait]
-impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
+impl<C, T, TP> StreamEventHandler<C> for SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_process_block(
         &mut self,

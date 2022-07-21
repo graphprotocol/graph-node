@@ -249,7 +249,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             subgraph_store.ens_lookup(),
         );
 
-        let trigger_processor = Box::new(SubgraphTriggerProcessor {});
+        let trigger_processor = SubgraphTriggerProcessor {};
 
         let features = manifest.features.clone();
         let unified_api_version = manifest.unified_mapping_api_version()?;
