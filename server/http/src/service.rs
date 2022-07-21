@@ -44,7 +44,7 @@ impl GraphQLServiceMetrics {
             .new_histogram_vec(
                 "query_parsing_time",
                 "Parsing time for GraphQL queries",
-                vec![String::from("deployment"), String::from("status")],
+                vec![String::from("deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `query_parsing_time` histogram");
@@ -53,7 +53,7 @@ impl GraphQLServiceMetrics {
             .new_histogram_vec(
                 "query_validation_time",
                 "Validation time for GraphQL queries",
-                vec![String::from("deployment"), String::from("status")],
+                vec![String::from("deployment")],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `query_validation_time` histogram");
