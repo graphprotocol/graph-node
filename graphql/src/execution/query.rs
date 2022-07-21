@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
@@ -135,6 +135,9 @@ pub struct Query {
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     pub query_id: String,
+
+    /// Used only for metrics
+    pub validation_time: Duration,
 }
 
 impl Query {
@@ -150,8 +153,11 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
+        let validation_phase_start = Instant::now();
         let validation_errors =
             validate(schema.document(), &query.document, &GRAPHQL_VALIDATION_PLAN);
+
+        let validation_time = validation_phase_start.elapsed();
 
         if !validation_errors.is_empty() {
             if !ENV_VARS.graphql.silent_graphql_validations {
@@ -253,6 +259,7 @@ impl Query {
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
             query_id,
+            validation_time,
         };
 
         Ok(Arc::new(query))

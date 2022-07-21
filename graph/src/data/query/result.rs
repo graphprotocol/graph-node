@@ -9,6 +9,7 @@ use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;
 use std::sync::Arc;
+use std::time::Duration;
 
 fn serialize_data<S>(data: &Option<Data>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -45,12 +46,14 @@ pub type Data = Object;
 /// A collection of query results that is serialized as a single result.
 pub struct QueryResults {
     results: Vec<Arc<QueryResult>>,
+    pub validation_time: Option<Duration>,
 }
 
 impl QueryResults {
     pub fn empty() -> Self {
         QueryResults {
             results: Vec::new(),
+            validation_time: None,
         }
     }
 
@@ -71,6 +74,10 @@ impl QueryResults {
             .iter()
             .filter_map(|result| result.deployment.as_ref())
             .next()
+    }
+
+    pub fn set_validation_time(&mut self, duration: Duration) -> () {
+        self.validation_time = Some(duration);
     }
 }
 
@@ -129,6 +136,7 @@ impl From<Data> for QueryResults {
     fn from(x: Data) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            validation_time: None,
         }
     }
 }
@@ -137,13 +145,17 @@ impl From<QueryResult> for QueryResults {
     fn from(x: QueryResult) -> Self {
         QueryResults {
             results: vec![Arc::new(x)],
+            validation_time: None,
         }
     }
 }
 
 impl From<Arc<QueryResult>> for QueryResults {
     fn from(x: Arc<QueryResult>) -> Self {
-        QueryResults { results: vec![x] }
+        QueryResults {
+            results: vec![x],
+            validation_time: None,
+        }
     }
 }
 
@@ -151,6 +163,7 @@ impl From<QueryExecutionError> for QueryResults {
     fn from(x: QueryExecutionError) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            validation_time: None,
         }
     }
 }
@@ -159,6 +172,7 @@ impl From<Vec<QueryExecutionError>> for QueryResults {
     fn from(x: Vec<QueryExecutionError>) -> Self {
         QueryResults {
             results: vec![Arc::new(x.into())],
+            validation_time: None,
         }
     }
 }
@@ -199,6 +213,8 @@ pub struct QueryResult {
     errors: Vec<QueryError>,
     #[serde(skip_serializing)]
     pub deployment: Option<DeploymentHash>,
+    #[serde(skip_serializing)]
+    pub validation_time: Option<Duration>,
 }
 
 impl QueryResult {
@@ -207,6 +223,7 @@ impl QueryResult {
             data: Some(data),
             errors: Vec::new(),
             deployment: None,
+            validation_time: None,
         }
     }
 
@@ -219,6 +236,7 @@ impl QueryResult {
             data: self.data.clone(),
             errors: self.errors.clone(),
             deployment: self.deployment.clone(),
+            validation_time: self.validation_time.clone(),
         }
     }
 
@@ -274,6 +292,7 @@ impl From<QueryExecutionError> for QueryResult {
             data: None,
             errors: vec![e.into()],
             deployment: None,
+            validation_time: None,
         }
     }
 }
@@ -284,6 +303,7 @@ impl From<QueryError> for QueryResult {
             data: None,
             errors: vec![e],
             deployment: None,
+            validation_time: None,
         }
     }
 }
@@ -294,6 +314,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
             data: None,
             errors: e.into_iter().map(QueryError::from).collect(),
             deployment: None,
+            validation_time: None,
         }
     }
 }

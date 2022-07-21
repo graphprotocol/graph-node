@@ -20,6 +20,8 @@ use crate::request::parse_graphql_request;
 
 pub struct GraphQLServiceMetrics {
     query_execution_time: Box<HistogramVec>,
+    query_parsing_time: Box<HistogramVec>,
+    query_validation_time: Box<HistogramVec>,
 }
 
 impl fmt::Debug for GraphQLServiceMetrics {
@@ -38,13 +40,32 @@ impl GraphQLServiceMetrics {
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `query_execution_time` histogram");
+        let query_parsing_time = registry
+            .new_histogram_vec(
+                "query_parsing_time",
+                "Parsing time for GraphQL queries",
+                vec![String::from("deployment"), String::from("status")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `query_parsing_time` histogram");
+
+        let query_validation_time = registry
+            .new_histogram_vec(
+                "query_validation_time",
+                "Validation time for GraphQL queries",
+                vec![String::from("deployment"), String::from("status")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `query_validation_time` histogram");
 
         Self {
             query_execution_time,
+            query_parsing_time,
+            query_validation_time,
         }
     }
 
-    pub fn observe_query(&self, duration: Duration, results: &QueryResults) {
+    pub fn observe_query_execution(&self, duration: Duration, results: &QueryResults) {
         let id = results
             .deployment_hash()
             .map(|h| h.as_str())
@@ -62,6 +83,38 @@ impl GraphQLServiceMetrics {
         };
         self.query_execution_time
             .with_label_values(&[id, status])
+            .observe(duration.as_secs_f64());
+    }
+
+    pub fn observe_query_parsing(&self, duration: Duration, results: &QueryResults) {
+        let id = results
+            .deployment_hash()
+            .map(|h| h.as_str())
+            .unwrap_or_else(|| {
+                if results.not_found() {
+                    "notfound"
+                } else {
+                    "unknown"
+                }
+            });
+        self.query_parsing_time
+            .with_label_values(&[id])
+            .observe(duration.as_secs_f64());
+    }
+
+    pub fn observe_query_validation(&self, duration: Duration, results: &QueryResults) {
+        let id = results
+            .deployment_hash()
+            .map(|h| h.as_str())
+            .unwrap_or_else(|| {
+                if results.not_found() {
+                    "notfound"
+                } else {
+                    "unknown"
+                }
+            });
+        self.query_validation_time
+            .with_label_values(&[id])
             .observe(duration.as_secs_f64());
     }
 }
@@ -189,6 +242,7 @@ where
             .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
             .await?;
         let query = parse_graphql_request(&body);
+        let query_parsing_time = start.elapsed();
 
         let result = match query {
             Ok(query) => service.graphql_runner.run_query(query, target).await,
@@ -196,7 +250,11 @@ where
             Err(e) => return Err(e),
         };
 
-        service_metrics.observe_query(start.elapsed(), &result);
+        service_metrics.observe_query_parsing(query_parsing_time, &result);
+        if let Some(query_validation_time) = result.validation_time {
+            service_metrics.observe_query_validation(query_validation_time, &result);
+        }
+        service_metrics.observe_query_execution(start.elapsed(), &result);
 
         Ok(result.as_http_response())
     }

@@ -187,6 +187,8 @@ where
         let mut max_block = 0;
         let mut result: QueryResults = QueryResults::empty();
 
+        result.set_validation_time(query.validation_time);
+
         // Note: This will always iterate at least once.
         for (bc, (selection_set, error_policy)) in by_block_constraint {
             let resolver = StoreResolver::at_block(
