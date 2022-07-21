@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use hyper::service::make_service_fn;
 use hyper::Server;
 
-use crate::service::{GraphQLService, GraphQLServiceMetrics};
+use crate::service::GraphQLService;
 use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 use thiserror::Error;
 
@@ -23,19 +23,13 @@ impl From<hyper::Error> for GraphQLServeError {
 /// A GraphQL server based on Hyper.
 pub struct GraphQLServer<Q> {
     logger: Logger,
-    metrics: Arc<GraphQLServiceMetrics>,
     graphql_runner: Arc<Q>,
     node_id: NodeId,
 }
 
 impl<Q> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
-    pub fn new(
-        logger_factory: &LoggerFactory,
-        metrics_registry: Arc<dyn MetricsRegistry>,
-        graphql_runner: Arc<Q>,
-        node_id: NodeId,
-    ) -> Self {
+    pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, node_id: NodeId) -> Self {
         let logger = logger_factory.component_logger(
             "GraphQLServer",
             Some(ComponentLoggerConfig {
@@ -44,10 +38,8 @@ impl<Q> GraphQLServer<Q> {
                 }),
             }),
         );
-        let metrics = Arc::new(GraphQLServiceMetrics::new(metrics_registry));
         GraphQLServer {
             logger,
-            metrics,
             graphql_runner,
             node_id,
         }
@@ -78,12 +70,10 @@ where
         // incoming queries to the query sink.
         let logger_for_service = self.logger.clone();
         let graphql_runner = self.graphql_runner.clone();
-        let metrics = self.metrics.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
             futures03::future::ok::<_, Error>(GraphQLService::new(
                 logger_for_service.clone(),
-                metrics.clone(),
                 graphql_runner.clone(),
                 ws_port,
                 node_id.clone(),

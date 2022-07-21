@@ -22,6 +22,14 @@ use crate::explorer::Explorer;
 use crate::resolver::IndexNodeResolver;
 use crate::schema::SCHEMA;
 
+struct NoopGraphQLMetrics;
+
+impl GraphQLMetrics for NoopGraphQLMetrics {
+    fn observe_query_execution(&self, _duration: Duration, _results: &QueryResults) {}
+    fn observe_query_parsing(&self, _duration: Duration, _results: &QueryResults) {}
+    fn observe_query_validation(&self, _duration: Duration, _id: &DeploymentHash) {}
+}
+
 /// An asynchronous response to a GraphQL request.
 pub type IndexNodeServiceResponse = DynTryFuture<'static, Response<Body>, GraphQLServerError>;
 
@@ -120,7 +128,15 @@ where
         let validated = ValidatedRequest::new(body, &req_parts.headers)?;
         let query = validated.query;
 
-        let query = match PreparedQuery::new(&self.logger, schema, None, query, None, 100) {
+        let query = match PreparedQuery::new(
+            &self.logger,
+            schema,
+            None,
+            query,
+            None,
+            100,
+            Arc::new(NoopGraphQLMetrics),
+        ) {
             Ok(query) => query,
             Err(e) => return Ok(QueryResults::from(QueryResult::from(e)).as_http_response()),
         };

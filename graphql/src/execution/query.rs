@@ -18,7 +18,7 @@ use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, Logger, TryFromValue, ENV_VARS,
+    info, o, q, r, s, warn, BlockNumber, CheapClone, GraphQLMetrics, Logger, TryFromValue, ENV_VARS,
 };
 
 use crate::execution::ast as a;
@@ -204,8 +204,11 @@ impl Query {
         query: GraphDataQuery,
         max_complexity: Option<u64>,
         max_depth: u8,
+        metrics: Arc<dyn GraphQLMetrics>,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
+        let validation_phase_start = Instant::now();
         validate_query(logger, &query, &schema.document())?;
+        metrics.observe_query_validation(validation_phase_start.elapsed(), schema.id());
 
         let mut operation = None;
         let mut fragments = HashMap::new();
