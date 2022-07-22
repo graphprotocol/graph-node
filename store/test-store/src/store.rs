@@ -15,7 +15,7 @@ use graph::{
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
-use graph_graphql::test_support::ResultSizeMetrics;
+use graph_graphql::test_support::GraphQLMetrics;
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
@@ -410,8 +410,8 @@ macro_rules! return_err {
     };
 }
 
-pub fn result_size_metrics() -> Arc<ResultSizeMetrics> {
-    Arc::new(ResultSizeMetrics::make(METRICS_REGISTRY.clone()))
+pub fn graphql_metrics() -> Arc<GraphQLMetrics> {
+    Arc::new(GraphQLMetrics::make(METRICS_REGISTRY.clone()))
 }
 
 async fn execute_subgraph_query_internal(
@@ -460,7 +460,7 @@ async fn execute_subgraph_query_internal(
                 bc,
                 error_policy,
                 query.schema.id().clone(),
-                result_size_metrics()
+                graphql_metrics()
             )
             .await
         );

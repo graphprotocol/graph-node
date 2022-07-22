@@ -43,6 +43,13 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     ) -> Result<SubscriptionResult, SubscriptionError>;
 
     fn load_manager(&self) -> Arc<LoadManager>;
+
+    fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
+}
+
+pub trait GraphQLMetrics {
+    fn observe_query_execution(&self, duration: Duration, results: &QueryResults) -> ();
+    fn observe_query_parsing(&self, duration: Duration, results: &QueryResults) -> ();
 }
 
 #[async_trait]

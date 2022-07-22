@@ -102,7 +102,7 @@ pub mod prelude {
         LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{
-        GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
+        GraphQLMetrics, GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{

@@ -33,7 +33,7 @@ use graph::{
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
-    deployment_state, execute_subgraph_query_with_deadline, result_size_metrics, revert_block,
+    deployment_state, execute_subgraph_query_with_deadline, graphql_metrics, revert_block,
     run_test_sequentially, transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER,
     METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
@@ -405,7 +405,7 @@ async fn run_subscription(
         max_depth: 100,
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
-        result_size: result_size_metrics(),
+        graphql_metrics: graphql_metrics(),
     };
     let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
 
