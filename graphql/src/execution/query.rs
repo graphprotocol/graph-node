@@ -143,6 +143,18 @@ pub struct Query {
     pub query_id: String,
 }
 
+fn validate_query(query: &GraphDataQuery, document: &s::Document) -> Vec<ValidationError> {
+    let mut cache = GRAPHQL_VALIDATION_CACHE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+
+    let errors = cache
+        .entry(query.shape_hash)
+        .or_insert_with(|| validate(&document, &query.document, &GRAPHQL_VALIDATION_PLAN));
+
+    return errors.clone();
+}
+
 impl Query {
     /// Process the raw GraphQL query `query` and prepare for executing it.
     /// The returned `Query` has already been validated and, if `max_complexity`
@@ -156,17 +168,7 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        GRAPHQL_VALIDATION_CACHE
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .entry(query.shape_hash)
-            .or_insert_with(|| {
-                validate(
-                    &schema.document(),
-                    &query.document,
-                    &GRAPHQL_VALIDATION_PLAN,
-                )
-            });
+        let validation_errors = validate_query(&query, &schema.document());
 
         if !validation_errors.is_empty() {
             if !ENV_VARS.graphql.silent_graphql_validations {
