@@ -4,7 +4,6 @@ use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::metrics::RunnerMetrics;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
-use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
@@ -23,26 +22,34 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::TriggerProcessor;
+
 const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
-    ctx: IndexingContext<T, C>,
+pub struct SubgraphRunner<C, T, TP>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
+{
+    ctx: IndexingContext<C, T, TP>,
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     metrics: RunnerMetrics,
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     pub fn new(
         inputs: IndexingInputs<C>,
-        ctx: IndexingContext<T, C>,
+        ctx: IndexingContext<C, T, TP>,
         logger: Logger,
         metrics: RunnerMetrics,
     ) -> Self {
@@ -248,29 +255,33 @@ where
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
             for trigger in triggers {
-                block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
-                    &logger,
-                    &runtime_hosts,
-                    &block,
-                    &trigger,
-                    block_state,
-                    &proof_of_indexing,
-                    &causality_region,
-                    &self.inputs.debug_fork,
-                    &self.metrics.subgraph,
-                )
-                .await
-                .map_err(|e| {
-                    // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                    // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                    // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                    // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    match e {
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                            BlockProcessingError::Unknown(e)
+                block_state = self
+                    .ctx
+                    .instance
+                    .trigger_processor
+                    .process_trigger(
+                        &logger,
+                        &runtime_hosts,
+                        &block,
+                        &trigger,
+                        block_state,
+                        &proof_of_indexing,
+                        &causality_region,
+                        &self.inputs.debug_fork,
+                        &self.metrics.subgraph,
+                    )
+                    .await
+                    .map_err(|e| {
+                        // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
+                        // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
+                        // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                        // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                        match e {
+                            MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                                BlockProcessingError::Unknown(e)
+                            }
                         }
-                    }
-                })?;
+                    })?;
             }
         }
 
@@ -515,10 +526,11 @@ where
     }
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_stream_event(
         &mut self,
@@ -572,10 +584,11 @@ trait StreamEventHandler<C: Blockchain> {
 }
 
 #[async_trait]
-impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
+impl<C, T, TP> StreamEventHandler<C> for SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_process_block(
         &mut self,
