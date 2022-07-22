@@ -5,10 +5,11 @@ use graphql_tools::validation::rules::*;
 use graphql_tools::validation::utils::ValidationError;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
+use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
@@ -143,16 +144,52 @@ pub struct Query {
     pub query_id: String,
 }
 
-fn validate_query(query: &GraphDataQuery, document: &s::Document) -> Vec<ValidationError> {
-    let mut cache = GRAPHQL_VALIDATION_CACHE
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
+fn validate_query(
+    logger: &Logger,
+    query: &GraphDataQuery,
+    document: &s::Document,
+) -> Result<(), Vec<QueryExecutionError>> {
+    let errors = {
+        let cached = GRAPHQL_VALIDATION_CACHE
+            .lock()
+            .get(&query.shape_hash)
+            .cloned();
+        match cached {
+            Some(cached) => cached,
+            None => {
+                let validation_errors =
+                    validate(&document, &query.document, &GRAPHQL_VALIDATION_PLAN);
+                GRAPHQL_VALIDATION_CACHE
+                    .lock()
+                    .insert(query.shape_hash, validation_errors.clone());
+                validation_errors
+            }
+        }
+    };
 
-    let errors = cache
-        .entry(query.shape_hash)
-        .or_insert_with(|| validate(&document, &query.document, &GRAPHQL_VALIDATION_PLAN));
+    if !errors.is_empty() {
+        if !ENV_VARS.graphql.silent_graphql_validations {
+            return Err(errors
+                .into_iter()
+                .map(|e| {
+                    QueryExecutionError::ValidationError(
+                        e.locations.first().cloned(),
+                        e.message.clone(),
+                    )
+                })
+                .collect());
+        } else {
+            warn!(
+              &logger,
+              "GraphQL Validation failure";
+              "query" => &query.query_text,
+              "variables" => &query.variables_text,
+              "errors" => format!("[{:?}]", errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join(", "))
+            );
+        }
+    }
 
-    return errors.clone();
+    Ok(())
 }
 
 impl Query {
@@ -168,29 +205,7 @@ impl Query {
         max_complexity: Option<u64>,
         max_depth: u8,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let validation_errors = validate_query(&query, &schema.document());
-
-        if !validation_errors.is_empty() {
-            if !ENV_VARS.graphql.silent_graphql_validations {
-                return Err(validation_errors
-                    .into_iter()
-                    .map(|e| {
-                        QueryExecutionError::ValidationError(
-                            e.locations.first().cloned(),
-                            e.message.clone(),
-                        )
-                    })
-                    .collect());
-            } else {
-                warn!(
-                  &logger,
-                  "GraphQL Validation failure";
-                  "query" => &query.query_text,
-                  "variables" => &query.variables_text,
-                  "errors" => format!("[{:?}]", validation_errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join(", "))
-                );
-            }
-        }
+        validate_query(logger, &query, &schema.document())?;
 
         let mut operation = None;
         let mut fragments = HashMap::new();
