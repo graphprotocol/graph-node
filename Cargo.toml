@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "core",
-    "chain/ethereum",
+    "chain/*",
     "graphql",
     "mock",
     "node",
