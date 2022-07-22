@@ -135,7 +135,7 @@ fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
 ) -> Result<Option<SubgraphFeature>, InvalidMapping> {
     for runtime in manifest.runtimes() {
         for function_name in IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES {
-            if calls_host_fn(runtime, function_name).map_err(|_| InvalidMapping)? {
+            if calls_host_fn(&runtime, function_name).map_err(|_| InvalidMapping)? {
                 return Ok(Some(SubgraphFeature::IpfsOnEthereumContracts));
             }
         }
