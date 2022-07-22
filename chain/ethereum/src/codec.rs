@@ -364,7 +364,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         trace
                             .calls
                             .iter()
-                            .filter(|call| !call.state_reverted)
+                            .filter(|call| !call.status_reverted && !call.status_failed)
                             .map(|call| CallAt::new(call, self, trace).try_into())
                             .collect::<Vec<Result<EthereumCall, Error>>>()
                     })
