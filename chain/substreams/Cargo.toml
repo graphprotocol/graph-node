@@ -3,6 +3,9 @@ name = "graph-chain-substreams"
 version = "0.26.0"
 edition = "2021"
 
+[build-dependencies]
+tonic-build = { version = "0.7.2", features = ["prost"] }
+
 [dependencies]
 envconfig = "0.10.0"
 futures = "0.1.21"
@@ -19,6 +22,7 @@ anyhow = "1.0"
 tiny-keccak = "1.5.0"
 hex = "0.4.3"
 semver = "1.0.12"
+tonic = { version = "0.7.1", features = ["tls-roots"] }
 
 itertools = "0.10.3"
 
@@ -30,5 +34,5 @@ graph-core = { path = "../../core" }
 test-store = { path = "../../store/test-store" }
 base64 = "0.13.0"
 
-[build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost"] }
+
+
