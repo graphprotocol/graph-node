@@ -6,8 +6,6 @@ use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
 use itertools::Itertools;
-use mockall::automock;
-use mockall::predicate::*;
 use prost::Message;
 use prost_types::Any;
 use std::cmp;
@@ -841,7 +839,6 @@ impl SubgraphEthRpcMetrics {
 ///
 /// Implementations may be implemented against an in-process Ethereum node
 /// or a remote node over RPC.
-#[automock]
 #[async_trait]
 pub trait EthereumAdapter: Send + Sync + 'static {
     fn url_hostname(&self) -> &str;
