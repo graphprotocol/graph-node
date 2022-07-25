@@ -309,7 +309,7 @@ where
 pub struct BlockStreamMetrics {
     pub deployment_head: Box<Gauge>,
     pub deployment_failed: Box<Gauge>,
-    pub reverted_blocks: Box<Gauge>,
+    pub reverted_blocks: Gauge,
     pub stopwatch: StopwatchMetrics,
 }
 
