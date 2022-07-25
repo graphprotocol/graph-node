@@ -2,6 +2,7 @@ pub mod ethereum;
 
 use std::marker::PhantomData;
 use std::process::Command;
+use std::sync::Mutex;
 
 use crate::helpers::run_cmd;
 use anyhow::Error;
@@ -48,7 +49,13 @@ pub async fn build_subgraph(dir: &str) -> DeploymentHash {
         .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Make sure dependencies are present.
-    run_cmd(Command::new("yarn").current_dir("./integration-tests"));
+    run_cmd(
+        Command::new("yarn")
+            .arg("install")
+            .arg("--mutex")
+            .arg("file:.yarn-mutex")
+            .current_dir("./integration-tests"),
+    );
 
     // Run codegen.
     run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
@@ -99,7 +106,15 @@ pub struct Stores {
     chain_store: Arc<ChainStore>,
 }
 
+graph::prelude::lazy_static! {
+    /// Mutex for assuring there's only one test at a time
+    /// running the `stores` function.
+    pub static ref STORE_MUTEX: Mutex<()> = Mutex::new(());
+}
+
 pub async fn stores(store_config_path: &str) -> Stores {
+    let _mutex_guard = STORE_MUTEX.lock().unwrap();
+
     let config = {
         let config = read_to_string(store_config_path).await.unwrap();
         let db_url = match std::env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL") {

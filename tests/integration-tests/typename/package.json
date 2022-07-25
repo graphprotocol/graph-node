@@ -1,10 +1,10 @@
 {
-  "name": "data-source-revert",
+  "name": "typename",
   "version": "0.1.0",
   "scripts": {
     "codegen": "graph codegen",
-    "create:test": "graph create test/data-source-revert --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test": "graph deploy test/data-source-revert --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "create:test": "graph create test/typename --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test": "graph deploy test/typename --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#main",
