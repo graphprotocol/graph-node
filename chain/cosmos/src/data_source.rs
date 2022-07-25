@@ -197,8 +197,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    fn runtime(&self) -> &[u8] {
-        self.mapping.runtime.as_ref()
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
+        Some(self.mapping.runtime.cheap_clone())
     }
 }
 
@@ -339,7 +339,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
 }

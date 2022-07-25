@@ -72,9 +72,16 @@ where
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         for ds in manifest.data_sources {
+            let runtime = ds.runtime();
+            let module_bytes = match runtime {
+                None => continue,
+                Some(ref module_bytes) => module_bytes,
+            };
+
             let host = this.new_host(
                 logger.cheap_clone(),
                 ds,
+                module_bytes,
                 templates.cheap_clone(),
                 host_metrics.cheap_clone(),
             )?;
@@ -84,21 +91,23 @@ where
         Ok(this)
     }
 
+    // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure that this
+    // function is only called for data_sources for which data_source.runtime().is_some() is true.
     fn new_host(
         &mut self,
         logger: Logger,
         data_source: C::DataSource,
+        module_bytes: &Arc<Vec<u8>>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
-            let module_bytes = data_source.runtime();
-            let module_hash = tiny_keccak::keccak256(module_bytes);
+            let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
             if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
             } else {
                 let sender = T::spawn_mapping(
-                    module_bytes.to_owned(),
+                    module_bytes.as_ref(),
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),
@@ -167,7 +176,18 @@ where
                 <= data_source.creation_block()
         );
 
-        let host = Arc::new(self.new_host(logger.clone(), data_source, templates, metrics)?);
+        let module_bytes = match &data_source.runtime() {
+            None => return Ok(None),
+            Some(ref module_bytes) => module_bytes.cheap_clone(),
+        };
+
+        let host = Arc::new(self.new_host(
+            logger.clone(),
+            data_source,
+            &module_bytes,
+            templates,
+            metrics,
+        )?);
 
         Ok(if self.hosts.contains(&host) {
             None

@@ -58,7 +58,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         todo!()
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         todo!()
     }
 
@@ -145,7 +145,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
         todo!()
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         todo!()
     }
 
