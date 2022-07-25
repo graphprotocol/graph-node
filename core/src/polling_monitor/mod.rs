@@ -1,4 +1,6 @@
-use std::collections::VecDeque;
+pub mod ipfs_service;
+mod metrics;
+
 use std::fmt::Display;
 use std::sync::Arc;
 
@@ -8,10 +10,11 @@ use graph::cheap_clone::CheapClone;
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
 use graph::slog::{debug, Logger};
+use graph::util::monitored::MonitoredVecDeque as VecDeque;
 use tokio::sync::{mpsc, watch};
 use tower::{Service, ServiceExt};
 
-pub mod ipfs_service;
+use self::metrics::PollingMonitorMetrics;
 
 /// Spawn a monitor that actively polls a service. Whenever the service has capacity, the monitor
 /// pulls object ids from the queue and polls the service. If the object is not present or in case
@@ -23,6 +26,7 @@ pub fn spawn_monitor<ID, S, E, Response: Send + 'static>(
     service: S,
     response_sender: mpsc::Sender<(ID, Response)>,
     logger: Logger,
+    metrics: PollingMonitorMetrics,
 ) -> PollingMonitor<ID>
 where
     ID: Display + Send + 'static,
@@ -30,7 +34,10 @@ where
     E: Display + Send + 'static,
     S::Future: Send,
 {
-    let queue = Arc::new(Mutex::new(VecDeque::new()));
+    let queue = Arc::new(Mutex::new(VecDeque::new(
+        metrics.queue_depth.clone(),
+        metrics.requests.clone(),
+    )));
     let (wake_up_queue, queue_woken) = watch::channel(());
 
     let queue_to_stream = {
@@ -71,14 +78,18 @@ where
                     }
 
                     // Object not found, push the id to the back of the queue.
-                    Ok((id, None)) => queue.lock().push_back(id),
+                    Ok((id, None)) => {
+                        metrics.not_found.inc();
+                        queue.lock().push_back(id);
+                    }
 
                     // Error polling, log it and push the id to the back of the queue.
                     Err((id, e)) => {
                         debug!(logger, "error polling";
                                     "error" => format!("{:#}", e),
                                     "object_id" => id.to_string());
-                        queue.lock().push_back(id)
+                        metrics.errors.inc();
+                        queue.lock().push_back(id);
                     }
                 }
             }
@@ -153,7 +164,12 @@ mod tests {
     async fn polling_monitor_simple() {
         let (svc, mut handle) = mock::pair();
         let (tx, mut rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(MockService(svc), tx, log::discard());
+        let monitor = spawn_monitor(
+            MockService(svc),
+            tx,
+            log::discard(),
+            PollingMonitorMetrics::mock(),
+        );
 
         // Basic test, single file is immediately available.
         monitor.monitor("req-0");
@@ -165,7 +181,12 @@ mod tests {
     async fn polling_monitor_unordered() {
         let (svc, mut handle) = mock::pair();
         let (tx, mut rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(MockService(svc), tx, log::discard());
+        let monitor = spawn_monitor(
+            MockService(svc),
+            tx,
+            log::discard(),
+            PollingMonitorMetrics::mock(),
+        );
 
         // Test unorderedness of the response stream, and the LIFO semantics of `monitor`.
         //
@@ -187,7 +208,7 @@ mod tests {
 
         // Limit service to one request at a time.
         let svc = tower::limit::ConcurrencyLimit::new(MockService(svc), 1);
-        let monitor = spawn_monitor(svc, tx, log::discard());
+        let monitor = spawn_monitor(svc, tx, log::discard(), PollingMonitorMetrics::mock());
 
         // Test that objects not found go on the back of the queue.
         monitor.monitor("req-0");
@@ -213,7 +234,12 @@ mod tests {
     async fn polling_monitor_cancelation() {
         let (svc, _handle) = mock::pair();
         let (tx, mut rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(MockService(svc), tx, log::discard());
+        let monitor = spawn_monitor(
+            MockService(svc),
+            tx,
+            log::discard(),
+            PollingMonitorMetrics::mock(),
+        );
 
         // Cancelation on monitor drop.
         drop(monitor);
@@ -221,7 +247,12 @@ mod tests {
 
         let (svc, mut handle) = mock::pair();
         let (tx, rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(MockService(svc), tx, log::discard());
+        let monitor = spawn_monitor(
+            MockService(svc),
+            tx,
+            log::discard(),
+            PollingMonitorMetrics::mock(),
+        );
 
         // Cancelation on receiver drop.
         monitor.monitor("req-0");

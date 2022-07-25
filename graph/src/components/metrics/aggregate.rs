@@ -4,16 +4,16 @@ use crate::prelude::*;
 
 pub struct Aggregate {
     /// Number of values.
-    count: Box<Gauge>,
+    count: Gauge,
 
     /// Sum over all values.
-    sum: Box<Gauge>,
+    sum: Gauge,
 
     /// Moving average over the values.
-    avg: Box<Gauge>,
+    avg: Gauge,
 
     /// Latest value.
-    cur: Box<Gauge>,
+    cur: Gauge,
 }
 
 impl Aggregate {
