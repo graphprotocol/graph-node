@@ -10,7 +10,7 @@ http = "0.2.4"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
-mockall = "0.9.1"
+mockall = "0.11.2"
 serde = "1.0"
 prost = "0.10.4"
 prost-types = "0.10.1"
