@@ -2,7 +2,7 @@ pub mod ethereum;
 
 use std::marker::PhantomData;
 use std::process::Command;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 use crate::helpers::run_cmd;
 use anyhow::Error;
@@ -104,24 +104,16 @@ pub struct Stores {
     chain_head_listener: Arc<ChainHeadUpdateListener>,
     network_store: Arc<Store>,
     chain_store: Arc<ChainStore>,
-    mutex_guard: MutexGuard<'static, bool>,
 }
 
 graph::prelude::lazy_static! {
     /// Mutex for assuring there's only one test at a time
-    /// using a `Stores` struct.
-    pub static ref STORE_MUTEX: Mutex<bool> = Mutex::new(false);
-}
-
-impl Drop for Stores {
-    fn drop(&mut self) {
-        *self.mutex_guard = false;
-    }
+    /// running the `stores` function.
+    pub static ref STORE_MUTEX: Mutex<()> = Mutex::new(());
 }
 
 pub async fn stores(store_config_path: &str) -> Stores {
-    let mut mutex_guard = STORE_MUTEX.lock().unwrap();
-    *mutex_guard = true;
+    let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
     let config = {
         let config = read_to_string(store_config_path).await.unwrap();
@@ -163,7 +155,6 @@ pub async fn stores(store_config_path: &str) -> Stores {
         chain_head_listener,
         network_store,
         chain_store,
-        mutex_guard,
     }
 }
 
