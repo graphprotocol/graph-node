@@ -233,7 +233,7 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: std::fmt::Debug {
+pub trait FromEntityData: std::fmt::Debug + std::default::Default {
     type Value: FromColumnValue;
 
     fn new_entity(typename: String) -> Self;
@@ -479,6 +479,7 @@ impl EntityData {
         self,
         layout: &Layout,
         parent_type: Option<&ColumnType>,
+        remove_typename: bool,
     ) -> Result<T, StoreError> {
         let entity_type = EntityType::new(self.entity);
         let table = layout.table_for_entity(&entity_type)?;
@@ -486,7 +487,11 @@ impl EntityData {
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
-                let mut out = T::new_entity(entity_type.into_string());
+                let mut out = if !remove_typename {
+                    T::new_entity(entity_type.into_string())
+                } else {
+                    T::default()
+                };
                 for (key, json) in map {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that

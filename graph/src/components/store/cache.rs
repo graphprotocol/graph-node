@@ -255,13 +255,12 @@ impl EntityCache {
 
         for (subgraph_id, keys) in missing_by_subgraph {
             for (entity_type, entities) in self.store.get_many(keys)? {
-                for mut entity in entities {
+                for entity in entities {
                     let key = EntityKey {
                         subgraph_id: subgraph_id.clone(),
                         entity_type: entity_type.clone(),
                         entity_id: entity.id().unwrap(),
                     };
-                    entity.remove("__typename");
                     self.current.insert(key, Some(entity));
                 }
             }
