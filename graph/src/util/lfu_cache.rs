@@ -1,3 +1,4 @@
+use crate::env::ENV_VARS;
 use crate::prelude::CacheWeight;
 use priority_queue::PriorityQueue;
 use std::cmp::Reverse;
@@ -83,6 +84,7 @@ pub struct LfuCache<K: Eq + Hash, V> {
     queue: PriorityQueue<CacheEntry<K, V>, Priority>,
     total_weight: usize,
     stale_counter: u64,
+    dead_weight: bool,
 }
 
 impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
@@ -91,6 +93,7 @@ impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
             queue: PriorityQueue::new(),
             total_weight: 0,
             stale_counter: 0,
+            dead_weight: false,
         }
     }
 }
@@ -101,6 +104,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             queue: PriorityQueue::new(),
             total_weight: 0,
             stale_counter: 0,
+            dead_weight: ENV_VARS.mappings.entity_cache_dead_weight,
         }
     }
 
@@ -201,13 +205,6 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         max_weight: usize,
         stale_period: u64,
     ) -> Option<EvictStats> {
-        use crate::prelude::lazy_static;
-        lazy_static! {
-            // Setting `DEAD_WEIGHT` is dangerous since it can lead to a
-            // situation where an empty cache is bigger than the max_weight
-            // which leads to a panic
-            static ref DEAD_WEIGHT: bool = std::env::var("DEAD_WEIGHT").ok().is_some();
-        }
         if self.total_weight <= max_weight {
             return None;
         }
@@ -230,7 +227,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
 
         let mut evicted = 0;
         let old_len = self.len();
-        let dead_weight = if *DEAD_WEIGHT {
+        let dead_weight = if self.dead_weight {
             self.len() * (std::mem::size_of::<CacheEntry<K, V>>() + 40)
         } else {
             0
