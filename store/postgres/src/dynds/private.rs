@@ -103,7 +103,7 @@ impl DataSourcesTable {
                     Bound::Included(block) => Some(block),
 
                     // Should never happen.
-                    Bound::Excluded(_) | Bound::Unbounded => None,
+                    Bound::Excluded(_) | Bound::Unbounded => unreachable!("dds with open creation"),
                 };
                 StoredDynamicDataSource {
                     manifest_idx: manifest_idx as u32,

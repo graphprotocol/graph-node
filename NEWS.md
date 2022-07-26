@@ -5,7 +5,7 @@
 ### New DB table for dynamic data sources
 
 For new subgraph deployments, dynamic data sources will be recorded under the `sgd*.data_sources$`
-table, rather than `subgraphs.ethereum_contract_data_source`. As a consequence
+table, rather than `subgraphs.dynamic_ethereum_contract_data_source`. As a consequence
 new deployments will not work correctly on earlier graph node versions, so
 _downgrading to an earlier graph node version is not supported_.
 See issue #3405 for other details.
