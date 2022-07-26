@@ -82,8 +82,8 @@ impl Blockchain for Chain {
     type DataSource = DataSource;
     type UnresolvedDataSource = UnresolvedDataSource;
 
-    type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
-    type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
+    type DataSourceTemplate = NoopDataSourceTemplate;
+    type UnresolvedDataSourceTemplate = NoopDataSourceTemplate;
 
     /// Trigger data as parsed from the triggers adapter.
     type TriggerData = TriggerData;
