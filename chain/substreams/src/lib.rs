@@ -1,4 +1,5 @@
 mod chain;
+mod codec;
 mod data_source;
 mod trigger;
 
