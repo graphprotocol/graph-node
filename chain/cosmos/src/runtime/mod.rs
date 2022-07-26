@@ -9,7 +9,7 @@ mod test {
 
     use graph::semver::Version;
 
-    /// A macro that takes an ASc struct value definition and calls AscBytes methods to check that
+    /// A macro that takes an ASC struct value definition and calls AscBytes methods to check that
     /// memory layout is padded properly.
     macro_rules! assert_asc_bytes {
         ($struct_name:ident {
