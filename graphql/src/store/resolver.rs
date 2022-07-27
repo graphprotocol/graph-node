@@ -107,7 +107,7 @@ impl StoreResolver {
         bc: BlockConstraint,
         state: &DeploymentState,
     ) -> Result<BlockPtr, QueryExecutionError> {
-        fn check_ptr(
+        fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
         ) -> Result<(), QueryExecutionError> {
@@ -132,11 +132,11 @@ impl StoreResolver {
                             .map(|number| BlockPtr::new(hash, number))
                     })?;
 
-                check_ptr(state, ptr.number)?;
+                block_queryable(state, ptr.number)?;
                 Ok(ptr)
             }
             BlockConstraint::Number(number) => {
-                check_ptr(state, number)?;
+                block_queryable(state, number)?;
                 // We don't have a way here to look the block hash up from
                 // the database, and even if we did, there is no guarantee
                 // that we have the block in our cache. We therefore
