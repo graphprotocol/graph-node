@@ -1,3 +1,5 @@
 #[rustfmt::skip]
-#[path = "protobuf/sf.substreams.v1.rs"]
-pub mod pbcodec;
+#[path = "protobuf/substreams.entity.v1.rs"]
+mod pbsubstreamsentity;
+
+pub use pbsubstreamsentity::*;
