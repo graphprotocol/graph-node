@@ -980,11 +980,7 @@ impl PoolInner {
         let db_locale = catalog::get_collation(&conn)?;
 
         if !db_locale.eq(&ENV_VARS.store.store_locale) {
-            panic!(
-                "Database locale is not '{}', but {}.\n
-                If this is the locale your Database is running in then set 'GRAPH_STORE_LOCALE' environment variable to '{}'.",
-                ENV_VARS.store.store_locale, db_locale, db_locale
-            );
+            warn!(pool.logger, "Database locale is not '{}', but {}.\n If this is the locale your Database is running in then set 'GRAPH_STORE_LOCALE' environment variable to '{}'.", ENV_VARS.store.store_locale, db_locale, db_locale);
         }
 
         advisory_lock::lock_migration(&conn)
