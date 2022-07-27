@@ -91,10 +91,6 @@ fn field_type(fld: &syn::Field) -> String {
             //TODO - this must be optimized
             match name.as_ref() {
                 "Vec" => {
-                    //Vec<TxResult> -> AscPtr<AscTxResultArray>
-                    //Vec<u8>       - > AscPtr<Uint8Array>
-                    //::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>> -> AscPtr<AscBytesArray>,
-                    //::prost::alloc::vec::Vec<::prost::alloc::string::String> -> AscPtr<Array<AscPtr<AscString>>>,
 
                     match &ps.arguments {
                         syn::PathArguments::AngleBracketed(v) => {
@@ -103,7 +99,6 @@ fn field_type(fld: &syn::Field) -> String {
 
                                 match nm.as_ref(){
                                     "u8" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::Uint8Array>".to_owned(),
-                                    //"Vec<u8>" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscBytesArray>".to_owned(),
                                     "Vec<u8>" => "graph::runtime::AscPtr<crate::protobuf::AscBytesArray>".to_owned(),
                                     "String" => "graph::runtime::AscPtr<crate::protobuf::Array<graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>>>".to_owned(),
                                     _ => format!("graph::runtime::AscPtr<crate::protobuf::Asc{}Array>", path_to_string(&p.path))

@@ -1,10 +1,10 @@
-const PROT_FILE: &str = "proto/type.proto";
+const PROTO_FILE: &str = "proto/type.proto";
 
 fn main() {
     println!("cargo:rerun-if-changed=proto");
 
     let types =
-        graph_chain_common::parse_proto_file(PROT_FILE).expect("Unable to parse proto file!");
+        graph_chain_common::parse_proto_file(PROTO_FILE).expect("Unable to parse proto file!");
 
     let array_types = types
         .iter()
