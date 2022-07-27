@@ -145,9 +145,19 @@ impl StoreResolver {
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
                 Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
             }
-            BlockConstraint::Min(number) => {
-                check_ptr(state, number)?;
-                Ok(state.latest_block.cheap_clone())
+            BlockConstraint::Min(min) => {
+                let ptr = state.latest_block.cheap_clone();
+                if ptr.number < min {
+                    return Err(QueryExecutionError::ValueParseError(
+                        "block.number_gte".to_owned(),
+                        format!(
+                            "subgraph {} has only indexed up to block number {} \
+                                and data for block number {} is therefore not yet available",
+                            state.id, ptr.number, min
+                        ),
+                    ));
+                }
+                Ok(ptr)
             }
             BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
         }
