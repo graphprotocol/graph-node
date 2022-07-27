@@ -1658,8 +1658,6 @@ dependencies = [
  "futures 0.1.31",
  "graph",
  "graph-core",
- "graph-runtime-derive",
- "graph-runtime-wasm",
  "hex",
  "http",
  "itertools",
@@ -1671,7 +1669,7 @@ dependencies = [
  "serde",
  "test-store",
  "tiny-keccak 1.5.0",
- "tonic",
+ "tokio",
  "tonic-build",
 ]
 
