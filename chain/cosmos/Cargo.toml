@@ -16,8 +16,3 @@ semver = "1.0.3"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
-
-[dev-dependencies]
-graph-core = { path = "../../core" }
-pretty_assertions = "0.7.2"
-test-store = { path = "../../store/test-store" }

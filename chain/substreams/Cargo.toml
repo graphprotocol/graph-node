@@ -25,7 +25,5 @@ semver = "1.0.12"
 itertools = "0.10.3"
 
 [dev-dependencies]
-graph-core = { path = "../../core" }
-test-store = { path = "../../store/test-store" }
 base64 = "0.13.0"
 tokio = { version = "1", features = ["full"]}
