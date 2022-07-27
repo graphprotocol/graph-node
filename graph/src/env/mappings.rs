@@ -4,6 +4,12 @@ use super::*;
 
 #[derive(Clone)]
 pub struct EnvVarsMapping {
+    /// Forces the cache eviction policy to take its own memory overhead into account.
+    ///
+    /// Set by the flag `DEAD_WEIGHT`. Setting `DEAD_WEIGHT` is dangerous since it can lead to a
+    /// situation where an empty cache is bigger than the max_weight,
+    /// which leads to a panic. Off by default.
+    pub entity_cache_dead_weight: bool,
     /// Size limit of the entity LFU cache.
     ///
     /// Set by the environment variable `GRAPH_ENTITY_CACHE_SIZE` (expressed in
@@ -60,6 +66,7 @@ impl fmt::Debug for EnvVarsMapping {
 impl From<InnerMappingHandlers> for EnvVarsMapping {
     fn from(x: InnerMappingHandlers) -> Self {
         Self {
+            entity_cache_dead_weight: x.entity_cache_dead_weight.0,
             entity_cache_size: x.entity_cache_size_in_kb * 1000,
 
             max_api_version: x.max_api_version,
@@ -78,6 +85,8 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
 
 #[derive(Clone, Debug, Envconfig)]
 pub struct InnerMappingHandlers {
+    #[envconfig(from = "DEAD_WEIGHT", default = "false")]
+    entity_cache_dead_weight: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
     #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.7")]

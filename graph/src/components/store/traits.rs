@@ -1,6 +1,7 @@
 use web3::types::{Address, H256};
 
 use super::*;
+use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
@@ -153,10 +154,7 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    async fn block_cursor(&self) -> Option<String>;
-
-    /// Deletes the current Firehose `cursor` this deployment is currently at.
-    async fn delete_block_cursor(&self) -> Result<(), StoreError>;
+    async fn block_cursor(&self) -> FirehoseCursor;
 
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -168,12 +166,12 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
@@ -201,7 +199,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,

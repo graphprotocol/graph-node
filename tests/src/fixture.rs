@@ -2,13 +2,14 @@ pub mod ethereum;
 
 use std::marker::PhantomData;
 use std::process::Command;
+use std::sync::Mutex;
 
 use crate::helpers::run_cmd;
 use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
@@ -48,7 +49,13 @@ pub async fn build_subgraph(dir: &str) -> DeploymentHash {
         .expect("Could not connect to IPFS, make sure it's running at port 5001");
 
     // Make sure dependencies are present.
-    run_cmd(Command::new("yarn").current_dir("./integration-tests"));
+    run_cmd(
+        Command::new("yarn")
+            .arg("install")
+            .arg("--mutex")
+            .arg("file:.yarn-mutex")
+            .current_dir("./integration-tests"),
+    );
 
     // Run codegen.
     run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
@@ -99,7 +106,15 @@ pub struct Stores {
     chain_store: Arc<ChainStore>,
 }
 
+graph::prelude::lazy_static! {
+    /// Mutex for assuring there's only one test at a time
+    /// running the `stores` function.
+    pub static ref STORE_MUTEX: Mutex<()> = Mutex::new(());
+}
+
 pub async fn stores(store_config_path: &str) -> Stores {
+    let _mutex_guard = STORE_MUTEX.lock().unwrap();
+
     let config = {
         let config = read_to_string(store_config_path).await.unwrap();
         let db_url = match std::env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL") {
@@ -243,7 +258,7 @@ where
         &self,
         _chain: &C,
         _deployment: DeploymentLocator,
-        _block_cursor: Option<String>,
+        _block_cursor: FirehoseCursor,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
         current_block: Option<graph::blockchain::BlockPtr>,
         _filter: Arc<C::TriggerFilter>,
@@ -308,7 +323,7 @@ where
                 current_ptr = Some(block.ptr());
                 current_parent_ptr = block.parent_ptr();
                 blocks_iter.next(); // Block consumed, advance the iterator.
-                yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), None));
+                yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), FirehoseCursor::None));
             } else {
                 let revert_to = current_parent_ptr.unwrap();
                 current_ptr = Some(revert_to.clone());
@@ -318,7 +333,7 @@ where
                     .unwrap()
                     .block
                     .parent_ptr();
-                yield Ok(BlockStreamEvent::Revert(revert_to, None));
+                yield Ok(BlockStreamEvent::Revert(revert_to, FirehoseCursor::None));
             }
         }
     }

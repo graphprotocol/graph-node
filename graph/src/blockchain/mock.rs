@@ -9,7 +9,10 @@ use core::fmt;
 use serde::Deserialize;
 use std::{convert::TryFrom, sync::Arc};
 
-use super::{block_stream, HostFn, IngestorError, TriggerWithHandler};
+use super::{
+    block_stream::{self, FirehoseCursor},
+    HostFn, IngestorError, TriggerWithHandler,
+};
 
 use super::{
     block_stream::BlockWithTriggers, Block, BlockPtr, Blockchain, BlockchainKind, DataSource,
@@ -84,7 +87,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
         todo!()
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         todo!()
     }
 
@@ -139,7 +142,7 @@ impl<C: Blockchain> DataSourceTemplate<C> for MockDataSourceTemplate {
         todo!()
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         todo!()
     }
 
@@ -304,7 +307,7 @@ impl Blockchain for MockBlockchain {
     async fn new_firehose_block_stream(
         &self,
         _deployment: crate::components::store::DeploymentLocator,
-        _block_cursor: Option<String>,
+        _block_cursor: FirehoseCursor,
         _start_blocks: Vec<crate::components::store::BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
         _filter: std::sync::Arc<Self::TriggerFilter>,

@@ -483,7 +483,7 @@ impl Layout {
         FindQuery::new(table.as_ref(), id, block)
             .get_result::<EntityData>(conn)
             .optional()?
-            .map(|entity_data| entity_data.deserialize_with_layout(self, None))
+            .map(|entity_data| entity_data.deserialize_with_layout(self, None, true))
             .transpose()
     }
 
@@ -509,10 +509,13 @@ impl Layout {
         };
         let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
+            let entity_type = data.entity_type();
+            let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
+
             entities_for_type
-                .entry(data.entity_type())
+                .entry(entity_type)
                 .or_default()
-                .push(data.deserialize_with_layout(self, None)?);
+                .push(entity_data);
         }
         Ok(entities_for_type)
     }
@@ -541,7 +544,7 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let mut data: Entity = entity_data.deserialize_with_layout(self, None)?;
+            let mut data: Entity = entity_data.deserialize_with_layout(self, None, false)?;
             let entity_id = data.id().expect("Invalid ID for entity.");
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
@@ -709,7 +712,7 @@ impl Layout {
             .into_iter()
             .map(|entity_data| {
                 entity_data
-                    .deserialize_with_layout(self, parent_type.as_ref())
+                    .deserialize_with_layout(self, parent_type.as_ref(), false)
                     .map_err(|e| e.into())
             })
             .collect()

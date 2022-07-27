@@ -312,7 +312,6 @@ where
                 )
                 .await?
             }
-
             BlockchainKind::Ethereum => {
                 create_subgraph_version::<graph_chain_ethereum::Chain, _>(
                     &logger,
@@ -329,7 +328,6 @@ where
                 )
                 .await?
             }
-
             BlockchainKind::Near => {
                 create_subgraph_version::<graph_chain_near::Chain, _>(
                     &logger,
@@ -346,7 +344,6 @@ where
                 )
                 .await?
             }
-
             BlockchainKind::Cosmos => {
                 create_subgraph_version::<graph_chain_cosmos::Chain, _>(
                     &logger,
@@ -363,6 +360,7 @@ where
                 )
                 .await?
             }
+            BlockchainKind::Substream => unimplemented!(),
         };
 
         debug!(

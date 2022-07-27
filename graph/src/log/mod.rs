@@ -53,6 +53,10 @@ pub fn logger(show_debug: bool) -> Logger {
     Logger::root(drain, o!())
 }
 
+pub fn discard() -> Logger {
+    Logger::root(slog::Discard, o!())
+}
+
 pub struct CustomFormat<D>
 where
     D: Decorator,

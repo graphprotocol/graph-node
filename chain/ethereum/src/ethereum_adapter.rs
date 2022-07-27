@@ -285,7 +285,11 @@ impl EthereumAdapter {
             );
         }
 
-        let step_size = ENV_VARS.trace_stream_step_size;
+        // Go one block at a time if requesting all traces, to not overload the RPC.
+        let step_size = match addresses.is_empty() {
+            false => ENV_VARS.trace_stream_step_size,
+            true => 1,
+        };
 
         let eth = self.clone();
         let logger = logger.to_owned();

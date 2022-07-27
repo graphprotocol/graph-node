@@ -329,14 +329,10 @@ async fn main() {
             network_store.clone(),
             subscription_manager.clone(),
             load_manager,
-            metrics_registry.clone(),
-        ));
-        let mut graphql_server = GraphQLQueryServer::new(
-            &logger_factory,
             graphql_metrics_registry,
-            graphql_runner.clone(),
-            node_id.clone(),
-        );
+        ));
+        let mut graphql_server =
+            GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 

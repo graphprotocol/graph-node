@@ -8,7 +8,7 @@ port_check = "0.1.5"
 anyhow = "1.0"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
-tokio = {version = "1.16.1", features = ["rt", "macros", "process"]}
+tokio = { version = "1.16.1", features = ["rt", "macros", "process"] }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 async-stream = "0.3.3"
 graph-node = { path = "../node" }

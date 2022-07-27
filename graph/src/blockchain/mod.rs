@@ -43,7 +43,7 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
-use self::block_stream::BlockStream;
+use self::block_stream::{BlockStream, FirehoseCursor};
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -112,7 +112,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -199,7 +199,7 @@ pub trait DataSource<C: Blockchain>:
     fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
     fn api_version(&self) -> semver::Version;
-    fn runtime(&self) -> &[u8];
+    fn runtime(&self) -> Option<Arc<Vec<u8>>>;
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
@@ -245,7 +245,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 
 pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn api_version(&self) -> semver::Version;
-    fn runtime(&self) -> &[u8];
+    fn runtime(&self) -> Option<Arc<Vec<u8>>>;
     fn name(&self) -> &str;
 }
 
@@ -323,6 +323,8 @@ pub enum BlockchainKind {
 
     /// Cosmos chains
     Cosmos,
+
+    Substream,
 }
 
 impl fmt::Display for BlockchainKind {
@@ -332,6 +334,7 @@ impl fmt::Display for BlockchainKind {
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
             BlockchainKind::Cosmos => "cosmos",
+            BlockchainKind::Substream => "substream",
         };
         write!(f, "{}", value)
     }
@@ -346,6 +349,7 @@ impl FromStr for BlockchainKind {
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
             "cosmos" => Ok(BlockchainKind::Cosmos),
+            "substream" => Ok(BlockchainKind::Substream),
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

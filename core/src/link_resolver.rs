@@ -192,7 +192,7 @@ impl LinkResolverTrait for LinkResolver {
             .run(move || {
                 let path = req_path.clone();
                 let client = client.clone();
-                async move { Ok(client.cat_all(path.clone(), timeout).await?.to_vec()) }
+                async move { Ok(client.cat_all(&path, timeout).await?.to_vec()) }
             })
             .await?;
 
@@ -262,7 +262,7 @@ impl LinkResolverTrait for LinkResolver {
         let max_file_size = Some(self.env_vars.mappings.max_ipfs_map_file_size as u64);
         restrict_file_size(path, size, &max_file_size)?;
 
-        let mut stream = client.cat(path.to_string()).await?.fuse().boxed().compat();
+        let mut stream = client.cat(path, None).await?.fuse().boxed().compat();
 
         let mut buf = BytesMut::with_capacity(1024);
 

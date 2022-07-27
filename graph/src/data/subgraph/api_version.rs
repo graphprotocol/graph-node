@@ -31,6 +31,9 @@ pub const SPEC_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 /// Enables the Fast POI calculation variant.
 pub const SPEC_VERSION_0_0_6: Version = Version::new(0, 0, 6);
 
+/// Enables offchain data sources.
+pub const SPEC_VERSION_0_0_7: Version = Version::new(0, 0, 7);
+
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
 #[derive(Clone, PartialEq, Debug)]

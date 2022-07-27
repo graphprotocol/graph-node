@@ -134,6 +134,7 @@ fn create_subgraph() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
+            offchain_data_sources: vec![],
             chain: PhantomData,
         };
         let deployment = DeploymentCreate::new(&manifest, None);
@@ -649,6 +650,7 @@ fn fail_unfail_deterministic_error() {
         // Unfail the subgraph.
         let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .await
             .unwrap();
 
         // We don't have fatal errors anymore and the block got reverted.
@@ -724,6 +726,7 @@ fn fail_unfail_deterministic_error_noop() {
         // Run unfail with no errors results in NOOP.
         let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .await
             .unwrap();
 
         // Nothing to unfail, state continues the same.
@@ -755,6 +758,7 @@ fn fail_unfail_deterministic_error_noop() {
         // Running unfail_deterministic_error against a NON-deterministic error will do nothing.
         let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .await
             .unwrap();
 
         // State continues the same, nothing happened.
@@ -781,6 +785,7 @@ fn fail_unfail_deterministic_error_noop() {
         // the hashes won't match and there's nothing to revert.
         let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
+            .await
             .unwrap();
 
         // State continues the same.

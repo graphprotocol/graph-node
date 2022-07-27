@@ -1,9 +1,9 @@
-use anyhow::Context;
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
@@ -786,24 +786,15 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<Option<String>, StoreError> {
+    pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<FirehoseCursor, StoreError> {
         let site = site.cheap_clone();
 
         self.with_conn(|conn, cancel| {
             cancel.check_cancel()?;
 
-            deployment::get_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
-        })
-        .await
-    }
-
-    pub(crate) async fn delete_block_cursor(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let site = site.cheap_clone();
-
-        self.with_conn(|conn, cancel| {
-            cancel.check_cancel()?;
-
-            deployment::delete_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
+            deployment::get_subgraph_firehose_cursor(&conn, site)
+                .map(FirehoseCursor::from)
+                .map_err(Into::into)
         })
         .await
     }
@@ -977,7 +968,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block_ptr_to: &BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
         mods: &[EntityModification],
         stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
@@ -1050,7 +1041,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -1069,21 +1060,13 @@ impl DeploymentStore {
                 }
             }
 
-            deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to.clone())?;
+            // The revert functions want the number of the first block that we need to get rid of
+            let block = block_ptr_to.number + 1;
 
-            if let Some(cursor) = firehose_cursor {
-                deployment::update_firehose_cursor(conn, &site.deployment, cursor)
-                    .context("updating firehose cursor")?;
-            }
+            deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to, firehose_cursor)?;
 
             // Revert the data
             let layout = self.layout(conn, site.clone())?;
-
-            // At 1 block per 15 seconds, the maximum i32
-            // value affords just over 1020 years of blocks.
-            let block = block_ptr_to.number;
-            // The revert functions want the number of the first block that we need to get rid of
-            let block = block + 1;
 
             let (event, count) = layout.revert_block(conn, block)?;
 
@@ -1125,17 +1108,16 @@ impl DeploymentStore {
             );
         }
 
-        // When rewinding, we reset the firehose cursor to the empty string. That way, on resume,
-        // Firehose will start from the block_ptr instead (with sanity check to ensure it's resume
-        // at the exact block).
-        self.rewind_with_conn(&conn, site, block_ptr_to, Some(""))
+        // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
+        // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
+        self.rewind_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None)
     }
 
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1378,10 +1360,10 @@ impl DeploymentStore {
 
                     // We ignore the StoreEvent that's being returned, we'll not use it.
                     //
-                    // We reset the firehose cursor to the empty string. That way, on resume,
-                    // Firehose will start from the block_ptr instead (with sanity checks to ensure it's resuming
-                    // at the correct block).
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), Some(""))?;
+                    // We reset the firehose cursor. That way, on resume, Firehose will start from
+                    // the block_ptr instead (with sanity checks to ensure it's resuming at the
+                    // correct block).
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None)?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;

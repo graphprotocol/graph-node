@@ -13,7 +13,7 @@ use std::thread;
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module<C: Blockchain>(
-    raw_module: Vec<u8>,
+    raw_module: &[u8],
     logger: Logger,
     subgraph_id: DeploymentHash,
     host_metrics: Arc<HostMetrics>,
@@ -21,7 +21,7 @@ pub fn spawn_module<C: Blockchain>(
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
 ) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error> {
-    let valid_module = Arc::new(ValidModule::new(&logger, &raw_module)?);
+    let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);

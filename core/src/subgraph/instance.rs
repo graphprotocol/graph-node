@@ -3,25 +3,26 @@ use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::SPEC_VERSION_0_0_6;
 
 use std::collections::HashMap;
-use std::time::Instant;
 
-use graph::{blockchain::DataSource, prelude::*};
 use graph::{
-    blockchain::{Block, Blockchain},
+    blockchain::Blockchain,
     components::{
         store::SubgraphFork,
         subgraph::{MappingError, SharedProofOfIndexing},
     },
     prelude::ENV_VARS,
 };
+use graph::{blockchain::DataSource, prelude::*};
 
 use super::metrics::SubgraphInstanceMetrics;
+use super::TriggerProcessor;
 
-pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>, TP: TriggerProcessor<C, T>> {
     subgraph_id: DeploymentHash,
     network: String,
     pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
+    pub(crate) trigger_processor: TP,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -34,14 +35,17 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 }
 
-impl<T, C: Blockchain> SubgraphInstance<C, T>
+impl<T, C, TP> SubgraphInstance<C, T, TP>
 where
     T: RuntimeHostBuilder<C>,
+    C: Blockchain,
+    TP: TriggerProcessor<C, T>,
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
         host_builder: T,
+        trigger_processor: TP,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
@@ -61,15 +65,23 @@ where
             hosts: Vec::new(),
             module_cache: HashMap::new(),
             poi_version,
+            trigger_processor,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         for ds in manifest.data_sources {
+            let runtime = ds.runtime();
+            let module_bytes = match runtime {
+                None => continue,
+                Some(ref module_bytes) => module_bytes,
+            };
+
             let host = this.new_host(
                 logger.cheap_clone(),
                 ds,
+                module_bytes,
                 templates.cheap_clone(),
                 host_metrics.cheap_clone(),
             )?;
@@ -79,21 +91,23 @@ where
         Ok(this)
     }
 
+    // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure that this
+    // function is only called for data_sources for which data_source.runtime().is_some() is true.
     fn new_host(
         &mut self,
         logger: Logger,
         data_source: C::DataSource,
+        module_bytes: &Arc<Vec<u8>>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
-            let module_bytes = data_source.runtime();
-            let module_hash = tiny_keccak::keccak256(module_bytes);
+            let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
             if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
             } else {
                 let sender = T::spawn_mapping(
-                    module_bytes.to_owned(),
+                    module_bytes.as_ref(),
                     logger,
                     self.subgraph_id.clone(),
                     host_metrics.clone(),
@@ -123,76 +137,19 @@ where
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
     ) -> Result<BlockState<C>, MappingError> {
-        Self::process_trigger_in_runtime_hosts(
-            logger,
-            &self.hosts,
-            block,
-            trigger,
-            state,
-            proof_of_indexing,
-            causality_region,
-            debug_fork,
-            subgraph_metrics,
-        )
-        .await
-    }
-
-    pub(crate) async fn process_trigger_in_runtime_hosts(
-        logger: &Logger,
-        hosts: &[Arc<T::Host>],
-        block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
-        mut state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<BlockState<C>, MappingError> {
-        let error_count = state.deterministic_errors.len();
-
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            proof_of_indexing
-                .borrow_mut()
-                .start_handler(causality_region);
-        }
-
-        for host in hosts {
-            let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
-                // Trigger matches and was decoded as a mapping trigger.
-                Some(mapping_trigger) => mapping_trigger,
-
-                // Trigger does not match, do not process it.
-                None => continue,
-            };
-
-            let start = Instant::now();
-            state = host
-                .process_mapping_trigger(
-                    logger,
-                    block.ptr(),
-                    mapping_trigger,
-                    state,
-                    proof_of_indexing.cheap_clone(),
-                    debug_fork,
-                )
-                .await?;
-            let elapsed = start.elapsed().as_secs_f64();
-            subgraph_metrics.observe_trigger_processing_duration(elapsed);
-        }
-
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            if state.deterministic_errors.len() != error_count {
-                assert!(state.deterministic_errors.len() == error_count + 1);
-
-                // If a deterministic error has happened, write a new
-                // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-                proof_of_indexing
-                    .borrow_mut()
-                    .write_deterministic_error(&logger, causality_region);
-            }
-        }
-
-        Ok(state)
+        self.trigger_processor
+            .process_trigger(
+                logger,
+                &self.hosts,
+                block,
+                trigger,
+                state,
+                proof_of_indexing,
+                causality_region,
+                debug_fork,
+                subgraph_metrics,
+            )
+            .await
     }
 
     pub(crate) fn add_dynamic_data_source(
@@ -219,7 +176,18 @@ where
                 <= data_source.creation_block()
         );
 
-        let host = Arc::new(self.new_host(logger.clone(), data_source, templates, metrics)?);
+        let module_bytes = match &data_source.runtime() {
+            None => return Ok(None),
+            Some(ref module_bytes) => module_bytes.cheap_clone(),
+        };
+
+        let host = Arc::new(self.new_host(
+            logger.clone(),
+            data_source,
+            &module_bytes,
+            templates,
+            metrics,
+        )?);
 
         Ok(if self.hosts.contains(&host) {
             None
