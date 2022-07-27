@@ -134,7 +134,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
 
 #[derive(Clone, Debug, Envconfig)]
 pub struct InnerGraphQl {
-    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "false")]
+    #[envconfig(from = "ENABLE_GRAPHQL_VALIDATIONS", default = "true")]
     enable_validations: EnvVarBoolean,
     #[envconfig(from = "SILENT_GRAPHQL_VALIDATIONS", default = "true")]
     silent_graphql_validations: EnvVarBoolean,
