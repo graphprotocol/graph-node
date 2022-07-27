@@ -11,8 +11,8 @@ use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::execution::ast as a;
+use crate::metrics::GraphQLMetrics;
 use crate::query::ext::BlockConstraint;
-use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
@@ -29,7 +29,7 @@ pub struct StoreResolver {
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
-    result_size: Arc<ResultSizeMetrics>,
+    graphql_metrics: Arc<GraphQLMetrics>,
 }
 
 impl CheapClone for StoreResolver {}
@@ -44,7 +44,7 @@ impl StoreResolver {
         deployment: DeploymentHash,
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
-        result_size: Arc<ResultSizeMetrics>,
+        graphql_metrics: Arc<GraphQLMetrics>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -56,7 +56,7 @@ impl StoreResolver {
             // Checking for non-fatal errors does not work with subscriptions.
             has_non_fatal_errors: false,
             error_policy: ErrorPolicy::Deny,
-            result_size,
+            graphql_metrics,
         }
     }
 
@@ -73,7 +73,7 @@ impl StoreResolver {
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
-        result_size: Arc<ResultSizeMetrics>,
+        graphql_metrics: Arc<GraphQLMetrics>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
@@ -90,7 +90,7 @@ impl StoreResolver {
             deployment,
             has_non_fatal_errors,
             error_policy,
-            result_size,
+            graphql_metrics,
         };
         Ok(resolver)
     }
@@ -221,7 +221,7 @@ impl Resolver for StoreResolver {
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(self, ctx, selection_set, &self.result_size).map(Some)
+        super::prefetch::run(self, ctx, selection_set, &self.graphql_metrics).map(Some)
     }
 
     fn resolve_objects(
