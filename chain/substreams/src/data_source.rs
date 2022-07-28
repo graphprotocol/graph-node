@@ -20,9 +20,11 @@ pub const SUBSTREAMS_KIND: &str = "substreams";
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Substreams do not support dynamic data sources";
 const TEMPLATE_ERROR: &str = "Substreams do not support templates";
 
+const ALLOWED_MAPPING_KIND: [&'static str; 1] = ["substreams/graph-entities"];
+
 // TODO(filipe): Remove once we implement the TriggerProcessor for substreams.
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
@@ -99,7 +101,29 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn validate(&self) -> Vec<Error> {
-        todo!()
+        let mut errs = vec![];
+
+        if &self.kind != SUBSTREAMS_KIND {
+            errs.push(anyhow!(
+                "data source has invalid `kind`, expected {} but found {}",
+                SUBSTREAMS_KIND,
+                self.kind
+            ))
+        }
+
+        if self.name.is_empty() {
+            errs.push(anyhow!("name cannot be empty"));
+        }
+
+        if !ALLOWED_MAPPING_KIND.contains(&self.mapping.kind.as_str()) {
+            errs.push(anyhow!(
+                "mapping kind has to be one of {:?}, found {}",
+                ALLOWED_MAPPING_KIND,
+                self.mapping.kind
+            ))
+        }
+
+        errs
     }
 
     fn from_stored_dynamic_data_source(
@@ -110,13 +134,13 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mapping {
     pub api_version: semver::Version,
     pub kind: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct UnresolvedDataSource {
     pub kind: String,
     pub network: Option<String>,
@@ -126,6 +150,7 @@ pub struct UnresolvedDataSource {
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     pub api_version: String,
     pub kind: String,
@@ -190,5 +215,158 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for NoopDataSourceTemplate 
         _logger: &Logger,
     ) -> Result<NoopDataSourceTemplate, anyhow::Error> {
         unimplemented!("{}", TEMPLATE_ERROR)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{str::FromStr, sync::Arc};
+
+    use anyhow::Error;
+    use graph::{
+        blockchain::{DataSource as _, UnresolvedDataSource as _},
+        components::link_resolver::LinkResolver,
+        prelude::{async_trait, serde_yaml, JsonValueStream, Link},
+        slog::{o, Discard, Logger},
+    };
+
+    use crate::{DataSource, Mapping, UnresolvedDataSource, UnresolvedMapping, SUBSTREAMS_KIND};
+
+    #[test]
+    fn parse_data_source() {
+        let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
+        let expected = UnresolvedDataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::Source {
+                package: crate::Package {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                },
+            },
+            mapping: UnresolvedMapping {
+                api_version: "0.0.7".into(),
+                kind: "substreams/graph-entities".into(),
+            },
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[tokio::test]
+    async fn data_source_conversion() {
+        let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
+        let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
+        let logger = Logger::root(Discard, o!());
+        let ds: DataSource = ds.resolve(&link_resolver, &logger).await.unwrap();
+        let expected = DataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::Source {
+                package: crate::Package {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                },
+            },
+            mapping: Mapping {
+                api_version: semver::Version::from_str("0.0.7").unwrap(),
+                kind: "substreams/graph-entities".into(),
+            },
+            context: Arc::new(None),
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[test]
+    fn data_source_validation() {
+        let mut ds = gen_data_source();
+        assert_eq!(true, ds.validate().is_empty());
+
+        ds.network = None;
+        assert_eq!(true, ds.validate().is_empty());
+
+        ds.kind = "asdasd".into();
+        ds.name = "".into();
+        ds.mapping.kind = "asdasd".into();
+        let errs: Vec<String> = ds.validate().into_iter().map(|e| e.to_string()).collect();
+        assert_eq!(
+            errs,
+            vec![
+                "data source has invalid `kind`, expected substreams but found asdasd",
+                "name cannot be empty",
+                "mapping kind has to be one of [\"substreams/graph-entities\"], found asdasd"
+            ]
+        );
+    }
+
+    fn gen_data_source() -> DataSource {
+        DataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::Source {
+                package: crate::Package {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                },
+            },
+            mapping: Mapping {
+                api_version: semver::Version::from_str("0.0.7").unwrap(),
+                kind: "substreams/graph-entities".into(),
+            },
+            context: Arc::new(None),
+        }
+    }
+
+    const TEMPLATE_DATA_SOURCE: &str = r#"
+        kind: substreams
+        name: Uniswap
+        network: mainnet
+        source:
+          package:
+            moduleName: output
+            file:
+              /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+              # This IPFs path would be generated from a local path at deploy time
+        mapping:
+          kind: substreams/graph-entities
+          apiVersion: 0.0.7
+    "#;
+
+    #[derive(Debug)]
+    struct NoopLinkResolver {}
+
+    #[async_trait]
+    impl LinkResolver for NoopLinkResolver {
+        fn with_timeout(&self, _timeout: std::time::Duration) -> Box<dyn LinkResolver> {
+            unimplemented!()
+        }
+
+        fn with_retries(&self) -> Box<dyn LinkResolver> {
+            unimplemented!()
+        }
+
+        async fn cat(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
+            unimplemented!()
+        }
+
+        async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
+            unimplemented!()
+        }
+
+        async fn json_stream(
+            &self,
+            _logger: &Logger,
+            _link: &Link,
+        ) -> Result<JsonValueStream, Error> {
+            unimplemented!()
+        }
     }
 }

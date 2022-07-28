@@ -1570,16 +1570,12 @@ dependencies = [
  "base64-url",
  "diesel",
  "graph",
- "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
- "graph-store-postgres",
- "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
  "serde",
  "sha2 0.10.2",
- "test-store",
  "tonic-build",
 ]
 
@@ -1589,15 +1585,12 @@ version = "0.26.0"
 dependencies = [
  "anyhow",
  "graph",
- "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
- "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
  "semver",
  "serde",
- "test-store",
  "tonic-build",
 ]
 
@@ -1635,15 +1628,11 @@ dependencies = [
  "base64",
  "diesel",
  "graph",
- "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
- "graph-store-postgres",
- "pretty_assertions 0.7.2",
  "prost",
  "prost-types",
  "serde",
- "test-store",
  "tonic-build",
 ]
 
@@ -1657,9 +1646,6 @@ dependencies = [
  "envconfig",
  "futures 0.1.31",
  "graph",
- "graph-core",
- "graph-runtime-derive",
- "graph-runtime-wasm",
  "hex",
  "http",
  "itertools",
@@ -1669,9 +1655,8 @@ dependencies = [
  "prost-types",
  "semver",
  "serde",
- "test-store",
  "tiny-keccak 1.5.0",
- "tonic",
+ "tokio",
  "tonic-build",
 ]
 
@@ -1698,7 +1683,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "lru_time_cache",
- "pretty_assertions 1.2.1",
+ "pretty_assertions",
  "semver",
  "serde",
  "serde_json",
@@ -1706,7 +1691,6 @@ dependencies = [
  "test-store",
  "tower 0.4.12 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
- "walkdir",
 ]
 
 [[package]]
@@ -1725,7 +1709,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "parking_lot 0.12.1",
- "pretty_assertions 1.2.1",
+ "pretty_assertions",
  "stable-hash 0.3.3",
  "stable-hash 0.4.2",
  "test-store",
@@ -3062,18 +3046,6 @@ dependencies = [
 
 [[package]]
 name = "pretty_assertions"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cab0e7c02cf376875e9335e0ba1da535775beb5450d21e1dffca068818ed98b"
-dependencies = [
- "ansi_term",
- "ctor",
- "diff",
- "output_vt100",
-]
-
-[[package]]
-name = "pretty_assertions"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c89f989ac94207d048d92db058e4f6ec7342b0971fc58d1271ca148b799b3563"
@@ -3572,15 +3544,6 @@ name = "ryu"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71d301d4193d031abdd79ff7e3dd721168a9572ef3fe51a1517aba235bd8f86e"
-
-[[package]]
-name = "same-file"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
-dependencies = [
- "winapi-util",
-]
 
 [[package]]
 name = "schannel"
@@ -4831,17 +4794,6 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
-
-[[package]]
-name = "walkdir"
-version = "2.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "808cf2735cd4b6866113f648b791c6adc5714537bc222d9347bb203386ffda56"
-dependencies = [
- "same-file",
- "winapi",
- "winapi-util",
-]
 
 [[package]]
 name = "want"
