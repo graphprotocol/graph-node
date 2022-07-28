@@ -354,24 +354,12 @@ fn field_list_filter_input_values(
         // derived, we allow ID strings to be passed on.
         // Adds child filter only to object types.
         let (input_field_type, parent_type_name) = match typedef {
-            TypeDefinition::Object(parent) => {
+            TypeDefinition::Object(ObjectType { name, .. })
+            | TypeDefinition::Interface(InterfaceType { name, .. }) => {
                 if ast::get_derived_from_directive(field).is_some() {
-                    (None, Some(parent.name.clone()))
+                    (None, Some(name.clone()))
                 } else {
-                    (
-                        Some(Type::NamedType("String".into())),
-                        Some(parent.name.clone()),
-                    )
-                }
-            }
-            TypeDefinition::Interface(parent) => {
-                if ast::get_derived_from_directive(field).is_some() {
-                    (None, Some(parent.name.clone()))
-                } else {
-                    (
-                        Some(Type::NamedType("String".into())),
-                        Some(parent.name.clone()),
-                    )
+                    (Some(Type::NamedType("String".into())), Some(name.clone()))
                 }
             }
             TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.to_owned())), None),
