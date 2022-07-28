@@ -1,18 +1,15 @@
 use futures01::sync::mpsc::Sender;
-use graph::components::subgraph::ProofOfIndexingVersion;
-use graph::data::subgraph::SPEC_VERSION_0_0_6;
-
-use std::collections::HashMap;
-
 use graph::{
     blockchain::Blockchain,
     components::{
         store::SubgraphFork,
-        subgraph::{MappingError, SharedProofOfIndexing},
+        subgraph::{MappingError, ProofOfIndexingVersion, SharedProofOfIndexing},
     },
-    prelude::ENV_VARS,
+    data::subgraph::SPEC_VERSION_0_0_6,
+    data_source::DataSource,
+    prelude::*,
 };
-use graph::{blockchain::DataSource, prelude::*};
+use std::collections::HashMap;
 
 use super::metrics::SubgraphInstanceMetrics;
 use super::TriggerProcessor;
@@ -96,7 +93,7 @@ where
     fn new_host(
         &mut self,
         logger: Logger,
-        data_source: C::DataSource,
+        data_source: DataSource<C>,
         module_bytes: &Arc<Vec<u8>>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         host_metrics: Arc<HostMetrics>,
@@ -155,7 +152,7 @@ where
     pub(crate) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
-        data_source: C::DataSource,
+        data_source: DataSource<C>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {

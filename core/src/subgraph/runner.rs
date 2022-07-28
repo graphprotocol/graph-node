@@ -6,7 +6,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
+use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -16,6 +16,7 @@ use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
+use graph::data_source::DataSource;
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::convert::TryFrom;
@@ -469,7 +470,7 @@ where
             // Try to create a runtime host for the data source
             let host = self.ctx.instance.add_dynamic_data_source(
                 &self.logger,
-                data_source.clone(),
+                DataSource::Onchain(data_source.clone()),
                 self.inputs.templates.clone(),
                 self.metrics.host.clone(),
             )?;

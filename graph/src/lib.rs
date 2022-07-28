@@ -18,6 +18,8 @@ pub mod cheap_clone;
 
 pub mod ipfs_client;
 
+pub mod data_source;
+
 pub mod blockchain;
 
 pub mod offchain;

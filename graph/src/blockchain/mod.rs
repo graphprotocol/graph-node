@@ -80,6 +80,7 @@ pub trait Block: Send + Sync {
 // This is only `Debug` because some tests require that
 pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     const KIND: BlockchainKind;
+    const ALIASES: &'static [&'static str] = &[];
 
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.

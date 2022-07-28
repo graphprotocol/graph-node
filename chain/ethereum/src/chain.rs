@@ -245,6 +245,7 @@ impl Chain {
 #[async_trait]
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Ethereum;
+    const ALIASES: &'static [&'static str] = &["ethereum/contract"];
 
     type Block = BlockFinality;
 
