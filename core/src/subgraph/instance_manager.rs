@@ -220,7 +220,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             (manifest, manifest_idx_and_name)
         };
 
-        let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
+        let onchain_data_sources = manifest
+            .data_sources
+            .iter()
+            .filter_map(|d| d.as_onchain().cloned())
+            .collect::<Vec<_>>();
+        let required_capabilities = C::NodeCapabilities::from_data_sources(&onchain_data_sources);
         let network = manifest.network_name();
 
         let chain = self
@@ -230,7 +235,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .clone();
 
         // Obtain filters from the manifest
-        let mut filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
+        let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
 
         if self.static_filters {
             filter.extend_with_template(manifest.templates.clone().into_iter());

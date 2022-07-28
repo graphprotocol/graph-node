@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
+use graph::data_source;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
@@ -55,7 +56,7 @@ fn mock_host_exports(
     let ens_lookup = store.ens_lookup();
     HostExports::new(
         subgraph_id,
-        &data_source,
+        &data_source::DataSource::Onchain(data_source),
         network,
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::new(

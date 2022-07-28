@@ -121,7 +121,6 @@ async fn setup(
             data_sources: vec![],
             graft: None,
             templates: vec![],
-            offchain_data_sources: vec![],
             chain: PhantomData,
         };
 

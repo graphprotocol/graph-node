@@ -8,12 +8,12 @@ use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
-use graph::blockchain::DataSource;
 use graph::blockchain::{Blockchain, DataSourceTemplate as _};
 use graph::components::store::EnsLookup;
 use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
+use graph::data_source::DataSource;
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
@@ -74,7 +74,7 @@ pub struct HostExports<C: Blockchain> {
 impl<C: Blockchain> HostExports<C> {
     pub fn new(
         subgraph_id: DeploymentHash,
-        data_source: &impl DataSource<C>,
+        data_source: &DataSource<C>,
         data_source_network: String,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         link_resolver: Arc<dyn LinkResolver>,

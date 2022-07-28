@@ -5,11 +5,10 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::RuntimeAdapter;
-use graph::blockchain::{Blockchain, DataSource};
-use graph::blockchain::{HostFn, TriggerWithHandler};
+use graph::blockchain::{Blockchain, DataSource as _, HostFn, RuntimeAdapter, TriggerWithHandler};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::DataSource;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -76,7 +75,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         &self,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: C::DataSource,
+        data_source: DataSource<C>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
@@ -97,7 +96,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
 
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
-    data_source: C::DataSource,
+    data_source: DataSource<C>,
     mapping_request_sender: Sender<MappingRequest<C>>,
     host_exports: Arc<HostExports<C>>,
     metrics: Arc<HostMetrics>,
@@ -112,7 +111,7 @@ where
         link_resolver: Arc<dyn LinkResolver>,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: C::DataSource,
+        data_source: DataSource<C>,
         templates: Arc<Vec<C::DataSourceTemplate>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
@@ -129,10 +128,14 @@ where
             ens_lookup,
         ));
 
-        let host_fns = Arc::new(runtime_adapter.host_fns(&data_source)?);
+        let host_fns = data_source
+            .as_onchain()
+            .map(|ds| runtime_adapter.host_fns(ds))
+            .transpose()?
+            .unwrap_or_default();
 
         Ok(RuntimeHost {
-            host_fns,
+            host_fns: Arc::new(host_fns),
             data_source,
             mapping_request_sender,
             host_exports,
@@ -215,7 +218,10 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error> {
-        self.data_source.match_and_decode(trigger, block, logger)
+        self.data_source
+            .as_onchain()
+            .map(|ds| ds.match_and_decode(trigger, block, logger))
+            .unwrap_or(Ok(None))
     }
 
     async fn process_mapping_trigger(

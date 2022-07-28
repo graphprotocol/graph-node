@@ -1,7 +1,8 @@
 use std::time::Instant;
 
-use graph::blockchain::{Blockchain, DataSource, DataSourceTemplate as _};
+use graph::blockchain::{Blockchain, DataSource as _, DataSourceTemplate as _};
 use graph::components::store::WritableStore;
+use graph::data_source::DataSource;
 use graph::prelude::*;
 
 pub async fn load_dynamic_data_sources<C: Blockchain>(
@@ -9,10 +10,10 @@ pub async fn load_dynamic_data_sources<C: Blockchain>(
     logger: Logger,
     manifest: &SubgraphManifest<C>,
     manifest_idx_and_name: Vec<(u32, String)>,
-) -> Result<Vec<C::DataSource>, Error> {
+) -> Result<Vec<DataSource<C>>, Error> {
     let start_time = Instant::now();
 
-    let mut data_sources: Vec<C::DataSource> = vec![];
+    let mut data_sources: Vec<DataSource<C>> = vec![];
 
     for stored in store
         .load_dynamic_data_sources(manifest_idx_and_name)
@@ -33,7 +34,7 @@ pub async fn load_dynamic_data_sources<C: Blockchain>(
             "Assertion failure: new data source has lower creation block than existing ones"
         );
 
-        data_sources.push(ds);
+        data_sources.push(DataSource::Onchain(ds));
     }
 
     trace!(

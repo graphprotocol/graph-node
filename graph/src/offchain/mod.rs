@@ -1,18 +1,26 @@
-use crate::{components::link_resolver::LinkResolver, prelude::Link};
+use crate::{
+    components::{link_resolver::LinkResolver, store::BlockNumber},
+    prelude::{DataSourceContext, Link},
+};
 
 use anyhow::anyhow;
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::sync::Arc;
 
+pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
+
 #[derive(Debug)]
 pub struct DataSource {
+    pub kind: String,
     pub name: String,
     pub source: Option<Source>,
     pub mapping: Mapping,
+    pub context: Arc<Option<DataSourceContext>>,
+    pub creation_block: Option<BlockNumber>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Source {
     Ipfs(Link),
 }
@@ -71,9 +79,12 @@ impl UnresolvedDataSource {
             }
         };
         Ok(DataSource {
+            kind: self.kind,
             name: self.name,
             source,
             mapping: self.mapping.resolve(&*resolver, logger).await?,
+            context: Arc::new(None),
+            creation_block: None,
         })
     }
 }

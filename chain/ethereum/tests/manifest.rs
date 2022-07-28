@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
+use graph::data_source::DataSource;
+use graph::offchain;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
@@ -152,8 +154,15 @@ specVersion: 0.0.7
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_7).await;
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
-    assert_eq!(manifest.offchain_data_sources.len(), 1);
-    assert_eq!(manifest.data_sources.len(), 0);
+    assert_eq!(manifest.data_sources.len(), 1);
+    let data_source = match &manifest.data_sources[0] {
+        DataSource::Offchain(ds) => ds,
+        DataSource::Onchain(_) => unreachable!(),
+    };
+    assert_eq!(
+        data_source.source,
+        Some(offchain::Source::Ipfs(Link::from("/ipfs/Qmfile")))
+    );
 }
 
 #[tokio::test]
@@ -392,7 +401,12 @@ specVersion: 0.0.2
 ";
 
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
-    let required_capabilities = NodeCapabilities::from_data_sources(&manifest.data_sources);
+    let onchain_data_sources = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_onchain().cloned())
+        .collect::<Vec<_>>();
+    let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
     assert_eq!(true, required_capabilities.traces);
