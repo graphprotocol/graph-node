@@ -24,25 +24,24 @@ use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
 
-use crate::blockchain::BlockPtr;
-use crate::data::graphql::TryFromValue;
-use crate::data::store::Entity;
-use crate::data::{
-    schema::{Schema, SchemaImportError, SchemaValidationError},
-    subgraph::features::validate_subgraph_features,
-};
-use crate::offchain::OFFCHAIN_KINDS;
-use crate::prelude::{r, CheapClone, ENV_VARS};
 use crate::{
-    blockchain::{
-        Blockchain, DataSource as _, DataSourceTemplate as _, UnresolvedDataSourceTemplate as _,
-    },
+    blockchain::{BlockPtr, Blockchain, DataSource as _},
     components::{
         link_resolver::LinkResolver,
         store::{DeploymentLocator, StoreError, SubgraphStore},
     },
-    data::query::QueryExecutionError,
-    data_source::{DataSource, UnresolvedDataSource},
+    data::{
+        graphql::TryFromValue,
+        query::QueryExecutionError,
+        schema::{Schema, SchemaImportError, SchemaValidationError},
+        store::Entity,
+        subgraph::features::validate_subgraph_features,
+    },
+    data_source::{
+        DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    },
+    offchain::OFFCHAIN_KINDS,
+    prelude::{r, CheapClone, ENV_VARS},
 };
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
@@ -525,12 +524,12 @@ type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
     UnresolvedSchema,
     UnresolvedDataSource<C>,
-    <C as Blockchain>::UnresolvedDataSourceTemplate,
+    UnresolvedDataSourceTemplate<C>,
 >;
 
 /// SubgraphManifest validated with IPFS links resolved
 pub type SubgraphManifest<C> =
-    BaseSubgraphManifest<C, Schema, DataSource<C>, <C as Blockchain>::DataSourceTemplate>;
+    BaseSubgraphManifest<C, Schema, DataSource<C>, DataSourceTemplate<C>>;
 
 /// Unvalidated SubgraphManifest
 pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);

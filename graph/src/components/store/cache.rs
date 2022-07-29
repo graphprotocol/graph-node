@@ -7,6 +7,7 @@ use crate::blockchain::BlockPtr;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
+use crate::data_source::DataSource;
 use crate::prelude::ENV_VARS;
 use crate::util::lfu_cache::LfuCache;
 
@@ -188,7 +189,7 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &impl s::DataSource<C>) {
+    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &DataSource<C>) {
         self.data_sources
             .push(data_source.as_stored_dynamic_data_source());
     }

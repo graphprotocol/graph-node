@@ -6,7 +6,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
+use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -225,7 +225,9 @@ where
             let (data_sources, runtime_hosts) =
                 self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
-            let filter = C::TriggerFilter::from_data_sources(data_sources.iter());
+            let filter = C::TriggerFilter::from_data_sources(
+                data_sources.iter().filter_map(|ds| ds.as_onchain()),
+            );
 
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
@@ -459,18 +461,18 @@ where
     fn create_dynamic_data_sources(
         &mut self,
         created_data_sources: Vec<DataSourceTemplateInfo<C>>,
-    ) -> Result<(Vec<C::DataSource>, Vec<Arc<T::Host>>), Error> {
+    ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), Error> {
         let mut data_sources = vec![];
         let mut runtime_hosts = vec![];
 
         for info in created_data_sources {
             // Try to instantiate a data source from the template
-            let data_source = C::DataSource::try_from(info)?;
+            let data_source = DataSource::try_from(info)?;
 
             // Try to create a runtime host for the data source
             let host = self.ctx.instance.add_dynamic_data_source(
                 &self.logger,
-                DataSource::Onchain(data_source.clone()),
+                data_source.clone(),
                 self.inputs.templates.clone(),
                 self.metrics.host.clone(),
             )?;
@@ -500,7 +502,7 @@ where
     fn persist_dynamic_data_sources(
         &mut self,
         entity_cache: &mut EntityCache,
-        data_sources: Vec<C::DataSource>,
+        data_sources: Vec<DataSource<C>>,
     ) {
         if !data_sources.is_empty() {
             debug!(
@@ -523,7 +525,9 @@ where
         }
 
         // Merge filters from data sources into the block stream builder
-        self.ctx.filter.extend(data_sources.iter());
+        self.ctx
+            .filter
+            .extend(data_sources.iter().filter_map(|ds| ds.as_onchain()));
     }
 }
 

@@ -197,7 +197,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
 
         if self.static_filters {
-            filter.extend_with_template(manifest.templates.clone().into_iter());
+            filter.extend_with_template(
+                manifest
+                    .templates
+                    .iter()
+                    .filter_map(|ds| ds.as_onchain())
+                    .cloned(),
+            );
         }
 
         let start_blocks = manifest.start_blocks();

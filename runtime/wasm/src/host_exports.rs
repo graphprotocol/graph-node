@@ -8,12 +8,12 @@ use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
-use graph::blockchain::{Blockchain, DataSourceTemplate as _};
+use graph::blockchain::Blockchain;
 use graph::components::store::EntityType;
 use graph::components::store::{EnsLookup, EntityKey};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
-use graph::data_source::DataSource;
+use graph::data_source::{DataSource, DataSourceTemplate};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
@@ -66,7 +66,7 @@ pub struct HostExports<C: Blockchain> {
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
-    templates: Arc<Vec<C::DataSourceTemplate>>,
+    templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     ens_lookup: Arc<dyn EnsLookup>,
 }
@@ -76,7 +76,7 @@ impl<C: Blockchain> HostExports<C> {
         subgraph_id: DeploymentHash,
         data_source: &DataSource<C>,
         data_source_network: String,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         link_resolver: Arc<dyn LinkResolver>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {

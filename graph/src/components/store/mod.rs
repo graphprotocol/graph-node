@@ -19,7 +19,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;

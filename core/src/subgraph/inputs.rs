@@ -1,9 +1,8 @@
-use graph::blockchain::TriggersAdapter;
-use graph::components::store::WritableStore;
 use graph::{
-    blockchain::Blockchain,
-    components::store::{DeploymentLocator, SubgraphFork},
+    blockchain::{Blockchain, TriggersAdapter},
+    components::store::{DeploymentLocator, SubgraphFork, WritableStore},
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
+    data_source::DataSourceTemplate,
     prelude::BlockNumber,
 };
 use std::collections::BTreeSet;
@@ -18,7 +17,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
     pub triggers_adapter: Arc<dyn TriggersAdapter<C>>,
     pub chain: Arc<C>,
-    pub templates: Arc<Vec<C::DataSourceTemplate>>,
+    pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub unified_api_version: UnifiedMappingApiVersion,
     pub static_filters: bool,
 }

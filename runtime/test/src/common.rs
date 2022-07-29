@@ -28,28 +28,30 @@ fn mock_host_exports(
     store: Arc<impl SubgraphStore>,
     api_version: Version,
 ) -> HostExports<Chain> {
-    let templates = vec![DataSourceTemplate {
-        kind: String::from("ethereum/contract"),
-        name: String::from("example template"),
-        network: Some(String::from("mainnet")),
-        source: TemplateSource {
-            abi: String::from("foo"),
-        },
-        mapping: Mapping {
-            kind: String::from("ethereum/events"),
-            api_version,
-            language: String::from("wasm/assemblyscript"),
-            entities: vec![],
-            abis: vec![],
-            event_handlers: vec![],
-            call_handlers: vec![],
-            block_handlers: vec![],
-            link: Link {
-                link: "link".to_owned(),
+    let templates = vec![data_source::DataSourceTemplate::Onchain(
+        DataSourceTemplate {
+            kind: String::from("ethereum/contract"),
+            name: String::from("example template"),
+            network: Some(String::from("mainnet")),
+            source: TemplateSource {
+                abi: String::from("foo"),
             },
-            runtime: Arc::new(vec![]),
+            mapping: Mapping {
+                kind: String::from("ethereum/events"),
+                api_version,
+                language: String::from("wasm/assemblyscript"),
+                entities: vec![],
+                abis: vec![],
+                event_handlers: vec![],
+                call_handlers: vec![],
+                block_handlers: vec![],
+                link: Link {
+                    link: "link".to_owned(),
+                },
+                runtime: Arc::new(vec![]),
+            },
         },
-    }];
+    )];
 
     let network = data_source.network.clone().unwrap();
     let ens_lookup = store.ens_lookup();

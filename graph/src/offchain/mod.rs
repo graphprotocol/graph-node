@@ -1,16 +1,23 @@
 use crate::{
-    components::{link_resolver::LinkResolver, store::BlockNumber},
+    blockchain::Blockchain,
+    components::{
+        link_resolver::LinkResolver,
+        store::{BlockNumber, StoredDynamicDataSource},
+        subgraph::DataSourceTemplateInfo,
+    },
+    data::store::scalar::Bytes,
+    data_source,
     prelude::{DataSourceContext, Link},
 };
 
-use anyhow::anyhow;
+use anyhow::{self, Error};
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::sync::Arc;
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DataSource {
     pub kind: String,
     pub name: String,
@@ -20,7 +27,71 @@ pub struct DataSource {
     pub creation_block: Option<BlockNumber>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
+    type Error = Error;
+
+    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
+        let template = match info.template {
+            data_source::DataSourceTemplate::Offchain(template) => template,
+            data_source::DataSourceTemplate::Onchain(_) => {
+                anyhow::bail!("Cannot create offchain data source from onchain template")
+            }
+        };
+        let source = info.params.get(0).ok_or(anyhow::anyhow!(
+            "Failed to create data source from template `{}`: source parameter is missing",
+            template.name
+        ))?;
+        Ok(Self {
+            kind: template.kind.clone(),
+            name: template.name.clone(),
+            source: Some(Source::Ipfs(Link::from(source))),
+            mapping: template.mapping.clone(),
+            context: Arc::new(info.context),
+            creation_block: Some(info.creation_block),
+        })
+    }
+}
+
+impl DataSource {
+    pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
+        let param = self.source.as_ref().map(|source| match source {
+            Source::Ipfs(link) => Bytes::from(link.link.as_bytes()),
+        });
+        let context = self
+            .context
+            .as_ref()
+            .as_ref()
+            .map(|ctx| serde_json::to_value(&ctx).unwrap());
+        StoredDynamicDataSource {
+            name: self.name.clone(),
+            param,
+            context,
+            creation_block: self.creation_block,
+        }
+    }
+
+    pub fn from_stored_dynamic_data_source(
+        template: &DataSourceTemplate,
+        stored: StoredDynamicDataSource,
+    ) -> Result<Self, Error> {
+        let source = stored.param.and_then(|bytes| {
+            String::from_utf8(bytes.as_slice().to_vec())
+                .ok()
+                .map(|link| Source::Ipfs(Link::from(link)))
+        });
+        let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
+        Ok(Self {
+            kind: template.kind.clone(),
+            name: template.name.clone(),
+            source,
+            mapping: template.mapping.clone(),
+            context,
+            creation_block: stored.creation_block,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
     Ipfs(Link),
 }
@@ -63,7 +134,7 @@ impl UnresolvedDataSource {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
-    ) -> Result<DataSource, anyhow::Error> {
+    ) -> Result<DataSource, Error> {
         info!(logger, "Resolve offchain data source";
             "name" => &self.name,
             "kind" => &self.kind,
@@ -72,10 +143,10 @@ impl UnresolvedDataSource {
         let source = match self.kind.as_str() {
             "file/ipfs" => self.source.map(|src| Source::Ipfs(src.file)),
             _ => {
-                return Err(anyhow!(
+                anyhow::bail!(
                     "offchain data source has invalid `kind`, expected `file/ipfs` but found {}",
                     self.kind
-                ))
+                );
             }
         };
         Ok(DataSource {
@@ -94,7 +165,7 @@ impl UnresolvedMapping {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
-    ) -> Result<Mapping, anyhow::Error> {
+    ) -> Result<Mapping, Error> {
         info!(logger, "Resolve offchain mapping"; "link" => &self.file.link);
         Ok(Mapping {
             language: self.language,
@@ -103,6 +174,34 @@ impl UnresolvedMapping {
             handler: self.handler,
             runtime: Arc::new(resolver.cat(logger, &self.file).await?),
             link: self.file,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct BaseDataSourceTemplate<M> {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub mapping: M,
+}
+
+pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
+pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
+
+impl UnresolvedDataSourceTemplate {
+    pub async fn resolve(
+        self,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
+    ) -> Result<DataSourceTemplate, Error> {
+        info!(logger, "Resolve data source template"; "name" => &self.name);
+
+        Ok(DataSourceTemplate {
+            kind: self.kind,
+            network: self.network,
+            name: self.name,
+            mapping: self.mapping.resolve(resolver, logger).await?,
         })
     }
 }

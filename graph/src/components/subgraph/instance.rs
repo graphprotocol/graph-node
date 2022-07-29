@@ -1,11 +1,14 @@
-use crate::blockchain::Blockchain;
-use crate::prelude::*;
-use crate::util::lfu_cache::LfuCache;
-use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
+use crate::{
+    blockchain::Blockchain,
+    prelude::*,
+    util::lfu_cache::LfuCache,
+    components::store::WritableStore, data::subgraph::schema::SubgraphError,
+    data_source::DataSourceTemplate,
+};
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo<C: Blockchain> {
-    pub template: C::DataSourceTemplate,
+    pub template: DataSourceTemplate<C>,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
     pub creation_block: BlockNumber,
