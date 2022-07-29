@@ -655,36 +655,16 @@ pub fn fail(
 pub(crate) fn has_deterministic_errors(
     conn: &PgConnection,
     id: &DeploymentHash,
-    block: Option<BlockNumber>,
+    block: BlockNumber,
 ) -> Result<bool, StoreError> {
-    use subgraph_deployment as d;
     use subgraph_error as e;
-
-    match block {
-        Some(block) => select(diesel::dsl::exists(
-            e::table
-                .filter(e::subgraph_id.eq(id.as_str()))
-                .filter(e::deterministic)
-                .filter(sql("block_range @> ").bind::<Integer, _>(block)),
-        ))
-        .get_result(conn),
-        None => select(diesel::dsl::exists(
-            e::table
-                .filter(e::subgraph_id.eq(id.as_str()))
-                .filter(e::deterministic)
-                .filter(
-                    sql("block_range @> ")
-                        .bind(
-                            d::table
-                                .filter(d::deployment.eq(id.as_str()))
-                                .select(d::latest_ethereum_block_number)
-                                .single_value(),
-                        )
-                        .sql("::int"),
-                ),
-        ))
-        .get_result(conn),
-    }
+    select(diesel::dsl::exists(
+        e::table
+            .filter(e::subgraph_id.eq(id.as_str()))
+            .filter(e::deterministic)
+            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+    ))
+    .get_result(conn)
     .map_err(|e| e.into())
 }
 
@@ -740,7 +720,7 @@ fn check_health(
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
-    let has_errors = has_deterministic_errors(conn, id, Some(block))?;
+    let has_errors = has_deterministic_errors(conn, id, block)?;
 
     let (new, old) = match has_errors {
         true => (SubgraphHealth::Unhealthy, SubgraphHealth::Healthy),

@@ -544,6 +544,16 @@ fn fatal_vs_non_fatal() {
             .await
             .unwrap();
 
+        // Just to make latest_ethereum_block_number be 0
+        transact_and_wait(
+            &store.subgraph_store(),
+            &deployment,
+            BLOCKS[0].clone(),
+            vec![],
+        )
+        .await
+        .unwrap();
+
         let error = || SubgraphError {
             subgraph_id: deployment.hash.clone(),
             message: "test".to_string(),
@@ -562,7 +572,7 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(!query_store
-            .has_non_fatal_errors(Some(BLOCKS[0].number))
+            .has_non_fatal_errors(BLOCKS[0].number)
             .await
             .unwrap());
 
@@ -571,11 +581,12 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(query_store
-            .has_non_fatal_errors(Some(BLOCKS[1].number))
+            .has_non_fatal_errors(BLOCKS[1].number)
             .await
             .unwrap());
     })
 }
+
 
 #[test]
 fn fail_unfail_deterministic_error() {
@@ -607,7 +618,7 @@ fn fail_unfail_deterministic_error() {
 
         // We don't have any errors and the subgraph is healthy.
         assert!(!query_store
-            .has_non_fatal_errors(Some(BLOCKS[0].number))
+            .has_non_fatal_errors(BLOCKS[0].number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -627,7 +638,7 @@ fn fail_unfail_deterministic_error() {
 
         // Still no fatal errors.
         assert!(!query_store
-            .has_non_fatal_errors(Some(BLOCKS[1].number))
+            .has_non_fatal_errors(BLOCKS[1].number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -654,7 +665,7 @@ fn fail_unfail_deterministic_error() {
 
         // Now we have a fatal error because the subgraph failed.
         assert!(query_store
-            .has_non_fatal_errors(Some(BLOCKS[1].number))
+            .has_non_fatal_errors(BLOCKS[1].number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -671,7 +682,7 @@ fn fail_unfail_deterministic_error() {
         // We don't have fatal errors anymore and the block got reverted.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert!(!query_store
-            .has_non_fatal_errors(Some(BLOCKS[0].number))
+            .has_non_fatal_errors(BLOCKS[0].number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
