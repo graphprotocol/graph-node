@@ -1755,3 +1755,43 @@ fn can_query_root_typename() {
         assert_eq!(extract_data!(result), Some(exp));
     })
 }
+
+#[test]
+fn deterministic_error() {
+    use serde_json::json;
+    use test_store::block_store::BLOCK_TWO;
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup(
+            store.as_ref(),
+            "testDeterministicError",
+            BTreeSet::new(),
+            IdType::String,
+        )
+        .await;
+
+        let err = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "cow template handler could not moo event transaction".to_string(),
+            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            handler: Some("handleMoo".to_string()),
+            deterministic: true,
+        };
+
+        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+            .await
+            .unwrap();
+
+        // `subgraphError` is implicitly `deny`, data is omitted.
+        let query = "query { musician(id: \"m1\") { id } }";
+        let result = execute_query(&deployment, query).await;
+        let expected = json!({
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+    })
+}
