@@ -38,9 +38,9 @@ use crate::{
         subgraph::features::validate_subgraph_features,
     },
     data_source::{
-        DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+        offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
+        UnresolvedDataSourceTemplate,
     },
-    offchain::OFFCHAIN_KINDS,
     prelude::{r, CheapClone, ENV_VARS},
 };
 

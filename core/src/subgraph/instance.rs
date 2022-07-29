@@ -11,6 +11,8 @@ use graph::{
 };
 use std::collections::HashMap;
 
+use super::context::OffchainMonitor;
+
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
@@ -40,6 +42,7 @@ where
         host_builder: T,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
         host_metrics: Arc<HostMetrics>,
+        offchain_monitor: &OffchainMonitor,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -71,6 +74,13 @@ where
                 Some(ref module_bytes) => module_bytes,
             };
 
+            // Create services for static offchain data sources
+            if let DataSource::Offchain(ds) = &ds {
+                if let Some(source) = &ds.source {
+                    offchain_monitor.monitor(source.clone());
+                }
+            }
+
             let host = this.new_host(
                 logger.cheap_clone(),
                 ds,
@@ -78,7 +88,7 @@ where
                 templates.cheap_clone(),
                 host_metrics.cheap_clone(),
             )?;
-            this.hosts.push(Arc::new(host))
+            this.hosts.push(Arc::new(host));
         }
 
         Ok(this)

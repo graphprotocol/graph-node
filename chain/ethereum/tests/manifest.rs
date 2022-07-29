@@ -4,8 +4,7 @@ use std::time::Duration;
 
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
-use graph::data_source::DataSource;
-use graph::offchain;
+use graph::data_source::{offchain, DataSource};
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
@@ -28,6 +27,7 @@ const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
 const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";
 const FILE: &str = "{}";
+const FILE_CID: &str = "bafkreigkhuldxkyfkoaye4rgcqcwr45667vkygd45plwq6hawy7j4rbdky";
 
 #[derive(Default, Debug, Clone)]
 struct TextResolver {
@@ -84,7 +84,7 @@ async fn resolve_manifest(
     resolver.add("/ipfs/Qmschema", &GQL_SCHEMA);
     resolver.add("/ipfs/Qmabi", &ABI);
     resolver.add("/ipfs/Qmmapping", &MAPPING_WITH_IPFS_FUNC_WASM);
-    resolver.add("/ipfs/Qmfile", &FILE);
+    resolver.add(FILE_CID, &FILE);
 
     let resolver: Arc<dyn LinkResolverTrait> = Arc::new(resolver);
 
@@ -130,7 +130,8 @@ specVersion: 0.0.2
 
 #[tokio::test]
 async fn ipfs_manifest() {
-    const YAML: &str = "
+    let yaml = format!(
+        "
 schema:
   file:
     /: /ipfs/Qmschema
@@ -139,7 +140,7 @@ dataSources:
     kind: file/ipfs
     source:
       file:
-        /: /ipfs/Qmfile
+        /: {}
     mapping:
       apiVersion: 0.0.6
       language: wasm/assemblyscript
@@ -149,9 +150,11 @@ dataSources:
         /: /ipfs/Qmmapping
       handler: handleFile
 specVersion: 0.0.7
-";
+",
+        FILE_CID
+    );
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_7).await;
+    let manifest = resolve_manifest(&yaml, SPEC_VERSION_0_0_7).await;
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
     assert_eq!(manifest.data_sources.len(), 1);
@@ -161,7 +164,7 @@ specVersion: 0.0.7
     };
     assert_eq!(
         data_source.source,
-        Some(offchain::Source::Ipfs(Link::from("/ipfs/Qmfile")))
+        Some(offchain::Source::Ipfs(FILE_CID.parse().unwrap()))
     );
 }
 

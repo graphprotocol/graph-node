@@ -1,3 +1,5 @@
+pub mod offchain;
+
 use crate::{
     blockchain::{
         Blockchain, DataSource as _, DataSourceTemplate as _, UnresolvedDataSource as _,
@@ -8,7 +10,7 @@ use crate::{
         store::{BlockNumber, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
-    offchain::{self, OFFCHAIN_KINDS},
+    data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
 };
 use anyhow::Error;

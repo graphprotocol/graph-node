@@ -195,6 +195,7 @@ async fn main() {
 
     // Try to create IPFS clients for each URL specified in `--ipfs`
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &opt.ipfs);
+    let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
@@ -433,6 +434,7 @@ async fn main() {
             blockchain_map.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.clone(),
+            ipfs_client,
             static_filters,
         );
 

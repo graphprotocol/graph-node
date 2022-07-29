@@ -1463,6 +1463,7 @@ dependencies = [
  "bigdecimal",
  "bytes",
  "chrono",
+ "cid",
  "diesel",
  "diesel_derives",
  "envconfig",

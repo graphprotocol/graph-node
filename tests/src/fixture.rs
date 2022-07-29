@@ -199,7 +199,10 @@ pub async fn setup<C: Blockchain>(
     let static_filters = ENV_VARS.experimental_static_filters;
 
     let ipfs = IpfsClient::localhost();
-    let link_resolver = Arc::new(LinkResolver::new(vec![ipfs], Default::default()));
+    let link_resolver = Arc::new(LinkResolver::new(
+        vec![ipfs.cheap_clone()],
+        Default::default(),
+    ));
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
@@ -208,6 +211,7 @@ pub async fn setup<C: Blockchain>(
         blockchain_map.clone(),
         mock_registry.clone(),
         link_resolver.cheap_clone(),
+        ipfs,
         static_filters,
     );
 
