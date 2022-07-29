@@ -4,8 +4,8 @@ use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
-use graph::blockchain::{Blockchain, DataSourceTemplate};
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
@@ -192,7 +192,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             let manifest_idx_and_name: Vec<(u32, String)> = manifest
                 .templates
                 .iter()
-                .map(|t: &C::DataSourceTemplate| t.name().to_owned())
+                .map(|t| t.name().to_owned())
                 .enumerate()
                 .map(|(idx, name)| (ds_len + idx as u32, name))
                 .collect();
@@ -238,7 +238,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
 
         if self.static_filters {
-            filter.extend_with_template(manifest.templates.clone().into_iter());
+            filter.extend_with_template(
+                manifest
+                    .templates
+                    .iter()
+                    .filter_map(|ds| ds.as_onchain())
+                    .cloned(),
+            );
         }
 
         let start_blocks = manifest.start_blocks();

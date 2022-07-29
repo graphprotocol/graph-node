@@ -8,7 +8,7 @@ use futures03::channel::oneshot::channel;
 use graph::blockchain::{Blockchain, DataSource as _, HostFn, RuntimeAdapter, TriggerWithHandler};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::DataSource;
+use graph::data_source::{DataSource, DataSourceTemplate};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -76,7 +76,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
@@ -112,7 +112,7 @@ where
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,

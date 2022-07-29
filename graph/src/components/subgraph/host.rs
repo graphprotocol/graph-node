@@ -8,7 +8,7 @@ use futures::sync::mpsc;
 
 use crate::blockchain::TriggerWithHandler;
 use crate::components::store::SubgraphFork;
-use crate::data_source::DataSource;
+use crate::data_source::{DataSource, DataSourceTemplate};
 use crate::prelude::*;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
@@ -153,7 +153,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         network_name: String,
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
-        top_level_templates: Arc<Vec<C::DataSourceTemplate>>,
+        top_level_templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;

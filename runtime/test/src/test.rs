@@ -833,7 +833,7 @@ async fn test_data_source_create(api_version: Version, gas_used: u64) {
     .await
     .expect("unexpected error returned from dataSourceCreate");
     assert_eq!(result[0].params, params.clone());
-    assert_eq!(result[0].template.name, template);
+    assert_eq!(result[0].template.name(), template);
 
     // Test with a template that doesn't exist
     let template = String::from("nonexistent template");

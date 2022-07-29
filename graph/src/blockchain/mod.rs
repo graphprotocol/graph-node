@@ -90,7 +90,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
 
     type DataSourceTemplate: DataSourceTemplate<Self> + Clone;
-    type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self>;
+    type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self> + Clone;
 
     /// Trigger data as parsed from the triggers adapter.
     type TriggerData: TriggerData + Ord + Send + Sync + Debug;

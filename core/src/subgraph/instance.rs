@@ -6,7 +6,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingVersion, SharedProofOfIndexing},
     },
     data::subgraph::SPEC_VERSION_0_0_6,
-    data_source::DataSource,
+    data_source::{DataSource, DataSourceTemplate},
     prelude::*,
 };
 use std::collections::HashMap;
@@ -91,7 +91,7 @@ where
         logger: Logger,
         data_source: DataSource<C>,
         module_bytes: &Arc<Vec<u8>>,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
@@ -149,7 +149,7 @@ where
         &mut self,
         logger: &Logger,
         data_source: DataSource<C>,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources

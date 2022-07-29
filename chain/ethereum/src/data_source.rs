@@ -757,6 +757,9 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             context,
             creation_block,
         } = info;
+        let template = template.into_onchain().ok_or(anyhow!(
+            "Cannot create onchain data source from offchain template"
+        ))?;
 
         // Obtain the address from the parameters
         let string = params
