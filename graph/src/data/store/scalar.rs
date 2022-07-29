@@ -50,6 +50,10 @@ impl BigDecimal {
         Self::from(bigdecimal::BigDecimal::new(digits.0, -exp))
     }
 
+    pub fn parse_bytes(bytes: &[u8]) -> Option<Self> {
+        bigdecimal::BigDecimal::parse_bytes(bytes, 10).map(Self)
+    }
+
     pub fn zero() -> BigDecimal {
         use bigdecimal::Zero;
 
@@ -306,6 +310,10 @@ impl BigInt {
 
     pub fn from_signed_bytes_le(bytes: &[u8]) -> Self {
         BigInt(num_bigint::BigInt::from_signed_bytes_le(bytes))
+    }
+
+    pub fn from_signed_bytes_be(bytes: &[u8]) -> Self {
+        BigInt(num_bigint::BigInt::from_signed_bytes_be(bytes))
     }
 
     pub fn to_bytes_le(&self) -> (BigIntSign, Vec<u8>) {
