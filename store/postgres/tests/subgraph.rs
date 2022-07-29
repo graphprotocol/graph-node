@@ -1,10 +1,11 @@
 use graph::{
     components::{
         server::index_node::VersionInfo,
-        store::{DeploymentLocator, StatusStore},
+        store::{DeploymentId, DeploymentLocator, StatusStore},
     },
     data::subgraph::schema::SubgraphHealth,
     data::subgraph::schema::{DeploymentCreate, SubgraphError},
+    prelude::BlockPtr,
     prelude::EntityChange,
     prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
@@ -49,6 +50,17 @@ fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
     let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
     let current = current.unwrap();
     store.version_info(&current).unwrap()
+}
+
+async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
+    store
+        .subgraph_store()
+        .writable(LOGGER.clone(), deployment_id)
+        .await
+        .expect("can get writable")
+        .block_ptr()
+        .await
+        .unwrap()
 }
 
 #[test]
@@ -572,7 +584,7 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(!query_store
-            .has_non_fatal_errors(BLOCKS[0].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
 
@@ -581,12 +593,11 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(query_store
-            .has_non_fatal_errors(BLOCKS[1].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
     })
 }
-
 
 #[test]
 fn fail_unfail_deterministic_error() {
@@ -618,7 +629,7 @@ fn fail_unfail_deterministic_error() {
 
         // We don't have any errors and the subgraph is healthy.
         assert!(!query_store
-            .has_non_fatal_errors(BLOCKS[0].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -638,7 +649,7 @@ fn fail_unfail_deterministic_error() {
 
         // Still no fatal errors.
         assert!(!query_store
-            .has_non_fatal_errors(BLOCKS[1].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -665,7 +676,7 @@ fn fail_unfail_deterministic_error() {
 
         // Now we have a fatal error because the subgraph failed.
         assert!(query_store
-            .has_non_fatal_errors(BLOCKS[1].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -682,7 +693,7 @@ fn fail_unfail_deterministic_error() {
         // We don't have fatal errors anymore and the block got reverted.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert!(!query_store
-            .has_non_fatal_errors(BLOCKS[0].number)
+            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
