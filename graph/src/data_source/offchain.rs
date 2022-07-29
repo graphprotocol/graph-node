@@ -9,8 +9,8 @@ use crate::{
     data_source,
     prelude::{DataSourceContext, Link},
 };
-
 use anyhow::{self, Error};
+use cid::Cid;
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::sync::Arc;
@@ -44,7 +44,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
         Ok(Self {
             kind: template.kind.clone(),
             name: template.name.clone(),
-            source: Some(Source::Ipfs(Link::from(source))),
+            source: Some(Source::Ipfs(source.parse()?)),
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
@@ -55,7 +55,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
 impl DataSource {
     pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         let param = self.source.as_ref().map(|source| match source {
-            Source::Ipfs(link) => Bytes::from(link.link.as_bytes()),
+            Source::Ipfs(link) => Bytes::from(link.to_bytes()),
         });
         let context = self
             .context
@@ -75,9 +75,9 @@ impl DataSource {
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         let source = stored.param.and_then(|bytes| {
-            String::from_utf8(bytes.as_slice().to_vec())
+            Cid::try_from(bytes.as_slice().to_vec())
                 .ok()
-                .map(|link| Source::Ipfs(Link::from(link)))
+                .map(Source::Ipfs)
         });
         let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
         Ok(Self {
@@ -93,7 +93,7 @@ impl DataSource {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
-    Ipfs(Link),
+    Ipfs(Cid),
 }
 
 #[derive(Clone, Debug)]
@@ -141,7 +141,10 @@ impl UnresolvedDataSource {
             "source" => format_args!("{:?}", &self.source),
         );
         let source = match self.kind.as_str() {
-            "file/ipfs" => self.source.map(|src| Source::Ipfs(src.file)),
+            "file/ipfs" => self
+                .source
+                .map(|src| src.file.link.parse().map(Source::Ipfs))
+                .transpose()?,
             _ => {
                 anyhow::bail!(
                     "offchain data source has invalid `kind`, expected `file/ipfs` but found {}",

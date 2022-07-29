@@ -22,8 +22,6 @@ pub mod data_source;
 
 pub mod blockchain;
 
-pub mod offchain;
-
 pub mod runtime;
 
 pub mod firehose;

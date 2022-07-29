@@ -10,10 +10,12 @@ use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::ipfs_client::IpfsClient;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use tokio::task;
 
+use super::context::OffchainMonitor;
 use super::SubgraphTriggerProcessor;
 
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
@@ -24,6 +26,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<dyn LinkResolver>,
+    ipfs_client: IpfsClient,
     static_filters: bool,
 }
 
@@ -109,6 +112,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<dyn MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
+        ipfs_client: IpfsClient,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -122,6 +126,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
+            ipfs_client,
             static_filters,
         }
     }
@@ -249,6 +254,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
+        let (offchain_monitor, offchain_monitor_rx) = OffchainMonitor::new(
+            logger.cheap_clone(),
+            registry.cheap_clone(),
+            &manifest.id,
+            self.ipfs_client.cheap_clone(),
+        );
+
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
         let deployment_head = store.block_ptr().await.map(|ptr| ptr.number).unwrap_or(0) as f64;
@@ -270,6 +282,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             host_builder,
             trigger_processor,
             host_metrics.clone(),
+            &offchain_monitor,
         )?;
 
         let inputs = IndexingInputs {
@@ -291,6 +304,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instance,
             instances: self.instances.cheap_clone(),
             filter,
+            offchain_monitor,
+            offchain_monitor_rx,
         };
 
         let metrics = RunnerMetrics {

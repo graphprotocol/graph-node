@@ -61,6 +61,7 @@ pub async fn run(
 
     // FIXME: Hard-coded IPFS config, take it from config file instead?
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &ipfs_url);
+    let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
@@ -150,6 +151,7 @@ pub async fn run(
         blockchain_map.clone(),
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
+        ipfs_client,
         static_filters,
     );
 
