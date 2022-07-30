@@ -13,6 +13,7 @@ use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
+use graph_runtime_wasm::module::ToAscPtr;
 use tokio::task;
 
 use super::context::OffchainMonitor;
@@ -137,7 +138,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        <C as Blockchain>::MappingTrigger: ToAscPtr,
+    {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
         let store = self
@@ -254,7 +258,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
-        let (offchain_monitor, offchain_monitor_rx) = OffchainMonitor::new(
+        let mut offchain_monitor = OffchainMonitor::new(
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
@@ -282,7 +286,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             host_builder,
             trigger_processor,
             host_metrics.clone(),
-            &offchain_monitor,
+            &mut offchain_monitor,
         )?;
 
         let inputs = IndexingInputs {
@@ -305,7 +309,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instances: self.instances.cheap_clone(),
             filter,
             offchain_monitor,
-            offchain_monitor_rx,
         };
 
         let metrics = RunnerMetrics {

@@ -1,13 +1,13 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use graph::blockchain::{Block, Blockchain};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{BlockState, RuntimeHost, RuntimeHostBuilder};
 use graph::slog::Logger;
+use std::sync::Arc;
 
 use super::metrics::SubgraphInstanceMetrics;
 
@@ -22,7 +22,7 @@ where
         logger: &Logger,
         hosts: &[Arc<T::Host>],
         block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         mut state: BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
@@ -44,7 +44,7 @@ where
         logger: &Logger,
         hosts: &[Arc<T::Host>],
         block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         mut state: BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,

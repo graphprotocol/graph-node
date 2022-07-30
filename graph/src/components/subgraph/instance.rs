@@ -1,9 +1,7 @@
 use crate::{
-    blockchain::Blockchain,
-    prelude::*,
+    blockchain::Blockchain, components::store::WritableStore,
+    data::subgraph::schema::SubgraphError, data_source::DataSourceTemplate, prelude::*,
     util::lfu_cache::LfuCache,
-    components::store::WritableStore, data::subgraph::schema::SubgraphError,
-    data_source::DataSourceTemplate,
 };
 
 #[derive(Clone, Debug)]

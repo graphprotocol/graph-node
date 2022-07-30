@@ -2,8 +2,8 @@ pub mod offchain;
 
 use crate::{
     blockchain::{
-        Blockchain, DataSource as _, DataSourceTemplate as _, UnresolvedDataSource as _,
-        UnresolvedDataSourceTemplate as _,
+        Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
+        UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
     },
     components::{
         link_resolver::LinkResolver,
@@ -16,8 +16,8 @@ use crate::{
 use anyhow::Error;
 use semver::Version;
 use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
-use slog::Logger;
-use std::{collections::BTreeMap, sync::Arc};
+use slog::{Logger, SendSyncRefUnwindSafeKV};
+use std::{collections::BTreeMap, fmt, sync::Arc};
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
@@ -94,6 +94,23 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.cheap_clone()),
+        }
+    }
+
+    pub fn match_and_decode(
+        &self,
+        trigger: &TriggerData<C>,
+        block: &Arc<C::Block>,
+        logger: &Logger,
+    ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
+        match self {
+            Self::Onchain(ds) => ds
+                .match_and_decode(trigger.as_onchain().unwrap().clone(), block, logger)
+                .map(|t| t.map(|t| t.map(MappingTrigger::Onchain))),
+            Self::Offchain(ds) => Ok(Some(TriggerWithHandler::new(
+                MappingTrigger::Offchain(trigger.as_offchain().unwrap().clone()),
+                ds.mapping.handler.clone(),
+            ))),
         }
     }
 
@@ -235,6 +252,94 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
                 .map(DataSourceTemplate::Offchain),
         }
     }
+}
+
+pub struct TriggerWithHandler<T> {
+    pub trigger: T,
+    handler: String,
+    logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for TriggerWithHandler<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut builder = f.debug_struct("TriggerWithHandler");
+        builder.field("trigger", &self.trigger);
+        builder.field("handler", &self.handler);
+        builder.finish()
+    }
+}
+
+impl<T> TriggerWithHandler<T> {
+    pub fn new(trigger: T, handler: String) -> Self {
+        Self {
+            trigger,
+            handler,
+            logging_extras: Arc::new(slog::o! {}),
+        }
+    }
+
+    pub fn new_with_logging_extras(
+        trigger: T,
+        handler: String,
+        logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
+    ) -> Self {
+        TriggerWithHandler {
+            trigger,
+            handler,
+            logging_extras,
+        }
+    }
+
+    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
+    pub fn logging_extras(&self) -> Arc<dyn SendSyncRefUnwindSafeKV> {
+        self.logging_extras.cheap_clone()
+    }
+
+    pub fn handler_name(&self) -> &str {
+        &self.handler
+    }
+
+    fn map<T_>(self, f: impl FnOnce(T) -> T_) -> TriggerWithHandler<T_> {
+        TriggerWithHandler {
+            trigger: f(self.trigger),
+            handler: self.handler,
+            logging_extras: self.logging_extras,
+        }
+    }
+}
+
+pub enum TriggerData<C: Blockchain> {
+    Onchain(C::TriggerData),
+    Offchain(offchain::TriggerData),
+}
+
+impl<C: Blockchain> TriggerData<C> {
+    fn as_onchain(&self) -> Option<&C::TriggerData> {
+        match self {
+            Self::Onchain(trigger) => Some(trigger),
+            Self::Offchain(_) => None,
+        }
+    }
+
+    fn as_offchain(&self) -> Option<&offchain::TriggerData> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(trigger) => Some(trigger),
+        }
+    }
+
+    pub fn error_context(&self) -> String {
+        match self {
+            Self::Onchain(trigger) => trigger.error_context(),
+            Self::Offchain(trigger) => format!("{:?}", trigger.source),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum MappingTrigger<C: Blockchain> {
+    Onchain(C::MappingTrigger),
+    Offchain(offchain::TriggerData),
 }
 
 macro_rules! clone_data_source {

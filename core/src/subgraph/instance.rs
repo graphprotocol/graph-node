@@ -6,7 +6,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingVersion, SharedProofOfIndexing},
     },
     data::subgraph::SPEC_VERSION_0_0_6,
-    data_source::{DataSource, DataSourceTemplate},
+    data_source::{DataSource, DataSourceTemplate, TriggerData},
     prelude::*,
 };
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ where
         host_builder: T,
         trigger_processor: TP,
         host_metrics: Arc<HostMetrics>,
-        offchain_monitor: &OffchainMonitor,
+        offchain_monitor: &mut OffchainMonitor,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -78,8 +78,8 @@ where
 
             // Create services for static offchain data sources
             if let DataSource::Offchain(ds) = &ds {
-                if let Some(source) = &ds.source {
-                    offchain_monitor.monitor(source.clone());
+                if ds.source.is_some() {
+                    offchain_monitor.add_data_source(ds.clone())?;
                 }
             }
 
@@ -135,7 +135,7 @@ where
         &self,
         logger: &Logger,
         block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         state: BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,

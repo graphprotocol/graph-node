@@ -5,15 +5,18 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::{Blockchain, DataSource as _, HostFn, RuntimeAdapter, TriggerWithHandler};
+use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::{DataSource, DataSourceTemplate};
+use graph::data_source::{
+    DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
+};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
 use crate::mapping::{MappingContext, MappingRequest};
+use crate::module::ToAscPtr;
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
 
@@ -47,7 +50,10 @@ impl<C: Blockchain> RuntimeHostBuilder<C> {
     }
 }
 
-impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
+impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
     type Host = RuntimeHost<C>;
     type Req = MappingRequest<C>;
 
@@ -149,7 +155,7 @@ where
         &self,
         logger: &Logger,
         state: BlockState<C>,
-        trigger: TriggerWithHandler<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
@@ -214,21 +220,18 @@ where
 impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         block: &Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<TriggerWithHandler<C>>, Error> {
-        self.data_source
-            .as_onchain()
-            .map(|ds| ds.match_and_decode(trigger, block, logger))
-            .unwrap_or(Ok(None))
+    ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
+        self.data_source.match_and_decode(trigger, block, logger)
     }
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: TriggerWithHandler<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,

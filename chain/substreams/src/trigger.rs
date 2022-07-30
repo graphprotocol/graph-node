@@ -4,6 +4,7 @@ use graph::{
     prelude::{async_trait, BlockNumber},
     slog::Logger,
 };
+use graph_runtime_wasm::module::ToAscPtr;
 
 use crate::{Block, Chain, DataSource, NodeCapabilities, NoopDataSourceTemplate};
 
@@ -16,7 +17,7 @@ impl blockchain::TriggerData for TriggerData {
     }
 }
 
-impl blockchain::MappingTrigger for TriggerData {
+impl ToAscPtr for TriggerData {
     // substreams doesn't rely on wasm on the graph-node so this is not needed.
     fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
