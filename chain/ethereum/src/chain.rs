@@ -390,6 +390,12 @@ pub enum BlockFinality {
     NonFinal(EthereumBlockWithCalls),
 }
 
+impl Default for BlockFinality {
+    fn default() -> Self {
+        Self::Final(Arc::default())
+    }
+}
+
 impl BlockFinality {
     pub(crate) fn light_block(&self) -> &Arc<LightEthereumBlock> {
         match self {

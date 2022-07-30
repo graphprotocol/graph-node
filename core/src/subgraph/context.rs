@@ -4,6 +4,7 @@ use crate::{
     },
     subgraph::SubgraphInstance,
 };
+use anyhow::{self, Error};
 use bytes::Bytes;
 use cid::Cid;
 use graph::{
@@ -14,7 +15,7 @@ use graph::{
     ipfs_client::IpfsClient,
     prelude::{CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder},
     slog::Logger,
-    tokio::{select, spawn, sync::mpsc},
+    tokio::sync::mpsc,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -30,11 +31,12 @@ where
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,
     pub offchain_monitor: OffchainMonitor,
-    pub offchain_monitor_rx: mpsc::Receiver<(offchain::Source, Bytes)>,
 }
 
 pub struct OffchainMonitor {
     ipfs_monitor: PollingMonitor<Cid>,
+    pub ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
+    pub data_sources: Vec<offchain::DataSource>,
 }
 
 impl OffchainMonitor {
@@ -43,8 +45,8 @@ impl OffchainMonitor {
         registry: Arc<dyn MetricsRegistry>,
         subgraph_hash: &DeploymentHash,
         client: IpfsClient,
-    ) -> (Self, mpsc::Receiver<(offchain::Source, Bytes)>) {
-        let (ipfs_monitor_tx, mut ipfs_monitor_rx) = mpsc::channel(10);
+    ) -> Self {
+        let (ipfs_monitor_tx, ipfs_monitor_rx) = mpsc::channel(10);
         let ipfs_service = IpfsService::new(
             client,
             ENV_VARS.mappings.max_ipfs_file_bytes.unwrap_or(1 << 20) as u64,
@@ -57,31 +59,22 @@ impl OffchainMonitor {
             logger,
             PollingMonitorMetrics::new(registry, subgraph_hash),
         );
-        let (tx, rx) = mpsc::channel(10);
-        spawn(async move {
-            loop {
-                select! {
-                    msg = ipfs_monitor_rx.recv() => {
-                        match msg {
-                            Some((cid, bytes)) => {
-                                if let Err(_) = tx.send((offchain::Source::Ipfs(cid), bytes)).await {
-                                    break;
-                                }
-                            },
-                            None => break,
-                        }
-                    }
-                }
-            }
-        });
-        (Self { ipfs_monitor }, rx)
+        Self {
+            ipfs_monitor,
+            ipfs_monitor_rx,
+            data_sources: Vec::new(),
+        }
     }
 
-    pub fn monitor(&self, source: offchain::Source) {
+    pub fn add_data_source(&mut self, ds: offchain::DataSource) -> Result<(), Error> {
+        let source = match &ds.source {
+            Some(source) => source,
+            None => anyhow::bail!("Failed to add offchain data source (missing source)"),
+        };
         match source {
-            offchain::Source::Ipfs(cid) => {
-                self.ipfs_monitor.monitor(cid);
-            }
-        }
+            offchain::Source::Ipfs(cid) => self.ipfs_monitor.monitor(cid.clone()),
+        };
+        self.data_sources.push(ds);
+        Ok(())
     }
 }

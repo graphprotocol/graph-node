@@ -1,7 +1,6 @@
 use crate::{
     components::{link_resolver::LinkResolver, store::BlockNumber},
     prelude::DataSourceTemplateInfo,
-    runtime::gas::GasCounter,
 };
 use anyhow::Error;
 use async_trait::async_trait;
@@ -16,14 +15,14 @@ use super::{
 
 use super::{
     block_stream::BlockWithTriggers, Block, BlockPtr, Blockchain, BlockchainKind, DataSource,
-    DataSourceTemplate, MappingTrigger, NodeCapabilities, RuntimeAdapter, TriggerData,
-    TriggerFilter, TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    DataSourceTemplate, NodeCapabilities, RuntimeAdapter, TriggerData, TriggerFilter,
+    TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 
 #[derive(Debug)]
 pub struct MockBlockchain;
 
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct MockBlock {
     pub number: u64,
 }
@@ -221,16 +220,6 @@ impl TriggerData for MockTriggerData {
 
 #[derive(Debug)]
 pub struct MockMappingTrigger {}
-
-impl MappingTrigger for MockMappingTrigger {
-    fn to_asc_ptr<H: crate::runtime::AscHeap>(
-        self,
-        _heap: &mut H,
-        _gas: &GasCounter,
-    ) -> Result<crate::runtime::AscPtr<()>, crate::runtime::DeterministicHostError> {
-        todo!()
-    }
-}
 
 #[derive(Clone, Default)]
 pub struct MockTriggerFilter;

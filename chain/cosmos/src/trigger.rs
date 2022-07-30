@@ -1,9 +1,10 @@
 use std::{cmp::Ordering, sync::Arc};
 
-use graph::blockchain::{Block, BlockHash, MappingTrigger, TriggerData};
+use graph::blockchain::{Block, BlockHash, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::{BlockNumber, Error};
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
+use graph_runtime_wasm::module::ToAscPtr;
 
 use crate::codec;
 use crate::data_source::EventOrigin;
@@ -34,7 +35,7 @@ impl std::fmt::Debug for CosmosTrigger {
     }
 }
 
-impl MappingTrigger for CosmosTrigger {
+impl ToAscPtr for CosmosTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,

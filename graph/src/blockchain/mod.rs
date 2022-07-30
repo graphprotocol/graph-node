@@ -15,8 +15,9 @@ use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
+    data_source,
     prelude::DataSourceContext,
-    runtime::{gas::GasCounter, AscHeap, AscPtr, DeterministicHostError, HostExportError},
+    runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
     components::{
@@ -30,7 +31,6 @@ use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
-use slog::{self, SendSyncRefUnwindSafeKV};
 use std::{
     any::Any,
     collections::HashMap,
@@ -85,7 +85,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
-    type Block: Block + Clone + Debug;
+    type Block: Block + Clone + Debug + Default;
     type DataSource: DataSource<Self>;
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
 
@@ -97,7 +97,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     /// Decoded trigger ready to be processed by the mapping.
     /// New implementations should have this be the same as `TriggerData`.
-    type MappingTrigger: MappingTrigger + Debug;
+    type MappingTrigger: Send + Sync + Debug;
 
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
@@ -271,16 +271,6 @@ pub trait TriggerData {
     fn error_context(&self) -> String;
 }
 
-pub trait MappingTrigger: Send + Sync {
-    /// A flexible interface for writing a type to AS memory, any pointer can be returned.
-    /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
-    fn to_asc_ptr<H: AscHeap>(
-        self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError>;
-}
-
 pub struct HostFnCtx<'a> {
     pub logger: Logger,
     pub block_ptr: BlockPtr,
@@ -403,56 +393,4 @@ impl BlockchainMap {
     }
 }
 
-pub struct TriggerWithHandler<C: Blockchain> {
-    trigger: C::MappingTrigger,
-    handler: String,
-    logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
-}
-
-impl<C: Blockchain> fmt::Debug for TriggerWithHandler<C> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut builder = f.debug_struct("TriggerWithHandler");
-        builder.field("trigger", &self.trigger);
-        builder.field("handler", &self.handler);
-        builder.finish()
-    }
-}
-
-impl<C: Blockchain> TriggerWithHandler<C> {
-    pub fn new(trigger: C::MappingTrigger, handler: String) -> Self {
-        TriggerWithHandler {
-            trigger,
-            handler,
-            logging_extras: Arc::new(slog::o! {}),
-        }
-    }
-
-    pub fn new_with_logging_extras(
-        trigger: C::MappingTrigger,
-        handler: String,
-        logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
-    ) -> Self {
-        TriggerWithHandler {
-            trigger,
-            handler,
-            logging_extras,
-        }
-    }
-
-    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
-    pub fn logging_extras(&self) -> Arc<dyn SendSyncRefUnwindSafeKV> {
-        self.logging_extras.cheap_clone()
-    }
-
-    pub fn handler_name(&self) -> &str {
-        &self.handler
-    }
-
-    pub fn to_asc_ptr<H: AscHeap>(
-        self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
-        self.trigger.to_asc_ptr(heap, gas)
-    }
-}
+pub type TriggerWithHandler<C> = data_source::TriggerWithHandler<<C as Blockchain>::MappingTrigger>;

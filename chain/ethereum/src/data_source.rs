@@ -485,7 +485,7 @@ impl DataSource {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
-                Ok(Some(TriggerWithHandler::new(
+                Ok(Some(TriggerWithHandler::<Chain>::new(
                     MappingTrigger::Block {
                         block: block.cheap_clone(),
                     },
@@ -587,7 +587,7 @@ impl DataSource {
                     "address" => format!("{}", &log.address),
                     "transaction" => format!("{}", &transaction.hash),
                 });
-                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
                         transaction: Arc::new(transaction),
@@ -696,7 +696,7 @@ impl DataSource {
                     "to" => format!("{}", &call.to),
                     "transaction" => format!("{}", &transaction.hash),
                 });
-                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {
                         block: block.cheap_clone(),
                         transaction,

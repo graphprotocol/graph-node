@@ -13,7 +13,7 @@ use anyhow::{self, Error};
 use cid::Cid;
 use serde::Deserialize;
 use slog::{info, Logger};
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
@@ -214,5 +214,27 @@ impl UnresolvedDataSourceTemplate {
             manifest_idx,
             mapping: self.mapping.resolve(resolver, logger).await?,
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct TriggerData {
+    pub source: Source,
+    pub data: Arc<bytes::Bytes>,
+}
+
+impl fmt::Debug for TriggerData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        #[derive(Debug)]
+        struct TriggerDataWithoutData<'a> {
+            _source: &'a Source,
+        }
+        write!(
+            f,
+            "{:?}",
+            TriggerDataWithoutData {
+                _source: &self.source
+            }
+        )
     }
 }

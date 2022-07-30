@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use slog::Logger;
 
-use crate::{blockchain::Blockchain, prelude::SubgraphInstanceMetrics};
+use crate::{blockchain::Blockchain, data_source::TriggerData, prelude::SubgraphInstanceMetrics};
 
 use super::{
     store::SubgraphFork,
@@ -21,7 +21,7 @@ where
         logger: &Logger,
         hosts: &[Arc<T::Host>],
         block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         mut state: BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
