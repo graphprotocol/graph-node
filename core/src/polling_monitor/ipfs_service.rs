@@ -49,6 +49,11 @@ impl IpfsService {
     }
 
     async fn call(&self, cid: Cid) -> Result<Option<Bytes>, Error> {
+        let multihash = cid.hash().code();
+        if !SAFE_MULTIHASHES.contains(&multihash) {
+            return Err(anyhow!("CID multihash {} is not allowed", multihash));
+        }
+
         let cid_str = cid.to_string();
         let size = match self
             .client
@@ -103,3 +108,24 @@ impl Service<Cid> for IpfsService {
         .boxed()
     }
 }
+
+// Multihashes that are collision resistant. This is not complete but covers the commonly used ones.
+// Code table: https://github.com/multiformats/multicodec/blob/master/table.csv
+// rust-multihash code enum: https://github.com/multiformats/rust-multihash/blob/master/src/multihash_impl.rs
+const SAFE_MULTIHASHES: [u64; 15] = [
+    0x0,    // Identity
+    0x12,   // SHA2-256 (32-byte hash size)
+    0x13,   // SHA2-512 (64-byte hash size)
+    0x17,   // SHA3-224 (28-byte hash size)
+    0x16,   // SHA3-256 (32-byte hash size)
+    0x15,   // SHA3-384 (48-byte hash size)
+    0x14,   // SHA3-512 (64-byte hash size)
+    0x1a,   // Keccak-224 (28-byte hash size)
+    0x1b,   // Keccak-256 (32-byte hash size)
+    0x1c,   // Keccak-384 (48-byte hash size)
+    0x1d,   // Keccak-512 (64-byte hash size)
+    0xb220, // BLAKE2b-256 (32-byte hash size)
+    0xb240, // BLAKE2b-512 (64-byte hash size)
+    0xb260, // BLAKE2s-256 (32-byte hash size)
+    0x1e,   // BLAKE3-256 (32-byte hash size)
+];
