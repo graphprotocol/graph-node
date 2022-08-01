@@ -37,5 +37,5 @@ async fn test_bool_ok() {
     //     .typed()
     //     .unwrap()
     //     .call(new_obj.wasm_ptr());
-    assert!(res.is_ok());
+    assert!(res.is_ok(), "{:?}", res.err());
 }
