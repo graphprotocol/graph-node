@@ -584,7 +584,7 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(!query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
 
@@ -593,7 +593,7 @@ fn fatal_vs_non_fatal() {
             .unwrap();
 
         assert!(query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
     })
@@ -629,7 +629,7 @@ fn fail_unfail_deterministic_error() {
 
         // We don't have any errors and the subgraph is healthy.
         assert!(!query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -649,7 +649,7 @@ fn fail_unfail_deterministic_error() {
 
         // Still no fatal errors.
         assert!(!query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -676,7 +676,7 @@ fn fail_unfail_deterministic_error() {
 
         // Now we have a fatal error because the subgraph failed.
         assert!(query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);
@@ -693,7 +693,7 @@ fn fail_unfail_deterministic_error() {
         // We don't have fatal errors anymore and the block got reverted.
         assert_eq!(outcome, UnfailOutcome::Unfailed);
         assert!(!query_store
-            .has_non_fatal_errors(latest_block(&store, deployment.id).await.number)
+            .has_deterministic_errors(latest_block(&store, deployment.id).await.number)
             .await
             .unwrap());
         let vi = get_version_info(&store, NAME);

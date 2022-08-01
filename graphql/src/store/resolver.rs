@@ -78,7 +78,9 @@ impl StoreResolver {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
-        let has_non_fatal_errors = store.has_non_fatal_errors(block_ptr.block_number()).await?;
+        let has_non_fatal_errors = store
+            .has_deterministic_errors(block_ptr.block_number())
+            .await?;
 
         let resolver = StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),

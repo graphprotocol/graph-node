@@ -401,7 +401,7 @@ pub trait QueryStore: Send + Sync {
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 
-    async fn has_non_fatal_errors(&self, block: BlockNumber) -> Result<bool, StoreError>;
+    async fn has_deterministic_errors(&self, block: BlockNumber) -> Result<bool, StoreError>;
 
     /// Find the current state for the subgraph deployment `id` and
     /// return details about it needed for executing queries
