@@ -23,8 +23,9 @@ async fn test_bool_ok() {
     };
 
     let new_obj: graph::runtime::AscPtr<AscUnitTestType> =
-        module.invoke_export1("test_uint", &parm);
+        module.invoke_export1("conv_fun_does_not_exists_yet", &parm);
 
+    //this line does not compile b/c new_obj  has to implement pub unsafe trait WasmParams
     let res: Result<(), _> = module.get_func("my_test").typed().unwrap().call(new_obj);
     assert!(res.is_ok());
 }
