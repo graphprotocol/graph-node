@@ -10,6 +10,9 @@ graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
 graph-core = { path = "../../core" }
+graph-runtime-derive = { path = "../derive" }
+
+
 
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }

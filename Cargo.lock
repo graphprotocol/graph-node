@@ -1722,6 +1722,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-core",
  "graph-mock",
+ "graph-runtime-derive",
  "graph-runtime-wasm",
  "semver",
  "test-store",

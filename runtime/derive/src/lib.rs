@@ -161,6 +161,9 @@ pub fn generate_array_type(args: TokenStream, input: TokenStream) -> TokenStream
     generate_array_type::generate_array_type(args, input)
 }
 
+
+
+
 #[proc_macro_derive(AscType)]
 pub fn asc_type_derive(input: TokenStream) -> TokenStream {
     let item: Item = syn::parse(input).unwrap();
@@ -170,6 +173,7 @@ pub fn asc_type_derive(input: TokenStream) -> TokenStream {
         _ => panic!("AscType can only be derived for structs and enums"),
     }
 }
+
 // Example input:
 // #[repr(C)]
 // #[derive(AscType)]
