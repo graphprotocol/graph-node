@@ -53,7 +53,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
     type Req = MappingRequest<C>;
 
     fn spawn_mapping(
-        raw_module: Vec<u8>,
+        raw_module: &[u8],
         logger: Logger,
         subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,

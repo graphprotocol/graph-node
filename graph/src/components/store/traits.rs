@@ -1,6 +1,7 @@
 use web3::types::{Address, H256};
 
 use super::*;
+use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::data::subgraph::status;
@@ -136,6 +137,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// being set up
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
+    async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
@@ -151,10 +154,7 @@ pub trait WritableStore: Send + Sync + 'static {
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    async fn block_cursor(&self) -> Option<String>;
-
-    /// Deletes the current Firehose `cursor` this deployment is currently at.
-    async fn delete_block_cursor(&self) -> Result<(), StoreError>;
+    async fn block_cursor(&self) -> FirehoseCursor;
 
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -166,12 +166,12 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError>;
 
     /// If a deterministic error happened, this function reverts the block operations from the
     /// current block to the previous block.
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
@@ -199,7 +199,7 @@ pub trait WritableStore: Send + Sync + 'static {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -231,7 +231,7 @@ pub trait WritableStore: Send + Sync + 'static {
     /// should only be used for reporting and monitoring
     fn shard(&self) -> &str;
 
-    async fn health(&self, id: &DeploymentHash) -> Result<SubgraphHealth, StoreError>;
+    async fn health(&self) -> Result<SubgraphHealth, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
 
@@ -321,7 +321,7 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: &[H256]) -> Result<Vec<serde_json::Value>, Error>;
+    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
@@ -345,14 +345,14 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<Option<(BlockNumber, usize)>, Error>;
 
     /// Return the hashes of all blocks with the given number
-    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<H256>, Error>;
+    fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error>;
 
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
-    fn confirm_block_hash(&self, number: BlockNumber, hash: &H256) -> Result<usize, Error>;
+    fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
 
     /// Find the block with `block_hash` and return the network name and number
-    fn block_number(&self, block_hash: H256) -> Result<Option<(String, BlockNumber)>, StoreError>;
+    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
@@ -397,7 +397,7 @@ pub trait QueryStore: Send + Sync {
 
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
-    fn block_number(&self, block_hash: H256) -> Result<Option<BlockNumber>, StoreError>;
+    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError>;
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 

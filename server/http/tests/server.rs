@@ -14,6 +14,14 @@ use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 use tokio::time::sleep;
 
+pub struct TestGraphQLMetrics;
+
+impl GraphQLMetrics for TestGraphQLMetrics {
+    fn observe_query_execution(&self, _duration: Duration, _results: &QueryResults) {}
+    fn observe_query_parsing(&self, _duration: Duration, _results: &QueryResults) {}
+    fn observe_query_validation(&self, _duration: Duration, _id: &DeploymentHash) {}
+}
+
 /// A simple stupid query runner for testing.
 pub struct TestGraphQlRunner;
 
@@ -72,12 +80,15 @@ impl GraphQlRunner for TestGraphQlRunner {
     fn load_manager(&self) -> Arc<LoadManager> {
         unimplemented!()
     }
+
+    fn metrics(&self) -> Arc<dyn GraphQLMetrics> {
+        Arc::new(TestGraphQLMetrics)
+    }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use graph_mock::MockMetricsRegistry;
 
     lazy_static! {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();
@@ -90,11 +101,10 @@ mod test {
             .block_on(async {
                 let logger = Logger::root(slog::Discard, o!());
                 let logger_factory = LoggerFactory::new(logger, None);
-                let metrics_registry = Arc::new(MockMetricsRegistry::new());
                 let id = USERS.clone();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let node_id = NodeId::new("test").unwrap();
-                let mut server = HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
+                let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
                 let http_server = server
                     .serve(8007, 8008)
                     .expect("Failed to start GraphQL server");
@@ -132,12 +142,10 @@ mod test {
         runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
-            let metrics_registry = Arc::new(MockMetricsRegistry::new());
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server =
-                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
+            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
             let http_server = server
                 .serve(8002, 8003)
                 .expect("Failed to start GraphQL server");
@@ -214,12 +222,10 @@ mod test {
         runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
-            let metrics_registry = Arc::new(MockMetricsRegistry::new());
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server =
-                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
+            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
             let http_server = server
                 .serve(8003, 8004)
                 .expect("Failed to start GraphQL server");
@@ -261,12 +267,10 @@ mod test {
         let _ = runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory = LoggerFactory::new(logger, None);
-            let metrics_registry = Arc::new(MockMetricsRegistry::new());
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
-            let mut server =
-                HyperGraphQLServer::new(&logger_factory, metrics_registry, query_runner, node_id);
+            let mut server = HyperGraphQLServer::new(&logger_factory, query_runner, node_id);
             let http_server = server
                 .serve(8005, 8006)
                 .expect("Failed to start GraphQL server");

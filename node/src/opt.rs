@@ -111,7 +111,8 @@ pub struct Opt {
         long,
         default_value = "8000",
         value_name = "PORT",
-        help = "Port for the GraphQL HTTP server"
+        help = "Port for the GraphQL HTTP server",
+        env = "GRAPH_GRAPHQL_HTTP_PORT"
     )]
     pub http_port: u16,
     #[structopt(
@@ -125,7 +126,8 @@ pub struct Opt {
         long,
         default_value = "8001",
         value_name = "PORT",
-        help = "Port for the GraphQL WebSocket server"
+        help = "Port for the GraphQL WebSocket server",
+        env = "GRAPH_GRAPHQL_WS_PORT"
     )]
     pub ws_port: u16,
     #[structopt(
@@ -150,6 +152,14 @@ pub struct Opt {
         help = "a unique identifier for this node. Should have the same value between consecutive node restarts"
     )]
     pub node_id: String,
+    #[structopt(
+        long,
+        value_name = "FILE",
+        env = "GRAPH_NODE_EXPENSIVE_QUERIES_FILE",
+        default_value = "/etc/graph-node/expensive-queries.txt",
+        help = "a file with a list of expensive queries, one query per line. Attempts to run these queries will return a QueryExecutionError::TooExpensive to clients"
+    )]
+    pub expensive_queries_filename: String,
     #[structopt(long, help = "Enable debug logging")]
     pub debug: bool,
 

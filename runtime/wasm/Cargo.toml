@@ -6,15 +6,15 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.50"
 atomic_refcell = "0.1.8"
-ethabi = "17.0"
+ethabi = "17.1"
 futures = "0.1.21"
 hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"
 graph-runtime-derive = { path = "../derive" }
-semver = "1.0.9"
+semver = "1.0.12"
 lazy_static = "1.4"
-uuid = { version = "1.0.0", features = ["v4"] }
+uuid = { version = "1.1.2", features = ["v4"] }
 strum = "0.21.0"
 strum_macros = "0.21.1"
 bytes = "1.0"
@@ -23,7 +23,7 @@ wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
 
-wasm-instrument = { version = "0.1.1", features = ["std", "sign_ext"] }
+wasm-instrument = { version = "0.2.0", features = ["std", "sign_ext"] }
 
 # AssemblyScript uses sign extensions
-parity-wasm = { version = "0.42", features = ["std", "sign_ext"] }
+parity-wasm = { version = "0.45", features = ["std", "sign_ext"] }

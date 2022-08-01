@@ -8,7 +8,6 @@ tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
 graph = { path = "../../graph" }
-mockall = "0.9.1"
 prost = "0.10.1"
 prost-types = "0.10.1"
 serde = "1.0"
@@ -17,8 +16,3 @@ semver = "1.0.3"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
-
-[dev-dependencies]
-graph-core = { path = "../../core" }
-pretty_assertions = "0.7.2"
-test-store = { path = "../../store/test-store" }

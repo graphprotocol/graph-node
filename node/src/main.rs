@@ -47,14 +47,20 @@ use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
 
-fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
+fn read_expensive_queries(
+    logger: &Logger,
+    expensive_queries_filename: String,
+) -> Result<Vec<Arc<q::Document>>, std::io::Error> {
     // A file with a list of expensive queries, one query per line
     // Attempts to run these queries will return a
     // QueryExecutionError::TooExpensive to clients
-    const EXPENSIVE_QUERIES: &str = "/etc/graph-node/expensive-queries.txt";
-    let path = Path::new(EXPENSIVE_QUERIES);
+    let path = Path::new(&expensive_queries_filename);
     let mut queries = Vec::new();
     if path.exists() {
+        info!(
+            logger,
+            "Reading expensive queries file: {}", expensive_queries_filename
+        );
         let file = std::fs::File::open(path)?;
         let reader = BufReader::new(file);
         for line in reader.lines() {
@@ -63,7 +69,7 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",
-                        EXPENSIVE_QUERIES,
+                        expensive_queries_filename,
                         e.to_string(),
                         line
                     );
@@ -72,6 +78,11 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
                 .into_static();
             queries.push(Arc::new(query));
         }
+    } else {
+        warn!(
+            logger,
+            "Expensive queries file not set to a valid file: {}", expensive_queries_filename
+        );
     }
     Ok(queries)
 }
@@ -79,10 +90,6 @@ fn read_expensive_queries() -> Result<Vec<Arc<q::Document>>, std::io::Error> {
 #[tokio::main]
 async fn main() {
     env_logger::init();
-
-    // Allow configuring fail points on debug builds. Used for integration tests.
-    #[cfg(debug_assertions)]
-    std::mem::forget(fail::FailScenario::setup());
 
     let opt = opt::Opt::from_args();
 
@@ -177,6 +184,7 @@ async fn main() {
             endpoint: endpoint.clone(),
             username: opt.elasticsearch_user.clone(),
             password: opt.elasticsearch_password.clone(),
+            client: reqwest::Client::new(),
         });
 
     // Create a component and subgraph logger factory
@@ -223,7 +231,9 @@ async fn main() {
 
     let contention_logger = logger.clone();
 
-    let expensive_queries = read_expensive_queries().unwrap();
+    // TODO: make option loadable from configuration TOML and environment:
+    let expensive_queries =
+        read_expensive_queries(&logger, opt.expensive_queries_filename).unwrap();
 
     let store_builder = StoreBuilder::new(
         &logger,
@@ -332,14 +342,10 @@ async fn main() {
             network_store.clone(),
             subscription_manager.clone(),
             load_manager,
-            metrics_registry.clone(),
-        ));
-        let mut graphql_server = GraphQLQueryServer::new(
-            &logger_factory,
             graphql_metrics_registry,
-            graphql_runner.clone(),
-            node_id.clone(),
-        );
+        ));
+        let mut graphql_server =
+            GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 

@@ -87,8 +87,13 @@ The `mapping` field may be one of the following supported mapping manifests:
 | Field | Type | Description |
 | --- | --- | --- |
 | **handler** | *String* | The name of an exported function in the mapping script that should handle the specified event. |
-| **filter** | optional *String* | The name of the filter that will be applied to decide on which blocks will trigger the mapping. If none is supplied, the handler will be called on every block. |
+| **filter** | optional *BlockHandlerFilter* | Definition of the filter to apply. If none is supplied, the handler will be called on every block. |
 
+#### 1.5.2.4.1 BlockHandlerFilter
+
+| Field | Type | Description |
+| --- | --- | --- |
+| **kind** | *String* | The selected block handler filter. Only option for now: `call`: This will only run the handler if the block contains at least one call to the data source contract. |
 
 ## 1.6 Path
 A path has one field `path`, which either refers to a path of a file on the local dev machine or an [IPLD link](https://github.com/ipld/specs/).

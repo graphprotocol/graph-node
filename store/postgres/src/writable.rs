@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema;
 use graph::env::env_var;
 use graph::prelude::{
@@ -156,14 +157,11 @@ impl SyncStore {
         .await
     }
 
-    async fn block_cursor(&self) -> Result<Option<String>, StoreError> {
-        self.writable.block_cursor(self.site.cheap_clone()).await
-    }
-
-    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
+    async fn block_cursor(&self) -> Result<FirehoseCursor, StoreError> {
         self.writable
-            .delete_block_cursor(self.site.cheap_clone())
+            .block_cursor(self.site.cheap_clone())
             .await
+            .map(FirehoseCursor::from)
     }
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
@@ -184,7 +182,7 @@ impl SyncStore {
     fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
         self.retry("revert_block_operations", || {
             let event = self.writable.revert_block_operations(
@@ -249,7 +247,7 @@ impl SyncStore {
     fn transact_block_operations(
         &self,
         block_ptr_to: &BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
         mods: &[EntityModification],
         stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
@@ -316,7 +314,7 @@ impl SyncStore {
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.retry_async("load_dynamic_data_sources", || async {
             self.writable
-                .load_dynamic_data_sources(self.site.deployment.clone(), block)
+                .load_dynamic_data_sources(self.site.cheap_clone(), block)
                 .await
         })
         .await
@@ -345,9 +343,9 @@ impl SyncStore {
         self.site.shard.as_str()
     }
 
-    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
+    async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
         self.retry_async("health", || async {
-            self.writable.health(id).await.map(Into::into)
+            self.writable.health(&self.site).await.map(Into::into)
         })
         .await
     }
@@ -418,7 +416,7 @@ enum Request {
         stopwatch: StopwatchMetrics,
         /// The block at which we are writing the changes
         block_ptr: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
@@ -427,7 +425,7 @@ enum Request {
         store: Arc<SyncStore>,
         /// The subgraph head will be at this block pointer after the revert
         block_ptr: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
     },
 }
 
@@ -444,7 +442,7 @@ impl Request {
                 deterministic_errors,
             } => store.transact_block_operations(
                 block_ptr_to,
-                firehose_cursor.as_deref(),
+                firehose_cursor,
                 mods,
                 stopwatch,
                 data_sources,
@@ -454,7 +452,7 @@ impl Request {
                 store,
                 block_ptr,
                 firehose_cursor,
-            } => store.revert_block_operations(block_ptr.clone(), firehose_cursor.as_deref()),
+            } => store.revert_block_operations(block_ptr.clone(), firehose_cursor),
         }
     }
 }
@@ -802,7 +800,7 @@ impl Writer {
     async fn write(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -811,7 +809,7 @@ impl Writer {
         match self {
             Writer::Sync(store) => store.transact_block_operations(
                 &block_ptr_to,
-                firehose_cursor.as_deref(),
+                &firehose_cursor,
                 &mods,
                 &stopwatch,
                 &data_sources,
@@ -835,12 +833,11 @@ impl Writer {
     async fn revert(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError> {
         match self {
-            Writer::Sync(store) => store.revert_block_operations(block_ptr_to, firehose_cursor),
+            Writer::Sync(store) => store.revert_block_operations(block_ptr_to, &firehose_cursor),
             Writer::Async(queue) => {
-                let firehose_cursor = firehose_cursor.map(|c| c.to_string());
                 let req = Request::RevertTo {
                     store: queue.store.cheap_clone(),
                     block_ptr: block_ptr_to,
@@ -886,7 +883,7 @@ impl Writer {
 pub struct WritableStore {
     store: Arc<SyncStore>,
     block_ptr: Mutex<Option<BlockPtr>>,
-    block_cursor: Mutex<Option<String>>,
+    block_cursor: Mutex<FirehoseCursor>,
     writer: Writer,
 }
 
@@ -922,14 +919,8 @@ impl WritableStoreTrait for WritableStore {
         self.block_ptr.lock().unwrap().clone()
     }
 
-    async fn block_cursor(&self) -> Option<String> {
+    async fn block_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
-    }
-
-    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
-        self.store.delete_block_cursor().await?;
-        *self.block_cursor.lock().unwrap() = None;
-        Ok(())
     }
 
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
@@ -949,15 +940,15 @@ impl WritableStoreTrait for WritableStore {
     async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError> {
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to.clone());
-        *self.block_cursor.lock().unwrap() = firehose_cursor.map(|c| c.to_string());
+        *self.block_cursor.lock().unwrap() = firehose_cursor.clone();
 
         self.writer.revert(block_ptr_to, firehose_cursor).await
     }
 
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
@@ -967,7 +958,8 @@ impl WritableStoreTrait for WritableStore {
             .unfail_deterministic_error(current_ptr, parent_ptr)?;
 
         if let UnfailOutcome::Unfailed = outcome {
-            *self.block_ptr.lock().unwrap() = Some(parent_ptr.clone());
+            *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
+            *self.block_cursor.lock().unwrap() = self.store.block_cursor().await?;
         }
 
         Ok(outcome)
@@ -998,7 +990,7 @@ impl WritableStoreTrait for WritableStore {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -1048,8 +1040,8 @@ impl WritableStoreTrait for WritableStore {
         self.store.shard()
     }
 
-    async fn health(&self, id: &DeploymentHash) -> Result<schema::SubgraphHealth, StoreError> {
-        self.store.health(id).await
+    async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
+        self.store.health().await
     }
 
     fn input_schema(&self) -> Arc<Schema> {

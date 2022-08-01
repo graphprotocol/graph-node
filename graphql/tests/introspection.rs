@@ -12,6 +12,7 @@ use graph_graphql::prelude::{
     a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
     Resolver,
 };
+use test_store::graphql_metrics;
 use test_store::LOAD_MANAGER;
 
 /// Mock resolver used in tests that don't need a resolver.
@@ -571,10 +572,13 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     };
 
     let schema = Arc::new(ApiSchema::from_api_schema(schema).unwrap());
-    let result = match PreparedQuery::new(&logger, schema, None, query, None, 100) {
-        Ok(query) => Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap()),
-        Err(e) => Err(e),
-    };
+    let result =
+        match PreparedQuery::new(&logger, schema, None, query, None, 100, graphql_metrics()) {
+            Ok(query) => {
+                Ok(Arc::try_unwrap(execute_query(query, None, None, options).await).unwrap())
+            }
+            Err(e) => Err(e),
+        };
     QueryResult::from(result)
 }
 

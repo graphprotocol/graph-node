@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::{convert::TryFrom, sync::Arc};
 
 use anyhow::{Error, Result};
@@ -62,7 +62,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             },
 
             CosmosTrigger::Event { event_data, origin } => {
-                match self.handler_for_event(event_data.event(), *origin) {
+                match self.handler_for_event(event_data.event()?, *origin) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }
@@ -140,7 +140,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _templates: &BTreeMap<&str, &DataSourceTemplate>,
+        _template: &DataSourceTemplate,
         _stored: StoredDynamicDataSource,
     ) -> Result<Self> {
         Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
@@ -213,8 +213,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    fn runtime(&self) -> &[u8] {
-        self.mapping.runtime.as_ref()
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
+        Some(self.mapping.runtime.cheap_clone())
     }
 }
 
@@ -363,7 +363,7 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
 
-    fn runtime(&self) -> &[u8] {
+    fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
 }

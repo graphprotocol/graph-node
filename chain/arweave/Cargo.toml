@@ -12,13 +12,10 @@ graph = { path = "../../graph" }
 prost = "0.10.1"
 prost-types = "0.10.1"
 serde = "1.0"
+sha2 = "0.10.2"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
-graph-core = { path = "../../core" }
-graph-store-postgres = { path = "../../store/postgres" }
-pretty_assertions = "0.7.2"
-test-store = { path = "../../store/test-store" }

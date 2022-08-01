@@ -1,3 +1,4 @@
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph_chain_ethereum::{Mapping, MappingABI};
@@ -164,6 +165,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -347,7 +349,6 @@ fn get_entity_1() {
 
         let mut expected_entity = Entity::new();
 
-        expected_entity.insert("__typename".to_owned(), USER.into());
         expected_entity.insert("id".to_owned(), "1".into());
         expected_entity.insert("name".to_owned(), "Johnton".into());
         expected_entity.insert(
@@ -378,7 +379,6 @@ fn get_entity_3() {
 
         let mut expected_entity = Entity::new();
 
-        expected_entity.insert("__typename".to_owned(), USER.into());
         expected_entity.insert("id".to_owned(), "3".into());
         expected_entity.insert("name".to_owned(), "Shaqueeena".into());
         expected_entity.insert(
@@ -471,7 +471,6 @@ fn update_existing() {
             _ => unreachable!(),
         };
 
-        new_data.insert("__typename".to_owned(), USER.into());
         new_data.insert("bin_name".to_owned(), Value::Bytes(bin_name));
         assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
     })
@@ -1150,11 +1149,8 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
         network: Some(String::from("mainnet")),
-        source: Source {
-            address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
-            abi: String::from("123123"),
-            start_block: 0,
-        },
+        address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
+        start_block: 0,
         mapping: Mapping {
             kind: String::from("ethereum/events"),
             api_version: Version::parse("0.1.0").unwrap(),
@@ -1240,7 +1236,10 @@ fn revert_block_with_dynamic_data_source_operations() {
         // Verify that the dynamic data source exists afterwards
         let loaded_dds = writable.load_dynamic_data_sources().await.unwrap();
         assert_eq!(1, loaded_dds.len());
-        assert_eq!(data_source.source, loaded_dds[0].source);
+        assert_eq!(
+            data_source.address.unwrap().0,
+            **loaded_dds[0].param.as_ref().unwrap()
+        );
 
         let subscription = subscribe(&deployment.hash, USER);
 
@@ -1288,6 +1287,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
+            offchain_data_sources: vec![],
             chain: PhantomData,
         };
 
@@ -1559,7 +1559,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
-                None,
+                FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_text),
                     make_insert_op(TWO, &other_text),
@@ -1656,7 +1656,7 @@ fn handle_large_bytea_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
-                None,
+                FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_bytea),
                     make_insert_op(TWO, &other_bytea),
@@ -2015,7 +2015,7 @@ fn reorg_tracking() {
             assert_eq!($reorg_count, state.reorg_count, "reorg_count");
             assert_eq!($max_reorg_depth, state.max_reorg_depth, "max_reorg_depth");
             assert_eq!(
-                $latest_ethereum_block_number, state.latest_ethereum_block_number,
+                $latest_ethereum_block_number, state.latest_block.number,
                 "latest_ethereum_block_number"
             );
         };

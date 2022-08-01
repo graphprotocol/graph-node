@@ -1,5 +1,5 @@
 #[rustfmt::skip]
-#[path = "protobuf/sf.ethereum.codec.v1.rs"]
+#[path = "protobuf/sf.ethereum.r#type.v1.rs"]
 mod pbcodec;
 
 use anyhow::format_err;
@@ -198,7 +198,7 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
             to: Some(self.trace.to.try_decode_proto("transaction to address")?),
             value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
             gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
-            gas: U256::from(self.trace.gas_used),
+            gas: U256::from(self.trace.gas_limit),
             input: Bytes::from(self.trace.input.clone()),
             v: None,
             r: None,
@@ -260,8 +260,12 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         .difficulty
                         .as_ref()
                         .map_or_else(|| U256::default(), |v| v.into()),
-                    // FIXME (SF): Not sure we have such equivalent stuff in Firehose, need to double-check (is this important?)
-                    total_difficulty: None,
+                    total_difficulty: Some(
+                        header
+                            .total_difficulty
+                            .as_ref()
+                            .map_or_else(|| U256::default(), |v| v.into()),
+                    ),
                     // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
                     seal_fields: vec![],
                     uncles: self
@@ -360,6 +364,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         trace
                             .calls
                             .iter()
+                            .filter(|call| !call.status_reverted && !call.status_failed)
                             .map(|call| CallAt::new(call, self, trace).try_into())
                             .collect::<Vec<Result<EthereumCall, Error>>>()
                     })

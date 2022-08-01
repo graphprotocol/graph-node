@@ -7,14 +7,15 @@ use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
 use graph::{
-    blockchain::ChainIdentifier, components::store::DeploymentLocator,
-    components::store::EntityType, components::store::StatusStore,
-    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
+    blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
+    components::store::DeploymentLocator, components::store::EntityType,
+    components::store::StatusStore, components::store::StoredDynamicDataSource,
+    data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
-use graph_graphql::test_support::ResultSizeMetrics;
+use graph_graphql::test_support::GraphQLMetrics;
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
@@ -163,6 +164,7 @@ pub async fn create_subgraph(
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -226,7 +228,7 @@ pub async fn transact_errors(
         .await?
         .transact_block_operations(
             block_ptr_to,
-            None,
+            FirehoseCursor::None,
             Vec::new(),
             &stopwatch_metrics,
             Vec::new(),
@@ -290,7 +292,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     store
         .transact_block_operations(
             block_ptr_to,
-            None,
+            FirehoseCursor::None,
             mods,
             &stopwatch_metrics,
             data_sources,
@@ -306,7 +308,7 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .writable(LOGGER.clone(), deployment.id)
         .await
         .expect("can get writable")
-        .revert_block_operations(ptr.clone(), None)
+        .revert_block_operations(ptr.clone(), FirehoseCursor::None)
         .await
         .unwrap();
     flush(deployment).await.unwrap();
@@ -408,8 +410,8 @@ macro_rules! return_err {
     };
 }
 
-pub fn result_size_metrics() -> Arc<ResultSizeMetrics> {
-    Arc::new(ResultSizeMetrics::make(METRICS_REGISTRY.clone()))
+pub fn graphql_metrics() -> Arc<GraphQLMetrics> {
+    Arc::new(GraphQLMetrics::make(METRICS_REGISTRY.clone()))
 }
 
 async fn execute_subgraph_query_internal(
@@ -424,6 +426,7 @@ async fn execute_subgraph_query_internal(
         _ => unreachable!("tests do not use this"),
     };
     let schema = SUBGRAPH_STORE.api_schema(&id).unwrap();
+
     let status = StatusStore::status(
         STORE.as_ref(),
         status::Filter::Deployments(vec![id.to_string()]),
@@ -436,7 +439,8 @@ async fn execute_subgraph_query_internal(
         network,
         query,
         max_complexity,
-        100
+        100,
+        graphql_metrics(),
     ));
     let mut result = QueryResults::empty();
     let deployment = query.schema.id().clone();
@@ -445,17 +449,19 @@ async fn execute_subgraph_query_internal(
         .query_store(deployment.into(), false)
         .await
         .unwrap();
+    let state = store.deployment_state().await.unwrap();
     for (bc, (selection_set, error_policy)) in return_err!(query.block_constraint()) {
         let logger = logger.clone();
         let resolver = return_err!(
             StoreResolver::at_block(
                 &logger,
                 store.clone(),
+                &state,
                 SUBSCRIPTION_MANAGER.clone(),
                 bc,
                 error_policy,
                 query.schema.id().clone(),
-                result_size_metrics()
+                graphql_metrics()
             )
             .await
         );

@@ -13,7 +13,7 @@ use std::thread;
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module<C: Blockchain>(
-    raw_module: Vec<u8>,
+    raw_module: &[u8],
     logger: Logger,
     subgraph_id: DeploymentHash,
     host_metrics: Arc<HostMetrics>,
@@ -21,7 +21,7 @@ pub fn spawn_module<C: Blockchain>(
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
 ) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error> {
-    let valid_module = Arc::new(ValidModule::new(&raw_module)?);
+    let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
@@ -149,14 +149,29 @@ pub struct ValidModule {
 
 impl ValidModule {
     /// Pre-process and validate the module.
-    pub fn new(raw_module: &[u8]) -> Result<Self, anyhow::Error> {
+    pub fn new(logger: &Logger, raw_module: &[u8]) -> Result<Self, anyhow::Error> {
         // Add the gas calls here. Module name "gas" must match. See also
         // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
         // parity - injecting gas then serializing again.
         let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
+        let parity_module = match parity_module.parse_names() {
+            Ok(module) => module,
+            Err((errs, module)) => {
+                for (index, err) in errs {
+                    warn!(
+                        logger,
+                        "unable to parse function name for index {}: {}",
+                        index,
+                        err.to_string()
+                    );
+                }
+
+                module
+            }
+        };
         let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
-        let raw_module = parity_module.to_bytes()?;
+        let raw_module = parity_module.into_bytes()?;
 
         // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
         // but that should not cause determinism issues since it adheres to the Wasm spec. Still we

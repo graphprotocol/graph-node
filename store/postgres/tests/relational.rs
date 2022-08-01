@@ -182,13 +182,11 @@ lazy_static! {
             bigInt: big_int.clone(),
             bigIntArray: vec![big_int.clone(), (big_int + 1.into()).clone()],
             color: "yellow",
-            __typename: "Scalar",
         }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
         entity! {
             id: "one",
-            __typename: "NullableStrings"
         }
     };
     static ref SCALAR: EntityType = EntityType::from("Scalar");

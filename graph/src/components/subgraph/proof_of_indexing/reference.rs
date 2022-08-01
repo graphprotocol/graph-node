@@ -1,7 +1,6 @@
 use super::ProofOfIndexingEvent;
 use crate::prelude::DeploymentHash;
-use stable_hash::{utils::AsBytes, FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
+use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 use std::collections::HashMap;
 use web3::types::{Address, H256};
 
@@ -17,80 +16,26 @@ pub struct PoI<'a> {
     pub indexer: Option<Address>,
 }
 
-impl stable_hash_legacy::StableHash for PoI<'_> {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let PoI {
-            causality_regions,
-            subgraph_id,
-            block_hash,
-            indexer,
-        } = self;
-
-        stable_hash_legacy::StableHash::stable_hash(
-            causality_regions,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(
-            subgraph_id,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::utils::AsBytes(block_hash.as_bytes())
-            .stable_hash(sequence_number.next_child(), state);
-        indexer
-            .as_ref()
-            .map(|i| stable_hash_legacy::utils::AsBytes(i.as_bytes()))
-            .stable_hash(sequence_number.next_child(), state);
-    }
+fn h256_as_bytes(val: &H256) -> AsBytes<&[u8]> {
+    AsBytes(val.as_bytes())
 }
 
-impl StableHash for PoI<'_> {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let PoI {
-            causality_regions,
-            subgraph_id,
-            block_hash,
-            indexer: _,
-        } = self;
-
-        StableHash::stable_hash(causality_regions, field_address.child(0), state);
-        subgraph_id.stable_hash(field_address.child(1), state);
-        AsBytes(block_hash.as_bytes()).stable_hash(field_address.child(2), state);
-        self.indexer
-            .as_ref()
-            .map(|i| AsBytes(i.as_bytes()))
-            .stable_hash(field_address.child(3), state);
-    }
+fn indexer_opt_as_bytes(val: &Option<Address>) -> Option<AsBytes<&[u8]>> {
+    val.as_ref().map(|v| AsBytes(v.as_bytes()))
 }
+
+impl_stable_hash!(PoI<'_> {
+    causality_regions,
+    subgraph_id,
+    block_hash: h256_as_bytes,
+    indexer: indexer_opt_as_bytes
+});
 
 pub struct CausalityRegion<'a> {
     pub blocks: Vec<Block<'a>>,
 }
 
-impl stable_hash_legacy::StableHash for CausalityRegion<'_> {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let CausalityRegion { blocks } = self;
-
-        stable_hash_legacy::StableHash::stable_hash(blocks, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for CausalityRegion<'_> {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let CausalityRegion { blocks } = self;
-
-        StableHash::stable_hash(blocks, field_address.child(0), state);
-    }
-}
+impl_stable_hash!(CausalityRegion<'_> {blocks});
 
 impl CausalityRegion<'_> {
     pub fn from_network(network: &str) -> String {
@@ -103,22 +48,4 @@ pub struct Block<'a> {
     pub events: Vec<ProofOfIndexingEvent<'a>>,
 }
 
-impl stable_hash_legacy::StableHash for Block<'_> {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let Block { events } = self;
-
-        stable_hash_legacy::StableHash::stable_hash(events, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for Block<'_> {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let Block { events } = self;
-
-        StableHash::stable_hash(events, field_address.child(0), state);
-    }
-}
+impl_stable_hash!(Block<'_> {events});

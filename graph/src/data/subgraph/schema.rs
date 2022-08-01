@@ -5,8 +5,6 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
@@ -15,6 +13,7 @@ use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
+use crate::util::stable_hash_glue::impl_stable_hash;
 use crate::{blockchain::Blockchain, components::store::EntityType};
 
 pub const POI_TABLE: &str = "poi2$";
@@ -202,55 +201,13 @@ impl Display for SubgraphError {
     }
 }
 
-impl stable_hash_legacy::StableHash for SubgraphError {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let SubgraphError {
-            subgraph_id,
-            message,
-            block_ptr,
-            handler,
-            deterministic,
-        } = self;
-        stable_hash_legacy::StableHash::stable_hash(
-            &subgraph_id,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(&message, sequence_number.next_child(), state);
-        stable_hash_legacy::StableHash::stable_hash(
-            &block_ptr,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(&handler, sequence_number.next_child(), state);
-        stable_hash_legacy::StableHash::stable_hash(
-            &deterministic,
-            sequence_number.next_child(),
-            state,
-        );
-    }
-}
-
-impl StableHash for SubgraphError {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let SubgraphError {
-            subgraph_id,
-            message,
-            block_ptr,
-            handler,
-            deterministic,
-        } = self;
-        StableHash::stable_hash(subgraph_id, field_address.child(0), state);
-        StableHash::stable_hash(message, field_address.child(1), state);
-        StableHash::stable_hash(block_ptr, field_address.child(2), state);
-        StableHash::stable_hash(handler, field_address.child(3), state);
-        StableHash::stable_hash(deterministic, field_address.child(4), state);
-    }
-}
+impl_stable_hash!(SubgraphError {
+    subgraph_id,
+    message,
+    block_ptr,
+    handler,
+    deterministic
+});
 
 pub fn generate_entity_id() -> String {
     // Fast crypto RNG from operating system

@@ -36,7 +36,7 @@ It's here that you add the `protobuf` definitions with the specific types for th
 
 - [Ethereum](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/ethereum/proto/codec.proto)
 - [NEAR](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/near/proto/codec.proto)
-- [Cosmos](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/proto/codec.proto)
+- [Cosmos](https://github.com/graphprotocol/graph-node/blob/caa54c1039d3c282ac31bb0e96cb277dbf82f793/chain/cosmos/proto/type.proto)
 
 To compile those we use a crate called `tonic`, it will require a [`build.rs` file](https://doc.rust-lang.org/cargo/reference/build-scripts.html) like the one in the other folders/chains, eg:
 
@@ -50,7 +50,7 @@ fn main() {
 }
 ```
 
-You'll also need a `src/codec.rs` to extract the data from the generated Rust code, much like [this one](https://github.com/graphprotocol/graph-node/blob/1cd7936f9143f317feb51be1fc199122761fcbb1/chain/tendermint/src/codec.rs).
+You'll also need a `src/codec.rs` to extract the data from the generated Rust code, much like [this one](https://github.com/graphprotocol/graph-node/blob/caa54c1039d3c282ac31bb0e96cb277dbf82f793/chain/cosmos/src/codec.rs).
 
 Besides this source file, there should also be a `TriggerFilter`, `NodeCapabilities` and `RuntimeAdapter`, here are a few empty examples:
 
@@ -246,9 +246,13 @@ Just like in the `server` crate, you'll just have to handle the new `BlockchainK
 
 ## Example Integrations (PRs)
 
-- [NEAR](https://github.com/graphprotocol/graph-node/pull/2820) by StreamingFast
-- [Cosmos](https://github.com/graphprotocol/graph-node/pull/3212) by Figment
-- [Solana](https://github.com/graphprotocol/graph-node/pull/3210) by StreamingFast
+- NEAR by StreamingFast
+  - https://github.com/graphprotocol/graph-node/pull/2820
+- Cosmos by Figment
+  - https://github.com/graphprotocol/graph-node/pull/3212
+  - https://github.com/graphprotocol/graph-node/pull/3543
+- Solana by StreamingFast
+  - https://github.com/graphprotocol/graph-node/pull/3210
 
 ## What else?
 
@@ -267,7 +271,9 @@ For now this document doesn't include how to do that integration, here are a few
   - `graph-cli`
     - https://github.com/graphprotocol/graph-cli/pull/827
     - https://github.com/graphprotocol/graph-cli/pull/851
+    - https://github.com/graphprotocol/graph-cli/pull/888
   - `graph-ts`
     - https://github.com/graphprotocol/graph-ts/pull/250
+    - https://github.com/graphprotocol/graph-ts/pull/273
 
 Also this document doesn't include the multi-blockchain part required for The Graph Network, which at this current moment is in progress, for now the network only supports Ethereum `mainnet`.

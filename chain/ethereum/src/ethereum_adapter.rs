@@ -285,7 +285,11 @@ impl EthereumAdapter {
             );
         }
 
-        let step_size = ENV_VARS.trace_stream_step_size;
+        // Go one block at a time if requesting all traces, to not overload the RPC.
+        let step_size = match addresses.is_empty() {
+            false => ENV_VARS.trace_stream_step_size,
+            true => 1,
+        };
 
         let eth = self.clone();
         let logger = logger.to_owned();
@@ -474,6 +478,7 @@ impl EthereumAdapter {
 
                     const PARITY_VM_EXECUTION_ERROR: i64 = -32015;
                     const PARITY_REVERT_PREFIX: &str = "Reverted 0x";
+                    const XDAI_REVERT: &str = "revert";
 
                     // Deterministic Geth execution errors. We might need to expand this as
                     // subgraphs come across other errors. See
@@ -534,7 +539,8 @@ impl EthereumAdapter {
                                         || data.starts_with(PARITY_STACK_LIMIT_PREFIX)
                                         || data == PARITY_BAD_INSTRUCTION_FE
                                         || data == PARITY_BAD_INSTRUCTION_FD
-                                        || data == PARITY_OUT_OF_GAS =>
+                                        || data == PARITY_OUT_OF_GAS
+                                        || data == XDAI_REVERT =>
                                 {
                                     let reason = if data == PARITY_BAD_INSTRUCTION_FE {
                                         PARITY_BAD_INSTRUCTION_FE.to_owned()
@@ -695,7 +701,7 @@ impl EthereumAdapter {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
         let eth = self.clone();
 
-        let addresses: Vec<H160> = call_filter
+        let mut addresses: Vec<H160> = call_filter
             .contract_addresses_function_signatures
             .iter()
             .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
@@ -708,6 +714,12 @@ impl EthereumAdapter {
             // The filter has no started data sources in the requested range, nothing to do.
             // This prevents an expensive call to `trace_filter` with empty `addresses`.
             return Box::new(stream::empty());
+        }
+
+        if addresses.len() > 100 {
+            // If the address list is large, request all traces, this avoids generating huge
+            // requests and potentially getting 413 errors.
+            addresses = vec![];
         }
 
         Box::new(
@@ -847,7 +859,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let web3 = self.web3.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
-        let gen_block_hash_future = retry("eth_getBlockByNumber(0, false) RPC call", &logger)
+        let retry_log_message = format!(
+            "eth_getBlockByNumber({}, false) RPC call",
+            ENV_VARS.genesis_block_number
+        );
+        let gen_block_hash_future = retry(retry_log_message, &logger)
             .no_limit()
             .timeout_secs(30)
             .run(move || {
@@ -856,7 +872,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let provider = provider.clone();
                 async move {
                     web3.eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(0.into())))
+                        .block(BlockId::Number(Web3BlockNumber::Number(
+                            ENV_VARS.genesis_block_number.into(),
+                        )))
                         .await
                         .map_err(|e| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
@@ -1178,7 +1196,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             Err(e) => return Box::new(future::err(EthereumContractCallError::EncodingError(e))),
         };
 
-        trace!(logger, "eth_call";
+        debug!(logger, "eth_call";
             "address" => hex::encode(&call.address),
             "data" => hex::encode(&call_data)
         );
@@ -1249,7 +1267,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
-            .blocks(&block_hashes)
+            .blocks(&block_hashes.iter().map(|&b| b.into()).collect::<Vec<_>>())
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()

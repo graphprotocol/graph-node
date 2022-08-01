@@ -4,10 +4,8 @@ use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::metrics::RunnerMetrics;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
-use crate::subgraph::SubgraphInstance;
 use atomic_refcell::AtomicRefCell;
-use fail::fail_point;
-use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers};
+use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource, TriggerFilter as _};
 use graph::components::{
     store::ModificationsAndCache,
@@ -24,26 +22,34 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::TriggerProcessor;
+
 const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub struct SubgraphRunner<C: Blockchain, T: RuntimeHostBuilder<C>> {
-    ctx: IndexingContext<T, C>,
+pub struct SubgraphRunner<C, T, TP>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
+{
+    ctx: IndexingContext<C, T, TP>,
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     metrics: RunnerMetrics,
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     pub fn new(
         inputs: IndexingInputs<C>,
-        ctx: IndexingContext<T, C>,
+        ctx: IndexingContext<C, T, TP>,
         logger: Logger,
         metrics: RunnerMetrics,
     ) -> Self {
@@ -82,7 +88,8 @@ where
                 let _outcome = self
                     .inputs
                     .store
-                    .unfail_deterministic_error(&current_ptr, &parent_ptr)?;
+                    .unfail_deterministic_error(&current_ptr, &parent_ptr)
+                    .await?;
             }
         }
 
@@ -122,7 +129,11 @@ where
                     .await?
                 {
                     Action::Continue => continue,
-                    Action::Stop => return Ok(()),
+                    Action::Stop => {
+                        info!(self.logger, "Stopping subgraph");
+                        self.inputs.store.flush().await?;
+                        return Ok(());
+                    }
                     Action::Restart => break,
                 };
             }
@@ -135,7 +146,7 @@ where
         &mut self,
         block_stream_cancel_handle: &CancelHandle,
         block: BlockWithTriggers<C>,
-        firehose_cursor: Option<String>,
+        firehose_cursor: FirehoseCursor,
     ) -> Result<Action, BlockProcessingError> {
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
@@ -159,6 +170,7 @@ where
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
+                self.ctx.instance.poi_version.clone(),
             ))))
         } else {
             None
@@ -243,29 +255,33 @@ where
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
             for trigger in triggers {
-                block_state = SubgraphInstance::<C, T>::process_trigger_in_runtime_hosts(
-                    &logger,
-                    &runtime_hosts,
-                    &block,
-                    &trigger,
-                    block_state,
-                    &proof_of_indexing,
-                    &causality_region,
-                    &self.inputs.debug_fork,
-                    &self.metrics.subgraph,
-                )
-                .await
-                .map_err(|e| {
-                    // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                    // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                    // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                    // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    match e {
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                            BlockProcessingError::Unknown(e)
+                block_state = self
+                    .ctx
+                    .instance
+                    .trigger_processor
+                    .process_trigger(
+                        &logger,
+                        &runtime_hosts,
+                        &block,
+                        &trigger,
+                        block_state,
+                        &proof_of_indexing,
+                        &causality_region,
+                        &self.inputs.debug_fork,
+                        &self.metrics.subgraph,
+                    )
+                    .await
+                    .map_err(|e| {
+                        // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
+                        // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
+                        // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                        // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                        match e {
+                            MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                                BlockProcessingError::Unknown(e)
+                            }
                         }
-                    }
-                })?;
+                    })?;
             }
         }
 
@@ -464,7 +480,6 @@ where
                     runtime_hosts.push(host);
                 }
                 None => {
-                    fail_point!("error_on_duplicate_ds", |_| Err(anyhow!("duplicate ds")));
                     warn!(
                         self.logger,
                         "no runtime hosted created, there is already a runtime host instantiated for \
@@ -511,10 +526,11 @@ where
     }
 }
 
-impl<C, T> SubgraphRunner<C, T>
+impl<C, T, TP> SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_stream_event(
         &mut self,
@@ -532,8 +548,9 @@ where
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => self.handle_err(e, cancel_handle).await?,
-            // Scenario where this can happen: 1504c9d8-36e4-45bb-b4f2-71cf58789ed9
-            None => unreachable!("The block stream stopped producing blocks"),
+            // If the block stream ends, that means that there is no more indexing to do.
+            // Typically block streams produce indefinitely, but tests are an example of finite block streams.
+            None => Action::Stop,
         };
 
         Ok(action)
@@ -551,13 +568,13 @@ trait StreamEventHandler<C: Blockchain> {
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
     ) -> Result<Action, Error>;
     async fn handle_err(
         &mut self,
@@ -567,15 +584,16 @@ trait StreamEventHandler<C: Blockchain> {
 }
 
 #[async_trait]
-impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
+impl<C, T, TP> StreamEventHandler<C> for SubgraphRunner<C, T, TP>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
+    TP: TriggerProcessor<C, T>,
 {
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let block_ptr = block.ptr();
@@ -609,9 +627,7 @@ where
 
         let start = Instant::now();
 
-        let res = self
-            .process_block(&cancel_handle, block, cursor.into())
-            .await;
+        let res = self.process_block(&cancel_handle, block, cursor).await;
 
         let elapsed = start.elapsed().as_secs_f64();
         self.metrics
@@ -731,12 +747,8 @@ where
                         //
                         // If we don't do this check we would keep adding the same error to the
                         // database.
-                        let should_fail_subgraph = self
-                            .inputs
-                            .store
-                            .health(&self.inputs.deployment.hash)
-                            .await?
-                            != SubgraphHealth::Failed;
+                        let should_fail_subgraph =
+                            self.inputs.store.health().await? != SubgraphHealth::Failed;
 
                         if should_fail_subgraph {
                             // Fail subgraph:
@@ -779,7 +791,7 @@ where
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
-        cursor: Option<String>,
+        cursor: FirehoseCursor,
     ) -> Result<Action, Error> {
         // Current deployment head in the database / WritableAgent Mutex cache.
         //
@@ -796,7 +808,7 @@ where
         if let Err(e) = self
             .inputs
             .store
-            .revert_block_operations(revert_to_ptr, cursor.as_deref())
+            .revert_block_operations(revert_to_ptr, cursor)
             .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);

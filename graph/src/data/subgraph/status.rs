@@ -1,9 +1,10 @@
 //! Support for the indexing status API
 
 use super::schema::{SubgraphError, SubgraphHealth};
-use crate::components::store::DeploymentId;
+use crate::blockchain::BlockHash;
+use crate::components::store::{BlockNumber, DeploymentId};
 use crate::data::graphql::{object, IntoValue};
-use crate::prelude::{r, web3::types::H256, BlockPtr, Value};
+use crate::prelude::{r, BlockPtr, Value};
 
 pub enum Filter {
     /// Get all versions for the named subgraph
@@ -22,8 +23,8 @@ pub enum Filter {
 pub struct EthereumBlock(BlockPtr);
 
 impl EthereumBlock {
-    pub fn new(hash: H256, number: u64) -> Self {
-        EthereumBlock(BlockPtr::from((hash, number)))
+    pub fn new(hash: BlockHash, number: BlockNumber) -> Self {
+        EthereumBlock(BlockPtr::new(hash, number))
     }
 
     pub fn to_ptr(self) -> BlockPtr {
@@ -60,8 +61,8 @@ pub struct ChainInfo {
     pub network: String,
     /// The current head block of the chain.
     pub chain_head_block: Option<EthereumBlock>,
-    /// The earliest block available for this subgraph.
-    pub earliest_block: Option<EthereumBlock>,
+    /// The earliest block available for this subgraph (only the number).
+    pub earliest_block_number: BlockNumber,
     /// The latest block that the subgraph has synced to.
     pub latest_block: Option<EthereumBlock>,
 }
@@ -71,7 +72,7 @@ impl IntoValue for ChainInfo {
         let ChainInfo {
             network,
             chain_head_block,
-            earliest_block,
+            earliest_block_number,
             latest_block,
         } = self;
         object! {
@@ -80,7 +81,11 @@ impl IntoValue for ChainInfo {
             __typename: "EthereumIndexingStatus",
             network: network,
             chainHeadBlock: chain_head_block,
-            earliestBlock: earliest_block,
+            earliestBlock: object! {
+                __typename: "EarliestBlock",
+                number: earliest_block_number,
+                hash: "0x0"
+            },
             latestBlock: latest_block,
         }
     }

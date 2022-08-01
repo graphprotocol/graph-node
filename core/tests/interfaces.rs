@@ -1473,3 +1473,42 @@ async fn mixed_mutability() {
     let exp = object! { events: vec![ object!{ id: "immo0" }, object! { id: "mut0" } ] };
     assert_eq!(data, exp);
 }
+
+#[tokio::test]
+async fn derived_interface_bytes() {
+    let subgraph_id = "DerivedInterfaceBytes";
+    let schema = r#" type Pool {
+        id: Bytes!,
+        trades: [Trade!]! @derivedFrom(field: "pool")
+      }
+      
+      interface Trade {
+       id: Bytes!
+       pool: Pool!
+      }
+      
+      type Sell implements Trade @entity {
+          id: Bytes!
+          pool: Pool!
+      }
+      type Buy implements Trade @entity {
+       id: Bytes!
+       pool: Pool!
+      }"#;
+
+    let query = "query { pools { trades { id } } }";
+
+    let entities = vec![
+        ("Pool", entity! { id: "0xf001" }),
+        ("Sell", entity! { id: "0xc0", pool: "0xf001"}),
+        ("Buy", entity! { id: "0xb0", pool: "0xf001"}),
+    ];
+
+    let res = insert_and_query(subgraph_id, schema, entities, query)
+        .await
+        .unwrap();
+
+    let data = extract_data!(res).unwrap();
+    let exp = object! { pools: vec![ object!{ trades: vec![ object! { id: "0xb0" }, object! { id: "0xc0" }] } ] };
+    assert_eq!(data, exp);
+}

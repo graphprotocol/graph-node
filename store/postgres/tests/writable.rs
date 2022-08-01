@@ -1,3 +1,4 @@
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
 use lazy_static::lazy_static;
 use std::marker::PhantomData;
@@ -43,6 +44,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -155,7 +157,7 @@ fn tracker() {
 
         // Test reading back with a pending revert
         writable
-            .revert_block_operations(block_pointer(2), None)
+            .revert_block_operations(block_pointer(2), FirehoseCursor::None)
             .await
             .unwrap();
 

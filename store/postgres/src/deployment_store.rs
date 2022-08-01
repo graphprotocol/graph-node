@@ -1,15 +1,16 @@
-use anyhow::Context;
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
-use graph::data::subgraph::status;
+use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
+use graph::semver::Version;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::borrow::Cow;
@@ -18,11 +19,12 @@ use std::convert::Into;
 use std::iter::FromIterator;
 use std::ops::Bound;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::Instant;
 
 use graph::components::store::EntityCollection;
-use graph::components::subgraph::ProofOfIndexingFinisher;
+use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
@@ -38,6 +40,7 @@ use crate::block_range::block_number;
 use crate::catalog;
 use crate::deployment;
 use crate::detail::ErrorDetail;
+use crate::dynds::DataSourcesTable;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
@@ -70,6 +73,7 @@ pub(crate) struct SubgraphInfo {
     pub(crate) debug_fork: Option<DeploymentHash>,
     pub(crate) description: Option<String>,
     pub(crate) repository: Option<String>,
+    pub(crate) poi_version: ProofOfIndexingVersion,
 }
 
 pub struct StoreInner {
@@ -168,13 +172,7 @@ impl DeploymentStore {
 
             // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {
-                deployment::create_deployment(
-                    &conn,
-                    &site,
-                    deployment,
-                    exists,
-                    replace,
-                )?;
+                deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };
 
             // Create the schema for the subgraph data
@@ -189,12 +187,17 @@ impl DeploymentStore {
                     if !errors.is_empty() {
                         return Err(StoreError::Unknown(anyhow!(
                             "The subgraph `{}` cannot be used as the graft base \
-                                                    for `{}` because the schemas are incompatible:\n    - {}",
+                             for `{}` because the schemas are incompatible:\n    - {}",
                             &base.catalog.site.namespace,
                             &layout.catalog.site.namespace,
                             errors.join("\n    - ")
                         )));
                     }
+                }
+
+                // Create data sources table
+                if site.schema_version.private_data_sources() {
+                    conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())?;
                 }
             }
             Ok(())
@@ -215,7 +218,9 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
         conn.transaction(|| {
             crate::deployment::drop_schema(&conn, &site.namespace)?;
-            crate::dynds::drop(&conn, &site.deployment)?;
+            if !site.schema_version.private_data_sources() {
+                crate::dynds::shared::drop(&conn, &site.deployment)?;
+            }
             crate::deployment::drop_metadata(&conn, site)
         })
     }
@@ -537,7 +542,8 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository) = deployment::manifest_info(conn, site)?;
+        let (input_schema, description, repository, spec_version) =
+            deployment::manifest_info(conn, site)?;
 
         let graft_block =
             deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
@@ -551,6 +557,13 @@ impl DeploymentStore {
             api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
         schema.add_subgraph_id_directives(site.deployment.clone());
 
+        let spec_version = Version::from_str(&spec_version).map_err(anyhow::Error::from)?;
+        let poi_version = if spec_version.ge(&SPEC_VERSION_0_0_6) {
+            ProofOfIndexingVersion::Fast
+        } else {
+            ProofOfIndexingVersion::Legacy
+        };
+
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
             api: Arc::new(ApiSchema::from_api_schema(schema)?),
@@ -558,6 +571,7 @@ impl DeploymentStore {
             debug_fork,
             description,
             repository,
+            poi_version,
         };
 
         // Insert the schema into the cache.
@@ -772,24 +786,15 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<Option<String>, StoreError> {
+    pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<FirehoseCursor, StoreError> {
         let site = site.cheap_clone();
 
         self.with_conn(|conn, cancel| {
             cancel.check_cancel()?;
 
-            deployment::get_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
-        })
-        .await
-    }
-
-    pub(crate) async fn delete_block_cursor(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let site = site.cheap_clone();
-
-        self.with_conn(|conn, cancel| {
-            cancel.check_cancel()?;
-
-            deployment::delete_subgraph_firehose_cursor(&conn, site).map_err(Into::into)
+            deployment::get_subgraph_firehose_cursor(&conn, site)
+                .map(FirehoseCursor::from)
+                .map_err(Into::into)
         })
         .await
     }
@@ -817,6 +822,7 @@ impl DeploymentStore {
         let indexer = *indexer;
         let site3 = site.cheap_clone();
         let site4 = site.cheap_clone();
+        let site5 = site.cheap_clone();
         let store = self.cheap_clone();
         let block2 = block.cheap_clone();
 
@@ -890,7 +896,14 @@ impl DeploymentStore {
             })
             .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-        let mut finisher = ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer);
+        let info = self.subgraph_info(&site5).map_err(anyhow::Error::from)?;
+
+        let mut finisher = ProofOfIndexingFinisher::new(
+            &block2,
+            &site3.deployment,
+            &indexer,
+            info.poi_version.clone(),
+        );
         for (name, region) in by_causality_region.drain() {
             finisher.add_causality_region(&name, &region);
         }
@@ -955,7 +968,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block_ptr_to: &BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
         mods: &[EntityModification],
         stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
@@ -997,7 +1010,7 @@ impl DeploymentStore {
             )?;
             section.end();
 
-            dynds::insert(&conn, &site.deployment, data_sources, block_ptr_to)?;
+            dynds::insert(&conn, &site, data_sources, block_ptr_to)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(
@@ -1028,7 +1041,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
             // Don't revert past a graft point
@@ -1047,21 +1060,13 @@ impl DeploymentStore {
                 }
             }
 
-            deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to.clone())?;
+            // The revert functions want the number of the first block that we need to get rid of
+            let block = block_ptr_to.number + 1;
 
-            if let Some(cursor) = firehose_cursor {
-                deployment::update_firehose_cursor(conn, &site.deployment, cursor)
-                    .context("updating firehose cursor")?;
-            }
+            deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to, firehose_cursor)?;
 
             // Revert the data
             let layout = self.layout(conn, site.clone())?;
-
-            // At 1 block per 15 seconds, the maximum i32
-            // value affords just over 1020 years of blocks.
-            let block = block_ptr_to.number;
-            // The revert functions want the number of the first block that we need to get rid of
-            let block = block + 1;
 
             let (event, count) = layout.revert_block(conn, block)?;
 
@@ -1070,7 +1075,7 @@ impl DeploymentStore {
             // importantly creation of dynamic data sources. We ensure in the
             // rest of the code that we only record history for those meta data
             // changes that might need to be reverted
-            Layout::revert_metadata(&conn, &site.deployment, block)?;
+            Layout::revert_metadata(&conn, &site, block)?;
 
             deployment::update_entity_count(
                 conn,
@@ -1103,17 +1108,16 @@ impl DeploymentStore {
             );
         }
 
-        // When rewinding, we reset the firehose cursor to the empty string. That way, on resume,
-        // Firehose will start from the block_ptr instead (with sanity check to ensure it's resume
-        // at the exact block).
-        self.rewind_with_conn(&conn, site, block_ptr_to, Some(""))
+        // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
+        // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
+        self.rewind_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None)
     }
 
     pub(crate) fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
-        firehose_cursor: Option<&str>,
+        firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
         let conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
@@ -1172,11 +1176,11 @@ impl DeploymentStore {
 
     pub(crate) async fn load_dynamic_data_sources(
         &self,
-        id: DeploymentHash,
+        site: Arc<Site>,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&conn, id.as_str(), block))
+            conn.transaction(|| crate::dynds::load(&conn, &site, block))
                 .map_err(Into::into)
         })
         .await
@@ -1356,10 +1360,10 @@ impl DeploymentStore {
 
                     // We ignore the StoreEvent that's being returned, we'll not use it.
                     //
-                    // We reset the firehose cursor to the empty string. That way, on resume,
-                    // Firehose will start from the block_ptr instead (with sanity checks to ensure it's resuming
-                    // at the correct block).
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), Some(""))?;
+                    // We reset the firehose cursor. That way, on resume, Firehose will start from
+                    // the block_ptr instead (with sanity checks to ensure it's resuming at the
+                    // correct block).
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None)?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
@@ -1486,10 +1490,10 @@ impl DeploymentStore {
 
     pub(crate) async fn health(
         &self,
-        id: &DeploymentHash,
+        site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
-        let id = id.clone();
-        self.with_conn(move |conn, _| deployment::health(conn, &id).map_err(Into::into))
+        let id = site.id.clone();
+        self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
     }
 }

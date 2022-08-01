@@ -39,6 +39,7 @@ use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
 use maybe_owned::MaybeOwned;
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
@@ -262,6 +263,12 @@ impl ToSql<Text, Pg> for Namespace {
     }
 }
 
+impl Borrow<str> for Namespace {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
 /// A marker that an `i32` references a deployment. Values of this type hold
 /// the primary key from the `deployment_schemas` table
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
@@ -326,7 +333,7 @@ pub struct Site {
     /// deployment have `active = false`
     pub(crate) active: bool,
 
-    schema_version: DeploymentSchemaVersion,
+    pub(crate) schema_version: DeploymentSchemaVersion,
     /// Only the store and tests can create Sites
     _creation_disallowed: (),
 }

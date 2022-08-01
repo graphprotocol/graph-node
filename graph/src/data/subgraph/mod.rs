@@ -12,7 +12,11 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use anyhow::ensure;
 use anyhow::{anyhow, Error};
-use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
+use futures03::{
+    future::try_join4,
+    stream::{FuturesOrdered, FuturesUnordered},
+    TryStreamExt as _,
+};
 use semver::Version;
 use serde::de;
 use serde::ser;
@@ -20,16 +24,18 @@ use serde_yaml;
 use slog::{debug, info, Logger};
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{collections::BTreeSet, marker::PhantomData, mem::take};
 use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
 
+use crate::blockchain::BlockPtr;
 use crate::data::store::Entity;
 use crate::data::{
     schema::{Schema, SchemaImportError, SchemaValidationError},
     subgraph::features::validate_subgraph_features,
 };
+use crate::offchain;
 use crate::prelude::{r, CheapClone, ENV_VARS};
 use crate::{blockchain::DataSource, data::graphql::TryFromValue};
 use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
@@ -62,8 +68,6 @@ where
         .map(Some)
 }
 
-// Note: This has a StableHash impl. Do not modify fields without a backward
-// compatible change to the StableHash impl (below)
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -76,13 +80,15 @@ impl stable_hash_legacy::StableHash for DeploymentHash {
         mut sequence_number: H::Seq,
         state: &mut H,
     ) {
-        stable_hash_legacy::StableHash::stable_hash(&self.0, sequence_number.next_child(), state);
+        let Self(inner) = self;
+        stable_hash_legacy::StableHash::stable_hash(inner, sequence_number.next_child(), state);
     }
 }
 
 impl StableHash for DeploymentHash {
     fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        stable_hash::StableHash::stable_hash(&self.0, field_address.child(0), state);
+        let Self(inner) = self;
+        stable_hash::StableHash::stable_hash(inner, field_address.child(0), state);
     }
 }
 
@@ -455,10 +461,17 @@ impl Graft {
     async fn validate<S: SubgraphStore>(
         &self,
         store: Arc<S>,
-    ) -> Vec<SubgraphManifestValidationError> {
-        fn gbi(msg: String) -> Vec<SubgraphManifestValidationError> {
-            vec![SubgraphManifestValidationError::GraftBaseInvalid(msg)]
-        }
+    ) -> Result<(), SubgraphManifestValidationError> {
+        use SubgraphManifestValidationError::*;
+
+        let last_processed_block = store
+            .least_block_ptr(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+        let is_base_healthy = store
+            .is_healthy(&self.base)
+            .await
+            .map_err(|e| GraftBaseInvalid(e.to_string()))?;
 
         // We are being defensive here: we don't know which specific
         // instance of a subgraph we will use as the base for the graft,
@@ -466,29 +479,32 @@ impl Graft {
         // between this check and when the graft actually happens when the
         // subgraph is started. We therefore check that any instance of the
         // base subgraph is suitable.
-        match store.least_block_ptr(&self.base).await {
-            Err(e) => gbi(e.to_string()),
-            Ok(None) => gbi(format!(
+        match (last_processed_block, is_base_healthy) {
+            (None, _) => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` since it has not processed any blocks",
                 self.base
-            )),
-            Ok(Some(ptr)) => {
-                if ptr.number < self.block {
-                    gbi(format!(
-                        "failed to graft onto `{}` at block {} since it has only processed block {}",
-                        self.base, self.block, ptr.number
-                    ))
-                } else {
-                    vec![]
-                }
-            }
+            ))),
+            (Some(ptr), true) if ptr.number < self.block => Err(GraftBaseInvalid(format!(
+                "failed to graft onto `{}` at block {} since it has only processed block {}",
+                self.base, self.block, ptr.number
+            ))),
+            // If the base deployment is failed *and* the `graft.block` is not
+            // less than the `base.block`, the graft shouldn't be permitted.
+            //
+            // The developer should change their `graft.block` in the manifest
+            // to `base.block - 1` or less.
+            (Some(ptr), false) if !(self.block < ptr.number) => Err(GraftBaseInvalid(format!(
+                "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
+                self.base, self.block, ptr.number - 1
+            ))),
+            (Some(_), _) => Ok(()),
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseSubgraphManifest<C, S, D, T> {
+pub struct BaseSubgraphManifest<C, S, D, T, O> {
     pub id: DeploymentHash,
     pub spec_version: Version,
     #[serde(default)]
@@ -500,6 +516,8 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub graft: Option<Graft>,
     #[serde(default)]
     pub templates: Vec<T>,
+    #[serde(default)]
+    pub offchain_data_sources: Vec<O>,
     #[serde(skip_serializing, default)]
     pub chain: PhantomData<C>,
 }
@@ -510,6 +528,7 @@ type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     UnresolvedSchema,
     <C as Blockchain>::UnresolvedDataSource,
     <C as Blockchain>::UnresolvedDataSourceTemplate,
+    offchain::UnresolvedDataSource,
 >;
 
 /// SubgraphManifest validated with IPFS links resolved
@@ -518,6 +537,7 @@ pub type SubgraphManifest<C> = BaseSubgraphManifest<
     Schema,
     <C as Blockchain>::DataSource,
     <C as Blockchain>::DataSourceTemplate,
+    offchain::DataSource,
 >;
 
 /// Unvalidated SubgraphManifest
@@ -599,7 +619,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 ));
             }
             if validate_graft_base {
-                errors.extend(graft.validate(store).await);
+                if let Err(graft_err) = graft.validate(store).await {
+                    errors.push(graft_err);
+                }
             }
         }
 
@@ -631,10 +653,34 @@ impl<C: Blockchain> SubgraphManifest<C> {
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         // Inject the IPFS hash as the ID of the subgraph into the definition.
-        raw.insert(
-            serde_yaml::Value::from("id"),
-            serde_yaml::Value::from(id.to_string()),
-        );
+        raw.insert("id".into(), id.to_string().into());
+
+        let spec_version = raw
+            .get(&"specVersion".into())
+            .and_then(|v| v.as_str()?.parse::<Version>().ok());
+
+        if spec_version >= Some(SPEC_VERSION_0_0_7) {
+            // Separate offchain data sources (where `kind` starts with "file").
+            let data_sources: Vec<serde_yaml::Value> = raw
+                .remove(&serde_yaml::Value::from("dataSources"))
+                .and_then(|mut v| v.as_sequence_mut().map(take))
+                .unwrap_or_default();
+            let mut onchain_data_sources = Vec::new();
+            let mut offchain_data_sources = Vec::new();
+            for data_source in data_sources {
+                let kind = data_source
+                    .get(&serde_yaml::Value::from("kind"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if kind.starts_with("file") {
+                    offchain_data_sources.push(data_source);
+                } else {
+                    onchain_data_sources.push(data_source);
+                }
+            }
+            raw.insert("dataSources".into(), onchain_data_sources.into());
+            raw.insert("offchainDataSources".into(), offchain_data_sources.into());
+        }
 
         // Parse the YAML data into an UnresolvedSubgraphManifest
         let unresolved: UnresolvedSubgraphManifest<C> = serde_yaml::from_value(raw.into())?;
@@ -651,8 +697,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .filter_map(|d| d.network().map(|n| n.to_string()))
-            .next()
+            .find_map(|d| d.network().map(|n| n.to_string()))
             .expect("Validated manifest does not have a network defined on any datasource")
     }
 
@@ -670,11 +715,15 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .chain(self.data_sources.iter().map(|source| source.api_version()))
     }
 
-    pub fn runtimes(&self) -> impl Iterator<Item = &[u8]> + '_ {
+    pub fn runtimes(&self) -> impl Iterator<Item = Arc<Vec<u8>>> + '_ {
         self.templates
             .iter()
-            .map(|template| template.runtime())
-            .chain(self.data_sources.iter().map(|source| source.runtime()))
+            .filter_map(|template| template.runtime())
+            .chain(
+                self.data_sources
+                    .iter()
+                    .filter_map(|source| source.runtime()),
+            )
     }
 
     pub fn unified_mapping_api_version(
@@ -701,6 +750,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
+            offchain_data_sources,
             chain,
         } = self;
 
@@ -714,7 +764,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ));
         }
 
-        let (schema, data_sources, templates) = try_join3(
+        let (schema, data_sources, templates, offchain_data_sources) = try_join4(
             schema.resolve(id.clone(), &resolver, logger),
             data_sources
                 .into_iter()
@@ -725,6 +775,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .into_iter()
                 .map(|template| template.resolve(&resolver, logger))
                 .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            offchain_data_sources
+                .into_iter()
+                .map(|ds| ds.resolve(&resolver, logger))
+                .collect::<FuturesUnordered<_>>()
                 .try_collect::<Vec<_>>(),
         )
         .await?;
@@ -750,6 +805,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
+            offchain_data_sources,
             chain,
         })
     }
@@ -771,14 +827,34 @@ pub struct DeploymentState {
     /// The maximum number of blocks we ever reorged without moving a block
     /// forward in between
     pub max_reorg_depth: u32,
-    /// The number of the last block that the subgraph has processed
-    pub latest_ethereum_block_number: BlockNumber,
+    /// The last block that the subgraph has processed
+    pub latest_block: BlockPtr,
+    /// The earliest block that the subgraph has processed
+    pub earliest_block_number: BlockNumber,
 }
 
 impl DeploymentState {
     /// Is this subgraph deployed and has it processed any blocks?
     pub fn is_deployed(&self) -> bool {
-        self.latest_ethereum_block_number > 0
+        self.latest_block.number > 0
+    }
+
+    pub fn block_queryable(&self, block: BlockNumber) -> Result<(), String> {
+        if block > self.latest_block.number {
+            return Err(format!(
+                "subgraph {} has only indexed up to block number {} \
+                        and data for block number {} is therefore not yet available",
+                self.id, self.latest_block.number, block
+            ));
+        }
+        if block < self.earliest_block_number {
+            return Err(format!(
+                "subgraph {} only has data starting at block number {} \
+                            and data for block number {} is therefore not available",
+                self.id, self.earliest_block_number, block
+            ));
+        }
+        Ok(())
     }
 }
 

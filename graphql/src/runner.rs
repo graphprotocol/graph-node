@@ -1,17 +1,17 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::prelude::MetricsRegistry;
-use graph::prometheus::{Gauge, Histogram};
 use graph::{
     components::store::SubscriptionManager,
     prelude::{
-        async_trait, o, CheapClone, DeploymentState, GraphQlRunner as GraphQlRunnerTrait, Logger,
-        Query, QueryExecutionError, Subscription, SubscriptionError, SubscriptionResult, ENV_VARS,
+        async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
+        GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, Subscription,
+        SubscriptionError, SubscriptionResult, ENV_VARS,
     },
 };
 use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
@@ -20,59 +20,13 @@ use graph::{
     prelude::QueryStore,
 };
 
-pub struct ResultSizeMetrics {
-    histogram: Box<Histogram>,
-    max_gauge: Box<Gauge>,
-}
-
-impl ResultSizeMetrics {
-    fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
-        // Divide the Histogram into exponentially sized buckets between 1k and 4G
-        let bins = (10..32).map(|n| 2u64.pow(n) as f64).collect::<Vec<_>>();
-        let histogram = registry
-            .new_histogram(
-                "query_result_size",
-                "the size of the result of successful GraphQL queries (in CacheWeight)",
-                bins,
-            )
-            .unwrap();
-
-        let max_gauge = registry
-            .new_gauge(
-                "query_result_max",
-                "the maximum size of a query result (in CacheWeight)",
-                HashMap::new(),
-            )
-            .unwrap();
-
-        Self {
-            histogram,
-            max_gauge,
-        }
-    }
-
-    // Tests need to construct one of these, but normal code doesn't
-    #[cfg(debug_assertions)]
-    pub fn make(registry: Arc<dyn MetricsRegistry>) -> Self {
-        Self::new(registry)
-    }
-
-    pub fn observe(&self, size: usize) {
-        let size = size as f64;
-        self.histogram.observe(size);
-        if self.max_gauge.get() < size {
-            self.max_gauge.set(size);
-        }
-    }
-}
-
 /// GraphQL runner implementation for The Graph.
 pub struct GraphQlRunner<S, SM> {
     logger: Logger,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
     load_manager: Arc<LoadManager>,
-    result_size: Arc<ResultSizeMetrics>,
+    graphql_metrics: Arc<GraphQLMetrics>,
 }
 
 #[cfg(debug_assertions)]
@@ -95,13 +49,13 @@ where
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
-        let result_size = Arc::new(ResultSizeMetrics::new(registry));
+        let graphql_metrics = Arc::new(GraphQLMetrics::new(registry));
         GraphQlRunner {
             logger,
             store,
             subscription_manager,
             load_manager,
-            result_size,
+            graphql_metrics,
         }
     }
 
@@ -128,7 +82,7 @@ where
             // there is only one reorg of one block, and we therefore avoid
             // flagging a lot of queries a bit behind the head
             let n_blocks = new_state.max_reorg_depth * (new_state.reorg_count - state.reorg_count);
-            if latest_block + n_blocks as u64 > state.latest_ethereum_block_number as u64 {
+            if latest_block + n_blocks as u64 > state.latest_block.number as u64 {
                 return Err(QueryExecutionError::DeploymentReverted);
             }
         }
@@ -143,7 +97,7 @@ where
         max_depth: Option<u8>,
         max_first: Option<u32>,
         max_skip: Option<u32>,
-        result_size: Arc<ResultSizeMetrics>,
+        metrics: Arc<GraphQLMetrics>,
     ) -> Result<QueryResults, QueryResults> {
         // We need to use the same `QueryStore` for the entire query to ensure
         // we have a consistent view if the world, even when replicas, which
@@ -175,6 +129,7 @@ where
             query,
             max_complexity,
             max_depth,
+            metrics.cheap_clone(),
         )?;
         self.load_manager
             .decide(
@@ -192,11 +147,12 @@ where
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
+                &state,
                 self.subscription_manager.cheap_clone(),
                 bc,
                 error_policy,
                 query.schema.id().clone(),
-                result_size.cheap_clone(),
+                metrics.cheap_clone(),
             )
             .await?;
             max_block = max_block.max(resolver.block_number());
@@ -258,7 +214,7 @@ where
             max_depth,
             max_first,
             max_skip,
-            self.result_size.cheap_clone(),
+            self.graphql_metrics.clone(),
         )
         .await
         .unwrap_or_else(|e| e)
@@ -280,6 +236,7 @@ where
             subscription.query,
             ENV_VARS.graphql.max_complexity,
             ENV_VARS.graphql.max_depth,
+            self.graphql_metrics.cheap_clone(),
         )?;
 
         if let Err(err) = self
@@ -305,12 +262,16 @@ where
                 max_depth: ENV_VARS.graphql.max_depth,
                 max_first: ENV_VARS.graphql.max_first,
                 max_skip: ENV_VARS.graphql.max_skip,
-                result_size: self.result_size.clone(),
+                graphql_metrics: self.graphql_metrics.clone(),
             },
         )
     }
 
     fn load_manager(&self) -> Arc<LoadManager> {
         self.load_manager.clone()
+    }
+
+    fn metrics(&self) -> Arc<dyn GraphQLMetricsTrait> {
+        self.graphql_metrics.clone()
     }
 }

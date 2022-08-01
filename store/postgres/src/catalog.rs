@@ -47,6 +47,13 @@ table! {
     }
 }
 
+// In debug builds (for testing etc.) create exclusion constraints, in
+// release builds for production, skip them
+#[cfg(debug_assertions)]
+const CREATE_EXCLUSION_CONSTRAINT: bool = true;
+#[cfg(not(debug_assertions))]
+const CREATE_EXCLUSION_CONSTRAINT: bool = false;
+
 /// Information about what tables and columns we have in the database
 #[derive(Debug, Clone)]
 pub struct Catalog {
@@ -84,6 +91,7 @@ impl Catalog {
             // DDL generation creates a POI table
             use_poi: true,
             // DDL generation creates indexes for prefixes of bytes columns
+            // see: attr-bytea-prefix
             use_bytea_prefix: true,
         }
     }
@@ -107,6 +115,12 @@ impl Catalog {
             .get(table.as_str())
             .map(|cols| cols.contains(column.as_str()))
             .unwrap_or(false)
+    }
+
+    /// Whether to create exclusion indexes; if false, create gist indexes
+    /// w/o an exclusion constraint
+    pub fn create_exclusion_constraint(&self) -> bool {
+        CREATE_EXCLUSION_CONSTRAINT
     }
 }
 

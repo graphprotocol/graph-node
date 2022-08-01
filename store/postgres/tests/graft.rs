@@ -1,3 +1,4 @@
+use graph::blockchain::block_stream::FirehoseCursor;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
@@ -134,6 +135,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
+        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -309,7 +311,7 @@ async fn check_graft(
 
     assert_eq!(vec!["3", "1", "2"], ids);
 
-    // Make sure we caught Shqueena at block 1, before the change in
+    // Make sure we caught Shaqueeena at block 1, before the change in
     // email address
     let mut shaq = entities.first().unwrap().to_owned();
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
@@ -326,14 +328,14 @@ async fn check_graft(
 
     let writable = store.writable(LOGGER.clone(), deployment.id).await?;
     writable
-        .revert_block_operations(BLOCKS[1].clone(), None)
+        .revert_block_operations(BLOCKS[1].clone(), FirehoseCursor::None)
         .await
         .expect("We can revert a block we just created");
     writable.flush().await.expect("we can revert to BLOCKS[1]");
 
     let err = {
         match writable
-            .revert_block_operations(BLOCKS[0].clone(), None)
+            .revert_block_operations(BLOCKS[0].clone(), FirehoseCursor::None)
             .await
         {
             Ok(()) => writable.flush().await,

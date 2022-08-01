@@ -5,8 +5,6 @@ mod traits;
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
 pub use err::StoreError;
 use itertools::Itertools;
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
 pub use traits::*;
 
 use futures::stream::poll_fn;
@@ -23,8 +21,10 @@ use std::time::Duration;
 
 use crate::blockchain::DataSource;
 use crate::blockchain::{Block, Blockchain};
-use crate::data::{store::*, subgraph::Source};
+use crate::data::store::scalar::Bytes;
+use crate::data::store::*;
 use crate::prelude::*;
+use crate::util::stable_hash_glue::impl_stable_hash;
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -81,6 +81,19 @@ impl From<&str> for EntityType {
 
 impl CheapClone for EntityType {}
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EntityFilterDerivative(bool);
+
+impl EntityFilterDerivative {
+    pub fn new(derived: bool) -> Self {
+        Self(derived)
+    }
+
+    pub fn is_derived(&self) -> bool {
+        self.0
+    }
+}
+
 // Note: Do not modify fields without making a backward compatible change to
 // the StableHash impl (below)
 /// Key by which an individual entity in the store can be accessed.
@@ -96,46 +109,11 @@ pub struct EntityKey {
     pub entity_id: String,
 }
 
-impl stable_hash_legacy::StableHash for EntityKey {
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        let Self {
-            subgraph_id,
-            entity_type,
-            entity_id,
-        } = self;
-
-        stable_hash_legacy::StableHash::stable_hash(
-            subgraph_id,
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(
-            &entity_type.as_str(),
-            sequence_number.next_child(),
-            state,
-        );
-        stable_hash_legacy::StableHash::stable_hash(entity_id, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for EntityKey {
-    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let Self {
-            subgraph_id,
-            entity_type,
-            entity_id,
-        } = self;
-
-        subgraph_id.stable_hash(field_address.child(0), state);
-
-        stable_hash::StableHash::stable_hash(&entity_type.as_str(), field_address.child(1), state);
-        stable_hash::StableHash::stable_hash(entity_id, field_address.child(2), state);
-    }
-}
+impl_stable_hash!(EntityKey {
+    subgraph_id,
+    entity_type: EntityType::as_str,
+    entity_id
+});
 
 impl EntityKey {
     pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
@@ -165,6 +143,13 @@ fn key_stable_hash() {
         "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
     );
 }
+#[derive(Clone, Debug, PartialEq)]
+pub struct Child {
+    pub attr: Attribute,
+    pub entity_type: EntityType,
+    pub filter: Box<EntityFilter>,
+    pub derived: bool,
+}
 
 /// Supported types of store filters.
 #[derive(Clone, Debug, PartialEq)]
@@ -192,6 +177,7 @@ pub enum EntityFilter {
     NotEndsWith(Attribute, Value),
     NotEndsWithNoCase(Attribute, Value),
     ChangeBlockGte(BlockNumber),
+    Child(Child),
 }
 
 // A somewhat concise string representation of a filter
@@ -235,6 +221,13 @@ impl fmt::Display for EntityFilter {
             NotEndsWith(a, v) => write!(f, "{a} !~ *{v}$"),
             NotEndsWithNoCase(a, v) => write!(f, "{a} !~ *{v}$i"),
             ChangeBlockGte(b) => write!(f, "block >= {b}"),
+            Child(child /* a, et, cf, _ */) => write!(
+                f,
+                "join on {} with {}({})",
+                child.attr,
+                child.entity_type,
+                child.filter.to_string()
+            ),
         }
     }
 }
@@ -363,7 +356,7 @@ pub enum EntityLink {
     /// The parent id is stored in this child attribute
     Direct(WindowAttribute, ChildMultiplicity),
     /// Join with the parents table to get at the parent id
-    Parent(ParentLink),
+    Parent(EntityType, ParentLink),
 }
 
 /// Window results of an `EntityQuery` query along the parent's id:
@@ -832,8 +825,8 @@ pub enum UnfailOutcome {
 #[derive(Clone)]
 pub struct StoredDynamicDataSource {
     pub name: String,
-    pub source: Source,
-    pub context: Option<String>,
+    pub param: Option<Bytes>,
+    pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
 }
 
@@ -1043,16 +1036,27 @@ impl From<BlockNumber> for PartialBlockPtr {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DeploymentSchemaVersion {
-    /// Baseline version, in which:
+    /// V0, baseline version, in which:
     /// - A relational schema is used.
     /// - Each deployment has its own namespace for entity tables.
     /// - Dynamic data sources are stored in `subgraphs.dynamic_ethereum_contract_data_source`.
     V0 = 0,
+
+    /// V1: Dynamic data sources moved to `sgd*.data_sources$`.
+    V1 = 1,
 }
 
 impl DeploymentSchemaVersion {
     // Latest schema version supported by this version of graph node.
     pub const LATEST: Self = Self::V0;
+
+    pub fn private_data_sources(self) -> bool {
+        use DeploymentSchemaVersion::*;
+        match self {
+            V0 => false,
+            V1 => true,
+        }
+    }
 }
 
 impl TryFrom<i32> for DeploymentSchemaVersion {
@@ -1061,6 +1065,7 @@ impl TryFrom<i32> for DeploymentSchemaVersion {
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Self::V0),
+            1 => Ok(Self::V1),
             _ => Err(StoreError::UnsupportedDeploymentSchemaVersion(value)),
         }
     }

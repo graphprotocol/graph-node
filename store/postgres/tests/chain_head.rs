@@ -182,17 +182,17 @@ fn block_number() {
                 .unwrap();
 
             let block = query_store
-                .block_number(GENESIS_BLOCK.block_hash())
+                .block_number(&GENESIS_BLOCK.block_hash())
                 .expect("Found genesis block");
             assert_eq!(Some(0), block);
 
             let block = query_store
-                .block_number(BLOCK_ONE.block_hash())
+                .block_number(&BLOCK_ONE.block_hash())
                 .expect("Found block 1");
             assert_eq!(Some(1), block);
 
             let block = query_store
-                .block_number(BLOCK_THREE.block_hash())
+                .block_number(&BLOCK_THREE.block_hash())
                 .expect("Looked for block 3");
             assert!(block.is_none());
         }

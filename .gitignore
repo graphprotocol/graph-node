@@ -23,5 +23,4 @@
 
 # Built solidity contracts.
 /tests/integration-tests/**/bin
-/tests/integration-tests/**/abis
 /tests/integration-tests/**/truffle_output

@@ -24,7 +24,7 @@ use graph::{
 };
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
-use crate::runner::ResultSizeMetrics;
+use crate::metrics::GraphQLMetrics;
 use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
@@ -338,7 +338,10 @@ impl<'a> JoinCond<'a> {
                         (ids, ParentLink::List(child_ids))
                     }
                 };
-                (ids, EntityLink::Parent(parent_link))
+                (
+                    ids,
+                    EntityLink::Parent(self.parent_type.clone(), parent_link),
+                )
             }
         }
     }
@@ -477,10 +480,10 @@ pub fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
-    result_size: &ResultSizeMetrics,
+    graphql_metrics: &GraphQLMetrics,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
-        result_size.observe(nodes.weight());
+        graphql_metrics.observe_query_result_size(nodes.weight());
         let obj = Object::from_iter(
             nodes
                 .into_iter()
@@ -633,6 +636,7 @@ fn execute_field(
         resolver.store.as_ref(),
         parents,
         join,
+        ctx.query.schema.as_ref(),
         field,
         multiplicity,
         ctx.query.schema.types_for_interface(),
@@ -653,6 +657,7 @@ fn fetch(
     store: &(impl QueryStore + ?Sized),
     parents: &[&mut Node],
     join: &Join<'_>,
+    schema: &ApiSchema,
     field: &a::Field,
     multiplicity: ChildMultiplicity,
     types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
@@ -670,6 +675,7 @@ fn fetch(
         max_first,
         max_skip,
         selected_attrs,
+        schema,
     )?;
     query.query_id = Some(query_id);
 
