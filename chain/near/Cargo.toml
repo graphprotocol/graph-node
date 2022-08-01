@@ -9,7 +9,7 @@ tonic-build = { version = "0.7.1", features = ["prost"] }
 [dependencies]
 base64 = "0.13"
 graph = { path = "../../graph" }
-prost = "0.10.1"
+prost = "0.11.0"
 prost-types = "0.10.1"
 serde = "1.0"
 
