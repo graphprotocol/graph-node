@@ -4,7 +4,7 @@ version = "0.27.0"
 edition = "2021"
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"]}
+tonic-build = { version = "0.8.0", features = ["prost"]}
 
 [dependencies]
 base64-url = "1.4.13"
