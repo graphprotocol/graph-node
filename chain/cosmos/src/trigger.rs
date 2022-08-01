@@ -236,7 +236,7 @@ impl TriggerData for CosmosTrigger {
                         event.event_type, origin,
                     )
                 } else {
-                    "event in block".to_string()
+                    "event".to_string()
                 }
             }
             CosmosTrigger::Transaction(transaction_data) => {
@@ -250,16 +250,22 @@ impl TriggerData for CosmosTrigger {
                         response_deliver_tx.log
                     )
                 } else {
-                    "transaction block".to_string()
+                    "transaction".to_string()
                 }
             }
             CosmosTrigger::Message(message_data) => {
-                format!(
-                    "message type {}, block #{}, hash {}",
-                    message_data.message().type_url,
+                if let (Ok(message), Ok(block_number), Ok(block_hash)) = (
+                    message_data.message(),
                     self.block_number(),
                     self.block_hash(),
-                )
+                ) {
+                    format!(
+                        "message type {}, block #{block_number}, hash {block_hash}",
+                        message.type_url,
+                    )
+                } else {
+                    "message".to_string()
+                }
             }
         }
     }

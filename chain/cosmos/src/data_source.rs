@@ -74,7 +74,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             },
 
             CosmosTrigger::Message(message_data) => {
-                match self.handler_for_message(message_data.message()) {
+                match self.handler_for_message(message_data.message()?) {
                     Some(handler) => handler.handler,
                     None => return Ok(None),
                 }

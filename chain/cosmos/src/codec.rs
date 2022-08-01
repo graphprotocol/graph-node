@@ -203,11 +203,15 @@ impl TransactionData {
 }
 
 impl MessageData {
-    pub fn message(&self) -> &prost_types::Any {
-        self.message.as_ref().unwrap()
+    pub fn message(&self) -> Result<&prost_types::Any, Error> {
+        self.message
+            .as_ref()
+            .ok_or_else(|| anyhow!("message data missing message field"))
     }
 
-    pub fn block(&self) -> &HeaderOnlyBlock {
-        self.block.as_ref().unwrap()
+    pub fn block(&self) -> Result<&HeaderOnlyBlock, Error> {
+        self.block
+            .as_ref()
+            .ok_or_else(|| anyhow!("message data missing block field"))
     }
 }
