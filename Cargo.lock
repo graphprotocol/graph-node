@@ -1582,11 +1582,12 @@ name = "graph-chain-substreams"
 version = "0.27.0"
 dependencies = [
  "anyhow",
- "base64",
+ "async-stream",
  "dirs-next",
  "envconfig",
  "futures 0.1.31",
  "graph",
+ "graph-core",
  "hex",
  "http",
  "itertools",
@@ -1895,8 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "graphql-tools"
-version = "0.0.19"
-source = "git+https://github.com/dotansimha/graphql-tools-rs?branch=clone-validation-error#89085f316a71b390fecd9bd4c3f55c3884c33169"
+version = "0.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a792425b9e2ed860d0c1393dab3cb56af6d96558b64b469b99d1e58e43c16b8a"
 dependencies = [
  "graphql-parser",
  "serde",
@@ -5071,7 +5073,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.19.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#2760dbd18837bf0b605f8b2e832fd0e27cee00b6"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#7f8eb6dfcc13a4186f9b42f91de950646bc4a833"
 dependencies = [
  "arrayvec 0.7.2",
  "base64",
