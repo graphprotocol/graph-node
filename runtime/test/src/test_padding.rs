@@ -60,12 +60,14 @@ pub mod data {
     pub struct Bad {
         pub nonce: u64,
         pub str_suff: String,
+        pub tail: u64,
     }
 
     #[repr(C)]
     pub struct AscBad {
         pub nonce: u64,
         pub str_suff: graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>,
+        pub tail: u64,
     }
 
     impl AscType for AscBad {
@@ -75,6 +77,7 @@ pub mod data {
 
             bytes.extend_from_slice(&self.nonce.to_asc_bytes()?);
             bytes.extend_from_slice(&self.str_suff.to_asc_bytes()?);
+            bytes.extend_from_slice(&self.tail.to_asc_bytes()?);
 
             // assert_eq!(
             //     bytes.len(),
@@ -111,6 +114,7 @@ pub mod data {
             Ok(AscBad {
                 nonce: self.nonce,
                 str_suff: asc_new(heap, &self.str_suff, gas)?,
+                tail: self.tail,
             })
         }
     }
@@ -118,12 +122,14 @@ pub mod data {
     pub struct BadFixed {
         pub nonce: u64,
         pub str_suff: String,
+        pub tail: u64,
     }
     #[repr(C)]
     pub struct AscBadFixed {
         pub nonce: u64,
         pub str_suff: graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>,
         pub _padding: u32,
+        pub tail: u64,
     }
 
     impl AscType for AscBadFixed {
@@ -134,6 +140,7 @@ pub mod data {
             bytes.extend_from_slice(&self.nonce.to_asc_bytes()?);
             bytes.extend_from_slice(&self.str_suff.to_asc_bytes()?);
             bytes.extend_from_slice(&self._padding.to_asc_bytes()?);
+            bytes.extend_from_slice(&self.tail.to_asc_bytes()?);
 
             assert_eq!(
                 bytes.len(),
@@ -167,6 +174,7 @@ pub mod data {
                 nonce: self.nonce,
                 str_suff: asc_new(heap, &self.str_suff, gas)?,
                 _padding: 0,
+                tail: self.tail,
             })
         }
     }
@@ -216,6 +224,7 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
     let parm = protobuf::Bad {
         nonce: i64::MAX as u64,
         str_suff: "suff".into(),
+        tail: i64::MAX as u64,
     };
 
     let new_obj = module.asc_new(&parm).unwrap();
@@ -238,6 +247,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
     let parm = BadFixed {
         nonce: i64::MAX as u64,
         str_suff: "suff".into(),
+        tail: i64::MAX as u64,
     };
 
     let mut module = super::test::test_module(

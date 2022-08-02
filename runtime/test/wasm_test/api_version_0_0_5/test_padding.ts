@@ -109,14 +109,17 @@ export function test_padding_i32(p: UnitTestTypeU32): void {
 export class ManualPadding{
     nonce: i64 ;
     str_suff: string;
+    tail: i64 ;
 
-    constructor(nonce: i64, str_suff:string) {
+    constructor(nonce: i64, str_suff:string, tail:i64) {
         this.nonce = nonce;
         this.str_suff = str_suff;
+        this.tail = tail
     }
 }
 
 export function test_padding_manual(p: ManualPadding): void {
     assert(p.nonce == 9223372036854775807, "parm.nonce: Assertion failed!");
     assert(p.str_suff == "suff", "parm.str_suff: Assertion failed!");
+    assert(p.tail == 9223372036854775807, "parm.tail: Assertion failed!");
 }
