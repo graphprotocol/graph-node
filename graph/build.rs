@@ -12,4 +12,9 @@ fn main() {
             &["proto"],
         )
         .expect("Failed to compile Firehose proto(s)");
+
+    tonic_build::configure()
+        .out_dir("src/substreams")
+        .compile(&["proto/substreams.proto"], &["proto"])
+        .expect("Failed to compile Substreams proto(s)");
 }

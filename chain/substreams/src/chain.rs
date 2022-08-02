@@ -1,7 +1,6 @@
-use core::fmt;
-use std::{str::FromStr, sync::Arc};
-
+use crate::{data_source::*, EntitiesChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
+use core::fmt;
 use graph::prelude::BlockHash;
 use graph::{
     blockchain::{
@@ -15,32 +14,26 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
-
-use crate::codec::EntitiesChanges;
-use crate::{data_source::*, TriggerData, TriggerFilter, TriggersAdapter};
+use std::{str::FromStr, sync::Arc};
 
 #[derive(Clone, Debug, Default)]
 pub struct Block {
-    pub block_num: u64,
-    pub block_hash: Vec<u8>,
-    pub parent_block_num: u64,
-    pub parent_block_hash: Vec<u8>,
+    pub block_num: BlockNumber,
+    pub block_hash: BlockHash,
+    pub parent_block_num: BlockNumber,
+    pub parent_block_hash: BlockHash,
     pub entities_changes: EntitiesChanges,
 }
 
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
         return BlockPtr {
-            hash: BlockHash(Box::from(self.block_hash.as_slice())),
+            hash: self.block_hash.clone(),
             number: self.block_num as i32,
         };
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        if self.parent_block_hash.is_empty() {
-            return None;
-        }
-
         Some(BlockPtr {
             hash: BlockHash(Box::from(self.parent_block_hash.as_slice())),
             number: self.parent_block_num as i32,

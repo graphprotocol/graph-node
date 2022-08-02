@@ -26,6 +26,8 @@ pub mod runtime;
 
 pub mod firehose;
 
+pub mod substreams;
+
 /// Helpers for parsing environment variables.
 pub mod env;
 

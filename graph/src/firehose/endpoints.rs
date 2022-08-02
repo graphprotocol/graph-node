@@ -5,6 +5,7 @@ use crate::{
     components::store::BlockNumber,
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
+    substreams,
 };
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
@@ -202,7 +203,34 @@ impl FirehoseEndpoint {
 
         Ok(block_stream)
     }
+
+    pub async fn substreams(
+        self: Arc<Self>,
+        request: substreams::Request,
+    ) -> Result<tonic::Streaming<substreams::Response>, anyhow::Error> {
+        let token_metadata = match self.token.clone() {
+            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            None => None,
+        };
+
+        let mut client = substreams::stream_client::StreamClient::with_interceptor(
+            self.channel.cheap_clone(),
+            move |mut r: Request<()>| {
+                if let Some(ref t) = token_metadata {
+                    r.metadata_mut().insert("authorization", t.clone());
+                }
+
+                Ok(r)
+            },
+        );
+
+        let response_stream = client.blocks(request).await?;
+        let block_stream = response_stream.into_inner();
+
+        Ok(block_stream)
+    }
 }
+
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoints(Vec<Arc<FirehoseEndpoint>>);
 
