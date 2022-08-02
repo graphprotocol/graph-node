@@ -366,8 +366,17 @@ pub enum IndexForAscTypeId {
     //    name and implementation before running this script.
     // 2. Replace `3500` part with the first number of that blockchain's reserved discriminant space.
     // 3. Insert the output right before the end of this block.
-    UnitTestNetworkUnitTestType = u32::MAX - 1,
-    UnitTestNetworkUnitTestTypeArray = u32::MAX,
+    UnitTestNetworkUnitTestTypeU32 = u32::MAX - 7,
+    UnitTestNetworkUnitTestTypeU32Array = u32::MAX - 6,
+
+    UnitTestNetworkUnitTestTypeU16 = u32::MAX - 5,
+    UnitTestNetworkUnitTestTypeU16Array = u32::MAX - 4,
+
+    UnitTestNetworkUnitTestTypeI8 = u32::MAX - 3,
+    UnitTestNetworkUnitTestTypeI8Array = u32::MAX - 2,
+
+    UnitTestNetworkUnitTestTypeBool = u32::MAX - 1,
+    UnitTestNetworkUnitTestTypeBoolArray = u32::MAX,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {
