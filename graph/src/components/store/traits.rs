@@ -150,11 +150,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    async fn block_ptr(&self) -> Option<BlockPtr>;
+    fn block_ptr(&self) -> Option<BlockPtr>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    async fn block_cursor(&self) -> FirehoseCursor;
+    fn block_cursor(&self) -> FirehoseCursor;
 
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;

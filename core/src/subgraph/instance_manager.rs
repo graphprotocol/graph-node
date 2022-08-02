@@ -260,7 +260,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
-        let deployment_head = store.block_ptr().await.map(|ptr| ptr.number).unwrap_or(0) as f64;
+        let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(

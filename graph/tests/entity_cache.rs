@@ -46,11 +46,11 @@ impl MockStore {
 
 #[async_trait]
 impl WritableStore for MockStore {
-    async fn block_ptr(&self) -> Option<BlockPtr> {
+    fn block_ptr(&self) -> Option<BlockPtr> {
         unimplemented!()
     }
 
-    async fn block_cursor(&self) -> FirehoseCursor {
+    fn block_cursor(&self) -> FirehoseCursor {
         unimplemented!()
     }
 

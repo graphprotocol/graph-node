@@ -938,11 +938,11 @@ impl WritableStore {
 
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
-    async fn block_ptr(&self) -> Option<BlockPtr> {
+    fn block_ptr(&self) -> Option<BlockPtr> {
         self.block_ptr.lock().unwrap().clone()
     }
 
-    async fn block_cursor(&self) -> FirehoseCursor {
+    fn block_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
     }
 
