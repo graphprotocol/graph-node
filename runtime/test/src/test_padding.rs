@@ -186,8 +186,18 @@ async fn test_v5_manual_padding_manualy_fixed_ok() {
 }
 
 #[tokio::test]
+async fn test_v4_manual_padding_manualy_fixed_ok() {
+    manual_padding_manualy_fixed_ok(super::test::API_VERSION_0_0_4).await
+}
+
+#[tokio::test]
 async fn test_v5_manual_padding_should_fail() {
     manual_padding_should_fail(super::test::API_VERSION_0_0_5).await
+}
+
+#[tokio::test]
+async fn test_v4_manual_padding_should_fail() {
+    manual_padding_should_fail(super::test::API_VERSION_0_0_4).await
 }
 
 #[tokio::test]
@@ -196,8 +206,18 @@ async fn test_v5_bool_padding_ok() {
 }
 
 #[tokio::test]
+async fn test_v4_bool_padding_ok() {
+    bool_padding_ok(super::test::API_VERSION_0_0_4).await
+}
+
+#[tokio::test]
 async fn test_v5_i8_padding_ok() {
     i8_padding_ok(super::test::API_VERSION_0_0_5).await
+}
+
+#[tokio::test]
+async fn test_v4_i8_padding_ok() {
+    i8_padding_ok(super::test::API_VERSION_0_0_4).await
 }
 
 #[tokio::test]
@@ -206,8 +226,18 @@ async fn test_v5_u16_padding_ok() {
 }
 
 #[tokio::test]
+async fn test_v4_u16_padding_ok() {
+    u16_padding_ok(super::test::API_VERSION_0_0_4).await
+}
+
+#[tokio::test]
 async fn test_v5_u32_padding_ok() {
     u32_padding_ok(super::test::API_VERSION_0_0_5).await
+}
+
+#[tokio::test]
+async fn test_v4_u32_padding_ok() {
+    u32_padding_ok(super::test::API_VERSION_0_0_4).await
 }
 
 async fn manual_padding_should_fail(api_version: semver::Version) {
