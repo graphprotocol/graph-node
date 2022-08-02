@@ -1582,11 +1582,12 @@ name = "graph-chain-substreams"
 version = "0.27.0"
 dependencies = [
  "anyhow",
- "base64",
+ "async-stream",
  "dirs-next",
  "envconfig",
  "futures 0.1.31",
  "graph",
+ "graph-core",
  "hex",
  "http",
  "itertools",
@@ -1895,8 +1896,9 @@ dependencies = [
 
 [[package]]
 name = "graphql-tools"
-version = "0.0.19"
-source = "git+https://github.com/dotansimha/graphql-tools-rs?branch=clone-validation-error#89085f316a71b390fecd9bd4c3f55c3884c33169"
+version = "0.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a792425b9e2ed860d0c1393dab3cb56af6d96558b64b469b99d1e58e43c16b8a"
 dependencies = [
  "graphql-parser",
  "serde",
@@ -4450,7 +4452,7 @@ dependencies = [
 [[package]]
 name = "tower"
 version = "0.4.12"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#19c1a1dbb8da48e520a3227dd76704f0dcec05cc"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -4490,7 +4492,7 @@ checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
 [[package]]
 name = "tower-layer"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#19c1a1dbb8da48e520a3227dd76704f0dcec05cc"
 
 [[package]]
 name = "tower-service"
@@ -4501,12 +4503,12 @@ checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
 [[package]]
 name = "tower-service"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#19c1a1dbb8da48e520a3227dd76704f0dcec05cc"
 
 [[package]]
 name = "tower-test"
 version = "0.4.0"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#19c1a1dbb8da48e520a3227dd76704f0dcec05cc"
 dependencies = [
  "futures-util",
  "pin-project-lite",
