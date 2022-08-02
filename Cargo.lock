@@ -1587,6 +1587,7 @@ dependencies = [
  "envconfig",
  "futures 0.1.31",
  "graph",
+ "graph-core",
  "hex",
  "http",
  "itertools",
@@ -5072,7 +5073,7 @@ dependencies = [
 [[package]]
 name = "web3"
 version = "0.19.0-graph"
-source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#2760dbd18837bf0b605f8b2e832fd0e27cee00b6"
+source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#7f8eb6dfcc13a4186f9b42f91de950646bc4a833"
 dependencies = [
  "arrayvec 0.7.2",
  "base64",
