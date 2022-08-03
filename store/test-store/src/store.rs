@@ -7,9 +7,10 @@ use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
 use graph::{
-    blockchain::ChainIdentifier, components::store::DeploymentLocator,
-    components::store::EntityType, components::store::StatusStore,
-    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
+    blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
+    components::store::DeploymentLocator, components::store::EntityType,
+    components::store::StatusStore, components::store::StoredDynamicDataSource,
+    data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
@@ -227,7 +228,7 @@ pub async fn transact_errors(
         .await?
         .transact_block_operations(
             block_ptr_to,
-            None,
+            FirehoseCursor::None,
             Vec::new(),
             &stopwatch_metrics,
             Vec::new(),
@@ -291,7 +292,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     store
         .transact_block_operations(
             block_ptr_to,
-            None,
+            FirehoseCursor::None,
             mods,
             &stopwatch_metrics,
             data_sources,
@@ -307,7 +308,7 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
         .writable(LOGGER.clone(), deployment.id)
         .await
         .expect("can get writable")
-        .revert_block_operations(ptr.clone(), None)
+        .revert_block_operations(ptr.clone(), FirehoseCursor::None)
         .await
         .unwrap();
     flush(deployment).await.unwrap();

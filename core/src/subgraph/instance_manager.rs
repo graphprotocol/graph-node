@@ -14,6 +14,8 @@ use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *}
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use tokio::task;
 
+use super::SubgraphTriggerProcessor;
+
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
@@ -67,6 +69,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await
                 }
+                BlockchainKind::Substream => unimplemented!(),
             }
         };
         // Perform the actual work of starting the subgraph in a separate
@@ -246,10 +249,17 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             subgraph_store.ens_lookup(),
         );
 
+        let trigger_processor = SubgraphTriggerProcessor {};
+
         let features = manifest.features.clone();
         let unified_api_version = manifest.unified_mapping_api_version()?;
-        let instance =
-            SubgraphInstance::from_manifest(&logger, manifest, host_builder, host_metrics.clone())?;
+        let instance = SubgraphInstance::from_manifest(
+            &logger,
+            manifest,
+            host_builder,
+            trigger_processor,
+            host_metrics.clone(),
+        )?;
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
@@ -95,7 +96,7 @@ impl Blockchain for Chain {
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: Option<String>,
+        block_cursor: FirehoseCursor,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
@@ -310,7 +311,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(
                 adapter.triggers_in_block(logger, sp, filter).await?,
-                Some(response.cursor.clone()),
+                FirehoseCursor::from(response.cursor.clone()),
             )),
 
             ForkStep::StepUndo => {
@@ -321,7 +322,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
                 Ok(BlockStreamEvent::Revert(
                     parent_ptr,
-                    Some(response.cursor.clone()),
+                    FirehoseCursor::from(response.cursor.clone()),
                 ))
             }
 

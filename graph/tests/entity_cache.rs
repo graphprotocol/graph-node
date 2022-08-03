@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockPtr;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
@@ -50,11 +51,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn block_cursor(&self) -> Option<String> {
-        unimplemented!()
-    }
-
-    async fn delete_block_cursor(&self) -> Result<(), StoreError> {
+    async fn block_cursor(&self) -> FirehoseCursor {
         unimplemented!()
     }
 
@@ -65,12 +62,12 @@ impl WritableStore for MockStore {
     async fn revert_block_operations(
         &self,
         _: BlockPtr,
-        _: Option<&str>,
+        _: FirehoseCursor,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }
 
-    fn unfail_deterministic_error(
+    async fn unfail_deterministic_error(
         &self,
         _: &BlockPtr,
         _: &BlockPtr,
@@ -106,7 +103,7 @@ impl WritableStore for MockStore {
     async fn transact_block_operations(
         &self,
         _: BlockPtr,
-        _: Option<String>,
+        _: FirehoseCursor,
         _: Vec<EntityModification>,
         _: &StopwatchMetrics,
         _: Vec<StoredDynamicDataSource>,

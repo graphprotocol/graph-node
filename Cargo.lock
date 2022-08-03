@@ -1606,6 +1606,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-chain-substreams"
+version = "0.26.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "dirs-next",
+ "envconfig",
+ "futures 0.1.31",
+ "graph",
+ "graph-core",
+ "graph-runtime-derive",
+ "graph-runtime-wasm",
+ "hex",
+ "http",
+ "itertools",
+ "jsonrpc-core",
+ "lazy_static",
+ "mockall",
+ "prost",
+ "prost-types",
+ "semver",
+ "serde",
+ "test-store",
+ "tiny-keccak 1.5.0",
+ "tonic-build",
+]
+
+[[package]]
 name = "graph-core"
 version = "0.26.0"
 dependencies = [
