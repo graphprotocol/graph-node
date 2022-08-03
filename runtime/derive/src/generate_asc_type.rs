@@ -90,30 +90,27 @@ fn field_type(fld: &syn::Field) -> String {
             let name = ps.ident.to_string();
             //TODO - this must be optimized
             match name.as_ref() {
-                "Vec" => {
+                "Vec" => match &ps.arguments {
+                    syn::PathArguments::AngleBracketed(v) => {
+                        if let syn::GenericArgument::Type(syn::Type::Path(p)) = &v.args[0] {
+                            let nm = path_to_string(&p.path);
 
-                    match &ps.arguments {
-                        syn::PathArguments::AngleBracketed(v) => {
-                            if let syn::GenericArgument::Type(syn::Type::Path(p)) = &v.args[0] {
-                                let nm = path_to_string(&p.path);
-
-                                match nm.as_ref(){
+                            match nm.as_ref(){
                                     "u8" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::Uint8Array>".to_owned(),
                                     "Vec<u8>" => "graph::runtime::AscPtr<crate::protobuf::AscBytesArray>".to_owned(),
                                     "String" => "graph::runtime::AscPtr<crate::protobuf::Array<graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>>>".to_owned(),
                                     _ => format!("graph::runtime::AscPtr<crate::protobuf::Asc{}Array>", path_to_string(&p.path))
                                 }
-                            } else {
-                                name
-                            }
-                        }
-
-                        syn::PathArguments::None => name,
-                        syn::PathArguments::Parenthesized(_v) => {
-                            panic!("syn::PathArguments::Parenthesized is not implemented")
+                        } else {
+                            name
                         }
                     }
-                }
+
+                    syn::PathArguments::None => name,
+                    syn::PathArguments::Parenthesized(_v) => {
+                        panic!("syn::PathArguments::Parenthesized is not implemented")
+                    }
+                },
                 "Option" => match &ps.arguments {
                     syn::PathArguments::AngleBracketed(v) => {
                         if let syn::GenericArgument::Type(syn::Type::Path(p)) = &v.args[0] {

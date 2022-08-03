@@ -9,7 +9,6 @@ use graph_runtime_wasm::{
 
 use super::*;
 
-
 async fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
     let module = test_valid_module_and_store_with_timeout(
