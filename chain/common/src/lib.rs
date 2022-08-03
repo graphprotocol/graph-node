@@ -181,7 +181,14 @@ pub fn parse_proto_file<'a, P>(file_path: P) -> Result<HashMap<String, PType>, E
 where
     P: 'a + AsRef<Path> + Debug,
 {
-    let dir = file_path.as_ref().parent().unwrap();
+    let dir = if let Some(p) = file_path.as_ref().parent() {
+        p
+    } else {
+        return Err(anyhow::anyhow!(
+            "Unable to derive parent path for {:?}",
+            file_path
+        ));
+    };
 
     let fd = protobuf_parse::Parser::new()
         .include(dir)
