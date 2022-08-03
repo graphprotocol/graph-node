@@ -1619,6 +1619,7 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-substreams",
  "graph-mock",
  "graph-runtime-wasm",
  "graphql-parser",

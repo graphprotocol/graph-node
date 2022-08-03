@@ -14,15 +14,12 @@ use graph::{
 };
 use graph::{blockchain::DataSource, prelude::*};
 
-use super::metrics::SubgraphInstanceMetrics;
-use super::TriggerProcessor;
-
-pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>, TP: TriggerProcessor<C, T>> {
+pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
-    pub(crate) trigger_processor: TP,
+    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -35,17 +32,16 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>, TP: Trigger
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 }
 
-impl<T, C, TP> SubgraphInstance<C, T, TP>
+impl<T, C> SubgraphInstance<C, T>
 where
-    T: RuntimeHostBuilder<C>,
     C: Blockchain,
-    TP: TriggerProcessor<C, T>,
+    T: RuntimeHostBuilder<C>,
 {
     pub(crate) fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
         host_builder: T,
-        trigger_processor: TP,
+        trigger_processor: Box<dyn TriggerProcessor<C, T>>,
         host_metrics: Arc<HostMetrics>,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
