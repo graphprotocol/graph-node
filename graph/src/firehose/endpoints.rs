@@ -32,7 +32,7 @@ pub struct FirehoseEndpoint {
 
 impl Display for FirehoseEndpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.uri.as_str(), f)
+        Display::fmt(self.provider.as_str(), f)
     }
 }
 
