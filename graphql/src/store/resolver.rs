@@ -11,8 +11,8 @@ use graph::prelude::*;
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::execution::ast as a;
+use crate::metrics::GraphQLMetrics;
 use crate::query::ext::BlockConstraint;
-use crate::runner::ResultSizeMetrics;
 use crate::schema::ast as sast;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
@@ -29,7 +29,7 @@ pub struct StoreResolver {
     deployment: DeploymentHash,
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
-    result_size: Arc<ResultSizeMetrics>,
+    graphql_metrics: Arc<GraphQLMetrics>,
 }
 
 impl CheapClone for StoreResolver {}
@@ -44,7 +44,7 @@ impl StoreResolver {
         deployment: DeploymentHash,
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
-        result_size: Arc<ResultSizeMetrics>,
+        graphql_metrics: Arc<GraphQLMetrics>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -56,7 +56,7 @@ impl StoreResolver {
             // Checking for non-fatal errors does not work with subscriptions.
             has_non_fatal_errors: false,
             error_policy: ErrorPolicy::Deny,
-            result_size,
+            graphql_metrics,
         }
     }
 
@@ -73,13 +73,13 @@ impl StoreResolver {
         bc: BlockConstraint,
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
-        result_size: Arc<ResultSizeMetrics>,
+        graphql_metrics: Arc<GraphQLMetrics>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
         let has_non_fatal_errors = store
-            .has_non_fatal_errors(Some(block_ptr.block_number()))
+            .has_deterministic_errors(block_ptr.block_number())
             .await?;
 
         let resolver = StoreResolver {
@@ -90,7 +90,7 @@ impl StoreResolver {
             deployment,
             has_non_fatal_errors,
             error_policy,
-            result_size,
+            graphql_metrics,
         };
         Ok(resolver)
     }
@@ -107,7 +107,7 @@ impl StoreResolver {
         bc: BlockConstraint,
         state: &DeploymentState,
     ) -> Result<BlockPtr, QueryExecutionError> {
-        fn check_ptr(
+        fn block_queryable(
             state: &DeploymentState,
             block: BlockNumber,
         ) -> Result<(), QueryExecutionError> {
@@ -132,11 +132,11 @@ impl StoreResolver {
                             .map(|number| BlockPtr::new(hash, number))
                     })?;
 
-                check_ptr(state, ptr.number)?;
+                block_queryable(state, ptr.number)?;
                 Ok(ptr)
             }
             BlockConstraint::Number(number) => {
-                check_ptr(state, number)?;
+                block_queryable(state, number)?;
                 // We don't have a way here to look the block hash up from
                 // the database, and even if we did, there is no guarantee
                 // that we have the block in our cache. We therefore
@@ -145,9 +145,19 @@ impl StoreResolver {
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
                 Ok(BlockPtr::from((web3::types::H256::zero(), number as u64)))
             }
-            BlockConstraint::Min(number) => {
-                check_ptr(state, number)?;
-                Ok(state.latest_block.cheap_clone())
+            BlockConstraint::Min(min) => {
+                let ptr = state.latest_block.cheap_clone();
+                if ptr.number < min {
+                    return Err(QueryExecutionError::ValueParseError(
+                        "block.number_gte".to_owned(),
+                        format!(
+                            "subgraph {} has only indexed up to block number {} \
+                                and data for block number {} is therefore not yet available",
+                            state.id, ptr.number, min
+                        ),
+                    ));
+                }
+                Ok(ptr)
             }
             BlockConstraint::Latest => Ok(state.latest_block.cheap_clone()),
         }
@@ -221,7 +231,7 @@ impl Resolver for StoreResolver {
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,
     ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(self, ctx, selection_set, &self.result_size).map(Some)
+        super::prefetch::run(self, ctx, selection_set, &self.graphql_metrics).map(Some)
     }
 
     fn resolve_objects(

@@ -1,7 +1,7 @@
-use core::fmt;
-use std::{str::FromStr, sync::Arc};
-
+use crate::{data_source::*, EntitiesChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
+use core::fmt;
+use graph::prelude::BlockHash;
 use graph::{
     blockchain::{
         self,
@@ -14,30 +14,41 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
+use std::{str::FromStr, sync::Arc};
 
-use crate::{data_source::*, TriggerData, TriggerFilter, TriggersAdapter};
-
-#[derive(Clone, Debug)]
-pub struct Block {}
+#[derive(Clone, Debug, Default)]
+pub struct Block {
+    pub block_num: BlockNumber,
+    pub block_hash: BlockHash,
+    pub parent_block_num: BlockNumber,
+    pub parent_block_hash: BlockHash,
+    pub entities_changes: EntitiesChanges,
+}
 
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
-        todo!()
+        return BlockPtr {
+            hash: self.block_hash.clone(),
+            number: self.block_num as i32,
+        };
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        todo!()
+        Some(BlockPtr {
+            hash: BlockHash(Box::from(self.parent_block_hash.as_slice())),
+            number: self.parent_block_num as i32,
+        })
     }
 
     fn number(&self) -> i32 {
         self.ptr().number
     }
 
-    fn hash(&self) -> blockchain::BlockHash {
+    fn hash(&self) -> BlockHash {
         self.ptr().hash
     }
 
-    fn parent_hash(&self) -> Option<blockchain::BlockHash> {
+    fn parent_hash(&self) -> Option<BlockHash> {
         self.parent_ptr().map(|ptr| ptr.hash)
     }
 
@@ -82,8 +93,8 @@ impl Blockchain for Chain {
     type DataSource = DataSource;
     type UnresolvedDataSource = UnresolvedDataSource;
 
-    type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
-    type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
+    type DataSourceTemplate = NoopDataSourceTemplate;
+    type UnresolvedDataSourceTemplate = NoopDataSourceTemplate;
 
     /// Trigger data as parsed from the triggers adapter.
     type TriggerData = TriggerData;

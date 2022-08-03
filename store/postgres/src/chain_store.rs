@@ -1556,7 +1556,10 @@ impl ChainStoreTrait for ChainStore {
 
         let ptr = block.ptr();
         let hash = ptr.hash_hex();
-        let number = ptr.number as i64;
+        let number = ptr.number as i64; //block height
+
+        //this will send an update via postgres, channel: chain_head_updates
+        self.chain_head_update_sender.send(&hash, number)?;
 
         pool.with_conn(move |conn, _| {
             conn.transaction(|| -> Result<(), StoreError> {

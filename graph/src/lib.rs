@@ -26,6 +26,8 @@ pub mod runtime;
 
 pub mod firehose;
 
+pub mod substreams;
+
 /// Helpers for parsing environment variables.
 pub mod env;
 
@@ -43,6 +45,7 @@ pub use prometheus;
 pub use semver;
 pub use slog;
 pub use stable_hash_legacy;
+pub use tokio;
 pub use tokio_stream;
 pub use url;
 
@@ -102,7 +105,7 @@ pub mod prelude {
         LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{
-        GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
+        GraphQLMetrics, GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{

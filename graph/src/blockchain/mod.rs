@@ -7,6 +7,7 @@ pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
 pub mod polling_block_stream;
+pub mod substreams_block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
@@ -199,7 +200,7 @@ pub trait DataSource<C: Blockchain>:
     fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
     fn api_version(&self) -> semver::Version;
-    fn runtime(&self) -> &[u8];
+    fn runtime(&self) -> Option<Arc<Vec<u8>>>;
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.
@@ -245,7 +246,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
 
 pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn api_version(&self) -> semver::Version;
-    fn runtime(&self) -> &[u8];
+    fn runtime(&self) -> Option<Arc<Vec<u8>>>;
     fn name(&self) -> &str;
 }
 

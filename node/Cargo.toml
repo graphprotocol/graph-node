@@ -1,6 +1,6 @@
 [package]
 name = "graph-node"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 default-run = "graph-node"
 
@@ -45,6 +45,3 @@ diesel = "1.4.8"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
 prometheus = { version ="0.13.1", features = ["push"] }
 json-structural-diff = {version = "0.1", features = ["colorize"] }
-
-[dev-dependencies]
-assert_cli = "0.6"

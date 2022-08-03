@@ -26,3 +26,6 @@ pub mod bounded_queue;
 pub mod stable_hash_glue;
 
 pub mod mem;
+
+/// Data structures instrumented with Prometheus metrics.
+pub mod monitored;

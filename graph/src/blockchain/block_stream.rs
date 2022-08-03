@@ -11,6 +11,7 @@ use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose;
+use crate::substreams::BlockScopedData;
 use crate::{prelude::*, prometheus::labels};
 
 pub struct BufferedBlockStream<C: Blockchain> {
@@ -274,15 +275,43 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     ) -> Result<BlockPtr, Error>;
 }
 
+#[async_trait]
+pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
+    async fn to_block_stream_event(
+        &self,
+        logger: &Logger,
+        response: &BlockScopedData,
+        // adapter: &Arc<dyn TriggersAdapter<C>>,
+        // filter: &C::TriggerFilter,
+    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError>;
+}
+
 #[derive(Error, Debug)]
 pub enum FirehoseError {
     /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
-    /// Some unknown error occured
+    /// Some unknown error occurred
     #[error("unknown error")]
     UnknownError(#[from] anyhow::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum SubstreamsError {
+    /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
+    #[error("received gRPC block payload cannot be decoded: {0}")]
+    DecodingError(#[from] prost::DecodeError),
+
+    /// Some unknown error occurred
+    #[error("unknown error")]
+    UnknownError(#[from] anyhow::Error),
+
+    #[error("multiple module output error")]
+    MultipleModuleOutputError(),
+
+    #[error("unexpected store delta output")]
+    UnexpectedStoreDeltaOutput(),
 }
 
 #[derive(Debug)]
@@ -309,7 +338,7 @@ where
 pub struct BlockStreamMetrics {
     pub deployment_head: Box<Gauge>,
     pub deployment_failed: Box<Gauge>,
-    pub reverted_blocks: Box<Gauge>,
+    pub reverted_blocks: Gauge,
     pub stopwatch: StopwatchMetrics,
 }
 

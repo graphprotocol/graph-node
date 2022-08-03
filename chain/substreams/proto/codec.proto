@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package substreams.entity.v1;
+
+message EntitiesChanges {
+  bytes block_id = 1;
+  uint64 block_number = 2;
+  bytes prev_block_id = 3;
+  uint64 prev_block_number = 4;
+  repeated EntityChange entityChanges = 5;
+}
+
+message EntityChange {
+  string entity = 1;
+  bytes id = 2;
+  uint64 ordinal = 3;
+  enum Operation {
+    UNSET = 0; // Protobuf default should not be used, this is used so that the consume can ensure that the value was actually specified
+    CREATE = 1;
+    UPDATE = 2;
+    DELETE = 3;
+  }
+  Operation operation = 4;
+  repeated Field fields = 5;
+}
+
+message Field {
+  string name = 1;
+  enum Type {
+    UNSET = 0; // Protobuf default should not be used, this is used so that the consume can ensure that the value was actually specified
+    BIGDECIMAL = 1;
+    BIGINT = 2;
+    INT = 3; // int32
+    BYTES = 4;
+    STRING = 5;
+  }
+  Type value_type = 2;
+  bytes new_value = 3;
+  bool new_value_null = 4;
+  bytes old_value = 5;
+  bool old_value_null = 6;
+}

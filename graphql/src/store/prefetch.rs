@@ -24,7 +24,7 @@ use graph::{
 };
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
-use crate::runner::ResultSizeMetrics;
+use crate::metrics::GraphQLMetrics;
 use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
@@ -480,10 +480,10 @@ pub fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
-    result_size: &ResultSizeMetrics,
+    graphql_metrics: &GraphQLMetrics,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|nodes| {
-        result_size.observe(nodes.weight());
+        graphql_metrics.observe_query_result_size(nodes.weight());
         let obj = Object::from_iter(
             nodes
                 .into_iter()

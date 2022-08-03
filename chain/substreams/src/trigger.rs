@@ -5,32 +5,36 @@ use graph::{
     slog::Logger,
 };
 
-use crate::{Block, Chain, DataSource, DataSourceTemplate, NodeCapabilities};
+use crate::{Block, Chain, DataSource, NodeCapabilities, NoopDataSourceTemplate};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct TriggerData {}
 
 impl blockchain::TriggerData for TriggerData {
     fn error_context(&self) -> String {
-        todo!()
+        unimplemented!()
     }
 }
 
 impl blockchain::MappingTrigger for TriggerData {
+    // substreams doesn't rely on wasm on the graph-node so this is not needed.
     fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,
     ) -> Result<graph::runtime::AscPtr<()>, graph::runtime::DeterministicHostError> {
-        todo!()
+        unimplemented!()
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct TriggerFilter {}
 
+// TriggerFilter should bypass all triggers and just rely on block since all the data received
+// should already have been processed.
 impl blockchain::TriggerFilter<Chain> for TriggerFilter {
-    fn extend_with_template(&mut self, _data_source: impl Iterator<Item = DataSourceTemplate>) {}
+    fn extend_with_template(&mut self, _data_source: impl Iterator<Item = NoopDataSourceTemplate>) {
+    }
 
     fn extend<'a>(&mut self, _data_sources: impl Iterator<Item = &'a DataSource> + Clone) {}
 

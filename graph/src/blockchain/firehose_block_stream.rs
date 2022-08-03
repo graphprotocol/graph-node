@@ -1,18 +1,17 @@
+use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
+use super::{Blockchain, TriggersAdapter};
+use crate::blockchain::block_stream::FirehoseCursor;
+use crate::blockchain::TriggerFilter;
+use crate::firehose::ForkStep::*;
+use crate::prelude::*;
+use crate::util::backoff::ExponentialBackoff;
+use crate::{firehose, firehose::FirehoseEndpoint};
 use async_stream::try_stream;
 use futures03::{Stream, StreamExt};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tonic::Status;
-
-use crate::blockchain::block_stream::FirehoseCursor;
-use crate::blockchain::TriggerFilter;
-use crate::prelude::*;
-use crate::util::backoff::ExponentialBackoff;
-
-use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
-use super::{Blockchain, TriggersAdapter};
-use crate::{firehose, firehose::FirehoseEndpoint};
 
 struct FirehoseBlockStreamMetrics {
     deployment: DeploymentHash,
@@ -164,8 +163,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     logger: Logger,
     metrics: FirehoseBlockStreamMetrics,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
-    use firehose::ForkStep::*;
-
     let mut subgraph_current_block = subgraph_current_block;
     let mut start_block_num = subgraph_current_block
         .as_ref()

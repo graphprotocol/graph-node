@@ -1,6 +1,6 @@
 [package]
 name = "graph-chain-ethereum"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 
 [dependencies]
@@ -10,7 +10,6 @@ http = "0.2.4"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
-mockall = "0.9.1"
 serde = "1.0"
 prost = "0.10.4"
 prost-types = "0.10.1"

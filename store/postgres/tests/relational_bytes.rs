@@ -67,7 +67,6 @@ lazy_static! {
     static ref BEEF_ENTITY: Entity = entity! {
         id: scalar::Bytes::from_str("deadbeef").unwrap(),
         name: "Beef",
-        __typename: "Thing"
     };
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref THING: EntityType = EntityType::from("Thing");

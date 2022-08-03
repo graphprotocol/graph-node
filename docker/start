@@ -105,14 +105,14 @@ fi
 
 trap save_coredumps EXIT
 
-export PGAPPNAME="${node_id-$HOSTNAME}"
+export PGAPPNAME="${node_id:-$HOSTNAME}"
 
 # Set custom poll interval
 if [ -n "$ethereum_polling_interval" ]; then
     export ETHEREUM_POLLING_INTERVAL=$ethereum_polling_interval
 fi
 
-case "${node_role-combined-node}" in
+case "${node_role:-combined-node}" in
     query-node)
         start_query_node
         ;;

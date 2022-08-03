@@ -33,7 +33,7 @@ use graph::{
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
-    deployment_state, execute_subgraph_query_with_deadline, result_size_metrics, revert_block,
+    deployment_state, execute_subgraph_query_with_deadline, graphql_metrics, revert_block,
     run_test_sequentially, transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER,
     METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
@@ -405,7 +405,7 @@ async fn run_subscription(
         max_depth: 100,
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
-        result_size: result_size_metrics(),
+        graphql_metrics: graphql_metrics(),
     };
     let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
 
@@ -1753,5 +1753,45 @@ fn can_query_root_typename() {
             __typename: "Query"
         };
         assert_eq!(extract_data!(result), Some(exp));
+    })
+}
+
+#[test]
+fn deterministic_error() {
+    use serde_json::json;
+    use test_store::block_store::BLOCK_TWO;
+
+    run_test_sequentially(|store| async move {
+        let deployment = setup(
+            store.as_ref(),
+            "testDeterministicError",
+            BTreeSet::new(),
+            IdType::String,
+        )
+        .await;
+
+        let err = SubgraphError {
+            subgraph_id: deployment.hash.clone(),
+            message: "cow template handler could not moo event transaction".to_string(),
+            block_ptr: Some(BLOCK_TWO.block_ptr()),
+            handler: Some("handleMoo".to_string()),
+            deterministic: true,
+        };
+
+        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+            .await
+            .unwrap();
+
+        // `subgraphError` is implicitly `deny`, data is omitted.
+        let query = "query { musician(id: \"m1\") { id } }";
+        let result = execute_query(&deployment, query).await;
+        let expected = json!({
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
     })
 }
