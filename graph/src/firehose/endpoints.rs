@@ -11,7 +11,7 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -55,7 +55,8 @@ impl FirehoseEndpoint {
                 .tls_config(ClientTlsConfig::new())
                 .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
-        };
+        }
+        .connect_timeout(Duration::from_secs(10));
 
         let uri = endpoint.uri().to_string();
         //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
