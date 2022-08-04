@@ -36,7 +36,7 @@ hex = "0.4.3"
 
 [dev-dependencies]
 futures = "0.3"
-clap = "3.2.8"
+clap = "3.2.16"
 graphql-parser = "0.4.0"
 test-store = { path = "../test-store" }
 hex-literal = "0.3"
