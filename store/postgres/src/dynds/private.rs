@@ -185,12 +185,14 @@ impl DataSourcesTable {
             return Ok(count as usize);
         }
 
-        // Assumes all ranges are of the form `[n, +inf)`.
         let query = format!(
             "\
             insert into {dst}(block_range, causality_region, manifest_idx, parent, id, param, context)
-            select int4range(lower(e.block_range), null), e.causality_region, e.manifest_idx,
-                    e.parent, e.id, e.param, e.context
+            select case
+                when upper(e.block_range) <= $1 then e.block_range
+                else int4range(lower(e.block_range), null)
+            end,
+            e.causality_region, e.manifest_idx, e.parent, e.id, e.param, e.context
             from {src} e
             where lower(e.block_range) <= $1
             ",
