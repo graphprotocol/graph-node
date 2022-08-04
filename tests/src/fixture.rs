@@ -145,7 +145,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
             Err(e) => panic!("{}", e.to_string()),
         };
         let config = config.replace("$THEGRAPH_STORE_POSTGRES_DIESEL_URL", &db_url);
-        Config::from_str(&config).expect("failed to create configuration")
+        Config::from_str(&config, "default").expect("failed to create configuration")
     };
 
     let logger = graph::log::logger(true);
