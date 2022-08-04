@@ -26,7 +26,7 @@ use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use graph_core::{
-    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use url::Url;
@@ -342,7 +342,7 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
 async fn create_ethereum_networks(
     logger: Logger,
-    registry: Arc<MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
     config: &Config,
 ) -> Result<EthereumNetworks, anyhow::Error> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
