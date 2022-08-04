@@ -346,7 +346,7 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
 }
 
 /// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
-async fn create_ethereum_networks(
+pub async fn create_ethereum_networks(
     logger: Logger,
     registry: Arc<dyn MetricsRegistryTrait>,
     config: &Config,

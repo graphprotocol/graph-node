@@ -39,6 +39,7 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
+pub use itertools;
 pub use parking_lot;
 pub use petgraph;
 pub use prometheus;
