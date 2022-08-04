@@ -92,6 +92,7 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 // Here it doesn't make sense to receive another
                 // startBlock, we'll use the one from the manifest.
                 None,
+                None,
             )
             .await
         {

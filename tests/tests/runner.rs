@@ -1,14 +1,16 @@
+use std::sync::Arc;
+
 use graph::blockchain::{Block, BlockPtr};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
-use graph_tests::fixture::{self, stores, test_ptr, wait_for_sync};
+use graph_tests::fixture::{self, stores, test_ptr};
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
-    let subgraph_name = SubgraphName::new("data-source-revert")
-        .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+    let stores = stores("./integration-tests/config.simple.toml").await;
 
+    let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
     let hash = {
         let test_dir = format!("./integration-tests/{}", subgraph_name);
         fixture::build_subgraph(&test_dir).await
@@ -24,39 +26,33 @@ async fn data_source_revert() -> anyhow::Result<()> {
         let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr.clone());
         let block2 = empty_block(block1_reorged_ptr, test_ptr(2));
         let block3 = empty_block(block2.ptr(), test_ptr(3));
-        vec![block0, block1, block1_reorged, block2, block3]
+        let block4 = empty_block(block3.ptr(), test_ptr(4));
+        vec![block0, block1, block1_reorged, block2, block3, block4]
     };
 
-    let stores = stores("./integration-tests/config.simple.toml").await;
-    let chain = chain(blocks, &stores).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain).await;
-
-    let provider = ctx.provider.clone();
-    let store = ctx.store.clone();
-    let locator = &ctx.deployment_locator;
-    let logger = ctx.logger_factory.subgraph_logger(locator);
+    let chain = Arc::new(chain(blocks.clone(), &stores).await);
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain.clone(), None).await;
 
     let stop_block = test_ptr(2);
-    provider
-        .start(locator.clone(), Some(stop_block.number))
-        .await
-        .expect("unable to start subgraph");
-
-    wait_for_sync(&logger, &store, &hash, stop_block.clone())
-        .await
-        .unwrap();
-    provider.stop(locator.clone()).await.unwrap();
+    ctx.start_and_sync_to(stop_block).await;
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
 
     // Test loading data sources from DB.
     let stop_block = test_ptr(3);
-    provider
-        .start(locator.clone(), Some(stop_block.number))
-        .await
-        .expect("unabel to start subgraph");
+    ctx.start_and_sync_to(stop_block).await;
 
-    wait_for_sync(&logger, &store, &hash, stop_block.clone())
-        .await
-        .unwrap();
+    // Test grafted version
+    let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
+    let hash = fixture::build_subgraph_with_yarn_cmd(
+        "./integration-tests/data-source-revert",
+        "deploy:test-grafted",
+    )
+    .await;
+    let graft_block = Some(test_ptr(3));
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, graft_block).await;
+    let stop_block = test_ptr(4);
+    ctx.start_and_sync_to(stop_block).await;
+
     fixture::cleanup(&ctx.store, &subgraph_name, &hash);
 
     Ok(())
@@ -88,21 +84,11 @@ async fn typename() -> anyhow::Result<()> {
     let stop_block = blocks.last().unwrap().block.ptr();
 
     let stores = stores("./integration-tests/config.simple.toml").await;
-    let chain = chain(blocks, &stores).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain).await;
+    let chain = Arc::new(chain(blocks, &stores).await);
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None).await;
 
-    let provider = ctx.provider.clone();
-    let store = ctx.store.clone();
+    ctx.start_and_sync_to(stop_block).await;
 
-    let logger = ctx.logger_factory.subgraph_logger(&ctx.deployment_locator);
-
-    SubgraphAssignmentProvider::start(provider.as_ref(), ctx.deployment_locator.clone(), None)
-        .await
-        .expect("unabel to start subgraph");
-
-    wait_for_sync(&logger, &store, &hash, stop_block.clone())
-        .await
-        .unwrap();
     fixture::cleanup(&ctx.store, &subgraph_name, &hash);
 
     Ok(())

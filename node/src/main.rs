@@ -490,6 +490,7 @@ async fn main() {
                             node_id,
                             debug_fork,
                             start_block,
+                            None,
                         )
                         .await
                 }

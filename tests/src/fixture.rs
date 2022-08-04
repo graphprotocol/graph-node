@@ -22,8 +22,9 @@ use graph::env::ENV_VARS;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    async_trait, BlockNumber, DeploymentHash, LoggerFactory, MetricsRegistry, NodeId, SubgraphName,
-    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
+    async_trait, BlockNumber, DeploymentHash, LoggerFactory, MetricsRegistry, NodeId,
+    SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode,
 };
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -43,6 +44,10 @@ use tokio::fs::read_to_string;
 const NODE_ID: &str = "default";
 
 pub async fn build_subgraph(dir: &str) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd(dir, "deploy:test").await
+}
+
+pub async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
     // Test that IPFS is up.
     IpfsClient::localhost()
         .test()
@@ -65,7 +70,7 @@ pub async fn build_subgraph(dir: &str) -> DeploymentHash {
     // is fake and the actual deploy call is meant to fail.
     let deploy_output = run_cmd(
         Command::new("yarn")
-            .arg("deploy:test")
+            .arg(yarn_cmd)
             .env("IPFS_URI", "http://127.0.0.1:5001")
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
             .current_dir(dir),
@@ -90,14 +95,27 @@ pub fn test_ptr(n: BlockNumber) -> BlockPtr {
     }
 }
 pub struct TestContext {
-    pub logger_factory: LoggerFactory,
+    pub logger: Logger,
     pub provider: Arc<
         IpfsSubgraphAssignmentProvider<
             SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
         >,
     >,
     pub store: Arc<SubgraphStore>,
-    pub deployment_locator: DeploymentLocator,
+    pub deployment: DeploymentLocator,
+}
+
+impl TestContext {
+    pub async fn start_and_sync_to(&self, stop_block: BlockPtr) {
+        self.provider
+            .start(self.deployment.clone(), Some(stop_block.number))
+            .await
+            .expect("unable to start subgraph");
+
+        wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
+            .await
+            .unwrap();
+    }
 }
 
 pub struct Stores {
@@ -163,7 +181,8 @@ pub async fn setup<C: Blockchain>(
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     stores: &Stores,
-    chain: C,
+    chain: Arc<C>,
+    graft_block: Option<BlockPtr>,
 ) -> TestContext {
     let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.clone(), None);
@@ -175,7 +194,7 @@ pub async fn setup<C: Blockchain>(
     cleanup(&subgraph_store, &subgraph_name, hash);
 
     let mut blockchain_map = BlockchainMap::new();
-    blockchain_map.insert(stores.network_name.clone(), Arc::new(chain));
+    blockchain_map.insert(stores.network_name.clone(), chain);
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
@@ -216,22 +235,23 @@ pub async fn setup<C: Blockchain>(
         .await
         .expect("unable to create subgraph");
 
-    let deployment_locator = SubgraphRegistrar::create_subgraph_version(
+    let deployment = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
         subgraph_name.clone(),
         hash.clone(),
         node_id.clone(),
         None,
         None,
+        graft_block,
     )
     .await
     .expect("failed to create subgraph version");
 
     TestContext {
-        logger_factory,
+        logger: logger_factory.subgraph_logger(&deployment),
         provider: subgraph_provider,
         store: subgraph_store,
-        deployment_locator,
+        deployment,
     }
 }
 
@@ -249,13 +269,15 @@ pub async fn wait_for_sync(
     hash: &DeploymentHash,
     stop_block: BlockPtr,
 ) -> Result<(), Error> {
-    loop {
+    let mut err_count = 0;
+    while err_count < 10 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
         let block_ptr = match store.least_block_ptr(&hash).await {
             Ok(Some(ptr)) => ptr,
             res => {
                 info!(&logger, "{:?}", res);
+                err_count += 1;
                 continue;
             }
         };
