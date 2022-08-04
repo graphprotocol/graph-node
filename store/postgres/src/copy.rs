@@ -599,6 +599,15 @@ impl Connection {
         target_block: BlockPtr,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
+
+        if src.site.schema_version != dst.site.schema_version {
+            return Err(StoreError::ConstraintViolation(format!(
+                "attempted to copy between different schema versions, \
+                 source version is {} but destination version is {}",
+                src.site.schema_version, dst.site.schema_version
+            )));
+        }
+
         let mut last_log = Instant::now();
         let conn = pool.get_fdw(&logger, || {
             if last_log.elapsed() > LOG_INTERVAL {

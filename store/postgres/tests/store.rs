@@ -1148,6 +1148,7 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
     graph_chain_ethereum::DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
+        manifest_idx: 0,
         network: Some(String::from("mainnet")),
         address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
         start_block: 0,
@@ -1209,7 +1210,8 @@ fn revert_block_with_dynamic_data_source_operations() {
         let original_user = writable.get(&user_key).unwrap().expect("missing entity");
 
         // Create operations to add a dynamic data source
-        let data_source = mock_data_source();
+        let mut data_source = mock_data_source();
+        let manifest_idx_and_name = vec![(0, "example data source".to_string())];
 
         let ops = vec![EntityOperation::Set {
             key: user_key.clone(),
@@ -1217,12 +1219,14 @@ fn revert_block_with_dynamic_data_source_operations() {
         }];
 
         // Add user and dynamic data source to the store
+        data_source.creation_block = Some(TEST_BLOCK_3_PTR.number);
         transact_entities_and_dynamic_data_sources(
             &subgraph_store,
             deployment.clone(),
             TEST_BLOCK_3_PTR.clone(),
             vec![data_source.as_stored_dynamic_data_source()],
             ops,
+            manifest_idx_and_name.clone(),
         )
         .await
         .unwrap();
@@ -1234,7 +1238,10 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source exists afterwards
-        let loaded_dds = writable.load_dynamic_data_sources().await.unwrap();
+        let loaded_dds = writable
+            .load_dynamic_data_sources(manifest_idx_and_name.clone())
+            .await
+            .unwrap();
         assert_eq!(1, loaded_dds.len());
         assert_eq!(
             data_source.address.unwrap().0,
@@ -1253,7 +1260,10 @@ fn revert_block_with_dynamic_data_source_operations() {
         );
 
         // Verify that the dynamic data source is gone after the reversion
-        let loaded_dds = writable.load_dynamic_data_sources().await.unwrap();
+        let loaded_dds = writable
+            .load_dynamic_data_sources(manifest_idx_and_name)
+            .await
+            .unwrap();
         assert_eq!(0, loaded_dds.len());
 
         // Verify that the right change events were emitted for the reversion
@@ -1567,6 +1577,7 @@ fn handle_large_string_with_index() {
                 &stopwatch_metrics,
                 Vec::new(),
                 Vec::new(),
+                Vec::new(),
             )
             .await
             .expect("Failed to insert large text");
@@ -1662,6 +1673,7 @@ fn handle_large_bytea_with_index() {
                     make_insert_op(TWO, &other_bytea),
                 ],
                 &stopwatch_metrics,
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
             )

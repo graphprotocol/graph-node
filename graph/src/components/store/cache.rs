@@ -4,6 +4,7 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::blockchain::BlockPtr;
+use crate::blockchain::DataSource;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
@@ -188,7 +189,7 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &impl s::DataSource<C>) {
+    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &impl DataSource<C>) {
         self.data_sources
             .push(data_source.as_stored_dynamic_data_source());
     }

@@ -1,6 +1,12 @@
 specVersion: 0.0.4
+features:
+  - grafting
 schema:
   file: ./schema.graphql
+graft:
+  # Must match the id from building `subgraph.yaml`
+  base: QmRhW72iAE6AEY6fiL9nPt5ZVffzbq9XswKDbH9LC3JPUh
+  block: 3
 dataSources:
   - kind: ethereum/contract
     name: Contract

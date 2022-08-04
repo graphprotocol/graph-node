@@ -162,6 +162,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         self,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<DataSource, Error> {
         Ok(DataSource {
             kind: SUBSTREAMS_KIND.into(),
@@ -205,6 +206,10 @@ impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
+
+    fn manifest_idx(&self) -> u32 {
+        todo!()
+    }
 }
 
 #[async_trait]
@@ -213,6 +218,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for NoopDataSourceTemplate 
         self,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<NoopDataSourceTemplate, anyhow::Error> {
         unimplemented!("{}", TEMPLATE_ERROR)
     }
@@ -260,7 +266,7 @@ mod test {
         let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
         let logger = Logger::root(Discard, o!());
-        let ds: DataSource = ds.resolve(&link_resolver, &logger).await.unwrap();
+        let ds: DataSource = ds.resolve(&link_resolver, &logger, 0).await.unwrap();
         let expected = DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: Some("mainnet".into()),

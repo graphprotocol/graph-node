@@ -7,8 +7,9 @@ use crate::subgraph::metrics::{
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::Blockchain;
+use graph::blockchain::DataSource;
 use graph::blockchain::NodeCapabilities;
+use graph::blockchain::{Blockchain, DataSourceTemplate};
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
@@ -147,7 +148,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // that is done
         store.start_subgraph_deployment(&logger).await?;
 
-        let manifest: SubgraphManifest<C> = {
+        let (manifest, manifest_idx_and_name) = {
             info!(logger, "Resolve subgraph files using IPFS");
 
             let mut manifest = SubgraphManifest::resolve_from_raw(
@@ -161,9 +162,28 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .await
             .context("Failed to resolve subgraph from IPFS")?;
 
-            let data_sources = load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
-                .await
-                .context("Failed to load dynamic data sources")?;
+            let manifest_idx_and_name: Vec<(u32, String)> = manifest
+                .data_sources
+                .iter()
+                .map(|ds: &C::DataSource| ds.name().to_owned())
+                .chain(
+                    manifest
+                        .templates
+                        .iter()
+                        .map(|t: &C::DataSourceTemplate| t.name().to_owned()),
+                )
+                .enumerate()
+                .map(|(idx, name)| (idx as u32, name))
+                .collect();
+
+            let data_sources = load_dynamic_data_sources(
+                store.clone(),
+                logger.clone(),
+                &manifest,
+                manifest_idx_and_name.clone(),
+            )
+            .await
+            .context("Failed to load dynamic data sources")?;
 
             info!(logger, "Successfully resolved subgraph files using IPFS");
 
@@ -176,7 +196,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 manifest.data_sources.len()
             );
 
-            manifest
+            (manifest, manifest_idx_and_name)
         };
 
         let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
@@ -240,7 +260,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
-        let deployment_head = store.block_ptr().await.map(|ptr| ptr.number).unwrap_or(0) as f64;
+        let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
@@ -273,6 +293,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             templates,
             unified_api_version,
             static_filters: self.static_filters,
+            manifest_idx_and_name,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

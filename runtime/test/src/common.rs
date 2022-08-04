@@ -30,6 +30,7 @@ fn mock_host_exports(
     let templates = vec![DataSourceTemplate {
         kind: String::from("ethereum/contract"),
         name: String::from("example template"),
+        manifest_idx: 0,
         network: Some(String::from("mainnet")),
         source: TemplateSource {
             abi: String::from("foo"),
@@ -120,6 +121,7 @@ pub fn mock_data_source(path: &str, api_version: Version) -> DataSource {
     DataSource {
         kind: String::from("ethereum/contract"),
         name: String::from("example data source"),
+        manifest_idx: 0,
         network: Some(String::from("mainnet")),
         address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
         start_block: 0,

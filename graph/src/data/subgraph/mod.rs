@@ -764,16 +764,27 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ));
         }
 
+        let ds_count = data_sources.len();
+        if ds_count as u64 + templates.len() as u64 > u32::MAX as u64 {
+            return Err(anyhow!(
+                "Subgraph has too many declared data sources and templates",
+            ));
+        }
+
         let (schema, data_sources, templates, offchain_data_sources) = try_join4(
             schema.resolve(id.clone(), &resolver, logger),
             data_sources
                 .into_iter()
-                .map(|ds| ds.resolve(&resolver, logger))
+                .enumerate()
+                .map(|(idx, ds)| ds.resolve(&resolver, logger, idx as u32))
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             templates
                 .into_iter()
-                .map(|template| template.resolve(&resolver, logger))
+                .enumerate()
+                .map(|(idx, template)| {
+                    template.resolve(&resolver, logger, ds_count as u32 + idx as u32)
+                })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
             offchain_data_sources
