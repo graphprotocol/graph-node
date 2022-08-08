@@ -18,7 +18,7 @@ graph-store-postgres = { path = "../store/postgres" }
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 
 [dev-dependencies]
-bollard = "0.10"
+bollard = "0.13"
 anyhow = "1.0.57"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
