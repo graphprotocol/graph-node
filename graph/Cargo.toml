@@ -36,7 +36,7 @@ slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_tr
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 stable-hash = { version = "0.4.2"}
 strum = "0.21.0"
-strum_macros = "0.21.1"
+strum_macros = "0.24.3"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
