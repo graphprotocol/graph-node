@@ -70,7 +70,8 @@ impl FirehoseEndpoint {
         // send pings.
         let endpoint = endpoint_builder
             .initial_connection_window_size(Some((1 << 31) - 1))
-            .connect_timeout(Duration::from_secs(10));
+            .connect_timeout(Duration::from_secs(10))
+            .tcp_keepalive(Some(Duration::from_secs(15)));
 
         let uri = endpoint.uri().to_string();
         //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
