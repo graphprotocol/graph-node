@@ -181,7 +181,7 @@ pub async fn create_firehose_networks(
                 info!(
                     logger,
                     "Creating firehose endpoint";
-                    "url" => &firehose.url,
+                    "provider" => &provider.label,
                 );
 
                 let endpoint = FirehoseEndpoint::new(
@@ -309,7 +309,7 @@ where
                 let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
                 info!(
                     logger, "Connecting to Firehose to get chain identifier";
-                    "url" => &endpoint.uri,
+                    "provider" => &endpoint.provider,
                 );
                 match tokio::time::timeout(
                     NET_VERSION_WAIT_TIME,
@@ -332,7 +332,7 @@ where
                         info!(
                             logger,
                             "Connected to Firehose";
-                            "uri" => &endpoint.uri,
+                            "provider" => &endpoint.provider,
                             "genesis_block" => format_args!("{}", &ptr),
                         );
 

@@ -23,7 +23,6 @@ use super::codec as firehose;
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
-    pub uri: String,
     pub token: Option<String>,
     pub filters_enabled: bool,
     channel: Channel,
@@ -73,14 +72,12 @@ impl FirehoseEndpoint {
             .connect_timeout(Duration::from_secs(10))
             .tcp_keepalive(Some(Duration::from_secs(15)));
 
-        let uri = endpoint.uri().to_string();
         //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
         //FirehoseEndpoint has all the info to report error - provider & uri
         let channel = endpoint.connect_lazy();
 
         Ok(FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
-            uri,
             channel,
             token,
             _logger: logger,
