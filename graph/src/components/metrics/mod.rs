@@ -3,6 +3,8 @@ pub use prometheus::{
     labels, Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, Histogram,
     HistogramOpts, HistogramVec, Opts, Registry,
 };
+pub mod subgraph;
+
 use std::collections::HashMap;
 
 /// Metrics for measuring where time is spent during indexing.

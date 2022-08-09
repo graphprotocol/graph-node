@@ -6,30 +6,10 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::prelude::tokio::time::Instant;
-use graph::prelude::{BlockState, RuntimeHost, RuntimeHostBuilder};
+use graph::prelude::{
+    BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
+};
 use graph::slog::Logger;
-
-use super::metrics::SubgraphInstanceMetrics;
-
-#[async_trait]
-pub trait TriggerProcessor<C, T>: Sized + Sync + Send
-where
-    C: Blockchain,
-    T: RuntimeHostBuilder<C>,
-{
-    async fn process_trigger(
-        &self,
-        logger: &Logger,
-        hosts: &[Arc<T::Host>],
-        block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
-        mut state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<BlockState<C>, MappingError>;
-}
 
 pub struct SubgraphTriggerProcessor {}
 

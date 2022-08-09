@@ -8,17 +8,14 @@ use graph::{
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use super::TriggerProcessor;
-
 pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
-pub struct IndexingContext<C, T, TP>
+pub struct IndexingContext<C, T>
 where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
-    TP: TriggerProcessor<C, T>,
 {
-    pub instance: SubgraphInstance<C, T, TP>,
+    pub instance: SubgraphInstance<C, T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,
 }

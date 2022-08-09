@@ -14,7 +14,6 @@ use graph::{
     },
     slog::Logger,
 };
-use graph_core::SubgraphInstanceMetrics;
 use lazy_static::__Deref;
 
 use crate::{
@@ -124,7 +123,7 @@ impl TriggerProcessor {
 }
 
 #[async_trait]
-impl<T> graph_core::TriggerProcessor<Chain, T> for TriggerProcessor
+impl<T> graph::prelude::TriggerProcessor<Chain, T> for TriggerProcessor
 where
     T: RuntimeHostBuilder<Chain>,
 {
@@ -138,7 +137,7 @@ where
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        _subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
     ) -> Result<BlockState<Chain>, MappingError> {
         for entity_change in block.entities_changes.entity_changes.iter() {
             match entity_change.operation() {
