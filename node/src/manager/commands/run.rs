@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::chain::create_firehose_networks;
 use crate::config::{Config, ProviderDetails};
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
@@ -15,9 +16,8 @@ use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore as _, DeploymentLocator};
 use graph::env::EnvVars;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, FirehoseNetworks};
+use graph::firehose::FirehoseEndpoints;
 use graph::ipfs_client::IpfsClient;
-use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
     SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
@@ -72,10 +72,7 @@ pub async fn run(
     let eth_networks = create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
         .await
         .expect("Failed to parse Ethereum networks");
-    let firehose_networks_by_kind =
-        create_firehose_networks(logger.clone(), metrics_registry.clone(), &config)
-            .await
-            .expect("Failed to parse Firehose endpoints");
+    let firehose_networks_by_kind = create_firehose_networks(logger.clone(), &config);
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);
     let firehose_endpoints = firehose_networks
         .and_then(|v| v.networks.get(&network_name))
@@ -398,50 +395,6 @@ async fn create_ethereum_networks(
     }
     parsed_networks.sort();
     Ok(parsed_networks)
-}
-
-async fn create_firehose_networks(
-    logger: Logger,
-    _registry: Arc<dyn MetricsRegistryTrait>,
-    config: &Config,
-) -> Result<BTreeMap<BlockchainKind, FirehoseNetworks>, anyhow::Error> {
-    debug!(
-        logger,
-        "Creating firehose networks [{} chains, ingestor {}]",
-        config.chains.chains.len(),
-        config.chains.ingestor,
-    );
-
-    let mut networks_by_kind = BTreeMap::new();
-
-    for (name, chain) in &config.chains.chains {
-        for provider in &chain.providers {
-            if let ProviderDetails::Firehose(ref firehose) = provider.details {
-                let logger = logger.new(o!("provider" => provider.label.clone()));
-                info!(
-                    logger,
-                    "Creating firehose endpoint";
-                    "url" => &firehose.url,
-                );
-
-                let endpoint = FirehoseEndpoint::new(
-                    logger,
-                    &provider.label,
-                    &firehose.url,
-                    firehose.token.clone(),
-                    firehose.filters_enabled(),
-                )
-                .await?;
-
-                let parsed_networks = networks_by_kind
-                    .entry(chain.protocol)
-                    .or_insert_with(|| FirehoseNetworks::new());
-                parsed_networks.insert(name.to_string(), Arc::new(endpoint));
-            }
-        }
-    }
-
-    Ok(networks_by_kind)
 }
 
 /// Try to connect to all the providers in `eth_networks` and get their net

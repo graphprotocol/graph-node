@@ -45,9 +45,13 @@ async fn main() -> Result<(), Error> {
         prometheus_registry.clone(),
     ));
 
-    let firehose = Arc::new(
-        FirehoseEndpoint::new(logger.clone(), "substreams", &endpoint, token, false).await?,
-    );
+    let firehose = Arc::new(FirehoseEndpoint::new(
+        "substreams",
+        &endpoint,
+        token,
+        false,
+        1,
+    ));
 
     let mut stream: SubstreamsBlockStream<graph_chain_substreams::Chain> =
         SubstreamsBlockStream::new(
