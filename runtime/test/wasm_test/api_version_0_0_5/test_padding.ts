@@ -22,8 +22,8 @@ export function test_padding_bool(p: UnitTestTypeBool): void {
      assert(p.str_pref == "pref", "parm.str_pref: Assertion failed!");
      assert(p.under_test == true, "parm.under_test: Assertion failed!");
      assert(p.str_suff == "suff", "parm.str_suff: Assertion failed!");
-     assert(p.large == 9223372036854775807, "parm.str_suff: Assertion failed!");
-     assert(p.tail == true, "parm.str_suff: Assertion failed!");
+     assert(p.large == 9223372036854775807, "parm.large: Assertion failed!");
+     assert(p.tail == true, "parm.tail: Assertion failed!");
 }
 
 export class UnitTestTypeI8{
@@ -48,8 +48,8 @@ export function test_padding_i8(p: UnitTestTypeI8): void {
     assert(p.str_pref == "pref", "parm.str_pref: Assertion failed!");
     assert(p.under_test == 127, "parm.under_test: Assertion failed!");
     assert(p.str_suff == "suff", "parm.str_suff: Assertion failed!");
-    assert(p.large == 9223372036854775807, "parm.str_suff: Assertion failed!");
-    assert(p.tail == true, "parm.str_suff: Assertion failed!");
+    assert(p.large == 9223372036854775807, "parm.large: Assertion failed!");
+    assert(p.tail == true, "parm.tail: Assertion failed!");
 }
 
 
@@ -75,8 +75,8 @@ export function test_padding_i16(p: UnitTestTypeU16): void {
     assert(p.str_pref == "pref", "parm.str_pref: Assertion failed!");
     assert(p.under_test == 32767, "parm.under_test: Assertion failed!");
     assert(p.str_suff == "suff", "parm.str_suff: Assertion failed!");
-    assert(p.large == 9223372036854775807, "parm.str_suff: Assertion failed!");
-    assert(p.tail == true, "parm.str_suff: Assertion failed!");
+    assert(p.large == 9223372036854775807, "parm.large: Assertion failed!");
+    assert(p.tail == true, "parm.tail: Assertion failed!");
 }
 
 export class UnitTestTypeU32{
@@ -101,8 +101,8 @@ export function test_padding_i32(p: UnitTestTypeU32): void {
     assert(p.str_pref == "pref", "parm.str_pref: Assertion failed!");
     assert(p.under_test == 2147483647, "parm.under_test: Assertion failed!");
     assert(p.str_suff == "suff", "parm.str_suff: Assertion failed!");
-    assert(p.large == 9223372036854775807, "parm.str_suff: Assertion failed!");
-    assert(p.tail == true, "parm.str_suff: Assertion failed!");
+    assert(p.large == 9223372036854775807, "parm.large: Assertion failed!");
+    assert(p.tail == true, "parm.tail: Assertion failed!");
 }
 
 

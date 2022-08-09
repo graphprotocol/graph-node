@@ -4,7 +4,16 @@ use graph::prelude::tokio;
 use self::data::BadFixed;
 
 const WASM_FILE_NAME: &str = "test_padding.wasm";
-const SUB_GRAPH_NAME: &str = "bogus_sub_graph_id";
+
+//for tests, to run in parallel, sub graph name has be unique
+fn rnd_sub_graph_name(size: usize) -> String {
+    use rand::{distributions::Alphanumeric, Rng};
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(size)
+        .map(char::from)
+        .collect()
+}
 
 pub mod data {
     #[graph_runtime_derive::generate_asc_type()]
@@ -242,7 +251,7 @@ async fn test_v4_u32_padding_ok() {
 
 async fn manual_padding_should_fail(api_version: semver::Version) {
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
@@ -281,7 +290,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
     };
 
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
@@ -305,7 +314,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
 
 async fn bool_padding_ok(api_version: semver::Version) {
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
@@ -337,7 +346,7 @@ async fn bool_padding_ok(api_version: semver::Version) {
 
 async fn i8_padding_ok(api_version: semver::Version) {
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
@@ -365,7 +374,7 @@ async fn i8_padding_ok(api_version: semver::Version) {
 
 async fn u16_padding_ok(api_version: semver::Version) {
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
@@ -393,7 +402,7 @@ async fn u16_padding_ok(api_version: semver::Version) {
 
 async fn u32_padding_ok(api_version: semver::Version) {
     let mut module = super::test::test_module(
-        SUB_GRAPH_NAME,
+        &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
             api_version.clone(),
