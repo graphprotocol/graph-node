@@ -1,0 +1,9 @@
+package firehose;
+
+import "google/protobuf/descriptor.proto";
+
+// 66K range is arbitrary picked number, might be conflict
+
+extend google.protobuf.FieldOptions {
+  optional bool required = 66001;
+}

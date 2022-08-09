@@ -8,13 +8,14 @@ import "google/protobuf/descriptor.proto";
 import "google/protobuf/any.proto";
 import "gogoproto/gogo.proto";
 import "cosmos_proto/cosmos.proto";
+import "firehose/annotations.proto";
 
 message Block {
-  Header header = 1 [(gogoproto.nullable) = false];
+  Header header = 1 [(firehose.required) = true, (gogoproto.nullable) = false];
   EvidenceList evidence = 2 [(gogoproto.nullable) = false];
   Commit last_commit = 3;
-  ResponseBeginBlock result_begin_block = 4;
-  ResponseEndBlock result_end_block = 5;
+  ResponseBeginBlock result_begin_block = 4 [(firehose.required) = true];
+  ResponseEndBlock result_end_block = 5 [(firehose.required) = true];
   repeated TxResult transactions = 7;
   repeated Validator validator_updates = 8;
 }
@@ -26,17 +27,17 @@ message Block {
 // This can be used to unpack a [Block] when only the [Header] information
 // is required and greatly reduce required memory.
 message HeaderOnlyBlock {
-  Header header = 1 [(gogoproto.nullable) = false];
+  Header header = 1 [(firehose.required) = true, (gogoproto.nullable) = false];
 }
 
 message EventData {
-  Event event = 1;
-  HeaderOnlyBlock block = 2;
+  Event event = 1 [(firehose.required) = true];
+  HeaderOnlyBlock block = 2 [(firehose.required) = true];
 }
 
 message TransactionData {
-  TxResult tx = 1;
-  HeaderOnlyBlock block = 2;
+  TxResult tx = 1 [(firehose.required) = true];
+  HeaderOnlyBlock block = 2 [(firehose.required) = true];
 }
 
 message Header {
@@ -44,7 +45,7 @@ message Header {
   string chain_id = 2 [(gogoproto.customname) = "ChainID"];
   uint64 height = 3;
   Timestamp time = 4 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
-  BlockID last_block_id = 5 [(gogoproto.nullable) = false];
+  BlockID last_block_id = 5 [(firehose.required) = true, (gogoproto.nullable) = false];
   bytes last_commit_hash = 6;
   bytes data_hash = 7;
   bytes validators_hash = 8;
@@ -251,13 +252,13 @@ message VersionParams {
 message TxResult {
   uint64 height = 1;
   uint32 index = 2;
-  Tx tx = 3;
-  ResponseDeliverTx result = 4;
+  Tx tx = 3 [(firehose.required) = true];
+  ResponseDeliverTx result = 4 [(firehose.required) = true];
   bytes hash = 5;
 }
 
 message Tx {
-  TxBody body = 1;
+  TxBody body = 1 [(firehose.required) = true];
   AuthInfo auth_info = 2;
   repeated bytes signatures = 3;
 }

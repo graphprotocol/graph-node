@@ -5,6 +5,7 @@ edition = "2018"
 
 [build-dependencies]
 tonic-build = { version = "0.7.1", features = ["prost"] }
+graph-chain-common = { path = "../common" }
 
 [dependencies]
 graph = { path = "../../graph" }
