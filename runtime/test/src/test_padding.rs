@@ -88,11 +88,11 @@ pub mod data {
             bytes.extend_from_slice(&self.str_suff.to_asc_bytes()?);
             bytes.extend_from_slice(&self.tail.to_asc_bytes()?);
 
-            // assert_eq!(
-            //     bytes.len(),
-            //     in_memory_byte_count,
-            //     "Alignment mismatch for AscBad, re-order fields or explicitely add a _padding field",
-            // );
+            //ensure misaligned
+            assert!(
+                bytes.len() != in_memory_byte_count,
+                "struct is intentionally misaligned",
+            );
             Ok(bytes)
         }
 
