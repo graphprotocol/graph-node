@@ -282,6 +282,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<DataSource> {
         let UnresolvedDataSource {
             kind,
@@ -325,6 +326,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         self,
         _resolver: &Arc<dyn LinkResolver>,
         _logger: &Logger,
+        _manifest_idx: u32,
     ) -> Result<DataSourceTemplate> {
         Err(anyhow!(TEMPLATE_ERROR))
     }
@@ -340,6 +342,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
+        unimplemented!("{}", TEMPLATE_ERROR);
+    }
+
+    fn manifest_idx(&self) -> u32 {
         unimplemented!("{}", TEMPLATE_ERROR);
     }
 }

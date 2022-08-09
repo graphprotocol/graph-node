@@ -11,7 +11,7 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -32,7 +32,7 @@ pub struct FirehoseEndpoint {
 
 impl Display for FirehoseEndpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.uri.as_str(), f)
+        Display::fmt(self.provider.as_str(), f)
     }
 }
 
@@ -49,13 +49,29 @@ impl FirehoseEndpoint {
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
-        let endpoint = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
+        let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
             "https" => Channel::builder(uri)
                 .tls_config(ClientTlsConfig::new())
                 .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
+
+        // Note on the connection window size: We run multiple block streams on a same connection,
+        // and a problematic subgraph with a stalled block stream might consume the entire window
+        // capacity for its http2 stream and never release it. If there are enough stalled block
+        // streams to consume all the capacity on the http2 connection, then _all_ subgraphs using
+        // this same http2 connection will stall. At a default stream window size of 2^16, setting
+        // the connection window size to the maximum of 2^31 allows for 2^15 streams without any
+        // contention, which is effectively unlimited for normal graph node operation.
+        //
+        // Note: Do not set `http2_keep_alive_interval` or `http2_adaptive_window`, as these will
+        // send ping frames, and many cloud load balancers will drop connections that frequently
+        // send pings.
+        let endpoint = endpoint_builder
+            .initial_connection_window_size(Some((1 << 31) - 1))
+            .connect_timeout(Duration::from_secs(10))
+            .tcp_keepalive(Some(Duration::from_secs(15)));
 
         let uri = endpoint.uri().to_string();
         //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly

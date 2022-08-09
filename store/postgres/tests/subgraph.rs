@@ -59,7 +59,6 @@ async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
         .await
         .expect("can get writable")
         .block_ptr()
-        .await
         .unwrap()
 }
 

@@ -21,4 +21,7 @@ pub struct IndexingInputs<C: Blockchain> {
     pub templates: Arc<Vec<C::DataSourceTemplate>>,
     pub unified_api_version: UnifiedMappingApiVersion,
     pub static_filters: bool,
+
+    // Correspondence between data source or template position in the manifest and name.
+    pub manifest_idx_and_name: Vec<(u32, String)>,
 }

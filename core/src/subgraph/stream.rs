@@ -18,12 +18,12 @@ pub async fn new_block_stream<C: Blockchain>(
         false => BUFFERED_BLOCK_STREAM_SIZE,
     };
 
-    let current_ptr = inputs.store.block_ptr().await;
+    let current_ptr = inputs.store.block_ptr();
 
     let block_stream = match is_firehose {
         true => inputs.chain.new_firehose_block_stream(
             inputs.deployment.clone(),
-            inputs.store.block_cursor().await,
+            inputs.store.block_cursor(),
             inputs.start_blocks.clone(),
             current_ptr,
             Arc::new(filter.clone()),
