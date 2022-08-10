@@ -113,8 +113,6 @@ where
 
             // Process events from the stream as long as no restart is needed
             loop {
-                self.handle_offchain_queue().await?;
-
                 let event = {
                     let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
 
@@ -181,7 +179,12 @@ where
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
         let mut block_state = match self
-            .process_triggers(&proof_of_indexing, &block, triggers, &causality_region)
+            .process_triggers(
+                &proof_of_indexing,
+                &block,
+                triggers.into_iter().map(TriggerData::Onchain),
+                &causality_region,
+            )
             .await
         {
             // Triggers processed with no errors or with only deterministic errors.
@@ -330,6 +333,13 @@ where
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
+        // Check for offchain events and process them, including their entity modifications.
+        {
+            let offchain_events = self.queued_offchain_events().await?;
+            let offchain_mods = self.handle_offchain_triggers(offchain_events).await?;
+            mods.extend(offchain_mods);
+        }
+
         // Put the cache back in the state, asserting that the placeholder cache was not used.
         assert!(self.state.entity_lfu_cache.is_empty());
         self.state.entity_lfu_cache = cache;
@@ -426,7 +436,7 @@ where
         &mut self,
         proof_of_indexing: &SharedProofOfIndexing,
         block: &Arc<C::Block>,
-        triggers: Vec<C::TriggerData>,
+        triggers: impl Iterator<Item = TriggerData<C>>,
         causality_region: &str,
     ) -> Result<BlockState<C>, MappingError> {
         let mut block_state = BlockState::new(
@@ -435,7 +445,6 @@ where
         );
 
         for trigger in triggers {
-            let trigger = TriggerData::Onchain(trigger);
             block_state = self
                 .ctx
                 .instance
@@ -563,65 +572,68 @@ where
         Ok(action)
     }
 
-    async fn handle_offchain_queue(&mut self) -> Result<(), Error> {
+    async fn queued_offchain_events(&mut self) -> Result<Vec<offchain::TriggerData>, Error> {
+        use graph::tokio::sync::mpsc::error::TryRecvError;
+
+        let mut triggers = vec![];
         loop {
-            if let Ok((cid, data)) = self.ctx.offchain_monitor.ipfs_monitor_rx.try_recv() {
-                self.handle_offchain_update(offchain::Source::Ipfs(cid), data)
-                    .await?;
-                continue;
+            match self.ctx.offchain_monitor.ipfs_monitor_rx.try_recv() {
+                Ok((cid, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Ipfs(cid),
+                    data: Arc::new(data),
+                }),
+                Err(TryRecvError::Disconnected) => {
+                    anyhow::bail!("ipfs monitor unexpectedly terminated")
+                }
+                Err(TryRecvError::Empty) => break,
             }
-            break;
         }
-        Ok(())
+        Ok(triggers)
     }
 
-    async fn handle_offchain_update(
+    async fn handle_offchain_triggers(
         &mut self,
-        source: offchain::Source,
-        data: bytes::Bytes,
-    ) -> Result<(), Error> {
-        let block_state = BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
-        let entity_cache = std::mem::take(&mut self.state.entity_lfu_cache);
+        triggers: Vec<offchain::TriggerData>,
+    ) -> Result<Vec<EntityModification>, Error> {
+        // TODO: Dont expose store with onchain entites
+        let mut block_state =
+            BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
 
-        // TODO: Set per-file causality region
-        // let causality_region = match &source {
-        //     offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
-        // };
+        for trigger in triggers {
+            let causality_region = match &trigger.source {
+                offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
+            };
 
-        let trigger = TriggerData::Offchain(offchain::TriggerData {
-            source,
-            data: Arc::new(data),
-        });
-
-        let block_state = self
-            .ctx
-            .instance
-            .process_trigger(
-                &self.logger,
-                &Arc::default(),
-                &trigger,
-                block_state,
-                &None,
-                "IPFS TODO",
-                &self.inputs.debug_fork,
-                &self.metrics.subgraph,
-            )
-            .await
-            .map_err(move |err| {
-                let err = match err {
-                    MappingError::PossibleReorg(_) => unreachable!(),
-                    MappingError::Unknown(err) => err,
-                };
-                err.context("failed to process trigger".to_string())
-            })?;
+            block_state = self
+                .ctx
+                .instance
+                .process_trigger(
+                    &self.logger,
+                    &Arc::default(),
+                    &TriggerData::Offchain(trigger),
+                    block_state,
+                    &None,
+                    &causality_region,
+                    &self.inputs.debug_fork,
+                    &self.metrics.subgraph,
+                )
+                .await
+                .map_err(move |err| {
+                    let err = match err {
+                        // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
+                        // non-deterministic errors.
+                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
+                    };
+                    err.context("failed to process trigger".to_string())
+                })?;
+        }
 
         anyhow::ensure!(
             !block_state.has_created_data_sources(),
             "Attempted to create data source in offchain data source handler. This is not yet supported.",
         );
 
-        self.state.entity_lfu_cache = entity_cache;
-        Ok(())
+        Ok(block_state.entity_cache.as_modifications()?.modifications)
     }
 }
 
