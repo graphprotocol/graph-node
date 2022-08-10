@@ -103,14 +103,15 @@ impl<C: Blockchain> DataSource<C> {
         block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
-        match self {
-            Self::Onchain(ds) => ds
-                .match_and_decode(trigger.as_onchain().unwrap().clone(), block, logger)
+        match (self, trigger) {
+            (Self::Onchain(ds), TriggerData::Onchain(trigger)) => ds
+                .match_and_decode(trigger, block, logger)
                 .map(|t| t.map(|t| t.map(MappingTrigger::Onchain))),
-            Self::Offchain(ds) => Ok(Some(TriggerWithHandler::new(
-                MappingTrigger::Offchain(trigger.as_offchain().unwrap().clone()),
-                ds.mapping.handler.clone(),
-            ))),
+            (Self::Offchain(ds), TriggerData::Offchain(trigger)) => {
+                Ok(ds.match_and_decode(trigger))
+            }
+            (Self::Onchain(_), TriggerData::Offchain(_))
+            | (Self::Offchain(_), TriggerData::Onchain(_)) => Ok(None),
         }
     }
 
@@ -323,20 +324,6 @@ pub enum TriggerData<C: Blockchain> {
 }
 
 impl<C: Blockchain> TriggerData<C> {
-    fn as_onchain(&self) -> Option<&C::TriggerData> {
-        match self {
-            Self::Onchain(trigger) => Some(trigger),
-            Self::Offchain(_) => None,
-        }
-    }
-
-    fn as_offchain(&self) -> Option<&offchain::TriggerData> {
-        match self {
-            Self::Onchain(_) => None,
-            Self::Offchain(trigger) => Some(trigger),
-        }
-    }
-
     pub fn error_context(&self) -> String {
         match self {
             Self::Onchain(trigger) => trigger.error_context(),

@@ -9,11 +9,13 @@ use crate::{
     data_source,
     prelude::{DataSourceContext, Link},
 };
-use anyhow::{self, Error};
+use anyhow::{self, Context, Error};
 use cid::Cid;
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{fmt, sync::Arc};
+
+use super::TriggerWithHandler;
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
@@ -22,7 +24,7 @@ pub struct DataSource {
     pub kind: String,
     pub name: String,
     pub manifest_idx: u32,
-    pub source: Option<Source>,
+    pub source: Source,
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
@@ -46,7 +48,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
             kind: template.kind.clone(),
             name: template.name.clone(),
             manifest_idx: template.manifest_idx,
-            source: Some(Source::Ipfs(source.parse()?)),
+            source: Source::Ipfs(source.parse()?),
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
@@ -55,10 +57,24 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
 }
 
 impl DataSource {
+    pub fn match_and_decode<C: Blockchain>(
+        &self,
+        trigger: &TriggerData,
+    ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
+        if self.source != trigger.source {
+            return None;
+        }
+
+        Some(TriggerWithHandler::new(
+            data_source::MappingTrigger::Offchain(trigger.clone()),
+            self.mapping.handler.clone(),
+        ))
+    }
+
     pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        let param = self.source.as_ref().map(|source| match source {
+        let param = match self.source {
             Source::Ipfs(link) => Bytes::from(link.to_bytes()),
-        });
+        };
         let context = self
             .context
             .as_ref()
@@ -66,7 +82,7 @@ impl DataSource {
             .map(|ctx| serde_json::to_value(&ctx).unwrap());
         StoredDynamicDataSource {
             manifest_idx: self.manifest_idx,
-            param,
+            param: Some(param),
             context,
             creation_block: self.creation_block,
         }
@@ -76,11 +92,8 @@ impl DataSource {
         template: &DataSourceTemplate,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        let source = stored.param.and_then(|bytes| {
-            Cid::try_from(bytes.as_slice().to_vec())
-                .ok()
-                .map(Source::Ipfs)
-        });
+        let param = stored.param.context("no param on stored data source")?;
+        let source = Source::Ipfs(Cid::try_from(param.as_slice().to_vec())?);
         let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
         Ok(Self {
             kind: template.kind.clone(),
@@ -113,7 +126,7 @@ pub struct Mapping {
 pub struct UnresolvedDataSource {
     pub kind: String,
     pub name: String,
-    pub source: Option<UnresolvedSource>,
+    pub source: UnresolvedSource,
     pub mapping: UnresolvedMapping,
 }
 
@@ -145,10 +158,7 @@ impl UnresolvedDataSource {
             "source" => format_args!("{:?}", &self.source),
         );
         let source = match self.kind.as_str() {
-            "file/ipfs" => self
-                .source
-                .map(|src| src.file.link.parse().map(Source::Ipfs))
-                .transpose()?,
+            "file/ipfs" => Source::Ipfs(self.source.file.link.parse()?),
             _ => {
                 anyhow::bail!(
                     "offchain data source has invalid `kind`, expected `file/ipfs` but found {}",
@@ -193,7 +203,6 @@ pub struct UnresolvedDataSourceTemplate {
     pub name: String,
     pub mapping: UnresolvedMapping,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplate {

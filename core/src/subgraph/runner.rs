@@ -16,7 +16,7 @@ use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
-use graph::data_source::{self, offchain, DataSource, TriggerData};
+use graph::data_source::{offchain, DataSource, TriggerData};
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::convert::TryFrom;
@@ -223,18 +223,15 @@ where
             let (data_sources, runtime_hosts) =
                 self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
-            let mut onchain_data_sources = Vec::new();
-            for ds in data_sources {
-                match ds {
-                    DataSource::Onchain(ds) => onchain_data_sources.push(ds),
-                    DataSource::Offchain(ds) => {
-                        self.ctx.offchain_monitor.add_data_source(ds.clone())?
-                    }
+            for ds in &data_sources {
+                if let DataSource::Offchain(ds) = ds {
+                    self.ctx.offchain_monitor.add_data_source(ds.clone())?
                 }
             }
-            let data_sources = onchain_data_sources;
 
-            let filter = C::TriggerFilter::from_data_sources(data_sources.iter());
+            let filter = C::TriggerFilter::from_data_sources(
+                data_sources.iter().filter_map(DataSource::as_onchain),
+            );
 
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
@@ -260,10 +257,7 @@ where
 
             // Add entity operations for the new data sources to the block state
             // and add runtimes for the data sources to the subgraph instance.
-            self.persist_dynamic_data_sources(
-                &mut block_state.entity_cache,
-                data_sources.into_iter().map(DataSource::Onchain).collect(),
-            );
+            self.persist_dynamic_data_sources(&mut block_state.entity_cache, data_sources);
 
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
@@ -586,30 +580,16 @@ where
         source: offchain::Source,
         data: bytes::Bytes,
     ) -> Result<(), Error> {
-        let matching_data_sources = self
-            .ctx
-            .offchain_monitor
-            .data_sources
-            .iter()
-            .filter(|ds| ds.source.as_ref() == Some(&source));
-
-        let mut block_state =
-            BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
+        let block_state = BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
         let entity_cache = std::mem::take(&mut self.state.entity_lfu_cache);
 
-        self.persist_dynamic_data_sources(
-            &mut block_state.entity_cache,
-            matching_data_sources
-                .cloned()
-                .map(data_source::DataSource::Offchain)
-                .collect(),
-        );
+        // TODO: Set per-file causality region
+        // let causality_region = match &source {
+        //     offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
+        // };
 
-        let causality_region = match &source {
-            offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
-        };
         let trigger = TriggerData::Offchain(offchain::TriggerData {
-            source: source.clone(),
+            source,
             data: Arc::new(data),
         });
 
@@ -622,7 +602,7 @@ where
                 &trigger,
                 block_state,
                 &None,
-                &causality_region,
+                "IPFS TODO",
                 &self.inputs.debug_fork,
                 &self.metrics.subgraph,
             )

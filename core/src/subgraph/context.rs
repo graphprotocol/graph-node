@@ -67,11 +67,7 @@ impl OffchainMonitor {
     }
 
     pub fn add_data_source(&mut self, ds: offchain::DataSource) -> Result<(), Error> {
-        let source = match &ds.source {
-            Some(source) => source,
-            None => anyhow::bail!("Failed to add offchain data source (missing source)"),
-        };
-        match source {
+        match ds.source {
             offchain::Source::Ipfs(cid) => self.ipfs_monitor.monitor(cid.clone()),
         };
         self.data_sources.push(ds);

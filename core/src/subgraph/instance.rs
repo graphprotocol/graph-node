@@ -76,9 +76,7 @@ where
 
             // Create services for static offchain data sources
             if let DataSource::Offchain(ds) = &ds {
-                if ds.source.is_some() {
-                    offchain_monitor.add_data_source(ds.clone())?;
-                }
+                offchain_monitor.add_data_source(ds.clone())?;
             }
 
             let host = this.new_host(
