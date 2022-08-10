@@ -106,6 +106,14 @@ impl DataSource {
             creation_block: stored.creation_block,
         })
     }
+
+    /// The concept of an address may or not make sense for an offchain data source, but this is
+    /// used as the value to be returned to mappings from the `dataSource.address()` host function.
+    pub fn address(&self) -> Option<Vec<u8>> {
+        match self.source {
+            Source::Ipfs(cid) => Some(cid.to_bytes()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

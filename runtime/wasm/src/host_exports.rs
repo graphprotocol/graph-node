@@ -84,7 +84,7 @@ impl<C: Blockchain> HostExports<C> {
             subgraph_id,
             api_version: data_source.api_version(),
             data_source_name: data_source.name().to_owned(),
-            data_source_address: data_source.address().unwrap_or_default().to_owned(),
+            data_source_address: data_source.address().unwrap_or_default(),
             data_source_context: data_source.context().cheap_clone(),
             causality_region: CausalityRegion::from_network(&data_source_network),
             data_source_network,

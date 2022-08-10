@@ -48,10 +48,10 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
-    pub fn address(&self) -> Option<&[u8]> {
+    pub fn address(&self) -> Option<Vec<u8>> {
         match self {
-            Self::Onchain(ds) => ds.address(),
-            Self::Offchain(_) => None,
+            Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
+            Self::Offchain(ds) => ds.address(),
         }
     }
 
