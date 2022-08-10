@@ -186,17 +186,23 @@ impl UnresolvedMapping {
     }
 }
 
-#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSourceTemplate<M> {
+#[derive(Clone, Debug, Deserialize)]
+pub struct UnresolvedDataSourceTemplate {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub mapping: UnresolvedMapping,
+}
+
+
+#[derive(Clone, Debug)]
+pub struct DataSourceTemplate {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
     pub manifest_idx: u32,
-    pub mapping: M,
+    pub mapping: Mapping,
 }
-
-pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
-pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
 
 impl UnresolvedDataSourceTemplate {
     pub async fn resolve(
