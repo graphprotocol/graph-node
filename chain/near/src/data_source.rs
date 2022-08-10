@@ -105,6 +105,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         Ok(Some(TriggerWithHandler::<Chain>::new(
             trigger.cheap_clone(),
             handler.to_owned(),
+            block.ptr(),
         )))
     }
 

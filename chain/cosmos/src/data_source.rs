@@ -77,6 +77,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         Ok(Some(TriggerWithHandler::<Chain>::new(
             trigger.cheap_clone(),
             handler,
+            block.ptr(),
         )))
     }
 

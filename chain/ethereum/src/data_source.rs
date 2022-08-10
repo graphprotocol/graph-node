@@ -490,6 +490,7 @@ impl DataSource {
                         block: block.cheap_clone(),
                     },
                     handler.handler,
+                    block.block_ptr(),
                 )))
             }
             EthereumTrigger::Log(log, receipt) => {
@@ -596,6 +597,7 @@ impl DataSource {
                         receipt: receipt.clone(),
                     },
                     event_handler.handler,
+                    block.block_ptr(),
                     logging_extras,
                 )))
             }
@@ -705,6 +707,7 @@ impl DataSource {
                         outputs,
                     },
                     handler.handler,
+                    block.block_ptr(),
                     logging_extras,
                 )))
             }

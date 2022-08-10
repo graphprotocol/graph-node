@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use graph::blockchain::{Block, Blockchain};
+use graph::blockchain::Blockchain;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -52,7 +52,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    block.ptr(),
+                    mapping_trigger.block_ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),

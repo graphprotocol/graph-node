@@ -1,5 +1,5 @@
 use crate::{
-    blockchain::Blockchain,
+    blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
@@ -68,6 +68,7 @@ impl DataSource {
         Some(TriggerWithHandler::new(
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),
+            BlockPtr::new(Default::default(), self.creation_block.unwrap_or(0)),
         ))
     }
 

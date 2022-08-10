@@ -2,7 +2,7 @@ pub mod offchain;
 
 use crate::{
     blockchain::{
-        Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
+        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
         UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
     },
     components::{
@@ -267,6 +267,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
 pub struct TriggerWithHandler<T> {
     pub trigger: T,
     handler: String,
+    block_ptr: BlockPtr,
     logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
 }
 
@@ -280,10 +281,11 @@ impl<T: fmt::Debug> fmt::Debug for TriggerWithHandler<T> {
 }
 
 impl<T> TriggerWithHandler<T> {
-    pub fn new(trigger: T, handler: String) -> Self {
+    pub fn new(trigger: T, handler: String, block_ptr: BlockPtr) -> Self {
         Self {
             trigger,
             handler,
+            block_ptr,
             logging_extras: Arc::new(slog::o! {}),
         }
     }
@@ -291,11 +293,13 @@ impl<T> TriggerWithHandler<T> {
     pub fn new_with_logging_extras(
         trigger: T,
         handler: String,
+        block_ptr: BlockPtr,
         logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
     ) -> Self {
         TriggerWithHandler {
             trigger,
             handler,
+            block_ptr,
             logging_extras,
         }
     }
@@ -313,8 +317,13 @@ impl<T> TriggerWithHandler<T> {
         TriggerWithHandler {
             trigger: f(self.trigger),
             handler: self.handler,
+            block_ptr: self.block_ptr,
             logging_extras: self.logging_extras,
         }
+    }
+
+    pub fn block_ptr(&self) -> BlockPtr {
+        self.block_ptr.clone()
     }
 }
 
