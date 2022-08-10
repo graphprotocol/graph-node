@@ -11,7 +11,7 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt::Display, iter, sync::Arc, time::Duration};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -23,11 +23,9 @@ use super::codec as firehose;
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
-    pub uri: String,
     pub token: Option<String>,
     pub filters_enabled: bool,
     channel: Channel,
-    _logger: Logger,
 }
 
 impl Display for FirehoseEndpoint {
@@ -37,13 +35,13 @@ impl Display for FirehoseEndpoint {
 }
 
 impl FirehoseEndpoint {
-    pub async fn new<S: AsRef<str>>(
-        logger: Logger,
+    pub fn new<S: AsRef<str>>(
         provider: S,
         url: S,
         token: Option<String>,
         filters_enabled: bool,
-    ) -> Result<Self, anyhow::Error> {
+        conn_pool_size: u16,
+    ) -> Self {
         let uri = url
             .as_ref()
             .parse::<Uri>()
@@ -73,19 +71,15 @@ impl FirehoseEndpoint {
             .connect_timeout(Duration::from_secs(10))
             .tcp_keepalive(Some(Duration::from_secs(15)));
 
-        let uri = endpoint.uri().to_string();
-        //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
-        //FirehoseEndpoint has all the info to report error - provider & uri
-        let channel = endpoint.connect_lazy();
+        // Load balancing on a same endpoint is useful because it creates a connection pool.
+        let channel = Channel::balance_list(iter::repeat(endpoint).take(conn_pool_size as usize));
 
-        Ok(FirehoseEndpoint {
+        FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
-            uri,
             channel,
             token,
-            _logger: logger,
             filters_enabled,
-        })
+        }
     }
 
     pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
