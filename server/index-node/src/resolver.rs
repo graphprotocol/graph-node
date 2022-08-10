@@ -528,7 +528,8 @@ impl<S: Store> IndexNodeResolver<S> {
                     )
                     .await?
                 }
-                BlockchainKind::Substream => unimplemented!(),
+                // TODO(filipe): Kick this can down the road!
+                BlockchainKind::Substreams => unimplemented!(),
             }
         };
 

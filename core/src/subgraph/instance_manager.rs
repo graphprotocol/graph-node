@@ -83,7 +83,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await
                 }
-                BlockchainKind::Substream => {
+                BlockchainKind::Substreams => {
                     instance_manager
                         .start_subgraph_inner::<graph_chain_substreams::Chain>(
                             logger,

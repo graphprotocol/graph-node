@@ -87,7 +87,7 @@ pub trait BlockStream<C: Blockchain>:
 /// BlockStreamBuilder is an abstraction that would separate the logic for building streams from the blockchain trait
 #[async_trait]
 pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         chain: &C,
         deployment: DeploymentLocator,
