@@ -49,7 +49,7 @@ impl OffchainMonitor {
         let (ipfs_monitor_tx, ipfs_monitor_rx) = mpsc::channel(10);
         let ipfs_service = IpfsService::new(
             client,
-            ENV_VARS.mappings.max_ipfs_file_bytes.unwrap_or(1 << 20) as u64,
+            ENV_VARS.mappings.max_ipfs_file_bytes as u64,
             ENV_VARS.mappings.ipfs_timeout,
             10,
         );

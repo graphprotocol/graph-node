@@ -33,7 +33,6 @@ impl CheapClone for IpfsService {
 }
 
 impl IpfsService {
-    #[allow(dead_code)]
     pub fn new(
         client: IpfsClient,
         max_file_size: u64,
