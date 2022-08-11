@@ -154,13 +154,19 @@ pub(super) fn insert(
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
-pub(super) fn copy(
+pub(crate) fn copy(
     conn: &PgConnection,
     src: &Site,
     dst: &Site,
     target_block: BlockNumber,
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
+
+    // Subgraphs that use private data sources have no data in the shared
+    // table
+    if src.schema_version.private_data_sources() {
+        return Ok(0);
+    }
 
     let src_nsp = if src.shard == dst.shard {
         "subgraphs".to_string()

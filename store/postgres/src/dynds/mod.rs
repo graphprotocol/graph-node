@@ -46,22 +46,6 @@ pub(crate) fn insert(
     }
 }
 
-pub(crate) fn copy(
-    conn: &PgConnection,
-    src: &Site,
-    dst: &Site,
-    target_block: BlockNumber,
-) -> Result<usize, StoreError> {
-    match src.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(src.namespace.clone()).copy_to(
-            conn,
-            &DataSourcesTable::new(dst.namespace.clone()),
-            target_block,
-        ),
-        false => shared::copy(conn, src, dst, target_block),
-    }
-}
-
 pub(crate) fn revert(
     conn: &PgConnection,
     site: &Site,

@@ -1256,9 +1256,13 @@ impl DeploymentStore {
 
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {
-                // Copy dynamic data sources and adjust their ID
+                // Copy shared dynamic data sources and adjust their ID; if
+                // the subgraph uses private data sources, that is done by
+                // `copy::Connection::copy_data` since it requires access to
+                // the source schema which in sharded setups is only
+                // available while that function runs
                 let start = Instant::now();
-                let count = dynds::copy(&conn, &src.site, &dst.site, block.number)?;
+                let count = dynds::shared::copy(&conn, &src.site, &dst.site, block.number)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 

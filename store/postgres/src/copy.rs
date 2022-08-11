@@ -34,6 +34,7 @@ use graph::{
 
 use crate::{
     advisory_lock,
+    dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
 };
 use crate::{connection_pool::ConnectionPool, relational::Layout};
@@ -632,6 +633,17 @@ impl Connection {
         self.conn.transaction(|| f(&self.conn))
     }
 
+    fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
+        if state.src.site.schema_version.private_data_sources() {
+            DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
+                &self.conn,
+                &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                state.target_block.number,
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
         let mut state = self.transaction(|conn| {
             CopyState::new(
@@ -661,6 +673,8 @@ impl Connection {
             }
             progress.table_finished(table);
         }
+
+        self.copy_private_data_sources(&state)?;
 
         self.transaction(|conn| state.finished(conn))?;
         progress.finished();

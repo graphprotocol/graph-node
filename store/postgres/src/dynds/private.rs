@@ -173,7 +173,7 @@ impl DataSourcesTable {
 
     /// Copy the dynamic data sources from `self` to `dst`. All data sources that
     /// were created up to and including `target_block` will be copied.
-    pub(super) fn copy_to(
+    pub(crate) fn copy_to(
         &self,
         conn: &PgConnection,
         dst: &DataSourcesTable,
