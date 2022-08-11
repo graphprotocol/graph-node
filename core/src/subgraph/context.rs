@@ -51,7 +51,7 @@ impl OffchainMonitor {
             client,
             ENV_VARS.mappings.max_ipfs_file_bytes as u64,
             ENV_VARS.mappings.ipfs_timeout,
-            10,
+            ENV_VARS.mappings.max_ipfs_concurrent_requests,
         );
         let ipfs_monitor = spawn_monitor(
             ipfs_service,
