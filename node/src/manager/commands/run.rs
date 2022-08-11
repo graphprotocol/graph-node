@@ -26,6 +26,7 @@ use graph::prelude::{
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
+use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -63,6 +64,12 @@ pub async fn run(
     // FIXME: Hard-coded IPFS config, take it from config file instead?
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &ipfs_url);
     let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
+    let ipfs_service = IpfsService::new(
+        ipfs_client,
+        ENV_VARS.mappings.max_ipfs_file_bytes as u64,
+        ENV_VARS.mappings.ipfs_timeout,
+        ENV_VARS.mappings.max_ipfs_concurrent_requests,
+    );
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
@@ -154,7 +161,7 @@ pub async fn run(
         blockchain_map.clone(),
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
-        ipfs_client,
+        ipfs_service,
         static_filters,
     );
 

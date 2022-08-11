@@ -13,6 +13,7 @@ use tower::Service;
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
 
+/// Reference type, clones will refer to the same service.
 #[derive(Clone)]
 pub struct IpfsService {
     client: IpfsClient,

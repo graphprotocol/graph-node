@@ -1,3 +1,4 @@
+use crate::polling_monitor::ipfs_service::IpfsService;
 use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
@@ -7,7 +8,6 @@ use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
-use graph::ipfs_client::IpfsClient;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -25,7 +25,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<dyn LinkResolver>,
-    ipfs_client: IpfsClient,
+    ipfs_service: IpfsService,
     static_filters: bool,
 }
 
@@ -137,7 +137,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<dyn MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
-        ipfs_client: IpfsClient,
+        ipfs_service: IpfsService,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -151,7 +151,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
-            ipfs_client,
+            ipfs_service,
             static_filters,
         }
     }
@@ -303,7 +303,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
-            self.ipfs_client.cheap_clone(),
+            self.ipfs_service.cheap_clone(),
         );
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in

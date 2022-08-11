@@ -11,8 +11,6 @@ use graph::{
     blockchain::Blockchain,
     components::store::DeploymentId,
     data_source::offchain,
-    env::ENV_VARS,
-    ipfs_client::IpfsClient,
     prelude::{CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder},
     slog::Logger,
     tokio::sync::mpsc,
@@ -44,15 +42,9 @@ impl OffchainMonitor {
         logger: Logger,
         registry: Arc<dyn MetricsRegistry>,
         subgraph_hash: &DeploymentHash,
-        client: IpfsClient,
+        ipfs_service: IpfsService,
     ) -> Self {
         let (ipfs_monitor_tx, ipfs_monitor_rx) = mpsc::channel(10);
-        let ipfs_service = IpfsService::new(
-            client,
-            ENV_VARS.mappings.max_ipfs_file_bytes as u64,
-            ENV_VARS.mappings.ipfs_timeout,
-            ENV_VARS.mappings.max_ipfs_concurrent_requests,
-        );
         let ipfs_monitor = spawn_monitor(
             ipfs_service,
             ipfs_monitor_tx,
