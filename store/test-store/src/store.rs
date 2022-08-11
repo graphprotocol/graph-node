@@ -154,7 +154,7 @@ pub async fn create_subgraph(
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
-    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+    let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
         spec_version: Version::new(1, 0, 0),
         features: BTreeSet::new(),

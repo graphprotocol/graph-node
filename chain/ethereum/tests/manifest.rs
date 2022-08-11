@@ -164,7 +164,7 @@ specVersion: 0.0.7
     };
     assert_eq!(
         data_source.source,
-        Some(offchain::Source::Ipfs(FILE_CID.parse().unwrap()))
+        offchain::Source::Ipfs(FILE_CID.parse().unwrap())
     );
 }
 

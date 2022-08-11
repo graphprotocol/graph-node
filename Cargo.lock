@@ -1568,7 +1568,6 @@ dependencies = [
  "envconfig",
  "futures 0.1.31",
  "graph",
- "graph-core",
  "graph-runtime-derive",
  "graph-runtime-wasm",
  "hex",
@@ -4168,7 +4167,6 @@ version = "0.27.0"
 dependencies = [
  "diesel",
  "graph",
- "graph-chain-ethereum",
  "graph-graphql",
  "graph-mock",
  "graph-node",

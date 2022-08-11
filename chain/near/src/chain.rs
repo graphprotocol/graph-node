@@ -821,6 +821,7 @@ mod test {
         codec::Block {
             header: Some(BlockHeader {
                 height,
+                hash: Some(codec::CryptoHash { bytes: vec![0; 32] }),
                 ..Default::default()
             }),
             shards: vec![IndexerShard {
