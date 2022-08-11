@@ -335,7 +335,7 @@ where
 
         // Check for offchain events and process them, including their entity modifications.
         {
-            let offchain_events = self.queued_offchain_events().await?;
+            let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
             let offchain_mods = self.handle_offchain_triggers(offchain_events).await?;
             mods.extend(offchain_mods);
         }
@@ -572,25 +572,6 @@ where
         Ok(action)
     }
 
-    async fn queued_offchain_events(&mut self) -> Result<Vec<offchain::TriggerData>, Error> {
-        use graph::tokio::sync::mpsc::error::TryRecvError;
-
-        let mut triggers = vec![];
-        loop {
-            match self.ctx.offchain_monitor.ipfs_monitor_rx.try_recv() {
-                Ok((cid, data)) => triggers.push(offchain::TriggerData {
-                    source: offchain::Source::Ipfs(cid),
-                    data: Arc::new(data),
-                }),
-                Err(TryRecvError::Disconnected) => {
-                    anyhow::bail!("ipfs monitor unexpectedly terminated")
-                }
-                Err(TryRecvError::Empty) => break,
-            }
-        }
-        Ok(triggers)
-    }
-
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
@@ -604,12 +585,14 @@ where
                 offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
             };
 
+            // We'll eventually need to do better here, but using an empty block works for now.
+            let block = Arc::default();
             block_state = self
                 .ctx
                 .instance
                 .process_trigger(
                     &self.logger,
-                    &Arc::default(),
+                    &block,
                     &TriggerData::Offchain(trigger),
                     block_state,
                     &None,

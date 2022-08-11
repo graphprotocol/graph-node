@@ -28,13 +28,13 @@ where
     pub instance: SubgraphInstance<C, T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,
-    pub offchain_monitor: OffchainMonitor,
+    pub(crate) offchain_monitor: OffchainMonitor,
 }
 
-pub struct OffchainMonitor {
+pub(crate) struct OffchainMonitor {
     ipfs_monitor: PollingMonitor<Cid>,
-    pub ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
-    pub data_sources: Vec<offchain::DataSource>,
+    ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
+    data_sources: Vec<offchain::DataSource>,
 }
 
 impl OffchainMonitor {
@@ -64,5 +64,24 @@ impl OffchainMonitor {
         };
         self.data_sources.push(ds);
         Ok(())
+    }
+
+    pub fn ready_offchain_events(&mut self) -> Result<Vec<offchain::TriggerData>, Error> {
+        use graph::tokio::sync::mpsc::error::TryRecvError;
+
+        let mut triggers = vec![];
+        loop {
+            match self.ipfs_monitor_rx.try_recv() {
+                Ok((cid, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Ipfs(cid),
+                    data: Arc::new(data),
+                }),
+                Err(TryRecvError::Disconnected) => {
+                    anyhow::bail!("ipfs monitor unexpectedly terminated")
+                }
+                Err(TryRecvError::Empty) => break,
+            }
+        }
+        Ok(triggers)
     }
 }
