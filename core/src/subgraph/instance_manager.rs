@@ -8,6 +8,8 @@ use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::components::subgraph::ProofOfIndexingVersion;
+use graph::data::subgraph::SPEC_VERSION_0_0_6;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -319,6 +321,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let features = manifest.features.clone();
         let unified_api_version = manifest.unified_mapping_api_version()?;
+        let poi_version = if manifest.spec_version.ge(&SPEC_VERSION_0_0_6) {
+            ProofOfIndexingVersion::Fast
+        } else {
+            ProofOfIndexingVersion::Legacy
+        };
+
         let instance = SubgraphInstance::from_manifest(
             &logger,
             manifest,
@@ -341,6 +349,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             unified_api_version,
             static_filters: self.static_filters,
             manifest_idx_and_name,
+            poi_version,
+            network,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

@@ -1,6 +1,9 @@
 use graph::{
     blockchain::{Blockchain, TriggersAdapter},
-    components::store::{DeploymentLocator, SubgraphFork, WritableStore},
+    components::{
+        store::{DeploymentLocator, SubgraphFork, WritableStore},
+        subgraph::ProofOfIndexingVersion,
+    },
     data::subgraph::{SubgraphFeature, UnifiedMappingApiVersion},
     data_source::DataSourceTemplate,
     prelude::BlockNumber,
@@ -20,6 +23,8 @@ pub struct IndexingInputs<C: Blockchain> {
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub unified_api_version: UnifiedMappingApiVersion,
     pub static_filters: bool,
+    pub poi_version: ProofOfIndexingVersion,
+    pub network: String,
 
     // Correspondence between data source or template position in the manifest and name.
     pub manifest_idx_and_name: Vec<(u32, String)>,

@@ -3,9 +3,8 @@ use graph::{
     blockchain::Blockchain,
     components::{
         store::SubgraphFork,
-        subgraph::{MappingError, ProofOfIndexingVersion, SharedProofOfIndexing},
+        subgraph::{MappingError, SharedProofOfIndexing},
     },
-    data::subgraph::SPEC_VERSION_0_0_6,
     data_source::{DataSource, DataSourceTemplate, TriggerData},
     prelude::*,
 };
@@ -16,7 +15,6 @@ use super::context::OffchainMonitor;
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
-    pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     templates: Arc<Vec<DataSourceTemplate<C>>>,
@@ -50,19 +48,12 @@ where
         let network = manifest.network_name();
         let templates = Arc::new(manifest.templates);
 
-        let poi_version = if manifest.spec_version.ge(&SPEC_VERSION_0_0_6) {
-            ProofOfIndexingVersion::Fast
-        } else {
-            ProofOfIndexingVersion::Legacy
-        };
-
         let mut this = SubgraphInstance {
             host_builder,
             subgraph_id,
             network,
             hosts: Vec::new(),
             module_cache: HashMap::new(),
-            poi_version,
             trigger_processor,
             templates,
             host_metrics,
@@ -197,9 +188,5 @@ where
         {
             self.hosts.pop();
         }
-    }
-
-    pub(crate) fn network(&self) -> &str {
-        &self.network
     }
 }

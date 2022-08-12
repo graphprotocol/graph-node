@@ -167,14 +167,14 @@ where
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
                 block_ptr.number,
-                self.ctx.instance.poi_version.clone(),
+                self.inputs.poi_version,
             ))))
         } else {
             None
         };
 
         // Causality region for onchain triggers.
-        let causality_region = CausalityRegion::from_network(self.ctx.instance.network());
+        let causality_region = CausalityRegion::from_network(&self.inputs.network);
 
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
