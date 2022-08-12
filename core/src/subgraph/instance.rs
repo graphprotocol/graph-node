@@ -19,6 +19,8 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    templates: Arc<Vec<DataSourceTemplate<C>>>,
+    host_metrics: Arc<HostMetrics>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -62,6 +64,8 @@ where
             module_cache: HashMap::new(),
             poi_version,
             trigger_processor,
+            templates,
+            host_metrics,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
@@ -79,13 +83,7 @@ where
                 offchain_monitor.add_data_source(ds.clone())?;
             }
 
-            let host = this.new_host(
-                logger.cheap_clone(),
-                ds,
-                module_bytes,
-                templates.cheap_clone(),
-                host_metrics.cheap_clone(),
-            )?;
+            let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;
             this.hosts.push(Arc::new(host));
         }
 
@@ -99,8 +97,6 @@ where
         logger: Logger,
         data_source: DataSource<C>,
         module_bytes: &Arc<Vec<u8>>,
-        templates: Arc<Vec<DataSourceTemplate<C>>>,
-        host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
             let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
@@ -111,7 +107,7 @@ where
                     module_bytes.as_ref(),
                     logger,
                     self.subgraph_id.clone(),
-                    host_metrics.clone(),
+                    self.host_metrics.cheap_clone(),
                 )?;
                 self.module_cache.insert(module_hash, sender.clone());
                 sender
@@ -121,9 +117,9 @@ where
             self.network.clone(),
             self.subgraph_id.clone(),
             data_source,
-            templates,
+            self.templates.cheap_clone(),
             mapping_request_sender,
-            host_metrics,
+            self.host_metrics.cheap_clone(),
         )
     }
 
@@ -157,8 +153,6 @@ where
         &mut self,
         logger: &Logger,
         data_source: DataSource<C>,
-        templates: Arc<Vec<DataSourceTemplate<C>>>,
-        metrics: Arc<HostMetrics>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
@@ -182,13 +176,7 @@ where
             Some(ref module_bytes) => module_bytes.cheap_clone(),
         };
 
-        let host = Arc::new(self.new_host(
-            logger.clone(),
-            data_source,
-            &module_bytes,
-            templates,
-            metrics,
-        )?);
+        let host = Arc::new(self.new_host(logger.clone(), data_source, &module_bytes)?);
 
         Ok(if self.hosts.contains(&host) {
             None

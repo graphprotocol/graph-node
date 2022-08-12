@@ -483,12 +483,10 @@ where
             let data_source = DataSource::try_from(info)?;
 
             // Try to create a runtime host for the data source
-            let host = self.ctx.instance.add_dynamic_data_source(
-                &self.logger,
-                data_source.clone(),
-                self.inputs.templates.clone(),
-                self.metrics.host.clone(),
-            )?;
+            let host = self
+                .ctx
+                .instance
+                .add_dynamic_data_source(&self.logger, data_source.clone())?;
 
             match host {
                 Some(host) => {
