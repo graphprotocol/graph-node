@@ -173,7 +173,7 @@ where
             None
         };
 
-        // There are currently no other causality regions since offchain data is not supported.
+        // Causality region for onchain triggers.
         let causality_region = CausalityRegion::from_network(self.ctx.instance.network());
 
         // Process events one after the other, passing in entity operations
@@ -201,7 +201,7 @@ where
                 // In case of a possible reorg, we want this function to do nothing and restart the
                 // block stream so it has a chance to detect the reorg.
                 //
-                // The `state` is unchanged at this point, except for having cleared the entity cache.
+                // The state is unchanged at this point, except for having cleared the entity cache.
                 // Losing the cache is a bit annoying but not an issue for correctness.
                 //
                 // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
@@ -333,7 +333,8 @@ where
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
-        // Check for offchain events and process them, including their entity modifications.
+        // Check for offchain events and process them, including their entity modifications in the
+        // set to be transacted.
         {
             let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
             let offchain_mods = self.handle_offchain_triggers(offchain_events).await?;
