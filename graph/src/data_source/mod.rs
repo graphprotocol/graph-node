@@ -48,6 +48,13 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn as_offchain(&self) -> Option<&offchain::DataSource> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(ds) => Some(&ds),
+        }
+    }
+
     pub fn address(&self) -> Option<Vec<u8>> {
         match self {
             Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
@@ -119,7 +126,10 @@ impl<C: Blockchain> DataSource<C> {
         match (self, other) {
             (Self::Onchain(a), Self::Onchain(b)) => a.is_duplicate_of(b),
             (Self::Offchain(a), Self::Offchain(b)) => {
-                a.kind == b.kind && a.name == b.name && a.source == b.source
+                a.kind == b.kind
+                    && a.name == b.name
+                    && a.source == b.source
+                    && a.context == b.context
             }
             _ => false,
         }

@@ -130,10 +130,16 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         logger: &Logger,
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
-        if let DataSource::Offchain(ds) = &data_source {
-            self.offchain_monitor.add_source(&ds.source)?;
+        let source = data_source.as_offchain().map(|ds| ds.source.clone());
+        let host = self.instance.add_dynamic_data_source(logger, data_source)?;
+
+        if host.is_some() {
+            if let Some(source) = source {
+                self.offchain_monitor.add_source(&source)?;
+            }
         }
-        self.instance.add_dynamic_data_source(logger, data_source)
+
+        Ok(host)
     }
 }
 
