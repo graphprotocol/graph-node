@@ -78,7 +78,7 @@ those.
   may use (in bytes, defaults to 256MB).
 - `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
-- `GRAPH_MAX_IPFS_CONCURRENT_REQUESTS`: maximum concurrent requests to IPFS from file data sources (defaults to 10).
+- `GRAPH_MAX_IPFS_CONCURRENT_REQUESTS`: maximum concurrent requests to IPFS from file data sources (defaults to 100).
 
 ## GraphQL
 

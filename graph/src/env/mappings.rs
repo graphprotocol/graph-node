@@ -106,7 +106,7 @@ pub struct InnerMappingHandlers {
     max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES", default = "")]
     max_ipfs_file_bytes: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
-    #[envconfig(from = "GRAPH_MAX_IPFS_CONCURRENT_REQUESTS", default = "10")]
+    #[envconfig(from = "GRAPH_MAX_IPFS_CONCURRENT_REQUESTS", default = "100")]
     max_ipfs_concurrent_requests: u16,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
     allow_non_deterministic_ipfs: EnvVarBoolean,
