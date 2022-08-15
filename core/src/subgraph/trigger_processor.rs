@@ -61,6 +61,13 @@ where
                 .await?;
             let elapsed = start.elapsed().as_secs_f64();
             subgraph_metrics.observe_trigger_processing_duration(elapsed);
+
+            if host.data_source().as_offchain().is_some() {
+                // Remove this offchain data source since it has just been processed.
+                state
+                    .offchain_to_remove
+                    .push(host.data_source().as_stored_dynamic_data_source());
+            }
         }
 
         if let Some(proof_of_indexing) = proof_of_indexing {

@@ -211,6 +211,7 @@ pub trait WritableStore: Send + Sync + 'static {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of

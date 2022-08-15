@@ -233,6 +233,7 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
             Vec::new(),
+            Vec::new(),
         )
         .await?;
     flush(deployment).await
@@ -307,6 +308,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
             data_sources,
             Vec::new(),
             manifest_idx_and_name,
+            Vec::new(),
         )
         .await
 }

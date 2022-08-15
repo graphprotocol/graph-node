@@ -6,7 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
-use graph::components::store::EntityKey;
+use graph::components::store::{EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -327,11 +327,10 @@ where
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
-        {
-            let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-            let offchain_mods = self.handle_offchain_triggers(offchain_events).await?;
-            mods.extend(offchain_mods);
-        }
+        let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
+        let (offchain_mods, offchain_to_remove) =
+            self.handle_offchain_triggers(offchain_events).await?;
+        mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
         assert!(self.state.entity_lfu_cache.is_empty());
@@ -385,6 +384,7 @@ where
                 data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
+                offchain_to_remove,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -564,7 +564,7 @@ where
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
-    ) -> Result<Vec<EntityModification>, Error> {
+    ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         // TODO: Dont expose store with onchain entites
         let mut block_state =
             BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
@@ -604,7 +604,8 @@ where
             "Attempted to create data source in offchain data source handler. This is not yet supported.",
         );
 
-        Ok(block_state.entity_cache.as_modifications()?.modifications)
+        let mods = block_state.entity_cache.as_modifications()?.modifications;
+        Ok((mods, block_state.offchain_to_remove))
     }
 }
 

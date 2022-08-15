@@ -1579,6 +1579,7 @@ fn handle_large_string_with_index() {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                Vec::new(),
             )
             .await
             .expect("Failed to insert large text");
@@ -1674,6 +1675,7 @@ fn handle_large_bytea_with_index() {
                     make_insert_op(TWO, &other_bytea),
                 ],
                 &stopwatch_metrics,
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),

@@ -741,7 +741,6 @@ fn mixed_parent_child_id() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
-        dbg!(&data);
     })
 }
 

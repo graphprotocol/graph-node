@@ -220,4 +220,48 @@ impl DataSourcesTable {
 
         Ok(count)
     }
+
+    // Remove offchain data sources by checking for equality. Their range will be set to the empty range.
+    pub(super) fn remove_offchain(
+        &self,
+        conn: &PgConnection,
+        data_sources: &[StoredDynamicDataSource],
+    ) -> Result<(), StoreError> {
+        for ds in data_sources {
+            let StoredDynamicDataSource {
+                manifest_idx,
+                param,
+                context,
+                creation_block,
+            } = ds;
+
+            let query = format!(
+                "update {} set block_range = 'empty'::int4range \
+                 where manifest_idx = $1
+                    and param is not distinct from $2
+                    and context is not distinct from $3
+                    and lower(block_range) is not distinct from $4",
+                self.qname
+            );
+
+            let count = sql_query(query)
+                .bind::<Integer, _>(*manifest_idx as i32)
+                .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
+                .bind::<Nullable<Jsonb>, _>(context)
+                .bind::<Nullable<Integer>, _>(creation_block)
+                .execute(conn)?;
+
+            if count > 1 {
+                // Data source deduplication enforces this invariant.
+                // See also: data-source-is-duplicate-of
+                return Err(constraint_violation!(
+                    "expected to remove at most one offchain data source but removed {}, ds: {:?}",
+                    count,
+                    ds
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }

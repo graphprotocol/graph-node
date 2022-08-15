@@ -108,6 +108,7 @@ impl WritableStore for MockStore {
         _: Vec<StoredDynamicDataSource>,
         _: Vec<SubgraphError>,
         _: Vec<(u32, String)>,
+        _: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         unimplemented!()
     }

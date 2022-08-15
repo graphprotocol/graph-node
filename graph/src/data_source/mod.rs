@@ -126,10 +126,8 @@ impl<C: Blockchain> DataSource<C> {
         match (self, other) {
             (Self::Onchain(a), Self::Onchain(b)) => a.is_duplicate_of(b),
             (Self::Offchain(a), Self::Offchain(b)) => {
-                a.kind == b.kind
-                    && a.name == b.name
-                    && a.source == b.source
-                    && a.context == b.context
+                // See also: data-source-is-duplicate-of
+                a.manifest_idx == b.manifest_idx && a.source == b.source && a.context == b.context
             }
             _ => false,
         }
