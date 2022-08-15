@@ -140,7 +140,7 @@ impl FirehoseEndpoint {
             .blocks(firehose::Request {
                 start_block_num: number as i64,
                 stop_block_num: number as u64,
-                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepIrreversible as i32],
+                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
                 ..Default::default()
             })
             .await?;
