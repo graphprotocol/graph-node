@@ -152,7 +152,7 @@ fn validate_query(
     let errors = {
         let cached = GRAPHQL_VALIDATION_CACHE
             .lock()
-            .get(&query.shape_hash)
+            .get(&query.validation_hash)
             .cloned();
         match cached {
             Some(cached) => cached,
@@ -161,7 +161,7 @@ fn validate_query(
                     validate(&document, &query.document, &GRAPHQL_VALIDATION_PLAN);
                 GRAPHQL_VALIDATION_CACHE
                     .lock()
-                    .insert(query.shape_hash, validation_errors.clone());
+                    .insert(query.validation_hash, validation_errors.clone());
                 validation_errors
             }
         }

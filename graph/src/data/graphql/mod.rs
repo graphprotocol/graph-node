@@ -22,6 +22,7 @@ pub use self::values::{
 };
 
 pub mod shape_hash;
+pub mod validation_hash;
 
 pub mod effort;
 

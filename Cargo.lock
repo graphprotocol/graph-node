@@ -1482,6 +1482,7 @@ dependencies = [
  "futures 0.1.31",
  "futures 0.3.16",
  "graphql-parser",
+ "graphql-tools",
  "hex",
  "http",
  "isatty",
@@ -1499,6 +1500,7 @@ dependencies = [
  "prost-types",
  "rand",
  "reqwest",
+ "second-stack",
  "semver",
  "serde",
  "serde_derive",
@@ -1941,9 +1943,9 @@ dependencies = [
 
 [[package]]
 name = "graphql-tools"
-version = "0.0.20"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a792425b9e2ed860d0c1393dab3cb56af6d96558b64b469b99d1e58e43c16b8a"
+checksum = "13c437afbde2b7eabd07ba68dbcdaa33e0bb122032a235623036f6f8c2f78d3b"
 dependencies = [
  "graphql-parser",
  "serde",
@@ -3635,6 +3637,12 @@ dependencies = [
  "ring",
  "untrusted",
 ]
+
+[[package]]
+name = "second-stack"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4904c83c6e51f1b9b08bfa5a86f35a51798e8307186e6f5513852210a219c0bb"
 
 [[package]]
 name = "secp256k1"
