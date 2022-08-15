@@ -1,34 +1,125 @@
-use crate::{
-    polling_monitor::{
-        ipfs_service::IpfsService, spawn_monitor, PollingMonitor, PollingMonitorMetrics,
-    },
-    subgraph::SubgraphInstance,
+pub mod instance;
+
+use crate::polling_monitor::{
+    ipfs_service::IpfsService, spawn_monitor, PollingMonitor, PollingMonitorMetrics,
 };
 use anyhow::{self, Error};
 use bytes::Bytes;
 use cid::Cid;
 use graph::{
     blockchain::Blockchain,
-    components::store::DeploymentId,
-    data_source::offchain,
-    prelude::{CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder},
+    components::{
+        store::{DeploymentId, SubgraphFork},
+        subgraph::{MappingError, SharedProofOfIndexing},
+    },
+    data_source::{offchain, DataSource, TriggerData},
+    prelude::{
+        BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
+        SubgraphInstanceMetrics, TriggerProcessor,
+    },
     slog::Logger,
     tokio::sync::mpsc,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use self::instance::SubgraphInstance;
+
 pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
-pub struct IndexingContext<C, T>
+pub(crate) struct IndexingContext<C, T>
 where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
 {
-    pub instance: SubgraphInstance<C, T>,
+    instance: SubgraphInstance<C, T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,
     pub(crate) offchain_monitor: OffchainMonitor,
+    trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+}
+
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
+    pub fn new(
+        instance: SubgraphInstance<C, T>,
+        instances: SharedInstanceKeepAliveMap,
+        filter: C::TriggerFilter,
+        offchain_monitor: OffchainMonitor,
+        trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    ) -> Self {
+        Self {
+            instance,
+            instances,
+            filter,
+            offchain_monitor,
+            trigger_processor,
+        }
+    }
+
+    pub async fn process_trigger(
+        &self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        trigger: &TriggerData<C>,
+        state: BlockState<C>,
+        proof_of_indexing: &SharedProofOfIndexing,
+        causality_region: &str,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<BlockState<C>, MappingError> {
+        self.trigger_processor
+            .process_trigger(
+                logger,
+                &self.instance.hosts(),
+                block,
+                trigger,
+                state,
+                proof_of_indexing,
+                causality_region,
+                debug_fork,
+                subgraph_metrics,
+            )
+            .await
+    }
+
+    pub async fn process_trigger_in_hosts(
+        &self,
+        logger: &Logger,
+        hosts: &[Arc<T::Host>],
+        block: &Arc<C::Block>,
+        trigger: &TriggerData<C>,
+        state: BlockState<C>,
+        proof_of_indexing: &SharedProofOfIndexing,
+        causality_region: &str,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+    ) -> Result<BlockState<C>, MappingError> {
+        self.trigger_processor
+            .process_trigger(
+                logger,
+                hosts,
+                block,
+                trigger,
+                state,
+                proof_of_indexing,
+                causality_region,
+                debug_fork,
+                subgraph_metrics,
+            )
+            .await
+    }
+
+    pub fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
+        self.instance.revert_data_sources(reverted_block)
+    }
+
+    pub fn add_dynamic_data_source(
+        &mut self,
+        logger: &Logger,
+        data_source: DataSource<C>,
+    ) -> Result<Option<Arc<T::Host>>, Error> {
+        self.instance.add_dynamic_data_source(logger, data_source)
+    }
 }
 
 pub(crate) struct OffchainMonitor {

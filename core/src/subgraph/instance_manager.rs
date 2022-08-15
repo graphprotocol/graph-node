@@ -3,7 +3,6 @@ use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::runner::SubgraphRunner;
-use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
@@ -327,11 +326,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ProofOfIndexingVersion::Legacy
         };
 
-        let instance = SubgraphInstance::from_manifest(
+        let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
             host_builder,
-            tp,
             host_metrics.clone(),
             &mut offchain_monitor,
         )?;
@@ -354,12 +352,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         };
 
         // The subgraph state tracks the state of the subgraph instance over time
-        let ctx = IndexingContext {
+        let ctx = IndexingContext::new(
             instance,
-            instances: self.instances.cheap_clone(),
+            self.instances.cheap_clone(),
             filter,
             offchain_monitor,
-        };
+            tp,
+        );
 
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,

@@ -1,22 +1,17 @@
 use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::Blockchain,
-    components::{
-        store::SubgraphFork,
-        subgraph::{MappingError, SharedProofOfIndexing},
-    },
-    data_source::{DataSource, DataSourceTemplate, TriggerData},
+    data_source::{DataSource, DataSourceTemplate},
     prelude::*,
 };
 use std::collections::HashMap;
 
-use super::context::OffchainMonitor;
+use super::OffchainMonitor;
 
-pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
-    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     templates: Arc<Vec<DataSourceTemplate<C>>>,
     host_metrics: Arc<HostMetrics>,
 
@@ -36,11 +31,10 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    pub(crate) fn from_manifest(
+    pub fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
         host_builder: T,
-        trigger_processor: Box<dyn TriggerProcessor<C, T>>,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
     ) -> Result<Self, Error> {
@@ -54,7 +48,6 @@ where
             network,
             hosts: Vec::new(),
             module_cache: HashMap::new(),
-            trigger_processor,
             templates,
             host_metrics,
         };
@@ -114,33 +107,7 @@ where
         )
     }
 
-    pub(crate) async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &TriggerData<C>,
-        state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<BlockState<C>, MappingError> {
-        self.trigger_processor
-            .process_trigger(
-                logger,
-                &self.hosts,
-                block,
-                trigger,
-                state,
-                proof_of_indexing,
-                causality_region,
-                debug_fork,
-                subgraph_metrics,
-            )
-            .await
-    }
-
-    pub(crate) fn add_dynamic_data_source(
+    pub(super) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
         data_source: DataSource<C>,
@@ -177,7 +144,7 @@ where
         })
     }
 
-    pub(crate) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
+    pub(super) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         // `hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self
@@ -188,5 +155,9 @@ where
         {
             self.hosts.pop();
         }
+    }
+
+    pub(super) fn hosts(&self) -> &[Arc<T::Host>] {
+        &self.hosts
     }
 }

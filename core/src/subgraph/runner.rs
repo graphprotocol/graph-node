@@ -27,7 +27,7 @@ const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub struct SubgraphRunner<C, T>
+pub(crate) struct SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
@@ -267,9 +267,7 @@ where
             for trigger in triggers {
                 block_state = self
                     .ctx
-                    .instance
-                    .trigger_processor
-                    .process_trigger(
+                    .process_trigger_in_hosts(
                         &logger,
                         &runtime_hosts,
                         &block,
@@ -448,7 +446,6 @@ where
         for trigger in triggers {
             block_state = self
                 .ctx
-                .instance
                 .process_trigger(
                     &self.logger,
                     block,
@@ -485,7 +482,6 @@ where
             // Try to create a runtime host for the data source
             let host = self
                 .ctx
-                .instance
                 .add_dynamic_data_source(&self.logger, data_source.clone())?;
 
             match host {
@@ -588,7 +584,6 @@ where
             let block = Arc::default();
             block_state = self
                 .ctx
-                .instance
                 .process_trigger(
                     &self.logger,
                     &block,
@@ -896,7 +891,7 @@ where
         // will be broader than necessary. This is not ideal for performance, but is not
         // incorrect since we will discard triggers that match the filters but do not
         // match any data sources.
-        self.ctx.instance.revert_data_sources(subgraph_ptr.number);
+        self.ctx.revert_data_sources(subgraph_ptr.number);
         self.state.entity_lfu_cache = LfuCache::new();
 
         Ok(Action::Continue)
