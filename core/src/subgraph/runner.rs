@@ -226,12 +226,6 @@ where
             let (data_sources, runtime_hosts) =
                 self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
 
-            for ds in &data_sources {
-                if let DataSource::Offchain(ds) = ds {
-                    self.ctx.offchain_monitor.add_data_source(ds.clone())?
-                }
-            }
-
             let filter = C::TriggerFilter::from_data_sources(
                 data_sources.iter().filter_map(DataSource::as_onchain),
             );
@@ -884,13 +878,8 @@ where
             .set(subgraph_ptr.number as f64);
 
         // Revert the in-memory state:
-        // - Remove hosts for reverted dynamic data sources.
+        // - Revert any dynamic data sources.
         // - Clear the entity cache.
-        //
-        // Note that we do not currently revert the filters, which means the filters
-        // will be broader than necessary. This is not ideal for performance, but is not
-        // incorrect since we will discard triggers that match the filters but do not
-        // match any data sources.
         self.ctx.revert_data_sources(subgraph_ptr.number);
         self.state.entity_lfu_cache = LfuCache::new();
 

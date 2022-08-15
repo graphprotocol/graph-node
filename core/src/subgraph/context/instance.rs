@@ -56,15 +56,18 @@ where
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         for ds in manifest.data_sources {
+            // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
+            // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
+            // `IndexingContext`.
+
             let runtime = ds.runtime();
             let module_bytes = match runtime {
                 None => continue,
                 Some(ref module_bytes) => module_bytes,
             };
 
-            // Create services for static offchain data sources
             if let DataSource::Offchain(ds) = &ds {
-                offchain_monitor.add_data_source(ds.clone())?;
+                offchain_monitor.add_source(&ds.source)?;
             }
 
             let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;

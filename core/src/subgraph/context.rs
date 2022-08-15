@@ -27,6 +27,11 @@ use self::instance::SubgraphInstance;
 
 pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
+// The context keeps track of mutable in-memory state that is retained across blocks.
+//
+// Currently most of the changes are applied in `runner.rs`, but ideally more of that would be
+// refactored into the context so it wouldn't need `pub` fields. The entity cache should probaby
+// also be moved here.
 pub(crate) struct IndexingContext<C, T>
 where
     T: RuntimeHostBuilder<C>,
@@ -35,7 +40,7 @@ where
     instance: SubgraphInstance<C, T>,
     pub instances: SharedInstanceKeepAliveMap,
     pub filter: C::TriggerFilter,
-    pub(crate) offchain_monitor: OffchainMonitor,
+    pub offchain_monitor: OffchainMonitor,
     trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 }
 
@@ -109,6 +114,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             .await
     }
 
+    // Removes data sources hosts with a creation block greater or equal to `reverted_block`, so
+    // that they are no longer candidates for `process_trigger`.
+    //
+    // This does not currently affect the `offchain_monitor` or the `filter`, so they will continue
+    // to include data sources that have been reverted. This is not ideal for performance, but it
+    // does not affect correctness since triggers that have no matching host will be ignored by
+    // `process_trigger`.
     pub fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         self.instance.revert_data_sources(reverted_block)
     }
@@ -118,6 +130,9 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         logger: &Logger,
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
+        if let DataSource::Offchain(ds) = &data_source {
+            self.offchain_monitor.add_source(&ds.source)?;
+        }
         self.instance.add_dynamic_data_source(logger, data_source)
     }
 }
@@ -125,7 +140,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 pub(crate) struct OffchainMonitor {
     ipfs_monitor: PollingMonitor<Cid>,
     ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
-    data_sources: Vec<offchain::DataSource>,
 }
 
 impl OffchainMonitor {
@@ -145,15 +159,13 @@ impl OffchainMonitor {
         Self {
             ipfs_monitor,
             ipfs_monitor_rx,
-            data_sources: Vec::new(),
         }
     }
 
-    pub fn add_data_source(&mut self, ds: offchain::DataSource) -> Result<(), Error> {
-        match ds.source {
+    fn add_source(&mut self, source: &offchain::Source) -> Result<(), Error> {
+        match source {
             offchain::Source::Ipfs(cid) => self.ipfs_monitor.monitor(cid.clone()),
         };
-        self.data_sources.push(ds);
         Ok(())
     }
 
