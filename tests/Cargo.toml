@@ -19,7 +19,7 @@ slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_tr
 
 [dev-dependencies]
 bollard = "0.10"
-anyhow = "1.0.60"
+anyhow = "1.0.61"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 serde_yaml = "0.8"
