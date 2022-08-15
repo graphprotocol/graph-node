@@ -218,6 +218,10 @@ where
 
 #[async_trait]
 impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
+    fn data_source(&self) -> &DataSource<C> {
+        &self.data_source
+    }
+
     fn match_and_decode(
         &self,
         trigger: &TriggerData<C>,

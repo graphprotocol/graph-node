@@ -46,6 +46,8 @@ impl MappingError {
 /// Common trait for runtime host implementations.
 #[async_trait]
 pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
+    fn data_source(&self) -> &DataSource<C>;
+
     fn match_and_decode(
         &self,
         trigger: &TriggerData<C>,
