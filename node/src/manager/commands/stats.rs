@@ -4,11 +4,8 @@ use std::sync::Arc;
 use crate::manager::deployment::DeploymentSearch;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
-use diesel::sql_query;
 use diesel::PgConnection;
-use diesel::RunQueryDsl;
 use graph::prelude::anyhow;
-use graph::prelude::anyhow::bail;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::connection_pool::ConnectionPool;
@@ -54,7 +51,6 @@ pub async fn account_like(
 pub fn show(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
-    table: Option<String>,
 ) -> Result<(), anyhow::Error> {
     let (site, conn) = site_and_conn(pools, search)?;
 
@@ -90,32 +86,6 @@ pub fn show(
         print_stats(s, account_like.contains(&s.tablename));
     }
     footer();
-
-    if let Some(table) = table {
-        if !stats.iter().any(|stat| stat.tablename == table) {
-            bail!(
-                "deployment {} does not have a table `{}`",
-                site.namespace,
-                table
-            );
-        }
-
-        println!("doing a full count on {}.{} ...", site.namespace, table);
-        let query = format!(
-            "select count(distinct id)::int4 as entities,
-                    count(*)::int4 as versions,
-                    '{table}' as tablename
-               from {nsp}.{table}",
-            nsp = &site.namespace,
-            table = table
-        );
-        // Using `VersionStats` this way is a little dangerous since it
-        // couples the query in store_catalog to this query, but since this
-        // is in a rarely used option to `stats show`, we'll live with the
-        // risk
-        let stat = sql_query(query).get_result::<store_catalog::VersionStats>(&conn)?;
-        print_stats(&stat, account_like.contains(&stat.tablename));
-    }
 
     Ok(())
 }
