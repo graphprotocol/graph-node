@@ -96,7 +96,7 @@ impl DataSourcesTable {
             ))
             .load::<Tuple>(conn)?;
 
-        Ok(tuples
+        let mut dses: Vec<_> = tuples
             .into_iter()
             .map(|(block_range, manifest_idx, param, context)| {
                 let creation_block = match block_range.0 {
@@ -112,7 +112,10 @@ impl DataSourcesTable {
                     creation_block,
                 }
             })
-            .collect())
+            .collect();
+        dses.sort_by_key(|v| v.creation_block);
+
+        Ok(dses)
     }
 
     pub(crate) fn insert(

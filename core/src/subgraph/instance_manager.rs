@@ -4,7 +4,6 @@ use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::runner::SubgraphRunner;
 use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::DataSource;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{Blockchain, DataSourceTemplate};
 use graph::blockchain::{BlockchainKind, TriggerFilter};
@@ -187,18 +186,15 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .await
             .context("Failed to resolve subgraph from IPFS")?;
 
+            // We cannot include static data sources in the map because a static data source and a
+            // template may have the same name in the manifest.
+            let ds_len = manifest.data_sources.len() as u32;
             let manifest_idx_and_name: Vec<(u32, String)> = manifest
-                .data_sources
+                .templates
                 .iter()
-                .map(|ds: &C::DataSource| ds.name().to_owned())
-                .chain(
-                    manifest
-                        .templates
-                        .iter()
-                        .map(|t: &C::DataSourceTemplate| t.name().to_owned()),
-                )
+                .map(|t: &C::DataSourceTemplate| t.name().to_owned())
                 .enumerate()
-                .map(|(idx, name)| (idx as u32, name))
+                .map(|(idx, name)| (ds_len + idx as u32, name))
                 .collect();
 
             let data_sources = load_dynamic_data_sources(
