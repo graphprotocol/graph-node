@@ -501,3 +501,35 @@ pub(crate) fn drop_index(
         .map_err::<StoreError, _>(Into::into)?;
     Ok(())
 }
+
+/// An estimate of the number of entities and the number of entity versions
+/// in a database table
+#[derive(Clone, Debug, Queryable, QueryableByName)]
+pub struct VersionStats {
+    #[sql_type = "Integer"]
+    pub entities: i32,
+    #[sql_type = "Integer"]
+    pub versions: i32,
+    #[sql_type = "Text"]
+    pub tablename: String,
+}
+
+pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionStats>, StoreError> {
+    let query = format!(
+        "select s.n_distinct::int4 as entities,
+                c.reltuples::int4  as versions,
+                c.relname as tablename
+           from pg_namespace n, pg_class c, pg_stats s
+          where n.nspname = $1
+            and c.relnamespace = n.oid
+            and s.schemaname = n.nspname
+            and s.attname = 'id'
+            and c.relname = s.tablename
+          order by c.relname"
+    );
+
+    sql_query(query)
+        .bind::<Text, _>(namespace.as_str())
+        .load::<VersionStats>(conn)
+        .map_err(StoreError::from)
+}

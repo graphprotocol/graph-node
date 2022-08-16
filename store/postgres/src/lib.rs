@@ -69,7 +69,7 @@ pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, P
 pub mod command_support {
     pub mod catalog {
         pub use crate::block_store::primary as block_store;
-        pub use crate::catalog::account_like;
+        pub use crate::catalog::{account_like, stats, VersionStats};
         pub use crate::copy::{copy_state, copy_table_state};
         pub use crate::primary::Connection;
         pub use crate::primary::{

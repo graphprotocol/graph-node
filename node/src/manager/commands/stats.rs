@@ -5,7 +5,6 @@ use crate::manager::deployment::DeploymentSearch;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::sql_query;
-use diesel::sql_types::{Integer, Text};
 use diesel::PgConnection;
 use diesel::RunQueryDsl;
 use graph::prelude::anyhow;
@@ -59,64 +58,38 @@ pub fn show(
 ) -> Result<(), anyhow::Error> {
     let (site, conn) = site_and_conn(pools, search)?;
 
-    #[derive(Queryable, QueryableByName)]
-    struct VersionStats {
-        #[sql_type = "Integer"]
-        entities: i32,
-        #[sql_type = "Integer"]
-        versions: i32,
-        #[sql_type = "Text"]
-        tablename: String,
+    fn header() {
+        println!(
+            "{:^30} | {:^10} | {:^10} | {:^7}",
+            "table", "entities", "versions", "ratio"
+        );
+        println!("{:-^30}-+-{:-^10}-+-{:-^10}-+-{:-^7}", "", "", "", "");
     }
 
-    impl VersionStats {
-        fn header() {
-            println!(
-                "{:^30} | {:^10} | {:^10} | {:^7}",
-                "table", "entities", "versions", "ratio"
-            );
-            println!("{:-^30}-+-{:-^10}-+-{:-^10}-+-{:-^7}", "", "", "", "");
-        }
-
-        fn print(&self, account_like: bool) {
-            println!(
-                "{:<26} {:3} | {:>10} | {:>10} | {:>5.1}%",
-                self.tablename,
-                if account_like { "(a)" } else { "   " },
-                self.entities,
-                self.versions,
-                self.entities as f32 * 100.0 / self.versions as f32
-            );
-        }
-
-        fn footer() {
-            println!("  (a): account-like flag set");
-        }
+    fn footer() {
+        println!("  (a): account-like flag set");
     }
 
-    let query = format!(
-        "select s.n_distinct::int4 as entities,
-                c.reltuples::int4  as versions,
-                c.relname as tablename
-           from pg_namespace n, pg_class c, pg_stats s
-          where n.nspname = $1
-            and c.relnamespace = n.oid
-            and s.schemaname = n.nspname
-            and s.attname = 'id'
-            and c.relname = s.tablename
-          order by c.relname"
-    );
-    let stats = sql_query(query)
-        .bind::<Text, _>(&site.namespace.as_str())
-        .load::<VersionStats>(&conn)?;
+    fn print_stats(s: &store_catalog::VersionStats, account_like: bool) {
+        println!(
+            "{:<26} {:3} | {:>10} | {:>10} | {:>5.1}%",
+            s.tablename,
+            if account_like { "(a)" } else { "   " },
+            s.entities,
+            s.versions,
+            s.entities as f32 * 100.0 / s.versions as f32
+        );
+    }
+
+    let stats = store_catalog::stats(&conn, &site.namespace)?;
 
     let account_like = store_catalog::account_like(&conn, &site)?;
 
-    VersionStats::header();
-    for stat in &stats {
-        stat.print(account_like.contains(&stat.tablename));
+    header();
+    for s in &stats {
+        print_stats(s, account_like.contains(&s.tablename));
     }
-    VersionStats::footer();
+    footer();
 
     if let Some(table) = table {
         if !stats.iter().any(|stat| stat.tablename == table) {
@@ -136,8 +109,12 @@ pub fn show(
             nsp = &site.namespace,
             table = table
         );
-        let stat = sql_query(query).get_result::<VersionStats>(&conn)?;
-        stat.print(account_like.contains(&stat.tablename));
+        // Using `VersionStats` this way is a little dangerous since it
+        // couples the query in store_catalog to this query, but since this
+        // is in a rarely used option to `stats show`, we'll live with the
+        // risk
+        let stat = sql_query(query).get_result::<store_catalog::VersionStats>(&conn)?;
+        print_stats(&stat, account_like.contains(&stat.tablename));
     }
 
     Ok(())
