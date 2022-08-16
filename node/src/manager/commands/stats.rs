@@ -73,7 +73,7 @@ pub fn show(
             if account_like { "(a)" } else { "   " },
             s.entities,
             s.versions,
-            s.entities as f32 * 100.0 / s.versions as f32
+            s.ratio * 100.0
         );
     }
 

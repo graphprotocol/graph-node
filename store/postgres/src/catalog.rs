@@ -3,7 +3,7 @@ use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{
-    sql_types::{Array, Nullable, Text},
+    sql_types::{Array, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
 use std::collections::{HashMap, HashSet};
@@ -512,13 +512,27 @@ pub struct VersionStats {
     pub versions: i32,
     #[sql_type = "Text"]
     pub tablename: String,
+    /// The ratio `entities / versions`
+    #[sql_type = "Double"]
+    pub ratio: f64,
 }
 
 pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionStats>, StoreError> {
+    // Get an estimate of number of rows (pg_class.reltuples) and number of
+    // distinct entities (based on the planners idea of how many distinct
+    // values there are in the `id` column) See the [Postgres
+    // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
+    // the precise meaning of n_distinct
     let query = format!(
-        "select s.n_distinct::int4 as entities,
-                c.reltuples::int4  as versions,
-                c.relname as tablename
+        "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
+                     else s.n_distinct::int4
+                 end as entities,
+                 c.reltuples::int4  as versions,
+                 c.relname as tablename,
+                case when c.reltuples = 0 then 0::float8
+                     when s.n_distinct < 0 then (-s.n_distinct)::float8
+                     else greatest(s.n_distinct, 1)::float8 / c.reltuples::float8
+                 end as ratio
            from pg_namespace n, pg_class c, pg_stats s
           where n.nspname = $1
             and c.relnamespace = n.oid
