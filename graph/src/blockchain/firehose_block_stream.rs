@@ -325,7 +325,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
                     metrics.observe_failed_connection(&mut connect_start);
 
-                    error!(logger, "Unable to connect to endpoint: {:?}", e);
+                    error!(logger, "Unable to connect to endpoint: {:#}", e);
                 }
             }
 
@@ -352,10 +352,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
     filter: &C::TriggerFilter,
     logger: &Logger,
 ) -> Result<BlockResponse<C>, Error> {
-    let response = match result {
-        Ok(v) => v,
-        Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:?}", e)),
-    };
+    let response = result.context("An error occurred while streaming blocks")?;
 
     let event = mapper
         .to_block_stream_event(logger, &response, adapter, filter)
