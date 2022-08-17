@@ -14,7 +14,7 @@ ARG TAG_NAME=unknown
 ADD . /graph-node
 
 RUN cd /graph-node \
-    && apt-get update && apt-get install -y cmake \
+    && apt-get update && apt-get install -y bc cmake curl jq \
     && rustup component add rustfmt \
     && RUSTFLAGS="-g" cargo install --locked --path node \
     && cargo clean \
