@@ -1290,6 +1290,13 @@ impl Table {
             .find(|column| column.is_primary_key())
             .expect("every table has a primary key")
     }
+
+    pub(crate) fn analyze(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        let table_name = &self.qualified_name;
+        let sql = format!("analyze {table_name}");
+        conn.execute(&sql)?;
+        Ok(())
+    }
 }
 
 /// Return the enclosed named type for a field type, i.e., the type after

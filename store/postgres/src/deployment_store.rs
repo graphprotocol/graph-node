@@ -698,10 +698,7 @@ impl DeploymentStore {
         let entity_name = entity_name.to_owned();
         let layout = store.layout(&conn, site)?;
         let table = resolve_table_name(&layout, &entity_name)?;
-        let table_name = &table.qualified_name;
-        let sql = format!("analyze {table_name}");
-        conn.execute(&sql)?;
-        Ok(())
+        table.analyze(conn)
     }
 
     /// Creates a new index in the specified Entity table if it doesn't already exist.
