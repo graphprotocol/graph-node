@@ -69,7 +69,9 @@ impl FirehoseEndpoint {
         let endpoint = endpoint_builder
             .initial_connection_window_size(Some((1 << 31) - 1))
             .connect_timeout(Duration::from_secs(10))
-            .tcp_keepalive(Some(Duration::from_secs(15)));
+            .tcp_keepalive(Some(Duration::from_secs(15)))
+            // Timeout on each request, so the timeout to estabilish each 'Blocks' stream.
+            .timeout(Duration::from_secs(30));
 
         // Load balancing on a same endpoint is useful because it creates a connection pool.
         let channel = Channel::balance_list(iter::repeat(endpoint).take(conn_pool_size as usize));
