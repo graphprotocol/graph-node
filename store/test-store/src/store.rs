@@ -286,7 +286,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
 ) -> Result<(), StoreError> {
     let store =
         futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))?;
-    let mut entity_cache = EntityCache::new(store.clone());
+    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications()

@@ -973,7 +973,7 @@ async fn test_entity_store(api_version: Version) {
     let writable = store.writable(LOGGER.clone(), deployment.id).await.unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
-        EntityCache::new(writable.clone()),
+        EntityCache::new(Arc::new(writable.clone())),
     );
     let mut mods = cache.as_modifications().unwrap().modifications;
     assert_eq!(1, mods.len());

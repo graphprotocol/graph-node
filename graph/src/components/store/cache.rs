@@ -8,7 +8,7 @@ use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
 use crate::data_source::DataSource;
-use crate::prelude::ENV_VARS;
+use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
 /// A cache for entities from the store that provides the basic functionality
@@ -35,7 +35,9 @@ pub struct EntityCache {
     data_sources: Vec<s::StoredDynamicDataSource>,
 
     /// The store is only used to read entities.
-    pub store: Arc<dyn s::WritableStore>,
+    pub store: Arc<dyn s::ReadStore>,
+
+    schema: Arc<Schema>,
 }
 
 impl Debug for EntityCache {
@@ -54,19 +56,20 @@ pub struct ModificationsAndCache {
 }
 
 impl EntityCache {
-    pub fn new(store: Arc<dyn s::WritableStore>) -> Self {
+    pub fn new(store: Arc<dyn s::ReadStore>) -> Self {
         Self {
             current: LfuCache::new(),
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
             data_sources: vec![],
+            schema: store.input_schema(),
             store,
         }
     }
 
     pub fn with_current(
-        store: Arc<dyn s::WritableStore>,
+        store: Arc<dyn s::ReadStore>,
         current: LfuCache<EntityKey, Option<Entity>>,
     ) -> EntityCache {
         EntityCache {
@@ -75,6 +78,7 @@ impl EntityCache {
             handler_updates: HashMap::new(),
             in_handler: false,
             data_sources: vec![],
+            schema: store.input_schema(),
             store,
         }
     }
@@ -147,12 +151,12 @@ impl EntityCache {
                 // The validation will catch the type mismatch
             }
             None => {
-                let value = self.store.input_schema().id_value(&key)?;
+                let value = self.schema.id_value(&key)?;
                 entity.set("id", value);
             }
         }
 
-        let is_valid = entity.validate(&self.store.input_schema(), &key).is_ok();
+        let is_valid = entity.validate(&self.schema, &key).is_ok();
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 
@@ -167,7 +171,7 @@ impl EntityCache {
                     key.entity_id
                 )
             })?;
-            entity.validate(&self.store.input_schema(), &key)?;
+            entity.validate(&self.schema, &key)?;
         }
 
         Ok(())
@@ -240,8 +244,7 @@ impl EntityCache {
         // is wrong and the store already has a version of the entity from a
         // previous block, the attempt to insert will trigger a constraint
         // violation in the database, ensuring correctness
-        let missing =
-            missing.filter(|key| !self.store.input_schema().is_immutable(&key.entity_type));
+        let missing = missing.filter(|key| !self.schema.is_immutable(&key.entity_type));
 
         let mut missing_by_type: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::new();
         for key in missing {
@@ -321,7 +324,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     // Helper for cached lookup of an entity.
     fn get_entity(
         &mut self,
-        store: &(impl s::WritableStore + ?Sized),
+        store: &(impl s::ReadStore + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, s::QueryExecutionError> {
         match self.get(key) {

@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::EntityKey;
+use graph::components::store::ReadStore;
 use graph::data::subgraph::schema;
 use graph::env::env_var;
 use graph::prelude::{
@@ -942,6 +943,23 @@ impl WritableStore {
     }
 }
 
+impl ReadStore for WritableStore {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        self.writer.get(key)
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        self.writer.get_many(ids_for_type)
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.store.input_schema()
+    }
+}
+
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
     fn block_ptr(&self) -> Option<BlockPtr> {
@@ -1012,10 +1030,6 @@ impl WritableStoreTrait for WritableStore {
         self.store.supports_proof_of_indexing().await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.writer.get(key)
-    }
-
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
@@ -1046,13 +1060,6 @@ impl WritableStoreTrait for WritableStore {
         Ok(())
     }
 
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.writer.get_many(ids_for_type)
-    }
-
     fn deployment_synced(&self) -> Result<(), StoreError> {
         self.store.deployment_synced()
     }
@@ -1080,10 +1087,6 @@ impl WritableStoreTrait for WritableStore {
 
     async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
         self.store.health().await
-    }
-
-    fn input_schema(&self) -> Arc<Schema> {
-        self.store.input_schema()
     }
 
     async fn flush(&self) -> Result<(), StoreError> {
