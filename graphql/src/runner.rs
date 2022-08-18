@@ -144,6 +144,7 @@ where
 
         // Note: This will always iterate at least once.
         for (bc, (selection_set, error_policy)) in by_block_constraint {
+            let query_start = Instant::now();
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
@@ -169,6 +170,7 @@ where
                 },
             )
             .await;
+            query_res.trace.finish(query_start.elapsed());
             result.append(query_res);
         }
 

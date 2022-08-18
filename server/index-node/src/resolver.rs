@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
+use graph::data::query::Trace;
 use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
@@ -722,8 +723,8 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        Ok(None)
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
+        Ok((None, Trace::None))
     }
 
     /// Resolves a scalar value for a given scalar type.

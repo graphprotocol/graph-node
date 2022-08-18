@@ -1,4 +1,5 @@
 use graph::components::store::UnitStream;
+use graph::data::query::Trace;
 use graph::prelude::{async_trait, s, tokio, ApiSchema, Error, QueryExecutionError};
 use graph::{
     data::graphql::ObjectOrInterface,
@@ -19,7 +20,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>>;
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>>;
 
     /// Resolves list of objects, `prefetched_objects` is `Some` if the parent already calculated the value.
     fn resolve_objects(

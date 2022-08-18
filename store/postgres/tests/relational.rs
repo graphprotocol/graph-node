@@ -729,6 +729,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
             BLOCK_NUMBER_MAX,
             None,
         )
+        .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
 }
@@ -963,6 +964,7 @@ fn revert_block() {
                     BLOCK_NUMBER_MAX,
                     None,
                 )
+                .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
             let mut skipped = 0;
@@ -1044,7 +1046,8 @@ impl<'a> QueryChecker<'a> {
                 BLOCK_NUMBER_MAX,
                 None,
             )
-            .expect("layout.query failed to execute query");
+            .expect("layout.query failed to execute query")
+            .0;
 
         let mut entity_ids: Vec<_> = entities
             .into_iter()
@@ -1701,7 +1704,8 @@ impl<'a> FilterChecker<'a> {
                 BLOCK_NUMBER_MAX,
                 None,
             )
-            .expect("layout.query failed to execute query");
+            .expect("layout.query failed to execute query")
+            .0;
 
         let entity_ids: Vec<_> = entities
             .into_iter()

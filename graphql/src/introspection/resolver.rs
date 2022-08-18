@@ -1,4 +1,5 @@
 use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
+use graph::data::query::Trace;
 use graphql_parser::Pos;
 use std::collections::BTreeMap;
 
@@ -366,8 +367,8 @@ impl Resolver for IntrospectionResolver {
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        Ok(None)
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
+        Ok((None, Trace::None))
     }
 
     fn resolve_objects(

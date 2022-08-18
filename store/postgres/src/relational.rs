@@ -19,6 +19,7 @@ use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
+use graph::data::query::Trace;
 use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -629,21 +630,23 @@ impl Layout {
         range: EntityRange,
         block: BlockNumber,
         query_id: Option<String>,
-    ) -> Result<Vec<T>, QueryExecutionError> {
+    ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         fn log_query_timing(
             logger: &Logger,
             query: &FilterQuery,
             elapsed: Duration,
             entity_count: usize,
-        ) {
+        ) -> Trace {
             // 20kB
             const MAXLEN: usize = 20_480;
 
             if !ENV_VARS.log_sql_timing() {
-                return;
+                return Trace::None;
             }
 
             let mut text = debug_query(&query).to_string().replace("\n", "\t");
+            let trace = Trace::query(&text, elapsed, entity_count);
+
             // If the query + bind variables is more than MAXLEN, truncate it;
             // this will happen when queries have very large bind variables
             // (e.g., long arrays of string ids)
@@ -658,6 +661,7 @@ impl Layout {
                 "time_ms" => elapsed.as_millis(),
                 "entity_count" => entity_count
             );
+            trace
         }
 
         let filter_collection = FilterCollection::new(self, collection, filter.as_ref(), block)?;
@@ -705,7 +709,7 @@ impl Layout {
                     )),
                 }
             })?;
-        log_query_timing(logger, &query_clone, start.elapsed(), values.len());
+        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len());
 
         let parent_type = filter_collection.parent_type()?.map(ColumnType::from);
         values
@@ -715,7 +719,8 @@ impl Layout {
                     .deserialize_with_layout(self, parent_type.as_ref(), false)
                     .map_err(|e| e.into())
             })
-            .collect()
+            .collect::<Result<Vec<T>, _>>()
+            .map(|values| (values, trace))
     }
 
     pub fn update<'a>(

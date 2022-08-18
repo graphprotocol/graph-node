@@ -411,6 +411,7 @@ fn query() {
                 BLOCK_NUMBER_MAX,
                 None,
             )
+            .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
             .map(|e| e.id().expect("entities have an id"))

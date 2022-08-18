@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
+use graph::data::query::Trace;
 use graph::data::value::Object;
 use graph::data::{
     graphql::{object, ObjectOrInterface},
@@ -230,8 +231,9 @@ impl Resolver for StoreResolver {
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        super::prefetch::run(self, ctx, selection_set, &self.graphql_metrics).map(Some)
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
+        super::prefetch::run(self, ctx, selection_set, &self.graphql_metrics)
+            .map(|(value, trace)| (Some(value), trace))
     }
 
     fn resolve_objects(

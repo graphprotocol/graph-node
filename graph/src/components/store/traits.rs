@@ -4,6 +4,7 @@ use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
+use crate::data::query::Trace;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
@@ -395,7 +396,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError>;
+    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

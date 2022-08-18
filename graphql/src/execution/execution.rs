@@ -1,7 +1,7 @@
 use super::cache::{QueryBlockCache, QueryCache};
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::{schema::META_FIELD_NAME, value::Object},
+    data::{query::Trace, schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
@@ -243,7 +243,7 @@ pub(crate) fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
     root_type: &sast::ObjectType,
-) -> Result<Object, Vec<QueryExecutionError>> {
+) -> Result<(Object, Trace), Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = a::SelectionSet::empty_from(selection_set);
@@ -264,12 +264,15 @@ pub(crate) fn execute_root_selection_set_uncached(
     }
 
     // If we are getting regular data, prefetch it from the database
-    let mut values = if data_set.is_empty() && meta_items.is_empty() {
-        Object::default()
+    let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
+        (Object::default(), Trace::None)
     } else {
-        let initial_data = ctx.resolver.prefetch(ctx, &data_set)?;
+        let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
         data_set.push_fields(meta_items)?;
-        execute_selection_set_to_map(ctx, &data_set, root_type, initial_data)?
+        (
+            execute_selection_set_to_map(ctx, &data_set, root_type, initial_data)?,
+            trace,
+        )
     };
 
     // Resolve introspection fields, if there are any
@@ -284,7 +287,7 @@ pub(crate) fn execute_root_selection_set_uncached(
         )?);
     }
 
-    Ok(values)
+    Ok((values, trace))
 }
 
 /// Executes the root selection set of a query.

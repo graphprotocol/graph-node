@@ -10,6 +10,8 @@ use serde::Serialize;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
+use super::Trace;
+
 fn serialize_data<S>(data: &Option<Data>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -71,6 +73,10 @@ impl QueryResults {
             .iter()
             .filter_map(|result| result.deployment.as_ref())
             .next()
+    }
+
+    pub fn traces(&self) -> Vec<&Trace> {
+        self.results.iter().map(|res| &res.trace).collect()
     }
 }
 
@@ -199,6 +205,8 @@ pub struct QueryResult {
     errors: Vec<QueryError>,
     #[serde(skip_serializing)]
     pub deployment: Option<DeploymentHash>,
+    #[serde(skip_serializing)]
+    pub trace: Trace,
 }
 
 impl QueryResult {
@@ -207,6 +215,7 @@ impl QueryResult {
             data: Some(data),
             errors: Vec::new(),
             deployment: None,
+            trace: Trace::None,
         }
     }
 
@@ -219,6 +228,7 @@ impl QueryResult {
             data: self.data.clone(),
             errors: self.errors.clone(),
             deployment: self.deployment.clone(),
+            trace: Trace::None,
         }
     }
 
@@ -274,6 +284,7 @@ impl From<QueryExecutionError> for QueryResult {
             data: None,
             errors: vec![e.into()],
             deployment: None,
+            trace: Trace::None,
         }
     }
 }
@@ -284,6 +295,7 @@ impl From<QueryError> for QueryResult {
             data: None,
             errors: vec![e],
             deployment: None,
+            trace: Trace::None,
         }
     }
 }
@@ -294,6 +306,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
             data: None,
             errors: e.into_iter().map(QueryError::from).collect(),
             deployment: None,
+            trace: Trace::None,
         }
     }
 }
@@ -301,6 +314,14 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
 impl From<Object> for QueryResult {
     fn from(val: Object) -> Self {
         QueryResult::new(val)
+    }
+}
+
+impl From<(Object, Trace)> for QueryResult {
+    fn from((val, trace): (Object, Trace)) -> Self {
+        let mut res = QueryResult::new(val);
+        res.trace = trace;
+        res
     }
 }
 

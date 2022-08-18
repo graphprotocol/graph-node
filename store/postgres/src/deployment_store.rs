@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityType, StoredDynamicDataSource};
+use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
     tokio, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
@@ -230,7 +231,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         query: EntityQuery,
-    ) -> Result<Vec<T>, QueryExecutionError> {
+    ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         let layout = self.layout(conn, site)?;
 
         let logger = query.logger.unwrap_or_else(|| self.logger.clone());
@@ -866,6 +867,7 @@ impl DeploymentStore {
                     );
                     let entities = store
                         .execute_query::<Entity>(conn, site4, query)
+                        .map(|(entities, _)| entities)
                         .map_err(anyhow::Error::from)?;
 
                     Ok(Some(entities))
@@ -962,6 +964,7 @@ impl DeploymentStore {
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self.get_conn()?;
         self.execute_query(&conn, site, query)
+            .map(|(entities, _)| entities)
     }
 
     pub(crate) fn transact_block_operations(
