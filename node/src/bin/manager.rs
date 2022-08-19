@@ -189,6 +189,9 @@ pub enum Command {
         /// Save the JSON query result in this file
         #[structopt(long, short)]
         output: Option<String>,
+        /// Save the query trace in this file
+        #[structopt(long, short)]
+        trace: Option<String>,
 
         /// The subgraph to query
         ///
@@ -926,10 +929,11 @@ async fn main() -> anyhow::Result<()> {
         }
         Query {
             output,
+            trace,
             target,
             query,
             vars,
-        } => commands::query::run(ctx.graphql_runner(), target, query, vars, output).await,
+        } => commands::query::run(ctx.graphql_runner(), target, query, vars, output, trace).await,
         Chain(cmd) => {
             use ChainCommand::*;
             match cmd {

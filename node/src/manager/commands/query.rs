@@ -24,6 +24,7 @@ pub async fn run(
     query: String,
     vars: Vec<String>,
     output: Option<String>,
+    trace: Option<String>,
 ) -> Result<(), anyhow::Error> {
     let target = if target.starts_with("Qm") {
         let id =
@@ -63,6 +64,14 @@ pub async fn run(
     if let Some(output) = output {
         let mut f = File::create(output)?;
         let json = serde_json::to_string(&res)?;
+        writeln!(f, "{}", json)?;
+    }
+
+    // The format of this file is pretty awful, but good enough to fish out
+    // interesting SQL queries
+    if let Some(trace) = trace {
+        let mut f = File::create(trace)?;
+        let json = serde_json::to_string(&res.traces())?;
         writeln!(f, "{}", json)?;
     }
 
