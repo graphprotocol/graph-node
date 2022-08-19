@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::blockchain::{Block, BlockPtr};
+use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
@@ -52,6 +53,19 @@ async fn data_source_revert() -> anyhow::Result<()> {
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, graft_block).await;
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(r#"{ dataSourceCount(id: "4") { id, count } }"#)
+        .await
+        .unwrap();
+
+    // TODO: The semantically correct value for `count` would be 5. But because the test fixture
+    // uses a `NoopTriggersAdapter` the data sources are not reprocessed in the block in which they
+    // are created.
+    assert_eq!(
+        query_res,
+        Some(object! { dataSourceCount: object!{ id: "4", count: 4 } })
+    );
 
     fixture::cleanup(&ctx.store, &subgraph_name, &hash);
 

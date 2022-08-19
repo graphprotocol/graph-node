@@ -14,8 +14,10 @@ async-stream = "0.3.3"
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-mock = { path = "../mock" }
+graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+graphql-parser = "0.4.0"
 
 [dev-dependencies]
 bollard = "0.10"

@@ -18,19 +18,22 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
+use graph::data::graphql::effort::LoadManager;
+use graph::data::query::{Query, QueryTarget};
 use graph::env::ENV_VARS;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    async_trait, BlockNumber, DeploymentHash, LoggerFactory, MetricsRegistry, NodeId,
-    SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
-    SubgraphVersionSwitchingMode,
+    async_trait, r, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
+    MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
+    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
 use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
+use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
@@ -104,6 +107,7 @@ pub struct TestContext {
     >,
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
+    graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
 }
 
 impl TestContext {
@@ -116,6 +120,25 @@ impl TestContext {
         wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
             .await
             .unwrap();
+    }
+
+    pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
+        let target = QueryTarget::Deployment(self.deployment.hash.clone());
+
+        self.graphql_runner
+            .clone()
+            .run_query(
+                Query::new(
+                    graphql_parser::parse_query(query).unwrap().into_static(),
+                    None,
+                ),
+                target,
+            )
+            .await
+            .first()
+            .unwrap()
+            .duplicate()
+            .to_result()
     }
 }
 
@@ -222,6 +245,17 @@ pub async fn setup<C: Blockchain>(
         static_filters,
     );
 
+    // Graphql runner
+    let subscription_manager = Arc::new(PanicSubscriptionManager {});
+    let load_manager = LoadManager::new(&logger, Vec::new(), mock_registry.clone());
+    let graphql_runner = Arc::new(GraphQlRunner::new(
+        &logger,
+        stores.network_store.clone(),
+        subscription_manager.clone(),
+        Arc::new(load_manager),
+        mock_registry.clone(),
+    ));
+
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
@@ -263,6 +297,7 @@ pub async fn setup<C: Blockchain>(
         provider: subgraph_provider,
         store: subgraph_store,
         deployment,
+        graphql_runner,
     }
 }
 
