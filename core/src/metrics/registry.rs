@@ -127,7 +127,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
             PrometheusError::AlreadyReg => {
                 error!(
                     self.logger,
-                    "registering metric [{}] because it was already registered", name,
+                    "registering metric [{}] failed because it was already registered", name,
                 );
             }
             PrometheusError::InconsistentCardinality { expect, got } => {
