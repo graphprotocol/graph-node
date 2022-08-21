@@ -38,7 +38,7 @@ use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
-use slog::{info, Logger};
+use slog::{crit, info, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -107,6 +107,7 @@ pub struct TestContext {
     >,
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
+    pub subgraph_name: SubgraphName,
     graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
 }
 
@@ -139,6 +140,14 @@ impl TestContext {
             .unwrap()
             .duplicate()
             .to_result()
+    }
+}
+
+impl Drop for TestContext {
+    fn drop(&mut self) {
+        if let Err(e) = cleanup(&self.store, &self.subgraph_name, &self.deployment.hash) {
+            crit!(self.logger, "error cleaning up test subgraph"; "error" => e.to_string());
+        }
     }
 }
 
@@ -215,7 +224,7 @@ pub async fn setup<C: Blockchain>(
 
     // Make sure we're starting from a clean state.
     let subgraph_store = stores.network_store.subgraph_store();
-    cleanup(&subgraph_store, &subgraph_name, hash);
+    cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain);
@@ -297,16 +306,22 @@ pub async fn setup<C: Blockchain>(
         provider: subgraph_provider,
         store: subgraph_store,
         deployment,
+        subgraph_name,
         graphql_runner,
     }
 }
 
-pub fn cleanup(subgraph_store: &SubgraphStore, name: &SubgraphName, hash: &DeploymentHash) {
-    let locators = subgraph_store.locators(hash).unwrap();
-    subgraph_store.remove_subgraph(name.clone()).unwrap();
+pub fn cleanup(
+    subgraph_store: &SubgraphStore,
+    name: &SubgraphName,
+    hash: &DeploymentHash,
+) -> Result<(), Error> {
+    let locators = subgraph_store.locators(hash)?;
+    subgraph_store.remove_subgraph(name.clone())?;
     for locator in locators {
-        subgraph_store.remove_deployment(locator.id.into()).unwrap();
+        subgraph_store.remove_deployment(locator.id.into())?;
     }
+    Ok(())
 }
 
 pub async fn wait_for_sync(

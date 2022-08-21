@@ -1,0 +1,36 @@
+specVersion: 0.0.7
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "0xCfEB869F69431e42cdB54A4F4f105C19C080A601"
+      abi: Contract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      blockHandlers:
+        - handler: handleBlock
+      file: ./src/mapping.ts
+templates:
+  - kind: file/ipfs
+    name: File
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: handleFile
+      file: ./src/mapping.ts
