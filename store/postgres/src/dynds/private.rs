@@ -23,6 +23,7 @@ pub(crate) struct DataSourcesTable {
     namespace: Namespace,
     qname: String,
     table: DynTable,
+    vid: DynColumn<Integer>,
     block_range: DynColumn<sql_types::Range<Integer>>,
     _causality_region: DynColumn<Integer>,
     manifest_idx: DynColumn<Integer>,
@@ -40,6 +41,7 @@ impl DataSourcesTable {
         DataSourcesTable {
             qname: format!("{}.{}", namespace, Self::TABLE_NAME),
             namespace,
+            vid: table.column("vid"),
             block_range: table.column("block_range"),
             _causality_region: table.column("causality_region"),
             manifest_idx: table.column("manifest_idx"),
@@ -94,6 +96,7 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
             ))
+            .order_by(&self.vid)
             .load::<Tuple>(conn)?;
 
         let mut dses: Vec<_> = tuples
@@ -113,6 +116,8 @@ impl DataSourcesTable {
                 }
             })
             .collect();
+
+        // This sort is stable and `tuples` was ordered by vid, so `dses` will be ordered by `(creation_block, vid)`.
         dses.sort_by_key(|v| v.creation_block);
 
         Ok(dses)
