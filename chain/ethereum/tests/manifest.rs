@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
-use graph::data_source::{offchain, DataSource};
+use graph::data_source::DataSourceTemplate;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
@@ -130,17 +130,14 @@ specVersion: 0.0.2
 
 #[tokio::test]
 async fn ipfs_manifest() {
-    let yaml = format!(
-        "
+    let yaml = "
 schema:
   file:
     /: /ipfs/Qmschema
-dataSources:
+dataSources: []
+templates:
   - name: IpfsSource
     kind: file/ipfs
-    source:
-      file:
-        /: {}
     mapping:
       apiVersion: 0.0.6
       language: wasm/assemblyscript
@@ -150,22 +147,17 @@ dataSources:
         /: /ipfs/Qmmapping
       handler: handleFile
 specVersion: 0.0.7
-",
-        FILE_CID
-    );
+";
 
     let manifest = resolve_manifest(&yaml, SPEC_VERSION_0_0_7).await;
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
-    assert_eq!(manifest.data_sources.len(), 1);
-    let data_source = match &manifest.data_sources[0] {
-        DataSource::Offchain(ds) => ds,
-        DataSource::Onchain(_) => unreachable!(),
+    assert_eq!(manifest.data_sources.len(), 0);
+    let data_source = match &manifest.templates[0] {
+        DataSourceTemplate::Offchain(ds) => ds,
+        DataSourceTemplate::Onchain(_) => unreachable!(),
     };
-    assert_eq!(
-        data_source.source,
-        offchain::Source::Ipfs(FILE_CID.parse().unwrap())
-    );
+    assert_eq!(data_source.kind, "file/ipfs");
 }
 
 #[tokio::test]

@@ -155,12 +155,19 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedDataSource {
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     pub async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
     ) -> Result<DataSource, Error> {
+        anyhow::bail!(
+            "static file data sources are not yet supported, \\
+             for details see https://github.com/graphprotocol/graph-node/issues/3864"
+        );
+
         info!(logger, "Resolve offchain data source";
             "name" => &self.name,
             "kind" => &self.kind,
