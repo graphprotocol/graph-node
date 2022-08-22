@@ -22,5 +22,5 @@ bollard = "0.10"
 anyhow = "1.0.61"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
-serde_yaml = "0.8"
+serde_yaml = "0.9"
 graph-chain-near = { path = "../chain/near" }
