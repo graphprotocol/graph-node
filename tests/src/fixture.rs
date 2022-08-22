@@ -24,7 +24,7 @@ use graph::env::ENV_VARS;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    async_trait, r, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
+    async_trait, r, ApiVersion, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
     MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
@@ -124,7 +124,7 @@ impl TestContext {
     }
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
-        let target = QueryTarget::Deployment(self.deployment.hash.clone());
+        let target = QueryTarget::Deployment(self.deployment.hash.clone(), ApiVersion::default());
 
         self.graphql_runner
             .clone()

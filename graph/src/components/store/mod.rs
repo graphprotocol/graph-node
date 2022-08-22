@@ -1047,3 +1047,31 @@ impl fmt::Display for DeploymentSchemaVersion {
         fmt::Display::fmt(&(*self as i32), f)
     }
 }
+
+/// A `ReadStore` that is always empty.
+pub struct EmptyStore {
+    schema: Arc<Schema>,
+}
+
+impl EmptyStore {
+    pub fn new(schema: Arc<Schema>) -> Self {
+        EmptyStore { schema }
+    }
+}
+
+impl ReadStore for EmptyStore {
+    fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        Ok(None)
+    }
+
+    fn get_many(
+        &self,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.schema.cheap_clone()
+    }
+}

@@ -6,7 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
-use graph::components::store::{EntityKey, StoredDynamicDataSource};
+use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
@@ -565,14 +565,18 @@ where
         &mut self,
         triggers: Vec<offchain::TriggerData>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
-        // TODO: Dont expose store with onchain entites
-        let mut block_state =
-            BlockState::<C>::new(self.inputs.store.cheap_clone(), LfuCache::new());
+        let mut mods = vec![];
+        let mut offchain_to_remove = vec![];
 
         for trigger in triggers {
-            let causality_region = match &trigger.source {
-                offchain::Source::Ipfs(cid) => format!("ipfs/{}", cid.to_string()),
-            };
+            // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
+            // get causality region isolation.
+            let schema = self.inputs.store.input_schema();
+            let mut block_state = BlockState::<C>::new(EmptyStore::new(schema), LfuCache::new());
+
+            // PoI ignores offchain events.
+            let proof_of_indexing = None;
+            let causality_region = "";
 
             // We'll eventually need to do better here, but using an empty block works for now.
             let block = Arc::default();
@@ -583,7 +587,7 @@ where
                     &block,
                     &TriggerData::Offchain(trigger),
                     block_state,
-                    &None,
+                    &proof_of_indexing,
                     &causality_region,
                     &self.inputs.debug_fork,
                     &self.metrics.subgraph,
@@ -597,15 +601,17 @@ where
                     };
                     err.context("failed to process trigger".to_string())
                 })?;
+
+            anyhow::ensure!(
+                !block_state.has_created_data_sources(),
+                "Attempted to create data source in offchain data source handler. This is not yet supported.",
+            );
+
+            mods.extend(block_state.entity_cache.as_modifications()?.modifications);
+            offchain_to_remove.extend(block_state.offchain_to_remove);
         }
 
-        anyhow::ensure!(
-            !block_state.has_created_data_sources(),
-            "Attempted to create data source in offchain data source handler. This is not yet supported.",
-        );
-
-        let mods = block_state.entity_cache.as_modifications()?.modifications;
-        Ok((mods, block_state.offchain_to_remove))
+        Ok((mods, offchain_to_remove))
     }
 }
 
