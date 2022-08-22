@@ -86,6 +86,7 @@ impl DataSource {
             param: Some(param),
             context,
             creation_block: self.creation_block,
+            is_offchain: true,
         }
     }
 

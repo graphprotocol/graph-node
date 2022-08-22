@@ -117,9 +117,10 @@ async fn file_data_sources() {
     let blocks = {
         let block_0 = genesis();
         let block_1 = empty_block(block_0.ptr(), test_ptr(1));
-        vec![block_0, block_1]
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
     };
-    let stop_block = blocks.last().unwrap().block.ptr();
+    let stop_block = test_ptr(1);
     let chain = Arc::new(chain(blocks, &stores).await);
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None).await;
     ctx.start_and_sync_to(stop_block).await;
@@ -144,4 +145,9 @@ async fn file_data_sources() {
         query_res,
         Some(object! { ipfsFile: object!{ id: id , content: "[]" } })
     );
+
+    // Test loading offchain data sources from DB.
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    let stop_block = test_ptr(2);
+    ctx.start_and_sync_to(stop_block).await;
 }

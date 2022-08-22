@@ -799,6 +799,7 @@ pub struct StoredDynamicDataSource {
     pub param: Option<Bytes>,
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
+    pub is_offchain: bool,
 }
 
 /// An internal identifer for the specific instance of a deployment. The
