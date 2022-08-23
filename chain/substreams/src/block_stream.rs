@@ -7,7 +7,7 @@ use graph::{
             BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
         },
         substreams_block_stream::SubstreamsBlockStream,
-        Blockchain,
+        Blockchain, DataSource,
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
@@ -61,15 +61,6 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
 
         let ds = manifest.data_sources.first().unwrap();
 
-        let mut start_blocks: Vec<i32> = vec![];
-        if let Some(ref modules) = ds.source.package.modules {
-            start_blocks = modules
-                .modules
-                .iter()
-                .map(|m| m.initial_block.try_into().map_err(anyhow::Error::from))
-                .collect::<Result<Vec<i32>>>()?;
-        }
-
         Ok(Box::new(SubstreamsBlockStream::new(
             deployment.hash,
             firehose_endpoint,
@@ -78,7 +69,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
             mapper,
             ds.source.package.modules.clone(),
             ds.source.module_name.clone(),
-            start_blocks,
+            vec![ds.start_block()],
             vec![],
             logger,
             chain.metrics_registry.clone(),
