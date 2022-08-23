@@ -172,18 +172,12 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         logger: &Logger,
         _manifest_idx: u32,
     ) -> Result<DataSource, Error> {
-        #[allow(unused_variables)]
         let content = resolver.cat(logger, &self.source.package.file).await?;
 
-        let package: graph::substreams::Package =
-            graph::substreams::Package::decode(content.as_ref())?;
+        let package = graph::substreams::Package::decode(content.as_ref())?;
 
         let initial_block: Option<u64> = match package.modules {
-            Some(ref modules) => modules
-                .modules
-                .iter()
-                .min_by_key(|x| x.initial_block)
-                .map(|x| x.initial_block),
+            Some(ref modules) => modules.modules.iter().map(|x| x.initial_block).min(),
             None => None,
         };
 
