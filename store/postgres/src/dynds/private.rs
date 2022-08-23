@@ -157,8 +157,8 @@ impl DataSourcesTable {
                 ));
             }
 
-            // Onchain data sources have the causality region explicitly set to 0, while offchain
-            // data sources have an unique causality region assigned from the sequence.
+            // Offchain data sources have a unique causality region assigned from a sequence in the
+            // database, while onchain data sources always have causality region 0.
             let query = match is_offchain {
                 false => format!(
                     "insert into {}(block_range, manifest_idx, param, context, causality_region) \
@@ -282,7 +282,7 @@ impl DataSourcesTable {
                 // Data source deduplication enforces this invariant.
                 // See also: data-source-is-duplicate-of
                 return Err(constraint_violation!(
-                    "expected to remove at most one offchain data source but removed {}, ds: {:?}",
+                    "expected to remove at most one offchain data source but would remove {}, ds: {:?}",
                     count,
                     ds
                 ));
