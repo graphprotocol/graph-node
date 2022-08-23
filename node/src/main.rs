@@ -357,7 +357,6 @@ async fn main() {
             network_store.as_ref(),
             &logger_factory,
             metrics_registry.clone(),
-            link_resolver.cheap_clone(),
         );
 
         let blockchain_map = Arc::new(blockchain_map);
@@ -830,7 +829,6 @@ fn substreams_networks_as_chains(
     store: &Store,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
-    resolver: Arc<dyn graph::prelude::LinkResolver>,
 ) -> HashMap<String, FirehoseChain<substreams::Chain>> {
     let chains: Vec<_> = firehose_networks
         .networks
@@ -858,7 +856,7 @@ fn substreams_networks_as_chains(
                         endpoints.clone(),
                         metrics_registry.clone(),
                         chain_store,
-                        Arc::new(substreams::BlockStreamBuilder::new(resolver.cheap_clone())),
+                        Arc::new(substreams::BlockStreamBuilder::new()),
                     )),
                     firehose_endpoints: endpoints.clone(),
                 },

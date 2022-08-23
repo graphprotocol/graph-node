@@ -13,12 +13,13 @@ use graph::{
         EntityKey, RuntimeHostBuilder, Value,
     },
     slog::Logger,
+    substreams::Modules,
 };
 use lazy_static::__Deref;
 
 use crate::{
     codec::{entity_change::Operation, field::Type},
-    Block, Chain, DataSource, NodeCapabilities, NoopDataSourceTemplate,
+    Block, Chain, NodeCapabilities, NoopDataSourceTemplate,
 };
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -43,7 +44,12 @@ impl blockchain::MappingTrigger for TriggerData {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct TriggerFilter {}
+pub struct TriggerFilter {
+    pub(crate) modules: Option<Modules>,
+    pub(crate) module_name: String,
+    pub(crate) start_block: Option<BlockNumber>,
+    pub(crate) data_sources_len: u8,
+}
 
 // TriggerFilter should bypass all triggers and just rely on block since all the data received
 // should already have been processed.
@@ -51,7 +57,30 @@ impl blockchain::TriggerFilter<Chain> for TriggerFilter {
     fn extend_with_template(&mut self, _data_source: impl Iterator<Item = NoopDataSourceTemplate>) {
     }
 
-    fn extend<'a>(&mut self, _data_sources: impl Iterator<Item = &'a DataSource> + Clone) {}
+    /// this function is not safe to call multiple times, only one DataSource is supported for
+    ///
+    fn extend<'a>(
+        &mut self,
+        mut data_sources: impl Iterator<Item = &'a crate::DataSource> + Clone,
+    ) {
+        let Self {
+            modules,
+            module_name,
+            start_block,
+            data_sources_len,
+        } = self;
+
+        if *data_sources_len >= 1 {
+            return;
+        }
+
+        if let Some(ref ds) = data_sources.next() {
+            *data_sources_len = 1;
+            *modules = ds.source.package.modules.clone();
+            *module_name = ds.source.module_name.clone();
+            *start_block = ds.initial_block;
+        }
+    }
 
     fn node_capabilities(&self) -> NodeCapabilities {
         NodeCapabilities {}

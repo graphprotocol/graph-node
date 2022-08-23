@@ -7,23 +7,20 @@ use graph::{
             BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
         },
         substreams_block_stream::SubstreamsBlockStream,
-        Blockchain, DataSource,
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, serde_yaml, BlockNumber, BlockPtr, SubgraphManifest, ENV_VARS},
-    slog::{o, Logger},
+    prelude::{async_trait, BlockNumber, BlockPtr},
+    slog::o,
 };
 
 use crate::{mapper::Mapper, Chain, TriggerFilter};
 
-pub struct BlockStreamBuilder {
-    resolver: Arc<dyn graph::prelude::LinkResolver>,
-}
+pub struct BlockStreamBuilder {}
 
 impl BlockStreamBuilder {
-    pub fn new(resolver: Arc<dyn graph::prelude::LinkResolver>) -> Self {
-        Self { resolver }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -39,7 +36,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         block_cursor: FirehoseCursor,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilter>,
+        filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         let firehose_endpoint = match chain.endpoints.random() {
@@ -54,22 +51,15 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
             .subgraph_logger(&deployment)
             .new(o!("component" => "SubstreamsBlockStream"));
 
-        // TODO: couldn't find a good way to pass the manifest because the code that calls this in the runner doesn't have the manifest
-        // either, as far as I can tell so this is the easy way but perhaps not ideal.
-        let manifest: SubgraphManifest<Chain> =
-            resolve_manifest(&logger, &deployment, &self.resolver).await?;
-
-        let ds = manifest.data_sources.first().unwrap();
-
         Ok(Box::new(SubstreamsBlockStream::new(
             deployment.hash,
             firehose_endpoint,
             None,
             block_cursor.as_ref().clone(),
             mapper,
-            ds.source.package.modules.clone(),
-            ds.source.module_name.clone(),
-            vec![ds.start_block()],
+            filter.modules.clone(),
+            filter.module_name.clone(),
+            filter.start_block.map(|x| vec![x]).unwrap_or(vec![]),
             vec![],
             logger,
             chain.metrics_registry.clone(),
@@ -87,28 +77,4 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         unimplemented!("polling block stream is not support for substreams")
     }
-}
-
-async fn resolve_manifest<C: Blockchain>(
-    logger: &Logger,
-    deployment: &DeploymentLocator,
-    resolver: &Arc<dyn graph::prelude::LinkResolver>,
-) -> Result<SubgraphManifest<C>, anyhow::Error> {
-    let raw: serde_yaml::Mapping = {
-        let file_bytes = resolver
-            .cat(&logger, &deployment.hash.to_ipfs_link())
-            .await?;
-
-        serde_yaml::from_slice(&file_bytes)?
-    };
-
-    let manifest = SubgraphManifest::resolve_from_raw(
-        deployment.hash.clone(),
-        raw,
-        &resolver,
-        logger,
-        ENV_VARS.max_spec_version.clone(),
-    );
-
-    manifest.await.map_err(anyhow::Error::from)
 }
