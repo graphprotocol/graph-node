@@ -11,6 +11,7 @@
     "poi-for-failed-subgraph",
     "remove-then-update",
     "typename",
-    "value-roundtrip"
+    "value-roundtrip",
+    "file-data-sources"
   ]
 }
