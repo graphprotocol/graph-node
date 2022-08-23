@@ -163,9 +163,16 @@ impl Blockchain for Chain {
     async fn block_pointer_from_number(
         &self,
         _logger: &Logger,
-        _number: BlockNumber,
+        number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        unimplemented!()
+        // This is the same thing TriggersAdapter does, not sure if it's going to work but
+        // we also don't yet have a good way of getting this value until we sort out the
+        // chain store.
+        // TODO(filipe): Fix this once the chain_store is correctly setup for substreams.
+        Ok(BlockPtr {
+            hash: BlockHash::from(vec![0xff; 32]),
+            number,
+        })
     }
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
