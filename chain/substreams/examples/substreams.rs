@@ -63,7 +63,7 @@ async fn main() -> Result<(), Error> {
             package.modules.clone(),
             module_name.to_string(),
             vec![12369621],
-            vec![12370000],
+            vec![],
             logger.clone(),
             metrics_registry,
         );
@@ -78,7 +78,7 @@ async fn main() -> Result<(), Error> {
                 Ok(block_stream_event) => match block_stream_event {
                     BlockStreamEvent::Revert(_, _) => {}
                     BlockStreamEvent::ProcessBlock(block_with_trigger, _) => {
-                        let changes = block_with_trigger.block.entities_changes;
+                        let changes = block_with_trigger.block;
                         for change in changes.entity_changes {
                             info!(&logger, "----- Entity -----");
                             info!(

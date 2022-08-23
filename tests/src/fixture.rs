@@ -306,7 +306,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for StaticStreamBuilder<C>
 where
     C::TriggerData: Clone,
 {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         _chain: &C,
         _deployment: DeploymentLocator,

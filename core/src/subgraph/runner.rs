@@ -552,6 +552,7 @@ where
     }
 }
 
+#[derive(Debug)]
 enum Action {
     Continue,
     Stop,

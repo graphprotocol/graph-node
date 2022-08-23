@@ -366,7 +366,7 @@ where
                 )
                 .await?
             }
-            BlockchainKind::Substream => {
+            BlockchainKind::Substreams => {
                 create_subgraph_version::<graph_chain_substreams::Chain, _>(
                     &logger,
                     self.store.clone(),

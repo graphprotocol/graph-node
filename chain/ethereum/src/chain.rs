@@ -51,7 +51,7 @@ pub struct EthereumStreamBuilder {}
 
 #[async_trait]
 impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
@@ -283,15 +283,17 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        self.block_stream_builder.build_firehose(
-            self,
-            deployment,
-            block_cursor,
-            start_blocks,
-            subgraph_current_block,
-            filter,
-            unified_api_version,
-        )
+        self.block_stream_builder
+            .build_firehose(
+                self,
+                deployment,
+                block_cursor,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 
     async fn new_polling_block_stream(

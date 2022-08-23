@@ -1702,6 +1702,7 @@ dependencies = [
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
+ "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",

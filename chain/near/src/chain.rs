@@ -36,7 +36,7 @@ pub struct NearStreamBuilder {}
 
 #[async_trait]
 impl BlockStreamBuilder<Chain> for NearStreamBuilder {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
@@ -167,15 +167,17 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        self.block_stream_builder.build_firehose(
-            self,
-            deployment,
-            block_cursor,
-            start_blocks,
-            subgraph_current_block,
-            filter,
-            unified_api_version,
-        )
+        self.block_stream_builder
+            .build_firehose(
+                self,
+                deployment,
+                block_cursor,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 
     async fn new_polling_block_stream(
@@ -416,11 +418,9 @@ mod test {
     use crate::{
         adapter::{NearReceiptFilter, TriggerFilter},
         codec::{
-            self, execution_outcome,
-            receipt::{self},
-            Block, BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
-            IndexerExecutionOutcomeWithReceipt, IndexerShard, ReceiptAction,
-            SuccessValueExecutionStatus,
+            self, execution_outcome, receipt, Block, BlockHeader, DataReceiver, ExecutionOutcome,
+            ExecutionOutcomeWithId, IndexerExecutionOutcomeWithReceipt, IndexerShard,
+            ReceiptAction, SuccessValueExecutionStatus,
         },
         data_source::{DataSource, Mapping, PartialAccounts, ReceiptHandler, NEAR_KIND},
         trigger::{NearTrigger, ReceiptWithOutcome},
