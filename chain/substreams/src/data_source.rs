@@ -9,6 +9,7 @@ use graph::{
     slog::Logger,
 };
 
+use prost::Message;
 use serde::Deserialize;
 
 use crate::{chain::Chain, Block, TriggerData};
@@ -174,24 +175,8 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         #[allow(unused_variables)]
         let content = resolver.cat(logger, &self.source.package.file).await?;
 
-        let package: graph::substreams::Package = {
-            #[cfg(not(test))]
-            let package = {
-                use prost::Message;
-
-                graph::substreams::Package::decode(content.as_ref())?
-            };
-            #[cfg(test)]
-            let package = graph::substreams::Package {
-                proto_files: vec![],
-                version: 0,
-                modules: None,
-                module_meta: vec![],
-                package_meta: vec![],
-            };
-
-            package
-        };
+        let package: graph::substreams::Package =
+            graph::substreams::Package::decode(content.as_ref())?;
 
         let initial_block: Option<u64> = match package.modules {
             Some(ref modules) => modules
