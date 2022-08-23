@@ -30,6 +30,7 @@ pub struct DataSource {
     pub(crate) source: Source,
     pub mapping: Mapping,
     pub context: Arc<Option<graph::prelude::DataSourceContext>>,
+    pub initial_block: Option<BlockNumber>,
 }
 
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
@@ -46,16 +47,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn start_block(&self) -> BlockNumber {
-        match self.source.package.modules {
-            Some(ref modules) => modules
-                .modules
-                .iter()
-                .min_by(|x, y| x.initial_block.cmp(&y.initial_block))
-                .map(|m| m.initial_block.try_into().map_err(anyhow::Error::from))
-                .unwrap_or(Ok(0))
-                .unwrap_or(0),
-            None => 0,
-        }
+        self.initial_block.unwrap_or(0)
     }
 
     fn name(&self) -> &str {
@@ -201,6 +193,19 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             package
         };
 
+        let initial_block: Option<u64> = match package.modules {
+            Some(ref modules) => modules
+                .modules
+                .iter()
+                .min_by_key(|x| x.initial_block)
+                .map(|x| x.initial_block),
+            None => None,
+        };
+
+        let initial_block: Option<i32> = initial_block
+            .map_or(Ok(None), |x: u64| TryInto::<i32>::try_into(x).map(Some))
+            .map_err(anyhow::Error::from)?;
+
         Ok(DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: self.network,
@@ -214,6 +219,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
                 kind: self.mapping.kind,
             },
             context: Arc::new(None),
+            initial_block,
         })
     }
 }
@@ -332,6 +338,7 @@ mod test {
                 kind: "substreams/graph-entities".into(),
             },
             context: Arc::new(None),
+            initial_block: None,
         };
         assert_eq!(ds, expected);
     }
@@ -372,6 +379,7 @@ mod test {
                 kind: "substreams/graph-entities".into(),
             },
             context: Arc::new(None),
+            initial_block: None,
         }
     }
 
