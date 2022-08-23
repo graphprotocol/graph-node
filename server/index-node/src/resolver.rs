@@ -7,6 +7,7 @@ use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
+use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
@@ -544,6 +545,20 @@ impl<S: Store> IndexNodeResolver<S> {
 
         Ok(r::Value::Object(response))
     }
+
+    fn resolve_api_versions(&self, _field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        Ok(r::Value::List(
+            VERSIONS
+                .iter()
+                .map(|version| {
+                    r::Value::Object(Object::from_iter(vec![(
+                        "version".to_string(),
+                        r::Value::String(version.to_string()),
+                    )]))
+                })
+                .collect(),
+        ))
+    }
 }
 
 struct ValidationPostProcessResult {
@@ -797,6 +812,8 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             }
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
+            // The top-level `subgraphVersions` field
+            (None, "apiVersions") => self.resolve_api_versions(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

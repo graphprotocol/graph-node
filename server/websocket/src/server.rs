@@ -36,12 +36,16 @@ where
         store: Arc<S>,
         path: &str,
     ) -> Result<Option<DeploymentState>, Error> {
-        fn target_from_name(name: String) -> Option<QueryTarget> {
-            SubgraphName::new(name).ok().map(QueryTarget::Name)
+        fn target_from_name(name: String, api_version: ApiVersion) -> Option<QueryTarget> {
+            SubgraphName::new(name)
+                .ok()
+                .map(|sub_name| QueryTarget::Name(sub_name, api_version))
         }
 
-        fn target_from_id(id: &str) -> Option<QueryTarget> {
-            DeploymentHash::new(id).ok().map(QueryTarget::Deployment)
+        fn target_from_id(id: &str, api_version: ApiVersion) -> Option<QueryTarget> {
+            DeploymentHash::new(id)
+                .ok()
+                .map(|hash| QueryTarget::Deployment(hash, api_version))
         }
 
         async fn state<S: QueryStoreManager>(
@@ -72,14 +76,18 @@ where
 
         match path_segments.as_slice() {
             &["subgraphs", "id", subgraph_id] => {
-                Ok(state(store, target_from_id(subgraph_id)).await)
+                Ok(state(store, target_from_id(subgraph_id, ApiVersion::default())).await)
             }
-            &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => {
-                Ok(state(store, target_from_name(path_segments[2..].join("/"))).await)
-            }
-            &["subgraphs", "network", _, _] => {
-                Ok(state(store, target_from_name(path_segments[1..].join("/"))).await)
-            }
+            &["subgraphs", "name", _] | &["subgraphs", "name", _, _] => Ok(state(
+                store,
+                target_from_name(path_segments[2..].join("/"), ApiVersion::default()), // TODO: version
+            )
+            .await),
+            &["subgraphs", "network", _, _] => Ok(state(
+                store,
+                target_from_name(path_segments[1..].join("/"), ApiVersion::default()), // TODO: version
+            )
+            .await),
             _ => Ok(None),
         }
     }

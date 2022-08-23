@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use graph::{
     components::store::BlockStore as _,
+    data::query::QueryTarget,
     prelude::{
         anyhow::{anyhow, bail, Error},
         chrono::{DateTime, Duration, SecondsFormat, Utc},
@@ -90,7 +91,12 @@ pub async fn create(
     let block_offset = block_offset as i32;
     let subgraph_store = store.subgraph_store();
     let src = src.locate_unique(&primary)?;
-    let query_store = store.query_store(src.hash.clone().into(), true).await?;
+    let query_store = store
+        .query_store(
+            QueryTarget::Deployment(src.hash.clone(), Default::default()),
+            true,
+        )
+        .await?;
     let network = query_store.network_name();
 
     let src_ptr = query_store.block_ptr().await?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;

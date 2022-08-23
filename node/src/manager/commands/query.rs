@@ -29,11 +29,11 @@ pub async fn run(
     let target = if target.starts_with("Qm") {
         let id =
             DeploymentHash::new(target).map_err(|id| anyhow!("illegal deployment id `{}`", id))?;
-        QueryTarget::Deployment(id)
+        QueryTarget::Deployment(id, Default::default())
     } else {
         let name = SubgraphName::new(target.clone())
             .map_err(|()| anyhow!("illegal subgraph name `{}`", target))?;
-        QueryTarget::Name(name)
+        QueryTarget::Name(name, Default::default())
     };
 
     let document = graphql_parser::parse_query(&query)?.into_static();

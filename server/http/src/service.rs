@@ -5,6 +5,7 @@ use std::task::Poll;
 use std::time::Instant;
 
 use graph::prelude::*;
+use graph::semver::VersionReq;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use http::header::{
@@ -89,17 +90,49 @@ where
         self.serve_dynamic_file(self.graphiql_html())
     }
 
+    fn resolve_api_version(
+        &self,
+        request: &Request<Body>,
+    ) -> Result<ApiVersion, GraphQLServerError> {
+        let mut version = ApiVersion::default();
+
+        if let Some(query) = request.uri().query() {
+            let potential_version_requirement = query.split("&").find_map(|pair| {
+                if pair.starts_with("api-version=") {
+                    if let Some(version_requirement) = pair.split("=").nth(1) {
+                        return Some(version_requirement);
+                    }
+                }
+                return None;
+            });
+
+            if let Some(version_requirement) = potential_version_requirement {
+                version = ApiVersion::new(
+                    &VersionReq::parse(version_requirement)
+                        .map_err(|error| GraphQLServerError::ClientError(error.to_string()))?,
+                )
+                .map_err(|error| GraphQLServerError::ClientError(error))?;
+            }
+        }
+
+        Ok(version)
+    }
+
     async fn handle_graphql_query_by_name(
         self,
         subgraph_name: String,
         request: Request<Body>,
     ) -> GraphQLServiceResult {
+        let version = self.resolve_api_version(&request)?;
         let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
             GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
         })?;
 
-        self.handle_graphql_query(subgraph_name.into(), request.into_body())
-            .await
+        self.handle_graphql_query(
+            QueryTarget::Name(subgraph_name, version),
+            request.into_body(),
+        )
+        .await
     }
 
     fn handle_graphql_query_by_id(
@@ -108,11 +141,16 @@ where
         request: Request<Body>,
     ) -> GraphQLServiceResponse {
         let res = DeploymentHash::new(id)
-            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)));
+            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)))
+            .and_then(|id| match self.resolve_api_version(&request) {
+                Ok(version) => Ok((id, version)),
+                Err(error) => Err(error),
+            });
+
         match res {
             Err(_) => self.handle_not_found(),
-            Ok(id) => self
-                .handle_graphql_query(id.into(), request.into_body())
+            Ok((id, version)) => self
+                .handle_graphql_query(QueryTarget::Deployment(id, version), request.into_body())
                 .boxed(),
         }
     }

@@ -4,6 +4,7 @@ use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
+use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
@@ -112,7 +113,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
+    fn api_schema(
+        &self,
+        subgraph_id: &DeploymentHash,
+        api_version: &ApiVersion,
+    ) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
     /// that is used for debugging purposes only.
