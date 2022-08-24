@@ -161,7 +161,7 @@ where
             let query_res = execute_query(
                 query.clone(),
                 Some(selection_set),
-                resolver.block_ptr.clone(),
+                resolver.block_ptr.as_ref().map(Into::into).clone(),
                 QueryExecutionOptions {
                     resolver,
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),

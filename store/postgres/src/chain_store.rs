@@ -589,34 +589,42 @@ mod data {
             }
         }
 
+        /// timestamp's representation depends the blockchain::Block implementation, on
+        /// ethereum this is a U256 but on different chains it will most likely be different.
         pub(super) fn block_number(
             &self,
             conn: &PgConnection,
             hash: &BlockHash,
-        ) -> Result<Option<BlockNumber>, StoreError> {
+        ) -> Result<Option<(BlockNumber, Option<String>)>, StoreError> {
+            const TIMESTAMP_QUERY: &str =
+                "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
+
             let number = match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select(b::number)
+                        .select((b::number, sql(TIMESTAMP_QUERY)))
                         .filter(b::hash.eq(format!("{:x}", hash)))
-                        .first::<i64>(conn)
+                        .first::<(i64, Option<String>)>(conn)
                         .optional()?
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select(blocks.number())
+                    .select((blocks.number(), sql(TIMESTAMP_QUERY)))
                     .filter(blocks.hash().eq(hash.as_slice()))
-                    .first::<i64>(conn)
+                    .first::<(i64, Option<String>)>(conn)
                     .optional()?,
             };
-            number
-                .map(|number| {
-                    BlockNumber::try_from(number)
-                        .map_err(|e| StoreError::QueryExecutionError(e.to_string()))
-                })
-                .transpose()
+
+            match number {
+                None => Ok(None),
+                Some((number, ts)) => {
+                    let number = BlockNumber::try_from(number)
+                        .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
+                    Ok(Some((number, ts)))
+                }
+            }
         }
 
         /// Find the first block that is missing from the database needed to
@@ -1690,12 +1698,15 @@ impl ChainStoreTrait for ChainStore {
             .confirm_block_hash(&conn, &self.chain, number, hash)
     }
 
-    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError> {
+    fn block_number(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<(String, BlockNumber, Option<String>)>, StoreError> {
         let conn = self.get_conn()?;
         Ok(self
             .storage
             .block_number(&conn, hash)?
-            .map(|number| (self.chain.clone(), number)))
+            .map(|(number, timestamp)| (self.chain.clone(), number, timestamp)))
     }
 
     async fn transaction_receipts_in_block(

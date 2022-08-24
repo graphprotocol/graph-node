@@ -55,6 +55,8 @@ type _Block_ {
   hash: Bytes
   "The block number"
   number: Int!
+  "Timestamp of the block if available, format depends on the chain" 
+  timestamp: String
 }
 
 enum _SubgraphErrorPolicy_ {
