@@ -371,7 +371,7 @@ impl Resolver for IntrospectionResolver {
         Ok((None, Trace::None))
     }
 
-    fn resolve_objects(
+    async fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
         field: &a::Field,

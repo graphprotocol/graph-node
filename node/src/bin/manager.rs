@@ -860,6 +860,7 @@ async fn main() -> anyhow::Result<()> {
                 force,
                 sleep,
             )
+            .await
         }
         Run {
             network_name,

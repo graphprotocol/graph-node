@@ -1698,15 +1698,21 @@ impl ChainStoreTrait for ChainStore {
             .confirm_block_hash(&conn, &self.chain, number, hash)
     }
 
-    fn block_number(
+    async fn block_number(
         &self,
         hash: &BlockHash,
     ) -> Result<Option<(String, BlockNumber, Option<String>)>, StoreError> {
-        let conn = self.get_conn()?;
-        Ok(self
-            .storage
-            .block_number(&conn, hash)?
-            .map(|(number, timestamp)| (self.chain.clone(), number, timestamp)))
+        let hash = hash.clone();
+        let storage = self.storage.clone();
+        let chain = self.chain.clone();
+        self.pool
+            .with_conn(move |conn, _| {
+                storage
+                    .block_number(&conn, &hash)
+                    .map(|opt| opt.map(|(number, timestamp)| (chain.clone(), number, timestamp)))
+                    .map_err(|e| StoreError::from(e).into())
+            })
+            .await
     }
 
     async fn transaction_receipts_in_block(

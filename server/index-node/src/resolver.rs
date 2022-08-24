@@ -201,7 +201,7 @@ impl<S: Store> IndexNodeResolver<S> {
         })
     }
 
-    fn resolve_cached_ethereum_calls(
+    async fn resolve_cached_ethereum_calls(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -230,7 +230,7 @@ impl<S: Store> IndexNodeResolver<S> {
         let chain_store = chain.chain_store();
         let call_cache = chain.call_cache();
 
-        let (block_number, timestamp) = match chain_store.block_number(&block_hash) {
+        let (block_number, timestamp) = match chain_store.block_number(&block_hash).await {
             Ok(Some((_, n, timestamp))) => (n, timestamp),
             Ok(None) => {
                 error!(
@@ -768,7 +768,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         }
     }
 
-    fn resolve_objects(
+    async fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
@@ -784,7 +784,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
                 self.resolve_indexing_statuses_for_subgraph_name(field)
             }
             (None, "CachedEthereumCall", "cachedEthereumCalls") => {
-                self.resolve_cached_ethereum_calls(field)
+                self.resolve_cached_ethereum_calls(field).await
             }
 
             // The top-level `publicProofsOfIndexing` field

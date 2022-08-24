@@ -32,7 +32,7 @@ impl Resolver for MockResolver {
         Ok((None, Trace::None))
     }
 
-    fn resolve_objects<'a>(
+    async fn resolve_objects(
         &self,
         _: Option<r::Value>,
         _field: &a::Field,
