@@ -242,7 +242,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
             let mut connect_start = Instant::now();
             let req = endpoint.clone().stream_blocks(request);
-            let result = tokio::time::timeout(Duration::from_secs(30), req).await.map_err(|x| x.into()).and_then(|x| x);
+            let result = tokio::time::timeout(Duration::from_secs(120), req).await.map_err(|x| x.into()).and_then(|x| x);
 
             match result {
                 Ok(stream) => {
