@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package sf.ethereum.type.v1;
+package sf.ethereum.type.v2;
 
-option go_package = "github.com/streamingfast/sf-ethereum/types/pb/sf/ethereum/type/v1;pbeth";
+option go_package = "github.com/streamingfast/sf-ethereum/types/pb/sf/ethereum/type/v2;pbeth";
 
 import "google/protobuf/timestamp.proto";
 
@@ -12,6 +12,12 @@ message Block {
   uint64 number = 3;
   uint64 size = 4;
   BlockHeader header = 5;
+
+  // Uncles represents block produced with a valid solution but were not actually choosen
+  // as the canonical block for the given height so they are mostly "forked" blocks.
+  //
+  // If the Block has been produced using the Proof of Stake consensus algorithm, this
+  // field will actually be always empty.
   repeated BlockHeader uncles = 6;
 
   repeated TransactionTrace transaction_traces = 10;
@@ -58,23 +64,79 @@ message BlockRef {
 
 message BlockHeader {
   bytes parent_hash = 1;
-  // Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`
+
+  // Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`, also
+  // referred as `ommers` in EIP specification.
+  //
+  // If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+  // consensus algorithm, this field will actually be constant and set to `0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347`.
   bytes uncle_hash = 2;
+
   bytes coinbase = 3;
   bytes state_root = 4;
   bytes transactions_root = 5;
   bytes receipt_root = 6;
   bytes logs_bloom = 7;
+
+  // Difficulty is the difficulty of the Proof of Work algorithm that was required to compute a solution.
+  //
+  // If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+  // consensus algorithm, this field will actually be constant and set to `0x00`.
   BigInt difficulty = 8;
-  // Sum of all previous blocks difficulty including this block difficulty.
+
+  // TotalDifficulty is the sum of all previous blocks difficulty including this block difficulty.
+  //
+  // If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+  // consensus algorithm, this field will actually be constant and set to the terminal total difficulty
+  // that was required to transition to Proof of Stake algorithm, which varies per network. It is set to
+  // 58 750 000 000 000 000 000 000 on Ethereum Mainnet and to 10 790 000 on Ethereum Testnet Goerli.
   BigInt total_difficulty = 17;
+
   uint64 number = 9;
   uint64 gas_limit = 10;
   uint64 gas_used = 11;
   google.protobuf.Timestamp timestamp = 12;
+
+  // ExtraData is free-form bytes included in the block by the "miner". While on Yellow paper of
+  // Ethereum this value is maxed to 32 bytes, other consensus algorithm like Clique and some other
+  // forks are using bigger values to carry special consensus data.
+  //
+  // If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+  // consensus algorithm, this field is strictly enforced to be <= 32 bytes.
   bytes extra_data = 13;
+
+  // MixHash is used to prove, when combined with the `nonce` that sufficient amount of computation has been
+  // achieved and that the solution found is valid.
   bytes mix_hash = 14;
+
+  // Nonce is used to prove, when combined with the `mix_hash` that sufficient amount of computation has been
+  // achieved and that the solution found is valid.
+  //
+  // If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+  // consensus algorithm, this field will actually be constant and set to `0`.
   uint64 nonce = 15;
+
+  // Hash is the hash of the block which is actually the computation:
+  //
+  //  Keccak256(rlp([
+  //    parent_hash,
+  //    uncle_hash,
+  //    coinbase,
+  //    state_root,
+  //    transactions_root,
+  //    receipt_root,
+  //    logs_bloom,
+  //    difficulty,
+  //    number,
+  //    gas_limit,
+  //    gas_used,
+  //    timestamp,
+  //    extra_data,
+  //    mix_hash,
+  //    nonce,
+  //    base_fee_per_gas
+  //  ]))
+  //
   bytes hash = 16;
 
   // Base fee per gas according to EIP-1559 (e.g. London Fork) rules, only set if London is present/active on the chain.
@@ -130,19 +192,19 @@ message TransactionTrace {
     // All transactions that ever existed prior Berlin fork before EIP-2718 was implemented.
     TRX_TYPE_LEGACY = 0;
 
-    // Transaction that specify an access list of contract/storage_keys that is going to be used
+    // Transaction that specicy an access list of contract/storage_keys that is going to be used
     // in this transaction.
     //
     // Added in Berlin fork (EIP-2930).
     TRX_TYPE_ACCESS_LIST = 1;
 
-    // Transaction that specifies an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
+    // Transaction that specifis an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
     // max base gas gee and max priority gas fee to pay for this transaction. Transaction's of those type are
     // executed against EIP-1559 rules which dictates a dynamic gas cost based on the congestion of the network.
     TRX_TYPE_DYNAMIC_FEE = 2;
   }
 
-  // AccessList represents the storage access this transaction has agreed to do in which case those storage
+  // AcccessList represents the storage access this transaction has agreed to do in which case those storage
   // access cost less gas unit per access.
   //
   // This will is populated only if `TransactionTrace.Type == TRX_TYPE_ACCESS_LIST || TRX_TYPE_DYNAMIC_FEE` which
@@ -198,26 +260,20 @@ enum TransactionTraceStatus {
 }
 
 message TransactionReceipt {
-  // consensus
-  bytes state_root = 1; /* this was an intermediate state_root hash,
-                         * computed in-between transactions to make
-                         * SURE you could build a proof and point to
-                         * state in the middle of a block; geth:
-                         * PostState + root + PostStateOrStatus,
-                         * parity: status_code, root... this piles
-                         * hardforks, see (read the EIPs first):
-                         * https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147
-                         * and
-                         * https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86
-                         * and
-                         * https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md
-                         * and the notion of Outcome in parity, which
-                         * segregates the two concepts, which are
-                         * stored in the same field
-                         status_code can be computed based on such a
-                         hack of the `state_root` field, following
-                         EIP-658. This is optional before the
-                         BYZANTINIUM hardfork. */
+  // State root is an intermediate state_root hash, computed in-between transactions to make
+  // **sure** you could build a proof and point to state in the middle of a block. Geth client
+  // uses `PostState + root + PostStateOrStatus`` while Parity used `status_code, root...`` this piles
+  // hardforks, see (read the EIPs first):
+  // - https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147
+  // - https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86
+  // - https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md
+  //
+  // Moreover, the notion of `Outcome`` in parity, which segregates the two concepts, which are
+  // stored in the same field `status_code`` can be computed based on such a hack of the `state_root`
+  // field, following `EIP-658`.
+  //
+  // Before Byzantinium hard fork, this field is always empty.
+  bytes state_root = 1;
   uint64 cumulative_gas_used = 2;
   bytes logs_bloom = 3;
   repeated Log logs = 4;
