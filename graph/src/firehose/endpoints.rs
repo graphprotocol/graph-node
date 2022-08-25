@@ -138,14 +138,14 @@ impl FirehoseEndpoint {
         // That way, we either get the final block if the block is now in a final segment of the
         // chain (or probabilisticly if not finality concept exists for the chain). Or we get the
         // block that is in the longuest chain according to Firehose.
-        let response_stream = client
-            .blocks(firehose::Request {
-                start_block_num: number as i64,
-                stop_block_num: number as u64,
-                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
-                ..Default::default()
-            })
-            .await?;
+        let req = client.blocks(firehose::Request {
+            start_block_num: number as i64,
+            stop_block_num: number as u64,
+            fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
+            ..Default::default()
+        });
+
+        let response_stream = tokio::time::timeout(Duration::from_secs(120), req).await??;
 
         let mut block_stream = response_stream.into_inner();
 
