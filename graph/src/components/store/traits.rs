@@ -149,12 +149,44 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
 
+pub trait ReadStore: Send + Sync + 'static {
+    /// Looks up an entity using the given store key at the latest block.
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
+
+    /// Look up multiple entities as of the latest block. Returns a map of
+    /// entities by type.
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
+
+    fn input_schema(&self) -> Arc<Schema>;
+}
+
+// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        (**self).get(key)
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        (**self).get_many(ids_for_type)
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        (**self).input_schema()
+    }
+}
+
 /// A view of the store for indexing. All indexing-related operations need
 /// to go through this trait. Methods in this trait will never return a
 /// `StoreError::DatabaseUnavailable`. Instead, they will retry the
 /// operation indefinitely until it succeeds.
 #[async_trait]
-pub trait WritableStore: Send + Sync + 'static {
+pub trait WritableStore: ReadStore {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
@@ -195,9 +227,6 @@ pub trait WritableStore: Send + Sync + 'static {
 
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
-    /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
-
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
@@ -211,14 +240,8 @@ pub trait WritableStore: Send + Sync + 'static {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError>;
-
-    /// Look up multiple entities as of the latest block. Returns a map of
-    /// entities by type.
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
 
     /// The deployment `id` finished syncing, mark it as synced in the database
     /// and promote it to the current version in the subgraphs where it was the
@@ -242,8 +265,6 @@ pub trait WritableStore: Send + Sync + 'static {
     fn shard(&self) -> &str;
 
     async fn health(&self) -> Result<SubgraphHealth, StoreError>;
-
-    fn input_schema(&self) -> Arc<Schema>;
 
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;

@@ -146,7 +146,6 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
-        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 

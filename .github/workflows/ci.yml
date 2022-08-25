@@ -120,7 +120,7 @@ jobs:
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
-          args: --verbose --package graph-tests -- --nocapture --skip parallel_integration_tests
+          args: --verbose --package graph-tests -- --skip parallel_integration_tests
 
   integration-tests:
     name: Run integration tests

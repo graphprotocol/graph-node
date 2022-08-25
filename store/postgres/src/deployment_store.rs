@@ -987,6 +987,7 @@ impl DeploymentStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
+        offchain_to_remove: &[StoredDynamicDataSource],
     ) -> Result<StoreEvent, StoreError> {
         let conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
@@ -1019,6 +1020,8 @@ impl DeploymentStore {
                 block_ptr_to,
                 manifest_idx_and_name,
             )?;
+
+            dynds::remove_offchain(&conn, &site, offchain_to_remove)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(

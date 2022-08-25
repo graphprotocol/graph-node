@@ -12,39 +12,36 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use anyhow::ensure;
 use anyhow::{anyhow, Error};
-use futures03::{
-    future::try_join4,
-    stream::{FuturesOrdered, FuturesUnordered},
-    TryStreamExt as _,
-};
+use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use semver::Version;
-use serde::de;
-use serde::ser;
+use serde::{de, ser};
 use serde_yaml;
 use slog::{debug, info, Logger};
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
-use std::{collections::BTreeSet, marker::PhantomData, mem::take};
+use std::{collections::BTreeSet, marker::PhantomData};
 use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
 
-use crate::blockchain::BlockPtr;
-use crate::data::store::Entity;
-use crate::data::{
-    schema::{Schema, SchemaImportError, SchemaValidationError},
-    subgraph::features::validate_subgraph_features,
-};
-use crate::offchain;
-use crate::prelude::{r, CheapClone, ENV_VARS};
-use crate::{blockchain::DataSource, data::graphql::TryFromValue};
-use crate::{blockchain::DataSourceTemplate as _, data::query::QueryExecutionError};
 use crate::{
-    blockchain::{Blockchain, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _},
+    blockchain::{BlockPtr, Blockchain, DataSource as _},
     components::{
         link_resolver::LinkResolver,
         store::{DeploymentLocator, StoreError, SubgraphStore},
     },
+    data::{
+        graphql::TryFromValue,
+        query::QueryExecutionError,
+        schema::{Schema, SchemaImportError, SchemaValidationError},
+        store::Entity,
+        subgraph::features::validate_subgraph_features,
+    },
+    data_source::{
+        offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
+        UnresolvedDataSourceTemplate,
+    },
+    prelude::{r, CheapClone, ENV_VARS},
 };
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
@@ -396,9 +393,11 @@ pub struct Link {
     pub link: String,
 }
 
-impl From<String> for Link {
-    fn from(s: String) -> Self {
-        Self { link: s }
+impl<S: ToString> From<S> for Link {
+    fn from(s: S) -> Self {
+        Self {
+            link: s.to_string(),
+        }
     }
 }
 
@@ -504,7 +503,7 @@ impl Graft {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BaseSubgraphManifest<C, S, D, T, O> {
+pub struct BaseSubgraphManifest<C, S, D, T> {
     pub id: DeploymentHash,
     pub spec_version: Version,
     #[serde(default)]
@@ -516,8 +515,6 @@ pub struct BaseSubgraphManifest<C, S, D, T, O> {
     pub graft: Option<Graft>,
     #[serde(default)]
     pub templates: Vec<T>,
-    #[serde(default)]
-    pub offchain_data_sources: Vec<O>,
     #[serde(skip_serializing, default)]
     pub chain: PhantomData<C>,
 }
@@ -526,19 +523,13 @@ pub struct BaseSubgraphManifest<C, S, D, T, O> {
 type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
     UnresolvedSchema,
-    <C as Blockchain>::UnresolvedDataSource,
-    <C as Blockchain>::UnresolvedDataSourceTemplate,
-    offchain::UnresolvedDataSource,
+    UnresolvedDataSource<C>,
+    UnresolvedDataSourceTemplate<C>,
 >;
 
 /// SubgraphManifest validated with IPFS links resolved
-pub type SubgraphManifest<C> = BaseSubgraphManifest<
-    C,
-    Schema,
-    <C as Blockchain>::DataSource,
-    <C as Blockchain>::DataSourceTemplate,
-    offchain::DataSource,
->;
+pub type SubgraphManifest<C> =
+    BaseSubgraphManifest<C, Schema, DataSource<C>, DataSourceTemplate<C>>;
 
 /// Unvalidated SubgraphManifest
 pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);
@@ -591,7 +582,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .0
             .data_sources
             .iter()
-            .filter_map(|d| d.network().map(|n| n.to_string()))
+            .filter_map(|d| Some(d.as_onchain()?.network()?.to_string()))
             .collect::<Vec<String>>();
         networks.sort();
         networks.dedup();
@@ -655,56 +646,43 @@ impl<C: Blockchain> SubgraphManifest<C> {
         // Inject the IPFS hash as the ID of the subgraph into the definition.
         raw.insert("id".into(), id.to_string().into());
 
-        let spec_version = raw
-            .get(&"specVersion".into())
-            .and_then(|v| v.as_str()?.parse::<Version>().ok());
-
-        if spec_version >= Some(SPEC_VERSION_0_0_7) {
-            // Separate offchain data sources (where `kind` starts with "file").
-            let data_sources: Vec<serde_yaml::Value> = raw
-                .remove(&serde_yaml::Value::from("dataSources"))
-                .and_then(|mut v| v.as_sequence_mut().map(take))
-                .unwrap_or_default();
-            let mut onchain_data_sources = Vec::new();
-            let mut offchain_data_sources = Vec::new();
-            for data_source in data_sources {
-                let kind = data_source
-                    .get(&serde_yaml::Value::from("kind"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if kind.starts_with("file") {
-                    offchain_data_sources.push(data_source);
-                } else {
-                    onchain_data_sources.push(data_source);
-                }
-            }
-            raw.insert("dataSources".into(), onchain_data_sources.into());
-            raw.insert("offchainDataSources".into(), offchain_data_sources.into());
-        }
-
         // Parse the YAML data into an UnresolvedSubgraphManifest
         let unresolved: UnresolvedSubgraphManifest<C> = serde_yaml::from_value(raw.into())?;
 
         debug!(logger, "Features {:?}", unresolved.features);
 
-        unresolved
+        let resolved = unresolved
             .resolve(resolver, logger, max_spec_version)
             .await
-            .map_err(SubgraphManifestResolveError::ResolveError)
+            .map_err(SubgraphManifestResolveError::ResolveError)?;
+
+        if (resolved.spec_version < SPEC_VERSION_0_0_7)
+            && resolved
+                .data_sources
+                .iter()
+                .any(|ds| OFFCHAIN_KINDS.contains(&ds.kind()))
+        {
+            return Err(SubgraphManifestResolveError::ResolveError(anyhow!(
+                "Offchain data sources not supported prior to {}",
+                SPEC_VERSION_0_0_7
+            )));
+        }
+
+        Ok(resolved)
     }
 
     pub fn network_name(&self) -> String {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources
             .iter()
-            .find_map(|d| d.network().map(|n| n.to_string()))
+            .find_map(|d| Some(d.as_onchain()?.network()?.to_string()))
             .expect("Validated manifest does not have a network defined on any datasource")
     }
 
     pub fn start_blocks(&self) -> Vec<BlockNumber> {
         self.data_sources
             .iter()
-            .map(|data_source| data_source.start_block())
+            .filter_map(|d| Some(d.as_onchain()?.start_block()))
             .collect()
     }
 
@@ -750,7 +728,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
-            offchain_data_sources,
             chain,
         } = self;
 
@@ -771,7 +748,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ));
         }
 
-        let (schema, data_sources, templates, offchain_data_sources) = try_join4(
+        let (schema, data_sources, templates) = try_join3(
             schema.resolve(id.clone(), &resolver, logger),
             data_sources
                 .into_iter()
@@ -786,11 +763,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                     template.resolve(&resolver, logger, ds_count as u32 + idx as u32)
                 })
                 .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-            offchain_data_sources
-                .into_iter()
-                .map(|ds| ds.resolve(&resolver, logger))
-                .collect::<FuturesUnordered<_>>()
                 .try_collect::<Vec<_>>(),
         )
         .await?;
@@ -816,7 +788,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             data_sources,
             graft,
             templates,
-            offchain_data_sources,
             chain,
         })
     }

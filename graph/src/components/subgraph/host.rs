@@ -6,8 +6,10 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
-use crate::blockchain::TriggerWithHandler;
 use crate::components::store::SubgraphFork;
+use crate::data_source::{
+    DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
+};
 use crate::prelude::*;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
 use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
@@ -44,18 +46,20 @@ impl MappingError {
 /// Common trait for runtime host implementations.
 #[async_trait]
 pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
+    fn data_source(&self) -> &DataSource<C>;
+
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         block: &Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<TriggerWithHandler<C>>, Error>;
+    ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error>;
 
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: TriggerWithHandler<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
@@ -151,8 +155,8 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         &self,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: C::DataSource,
-        top_level_templates: Arc<Vec<C::DataSourceTemplate>>,
+        data_source: DataSource<C>,
+        top_level_templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;

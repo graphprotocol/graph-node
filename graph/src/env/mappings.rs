@@ -46,11 +46,9 @@ pub struct EnvVarsMapping {
     /// Sets the `ipfs.cat` file size limit.
     ///
     /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
-    /// bytes). No default value is provided.
-    ///
-    /// FIXME: Having an env variable here is a problem for consensus.
-    /// Index Nodes should not disagree on whether the file should be read.
-    pub max_ipfs_file_bytes: Option<usize>,
+    /// bytes). Defaults to 256 MiB.
+    pub max_ipfs_file_bytes: usize,
+    pub max_ipfs_concurrent_requests: u16,
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
     /// default.
     pub allow_non_deterministic_ipfs: bool,
@@ -77,7 +75,8 @@ impl From<InnerMappingHandlers> for EnvVarsMapping {
             max_ipfs_cache_size: x.max_ipfs_cache_size,
             ipfs_timeout: Duration::from_secs(x.ipfs_timeout_in_secs),
             max_ipfs_map_file_size: x.max_ipfs_map_file_size.0,
-            max_ipfs_file_bytes: x.max_ipfs_file_bytes,
+            max_ipfs_file_bytes: x.max_ipfs_file_bytes.0,
+            max_ipfs_concurrent_requests: x.max_ipfs_concurrent_requests,
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
         }
     }
@@ -105,8 +104,10 @@ pub struct InnerMappingHandlers {
     ipfs_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
     max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
-    #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES")]
-    max_ipfs_file_bytes: Option<usize>,
+    #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES", default = "")]
+    max_ipfs_file_bytes: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
+    #[envconfig(from = "GRAPH_MAX_IPFS_CONCURRENT_REQUESTS", default = "100")]
+    max_ipfs_concurrent_requests: u16,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
     allow_non_deterministic_ipfs: EnvVarBoolean,
 }

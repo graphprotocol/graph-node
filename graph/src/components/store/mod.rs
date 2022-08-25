@@ -799,6 +799,7 @@ pub struct StoredDynamicDataSource {
     pub param: Option<Bytes>,
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
+    pub is_offchain: bool,
 }
 
 /// An internal identifer for the specific instance of a deployment. The
@@ -1045,5 +1046,33 @@ impl TryFrom<i32> for DeploymentSchemaVersion {
 impl fmt::Display for DeploymentSchemaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&(*self as i32), f)
+    }
+}
+
+/// A `ReadStore` that is always empty.
+pub struct EmptyStore {
+    schema: Arc<Schema>,
+}
+
+impl EmptyStore {
+    pub fn new(schema: Arc<Schema>) -> Self {
+        EmptyStore { schema }
+    }
+}
+
+impl ReadStore for EmptyStore {
+    fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        Ok(None)
+    }
+
+    fn get_many(
+        &self,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.schema.cheap_clone()
     }
 }

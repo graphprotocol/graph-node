@@ -25,7 +25,7 @@ pub(crate) struct DataSourcesTable {
     table: DynTable,
     vid: DynColumn<Integer>,
     block_range: DynColumn<sql_types::Range<Integer>>,
-    _causality_region: DynColumn<Integer>,
+    causality_region: DynColumn<Integer>,
     manifest_idx: DynColumn<Integer>,
     param: DynColumn<Nullable<Binary>>,
     context: DynColumn<Nullable<Jsonb>>,
@@ -43,7 +43,7 @@ impl DataSourcesTable {
             namespace,
             vid: table.column("vid"),
             block_range: table.column("block_range"),
-            _causality_region: table.column("causality_region"),
+            causality_region: table.column("causality_region"),
             manifest_idx: table.column("manifest_idx"),
             param: table.column("param"),
             context: table.column("context"),
@@ -85,6 +85,7 @@ impl DataSourcesTable {
             i32,
             Option<Vec<u8>>,
             Option<serde_json::Value>,
+            i32,
         );
         let tuples = self
             .table
@@ -95,26 +96,34 @@ impl DataSourcesTable {
                 &self.manifest_idx,
                 &self.param,
                 &self.context,
+                &self.causality_region,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
 
         let mut dses: Vec<_> = tuples
             .into_iter()
-            .map(|(block_range, manifest_idx, param, context)| {
-                let creation_block = match block_range.0 {
-                    Bound::Included(block) => Some(block),
+            .map(
+                |(block_range, manifest_idx, param, context, causality_region)| {
+                    let creation_block = match block_range.0 {
+                        Bound::Included(block) => Some(block),
 
-                    // Should never happen.
-                    Bound::Excluded(_) | Bound::Unbounded => unreachable!("dds with open creation"),
-                };
-                StoredDynamicDataSource {
-                    manifest_idx: manifest_idx as u32,
-                    param: param.map(|p| p.into()),
-                    context,
-                    creation_block,
-                }
-            })
+                        // Should never happen.
+                        Bound::Excluded(_) | Bound::Unbounded => {
+                            unreachable!("dds with open creation")
+                        }
+                    };
+
+                    let is_offchain = causality_region > 0;
+                    StoredDynamicDataSource {
+                        manifest_idx: manifest_idx as u32,
+                        param: param.map(|p| p.into()),
+                        context,
+                        creation_block,
+                        is_offchain,
+                    }
+                },
+            )
             .collect();
 
         // This sort is stable and `tuples` was ordered by vid, so `dses` will be ordered by `(creation_block, vid)`.
@@ -129,9 +138,6 @@ impl DataSourcesTable {
         data_sources: &[StoredDynamicDataSource],
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
-        // Currently all data sources share the same causality region.
-        let causality_region = 0;
-
         let mut inserted_total = 0;
 
         for ds in data_sources {
@@ -140,6 +146,7 @@ impl DataSourcesTable {
                 param,
                 context,
                 creation_block,
+                is_offchain,
             } = ds;
 
             if creation_block != &Some(block) {
@@ -150,19 +157,32 @@ impl DataSourcesTable {
                 ));
             }
 
-            let query = format!(
-                "insert into {}(block_range, manifest_idx, causality_region, param, context) \
-                 values (int4range($1, null), $2, $3, $4, $5)",
-                self.qname
-            );
+            // Offchain data sources have a unique causality region assigned from a sequence in the
+            // database, while onchain data sources always have causality region 0.
+            let query = match is_offchain {
+                false => format!(
+                    "insert into {}(block_range, manifest_idx, param, context, causality_region) \
+                            values (int4range($1, null), $2, $3, $4, $5)",
+                    self.qname
+                ),
 
-            inserted_total += sql_query(query)
+                true => format!(
+                    "insert into {}(block_range, manifest_idx, param, context) \
+                            values (int4range($1, null), $2, $3, $4)",
+                    self.qname
+                ),
+            };
+
+            let query = sql_query(query)
                 .bind::<Nullable<Integer>, _>(creation_block)
                 .bind::<Integer, _>(*manifest_idx as i32)
-                .bind::<Integer, _>(causality_region)
                 .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
-                .bind::<Nullable<Jsonb>, _>(context)
-                .execute(conn)?;
+                .bind::<Nullable<Jsonb>, _>(context);
+
+            inserted_total += match is_offchain {
+                false => query.bind::<Integer, _>(0).execute(conn)?,
+                true => query.execute(conn)?,
+            };
         }
 
         Ok(inserted_total)
@@ -219,5 +239,56 @@ impl DataSourcesTable {
         );
 
         Ok(count)
+    }
+
+    // Remove offchain data sources by checking for equality. Their range will be set to the empty range.
+    pub(super) fn remove_offchain(
+        &self,
+        conn: &PgConnection,
+        data_sources: &[StoredDynamicDataSource],
+    ) -> Result<(), StoreError> {
+        for ds in data_sources {
+            let StoredDynamicDataSource {
+                manifest_idx,
+                param,
+                context,
+                creation_block,
+                is_offchain,
+            } = ds;
+
+            if !is_offchain {
+                return Err(constraint_violation!(
+                    "called remove_offchain with onchain data sources"
+                ));
+            }
+
+            let query = format!(
+                "update {} set block_range = 'empty'::int4range \
+                 where manifest_idx = $1
+                    and param is not distinct from $2
+                    and context is not distinct from $3
+                    and lower(block_range) is not distinct from $4",
+                self.qname
+            );
+
+            let count = sql_query(query)
+                .bind::<Integer, _>(*manifest_idx as i32)
+                .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
+                .bind::<Nullable<Jsonb>, _>(context)
+                .bind::<Nullable<Integer>, _>(creation_block)
+                .execute(conn)?;
+
+            if count > 1 {
+                // Data source deduplication enforces this invariant.
+                // See also: data-source-is-duplicate-of
+                return Err(constraint_violation!(
+                    "expected to remove at most one offchain data source but would remove {}, ds: {:?}",
+                    count,
+                    ds
+                ));
+            }
+        }
+
+        Ok(())
     }
 }

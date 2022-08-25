@@ -154,7 +154,7 @@ pub async fn create_subgraph(
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
 
-    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+    let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
         spec_version: Version::new(1, 0, 0),
         features: BTreeSet::new(),
@@ -164,7 +164,6 @@ pub async fn create_subgraph(
         data_sources: vec![],
         graft: None,
         templates: vec![],
-        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -234,6 +233,7 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
             Vec::new(),
+            Vec::new(),
         )
         .await?;
     flush(deployment).await
@@ -286,7 +286,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
 ) -> Result<(), StoreError> {
     let store =
         futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))?;
-    let mut entity_cache = EntityCache::new(store.clone());
+    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications()
@@ -308,6 +308,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
             data_sources,
             Vec::new(),
             manifest_idx_and_name,
+            Vec::new(),
         )
         .await
 }

@@ -13,6 +13,7 @@ use tower::Service;
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
 
+/// Reference type, clones will refer to the same service.
 #[derive(Clone)]
 pub struct IpfsService {
     client: IpfsClient,
@@ -33,7 +34,6 @@ impl CheapClone for IpfsService {
 }
 
 impl IpfsService {
-    #[allow(dead_code)]
     pub fn new(
         client: IpfsClient,
         max_file_size: u64,

@@ -1,10 +1,11 @@
 use crate::gas_rules::GasRules;
-use crate::module::{ExperimentalFeatures, WasmInstance};
+use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn, TriggerWithHandler};
+use graph::blockchain::{Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
 use std::collections::BTreeMap;
@@ -20,7 +21,10 @@ pub fn spawn_module<C: Blockchain>(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error> {
+) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
     let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
 
     // Create channel for event handling requests
@@ -77,11 +81,14 @@ pub fn spawn_module<C: Blockchain>(
 fn instantiate_module_and_handle_trigger<C: Blockchain>(
     valid_module: Arc<ValidModule>,
     ctx: MappingContext<C>,
-    trigger: TriggerWithHandler<C>,
+    trigger: TriggerWithHandler<MappingTrigger<C>>,
     host_metrics: Arc<HostMetrics>,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<(BlockState<C>, Gas), MappingError> {
+) -> Result<(BlockState<C>, Gas), MappingError>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
     let logger = ctx.logger.cheap_clone();
 
     // Start the WASM module runtime.
@@ -104,7 +111,7 @@ fn instantiate_module_and_handle_trigger<C: Blockchain>(
 
 pub struct MappingRequest<C: Blockchain> {
     pub(crate) ctx: MappingContext<C>,
-    pub(crate) trigger: TriggerWithHandler<C>,
+    pub(crate) trigger: TriggerWithHandler<MappingTrigger<C>>,
     pub(crate) result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
 }
 

@@ -8,6 +8,7 @@ use diesel::PgConnection;
 use graph::{
     blockchain::BlockPtr,
     components::store::StoredDynamicDataSource,
+    constraint_violation,
     prelude::{BlockNumber, StoreError},
 };
 
@@ -54,5 +55,22 @@ pub(crate) fn revert(
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).revert(conn, block),
         false => shared::revert(conn, &site.deployment, block),
+    }
+}
+
+pub(crate) fn remove_offchain(
+    conn: &PgConnection,
+    site: &Site,
+    data_sources: &[StoredDynamicDataSource],
+) -> Result<(), StoreError> {
+    if data_sources.len() == 0 {
+        return Ok(());
+    }
+
+    match site.schema_version.private_data_sources() {
+        true => DataSourcesTable::new(site.namespace.clone()).remove_offchain(conn, data_sources),
+        false => Err(constraint_violation!(
+            "shared schema does not support data source offchain_found",
+        )),
     }
 }

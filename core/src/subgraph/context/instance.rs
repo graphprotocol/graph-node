@@ -1,25 +1,19 @@
 use futures01::sync::mpsc::Sender;
-use graph::components::subgraph::ProofOfIndexingVersion;
-use graph::data::subgraph::SPEC_VERSION_0_0_6;
-
-use std::collections::HashMap;
-
 use graph::{
     blockchain::Blockchain,
-    components::{
-        store::SubgraphFork,
-        subgraph::{MappingError, SharedProofOfIndexing},
-    },
-    prelude::ENV_VARS,
+    data_source::{DataSource, DataSourceTemplate},
+    prelude::*,
 };
-use graph::{blockchain::DataSource, prelude::*};
+use std::collections::HashMap;
 
-pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+use super::OffchainMonitor;
+
+pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
-    pub poi_version: ProofOfIndexingVersion,
     host_builder: T,
-    pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
+    templates: Arc<Vec<DataSourceTemplate<C>>>,
+    host_metrics: Arc<HostMetrics>,
 
     /// Runtime hosts, one for each data source mapping.
     ///
@@ -37,22 +31,16 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    pub(crate) fn from_manifest(
+    pub fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
         host_builder: T,
-        trigger_processor: Box<dyn TriggerProcessor<C, T>>,
         host_metrics: Arc<HostMetrics>,
+        offchain_monitor: &mut OffchainMonitor,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
         let templates = Arc::new(manifest.templates);
-
-        let poi_version = if manifest.spec_version.ge(&SPEC_VERSION_0_0_6) {
-            ProofOfIndexingVersion::Fast
-        } else {
-            ProofOfIndexingVersion::Legacy
-        };
 
         let mut this = SubgraphInstance {
             host_builder,
@@ -60,28 +48,30 @@ where
             network,
             hosts: Vec::new(),
             module_cache: HashMap::new(),
-            poi_version,
-            trigger_processor,
+            templates,
+            host_metrics,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         for ds in manifest.data_sources {
+            // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
+            // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
+            // `IndexingContext`.
+
             let runtime = ds.runtime();
             let module_bytes = match runtime {
                 None => continue,
                 Some(ref module_bytes) => module_bytes,
             };
 
-            let host = this.new_host(
-                logger.cheap_clone(),
-                ds,
-                module_bytes,
-                templates.cheap_clone(),
-                host_metrics.cheap_clone(),
-            )?;
-            this.hosts.push(Arc::new(host))
+            if let DataSource::Offchain(ds) = &ds {
+                offchain_monitor.add_source(&ds.source)?;
+            }
+
+            let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;
+            this.hosts.push(Arc::new(host));
         }
 
         Ok(this)
@@ -92,10 +82,8 @@ where
     fn new_host(
         &mut self,
         logger: Logger,
-        data_source: C::DataSource,
+        data_source: DataSource<C>,
         module_bytes: &Arc<Vec<u8>>,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
-        host_metrics: Arc<HostMetrics>,
     ) -> Result<T::Host, Error> {
         let mapping_request_sender = {
             let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
@@ -106,7 +94,7 @@ where
                     module_bytes.as_ref(),
                     logger,
                     self.subgraph_id.clone(),
-                    host_metrics.clone(),
+                    self.host_metrics.cheap_clone(),
                 )?;
                 self.module_cache.insert(module_hash, sender.clone());
                 sender
@@ -116,44 +104,16 @@ where
             self.network.clone(),
             self.subgraph_id.clone(),
             data_source,
-            templates,
+            self.templates.cheap_clone(),
             mapping_request_sender,
-            host_metrics,
+            self.host_metrics.cheap_clone(),
         )
     }
 
-    pub(crate) async fn process_trigger(
-        &self,
-        logger: &Logger,
-        block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
-        state: BlockState<C>,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<BlockState<C>, MappingError> {
-        self.trigger_processor
-            .process_trigger(
-                logger,
-                &self.hosts,
-                block,
-                trigger,
-                state,
-                proof_of_indexing,
-                causality_region,
-                debug_fork,
-                subgraph_metrics,
-            )
-            .await
-    }
-
-    pub(crate) fn add_dynamic_data_source(
+    pub(super) fn add_dynamic_data_source(
         &mut self,
         logger: &Logger,
-        data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
-        metrics: Arc<HostMetrics>,
+        data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
         if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
@@ -177,13 +137,7 @@ where
             Some(ref module_bytes) => module_bytes.cheap_clone(),
         };
 
-        let host = Arc::new(self.new_host(
-            logger.clone(),
-            data_source,
-            &module_bytes,
-            templates,
-            metrics,
-        )?);
+        let host = Arc::new(self.new_host(logger.clone(), data_source, &module_bytes)?);
 
         Ok(if self.hosts.contains(&host) {
             None
@@ -193,7 +147,7 @@ where
         })
     }
 
-    pub(crate) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
+    pub(super) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         // `hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self
@@ -206,7 +160,7 @@ where
         }
     }
 
-    pub(crate) fn network(&self) -> &str {
-        &self.network
+    pub(super) fn hosts(&self) -> &[Arc<T::Host>] {
+        &self.hosts
     }
 }

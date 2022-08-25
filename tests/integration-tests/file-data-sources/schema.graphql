@@ -1,0 +1,4 @@
+type IpfsFile @entity {
+  id: ID!
+  content: String!
+}

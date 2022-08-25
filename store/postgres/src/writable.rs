@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::EntityKey;
+use graph::components::store::ReadStore;
 use graph::data::subgraph::schema;
 use graph::env::env_var;
 use graph::prelude::{
@@ -254,6 +255,7 @@ impl SyncStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
+        offchain_to_remove: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         self.retry("transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
@@ -265,6 +267,7 @@ impl SyncStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
+                offchain_to_remove,
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
@@ -421,6 +424,7 @@ enum Request {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     },
     RevertTo {
         store: Arc<SyncStore>,
@@ -442,6 +446,7 @@ impl Request {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
+                offchain_to_remove,
             } => store.transact_block_operations(
                 block_ptr_to,
                 firehose_cursor,
@@ -450,6 +455,7 @@ impl Request {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
+                offchain_to_remove,
             ),
             Request::RevertTo {
                 store,
@@ -756,10 +762,15 @@ impl Queue {
                 Request::Write {
                     block_ptr,
                     data_sources,
+                    offchain_to_remove,
                     ..
                 } => {
                     if tracker.visible(block_ptr) {
                         dds.extend(data_sources.clone());
+                        dds = dds
+                            .into_iter()
+                            .filter(|dds| !offchain_to_remove.contains(dds))
+                            .collect();
                     }
                 }
                 Request::RevertTo { .. } => { /* nothing to do */ }
@@ -812,6 +823,7 @@ impl Writer {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         match self {
             Writer::Sync(store) => store.transact_block_operations(
@@ -822,6 +834,7 @@ impl Writer {
                 &data_sources,
                 &deterministic_errors,
                 &manifest_idx_and_name,
+                &offchain_to_remove,
             ),
             Writer::Async(queue) => {
                 let req = Request::Write {
@@ -833,6 +846,7 @@ impl Writer {
                     data_sources,
                     deterministic_errors,
                     manifest_idx_and_name,
+                    offchain_to_remove,
                 };
                 queue.push(req).await
             }
@@ -929,6 +943,23 @@ impl WritableStore {
     }
 }
 
+impl ReadStore for WritableStore {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        self.writer.get(key)
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        self.writer.get_many(ids_for_type)
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.store.input_schema()
+    }
+}
+
 #[async_trait::async_trait]
 impl WritableStoreTrait for WritableStore {
     fn block_ptr(&self) -> Option<BlockPtr> {
@@ -999,10 +1030,6 @@ impl WritableStoreTrait for WritableStore {
         self.store.supports_proof_of_indexing().await
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.writer.get(key)
-    }
-
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
@@ -1012,6 +1039,7 @@ impl WritableStoreTrait for WritableStore {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         self.writer
             .write(
@@ -1022,6 +1050,7 @@ impl WritableStoreTrait for WritableStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
+                offchain_to_remove,
             )
             .await?;
 
@@ -1029,13 +1058,6 @@ impl WritableStoreTrait for WritableStore {
         *self.block_cursor.lock().unwrap() = firehose_cursor;
 
         Ok(())
-    }
-
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        self.writer.get_many(ids_for_type)
     }
 
     fn deployment_synced(&self) -> Result<(), StoreError> {
@@ -1065,10 +1087,6 @@ impl WritableStoreTrait for WritableStore {
 
     async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
         self.store.health().await
-    }
-
-    fn input_schema(&self) -> Arc<Schema> {
-        self.store.input_schema()
     }
 
     async fn flush(&self) -> Result<(), StoreError> {

@@ -121,7 +121,6 @@ async fn setup(
             data_sources: vec![],
             graft: None,
             templates: vec![],
-            offchain_data_sources: vec![],
             chain: PhantomData,
         };
 
@@ -742,7 +741,6 @@ fn mixed_parent_child_id() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
-        dbg!(&data);
     })
 }
 

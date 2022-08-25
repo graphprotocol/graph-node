@@ -245,6 +245,7 @@ impl Chain {
 #[async_trait]
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Ethereum;
+    const ALIASES: &'static [&'static str] = &["ethereum/contract"];
 
     type Block = BlockFinality;
 
@@ -387,6 +388,12 @@ pub enum BlockFinality {
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
+}
+
+impl Default for BlockFinality {
+    fn default() -> Self {
+        Self::Final(Arc::default())
+    }
 }
 
 impl BlockFinality {

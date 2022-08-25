@@ -222,7 +222,6 @@ impl QueryResult {
     /// This is really `clone`, but we do not want to implement `Clone`;
     /// this is only meant for test purposes and should not be used in production
     /// code since cloning query results can be very expensive
-    #[cfg(debug_assertions)]
     pub fn duplicate(&self) -> Self {
         Self {
             data: self.data.clone(),

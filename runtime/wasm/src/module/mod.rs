@@ -13,9 +13,10 @@ use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
 
-use graph::blockchain::{Blockchain, HostFnCtx, TriggerWithHandler};
+use graph::blockchain::{Blockchain, HostFnCtx};
 use graph::data::store;
 use graph::data::subgraph::schema::SubgraphError;
+use graph::data_source::{offchain, MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::{
     asc_get, asc_new,
@@ -44,6 +45,52 @@ pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 pub trait IntoTrap {
     fn determinism_level(&self) -> DeterminismLevel;
     fn into_trap(self) -> Trap;
+}
+
+/// A flexible interface for writing a type to AS memory, any pointer can be returned.
+/// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
+pub trait ToAscPtr {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError>;
+}
+
+impl ToAscPtr for offchain::TriggerData {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
+        asc_new(heap, self.data.as_ref() as &[u8], gas).map(|ptr| ptr.erase())
+    }
+}
+
+impl<C: Blockchain> ToAscPtr for MappingTrigger<C>
+where
+    C::MappingTrigger: ToAscPtr,
+{
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
+        match self {
+            MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
+            MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
+        }
+    }
+}
+
+impl<T: ToAscPtr> ToAscPtr for TriggerWithHandler<T> {
+    fn to_asc_ptr<H: AscHeap>(
+        self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<()>, DeterministicHostError> {
+        self.trigger.to_asc_ptr(heap, gas)
+    }
 }
 
 /// Handle to a WASM instance, which is terminated if and only if this is dropped.
@@ -117,8 +164,11 @@ impl<C: Blockchain> WasmInstance<C> {
 
     pub(crate) fn handle_trigger(
         mut self,
-        trigger: TriggerWithHandler<C>,
-    ) -> Result<(BlockState<C>, Gas), MappingError> {
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
+    ) -> Result<(BlockState<C>, Gas), MappingError>
+    where
+        <C as Blockchain>::MappingTrigger: ToAscPtr,
+    {
         let handler_name = trigger.handler_name().to_owned();
         let gas = self.gas.clone();
         let asc_trigger = trigger.to_asc_ptr(self.instance_ctx_mut().deref_mut(), &gas)?;

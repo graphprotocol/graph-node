@@ -18,23 +18,27 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
+use graph::data::graphql::effort::LoadManager;
+use graph::data::query::{Query, QueryTarget};
 use graph::env::ENV_VARS;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    async_trait, BlockNumber, DeploymentHash, LoggerFactory, MetricsRegistry, NodeId,
-    SubgraphAssignmentProvider, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
-    SubgraphVersionSwitchingMode,
+    async_trait, r, ApiVersion, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
+    MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
+    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
+use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
+use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
-use slog::{info, Logger};
+use slog::{crit, info, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -103,6 +107,8 @@ pub struct TestContext {
     >,
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
+    pub subgraph_name: SubgraphName,
+    graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
 }
 
 impl TestContext {
@@ -115,6 +121,33 @@ impl TestContext {
         wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
             .await
             .unwrap();
+    }
+
+    pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
+        let target = QueryTarget::Deployment(self.deployment.hash.clone(), ApiVersion::default());
+
+        self.graphql_runner
+            .clone()
+            .run_query(
+                Query::new(
+                    graphql_parser::parse_query(query).unwrap().into_static(),
+                    None,
+                ),
+                target,
+            )
+            .await
+            .first()
+            .unwrap()
+            .duplicate()
+            .to_result()
+    }
+}
+
+impl Drop for TestContext {
+    fn drop(&mut self) {
+        if let Err(e) = cleanup(&self.store, &self.subgraph_name, &self.deployment.hash) {
+            crit!(self.logger, "error cleaning up test subgraph"; "error" => e.to_string());
+        }
     }
 }
 
@@ -191,7 +224,7 @@ pub async fn setup<C: Blockchain>(
 
     // Make sure we're starting from a clean state.
     let subgraph_store = stores.network_store.subgraph_store();
-    cleanup(&subgraph_store, &subgraph_name, hash);
+    cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain);
@@ -199,7 +232,16 @@ pub async fn setup<C: Blockchain>(
     let static_filters = ENV_VARS.experimental_static_filters;
 
     let ipfs = IpfsClient::localhost();
-    let link_resolver = Arc::new(LinkResolver::new(vec![ipfs], Default::default()));
+    let link_resolver = Arc::new(LinkResolver::new(
+        vec![ipfs.cheap_clone()],
+        Default::default(),
+    ));
+    let ipfs_service = IpfsService::new(
+        ipfs,
+        ENV_VARS.mappings.max_ipfs_file_bytes as u64,
+        ENV_VARS.mappings.ipfs_timeout,
+        ENV_VARS.mappings.max_ipfs_concurrent_requests,
+    );
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
@@ -208,8 +250,20 @@ pub async fn setup<C: Blockchain>(
         blockchain_map.clone(),
         mock_registry.clone(),
         link_resolver.cheap_clone(),
+        ipfs_service,
         static_filters,
     );
+
+    // Graphql runner
+    let subscription_manager = Arc::new(PanicSubscriptionManager {});
+    let load_manager = LoadManager::new(&logger, Vec::new(), mock_registry.clone());
+    let graphql_runner = Arc::new(GraphQlRunner::new(
+        &logger,
+        stores.network_store.clone(),
+        subscription_manager.clone(),
+        Arc::new(load_manager),
+        mock_registry.clone(),
+    ));
 
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
@@ -252,15 +306,22 @@ pub async fn setup<C: Blockchain>(
         provider: subgraph_provider,
         store: subgraph_store,
         deployment,
+        subgraph_name,
+        graphql_runner,
     }
 }
 
-pub fn cleanup(subgraph_store: &SubgraphStore, name: &SubgraphName, hash: &DeploymentHash) {
-    let locators = subgraph_store.locators(hash).unwrap();
-    subgraph_store.remove_subgraph(name.clone()).unwrap();
+pub fn cleanup(
+    subgraph_store: &SubgraphStore,
+    name: &SubgraphName,
+    hash: &DeploymentHash,
+) -> Result<(), Error> {
+    let locators = subgraph_store.locators(hash)?;
+    subgraph_store.remove_subgraph(name.clone())?;
     for locator in locators {
-        subgraph_store.remove_deployment(locator.id.into()).unwrap();
+        subgraph_store.remove_deployment(locator.id.into())?;
     }
+    Ok(())
 }
 
 pub async fn wait_for_sync(

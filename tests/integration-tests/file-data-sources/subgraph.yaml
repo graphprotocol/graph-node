@@ -1,4 +1,4 @@
-specVersion: 0.0.4
+specVersion: 0.0.7
 schema:
   file: ./schema.graphql
 dataSources:
@@ -10,7 +10,7 @@ dataSources:
       abi: Contract
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.6
+      apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
         - Gravatar
@@ -21,20 +21,16 @@ dataSources:
         - handler: handleBlock
       file: ./src/mapping.ts
 templates:
-  - kind: ethereum/contract
-    name: Template
-    network: test
-    source:
-      abi: Contract
+  - kind: file/ipfs
+    name: File
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.6
+      apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
         - Gravatar
       abis:
         - name: Contract
           file: ./abis/Contract.abi
-      blockHandlers:
-        - handler: handleBlockTemplate
+      handler: handleFile
       file: ./src/mapping.ts

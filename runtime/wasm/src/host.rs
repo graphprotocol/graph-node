@@ -5,16 +5,18 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::RuntimeAdapter;
-use graph::blockchain::{Blockchain, DataSource};
-use graph::blockchain::{HostFn, TriggerWithHandler};
+use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::{
+    DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
+};
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
 use crate::mapping::{MappingContext, MappingRequest};
+use crate::module::ToAscPtr;
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
 
@@ -48,7 +50,10 @@ impl<C: Blockchain> RuntimeHostBuilder<C> {
     }
 }
 
-impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
+impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
     type Host = RuntimeHost<C>;
     type Req = MappingRequest<C>;
 
@@ -76,8 +81,8 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
         &self,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        data_source: DataSource<C>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
@@ -97,7 +102,7 @@ impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C> {
 
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
-    data_source: C::DataSource,
+    data_source: DataSource<C>,
     mapping_request_sender: Sender<MappingRequest<C>>,
     host_exports: Arc<HostExports<C>>,
     metrics: Arc<HostMetrics>,
@@ -112,8 +117,8 @@ where
         link_resolver: Arc<dyn LinkResolver>,
         network_name: String,
         subgraph_id: DeploymentHash,
-        data_source: C::DataSource,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        data_source: DataSource<C>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         mapping_request_sender: Sender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
@@ -129,10 +134,14 @@ where
             ens_lookup,
         ));
 
-        let host_fns = Arc::new(runtime_adapter.host_fns(&data_source)?);
+        let host_fns = data_source
+            .as_onchain()
+            .map(|ds| runtime_adapter.host_fns(ds))
+            .transpose()?
+            .unwrap_or_default();
 
         Ok(RuntimeHost {
-            host_fns,
+            host_fns: Arc::new(host_fns),
             data_source,
             mapping_request_sender,
             host_exports,
@@ -146,7 +155,7 @@ where
         &self,
         logger: &Logger,
         state: BlockState<C>,
-        trigger: TriggerWithHandler<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
@@ -209,12 +218,16 @@ where
 
 #[async_trait]
 impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
+    fn data_source(&self) -> &DataSource<C> {
+        &self.data_source
+    }
+
     fn match_and_decode(
         &self,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         block: &Arc<C::Block>,
         logger: &Logger,
-    ) -> Result<Option<TriggerWithHandler<C>>, Error> {
+    ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)
     }
 
@@ -222,7 +235,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
-        trigger: TriggerWithHandler<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
