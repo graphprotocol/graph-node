@@ -44,7 +44,7 @@ impl SubstreamsMapper<Chain> for Mapper {
 
                 use ForkStep::*;
                 match step {
-                    StepIrreversible => Ok(Some(BlockStreamEvent::ProcessBlock(
+                    StepIrreversible | StepNew => Ok(Some(BlockStreamEvent::ProcessBlock(
                         // Even though the trigger processor for substreams doesn't care about TriggerData
                         // there are a bunch of places in the runner that check if trigger data
                         // empty and skip processing if so. This will prolly breakdown
@@ -66,10 +66,6 @@ impl SubstreamsMapper<Chain> for Mapper {
                             FirehoseCursor::from(cursor.clone()),
                         )))
                     }
-                    StepNew => {
-                        panic!("Fix me when substream support more then just irreversible")
-                    }
-
                     StepUnknown => {
                         panic!("unknown step should not happen in the Firehose response")
                     }
