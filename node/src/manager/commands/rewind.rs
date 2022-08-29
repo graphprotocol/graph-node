@@ -11,7 +11,7 @@ use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::manager::deployment::{Deployment, DeploymentSearch};
 
-fn block_ptr(
+async fn block_ptr(
     store: Arc<BlockStore>,
     searches: &[DeploymentSearch],
     deployments: &[Deployment],
@@ -36,7 +36,7 @@ fn block_ptr(
         None => bail!("can not find chain store for {}", chain),
         Some(store) => store,
     };
-    if let Some((_, number, _)) = chain_store.block_number(&block_ptr_to.hash)? {
+    if let Some((_, number, _)) = chain_store.block_number(&block_ptr_to.hash).await? {
         if number != block_ptr_to.number {
             bail!(
                 "the given hash is for block number {} but the command specified block number {}",
@@ -57,7 +57,7 @@ fn block_ptr(
     Ok(block_ptr_to)
 }
 
-pub fn run(
+pub async fn run(
     primary: ConnectionPool,
     store: Arc<Store>,
     searches: Vec<DeploymentSearch>,
@@ -90,7 +90,8 @@ pub fn run(
         &block_hash,
         block_number,
         force,
-    )?;
+    )
+    .await?;
 
     println!("Pausing deployments");
     let mut paused = false;

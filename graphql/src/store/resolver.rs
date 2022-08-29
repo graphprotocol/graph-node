@@ -139,12 +139,13 @@ impl StoreResolver {
                 .map_err(|msg| QueryExecutionError::ValueParseError("block.number".to_owned(), msg))
         }
 
-        fn get_block_ts(
+        async fn get_block_ts(
             store: &dyn QueryStore,
             ptr: &BlockPtr,
         ) -> Result<Option<String>, QueryExecutionError> {
             match store
                 .block_number_with_timestamp(&ptr.hash)
+                .await
                 .map_err(Into::<QueryExecutionError>::into)?
             {
                 Some((_, Some(ts))) => Ok(Some(ts)),
@@ -156,6 +157,7 @@ impl StoreResolver {
             BlockConstraint::Hash(hash) => {
                 let ptr = store
                     .block_number_with_timestamp(&hash)
+                    .await
                     .map_err(Into::into)
                     .and_then(|result| {
                         result
@@ -196,12 +198,12 @@ impl StoreResolver {
                         ),
                     ));
                 }
-                let timestamp = get_block_ts(store, &state.latest_block)?;
+                let timestamp = get_block_ts(store, &state.latest_block).await?;
 
                 Ok(BlockPtrTs { ptr, timestamp })
             }
             BlockConstraint::Latest => {
-                let timestamp = get_block_ts(store, &state.latest_block)?;
+                let timestamp = get_block_ts(store, &state.latest_block).await?;
 
                 Ok(BlockPtrTs {
                     ptr: state.latest_block.cheap_clone(),
@@ -292,7 +294,7 @@ impl Resolver for StoreResolver {
             .map(|(value, trace)| (Some(value), trace))
     }
 
-    fn resolve_objects(
+    async fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
         field: &a::Field,

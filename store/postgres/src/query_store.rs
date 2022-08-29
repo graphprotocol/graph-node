@@ -60,7 +60,7 @@ impl QueryStoreTrait for QueryStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
-    fn block_number_with_timestamp(
+    async fn block_number_with_timestamp(
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<(BlockNumber, Option<String>)>, StoreError> {
@@ -72,7 +72,8 @@ impl QueryStoreTrait for QueryStore {
         // database the blocks on the main chain that we consider final
         let subgraph_network = self.network_name();
         self.chain_store
-            .block_number(block_hash)?
+            .block_number(block_hash)
+            .await?
             .map(|(network_name, number, timestamp)| {
                 if network_name == subgraph_network {
                     Ok((number, timestamp))
@@ -86,8 +87,12 @@ impl QueryStoreTrait for QueryStore {
             .transpose()
     }
 
-    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError> {
+    async fn block_number(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockNumber>, StoreError> {
         self.block_number_with_timestamp(block_hash)
+            .await
             .map(|opt| opt.map(|(number, _)| number))
     }
 

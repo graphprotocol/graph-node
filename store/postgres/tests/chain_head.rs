@@ -167,7 +167,7 @@ fn long_chain_with_uncles() {
 }
 
 #[test]
-fn block_number() {
+fn test_get_block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = DeploymentHash::new("nonExistentSubgraph").unwrap();
 
@@ -186,16 +186,19 @@ fn block_number() {
 
             let block = query_store
                 .block_number(&GENESIS_BLOCK.block_hash())
+                .await
                 .expect("Found genesis block");
             assert_eq!(Some(0), block);
 
             let block = query_store
                 .block_number(&BLOCK_ONE.block_hash())
+                .await
                 .expect("Found block 1");
             assert_eq!(Some(1), block);
 
             let block = query_store
                 .block_number(&BLOCK_THREE.block_hash())
+                .await
                 .expect("Looked for block 3");
             assert!(block.is_none());
         }

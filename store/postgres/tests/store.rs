@@ -2019,6 +2019,7 @@ fn parse_timestamp() {
 
         let (_network, number, timestamp) = chain_store
             .block_number(&BLOCK_THREE_TIMESTAMP.block_hash())
+            .await
             .expect("block_number to return correct number and timestamp")
             .unwrap();
         assert_eq!(number, 3);
@@ -2051,6 +2052,7 @@ fn parse_null_timestamp() {
 
         let (_network, number, timestamp) = chain_store
             .block_number(&BLOCK_THREE_NO_TIMESTAMP.block_hash())
+            .await
             .expect("block_number to return correct number and timestamp")
             .unwrap();
         assert_eq!(number, 3);
