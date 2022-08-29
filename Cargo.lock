@@ -947,7 +947,7 @@ dependencies = [
  "bitflags",
  "byteorder",
  "chrono",
- "diesel_derives",
+ "diesel_derives 1.4.1",
  "num-bigint",
  "num-integer",
  "num-traits",
@@ -982,6 +982,18 @@ version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "45f5098f628d02a7a0f68ddba586fb61e80edec3bdc1be3b921f4ceec60858d3"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "diesel_derives"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22a7ab9d7967e6a1a247ea38aedf88ab808b4ac0c159576bc71866ab8f9f9250"
+dependencies = [
+ "proc-macro-error",
  "proc-macro2",
  "quote",
  "syn",
@@ -1476,7 +1488,7 @@ dependencies = [
  "chrono",
  "cid",
  "diesel",
- "diesel_derives",
+ "diesel_derives 2.0.0",
  "envconfig",
  "ethabi",
  "futures 0.1.31",
@@ -1875,7 +1887,7 @@ dependencies = [
  "diesel",
  "diesel-derive-enum",
  "diesel-dynamic-schema",
- "diesel_derives",
+ "diesel_derives 2.0.0",
  "diesel_migrations",
  "fallible-iterator",
  "futures 0.3.16",
