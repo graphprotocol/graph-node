@@ -214,14 +214,14 @@ pub struct TransactionTrace {
     /// MaxFeePerGas is the maximum fee per gas the user is willing to pay for the transaction gas used.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_DYNAMIC_FEE` which is possible only
-    /// if Londong fork is active on the chain.
+    /// if London fork is active on the chain.
     #[prost(message, optional, tag="11")]
     pub max_fee_per_gas: ::core::option::Option<BigInt>,
     /// MaxPriorityFeePerGas is priority fee per gas the user to pay in extra to the miner on top of the block's
     /// base fee.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_DYNAMIC_FEE` which is possible only
-    /// if Londong fork is active on the chain.
+    /// if London fork is active on the chain.
     #[prost(message, optional, tag="13")]
     pub max_priority_fee_per_gas: ::core::option::Option<BigInt>,
     /// meta
@@ -253,12 +253,12 @@ pub mod transaction_trace {
     pub enum Type {
         /// All transactions that ever existed prior Berlin fork before EIP-2718 was implemented.
         TrxTypeLegacy = 0,
-        /// Transaction that specicy an access list of contract/storage_keys that is going to be used
+        /// Field that specifies an access list of contract/storage_keys that is going to be used
         /// in this transaction.
         ///
         /// Added in Berlin fork (EIP-2930).
         TrxTypeAccessList = 1,
-        /// Transaction that specifis an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
+        /// Transaction that specifies an access list just like TRX_TYPE_ACCESS_LIST but in addition defines the
         /// max base gas gee and max priority gas fee to pay for this transaction. Transaction's of those type are
         /// executed against EIP-1559 rules which dictates a dynamic gas cost based on the congestion of the network.
         TrxTypeDynamicFee = 2,
