@@ -119,7 +119,9 @@ impl FirehoseEndpoint {
 
                 Ok(r)
             },
-        );
+        )
+        .accept_gzip()
+        .send_gzip();
 
         debug!(
             logger,
@@ -208,7 +210,9 @@ impl FirehoseEndpoint {
 
                 Ok(r)
             },
-        );
+        )
+        .accept_gzip()
+        .send_gzip();
 
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
