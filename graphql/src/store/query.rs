@@ -53,14 +53,72 @@ pub(crate) fn build_query<'a>(
         query = query.filter(filter);
     }
     let order = match (
-        build_order_by(entity, field)?,
+        build_order_by(entity, field, schema)?,
         build_order_direction(field)?,
     ) {
-        (Some((attr, value_type)), OrderDirection::Ascending) => {
+        (Some((attr, value_type, None)), OrderDirection::Ascending) => {
             EntityOrder::Ascending(attr, value_type)
         }
-        (Some((attr, value_type)), OrderDirection::Descending) => {
+        (Some((attr, value_type, None)), OrderDirection::Descending) => {
             EntityOrder::Descending(attr, value_type)
+        }
+        (Some((attr, _, Some(child))), OrderDirection::Ascending) => {
+            if ENV_VARS.graphql.disable_child_sorting {
+                return Err(QueryExecutionError::NotSupported(
+                    "Sorting by child attributes is not supported".to_string(),
+                ));
+            }
+            match child {
+                OrderByChild::Object(child) => {
+                    EntityOrder::ChildAscending(EntityOrderByChild::Object(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_type,
+                    ))
+                }
+                OrderByChild::Interface(child) => {
+                    EntityOrder::ChildAscending(EntityOrderByChild::Interface(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_types,
+                    ))
+                }
+            }
+        }
+        (Some((attr, _, Some(child))), OrderDirection::Descending) => {
+            if ENV_VARS.graphql.disable_child_sorting {
+                return Err(QueryExecutionError::NotSupported(
+                    "Sorting by child attributes is not supported".to_string(),
+                ));
+            }
+            match child {
+                OrderByChild::Object(child) => {
+                    EntityOrder::ChildDescending(EntityOrderByChild::Object(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_type,
+                    ))
+                }
+                OrderByChild::Interface(child) => {
+                    EntityOrder::ChildDescending(EntityOrderByChild::Interface(
+                        EntityOrderByChildInfo {
+                            sort_by_attribute: attr,
+                            join_attribute: child.join_attribute,
+                            derived: child.derived,
+                        },
+                        child.entity_types,
+                    ))
+                }
+            }
         }
         (None, _) => EntityOrder::Default,
     };
@@ -438,27 +496,150 @@ fn list_values(value: Value, filter_type: &str) -> Result<Vec<Value>, QueryExecu
     }
 }
 
+enum OrderByValue {
+    Direct(String),
+    Child(String, String),
+}
+
+fn parse_order_by(enum_value: &String) -> Result<OrderByValue, QueryExecutionError> {
+    let mut parts = enum_value.split("__");
+    let first = parts.next().ok_or_else(|| {
+        QueryExecutionError::ValueParseError(
+            "Invalid order value".to_string(),
+            enum_value.to_string(),
+        )
+    })?;
+    let second = parts.next();
+
+    Ok(match second {
+        Some(second) => OrderByValue::Child(first.to_string(), second.to_string()),
+        None => OrderByValue::Direct(first.to_string()),
+    })
+}
+
+struct ObjectOrderDetails {
+    entity_type: EntityType,
+    join_attribute: Attribute,
+    derived: bool,
+}
+
+struct InterfaceOrderDetails {
+    entity_types: Vec<EntityType>,
+    join_attribute: Attribute,
+    derived: bool,
+}
+
+enum OrderByChild {
+    Object(ObjectOrderDetails),
+    Interface(InterfaceOrderDetails),
+}
+
 /// Parses GraphQL arguments into an field name to order by, if present.
 fn build_order_by(
     entity: ObjectOrInterface,
     field: &a::Field,
-) -> Result<Option<(String, ValueType)>, QueryExecutionError> {
+    schema: &ApiSchema,
+) -> Result<Option<(String, ValueType, Option<OrderByChild>)>, QueryExecutionError> {
     match field.argument_value("orderBy") {
-        Some(r::Value::Enum(name)) => {
-            let field = sast::get_field(entity, name).ok_or_else(|| {
-                QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
-            })?;
-            sast::get_field_value_type(&field.field_type)
-                .map(|value_type| Some((name.to_owned(), value_type)))
-                .map_err(|_| {
-                    QueryExecutionError::OrderByNotSupportedError(
+        Some(r::Value::Enum(name)) => match parse_order_by(name)? {
+            OrderByValue::Direct(name) => {
+                let field = sast::get_field(entity, name.as_str()).ok_or_else(|| {
+                    QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
+                })?;
+                sast::get_field_value_type(&field.field_type)
+                    .map(|value_type| Some((name.to_owned(), value_type, None)))
+                    .map_err(|_| {
+                        QueryExecutionError::OrderByNotSupportedError(
+                            entity.name().to_owned(),
+                            name.clone(),
+                        )
+                    })
+            }
+            OrderByValue::Child(parent_field_name, child_field_name) => {
+                if entity.is_interface() {
+                    return Err(QueryExecutionError::OrderByNotSupportedError(
                         entity.name().to_owned(),
-                        name.clone(),
-                    )
-                })
-        }
+                        parent_field_name.clone(),
+                    ));
+                }
+
+                let field =
+                    sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            entity.name().to_owned(),
+                            parent_field_name.clone(),
+                        )
+                    })?;
+                let derived = field.is_derived();
+                let base_type = field.field_type.get_base_type();
+                let child_entity = schema
+                    .object_or_interface(base_type)
+                    .ok_or_else(|| QueryExecutionError::NamedTypeError(base_type.into()))?;
+                let child_field = sast::get_field(child_entity, child_field_name.as_str())
+                    .ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            child_entity.name().to_owned(),
+                            child_field_name.clone(),
+                        )
+                    })?;
+
+                let join_attribute = match derived {
+                    true => sast::get_derived_from_field(child_entity, field)
+                        .ok_or_else(|| {
+                            QueryExecutionError::EntityFieldError(
+                                entity.name().to_string(),
+                                field.name.to_string(),
+                            )
+                        })?
+                        .name
+                        .to_string(),
+                    false => parent_field_name,
+                };
+
+                let child = match child_entity {
+                    ObjectOrInterface::Object(_) => OrderByChild::Object(ObjectOrderDetails {
+                        entity_type: EntityType::new(base_type.into()),
+                        join_attribute,
+                        derived,
+                    }),
+                    ObjectOrInterface::Interface(interface) => {
+                        let entity_types = schema
+                            .types_for_interface()
+                            .get(&EntityType::new(interface.name.to_string()))
+                            .map(|object_types| {
+                                object_types
+                                    .iter()
+                                    .map(|object_type| EntityType::new(object_type.name.clone()))
+                                    .collect::<Vec<EntityType>>()
+                            })
+                            .ok_or(QueryExecutionError::AbstractTypeError(
+                                "Interface not implemented by any object type".to_string(),
+                            ))?;
+                        OrderByChild::Interface(InterfaceOrderDetails {
+                            entity_types,
+                            join_attribute,
+                            derived,
+                        })
+                    }
+                };
+
+                sast::get_field_value_type(&child_field.field_type)
+                    .map(|value_type| Some((child_field_name.to_owned(), value_type, Some(child))))
+                    .map_err(|_| {
+                        QueryExecutionError::OrderByNotSupportedError(
+                            child_entity.name().to_owned(),
+                            child_field_name.clone(),
+                        )
+                    })
+            }
+        },
         _ => match field.argument_value("text") {
-            Some(r::Value::Object(filter)) => build_fulltext_order_by_from_object(filter),
+            Some(r::Value::Object(filter)) => {
+                build_fulltext_order_by_from_object(filter).map(|order_by| match order_by {
+                    Some((attr, value)) => Some((attr, value, None)),
+                    None => None,
+                })
+            }
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },

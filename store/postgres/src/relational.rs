@@ -687,6 +687,7 @@ impl Layout {
             FilterCollection::new(self, query.collection, query.filter.as_ref(), query.block)?;
         let query = FilterQuery::new(
             &filter_collection,
+            &self,
             query.filter.as_ref(),
             query.order,
             query.range,

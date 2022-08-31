@@ -190,53 +190,45 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: Bytes!
     }
 
-    interface Review {
+    interface Review @entity {
         id: ID!
         body: String!
-        author: User!
+        author: Author!
     }
 
     type SongReview implements Review @entity {
         id: ID!
         body: String!
         song: Song
-        author: User!
+        author: Author!
     }
 
     type BandReview implements Review @entity {
         id: ID!
         body: String!
         band: Band
-        author: User!
-    }
-
-    type User @entity {
-        id: ID!
-        name: String!
-        bandReviews: [BandReview!]! @derivedFrom(field: \"author\")
-        songReviews: [SongReview!]! @derivedFrom(field: \"author\")
-        reviews: [Review!]! @derivedFrom(field: \"author\")
-        latestSongReview: SongReview!
-        latestBandReview: BandReview!
-        latestReview: Review!
+        author: Author!
     }
 
     interface Media {
         id: ID!
         title: String!
         song: Song!
+        author: User!
     }
 
     type Photo implements Media @entity {
         id: ID!
         title: String!
         song: Song! @derivedFrom(field: \"media\")
+        author: User!
     }
 
     type Video implements Media @entity {
         id: ID!
         title: String!
         song: Song! @derivedFrom(field: \"media\")
+        author: User!
     }
 
     interface Release {
@@ -257,6 +249,29 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
         id: ID!
         title: String!
         songs: [Song!]!
+    }
+
+    interface Author {
+        id: ID!
+        name: String!
+    }
+
+    type User implements Author @entity {
+        id: ID!
+        name: String!
+        reviews: [Review!]! @derivedFrom(field: \"author\")
+        bandReviews: [BandReview!]! @derivedFrom(field: \"author\")
+        songReviews: [SongReview!]! @derivedFrom(field: \"author\")
+        latestSongReview: SongReview!
+        latestBandReview: BandReview!
+        latestReview: Review!
+        medias: [Media!]! @derivedFrom(field: \"author\")
+    }
+
+    type AnonymousUser implements Author @entity {
+        id: ID!
+        name: String!
+        reviews: [Review!]! @derivedFrom(field: \"author\")
     }
     ";
 
@@ -296,21 +311,24 @@ async fn insert_test_entities(
         entity! { __typename: "Song", id: s[4], sid: "s4", title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
         entity! { __typename: "SongStat", id: s[1], played: 10 },
         entity! { __typename: "SongStat", id: s[2], played: 15 },
-        entity! { __typename: "BandReview", id: "r1", body: "Bad musicians", band: "b1", author: "u1" },
-        entity! { __typename: "BandReview", id: "r2", body: "Good amateurs", band: "b2", author: "u2" },
-        entity! { __typename: "SongReview", id: "r3", body: "Bad", song: s[2], author: "u1" },
-        entity! { __typename: "SongReview", id: "r4", body: "Good", song: s[3], author: "u2" },
-        entity! { __typename: "User", id: "u1", name: "Baden", latestSongReview: "r3", latestBandReview: "r1", latestReview: "r1" },
-        entity! { __typename: "User", id: "u2", name: "Goodwill", latestSongReview: "r4", latestBandReview: "r2", latestReview: "r2" },
-        entity! { __typename: "Photo", id: md[1], title: "Cheesy Tune Single Cover" },
-        entity! { __typename: "Video", id: md[2], title: "Cheesy Tune Music Video" },
-        entity! { __typename: "Photo", id: md[3], title: "Rock Tune Single Cover" },
-        entity! { __typename: "Video", id: md[4], title: "Rock Tune Music Video" },
-        entity! { __typename: "Photo", id: md[5], title: "Pop Tune Single Cover" },
-        entity! { __typename: "Video", id: md[6], title: "Folk Tune Music Video" },
-        entity! { __typename: "Album", id: "rl1", title: "Pop and Folk", songs: vec![s[3], s[4]] },
-        entity! { __typename: "Single", id: "rl2", title: "Rock", songs: vec![s[2]] },
-        entity! { __typename: "Single", id: "rl3", title: "Cheesy", songs: vec![s[1]] },
+        entity! { __typename: "BandReview", id: "r1", body: "Bad musicians",        band: "b1", author: "u1" },
+        entity! { __typename: "BandReview", id: "r2", body: "Good amateurs",        band: "b2", author: "u2" },
+        entity! { __typename: "BandReview", id: "r5", body: "Very Bad musicians",   band: "b1", author: "u3" },
+        entity! { __typename: "SongReview", id: "r3", body: "Bad",                  song: s[2], author: "u1" },
+        entity! { __typename: "SongReview", id: "r4", body: "Good",                 song: s[3], author: "u2" },
+        entity! { __typename: "SongReview", id: "r6", body: "Very Bad",             song: s[2], author: "u3" },
+        entity! { __typename: "User",           id: "u1", name: "Baden",        latestSongReview: "r3", latestBandReview: "r1", latestReview: "r1" },
+        entity! { __typename: "User",           id: "u2", name: "Goodwill",     latestSongReview: "r4", latestBandReview: "r2", latestReview: "r2" },
+        entity! { __typename: "AnonymousUser",  id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5" },
+        entity! { __typename: "Photo", id: md[1],   title: "Cheesy Tune Single Cover",  author: "u1" },
+        entity! { __typename: "Video", id: md[2],   title: "Cheesy Tune Music Video",   author: "u2" },
+        entity! { __typename: "Photo", id: md[3],   title: "Rock Tune Single Cover",    author: "u1" },
+        entity! { __typename: "Video", id: md[4],   title: "Rock Tune Music Video",     author: "u2" },
+        entity! { __typename: "Photo", id: md[5],   title: "Pop Tune Single Cover",     author: "u1" },
+        entity! { __typename: "Video", id: md[6],   title: "Folk Tune Music Video",     author: "u2" },
+        entity! { __typename: "Album", id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] },
+        entity! { __typename: "Single", id: "rl2",  title: "Rock",           songs: vec![s[2]] },
+        entity! { __typename: "Single", id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
     ];
 
     let entities1 = vec![
@@ -667,6 +685,279 @@ fn can_query_many_to_many_relationship() {
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
     })
+}
+
+#[test]
+fn can_query_with_sorting_by_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: musicians(first: 100, orderBy: mainBand__name, orderDirection: desc) {
+            name
+            mainBand {
+                name
+            }
+        }
+        asc: musicians(first: 100, orderBy: mainBand__name, orderDirection: asc) {
+            name
+            mainBand {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            desc: vec![
+                object! { name: "Valerie", mainBand: r::Value::Null },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
+                object! { name: "John", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
+                ],
+            asc: vec![
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
+                object! { name: "John", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Valerie", mainBand: r::Value::Null },
+                ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_sorting_by_derived_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: songStats(first: 100, orderBy: song__title, orderDirection: desc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+        asc: songStats(first: 100, orderBy: song__title, orderDirection: asc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+    }";
+
+    run_query(QUERY, |result, id_type| {
+        let s = id_type.songs();
+        let exp = object! {
+            desc: vec![
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                },
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                }
+            ],
+            asc: vec![
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                },
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_sorting_by_child_entity_id() {
+    const QUERY: &str = "
+    query {
+        desc: bandReviews(first: 100, orderBy: author__id, orderDirection: desc) {
+            body
+            author {
+                name
+            }
+        }
+        asc: bandReviews(first: 100, orderBy: author__id, orderDirection: asc) {
+            body
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            desc: vec![
+                object! { body: "Very Bad musicians",   author: object! { name: "Anonymous 3"  } },
+                object! { body: "Good amateurs",        author: object! { name: "Goodwill" } },
+                object! { body: "Bad musicians",        author: object! { name: "Baden" } },
+                ],
+            asc: vec![
+                object! { body: "Bad musicians",        author: object! { name: "Baden" } },
+                object! { body: "Good amateurs",        author: object! { name: "Goodwill" } },
+                object! { body: "Very Bad musicians",   author: object! { name: "Anonymous 3"  } },
+                ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_sorting_by_derived_child_entity_id() {
+    const QUERY: &str = "
+    query {
+        desc: songStats(first: 100, orderBy: song__id, orderDirection: desc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+        asc: songStats(first: 100, orderBy: song__id, orderDirection: asc) {
+            id
+            song {
+              id
+              title
+            }
+            played
+        }
+    }";
+
+    run_query(QUERY, |result, id_type| {
+        let s = id_type.songs();
+        let exp = object! {
+            desc: vec![
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                },
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                }
+            ],
+            asc: vec![
+                object! {
+                    id: s[1],
+                    song: object! { id: s[1], title: "Cheesy Tune" },
+                    played: 10,
+                },
+                object! {
+                    id: s[2],
+                    song: object! { id: s[2], title: "Rock Tune" },
+                    played: 15
+                }
+            ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_sorting_by_child_interface() {
+    const QUERY: &str = "
+    query {
+        desc: songReviews(first: 100, orderBy: author__name, orderDirection: desc) {
+            body
+            author {
+                name
+            }
+        }
+        asc: songReviews(first: 100, orderBy: author__name, orderDirection: asc) {
+            body
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            desc: vec![
+                object! { body: "Good", author: object! { name: "Goodwill" } },
+                object! { body: "Bad", author: object! { name: "Baden" } },
+                object! { body: "Very Bad", author: object! { name: "Anonymous 3" } },
+                ],
+            asc: vec![
+                object! { body: "Very Bad", author: object! { name: "Anonymous 3" } },
+                object! { body: "Bad", author: object! { name: "Baden" } },
+                object! { body: "Good", author: object! { name: "Goodwill" } },
+                ]
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_not_query_interface_with_sorting_by_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: medias(first: 100, orderBy: author__name, orderDirection: desc) {
+            title
+            author {
+                name
+            }
+        }
+        asc: medias(first: 100, orderBy: author__name, orderDirection: asc) {
+            title
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        // Sorting an interface by child-level entity (derived) is not supported
+        assert!(result.has_errors());
+    });
+}
+
+#[test]
+fn can_not_query_interface_with_sorting_by_derived_child_entity() {
+    const QUERY: &str = "
+    query {
+        desc: medias(first: 100, orderBy: song__title, orderDirection: desc) {
+            title
+            song {
+                title
+            }
+        }
+        asc: medias(first: 100, orderBy: song__title, orderDirection: asc) {
+            title
+            song {
+                title
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        // Sorting an interface by child-level entity is not supported
+        assert!(result.has_errors());
+    });
 }
 
 #[test]

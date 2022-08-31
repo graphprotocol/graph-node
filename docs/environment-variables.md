@@ -126,6 +126,9 @@ those.
 - `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`: disables the ability to use AND/OR
   filters. This is useful if we want to disable filters because of
   performance reasons.
+- `GRAPH_GRAPHQL_DISABLE_CHILD_SORTING`: disables the ability to use child-based
+  sorting. This is useful if we want to disable child-based sorting because of
+  performance reasons.
 - `GRAPH_GRAPHQL_TRACE_TOKEN`: the token to use to enable query tracing for
   a GraphQL request. If this is set, requests that have a header
   `X-GraphTraceQuery` set to this value will include a trace of the SQL
