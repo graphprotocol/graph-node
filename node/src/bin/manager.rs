@@ -209,6 +209,18 @@ pub enum Command {
 
     /// Manage database indexes
     Index(IndexCommand),
+
+    /// Prune deployments
+    Prune {
+        /// The deployment to prune (see `help info`)
+        deployment: DeploymentSearch,
+        /// Prune tables with a ratio of entities to entity versions lower than this
+        #[structopt(long, short, default_value = "0.20")]
+        prune_ratio: f64,
+        /// How much history to keep in blocks
+        #[structopt(long, short, default_value = "10000")]
+        history: usize,
+    },
 }
 
 impl Command {
@@ -1033,6 +1045,14 @@ async fn main() -> anyhow::Result<()> {
                         .await
                 }
             }
+        }
+        Prune {
+            deployment,
+            history,
+            prune_ratio,
+        } => {
+            let (store, primary_pool) = ctx.store_and_primary();
+            commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
         }
     }
 }

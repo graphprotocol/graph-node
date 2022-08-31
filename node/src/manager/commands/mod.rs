@@ -7,6 +7,7 @@ pub mod create;
 pub mod index;
 pub mod info;
 pub mod listen;
+pub mod prune;
 pub mod query;
 pub mod remove;
 pub mod rewind;
