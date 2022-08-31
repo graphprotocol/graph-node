@@ -12,7 +12,10 @@ use std::iter::FromIterator;
 use std::sync::Arc;
 
 use graph::prelude::anyhow::anyhow;
-use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
+use graph::{
+    data::subgraph::schema::POI_TABLE,
+    prelude::{lazy_static, StoreError},
+};
 
 use crate::connection_pool::ForeignServer;
 use crate::{
@@ -119,7 +122,7 @@ impl Catalog {
 
     /// Whether to create exclusion indexes; if false, create gist indexes
     /// w/o an exclusion constraint
-    pub fn create_exclusion_constraint(&self) -> bool {
+    pub fn create_exclusion_constraint() -> bool {
         CREATE_EXCLUSION_CONSTRAINT
     }
 }
@@ -154,9 +157,10 @@ fn get_text_columns(
     Ok(map)
 }
 
-pub fn supports_proof_of_indexing(
-    conn: &diesel::pg::PgConnection,
+pub fn table_exists(
+    conn: &PgConnection,
     namespace: &Namespace,
+    table: &SqlName,
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
     struct Table {
@@ -167,10 +171,63 @@ pub fn supports_proof_of_indexing(
     let query =
         "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
     let result: Vec<Table> = diesel::sql_query(query)
-        .bind::<Text, _>(namespace.as_str())
-        .bind::<Text, _>(POI_TABLE)
+        .bind::<Text, _>(namespace)
+        .bind::<Text, _>(table.as_str())
         .load(conn)?;
     Ok(result.len() > 0)
+}
+
+pub fn supports_proof_of_indexing(
+    conn: &diesel::pg::PgConnection,
+    namespace: &Namespace,
+) -> Result<bool, StoreError> {
+    lazy_static! {
+        static ref POI_TABLE_NAME: SqlName = SqlName::verbatim(POI_TABLE.to_owned());
+    }
+    table_exists(conn, namespace, &POI_TABLE_NAME)
+}
+
+/// Whether the given table has an exclusion constraint. When we create
+/// tables, they either have an exclusion constraint on `(id, block_range)`,
+/// or just a GIST index on those columns. If this returns `true`, there is
+/// an exclusion constraint on the table, if it returns `false` we only have
+/// an index.
+///
+/// This function only checks whether there is some exclusion constraint on
+/// the table since checking fully if that is exactly the constraint we
+/// think it is is a bit more complex. But if the table is part of a
+/// deployment that we created, the conclusions in hte previous paragraph
+/// are true.
+pub fn has_exclusion_constraint(
+    conn: &PgConnection,
+    namespace: &Namespace,
+    table: &SqlName,
+) -> Result<bool, StoreError> {
+    #[derive(Debug, QueryableByName)]
+    struct Row {
+        #[sql_type = "Bool"]
+        #[allow(dead_code)]
+        uses_excl: bool,
+    }
+
+    let query = "
+        select count(*) > 0 as uses_excl
+          from pg_catalog.pg_constraint con,
+               pg_catalog.pg_class rel,
+               pg_catalog.pg_namespace nsp
+         where rel.oid = con.conrelid
+           and nsp.oid = con.connamespace
+           and con.contype = 'x'
+           and nsp.nspname = $1
+           and rel.relname = $2;
+    ";
+
+    sql_query(query)
+        .bind::<Text, _>(namespace)
+        .bind::<Text, _>(table.as_str())
+        .get_result::<Row>(conn)
+        .map_err(StoreError::from)
+        .map(|row| row.uses_excl)
 }
 
 pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {

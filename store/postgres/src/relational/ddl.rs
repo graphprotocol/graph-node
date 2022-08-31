@@ -1,10 +1,13 @@
-use std::fmt::{self, Write};
+use std::{
+    fmt::{self, Write},
+    iter,
+};
 
 use graph::prelude::BLOCK_NUMBER_MAX;
 
 use crate::relational::{
-    ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
-    VID_COLUMN,
+    Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
+    STRING_PREFIX_SIZE, VID_COLUMN,
 };
 
 use super::{Column, Layout, SqlName, Table};
@@ -54,7 +57,23 @@ impl Layout {
 }
 
 impl Table {
-    fn create_table(&self, out: &mut String, layout: &Layout) -> fmt::Result {
+    /// Return an iterator over all the column names of this table
+    ///
+    // This needs to stay in sync with `create_table`
+    pub(crate) fn column_names(&self) -> impl Iterator<Item = &str> {
+        let block_column = if self.immutable {
+            BLOCK_COLUMN
+        } else {
+            BLOCK_RANGE_COLUMN
+        };
+        let data_cols = self.columns.iter().map(|col| col.name.as_str());
+        iter::once(VID_COLUMN)
+            .chain(data_cols)
+            .chain(iter::once(block_column))
+    }
+
+    // Changes to this function require changing `column_names`, too
+    pub(crate) fn create_table(&self, out: &mut String, layout: &Layout) -> fmt::Result {
         fn columns_ddl(table: &Table) -> Result<String, fmt::Error> {
             let mut cols = String::new();
             let mut first = true;
@@ -109,12 +128,76 @@ impl Table {
             self.exclusion_ddl(
                 out,
                 layout.catalog.site.namespace.as_str(),
-                layout.catalog.create_exclusion_constraint(),
+                Catalog::create_exclusion_constraint(),
             )
         }
     }
 
-    fn create_time_travel_indexes(&self, out: &mut String, layout: &Layout) -> fmt::Result {
+    /// Generate SQL that renames the table `from` to `to`. The code assumes
+    /// that `from` has been created with `create_table`, but that no other
+    /// indexes have been created on it, and also renames any indexes and
+    /// constraints, so that the database, after running the generated SQL,
+    /// will have the exact same table as if `from.create_sql` had been run
+    /// initially.
+    ///
+    /// The code does not do anything about the sequence for `vid`; it is
+    /// assumed that both `from` and `to` already use the same sequence for
+    /// that
+    ///
+    /// For mutable tables, if `has_exclusion_constraint` is true, assume
+    /// there is an exclusion constraint on `(id, block_range)`; if it is
+    /// false, assume there is a GIST index on those columns. For immutbale
+    /// tables, this argument has no effect. It is assumed that the name of
+    /// the constraint or index is what `create_table` uses for these.
+    pub(crate) fn rename_sql(
+        out: &mut String,
+        layout: &Layout,
+        from: &Table,
+        to: &Table,
+        has_exclusion_constraint: bool,
+    ) -> fmt::Result {
+        let nsp = layout.site.namespace.as_str();
+        let from_name = &from.name;
+        let to_name = &to.name;
+        let id = &to.primary_key().name;
+
+        writeln!(
+            out,
+            r#"alter table "{nsp}"."{from_name}" rename to "{to_name}";"#
+        )?;
+
+        writeln!(
+            out,
+            r#"alter table "{nsp}"."{to_name}" rename constraint "{from_name}_pkey" to "{to_name}_pkey";"#
+        )?;
+
+        if to.immutable {
+            writeln!(
+                out,
+                r#"alter table "{nsp}"."{to_name}" rename constraint "{from_name}_{id}_key" to "{to_name}_{id}_key";"#
+            )?;
+        } else {
+            if has_exclusion_constraint {
+                writeln!(
+                    out,
+                    r#"alter table "{nsp}"."{to_name}" rename constraint "{from_name}_{id}_{BLOCK_RANGE_COLUMN}_excl" to "{to_name}_{id}_{BLOCK_RANGE_COLUMN}_excl";"#
+                )?;
+            } else {
+                writeln!(
+                    out,
+                    r#"alter index "{nsp}"."{from_name}_{id}_{BLOCK_RANGE_COLUMN}_excl" rename to "{to_name}_{id}_{BLOCK_RANGE_COLUMN}_excl";"#
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn create_time_travel_indexes(
+        &self,
+        out: &mut String,
+        layout: &Layout,
+    ) -> fmt::Result {
         if self.immutable {
             write!(
                 out,
@@ -168,7 +251,11 @@ impl Table {
         }
     }
 
-    fn create_attribute_indexes(&self, out: &mut String, layout: &Layout) -> fmt::Result {
+    pub(crate) fn create_attribute_indexes(
+        &self,
+        out: &mut String,
+        layout: &Layout,
+    ) -> fmt::Result {
         // Create indexes. Skip columns whose type is an array of enum,
         // since there is no good way to index them with Postgres 9.6.
         // Once we move to Postgres 11, we can enable that

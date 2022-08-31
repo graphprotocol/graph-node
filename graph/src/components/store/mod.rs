@@ -1076,3 +1076,22 @@ impl ReadStore for EmptyStore {
         self.schema.cheap_clone()
     }
 }
+
+/// Callbacks for `SubgraphStore.prune` so that callers can report progress
+/// of the pruning procedure to users
+#[allow(unused_variables)]
+pub trait PruneReporter: Send + 'static {
+    fn start_analyze(&mut self, table: &str) {}
+    fn finish_analyze(&mut self, table: &str) {}
+
+    fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {}
+    fn copy_final_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {}
+    fn copy_final_finish(&mut self) {}
+
+    fn start_switch(&mut self) {}
+    fn copy_nonfinal_start(&mut self, table: &str) {}
+    fn copy_nonfinal_finish(&mut self, table: &str, rows: usize) {}
+    fn finish_switch(&mut self) {}
+
+    fn finish_prune(&mut self) {}
+}

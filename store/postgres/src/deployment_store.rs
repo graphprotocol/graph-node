@@ -4,7 +4,7 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{EntityKey, EntityType, StoredDynamicDataSource};
+use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
@@ -794,6 +794,61 @@ impl DeploymentStore {
         })
         .await
     }
+
+    pub(crate) async fn prune(
+        self: &Arc<Self>,
+        mut reporter: Box<dyn PruneReporter>,
+        site: Arc<Site>,
+        earliest_block: BlockNumber,
+        reorg_threshold: BlockNumber,
+        prune_ratio: f64,
+    ) -> Result<Box<dyn PruneReporter>, StoreError> {
+        let store = self.clone();
+        self.with_conn(move |conn, cancel| {
+            let layout = store.layout(conn, site.clone())?;
+            cancel.check_cancel()?;
+            let state = deployment::state(&conn, site.deployment.clone())?;
+
+            if state.latest_block.number <= reorg_threshold {
+                return Ok(reporter);
+            }
+
+            if state.earliest_block_number > earliest_block {
+                return Err(constraint_violation!("earliest block can not move back from {} to {}", state.earliest_block_number, earliest_block).into());
+            }
+
+            let final_block = state.latest_block.number - reorg_threshold;
+            if final_block <= earliest_block {
+                return Err(constraint_violation!("the earliest block {} must be at least {} blocks before the current latest block {}", earliest_block, reorg_threshold, state.latest_block.number).into());
+            }
+
+            if let Some((_, graft)) = deployment::graft_point(conn, &site.deployment)? {
+                if graft.block_number() >= earliest_block {
+                    return Err(constraint_violation!("the earliest block {} must be after the graft point {}", earliest_block, graft.block_number()).into());
+                }
+            }
+
+            cancel.check_cancel()?;
+
+            conn.transaction(|| {
+                deployment::set_earliest_block(conn, site.as_ref(), earliest_block)
+            })?;
+
+            cancel.check_cancel()?;
+
+            layout.prune_by_copying(
+                &store.logger,
+                reporter.as_mut(),
+                conn,
+                earliest_block,
+                final_block,
+                prune_ratio,
+                cancel,
+            )?;
+            Ok(reporter)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
@@ -1016,6 +1071,10 @@ impl DeploymentStore {
 
             // Make the changes
             let layout = self.layout(&conn, site.clone())?;
+
+            //  see also: deployment-lock-for-update
+            deployment::lock(&conn, &site)?;
+
             let section = stopwatch.start_section("apply_entity_modifications");
             let count = self.apply_entity_modifications(
                 &conn,
@@ -1068,6 +1127,9 @@ impl DeploymentStore {
         firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
         let event = conn.transaction(|| -> Result<_, StoreError> {
+            //  see also: deployment-lock-for-update
+            deployment::lock(conn, &site)?;
+
             // Don't revert past a graft point
             let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
             if let Some(graft_block) = info.graft_block {

@@ -1010,3 +1010,31 @@ pub fn set_entity_count(
         .execute(conn)?;
     Ok(())
 }
+
+pub fn set_earliest_block(
+    conn: &PgConnection,
+    site: &Site,
+    earliest_block: BlockNumber,
+) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    update(d::table.filter(d::id.eq(site.id)))
+        .set(d::earliest_block_number.eq(earliest_block))
+        .execute(conn)?;
+    Ok(())
+}
+
+/// Lock the row for `site` in `subgraph_deployment` for update. This lock
+/// is used to coordinate the changes that the subgraph writer makes with
+/// changes that other parts of the system, in particular, pruning make
+//  see also: deployment-lock-for-update
+pub fn lock(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    d::table
+        .select(d::id)
+        .filter(d::id.eq(site.id))
+        .for_update()
+        .get_result::<DeploymentId>(conn)?;
+    Ok(())
+}

@@ -17,7 +17,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, SubgraphFork,
+            EnsLookup as EnsLookupTrait, PruneReporter, SubgraphFork,
         },
     },
     constraint_violation,
@@ -1053,6 +1053,44 @@ impl SubgraphStoreInner {
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store.set_account_like(site, table, is_account_like).await
+    }
+
+    /// Remove the history that is only needed to respond to queries before
+    /// block number `earliest_block` from the given deployment
+    ///
+    /// Only tables with a ratio of entities to entity versions below
+    /// `prune_ratio` will be pruned; that ratio is determined by looking at
+    /// Postgres planner stats to avoid lengthy counting queries. It is
+    /// assumed that if the ratio is higher than `prune_ratio` that pruning
+    /// won't make much of a difference and will just cause unnecessary
+    /// work.
+    ///
+    /// The `reorg_threshold` is used to determine which blocks will not be
+    /// modified any more by the subgraph writer that may be running
+    /// concurrently to reduce the amount of time that the writer needs to
+    /// be locked out while pruning is happening.
+    ///
+    /// Pruning can take a long time, and is structured into multiple
+    /// transactions such that none of them takes an excessively long time.
+    /// If pruning gets interrupted, it may leave some intermediate tables
+    /// in the database behind. Those will get cleaned up the next time an
+    /// attempt is made to prune the same deployment.
+    pub async fn prune(
+        &self,
+        reporter: Box<dyn PruneReporter>,
+        deployment: &DeploymentLocator,
+        earliest_block: BlockNumber,
+        reorg_threshold: BlockNumber,
+        prune_ratio: f64,
+    ) -> Result<Box<dyn PruneReporter>, StoreError> {
+        // Find the store by the deployment id; otherwise, we could only
+        // prune the active copy of the deployment with `deployment.hash`
+        let site = self.find_site(deployment.id.into())?;
+        let store = self.for_site(&site)?;
+
+        store
+            .prune(reporter, site, earliest_block, reorg_threshold, prune_ratio)
+            .await
     }
 }
 

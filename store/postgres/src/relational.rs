@@ -14,6 +14,8 @@ mod ddl_tests;
 #[cfg(test)]
 mod query_tests;
 
+mod prune;
+
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
@@ -1241,6 +1243,22 @@ impl Table {
             immutable,
         };
         Ok(table)
+    }
+
+    /// Create a table that is like `self` except that its name in the
+    /// database is based on `namespace` and `name`
+    pub fn new_like(&self, namespace: &Namespace, name: &SqlName) -> Arc<Table> {
+        let other = Table {
+            object: self.object.clone(),
+            name: name.clone(),
+            qualified_name: SqlName::qualified_name(namespace, &name),
+            columns: self.columns.clone(),
+            is_account_like: self.is_account_like,
+            position: self.position,
+            immutable: self.immutable,
+        };
+
+        Arc::new(other)
     }
 
     /// Find the column `name` in this table. The name must be in snake case,
