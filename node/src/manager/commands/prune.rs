@@ -1,4 +1,9 @@
-use std::{io::Write, sync::Arc, time::Instant};
+use std::{
+    collections::HashSet,
+    io::Write,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use graph::{
     components::store::{PruneReporter, StatusStore},
@@ -8,7 +13,10 @@ use graph::{
 use graph_chain_ethereum::ENV_VARS as ETH_ENV;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::deployment::DeploymentSearch;
+use crate::manager::{
+    commands::stats::{abbreviate_table_name, show_stats},
+    deployment::DeploymentSearch,
+};
 
 struct Progress {
     start: Instant,
@@ -32,78 +40,93 @@ impl Progress {
     }
 }
 
+fn print_copy_header() {
+    println!("{:^30} | {:^10} | {:^11}", "table", "versions", "time");
+    println!("{:-^30}-+-{:-^10}-+-{:-^11}", "", "", "");
+    std::io::stdout().flush().ok();
+}
+
+fn print_copy_row(table: &str, total_rows: usize, elapsed: Duration) {
+    print!(
+        "\r{:<30} | {:>10} | {:>9}s",
+        abbreviate_table_name(table, 30),
+        total_rows,
+        elapsed.as_secs()
+    );
+    std::io::stdout().flush().ok();
+}
+
 impl PruneReporter for Progress {
-    fn start_analyze(&mut self, table: &str) {
-        print!("analyze {table:48} ");
-        std::io::stdout().flush().ok();
+    fn start_analyze(&mut self) {
+        print!("Analyze tables");
         self.analyze_start = Instant::now();
     }
 
-    fn finish_analyze(&mut self, table: &str) {
-        println!(
-            "\ranalyze {table:48} (done in {}s)",
-            self.analyze_start.elapsed().as_secs()
-        );
+    fn start_analyze_table(&mut self, table: &str) {
+        print!("\rAnalyze {table:48} ");
         std::io::stdout().flush().ok();
     }
 
+    fn finish_analyze(&mut self, stats: &[graph::components::store::VersionStats]) {
+        println!(
+            "\rAnalyzed {} tables in {}s",
+            stats.len(),
+            self.analyze_start.elapsed().as_secs()
+        );
+        show_stats(stats, HashSet::new()).ok();
+        println!("");
+    }
+
     fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {
-        println!("copy final entities (versions live between {earliest_block} and {final_block})");
+        println!("Copy final entities (versions live between {earliest_block} and {final_block})");
+        print_copy_header();
+
         self.final_start = Instant::now();
         self.final_table_start = self.final_start;
     }
 
     fn copy_final_batch(&mut self, table: &str, _rows: usize, total_rows: usize, finished: bool) {
+        print_copy_row(table, total_rows, self.final_table_start.elapsed());
         if finished {
-            println!(
-                "\r  copy final {table:43} ({total_rows} rows in {}s)",
-                self.final_table_start.elapsed().as_secs()
-            );
+            println!("");
             self.final_table_start = Instant::now();
-        } else {
-            print!(
-                "\r  copy final {table:43} ({total_rows} rows in {}s)",
-                self.final_table_start.elapsed().as_secs()
-            );
         }
         std::io::stdout().flush().ok();
     }
 
     fn copy_final_finish(&mut self) {
         println!(
-            "finished copying final entity versions in {}s",
+            "Finished copying final entity versions in {}s\n",
             self.final_start.elapsed().as_secs()
         );
     }
 
     fn start_switch(&mut self) {
-        println!("blocking writes and switching tables");
+        println!("Blocking writes and switching tables");
+        print_copy_header();
         self.switch_start = Instant::now();
     }
 
     fn finish_switch(&mut self) {
         println!(
-            "enabling writes. Switching took {}s",
+            "Enabling writes. Switching took {}s\n",
             self.switch_start.elapsed().as_secs()
         );
     }
 
     fn copy_nonfinal_start(&mut self, table: &str) {
-        print!("  copy nonfinal {table:40}");
-        std::io::stdout().flush().ok();
+        print_copy_row(table, 0, Duration::from_secs(0));
         self.nonfinal_start = Instant::now();
     }
 
     fn copy_nonfinal_finish(&mut self, table: &str, rows: usize) {
-        println!(
-            "\r  copy nonfinal {table:40} ({rows} rows in {}s)",
-            self.nonfinal_start.elapsed().as_secs()
-        );
+        print_copy_row(table, rows, self.nonfinal_start.elapsed());
+        println!("");
         std::io::stdout().flush().ok();
     }
 
     fn finish_prune(&mut self) {
-        println!("finished pruning in {}s", self.start.elapsed().as_secs());
+        println!("Finished pruning in {}s", self.start.elapsed().as_secs());
     }
 }
 
@@ -138,7 +161,7 @@ pub async fn run(
     println!("prune {deployment}");
     println!("    latest: {latest}");
     println!("     final: {}", latest - ETH_ENV.reorg_threshold);
-    println!("  earliest: {}", latest - history);
+    println!("  earliest: {}\n", latest - history);
 
     let reporter = Box::new(Progress::new());
     store

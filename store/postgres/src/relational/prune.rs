@@ -238,14 +238,16 @@ impl Layout {
     ) -> Result<(), CancelableError<StoreError>> {
         // Analyze all tables and get statistics for them
         let mut tables: Vec<_> = self.tables.values().collect();
+        reporter.start_analyze();
         tables.sort_by_key(|table| table.name.as_str());
         for table in tables {
-            reporter.start_analyze(table.name.as_str());
+            reporter.start_analyze_table(table.name.as_str());
             table.analyze(conn)?;
-            reporter.finish_analyze(table.name.as_str());
+            reporter.finish_analyze_table(table.name.as_str());
             cancel.check_cancel()?;
         }
         let stats = catalog::stats(conn, &self.site.namespace)?;
+        reporter.finish_analyze(stats.as_slice());
 
         // Determine which tables are prunable and create a shadow table for
         // them via `TablePair::create`
@@ -304,12 +306,23 @@ impl Layout {
         reporter.finish_switch();
 
         // Analyze the new tables
-        for table in prunable_src {
-            reporter.start_analyze(table.name.as_str());
+        reporter.start_analyze();
+        for table in &prunable_src {
+            reporter.start_analyze_table(table.name.as_str());
             table.analyze(conn)?;
-            reporter.finish_analyze(table.name.as_str());
+            reporter.finish_analyze_table(table.name.as_str());
             cancel.check_cancel()?;
         }
+        let stats: Vec<_> = catalog::stats(conn, &self.site.namespace)?
+            .into_iter()
+            .filter(|s| {
+                prunable_src
+                    .iter()
+                    .find(|table| table.name.as_str() == s.tablename)
+                    .is_some()
+            })
+            .collect();
+        reporter.finish_analyze(stats.as_slice());
 
         reporter.finish_prune();
 

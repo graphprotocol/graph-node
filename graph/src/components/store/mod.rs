@@ -1077,12 +1077,25 @@ impl ReadStore for EmptyStore {
     }
 }
 
+/// An estimate of the number of entities and the number of entity versions
+/// in a database table
+#[derive(Clone, Debug)]
+pub struct VersionStats {
+    pub entities: i32,
+    pub versions: i32,
+    pub tablename: String,
+    /// The ratio `entities / versions`
+    pub ratio: f64,
+}
+
 /// Callbacks for `SubgraphStore.prune` so that callers can report progress
 /// of the pruning procedure to users
 #[allow(unused_variables)]
 pub trait PruneReporter: Send + 'static {
-    fn start_analyze(&mut self, table: &str) {}
-    fn finish_analyze(&mut self, table: &str) {}
+    fn start_analyze(&mut self) {}
+    fn start_analyze_table(&mut self, table: &str) {}
+    fn finish_analyze_table(&mut self, table: &str) {}
+    fn finish_analyze(&mut self, stats: &[VersionStats]) {}
 
     fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {}
     fn copy_final_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {}

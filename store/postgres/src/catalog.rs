@@ -6,6 +6,7 @@ use diesel::{
     sql_types::{Array, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
+use graph::components::store::VersionStats;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
@@ -559,22 +560,31 @@ pub(crate) fn drop_index(
     Ok(())
 }
 
-/// An estimate of the number of entities and the number of entity versions
-/// in a database table
-#[derive(Clone, Debug, Queryable, QueryableByName)]
-pub struct VersionStats {
-    #[sql_type = "Integer"]
-    pub entities: i32,
-    #[sql_type = "Integer"]
-    pub versions: i32,
-    #[sql_type = "Text"]
-    pub tablename: String,
-    /// The ratio `entities / versions`
-    #[sql_type = "Double"]
-    pub ratio: f64,
-}
-
 pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionStats>, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    pub struct DbStats {
+        #[sql_type = "Integer"]
+        pub entities: i32,
+        #[sql_type = "Integer"]
+        pub versions: i32,
+        #[sql_type = "Text"]
+        pub tablename: String,
+        /// The ratio `entities / versions`
+        #[sql_type = "Double"]
+        pub ratio: f64,
+    }
+
+    impl From<DbStats> for VersionStats {
+        fn from(s: DbStats) -> Self {
+            VersionStats {
+                entities: s.entities,
+                versions: s.versions,
+                tablename: s.tablename,
+                ratio: s.ratio,
+            }
+        }
+    }
+
     // Get an estimate of number of rows (pg_class.reltuples) and number of
     // distinct entities (based on the planners idea of how many distinct
     // values there are in the `id` column) See the [Postgres
@@ -599,8 +609,10 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
           order by c.relname"
     );
 
-    sql_query(query)
+    let stats = sql_query(query)
         .bind::<Text, _>(namespace.as_str())
-        .load::<VersionStats>(conn)
-        .map_err(StoreError::from)
+        .load::<DbStats>(conn)
+        .map_err(StoreError::from)?;
+
+    Ok(stats.into_iter().map(|s| s.into()).collect())
 }
