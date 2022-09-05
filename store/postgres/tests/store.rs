@@ -1996,7 +1996,7 @@ fn cleanup_cached_blocks() {
 /// checks if retrieving the timestamp from the data blob works.
 /// on ethereum, the block has timestamp as U256 so it will always have a value
 fn parse_timestamp() {
-    const EXPECTED_TS: &str = "0x62ceae26";
+    const EXPECTED_TS: u64 = 1657712166;
 
     run_test(|store, _, _| async move {
         use block_store::*;

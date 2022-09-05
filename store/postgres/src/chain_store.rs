@@ -595,7 +595,7 @@ mod data {
             &self,
             conn: &PgConnection,
             hash: &BlockHash,
-        ) -> Result<Option<(BlockNumber, Option<String>)>, StoreError> {
+        ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
             const TIMESTAMP_QUERY: &str =
                 "coalesce(data->'block'->>'timestamp', data->>'timestamp')";
 
@@ -622,7 +622,7 @@ mod data {
                 Some((number, ts)) => {
                     let number = BlockNumber::try_from(number)
                         .map_err(|e| StoreError::QueryExecutionError(e.to_string()))?;
-                    Ok(Some((number, ts)))
+                    Ok(Some((number, crate::chain_store::try_parse_timestamp(ts)?)))
                 }
             }
         }
@@ -1701,7 +1701,7 @@ impl ChainStoreTrait for ChainStore {
     async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<String>)>, StoreError> {
+    ) -> Result<Option<(String, BlockNumber, Option<u64>)>, StoreError> {
         let hash = hash.clone();
         let storage = self.storage.clone();
         let chain = self.chain.clone();
@@ -1729,6 +1729,28 @@ impl ChainStoreTrait for ChainStore {
         })
         .await
     }
+}
+
+fn try_parse_timestamp(ts: Option<String>) -> Result<Option<u64>, StoreError> {
+    let ts = match ts {
+        Some(str) => str,
+        None => return Ok(None),
+    };
+
+    let (radix, idx) = if ts.starts_with("0x") {
+        (16, 2)
+    } else {
+        (10, 0)
+    };
+
+    u64::from_str_radix(&ts[idx..], radix)
+        .map_err(|err| {
+            StoreError::QueryExecutionError(format!(
+                "unexpected timestamp format {}, err: {}",
+                ts, err
+            ))
+        })
+        .map(Some)
 }
 
 impl EthereumCallCache for ChainStore {

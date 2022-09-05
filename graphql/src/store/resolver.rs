@@ -36,7 +36,7 @@ pub struct StoreResolver {
 #[derive(Clone, Debug)]
 pub(crate) struct BlockPtrTs {
     pub ptr: BlockPtr,
-    pub timestamp: Option<String>,
+    pub timestamp: Option<u64>,
 }
 
 impl From<BlockPtr> for BlockPtrTs {
@@ -142,7 +142,7 @@ impl StoreResolver {
         async fn get_block_ts(
             store: &dyn QueryStore,
             ptr: &BlockPtr,
-        ) -> Result<Option<String>, QueryExecutionError> {
+        ) -> Result<Option<u64>, QueryExecutionError> {
             match store
                 .block_number_with_timestamp(&ptr.hash)
                 .await
@@ -247,7 +247,7 @@ impl StoreResolver {
             let timestamp = self.block_ptr.as_ref().map(|ptr| {
                 ptr.timestamp
                     .clone()
-                    .map(|ts| r::Value::String(ts))
+                    .map(|ts| r::Value::Int(ts as i64))
                     .unwrap_or(r::Value::Null)
             });
 
