@@ -1937,7 +1937,7 @@ async fn get_logs_and_transactions(
     let transaction_receipts_by_hash = get_transaction_receipts_for_transaction_hashes(
         &adapter,
         &transaction_hashes_by_block,
-        subgraph_metrics.cheap_clone(),
+        subgraph_metrics,
         logger.cheap_clone(),
     )
     .await?;
