@@ -22,7 +22,7 @@ hex = "0.4.3"
 
 [dev-dependencies]
 bollard = "0.10"
-anyhow = "1.0.62"
+anyhow = "1.0.64"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 serde_yaml = "0.8"
