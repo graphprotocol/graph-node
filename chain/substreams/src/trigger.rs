@@ -19,6 +19,7 @@ use graph::{
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
+use crate::codec::Field;
 use crate::{
     codec::{entity_change::Operation, field::Type},
     Block, Chain, NodeCapabilities, NoopDataSourceTemplate,
@@ -191,47 +192,12 @@ where
                     let entity_id: String = String::from_utf8(entity_change.id.clone())
                         .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?;
                     let key = EntityKey::data(entity_type.to_string(), entity_id.clone());
-
                     let mut data: HashMap<String, Value> = HashMap::from_iter(vec![]);
                     for field in entity_change.fields.iter() {
-                        let value: Value = match field.value_type() {
-                            Type::Unset => {
-                                return Err(MappingError::Unknown(anyhow!(
-                                    "Invalid field type, the protobuf probably needs updating"
-                                )))
-                            }
-                            Type::Bigdecimal => {
-                                match BigDecimal::parse_bytes(field.new_value.as_ref()) {
-                                    Some(bd) => Value::BigDecimal(bd),
-                                    None => {
-                                        return Err(MappingError::Unknown(anyhow!(
-                                            "Unable to parse BigDecimal for entity {}",
-                                            entity_change.entity
-                                        )))
-                                    }
-                                }
-                            }
-                            Type::Bigint => Value::BigInt(BigInt::from_signed_bytes_be(
-                                field.new_value.as_ref(),
-                            )),
-                            Type::Int => {
-                                let mut bytes: [u8; 8] = [0; 8];
-                                bytes.copy_from_slice(field.new_value.as_ref());
-                                Value::Int(i64::from_be_bytes(bytes) as i32)
-                            }
-                            Type::Bytes => Value::Bytes(Bytes::from(field.new_value.as_ref())),
-                            Type::String => Value::String(
-                                String::from_utf8(field.new_value.clone())
-                                    .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?,
-                            ),
-                        };
-                        // TODO(filipe): Remove once the substreams GRPC has been fixed.
-                        let name: &str = match field.name.as_str() {
-                            "parent_hash" => "parentHash",
-                            "tx_count" => "txCount",
-                            any => any,
-                        };
-                        *data.entry(name.to_owned()).or_insert(Value::Null) = value;
+                        let value: Value = decode_entity_change(&field, &entity_change.entity)?;
+                        *data
+                            .entry(field.name.as_str().to_owned())
+                            .or_insert(Value::Null) = value;
                     }
 
                     write_poi_event(
@@ -269,5 +235,215 @@ where
         }
 
         Ok(state)
+    }
+}
+
+fn decode_entity_change(field: &Field, entity: &String) -> Result<Value, MappingError> {
+    match field.value_type() {
+        Type::Unset => {
+            return Err(MappingError::Unknown(anyhow!(
+                "Invalid field type, the protobuf probably needs updating"
+            )))
+        }
+        Type::Bigdecimal => match BigDecimal::parse_bytes(field.new_value.as_ref()) {
+            Some(bd) => Ok(Value::BigDecimal(bd)),
+            None => {
+                return Err(MappingError::Unknown(anyhow!(
+                    "Unable to parse BigDecimal for entity {}",
+                    entity
+                )))
+            }
+        },
+        Type::Bigint => Ok(Value::BigInt(BigInt::from_signed_bytes_be(
+            field.new_value.as_ref(),
+        ))),
+        Type::Int => {
+            let mut bytes: [u8; 8] = [0; 8];
+            bytes.copy_from_slice(field.new_value.as_ref());
+            Ok(Value::Int(i64::from_be_bytes(bytes) as i32))
+        }
+        Type::Bytes => Ok(Value::Bytes(Bytes::from(field.new_value.as_ref()))),
+        Type::String => Ok(Value::String(
+            String::from_utf8(field.new_value.clone())
+                .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?,
+        )),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use crate::codec::field::Type as FieldType;
+    use crate::codec::Field;
+    use crate::trigger::decode_entity_change;
+    use graph::{
+        data::store::scalar::Bytes,
+        prelude::{BigDecimal, BigInt, Value},
+    };
+
+    #[test]
+    fn validate_substreams_field_types() {
+        struct Case {
+            field: Field,
+            entity: String,
+            expected_new_value: Value,
+        }
+
+        let cases = vec![
+            Case {
+                field: Field {
+                    name: "setting string value".to_string(),
+                    value_type: FieldType::String as i32,
+                    new_value: Vec::from(
+                        "d4325ee72c39999e778a9908f5fb0803f78e30c441a5f2ce5c65eee0e0eba59d",
+                    ),
+                    new_value_null: false,
+                    old_value: Vec::from("".to_string()),
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::String(
+                    "d4325ee72c39999e778a9908f5fb0803f78e30c441a5f2ce5c65eee0e0eba59d".to_string(),
+                ),
+            },
+            Case {
+                field: Field {
+                    name: "settings bytes value".to_string(),
+                    value_type: FieldType::Bytes as i32,
+                    new_value: hex::decode(
+                        "445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f",
+                    )
+                    .unwrap(),
+                    new_value_null: false,
+                    old_value: Vec::from("".to_string()),
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::Bytes(
+                    Bytes::from_str(
+                        "0x445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f",
+                    )
+                    .unwrap(),
+                ),
+            },
+            Case {
+                field: Field {
+                    name: "setting int value for block 12369760".to_string(),
+                    value_type: FieldType::Int as i32,
+                    new_value: hex::decode("0000000000bcbf60").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::Int(12369760),
+            },
+            Case {
+                field: Field {
+                    name: "setting int value for block 12369622".to_string(),
+                    value_type: FieldType::Int as i32,
+                    new_value: hex::decode("0000000000bcbed6").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::Int(12369622),
+            },
+            Case {
+                field: Field {
+                    name: "setting int value for block 12369623".to_string(),
+                    value_type: FieldType::Int as i32,
+                    new_value: hex::decode("0000000000bcbed7").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::Int(12369623),
+            },
+            Case {
+                field: Field {
+                    name: "setting big int transactions count of 123".to_string(),
+                    value_type: FieldType::Bigint as i32,
+                    new_value: hex::decode("7b").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(123u64)),
+            },
+            Case {
+                field: Field {
+                    name: "setting big int transactions count of 302".to_string(),
+                    value_type: FieldType::Bigint as i32,
+                    new_value: hex::decode("012e").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(302u64)),
+            },
+            Case {
+                field: Field {
+                    name: "setting big int transactions count of 209".to_string(),
+                    value_type: FieldType::Bigint as i32,
+                    new_value: hex::decode("00d1").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(209u64)),
+            },
+            Case {
+                field: Field {
+                    name: "setting big decimal value".to_string(),
+                    value_type: FieldType::Bigdecimal as i32,
+                    new_value: hex::decode("3133363633312e35").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::from(136631.5)),
+            },
+            Case {
+                field: Field {
+                    name: "setting big decimal value 2".to_string(),
+                    value_type: FieldType::Bigdecimal as i32,
+                    new_value: hex::decode("3133303730392e30").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::from(130709.0)),
+            },
+            Case {
+                field: Field {
+                    name: "setting big decimal value 3".to_string(),
+                    value_type: FieldType::Bigdecimal as i32,
+                    new_value: hex::decode("39373839322e36").unwrap(),
+                    new_value_null: false,
+                    old_value: vec![],
+                    old_value_null: true,
+                },
+                entity: "Block".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::new(BigInt::from(978926u64), -1)),
+            },
+        ];
+
+        for case in cases.into_iter() {
+            let value: Value = decode_entity_change(&case.field, &case.entity).unwrap();
+            assert_eq!(
+                case.expected_new_value, value,
+                "failed case: {}",
+                case.field.name
+            )
+        }
     }
 }

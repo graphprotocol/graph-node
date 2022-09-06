@@ -11,3 +11,6 @@ pub use chain::*;
 pub use codec::EntitiesChanges as Block;
 pub use data_source::*;
 pub use trigger::*;
+
+pub use codec::field::Type as FieldType;
+pub use codec::Field;
