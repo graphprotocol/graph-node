@@ -628,15 +628,15 @@ impl Connection {
 
     fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
     where
-        F: FnOnce(&PgConnection) -> Result<T, StoreError>,
+        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
-        self.conn.transaction(|| f(&self.conn))
+        self.conn.transaction(|conn| f(&mut self.conn))
     }
 
     fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
         if state.src.site.schema_version.private_data_sources() {
             DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                &self.conn,
+                &mut self.conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
             )?;
@@ -662,7 +662,7 @@ impl Connection {
                 // It is important that this check happens outside the write
                 // transaction so that we do not hold on to locks acquired
                 // by the check
-                if table.is_cancelled(&self.conn)? {
+                if table.is_cancelled(&mut self.conn)? {
                     return Ok(Status::Cancelled);
                 }
                 let status = self.transaction(|conn| table.copy_batch(conn))?;
@@ -696,7 +696,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
@@ -709,9 +709,9 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
-        advisory_lock::lock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
         let res = self.copy_data_internal();
-        advisory_lock::unlock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }
