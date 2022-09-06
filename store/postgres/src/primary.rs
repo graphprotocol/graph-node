@@ -258,7 +258,7 @@ impl FromSql<Text, Pg> for Namespace {
 }
 
 impl ToSql<Text, Pg> for Namespace {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
