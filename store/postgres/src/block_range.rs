@@ -101,7 +101,7 @@ pub struct BlockRangeLowerBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("lower(");
@@ -120,7 +120,7 @@ pub struct BlockRangeUpperBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("coalesce(upper(");
@@ -168,7 +168,7 @@ impl<'a> BlockRangeColumn<'a> {
 
 impl<'a> BlockRangeColumn<'a> {
     /// Output SQL that matches only rows whose block range contains `block`
-    pub fn contains(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         match self {
@@ -230,7 +230,7 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output the literal value of the block range `[block,..)`, mostly for
     /// generating an insert statement containing the block range column
-    pub fn literal_range_current(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn literal_range_current<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 let block_range: BlockRange = (*block..).into();
@@ -255,7 +255,7 @@ impl<'a> BlockRangeColumn<'a> {
     /// # Panics
     ///
     /// If the underlying table is immutable, this method will panic
-    pub fn clamp(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn clamp<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 self.name(out);
@@ -282,7 +282,7 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output an expression that matches all rows that have been changed
     /// after `block` (inclusive)
-    pub(crate) fn changed_since(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 out.push_sql("lower(");

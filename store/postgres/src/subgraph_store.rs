@@ -52,7 +52,7 @@ use crate::{
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
-#[diesel(sql_type = String)]
+#[diesel(sql_type = Text)]
 pub struct Shard(String);
 
 lazy_static! {

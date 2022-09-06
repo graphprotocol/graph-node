@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 use graph::data::store::{scalar, Value};
 
-#[derive(Clone, Debug, PartialEq, AsExpression)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SqlValue(Value);
 
 impl SqlValue {
