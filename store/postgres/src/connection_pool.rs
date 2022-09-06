@@ -954,7 +954,7 @@ impl PoolInner {
         self.pool
             .get()
             .ok()
-            .map(|conn| sql_query("select 1").execute(&conn).is_ok())
+            .map(|conn| sql_query("select 1").execute(&mut conn).is_ok())
             .unwrap_or(false)
     }
 
@@ -977,14 +977,14 @@ impl PoolInner {
         let pool = self.clone();
         let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
-        advisory_lock::lock_migration(&conn)
+        advisory_lock::lock_migration(&mut conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
         let result = pool
             .configure_fdw(servers.as_ref())
-            .and_then(|()| migrate_schema(&pool.logger, &conn))
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
             .and_then(|()| pool.map_primary())
             .and_then(|()| pool.map_metadata(servers.as_ref()));
-        advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
+        advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
@@ -1006,12 +1006,12 @@ impl PoolInner {
         let conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction(|| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(&conn)?;
+            let current_servers: Vec<String> = crate::catalog::current_servers(&mut conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 if current_servers.contains(&server.name) {
-                    server.update(&conn)?;
+                    server.update(&mut conn)?;
                 } else {
-                    server.create(&conn)?;
+                    server.create(&mut conn)?;
                 }
             }
             Ok(())
@@ -1026,7 +1026,7 @@ impl PoolInner {
     fn map_primary(&self) -> Result<(), StoreError> {
         info!(&self.logger, "Mapping primary");
         let conn = self.get()?;
-        conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))
+        conn.transaction(|| ForeignServer::map_primary(&mut conn, &self.shard))
     }
 
     /// Copy the data from key tables in the primary into our local schema
@@ -1037,7 +1037,7 @@ impl PoolInner {
         }
         self.with_conn(|conn, handle| {
             conn.transaction(|| {
-                primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
+                primary::Mirror::refresh_tables(&mut conn, handle).map_err(CancelableError::from)
             })
         })
         .await
@@ -1050,7 +1050,7 @@ impl PoolInner {
         let conn = self.get()?;
         conn.transaction(|| {
             for server in servers.iter().filter(|server| server.shard != self.shard) {
-                server.map_metadata(&conn)?;
+                server.map_metadata(&mut conn)?;
             }
             Ok(())
         })
