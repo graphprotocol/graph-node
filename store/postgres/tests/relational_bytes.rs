@@ -80,13 +80,13 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(conn: &PgConnection) {
+fn remove_test_data(conn: &mut PgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
+fn insert_entity(conn: &mut PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
     let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
 
     let entity_type = EntityType::from(entity_type);
@@ -103,7 +103,7 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
         .expect(&errmsg);
 }
 
-fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
+fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str) {
     insert_entity(
         conn,
         layout,
@@ -115,7 +115,7 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
     );
 }
 
-fn create_schema(conn: &PgConnection) -> Layout {
+fn create_schema(conn: &mut PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
@@ -349,7 +349,7 @@ const GRANDCHILD2: &str = "0xfafa02";
 ///     +- child2
 ///          +- grandchild2
 ///
-fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
+fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
     let root = entity! {
         id: ROOT,
         name: "root",
@@ -388,7 +388,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 
 #[test]
 fn query() {
-    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+    fn fetch(conn: &mut PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         layout
             .query::<Entity>(
                 &*LOGGER,

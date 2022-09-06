@@ -105,7 +105,7 @@ struct CopyState {
 
 impl CopyState {
     fn new(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -153,7 +153,7 @@ impl CopyState {
     }
 
     fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -168,7 +168,7 @@ impl CopyState {
     }
 
     fn create(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
@@ -230,7 +230,7 @@ impl CopyState {
         self.dst.site.shard != self.src.site.shard
     }
 
-    fn finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
@@ -281,7 +281,7 @@ struct TableState {
 
 impl TableState {
     fn init(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         dst_site: Arc<Site>,
         src: Arc<Table>,
         dst: Arc<Table>,
@@ -331,7 +331,7 @@ impl TableState {
     }
 
     fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src_layout: &Layout,
         dst_layout: &Layout,
     ) -> Result<Vec<TableState>, StoreError> {
@@ -404,7 +404,7 @@ impl TableState {
 
     fn record_progress(
         &mut self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         elapsed: Duration,
         first_batch: bool,
     ) -> Result<(), StoreError> {
@@ -440,7 +440,7 @@ impl TableState {
         Ok(())
     }
 
-    fn record_finished(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         update(
@@ -453,7 +453,7 @@ impl TableState {
         Ok(())
     }
 
-    fn is_cancelled(&self, conn: &PgConnection) -> Result<bool, StoreError> {
+    fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
         use active_copies as ac;
 
         let dst = self.dst_site.as_ref();
@@ -471,7 +471,7 @@ impl TableState {
         Ok(canceled)
     }
 
-    fn copy_batch(&mut self, conn: &PgConnection) -> Result<Status, StoreError> {
+    fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
         let start = Instant::now();
 
         // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,

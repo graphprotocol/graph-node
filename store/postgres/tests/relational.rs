@@ -202,14 +202,14 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_schema(conn: &PgConnection) {
+fn remove_schema(conn: &mut PgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
 
 fn insert_entity_at(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
@@ -243,12 +243,17 @@ fn insert_entity_at(
     assert_eq!(inserted, entities_with_keys_owned.len());
 }
 
-fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {
+fn insert_entity(
+    conn: &mut PgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    entities: Vec<Entity>,
+) {
     insert_entity_at(conn, layout, entity_type, entities, 0);
 }
 
 fn update_entity_at(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &str,
     mut entities: Vec<Entity>,
@@ -285,7 +290,7 @@ fn update_entity_at(
 }
 
 fn insert_user_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &str,
@@ -334,7 +339,7 @@ fn make_user(
     user
 }
 
-fn insert_users(conn: &PgConnection, layout: &Layout) {
+fn insert_users(conn: &mut PgConnection, layout: &Layout) {
     insert_user_entity(
         conn,
         layout,
@@ -380,7 +385,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
 }
 
 fn update_user_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &str,
@@ -398,7 +403,7 @@ fn update_user_entity(
 }
 
 fn insert_pet(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &str,
     id: &str,
@@ -412,12 +417,12 @@ fn insert_pet(
     insert_entity_at(conn, layout, entity_type, vec![pet], block);
 }
 
-fn insert_pets(conn: &PgConnection, layout: &Layout) {
+fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
     insert_pet(conn, layout, "Dog", "pluto", "Pluto", 0);
     insert_pet(conn, layout, "Cat", "garfield", "Garfield", 0);
 }
 
-fn create_schema(conn: &PgConnection) -> Layout {
+fn create_schema(conn: &mut PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -688,7 +693,7 @@ fn serialize_bigdecimal() {
     });
 }
 
-fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
+fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
@@ -829,7 +834,14 @@ async fn layout_cache() {
 fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
-    fn check(conn: &PgConnection, layout: &Layout, id: Value, cat: &str, dog: &str, ferret: &str) {
+    fn check(
+        conn: &mut PgConnection,
+        layout: &Layout,
+        id: Value,
+        cat: &str,
+        dog: &str,
+        ferret: &str,
+    ) {
         let cat = EntityType::from(cat);
         let dog = EntityType::from(dog);
         let ferret = EntityType::from(ferret);
@@ -873,7 +885,7 @@ fn conflicting_entity() {
 
 #[test]
 fn revert_block() {
-    fn check_fred(conn: &PgConnection, layout: &Layout) {
+    fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
         let set_fred = |name, block| {
@@ -912,7 +924,7 @@ fn revert_block() {
         assert_fred("one");
     }
 
-    fn check_marty(conn: &PgConnection, layout: &Layout) {
+    fn check_marty(conn: &mut PgConnection, layout: &Layout) {
         let set_marties = |from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);

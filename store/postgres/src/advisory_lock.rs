@@ -19,26 +19,26 @@ use crate::command_support::catalog::Site;
 
 /// Get a lock for running migrations. Blocks until we get
 /// the lock.
-pub(crate) fn lock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn lock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_lock(1)").execute(conn)?;
 
     Ok(())
 }
 
 /// Release the migration lock.
-pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn unlock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_unlock(1)").execute(conn)?;
     Ok(())
 }
 
-pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn lock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_lock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
 }
 
-pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_unlock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())

@@ -69,7 +69,7 @@ pub struct Catalog {
 impl Catalog {
     /// Load the catalog for an existing subgraph
     pub fn load(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         use_bytea_prefix: bool,
     ) -> Result<Self, StoreError> {
@@ -125,7 +125,7 @@ impl Catalog {
 }
 
 fn get_text_columns(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<HashMap<String, HashSet<String>>, StoreError> {
     const QUERY: &str = "
@@ -173,7 +173,7 @@ pub fn supports_proof_of_indexing(
     Ok(result.len() > 0)
 }
 
-pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
+pub fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
         #[sql_type = "Text"]
@@ -189,7 +189,7 @@ pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
 /// Return the options for the foreign server `name` as a map of option
 /// names to values
 pub fn server_options(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     name: &str,
 ) -> Result<HashMap<String, Option<String>>, StoreError> {
     #[derive(QueryableByName)]
@@ -212,7 +212,7 @@ pub fn server_options(
     Ok(HashMap::from_iter(entries))
 }
 
-pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
+pub fn has_namespace(conn: &mut PgConnection, namespace: &Namespace) -> Result<bool, StoreError> {
     use pg_namespace as nsp;
 
     Ok(select(diesel::dsl::exists(
@@ -225,7 +225,7 @@ pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool,
 /// another database. If the schema does not exist, or is not a foreign
 /// schema, do nothing. This crucially depends on the fact that we never mix
 /// foreign and local tables in the same schema.
-pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreError> {
+pub fn drop_foreign_schema(conn: &mut PgConnection, src: &Site) -> Result<(), StoreError> {
     use foreign_tables as ft;
 
     let is_foreign = select(diesel::dsl::exists(
@@ -242,7 +242,7 @@ pub fn drop_foreign_schema(conn: &PgConnection, src: &Site) -> Result<(), StoreE
 
 /// Drop the schema `nsp` and all its contents if it exists, and create it
 /// again so that `nsp` is an empty schema
-pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
+pub fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!(
         "drop schema if exists {nsp} cascade;\
          create schema {nsp};",
@@ -251,7 +251,7 @@ pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError>
     Ok(conn.batch_execute(&query)?)
 }
 
-pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
+pub fn account_like(conn: &mut PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
     use table_stats as ts;
     let names = ts::table
         .filter(ts::deployment.eq(site.id))
@@ -272,7 +272,7 @@ pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>,
 }
 
 pub fn set_account_like(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     table_name: &SqlName,
     is_account_like: bool,
@@ -291,7 +291,11 @@ pub fn set_account_like(
     Ok(())
 }
 
-pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
+pub fn copy_account_like(
+    conn: &mut PgConnection,
+    src: &Site,
+    dst: &Site,
+) -> Result<usize, StoreError> {
     let src_nsp = if src.shard == dst.shard {
         "subgraphs".to_string()
     } else {
@@ -354,7 +358,7 @@ pub(crate) mod table_schema {
     }
 
     pub fn columns(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         nsp: &str,
         table_name: &str,
     ) -> Result<Vec<Column>, StoreError> {
@@ -383,7 +387,7 @@ pub(crate) mod table_schema {
 /// `{dst_nsp}.{table_name}` for the server `server` which has the same
 /// schema as the (local) table `{src_nsp}.{table_name}`
 pub fn create_foreign_table(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     src_nsp: &str,
     table_name: &str,
     dst_nsp: &str,
@@ -429,7 +433,7 @@ pub fn create_foreign_table(
 
 /// Checks in the database if a given index is valid.
 pub(crate) fn check_index_is_valid(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<bool, StoreError> {
@@ -460,7 +464,7 @@ pub(crate) fn check_index_is_valid(
 }
 
 pub(crate) fn indexes_for_table(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     table_name: &str,
 ) -> Result<Vec<String>, StoreError> {
@@ -489,7 +493,7 @@ pub(crate) fn indexes_for_table(
     Ok(results.into_iter().map(|i| i.def).collect())
 }
 pub(crate) fn drop_index(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<(), StoreError> {

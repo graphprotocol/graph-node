@@ -421,7 +421,7 @@ mod queries {
     use super::subgraph_version as v;
 
     pub(super) fn find_active_site(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
         let schema = ds::table
@@ -433,7 +433,7 @@ mod queries {
     }
 
     pub(super) fn find_site_by_ref(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         id: DeploymentId,
     ) -> Result<Option<Site>, StoreError> {
         let schema = ds::table.find(id).first::<Schema>(conn).optional()?;
@@ -441,7 +441,7 @@ mod queries {
     }
 
     pub(super) fn subgraph_exists(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         name: &SubgraphName,
     ) -> Result<bool, StoreError> {
         Ok(
@@ -451,7 +451,7 @@ mod queries {
     }
 
     pub(super) fn current_deployment_for_subgraph(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
         let id = v::table
@@ -468,7 +468,7 @@ mod queries {
     }
 
     pub(super) fn deployments_for_subgraph(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         name: &str,
     ) -> Result<Vec<Site>, StoreError> {
         ds::table
@@ -485,7 +485,7 @@ mod queries {
     }
 
     pub(super) fn subgraph_version(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         name: &str,
         use_current: bool,
     ) -> Result<Option<Site>, StoreError> {
@@ -512,7 +512,7 @@ mod queries {
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
     /// return all sites
     pub(super) fn find_sites(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         ids: &[String],
         only_active: bool,
     ) -> Result<Vec<Site>, StoreError> {
@@ -543,7 +543,7 @@ mod queries {
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
     pub(super) fn find_sites_by_id(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         ids: &[DeploymentId],
     ) -> Result<Vec<Site>, StoreError> {
         let schemas = ds::table.filter(ds::id.eq_any(ids)).load::<Schema>(conn)?;
@@ -554,7 +554,7 @@ mod queries {
     }
 
     pub(super) fn find_site_in_shard(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         subgraph: &DeploymentHash,
         shard: &Shard,
     ) -> Result<Option<Site>, StoreError> {
@@ -566,7 +566,10 @@ mod queries {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub(super) fn assignments(conn: &PgConnection, node: &NodeId) -> Result<Vec<Site>, StoreError> {
+    pub(super) fn assignments(
+        conn: &mut PgConnection,
+        node: &NodeId,
+    ) -> Result<Vec<Site>, StoreError> {
         ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(a::node_id.eq(node.as_str()))
@@ -578,7 +581,7 @@ mod queries {
     }
 
     pub(super) fn fill_assignments(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         infos: &mut [status::Info],
     ) -> Result<(), StoreError> {
         let ids: Vec<_> = infos.iter().map(|info| &info.subgraph).collect();
@@ -596,7 +599,7 @@ mod queries {
     }
 
     pub(super) fn assigned_node(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: &Site,
     ) -> Result<Option<NodeId>, StoreError> {
         a::table
@@ -617,7 +620,7 @@ mod queries {
     }
 
     pub(super) fn version_info(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
         Ok(v::table
@@ -628,7 +631,7 @@ mod queries {
     }
 
     pub(super) fn versions_for_subgraph_id(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
         Ok(s::table
@@ -641,7 +644,7 @@ mod queries {
 
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
     pub fn subgraphs_by_deployment_hash(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         v::table
@@ -1568,7 +1571,7 @@ impl Mirror {
     /// Refresh the contents of mirrored tables from the primary (through
     /// the fdw mapping that `ForeignServer` establishes)
     pub(crate) fn refresh_tables(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         handle: &CancelHandle,
     ) -> Result<(), StoreError> {
         // `chains` needs to be mirrored before `deployment_schemas` because
@@ -1584,7 +1587,7 @@ impl Mirror {
         ];
 
         fn copy_table(
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             src_nsp: &str,
             dst_nsp: &str,
             table_name: &str,

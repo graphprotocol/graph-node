@@ -13,7 +13,7 @@ use graph::{
 };
 
 pub fn load(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
@@ -25,7 +25,7 @@ pub fn load(
 }
 
 pub(crate) fn insert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
@@ -48,7 +48,7 @@ pub(crate) fn insert(
 }
 
 pub(crate) fn revert(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -59,7 +59,7 @@ pub(crate) fn revert(
 }
 
 pub(crate) fn remove_offchain(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
 ) -> Result<(), StoreError> {

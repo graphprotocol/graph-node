@@ -77,7 +77,7 @@ impl DataSourcesTable {
     // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     pub(super) fn load(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         type Tuple = (
@@ -134,7 +134,7 @@ impl DataSourcesTable {
 
     pub(crate) fn insert(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &[StoredDynamicDataSource],
         block: BlockNumber,
     ) -> Result<usize, StoreError> {
@@ -188,7 +188,11 @@ impl DataSourcesTable {
         Ok(inserted_total)
     }
 
-    pub(crate) fn revert(&self, conn: &PgConnection, block: BlockNumber) -> Result<(), StoreError> {
+    pub(crate) fn revert(
+        &self,
+        conn: &mut PgConnection,
+        block: BlockNumber,
+    ) -> Result<(), StoreError> {
         // Use `@>` to leverage the gist index.
         // This assumes all ranges are of the form [x, +inf).
         let query = format!(
@@ -203,7 +207,7 @@ impl DataSourcesTable {
     /// were created up to and including `target_block` will be copied.
     pub(crate) fn copy_to(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         dst: &DataSourcesTable,
         target_block: BlockNumber,
     ) -> Result<usize, StoreError> {
@@ -244,7 +248,7 @@ impl DataSourcesTable {
     // Remove offchain data sources by checking for equality. Their range will be set to the empty range.
     pub(super) fn remove_offchain(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         for ds in data_sources {

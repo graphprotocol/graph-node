@@ -229,7 +229,7 @@ impl DeploymentStore {
 
     pub(crate) fn execute_query<T: FromEntityData>(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
@@ -250,7 +250,7 @@ impl DeploymentStore {
 
     fn check_interface_entity_uniqueness(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         layout: &Layout,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
@@ -299,7 +299,7 @@ impl DeploymentStore {
 
     fn apply_entity_modifications(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         layout: &Layout,
         mods: &[EntityModification],
         ptr: &BlockPtr,
@@ -367,7 +367,7 @@ impl DeploymentStore {
         &'a self,
         entity_type: &'a EntityType,
         data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
@@ -387,7 +387,7 @@ impl DeploymentStore {
         &'a self,
         entity_type: &'a EntityType,
         data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
@@ -407,7 +407,7 @@ impl DeploymentStore {
         &self,
         entity_type: &EntityType,
         entity_keys: &[&str],
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         layout: &Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
@@ -520,7 +520,7 @@ impl DeploymentStore {
     /// without us knowing
     pub(crate) fn layout(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         self.layout_cache.get(&self.logger, conn, site)
@@ -540,7 +540,7 @@ impl DeploymentStore {
 
     fn subgraph_info_with_conn(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: &Site,
     ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
@@ -602,7 +602,7 @@ impl DeploymentStore {
     }
 
     fn block_ptr_with_conn(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Option<BlockPtr>, StoreError> {
         deployment::block_ptr(conn, &site.deployment)
@@ -692,7 +692,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         entity_name: &str,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
@@ -1049,7 +1049,7 @@ impl DeploymentStore {
 
     fn rewind_with_conn(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,

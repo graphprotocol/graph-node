@@ -1485,7 +1485,7 @@ impl<'a> QueryId for FindQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
         conn.query_by_name(&self)
     }
 }
@@ -1530,7 +1530,7 @@ impl<'a> QueryId for FindChangesQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
         conn.query_by_name(&self)
     }
 }
@@ -1580,7 +1580,7 @@ impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityDeletion>> {
         conn.query_by_name(&self)
     }
 }
@@ -1636,7 +1636,7 @@ impl<'a> QueryId for FindManyQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
         conn.query_by_name(&self)
     }
 }
@@ -1772,7 +1772,7 @@ impl<'a> QueryId for InsertQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for InsertQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
             .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
@@ -1842,7 +1842,7 @@ pub struct ConflictingEntityData {
 }
 
 impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
         conn.query_by_name(&self)
     }
 }
@@ -3153,7 +3153,7 @@ impl<'a> QueryId for FilterQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
         conn.query_by_name(&self)
     }
 }
@@ -3292,7 +3292,7 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
             .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
@@ -3375,7 +3375,7 @@ impl<'a> QueryId for RevertClampQuery<'a> {
 }
 
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
             .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
