@@ -307,7 +307,7 @@ impl FromSql<Integer, Pg> for DeploymentId {
 }
 
 impl ToSql<Integer, Pg> for DeploymentId {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
     }
 }
