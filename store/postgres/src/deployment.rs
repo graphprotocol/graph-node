@@ -323,7 +323,7 @@ pub fn transact_block(
 
         // No matching rows were found. This is an error. By the filter conditions, this can only be
         // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
-        0 => match block_ptr(&conn, &site.deployment)? {
+        0 => match block_ptr(conn, &site.deployment)? {
             Some(block_ptr_from) if block_ptr_from.number >= ptr.number => Err(
                 StoreError::DuplicateBlockProcessing(site.deployment.clone(), ptr.number),
             ),
