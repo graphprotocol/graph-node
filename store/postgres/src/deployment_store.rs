@@ -638,7 +638,7 @@ impl DeploymentStore {
 
     pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| deployment::set_synced(&mut conn, id))
+        conn.transaction(|conn| deployment::set_synced(&mut conn, id))
     }
 
     // Only used for tests
@@ -934,8 +934,8 @@ impl DeploymentStore {
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(conn, site)?;
-        layout.find(conn, &key.entity_type, &key.entity_id, block)
+        let layout = self.layout(&mut conn, site)?;
+        layout.find(&mut conn, &key.entity_type, &key.entity_id, block)
     }
 
     /// Retrieve all the entities matching `ids_for_type` from the
@@ -950,9 +950,9 @@ impl DeploymentStore {
             return Ok(BTreeMap::new());
         }
         let mut conn = self.get_conn()?;
-        let layout = self.layout(conn, site)?;
+        let layout = self.layout(&mut conn, site)?;
 
-        layout.find_many(conn, ids_for_type, block)
+        layout.find_many(&mut conn, ids_for_type, block)
     }
 
     pub(crate) fn get_changes(
@@ -961,8 +961,8 @@ impl DeploymentStore {
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(conn, site)?;
-        let changes = layout.find_changes(conn, block)?;
+        let layout = self.layout(&mut conn, site)?;
+        let changes = layout.find_changes(&mut conn, block)?;
 
         Ok(changes)
     }
@@ -975,7 +975,7 @@ impl DeploymentStore {
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let mut conn = self.get_conn()?;
-        self.execute_query(conn, site, query)
+        self.execute_query(&mut conn, site, query)
             .map(|(entities, _)| entities)
     }
 
@@ -1158,7 +1158,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| deployment::fail(&mut conn, &id, &error))
+            conn.transaction(|conn| deployment::fail(conn, &id, &error))
                 .map_err(Into::into)
         })
         .await?;
@@ -1194,7 +1194,7 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&mut conn, &site, block, manifest_idx_and_name))
+            conn.transaction(|conn| crate::dynds::load(conn, &site, block, manifest_idx_and_name))
                 .map_err(Into::into)
         })
         .await
@@ -1202,7 +1202,7 @@ impl DeploymentStore {
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| deployment::exists_and_synced(conn, &id))
+            conn.transaction(|conn| deployment::exists_and_synced(conn, &id))
                 .map_err(Into::into)
         })
         .await
@@ -1261,24 +1261,24 @@ impl DeploymentStore {
             }
 
             let mut conn = self.get_conn()?;
-            conn.transaction(|| -> Result<(), StoreError> {
+            conn.transaction(|conn| -> Result<(), StoreError> {
                 // Copy shared dynamic data sources and adjust their ID; if
                 // the subgraph uses private data sources, that is done by
                 // `copy::Connection::copy_data` since it requires access to
                 // the source schema which in sharded setups is only
                 // available while that function runs
                 let start = Instant::now();
-                let count = dynds::shared::copy(&mut conn, &src.site, &dst.site, block.number)?;
+                let count = dynds::shared::copy(conn, &src.site, &dst.site, block.number)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
                 // Copy errors across
                 let start = Instant::now();
-                let count = deployment::copy_errors(&mut conn, &src.site, &dst.site, &block)?;
+                let count = deployment::copy_errors(conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
 
-                catalog::copy_account_like(&mut conn, &src.site, &dst.site)?;
+                catalog::copy_account_like(conn, &src.site, &dst.site)?;
 
                 // Rewind the subgraph so that entity versions that are
                 // clamped in the future (beyond `block`) become valid for
@@ -1290,23 +1290,23 @@ impl DeploymentStore {
                     .number
                     .checked_add(1)
                     .expect("block numbers fit into an i32");
-                dst.revert_block(&mut conn, block_to_revert)?;
+                dst.revert_block(conn, block_to_revert)?;
                 info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());
 
                 let start = Instant::now();
-                deployment::set_entity_count(&mut conn, &dst.site, &dst.count_query)?;
+                deployment::set_entity_count(conn, &dst.site, &dst.count_query)?;
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
 
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
-                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &mut conn)?;
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)?;
                 }
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                crate::deployment::forward_block_ptr(&mut conn, &dst.site.deployment, &block)?;
+                crate::deployment::forward_block_ptr(conn, &dst.site.deployment, &block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
                 Ok(())
@@ -1316,7 +1316,7 @@ impl DeploymentStore {
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
         let mut conn = self.get_conn()?;
-        conn.transaction(|| crate::deployment::initialize_block_ptr(&mut conn, &dst.site))?;
+        conn.transaction(|conn| crate::deployment::initialize_block_ptr(conn, &dst.site))?;
         Ok(())
     }
 
@@ -1339,7 +1339,7 @@ impl DeploymentStore {
         let mut conn = &self.get_conn()?;
         let deployment_id = &site.deployment;
 
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
@@ -1435,7 +1435,7 @@ impl DeploymentStore {
         let mut conn = &self.get_conn()?;
         let deployment_id = &site.deployment;
 
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
