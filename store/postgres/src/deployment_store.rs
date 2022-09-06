@@ -170,11 +170,11 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|| -> Result<_, StoreError> {
-            let exists = deployment::exists(&conn, &site)?;
+            let exists = deployment::exists(&mut conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {
-                deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
+                deployment::create_deployment(&mut conn, &site, deployment, exists, replace)?;
             };
 
             // Create the schema for the subgraph data
@@ -182,7 +182,7 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query)?;
 
-                let layout = Layout::create_relational_schema(&conn, site.clone(), schema)?;
+                let layout = Layout::create_relational_schema(&mut conn, site.clone(), schema)?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
                     let errors = layout.can_copy_from(&base);
@@ -211,7 +211,7 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let mut conn = self.get_conn()?;
-        detail::deployment_entity(&conn, site)
+        detail::deployment_entity(&mut conn, site)
     }
 
     // Remove the data and metadata for the deployment `site`. This operation
@@ -219,11 +219,11 @@ impl DeploymentStore {
     pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|| {
-            crate::deployment::drop_schema(&conn, &site.namespace)?;
+            crate::deployment::drop_schema(&mut conn, &site.namespace)?;
             if !site.schema_version.private_data_sources() {
-                crate::dynds::shared::drop(&conn, &site.deployment)?;
+                crate::dynds::shared::drop(&mut conn, &site.deployment)?;
             }
-            crate::deployment::drop_metadata(&conn, site)
+            crate::deployment::drop_metadata(&mut conn, site)
         })
     }
 
@@ -598,7 +598,7 @@ impl DeploymentStore {
         }
 
         let mut conn = self.get_conn()?;
-        self.subgraph_info_with_conn(&conn, site)
+        self.subgraph_info_with_conn(&mut conn, site)
     }
 
     fn block_ptr_with_conn(
@@ -613,7 +613,7 @@ impl DeploymentStore {
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| -> Result<_, StoreError> { detail::deployment_details(&conn, ids) })
+        conn.transaction(|| -> Result<_, StoreError> { detail::deployment_details(&mut conn, ids) })
     }
 
     pub(crate) fn deployment_statuses(
@@ -622,7 +622,7 @@ impl DeploymentStore {
     ) -> Result<Vec<status::Info>, StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
-            detail::deployment_statuses(&conn, sites)
+            detail::deployment_statuses(&mut conn, sites)
         })
     }
 
@@ -631,12 +631,12 @@ impl DeploymentStore {
         id: &DeploymentHash,
     ) -> Result<bool, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::exists_and_synced(&conn, id.as_str())
+        deployment::exists_and_synced(&mut conn, id.as_str())
     }
 
     pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| deployment::set_synced(&conn, id))
+        conn.transaction(|| deployment::set_synced(&mut conn, id))
     }
 
     // Only used for tests
@@ -646,7 +646,7 @@ impl DeploymentStore {
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::drop_schema(&conn, namespace)
+        deployment::drop_schema(&mut conn, namespace)
     }
 
     // Only used for tests
@@ -684,7 +684,7 @@ impl DeploymentStore {
     /// Runs the SQL `ANALYZE` command in a table.
     pub(crate) fn analyze(&self, site: Arc<Site>, entity_name: &str) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        self.analyze_with_conn(site, entity_name, &conn)
+        self.analyze_with_conn(site, entity_name, &mut conn)
     }
 
     /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
@@ -1108,7 +1108,7 @@ impl DeploymentStore {
         let mut conn = self.get_conn()?;
 
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let block_ptr_from = Self::block_ptr_with_conn(&conn, site.cheap_clone())?.unwrap();
+        let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?.unwrap();
 
         // Sanity check on block numbers
         if block_ptr_from.number <= block_ptr_to.number {
@@ -1121,7 +1121,7 @@ impl DeploymentStore {
 
         // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
         // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
-        self.rewind_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None)
+        self.rewind_with_conn(&mut conn, site, block_ptr_to, &FirehoseCursor::None)
     }
 
     pub(crate) fn revert_block_operations(
@@ -1132,14 +1132,14 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let mut conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let deployment_head = Self::block_ptr_with_conn(&conn, site.cheap_clone())?.unwrap();
+        let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?.unwrap();
 
         // Confidence check on revert to ensure we go backward only
         if block_ptr_to.number >= deployment_head.number {
             panic!("revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}", deployment_head, block_ptr_to);
         }
 
-        self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)
+        self.rewind_with_conn(&mut conn, site, block_ptr_to, firehose_cursor)
     }
 
     pub(crate) async fn deployment_state_from_id(
@@ -1156,7 +1156,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| deployment::fail(&conn, &id, &error))
+            conn.transaction(|| deployment::fail(&mut conn, &id, &error))
                 .map_err(Into::into)
         })
         .await?;
@@ -1192,7 +1192,7 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&conn, &site, block, manifest_idx_and_name))
+            conn.transaction(|| crate::dynds::load(&mut conn, &site, block, manifest_idx_and_name))
                 .map_err(Into::into)
         })
         .await
@@ -1211,7 +1211,7 @@ impl DeploymentStore {
         id: &DeploymentHash,
     ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::graft_pending(&conn, id)
+        deployment::graft_pending(&mut conn, id)
     }
 
     /// Bring the subgraph into a state where we can start or resume
@@ -1266,17 +1266,17 @@ impl DeploymentStore {
                 // the source schema which in sharded setups is only
                 // available while that function runs
                 let start = Instant::now();
-                let count = dynds::shared::copy(&conn, &src.site, &dst.site, block.number)?;
+                let count = dynds::shared::copy(&mut conn, &src.site, &dst.site, block.number)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
                 // Copy errors across
                 let start = Instant::now();
-                let count = deployment::copy_errors(&conn, &src.site, &dst.site, &block)?;
+                let count = deployment::copy_errors(&mut conn, &src.site, &dst.site, &block)?;
                 info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
 
-                catalog::copy_account_like(&conn, &src.site, &dst.site)?;
+                catalog::copy_account_like(&mut conn, &src.site, &dst.site)?;
 
                 // Rewind the subgraph so that entity versions that are
                 // clamped in the future (beyond `block`) become valid for
@@ -1288,23 +1288,23 @@ impl DeploymentStore {
                     .number
                     .checked_add(1)
                     .expect("block numbers fit into an i32");
-                dst.revert_block(&conn, block_to_revert)?;
+                dst.revert_block(&mut conn, block_to_revert)?;
                 info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());
 
                 let start = Instant::now();
-                deployment::set_entity_count(&conn, &dst.site, &dst.count_query)?;
+                deployment::set_entity_count(&mut conn, &dst.site, &dst.count_query)?;
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
 
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
-                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &mut conn)?;
                 }
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
-                crate::deployment::forward_block_ptr(&conn, &dst.site.deployment, &block)?;
+                crate::deployment::forward_block_ptr(&mut conn, &dst.site.deployment, &block)?;
                 info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
                 Ok(())
@@ -1314,7 +1314,7 @@ impl DeploymentStore {
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
         let mut conn = self.get_conn()?;
-        conn.transaction(|| crate::deployment::initialize_block_ptr(&conn, &dst.site))?;
+        conn.transaction(|| crate::deployment::initialize_block_ptr(&mut conn, &dst.site))?;
         Ok(())
     }
 
@@ -1493,7 +1493,7 @@ impl DeploymentStore {
     #[cfg(debug_assertions)]
     pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::error_count(&conn, id)
+        deployment::error_count(&mut conn, id)
     }
 
     pub(crate) async fn mirror_primary_tables(&self, logger: &Logger) {
