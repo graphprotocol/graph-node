@@ -47,6 +47,7 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
+    use diesel::pg::PgValue;
     use diesel::sql_types::{Array, Binary};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
@@ -292,8 +293,8 @@ mod data {
     }
 
     impl FromSql<Text, Pg> for Storage {
-        fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
-            let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        fn from_sql(value: PgValue<'_>) -> diesel::deserialize::Result<Self> {
+            let s = <String as FromSql<Text, Pg>>::from_sql(value)?;
             Self::new(s).map_err(Into::into)
         }
     }
