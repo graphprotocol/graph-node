@@ -1,8 +1,8 @@
 use diesel::{
+    deserialize::FromSql,
     pg::Pg,
-    serialize::Output,
+    serialize::{Output, ToSql},
     sql_types::Text,
-    types::{FromSql, ToSql},
 };
 use std::{
     collections::HashMap,
