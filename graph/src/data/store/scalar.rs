@@ -12,7 +12,6 @@ use web3::types::*;
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
-use std::io::Write;
 use std::ops::{Add, BitAnd, BitOr, Deref, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str::FromStr;
 
@@ -172,18 +171,16 @@ impl Div for BigDecimal {
 
 // Used only for JSONB support
 impl ToSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
-    fn to_sql<W: Write>(
-        &self,
-        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
     ) -> diesel::serialize::Result {
         <_ as ToSql<diesel::sql_types::Numeric, _>>::to_sql(&self.0, out)
     }
 }
 
 impl FromSql<diesel::sql_types::Numeric, diesel::pg::Pg> for BigDecimal {
-    fn from_sql(
-        bytes: Option<&<diesel::pg::Pg as diesel::backend::Backend>::RawValue>,
-    ) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         Ok(Self::from(bigdecimal::BigDecimal::from_sql(bytes)?))
     }
 }

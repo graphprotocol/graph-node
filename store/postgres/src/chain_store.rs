@@ -50,13 +50,13 @@ mod data {
     use diesel::sql_types::{Array, Binary};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
-    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
+        deserialize::FromSql,
         pg::Pg,
-        serialize::Output,
+        serialize::{Output, ToSql},
         sql_types::Text,
-        types::{FromSql, ToSql},
     };
+    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,

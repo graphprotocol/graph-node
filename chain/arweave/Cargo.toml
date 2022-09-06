@@ -4,7 +4,7 @@ version = "0.27.0"
 edition = "2021"
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"]}
+tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
 base64-url = "1.4.13"
@@ -18,4 +18,4 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { version = "2.0.0", features = ["postgres", "serde_json", "numeric", "r2d2"] }

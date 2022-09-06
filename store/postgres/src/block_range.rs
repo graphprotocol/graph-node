@@ -2,9 +2,8 @@ use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, QueryFragment};
 use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
-use diesel::serialize::{Output, ToSql};
+use diesel::serialize::ToSql;
 use diesel::sql_types::{Integer, Range};
-use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
 use graph::prelude::{BlockNumber, BlockPtr, BLOCK_NUMBER_MAX};
@@ -86,7 +85,10 @@ impl From<RangeFrom<BlockNumber>> for BlockRange {
 }
 
 impl ToSql<Range<Integer>, Pg> for BlockRange {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
         let pair = (self.0, self.1);
         ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
     }
