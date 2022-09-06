@@ -169,7 +169,7 @@ impl DeploymentStore {
         replace: bool,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| -> Result<_, StoreError> {
+        conn.transaction(|conn| -> Result<_, StoreError> {
             let exists = deployment::exists(&mut conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
@@ -218,7 +218,7 @@ impl DeploymentStore {
     // is not reversible
     pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             crate::deployment::drop_schema(&mut conn, &site.namespace)?;
             if !site.schema_version.private_data_sources() {
                 crate::dynds::shared::drop(&mut conn, &site.deployment)?;
@@ -613,7 +613,9 @@ impl DeploymentStore {
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| -> Result<_, StoreError> { detail::deployment_details(&mut conn, ids) })
+        conn.transaction(|conn| -> Result<_, StoreError> {
+            detail::deployment_details(&mut conn, ids)
+        })
     }
 
     pub(crate) fn deployment_statuses(
@@ -621,7 +623,7 @@ impl DeploymentStore {
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|| -> Result<Vec<status::Info>, StoreError> {
+        conn.transaction(|conn| -> Result<Vec<status::Info>, StoreError> {
             detail::deployment_statuses(&mut conn, sites)
         })
     }
