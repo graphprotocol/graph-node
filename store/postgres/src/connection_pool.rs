@@ -32,6 +32,7 @@ use std::{collections::HashMap, sync::RwLock};
 
 use postgres::config::{Config, Host};
 
+use crate::diesel_migrations::MigrationHarness;
 use crate::primary::{self, NAMESPACE_PUBLIC};
 use crate::{advisory_lock, catalog};
 use crate::{Shard, PRIMARY_SHARD};
