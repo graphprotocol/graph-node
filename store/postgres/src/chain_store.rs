@@ -299,7 +299,10 @@ mod data {
     }
 
     impl ToSql<Text, Pg> for Storage {
-        fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        fn to_sql<'b>(
+            &'b self,
+            out: &mut Output<'b, '_, diesel::pg::Pg>,
+        ) -> diesel::serialize::Result {
             <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
         }
     }
