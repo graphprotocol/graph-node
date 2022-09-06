@@ -6,6 +6,7 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
+use diesel_migrations::EmbeddedMigrations;
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::prelude::tokio;
@@ -1057,19 +1058,19 @@ impl PoolInner {
     }
 }
 
-embed_migrations!("./migrations");
-
 /// Run all schema migrations.
 ///
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
 fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
+    pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+
     // Collect migration logging output
     let mut output = vec![];
 
     info!(logger, "Running migrations");
-    let result = embedded_migrations::run_with_output(conn, &mut output);
+    let result = conn.run_pending_migrations(MIGRATIONS);
     info!(logger, "Migrations finished");
 
     // If there was any migration output, log it now
