@@ -1484,11 +1484,11 @@ impl<'a> QueryId for FindQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-//impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
-//        conn.query_by_name(&self)
-//    }
-//}
+impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'a> {
+    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 

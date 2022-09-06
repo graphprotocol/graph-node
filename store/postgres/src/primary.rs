@@ -5,7 +5,7 @@ use diesel::{
     connection::SimpleConnection,
     data_types::PgTimestamp,
     deserialize::FromSql,
-    dsl::{any, exists, not, select},
+    dsl::{count_star, exists, not, select},
     pg::{Pg, PgValue},
     serialize::{Output, ToSql},
     sql_types::{Array, Integer, Text},
@@ -37,14 +37,13 @@ use graph::{
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
-use maybe_owned::{MaybeOwned, MaybeOwnedMut};
+use maybe_owned::MaybeOwnedMut;
 use std::{
     borrow::Borrow,
     collections::HashMap,
     convert::TryFrom,
     convert::TryInto,
     fmt,
-    io::Write,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -393,7 +392,7 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
 /// mirrored through `Mirror::refresh_tables` and must be queries, i.e.,
 /// read-only
 mod queries {
-    use diesel::dsl::{any, exists, sql};
+    use diesel::dsl::{exists, sql};
     use diesel::pg::PgConnection;
     use diesel::prelude::{
         BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
@@ -1226,9 +1225,9 @@ impl<'a> Connection<'a> {
 
         let assigned = a::table
             .filter(a::node_id.eq_any(&nodes))
-            .select((a::node_id, sql("count(*)")))
+            .select((a::node_id, count_star()))
             .group_by(a::node_id)
-            .order_by(sql::<i64>("count(*)"))
+            .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
 
         // Any nodes without assignments will be missing from `assigned`
@@ -1264,9 +1263,9 @@ impl<'a> Connection<'a> {
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(ds::shard.eq_any(shards))
-            .select((ds::shard, sql("count(*)")))
+            .select((ds::shard, count_star()))
             .group_by(ds::shard)
-            .order_by(sql::<i64>("count(*)"))
+            .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
 
         // Any shards that have no deployments in them will not be in

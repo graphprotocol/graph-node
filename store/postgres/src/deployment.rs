@@ -6,6 +6,7 @@ use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
     sql_types::Integer,
+    PgRangeExpressionMethods,
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -57,6 +58,8 @@ impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
         }
     }
 }
+
+sql_function!(fn lower(x: Text) -> Text);
 
 table! {
     subgraphs.subgraph_deployment (id) {
@@ -668,7 +671,7 @@ pub(crate) fn has_deterministic_errors(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(e::deterministic)
-            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+            .filter(e::block_range.contains(block)),
     ))
     .get_result(conn)
     .map_err(|e| e.into())
@@ -768,11 +771,10 @@ pub(crate) fn revert_subgraph_errors(
 ) -> Result<(), StoreError> {
     use subgraph_error as e;
 
-    let lower_geq = format!("lower({}) >= ", BLOCK_RANGE_COLUMN);
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
+            .filter(lower(BLOCK_RANGE_COLUMN).ge(reverted_block)),
     )
     .execute(conn)?;
 

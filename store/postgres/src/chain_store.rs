@@ -1306,7 +1306,7 @@ impl ChainStore {
         use public::ethereum_networks::dsl::*;
 
         let mut conn = self.get_conn()?;
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             insert_into(ethereum_networks)
                 .values((
                     name.eq(&self.chain),
@@ -1318,8 +1318,8 @@ impl ChainStore {
                 ))
                 .on_conflict(name)
                 .do_nothing()
-                .execute(&mut conn)?;
-            self.storage.create(&mut conn)
+                .execute(conn)?;
+            self.storage.create(conn)
         })?;
 
         Ok(())
@@ -1330,10 +1330,10 @@ impl ChainStore {
         use public::ethereum_networks as n;
 
         let mut conn = self.get_conn()?;
-        conn.transaction(|| {
-            self.storage.drop_storage(&mut conn, &self.chain)?;
+        conn.transaction(|conn| {
+            self.storage.drop_storage(conn, &self.chain)?;
 
-            delete(n::table.filter(n::name.eq(&self.chain))).execute(&mut conn)?;
+            delete(n::table.filter(n::name.eq(&self.chain))).execute(conn)?;
             Ok(())
         })
     }
@@ -1415,7 +1415,7 @@ impl ChainStoreTrait for ChainStore {
         let network = self.chain.clone();
         let storage = self.storage.clone();
         pool.with_conn(move |conn, _| {
-            conn.transaction(|| {
+            conn.transaction(|conn| {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)
@@ -1574,7 +1574,7 @@ impl ChainStoreTrait for ChainStore {
         self.chain_head_update_sender.send(&hash, number)?;
 
         pool.with_conn(move |conn, _| {
-            conn.transaction(|| -> Result<(), StoreError> {
+            conn.transaction(|conn| -> Result<(), StoreError> {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)?;
@@ -1744,7 +1744,7 @@ impl EthereumCallCache for ChainStore {
     ) -> Result<Option<Vec<u8>>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &mut self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
+        if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
             {
@@ -1765,7 +1765,7 @@ impl EthereumCallCache for ChainStore {
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &mut self.get_conn()?;
-        conn.transaction::<_, Error, _>(|| Ok(self.storage.get_calls_in_block(conn, block)?))
+        conn.transaction::<_, Error, _>(|conn| Ok(self.storage.get_calls_in_block(conn, block)?))
     }
 
     fn set_call(
@@ -1777,7 +1777,7 @@ impl EthereumCallCache for ChainStore {
     ) -> Result<(), Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &mut self.get_conn()?;
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
                 id.as_ref(),
