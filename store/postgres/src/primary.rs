@@ -4,11 +4,11 @@
 use diesel::{
     connection::SimpleConnection,
     data_types::PgTimestamp,
+    deserialize::FromSql,
     dsl::{any, exists, not, select},
     pg::Pg,
-    serialize::Output,
+    serialize::{Output, ToSql},
     sql_types::{Array, Integer, Text},
-    types::{FromSql, ToSql},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -17,7 +17,7 @@ use diesel::{
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use diesel::{
     prelude::{
-        BoolExpressionMethods, ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods,
+        BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
         OptionalExtension, QueryDsl, RunQueryDsl,
     },
     Connection as _,

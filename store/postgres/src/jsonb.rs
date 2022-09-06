@@ -1,4 +1,4 @@
-use diesel::expression::helper_types::AsExprOf;
+use diesel::dsl::AsExprOf;
 use diesel::expression::{AsExpression, Expression};
 use diesel::sql_types::Jsonb;
 
