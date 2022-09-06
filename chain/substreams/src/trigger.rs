@@ -239,7 +239,7 @@ where
 }
 
 fn decode_entity_change(field: &Field, entity: &String) -> Result<Value, MappingError> {
-    return match field.value_type() {
+    match field.value_type() {
         Type::Unset => {
             return Err(MappingError::Unknown(anyhow!(
                 "Invalid field type, the protobuf probably needs updating"
@@ -267,22 +267,27 @@ fn decode_entity_change(field: &Field, entity: &String) -> Result<Value, Mapping
             String::from_utf8(field.new_value.clone())
                 .map_err(|e| MappingError::Unknown(anyhow::Error::from(e)))?,
         )),
-    };
+    }
 }
 
 #[cfg(test)]
 mod test {
+    use std::str::FromStr;
+
     use crate::codec::field::Type as FieldType;
     use crate::codec::Field;
     use crate::trigger::decode_entity_change;
-    use graph::prelude::Value;
+    use graph::{
+        data::store::scalar::Bytes,
+        prelude::{BigDecimal, BigInt, Value},
+    };
 
     #[test]
     fn validate_substreams_field_types() {
         struct Case {
             field: Field,
             entity: String,
-            expected_new_value: String,
+            expected_new_value: Value,
         }
 
         let cases = vec![
@@ -298,8 +303,9 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value:
+                expected_new_value: Value::String(
                     "d4325ee72c39999e778a9908f5fb0803f78e30c441a5f2ce5c65eee0e0eba59d".to_string(),
+                ),
             },
             Case {
                 field: Field {
@@ -314,8 +320,12 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value:
-                    "0x445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f".to_string(),
+                expected_new_value: Value::Bytes(
+                    Bytes::from_str(
+                        "0x445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f",
+                    )
+                    .unwrap(),
+                ),
             },
             Case {
                 field: Field {
@@ -327,7 +337,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "12369760".to_string(),
+                expected_new_value: Value::Int(12369760),
             },
             Case {
                 field: Field {
@@ -339,7 +349,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "12369622".to_string(),
+                expected_new_value: Value::Int(12369622),
             },
             Case {
                 field: Field {
@@ -351,7 +361,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "12369623".to_string(),
+                expected_new_value: Value::Int(12369623),
             },
             Case {
                 field: Field {
@@ -363,7 +373,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "123".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(123u64)),
             },
             Case {
                 field: Field {
@@ -375,7 +385,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "302".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(302u64)),
             },
             Case {
                 field: Field {
@@ -387,7 +397,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "209".to_string(),
+                expected_new_value: Value::BigInt(BigInt::from(209u64)),
             },
             Case {
                 field: Field {
@@ -399,7 +409,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "136631.5".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::from(136631.5)),
             },
             Case {
                 field: Field {
@@ -411,7 +421,7 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "130709.0".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::from(130709.0)),
             },
             Case {
                 field: Field {
@@ -423,22 +433,17 @@ mod test {
                     old_value_null: true,
                 },
                 entity: "Block".to_string(),
-                expected_new_value: "97892.6".to_string(),
+                expected_new_value: Value::BigDecimal(BigDecimal::new(BigInt::from(978926u64), -1)),
             },
         ];
 
         for case in cases.into_iter() {
             let value: Value = decode_entity_change(&case.field, &case.entity).unwrap();
-            let mut actual_value: String = String::new();
-            match case.field.value_type {
-                1 => actual_value = value.as_big_decimal().unwrap().to_string(),
-                2 => actual_value = value.as_bigint().unwrap().to_string(),
-                3 => actual_value = value.as_int().unwrap().to_string(),
-                4 => actual_value = value.as_bytes().unwrap().to_string(),
-                5 => actual_value = value.as_string().unwrap(),
-                _ => {}
-            }
-            assert_eq!(case.expected_new_value.as_str(), actual_value)
+            assert_eq!(
+                case.expected_new_value, value,
+                "failed case: {}",
+                case.field.name
+            )
         }
     }
 }
