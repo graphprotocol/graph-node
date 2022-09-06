@@ -52,6 +52,7 @@ use crate::{
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = String)]
 pub struct Shard(String);
 
 lazy_static! {
@@ -106,7 +107,7 @@ impl FromSql<Text, Pg> for Shard {
 }
 
 impl ToSql<Text, Pg> for Shard {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
