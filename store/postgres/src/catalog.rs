@@ -155,7 +155,7 @@ fn get_text_columns(
 }
 
 pub fn supports_proof_of_indexing(
-    conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
