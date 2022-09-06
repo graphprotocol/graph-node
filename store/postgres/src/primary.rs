@@ -6,7 +6,7 @@ use diesel::{
     data_types::PgTimestamp,
     deserialize::FromSql,
     dsl::{any, exists, not, select},
-    pg::Pg,
+    pg::{Pg, PgValue},
     serialize::{Output, ToSql},
     sql_types::{Array, Integer, Text},
 };
@@ -251,8 +251,8 @@ impl fmt::Display for Namespace {
 }
 
 impl FromSql<Text, Pg> for Namespace {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
-        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+    fn from_sql(value: PgValue<'_>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(value)?;
         Namespace::new(s).map_err(Into::into)
     }
 }
@@ -300,8 +300,8 @@ impl From<DeploymentLocator> for DeploymentId {
 }
 
 impl FromSql<Integer, Pg> for DeploymentId {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
-        let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
+    fn from_sql(value: PgValue<'_>) -> diesel::deserialize::Result<Self> {
+        let id = <i32 as FromSql<Integer, Pg>>::from_sql(value)?;
         Ok(DeploymentId(id))
     }
 }

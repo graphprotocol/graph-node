@@ -1,6 +1,6 @@
 use diesel::{
     deserialize::FromSql,
-    pg::Pg,
+    pg::{Pg, PgValue},
     serialize::{Output, ToSql},
     sql_types::Text,
 };
@@ -100,8 +100,8 @@ impl fmt::Display for Shard {
 }
 
 impl FromSql<Text, Pg> for Shard {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
-        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+    fn from_sql(value: PgValue<'_>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(value)?;
         Shard::new(s).map_err(Into::into)
     }
 }
