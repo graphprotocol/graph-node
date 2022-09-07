@@ -135,33 +135,18 @@ impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
 /// Helper for generating various SQL fragments for handling the block range
 /// of entity versions
 #[derive(Debug, Clone, Copy)]
-pub enum BlockRangeColumn<'a> {
-    Mutable {
-        table: &'a Table,
-        table_prefix: &'a str,
-        block: BlockNumber,
-    },
-    Immutable {
-        table: &'a Table,
-        table_prefix: &'a str,
-        block: BlockNumber,
-    },
+pub struct BlockRangeColumn<'a> {
+    table: &'a Table,
+    table_prefix: &'a str,
+    block: BlockNumber,
 }
 
 impl<'a> BlockRangeColumn<'a> {
     pub fn new(table: &'a Table, table_prefix: &'a str, block: BlockNumber) -> Self {
-        if table.immutable {
-            Self::Immutable {
-                table,
-                table_prefix,
-                block,
-            }
-        } else {
-            Self::Mutable {
-                table,
-                table_prefix,
-                block,
-            }
+        Self {
+            table,
+            table_prefix,
+            block,
         }
     }
 }
@@ -171,81 +156,88 @@ impl<'a> BlockRangeColumn<'a> {
     pub fn contains<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        match self {
-            BlockRangeColumn::Mutable { table, block, .. } => {
+        let Self {
+            table,
+            table_prefix,
+            block,
+        } = self;
+
+        if self.is_immutable() {
+            if *block == BLOCK_NUMBER_MAX {
+                // `self.block <= BLOCK_NUMBER_MAX` is always true
+                out.push_sql("true");
+                Ok(())
+            } else {
                 self.name(out);
-                out.push_sql(" @> ");
-                out.push_bind_param::<Integer, _>(block)?;
-                if table.is_account_like && *block < BLOCK_NUMBER_MAX {
-                    // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
-                    // don't worry about adding the equivalent in that case since
-                    // we generally only see BLOCK_NUMBER_MAX here for metadata
-                    // queries where block ranges don't matter anyway
-                    out.push_sql(" and coalesce(upper(");
-                    out.push_identifier(BLOCK_RANGE_COLUMN)?;
-                    out.push_sql("), 2147483647) > ");
-                    out.push_bind_param::<Integer, _>(block)?;
-                    out.push_sql(" and lower(");
-                    out.push_identifier(BLOCK_RANGE_COLUMN)?;
-                    out.push_sql(") <= ");
-                    out.push_bind_param::<Integer, _>(block)
-                } else {
-                    Ok(())
-                }
+                out.push_sql(" <= ");
+                out.push_bind_param::<Integer, _>(block)
             }
-            BlockRangeColumn::Immutable { block, .. } => {
-                if *block == BLOCK_NUMBER_MAX {
-                    // `self.block <= BLOCK_NUMBER_MAX` is always true
-                    out.push_sql("true");
-                    Ok(())
-                } else {
-                    self.name(out);
-                    out.push_sql(" <= ");
-                    out.push_bind_param::<Integer, _>(block)
-                }
+        } else {
+            self.name(out);
+            out.push_sql(" @> ");
+            out.push_bind_param::<Integer, _>(block)?;
+            if table.is_account_like && *block < BLOCK_NUMBER_MAX {
+                // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
+                // don't worry about adding the equivalent in that case since
+                // we generally only see BLOCK_NUMBER_MAX here for metadata
+                // queries where block ranges don't matter anyway
+                out.push_sql(" and coalesce(upper(");
+                out.push_identifier(BLOCK_RANGE_COLUMN)?;
+                out.push_sql("), 2147483647) > ");
+                out.push_bind_param::<Integer, _>(block)?;
+                out.push_sql(" and lower(");
+                out.push_identifier(BLOCK_RANGE_COLUMN)?;
+                out.push_sql(") <= ");
+                out.push_bind_param::<Integer, _>(block)
+            } else {
+                Ok(())
             }
         }
     }
 
+    pub fn is_immutable(&self) -> bool {
+        self.table.immutable
+    }
+
     pub fn column_name(&self) -> &str {
-        match self {
-            BlockRangeColumn::Mutable { .. } => BLOCK_RANGE_COLUMN,
-            BlockRangeColumn::Immutable { .. } => BLOCK_COLUMN,
+        if self.is_immutable() {
+            BLOCK_COLUMN
+        } else {
+            BLOCK_RANGE_COLUMN
         }
     }
 
     /// Output the qualified name of the block range column
     pub fn name(&self, out: &mut AstPass<Pg>) {
-        match self {
-            BlockRangeColumn::Mutable { table_prefix, .. } => {
-                out.push_sql(table_prefix);
-                out.push_sql(BLOCK_RANGE_COLUMN);
-            }
-            BlockRangeColumn::Immutable { table_prefix, .. } => {
-                out.push_sql(table_prefix);
-                out.push_sql(BLOCK_COLUMN);
-            }
-        }
+        out.push_sql(self.table_prefix);
+        out.push_sql(self.column_name());
+    }
+
+    /// Output the name of the block range column without the table prefix
+    pub(crate) fn bare_name(&self, out: &mut AstPass<Pg>) {
+        out.push_sql(self.column_name());
     }
 
     /// Output the literal value of the block range `[block,..)`, mostly for
     /// generating an insert statement containing the block range column
     pub fn literal_range_current<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => {
-                let block_range: BlockRange = (*block..).into();
-                out.push_bind_param::<Range<Integer>, _>(&block_range)
-            }
-            BlockRangeColumn::Immutable { block, .. } => out.push_bind_param::<Integer, _>(block),
+        if self.is_immutable() {
+            out.push_bind_param::<Integer, _>(&self.block);
+        } else {
+            let block_range: BlockRange = (self.block..).into();
+            out.push_bind_param::<Range<Integer>, _>(&block_range)
         }
+
+        Ok(())
     }
 
     /// Output an expression that matches rows that are the latest version
     /// of their entity
     pub fn latest(&self, out: &mut AstPass<Pg>) {
-        match self {
-            BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_CURRENT),
-            BlockRangeColumn::Immutable { .. } => out.push_sql("true"),
+        if self.is_immutable() {
+            out.push_sql("true");
+        } else {
+            out.push_sql(BLOCK_RANGE_CURRENT);
         }
     }
 
@@ -256,46 +248,34 @@ impl<'a> BlockRangeColumn<'a> {
     ///
     /// If the underlying table is immutable, this method will panic
     pub fn clamp<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => {
-                self.name(out);
-                out.push_sql(" = int4range(lower(");
-                out.push_identifier(BLOCK_RANGE_COLUMN)?;
-                out.push_sql("), ");
-                out.push_bind_param::<Integer, _>(block)?;
-                out.push_sql(")");
-                Ok(())
-            }
-            BlockRangeColumn::Immutable { .. } => {
-                unreachable!("immutable entities can not be updated or deleted")
-            }
-        }
-    }
+        assert!(
+            !self.is_immutable(),
+            "immutable entities can not be updated or deleted"
+        );
 
-    /// Output the name of the block range column without the table prefix
-    pub(crate) fn bare_name(&self, out: &mut AstPass<Pg>) {
-        match self {
-            BlockRangeColumn::Mutable { .. } => out.push_sql(BLOCK_RANGE_COLUMN),
-            BlockRangeColumn::Immutable { .. } => out.push_sql(BLOCK_COLUMN),
-        }
+        self.name(out);
+        out.push_sql(" = int4range(lower(");
+        out.push_identifier(BLOCK_RANGE_COLUMN)?;
+        out.push_sql("), ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        out.push_sql(")");
+        Ok(())
     }
 
     /// Output an expression that matches all rows that have been changed
     /// after `block` (inclusive)
     pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => {
-                out.push_sql("lower(");
-                out.push_identifier(BLOCK_RANGE_COLUMN)?;
-                out.push_sql(") >= ");
-                out.push_bind_param::<Integer, _>(block)
-            }
-            BlockRangeColumn::Immutable { block, .. } => {
-                out.push_identifier(BLOCK_COLUMN)?;
-                out.push_sql(" >= ");
-                out.push_bind_param::<Integer, _>(block)
-            }
+        if self.is_immutable() {
+            out.push_identifier(BLOCK_COLUMN)?;
+        } else {
+            out.push_sql("lower(");
+            out.push_identifier(BLOCK_RANGE_COLUMN)?;
+            out.push_sql(")");
         }
+
+        out.push_sql(" >= ");
+        out.push_bind_param::<Integer, _>(&self.block)?;
+        Ok(())
     }
 }
 
