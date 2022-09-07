@@ -389,7 +389,7 @@ pub trait ChainStore: Send + Sync + 'static {
     async fn block_number(
         &self,
         hash: &BlockHash,
-    ) -> Result<Option<(String, BlockNumber, Option<String>)>, StoreError>;
+    ) -> Result<Option<(String, BlockNumber, Option<u64>)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
@@ -443,7 +443,7 @@ pub trait QueryStore: Send + Sync {
     async fn block_number_with_timestamp(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<(BlockNumber, Option<String>)>, StoreError>;
+    ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError>;
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 
