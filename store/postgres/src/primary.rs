@@ -623,7 +623,7 @@ mod queries {
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
         Ok(v::table
-            .select((v::deployment, sql("created_at::text")))
+            .select((v::deployment, sql::<Text>("created_at::text")))
             .filter(v::id.eq(version))
             .first::<(String, String)>(conn)
             .optional()?)
@@ -683,7 +683,7 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
     where
-        F: FnOnce() -> Result<T, E>,
+        F: FnOnce(&mut Self) -> Result<T, E>,
         E: From<diesel::result::Error>,
     {
         self.conn.transaction(f)

@@ -6,7 +6,7 @@
 ///! Code in this module works very hard to minimize the number of allocations
 ///! that it performs
 use diesel::pg::{Pg, PgConnection};
-use diesel::query_builder::{AstPass, QueryFragment, QueryId};
+use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
@@ -94,7 +94,7 @@ fn bytes_as_str(id: &str) -> String {
 
 impl IdType {
     /// Add `ids` as a bind variable to `out`, using the right SQL type
-    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    fn bind_ids<'b, S>(&'b self, ids: &'b [S], out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
@@ -132,7 +132,7 @@ trait ForeignKeyClauses {
     fn name(&self) -> &str;
 
     /// Add `id` as a bind variable to `out`, using the right SQL type
-    fn bind_id(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn bind_id<'b>(&self, id: &'b str, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.column_type().id_type() {
             IdType::String => out.push_bind_param::<Text, _>(&id)?,
             IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(id)?.as_slice())?,
@@ -144,7 +144,7 @@ trait ForeignKeyClauses {
     }
 
     /// Add `ids`  as a bind variable to `out`, using the right SQL type
-    fn bind_ids<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    fn bind_ids<'b, S>(&self, ids: &'b [S], out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
@@ -153,7 +153,7 @@ trait ForeignKeyClauses {
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
     /// into `out`
-    fn eq(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn eq<'b>(&self, id: &'b str, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql(self.name());
         out.push_sql(" = ");
         self.bind_id(id, out)
@@ -162,7 +162,7 @@ trait ForeignKeyClauses {
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in<S>(&self, ids: &[S], out: &mut AstPass<Pg>) -> QueryResult<()>
+    fn is_in<'b, S>(&self, ids: &'b [S], out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
@@ -543,7 +543,7 @@ impl EntityData {
 struct QueryValue<'a>(&'a Value, &'a ColumnType);
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         let column_type = self.1;
 
@@ -744,7 +744,7 @@ impl<'a> PrefixComparison<'a> {
         })
     }
 
-    fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_value_prefix<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.kind {
             PrefixType::String(column) => {
                 out.push_sql("left(");
@@ -764,13 +764,21 @@ impl<'a> PrefixComparison<'a> {
         Ok(())
     }
 
-    fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_prefix_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         self.kind.push_column_prefix(&mut out)?;
         out.push_sql(op.as_str());
         self.push_value_prefix(out.reborrow())
     }
 
-    fn push_full_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_full_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         out.push_identifier(self.column.name.as_str())?;
         out.push_sql(op.as_str());
         QueryValue(self.text, &self.column.column_type).walk_ast(out)
@@ -778,7 +786,7 @@ impl<'a> PrefixComparison<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         use Comparison::*;
 
         // For the various comparison operators, we want to write the condition
@@ -987,13 +995,13 @@ impl<'a> QueryFilter<'a> {
         }
     }
 
-    fn child(
-        &self,
+    fn child<'b>(
+        &'b self,
         attribute: &Attribute,
         entity_type: &'a EntityType,
         filter: &'a EntityFilter,
         derived: bool,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let child_table = self
             .layout
@@ -1092,12 +1100,12 @@ impl<'a> QueryFilter<'a> {
             .expect("the constructor already checked that all attribute names are valid")
     }
 
-    fn binary_op(
-        &self,
-        filters: &[EntityFilter],
+    fn binary_op<'b>(
+        &'b self,
+        filters: &'b [EntityFilter],
         op: &str,
         on_empty: &str,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if !filters.is_empty() {
             out.push_sql("(");
@@ -1114,13 +1122,13 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn contains(
-        &self,
+    fn contains<'b>(
+        &'b self,
         attribute: &Attribute,
-        value: &Value,
+        value: &'b Value,
         negated: bool,
         strict: bool,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
         let operation = match (strict, negated) {
@@ -1185,12 +1193,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn equals(
-        &self,
+    fn equals<'b>(
+        &'b self,
         attribute: &Attribute,
-        value: &Value,
+        value: &'b Value,
         op: Comparison,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
@@ -1219,12 +1227,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn compare(
-        &self,
+    fn compare<'b>(
+        &'b self,
         attribute: &Attribute,
-        value: &Value,
+        value: &'b Value,
         op: Comparison,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
@@ -1252,12 +1260,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn in_array(
-        &self,
+    fn in_array<'b>(
+        &'b self,
         attribute: &Attribute,
-        values: &[Value],
+        values: &'b [Value],
         negated: bool,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
@@ -1343,10 +1351,10 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn filter_block_gte(
-        &self,
+    fn filter_block_gte<'b>(
+        &'b self,
         block_number_gte: &BlockNumber,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         BlockRangeColumn::new(self.table, "c.", *block_number_gte).changed_since(&mut out)
     }
@@ -1392,7 +1400,7 @@ impl<'a> QueryFilter<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         use Comparison as c;
@@ -1452,6 +1460,22 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
     }
 }
 
+macro_rules! impl_load_query {
+    ( $typ:ident ) => {
+        impl<'a, Conn> RunQueryDsl<Conn> for $typ<'a> {}
+
+        impl<'a> QueryId for $typ<'a> {
+            type QueryId = ();
+
+            const HAS_STATIC_QUERY_ID: bool = false;
+        }
+
+        impl<'a> Query for $typ<'a> {
+            type SqlType = EntityData;
+        }
+    };
+}
+
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {
     table: &'a Table,
@@ -1459,8 +1483,16 @@ pub struct FindQuery<'a> {
     block: BlockNumber,
 }
 
+impl_load_query!(FindQuery);
+
+//impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'a> {
+//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<EntityData> {
+//        conn.query_by_name(&self)
+//    }
+//}
+
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Generate
@@ -1478,20 +1510,6 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'static> {
-    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
-
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
 /// block range's lower bound is equal to said block number.
@@ -1502,8 +1520,10 @@ pub struct FindChangesQuery<'a> {
     pub(crate) block: BlockNumber,
 }
 
+impl_load_query!(FindChangesQuery);
+
 impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         for (i, table) in self.tables.iter().enumerate() {
@@ -1523,19 +1543,11 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindChangesQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
 //impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindChangesQuery<'a> {
 //    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
 //        conn.query_by_name(&self)
 //    }
 //}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 
 /// Builds a query over a given set of [`Table`]s in an attempt to find deleted
 /// entities; i.e. such that the block range's lower bound is equal to said
@@ -1552,8 +1564,10 @@ pub struct FindPossibleDeletionsQuery<'a> {
     pub(crate) block: BlockNumber,
 }
 
+impl_load_query!(FindPossibleDeletionsQuery);
+
 impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         for (i, table) in self.tables.iter().enumerate() {
@@ -1573,19 +1587,11 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
 //impl<'a> LoadQuery<'a, PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
 //    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityDeletion>> {
 //        conn.query_by_name(&self)
 //    }
 //}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
@@ -1597,8 +1603,10 @@ pub struct FindManyQuery<'a> {
     pub(crate) block: BlockNumber,
 }
 
+impl_load_query!(FindManyQuery);
+
 impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Generate
@@ -1629,19 +1637,11 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
     }
 }
 
-impl<'a> QueryId for FindManyQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
 //impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindManyQuery<'a> {
 //    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
 //        conn.query_by_name(&self)
 //    }
 //}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
@@ -1709,8 +1709,10 @@ impl<'a> InsertQuery<'a> {
     }
 }
 
+impl_load_query!(InsertQuery);
+
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -1765,20 +1767,12 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
     }
 }
 
-impl<'a> QueryId for InsertQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
 //impl<'a> LoadQuery<'a, PgConnection, ReturnedEntityData> for InsertQuery<'a> {
 //    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
 //        conn.query_by_name(&self)
 //            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
 //    }
 //}
-
-impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
 #[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
@@ -1804,8 +1798,10 @@ impl<'a> ConflictingEntityQuery<'a> {
     }
 }
 
+impl_load_query!(ConflictingEntityQuery);
+
 impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -1829,12 +1825,6 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
     }
 }
 
-impl<'a> QueryId for ConflictingEntityQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
 #[derive(QueryableByName)]
 pub struct ConflictingEntityData {
     #[sql_type = "Text"]
@@ -1846,8 +1836,6 @@ pub struct ConflictingEntityData {
 //        conn.query_by_name(&self)
 //    }
 //}
-
-impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
 /// A string where we have checked that it is safe to embed it literally
 /// in a string in a SQL query. In particular, we have escaped any use
@@ -1949,7 +1937,7 @@ impl<'a> ParentLimit<'a> {
         }
     }
 
-    fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn restrict<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
             sort_key.order_by(out)?;
@@ -2035,7 +2023,7 @@ impl<'a> FilterWindow<'a> {
         }
     }
 
-    fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn and_filter<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         if let Some(filter) = &self.query_filter {
             out.push_sql("\n   and ");
             filter.walk_ast(out)?
@@ -2043,12 +2031,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn children_type_a(
-        &self,
+    fn children_type_a<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
 
@@ -2081,12 +2069,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn child_type_a(
-        &self,
+    fn child_type_a<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
 
@@ -2122,12 +2110,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn children_type_b(
-        &self,
+    fn children_type_b<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
 
@@ -2159,12 +2147,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn child_type_b(
-        &self,
+    fn child_type_b<'b>(
+        &'b self,
         column: &Column,
-        limit: ParentLimit<'_>,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
 
@@ -2188,12 +2176,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn children_type_c(
-        &self,
+    fn children_type_c<'b>(
+        &'b self,
         child_ids: &[Vec<Option<SafeString>>],
-        limit: ParentLimit<'_>,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Generate
         //      from rows from (unnest({parent_ids}), reduce_dim({child_id_matrix}))
@@ -2227,12 +2215,12 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn child_type_d(
-        &self,
-        child_ids: &[String],
-        limit: ParentLimit<'_>,
+    fn child_type_d<'b>(
+        &'b self,
+        child_ids: &'b [String],
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Generate
         //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id),
@@ -2271,11 +2259,11 @@ impl<'a> FilterWindow<'a> {
         Ok(())
     }
 
-    fn children(
-        &self,
-        limit: ParentLimit<'_>,
+    fn children<'b>(
+        &'b self,
+        limit: ParentLimit<'b>,
         block: BlockNumber,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         match &self.link {
             TableLink::Direct(column, multiplicity) => {
@@ -2304,11 +2292,11 @@ impl<'a> FilterWindow<'a> {
     /// Select a basic subset of columns from the child table for use in
     /// the `matches` CTE of queries that need to retrieve entities of
     /// different types or entities that link differently to their parents
-    fn children_uniform(
-        &self,
+    fn children_uniform<'b>(
+        &'b self,
         sort_key: &SortKey,
         block: BlockNumber,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
@@ -2661,7 +2649,7 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by [name direction], id
-    fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn order_by<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(br_column) => {
@@ -2697,7 +2685,7 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by g$parent_id, [name direction], id
-    fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn order_by_parent<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(_) => {
@@ -2723,11 +2711,11 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   [name direction,] id
-    fn sort_expr(
+    fn sort_expr<'b>(
         column: &Column,
-        value: &Option<&str>,
+        value: &Option<&'b str>,
         direction: &str,
-        out: &mut AstPass<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if column.is_primary_key() {
             // This shouldn't happen since we'd use SortKey::IdAsc/Desc
@@ -2863,11 +2851,11 @@ impl<'a> FilterQuery<'a> {
     ///      and query_filter
     /// Only used when the query is against a `FilterCollection::All`, i.e.
     /// when we do not need to window
-    fn filtered_rows(
-        &self,
-        table: &Table,
+    fn filtered_rows<'b>(
+        &'b self,
+        table: &'b Table,
         table_filter: &Option<QueryFilter<'a>>,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n  from ");
         out.push_sql(table.qualified_name.as_str());
@@ -2901,11 +2889,11 @@ impl<'a> FilterQuery<'a> {
     ///         where block_range @> $block
     ///           and filter
     ///         order by .. limit .. skip ..) c
-    fn query_no_window_one_entity(
-        &self,
-        table: &Table,
-        filter: &Option<QueryFilter>,
-        mut out: AstPass<Pg>,
+    fn query_no_window_one_entity<'b>(
+        &'b self,
+        table: &'b Table,
+        filter: &'b Option<QueryFilter>,
+        mut out: AstPass<'_, 'b, Pg>,
         column_names: &AttributeNames,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
@@ -2926,10 +2914,10 @@ impl<'a> FilterQuery<'a> {
     ///     from (select c.*, p.id as g$parent_id from {window.children(...)}) c
     ///     order by c.g$parent_id, {sort_key}
     ///     limit {first} offset {skip}
-    fn query_window_one_entity(
-        &self,
-        window: &FilterWindow,
-        mut out: AstPass<Pg>,
+    fn query_window_one_entity<'b>(
+        &'b self,
+        window: &'b FilterWindow,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(&window.table, &mut out);
         out.push_sql(" from (\n");
@@ -2945,10 +2933,10 @@ impl<'a> FilterQuery<'a> {
     }
 
     /// No windowing, but multiple entity types
-    fn query_no_window(
-        &self,
-        entities: &[(&Table, Option<QueryFilter>, AttributeNames)],
-        mut out: AstPass<Pg>,
+    fn query_no_window<'b>(
+        &'b self,
+        entities: &'b [(&Table, Option<QueryFilter>, AttributeNames)],
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
         // the entity_types come from implementing the same interface. We
@@ -3019,11 +3007,11 @@ impl<'a> FilterQuery<'a> {
     }
 
     /// Multiple windows
-    fn query_window(
-        &self,
-        windows: &[FilterWindow],
-        parent_ids: &[String],
-        mut out: AstPass<Pg>,
+    fn query_window<'b>(
+        &'b self,
+        windows: &'b [FilterWindow],
+        parent_ids: &'b [String],
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Note that a CTE is an optimization fence, and since we use
         // `matches` multiple times, we actually want to materialize it first
@@ -3108,7 +3096,7 @@ impl<'a> FilterQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         if self.collection.is_empty() {
             return Ok(());
@@ -3195,7 +3183,7 @@ impl<'a, S> QueryFragment<Pg> for ClampRangeQuery<'a, S>
 where
     S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
 {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         // update table
         //    set block_range = int4range(lower(block_range), $block)
         //  where id in (id1, id2, ..., idN)
@@ -3267,7 +3255,7 @@ impl<'a> RevertRemoveQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -3321,7 +3309,7 @@ impl<'a> RevertClampQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query
@@ -3441,7 +3429,7 @@ impl<'a> CopyEntityBatchQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Construct a query

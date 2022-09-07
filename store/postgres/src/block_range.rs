@@ -215,13 +215,11 @@ impl<'a> BlockRangeColumn<'a> {
     /// generating an insert statement containing the block range column
     pub fn literal_range_current<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         if self.is_immutable() {
-            out.push_bind_param::<Integer, _>(&self.block);
+            out.push_bind_param::<Integer, _>(&self.block)
         } else {
             let block_range: BlockRange = (self.block..).into();
             out.push_bind_param::<Range<Integer>, _>(&block_range)
         }
-
-        Ok(())
     }
 
     /// Output an expression that matches rows that are the latest version
