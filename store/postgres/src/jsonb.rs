@@ -6,7 +6,7 @@ mod operators {
     use diesel::sql_types::Jsonb;
 
     // restrict to backend: Pg
-    diesel_infix_operator!(JsonbMerge, " || ", Jsonb, backend: diesel::pg::Pg);
+    diesel::infix_operator!(JsonbMerge, " || ", Jsonb, backend: diesel::pg::Pg);
 }
 
 // This is currently unused, but allowing JSONB merging in the database

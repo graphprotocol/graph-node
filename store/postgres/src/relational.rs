@@ -676,7 +676,7 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction(|| {
+            .transaction(|_| {
                 if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
                     conn.batch_execute(timeout_sql)?;
                 }

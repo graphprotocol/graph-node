@@ -3,7 +3,7 @@ use std::ops::Bound;
 use diesel::{
     pg::sql_types,
     sql_query,
-    sql_types::{Binary, Integer, Jsonb, Nullable},
+    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
     PgConnection, QueryDsl, RunQueryDsl,
 };
 
@@ -90,7 +90,7 @@ impl DataSourcesTable {
         let tuples = self
             .table
             .clone()
-            .filter(diesel::dsl::sql("block_range @> ").bind::<Integer, _>(block))
+            .filter(diesel::dsl::sql::<Bool>("block_range @> ").bind::<Integer, _>(block))
             .select((
                 &self.block_range,
                 &self.manifest_idx,

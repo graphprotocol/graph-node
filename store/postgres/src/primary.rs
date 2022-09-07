@@ -683,7 +683,7 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
     where
-        F: FnOnce(&mut Self) -> Result<T, E>,
+        F: FnOnce(&mut PooledConnection<ConnectionManager<diesel::PgConnection>>) -> Result<T, E>,
         E: From<diesel::result::Error>,
     {
         self.conn.transaction(f)
@@ -1144,7 +1144,7 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|| {
+        self.transaction(|_| {
             let conn = self.conn.as_mut();
 
             delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;

@@ -5,7 +5,7 @@ use crate::{detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
-    sql_types::Integer,
+    sql_types::{Bool, Integer},
     PgRangeExpressionMethods,
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
@@ -780,7 +780,7 @@ pub(crate) fn revert_subgraph_errors(
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
+            .filter(sql::<Bool>(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 

@@ -48,7 +48,7 @@ pub use data::Storage;
 /// Encapuslate access to the blocks table for a chain.
 mod data {
     use diesel::pg::PgValue;
-    use diesel::sql_types::{Array, Binary};
+    use diesel::sql_types::{Array, Binary, Bool, Nullable};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
     use diesel::{
@@ -70,9 +70,9 @@ mod data {
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
+    use std::convert::TryFrom;
     use std::fmt;
     use std::iter::FromIterator;
-    use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -609,14 +609,14 @@ mod data {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select((b::number, sql(TIMESTAMP_QUERY)))
+                        .select((b::number, sql::<Nullable<Text>>(TIMESTAMP_QUERY)))
                         .filter(b::hash.eq(format!("{:x}", hash)))
                         .first::<(i64, Option<String>)>(conn)
                         .optional()?
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select((blocks.number(), sql(TIMESTAMP_QUERY)))
+                    .select((blocks.number(), sql::<Nullable<Text>>(TIMESTAMP_QUERY)))
                     .filter(blocks.hash().eq(hash.as_slice()))
                     .first::<(i64, Option<String>)>(conn)
                     .optional()?,
@@ -960,7 +960,7 @@ mod data {
                         .inner_join(meta::table)
                         .select((
                             cache::return_value,
-                            sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                            sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
                         ))
                         .get_result(conn)
                         .optional()
@@ -980,7 +980,7 @@ mod data {
                     .filter(call_cache.id().eq(id))
                     .select((
                         call_cache.return_value(),
-                        sql(&format!(
+                        sql::<Bool>(&format!(
                             "CURRENT_DATE > {}.{}",
                             CallMetaTable::TABLE_NAME,
                             CallMetaTable::ACCESSED_AT
@@ -1085,8 +1085,8 @@ mod data {
                     // raciness of this check is ok
                     let update_meta = meta::table
                         .filter(meta::contract_address.eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
-                        .first::<bool>(conn)
+                        .select(sql::<Bool>("accessed_at < current_date"))
+                        .first(conn)
                         .optional()?
                         .unwrap_or(true);
                     if update_meta {
@@ -1133,7 +1133,7 @@ mod data {
                     let update_meta = call_meta
                         .table()
                         .filter(call_meta.contract_address().eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
+                        .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
                         .optional()?
                         .unwrap_or(true);
@@ -1474,7 +1474,7 @@ impl ChainStoreTrait for ChainStore {
                     let number = ptr.number as i64;
 
                     conn.transaction(
-                        || -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                        |_| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
                             update(n::table.filter(n::name.eq(&chain_store.chain)))
                                 .set((
                                     n::head_block_hash.eq(&hash),

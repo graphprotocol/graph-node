@@ -4,11 +4,11 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::Text,
 };
+use std::fmt;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
@@ -554,7 +554,7 @@ impl SubgraphStoreInner {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -633,7 +633,7 @@ impl SubgraphStoreInner {
         )?;
 
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -1089,12 +1089,12 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph(&name))
+        pconn.transaction(|_| pconn.create_subgraph(&name))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1107,7 +1107,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })

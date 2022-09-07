@@ -1082,7 +1082,7 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreE
         let msg = msg.replace('\n', " ");
         if let Err(e) = result {
             error!(logger, "Postgres migration error"; "output" => msg);
-            return Err(StoreError::Unknown(e.into()));
+            return Err(StoreError::Unknown(anyhow::anyhow!("{}", e.to_string())));
         } else {
             debug!(logger, "Postgres migration output"; "output" => msg);
         }

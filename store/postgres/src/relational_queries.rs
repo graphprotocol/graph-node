@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, SingleValue, Text};
 use diesel::Connection;
 
 use graph::components::store::EntityKey;

@@ -10,8 +10,8 @@ derive_more = { version = "0.99.17" }
 diesel = { version = "2.0.0", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 # We use diesel-dynamic-schema straight from git as the project has not
 # made a release as a crate yet
-diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-schema", rev = "a8ec4fb1" }
-diesel-derive-enum = { version = "2.0.0-rc.0", features = ["postgres"] }
+diesel-dynamic-schema = "0.2.0"
+diesel-derive-enum = { version = "2.0.0-rc.0", features = ["postgres"] } # TODO: update this to 2.0.0 once it's out.
 diesel_migrations = "2.0.0"
 fallible-iterator = "0.2.0"
 graph = { path = "../../graph" }
