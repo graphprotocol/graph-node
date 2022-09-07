@@ -1685,7 +1685,6 @@ dependencies = [
  "graphql-tools",
  "indexmap",
  "lazy_static",
- "once_cell",
  "parking_lot 0.12.1",
  "pretty_assertions",
  "stable-hash 0.3.3",
