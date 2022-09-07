@@ -32,6 +32,7 @@ use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
+#[DieselTypePath = "crate::deployment::enum_mappings::SubgraphHealthMapping"]
 pub enum SubgraphHealth {
     Failed,
     Healthy,
@@ -59,14 +60,18 @@ impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
     }
 }
 
-sql_function!(fn lower(x: Text) -> Text);
+mod enum_mappings {
+    #[derive(diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "subgraph_health_mapping"))]
+    pub struct SubgraphHealthMapping;
+}
 
 table! {
     subgraphs.subgraph_deployment (id) {
         id -> Integer,
         deployment -> Text,
         failed -> Bool,
-        health -> crate::deployment::SubgraphHealthMapping,
+        health -> crate::deployment::enum_mappings::SubgraphHealthMapping,
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
@@ -771,10 +776,11 @@ pub(crate) fn revert_subgraph_errors(
 ) -> Result<(), StoreError> {
     use subgraph_error as e;
 
+    let lower_geq = format!("lower({}) >= ", BLOCK_RANGE_COLUMN);
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(lower(BLOCK_RANGE_COLUMN).ge(reverted_block)),
+            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 
