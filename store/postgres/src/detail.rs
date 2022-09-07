@@ -119,7 +119,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
             deterministic,
             block_range,
         } = value;
-        let block_number = crate::block_range::first_block_in_range(&block_range);
+        let block_number = crate::block_range::BlockRange::from(block_range).first_block();
         // FIXME:
         //
         // workaround for arweave

@@ -43,44 +43,29 @@ pub(crate) const BLOCK_COLUMN: &str = "block$";
 #[derive(Clone, Debug)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
-// Doing this properly by implementing Clone for Bound is currently
-// a nightly-only feature, so we need to work around that
-fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
-    match bound {
-        Bound::Included(nr) => Bound::Included(*nr),
-        Bound::Excluded(nr) => Bound::Excluded(*nr),
-        Bound::Unbounded => Bound::Unbounded,
+impl BlockRange {
+    pub fn first_block(&self) -> Option<BlockNumber> {
+        if (self.0, self.1) == UNVERSIONED_RANGE {
+            return None;
+        }
+
+        match self.0 {
+            Bound::Included(nr) => Some(nr),
+            Bound::Excluded(nr) => Some(nr + 1),
+            Bound::Unbounded => None,
+        }
     }
 }
 
-pub(crate) fn first_block_in_range(
-    bound: &(Bound<BlockNumber>, Bound<BlockNumber>),
-) -> Option<BlockNumber> {
-    if bound == &UNVERSIONED_RANGE {
-        return None;
+impl From<(Bound<BlockNumber>, Bound<BlockNumber>)> for BlockRange {
+    fn from(bounds: (Bound<BlockNumber>, Bound<BlockNumber>)) -> Self {
+        BlockRange(bounds.0, bounds.1)
     }
-
-    match bound.0 {
-        Bound::Included(nr) => Some(nr),
-        Bound::Excluded(nr) => Some(nr + 1),
-        Bound::Unbounded => None,
-    }
-}
-
-/// Return the block number contained in the history event. If it is
-/// `None` panic because that indicates that we want to perform an
-/// operation that does not record history, which should not happen
-/// with how we currently use relational schemas
-pub(crate) fn block_number(block_ptr: &BlockPtr) -> BlockNumber {
-    block_ptr.number
 }
 
 impl From<RangeFrom<BlockNumber>> for BlockRange {
     fn from(range: RangeFrom<BlockNumber>) -> BlockRange {
-        BlockRange(
-            clone_bound(range.start_bound()),
-            clone_bound(range.end_bound()),
-        )
+        BlockRange(range.start_bound().cloned(), range.end_bound().cloned())
     }
 }
 
@@ -92,6 +77,14 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
         let pair = (self.0, self.1);
         ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
     }
+}
+
+/// Return the block number contained in the history event. If it is
+/// `None` panic because that indicates that we want to perform an
+/// operation that does not record history, which should not happen
+/// with how we currently use relational schemas
+pub(crate) fn block_number(block_ptr: &BlockPtr) -> BlockNumber {
+    block_ptr.number
 }
 
 #[derive(Constructor)]
