@@ -160,6 +160,48 @@ pub async fn create_ethereum_networks(
     Ok(parsed_networks)
 }
 
+pub fn create_substreams_networks(
+    logger: Logger,
+    config: &Config,
+) -> BTreeMap<BlockchainKind, FirehoseNetworks> {
+    debug!(
+        logger,
+        "Creating firehose networks [{} chains, ingestor {}]",
+        config.chains.chains.len(),
+        config.chains.ingestor,
+    );
+
+    let mut networks_by_kind = BTreeMap::new();
+
+    for (name, chain) in &config.chains.chains {
+        for provider in &chain.providers {
+            if let ProviderDetails::Substreams(ref firehose) = provider.details {
+                info!(
+                    logger,
+                    "Configuring firehose endpoint";
+                    "provider" => &provider.label,
+                );
+
+                let endpoint = FirehoseEndpoint::new(
+                    &provider.label,
+                    &firehose.url,
+                    firehose.token.clone(),
+                    firehose.filters_enabled(),
+                    firehose.compression_enabled(),
+                    firehose.conn_pool_size,
+                );
+
+                let parsed_networks = networks_by_kind
+                    .entry(chain.protocol)
+                    .or_insert_with(|| FirehoseNetworks::new());
+                parsed_networks.insert(name.to_string(), Arc::new(endpoint));
+            }
+        }
+    }
+
+    networks_by_kind
+}
+
 pub fn create_firehose_networks(
     logger: Logger,
     config: &Config,

@@ -4,9 +4,7 @@ use ethereum::{
 };
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::{
-    Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap, ChainIdentifier,
-};
+use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
@@ -28,7 +26,7 @@ use graph_core::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients,
+    create_firehose_networks, create_ipfs_clients, create_substreams_networks,
 };
 use graph_node::config::Config;
 use graph_node::opt;
@@ -135,8 +133,8 @@ async fn main() {
         std::process::exit(0);
     }
 
-    let node_id =
-        NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
+    let node_id = NodeId::new(opt.node_id.clone())
+        .expect("Node ID must be between 1 and 63 characters in length");
     let query_only = config.query_only(&node_id);
 
     // Obtain subgraph related command-line arguments
@@ -236,6 +234,12 @@ async fn main() {
         create_firehose_networks(logger.clone(), &config)
     };
 
+    let substreams_networks_by_kind = if query_only {
+        BTreeMap::new()
+    } else {
+        create_substreams_networks(logger.clone(), &config)
+    };
+
     let graphql_metrics_registry = metrics_registry.clone();
 
     let contention_logger = logger.clone();
@@ -291,30 +295,11 @@ async fn main() {
         )
         .await;
 
-        let substreams_networks = firehose_networks_by_kind
-            .remove(&BlockchainKind::Substreams)
-            .unwrap_or_else(|| FirehoseNetworks::new());
-
-        let substreams_idents: Vec<(String, Vec<ChainIdentifier>)> = substreams_networks
-            .flatten()
-            .into_iter()
-            .map(|(ident, _)| {
-                (
-                    ident,
-                    vec![ChainIdentifier {
-                        net_version: "0".to_string(),
-                        genesis_block_hash: BlockHash::zero(),
-                    }],
-                )
-            })
-            .collect();
-
         let network_identifiers = ethereum_idents
             .into_iter()
             .chain(arweave_idents)
             .chain(near_idents)
             .chain(cosmos_idents)
-            .chain(substreams_idents)
             .collect();
 
         let network_store = store_builder.network_store(network_identifiers);
@@ -334,10 +319,12 @@ async fn main() {
             node_id.clone(),
             metrics_registry.clone(),
             firehose_networks_by_kind.get(&BlockchainKind::Ethereum),
+            substreams_networks_by_kind.get(&BlockchainKind::Ethereum),
             &eth_networks,
             network_store.as_ref(),
             chain_head_update_listener,
             &logger_factory,
+            metrics_registry.clone(),
         );
 
         let near_chains = near_networks_as_chains(
@@ -353,15 +340,6 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &cosmos_networks,
-            network_store.as_ref(),
-            &logger_factory,
-            metrics_registry.clone(),
-        );
-
-        let _substreams_chains = substreams_networks_as_chains(
-            &mut blockchain_map,
-            &logger,
-            &substreams_networks,
             network_store.as_ref(),
             &logger_factory,
             metrics_registry.clone(),
@@ -658,10 +636,12 @@ fn ethereum_networks_as_chains(
     node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     firehose_networks: Option<&FirehoseNetworks>,
+    substreams_networks: Option<&FirehoseNetworks>,
     eth_networks: &EthereumNetworks,
     store: &Store,
     chain_head_update_listener: Arc<ChainHeadUpdateListener>,
     logger_factory: &LoggerFactory,
+    metrics_registry: Arc<MetricsRegistry>,
 ) -> HashMap<String, Arc<ethereum::Chain>> {
     let chains: Vec<_> = eth_networks
         .networks
@@ -725,6 +705,26 @@ fn ethereum_networks_as_chains(
 
     for (network_name, chain) in chains.iter().cloned() {
         blockchain_map.insert::<graph_chain_ethereum::Chain>(network_name, chain)
+    }
+
+    if let Some(substreams_networks) = substreams_networks {
+        for (network_name, firehose_endpoints) in substreams_networks.networks.iter() {
+            let chain_store = blockchain_map
+                .get::<graph_chain_ethereum::Chain>(network_name.clone())
+                .expect("any substreams endpoint needs an rpc or firehose chain defined")
+                .chain_store();
+
+            blockchain_map.insert::<substreams::Chain>(
+                network_name.clone(),
+                Arc::new(substreams::Chain::new(
+                    logger_factory.clone(),
+                    firehose_endpoints.clone(),
+                    metrics_registry.clone(),
+                    chain_store,
+                    Arc::new(substreams::BlockStreamBuilder::new()),
+                )),
+            );
+        }
     }
 
     HashMap::from_iter(chains)
@@ -825,56 +825,6 @@ fn near_networks_as_chains(
     for (chain_id, firehose_chain) in chains.iter() {
         blockchain_map
             .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
-    }
-
-    HashMap::from_iter(chains)
-}
-
-/// Return the hashmap of SUBSTREAMS chains and also add them to `blockchain_map`.
-fn substreams_networks_as_chains(
-    blockchain_map: &mut BlockchainMap,
-    logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
-    store: &Store,
-    logger_factory: &LoggerFactory,
-    metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<substreams::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(chain_id, endpoints)| {
-            store
-                .block_store()
-                .chain_store(chain_id)
-                .map(|chain_store| (chain_id, chain_store, endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for SUBSTREAMS chain {}; ignoring this chain",
-                        chain_id
-                    );
-                    None
-                })
-        })
-        .map(|(chain_id, chain_store, endpoints)| {
-            (
-                chain_id.clone(),
-                FirehoseChain {
-                    chain: Arc::new(substreams::Chain::new(
-                        logger_factory.clone(),
-                        endpoints.clone(),
-                        metrics_registry.clone(),
-                        chain_store,
-                        Arc::new(substreams::BlockStreamBuilder::new()),
-                    )),
-                    firehose_endpoints: endpoints.clone(),
-                },
-            )
-        })
-        .collect();
-
-    for (chain_id, firehose_chain) in chains.iter() {
-        blockchain_map.insert::<substreams::Chain>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
