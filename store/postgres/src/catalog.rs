@@ -135,9 +135,9 @@ fn get_text_columns(
 
     #[derive(Debug, QueryableByName)]
     struct Column {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub table_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub column_name: String,
     }
 
@@ -160,7 +160,7 @@ pub fn supports_proof_of_indexing(
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
     struct Table {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         #[allow(dead_code)]
         pub table_name: String,
     }
@@ -176,7 +176,7 @@ pub fn supports_proof_of_indexing(
 pub fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         srvname: String,
     }
     Ok(sql_query("select srvname from pg_foreign_server")
@@ -194,7 +194,7 @@ pub fn server_options(
 ) -> Result<HashMap<String, Option<String>>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Array<Text>"]
+        #[diesel(sql_type = Array<Text>)]
         srvoptions: Vec<String>,
     }
     let entries = sql_query("select srvoptions from pg_foreign_server where srvname = $1")
@@ -326,15 +326,15 @@ pub(crate) mod table_schema {
 
     #[derive(QueryableByName)]
     struct ColumnInfo {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         column_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         data_type: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_schema: String,
-        #[sql_type = "Nullable<Text>"]
+        #[diesel(sql_type = Nullable<Text>)]
         elem_type: Option<String>,
     }
 
@@ -439,7 +439,7 @@ pub(crate) fn check_index_is_valid(
 ) -> Result<bool, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct ManualIndexCheck {
-        #[sql_type = "Bool"]
+        #[diesel(sql_type = Bool)]
         is_valid: bool,
     }
 
@@ -470,8 +470,8 @@ pub(crate) fn indexes_for_table(
 ) -> Result<Vec<String>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct IndexName {
-        #[sql_type = "Text"]
-        #[column_name = "indexdef"]
+        #[diesel(sql_type = Text)]
+        #[diesel(column_name = indexdef)]
         def: String,
     }
 

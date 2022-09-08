@@ -45,7 +45,7 @@ pub fn account_like(
     let table = SqlName::from(table);
     let (site, conn) = site_and_conn(pools, search)?;
 
-    store_catalog::set_account_like(&conn, &site, &table, !clear)?;
+    store_catalog::set_account_like(&mut conn, &site, &table, !clear)?;
     let clear_text = if clear { "cleared" } else { "set" };
     println!("{}: account-like flag {}", table, clear_text);
 
@@ -61,11 +61,11 @@ pub fn show(
 
     #[derive(Queryable, QueryableByName)]
     struct VersionStats {
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         entities: i32,
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         versions: i32,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         tablename: String,
     }
 
@@ -108,7 +108,7 @@ pub fn show(
     );
     let stats = sql_query(query)
         .bind::<Text, _>(&site.namespace.as_str())
-        .load::<VersionStats>(&conn)?;
+        .load::<VersionStats>(&mut conn)?;
 
     let account_like = store_catalog::account_like(&conn, &site)?;
 
@@ -136,7 +136,7 @@ pub fn show(
             nsp = &site.namespace,
             table = table
         );
-        let stat = sql_query(query).get_result::<VersionStats>(&conn)?;
+        let stat = sql_query(query).get_result::<VersionStats>(&mut conn)?;
         stat.print(account_like.contains(&stat.tablename));
     }
 

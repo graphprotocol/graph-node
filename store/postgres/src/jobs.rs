@@ -96,7 +96,7 @@ impl NotificationQueueUsage {
     async fn update(&self) -> Result<(), StoreError> {
         #[derive(QueryableByName)]
         struct Usage {
-            #[sql_type = "Double"]
+            #[diesel(sql_type = Double)]
             usage: f64,
         }
         let usage_gauge = self.usage_gauge.clone();

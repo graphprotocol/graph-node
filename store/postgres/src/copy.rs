@@ -289,7 +289,7 @@ impl TableState {
     ) -> Result<Self, StoreError> {
         #[derive(QueryableByName)]
         struct MaxVid {
-            #[sql_type = "diesel::sql_types::BigInt"]
+            #[diesel(sql_type = diesel::sql_types::BigInt)]
             max_vid: i64,
         }
 

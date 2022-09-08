@@ -8,7 +8,7 @@ use diesel::{
     dsl::{count_star, exists, not, select},
     pg::{Pg, PgValue},
     serialize::{Output, ToSql},
-    sql_types::{Array, Integer, Text},
+    sql_types::{Array, BigInt, Integer, Text},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -180,7 +180,7 @@ allow_tables_to_appear_in_same_query!(
 /// Information about the database schema that stores the entities for a
 /// subgraph.
 #[derive(Clone, Queryable, QueryableByName, Debug)]
-#[table_name = "deployment_schemas"]
+#[diesel(table_name = deployment_schemas)]
 struct Schema {
     id: DeploymentId,
     #[allow(dead_code)]
@@ -194,7 +194,7 @@ struct Schema {
 }
 
 #[derive(Clone, Queryable, QueryableByName, Debug)]
-#[table_name = "unused_deployments"]
+#[diesel(table_name = unused_deployments)]
 pub struct UnusedDeployment {
     pub id: DeploymentId,
     pub deployment: String,
@@ -214,7 +214,7 @@ pub struct UnusedDeployment {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
-#[sql_type = "diesel::sql_types::Text"]
+#[diesel(sql_type = diesel::sql_types::Text)]
 /// A namespace (schema) in the database
 pub struct Namespace(String);
 
@@ -271,7 +271,7 @@ impl Borrow<str> for Namespace {
 /// A marker that an `i32` references a deployment. Values of this type hold
 /// the primary key from the `deployment_schemas` table
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
-#[sql_type = "diesel::sql_types::Integer"]
+#[diesel(sql_type = diesel::sql_types::Integer)]
 pub struct DeploymentId(i32);
 
 impl fmt::Display for DeploymentId {
@@ -1225,7 +1225,8 @@ impl<'a> Connection<'a> {
 
         let assigned = a::table
             .filter(a::node_id.eq_any(&nodes))
-            .select((a::node_id, count_star()))
+            // Diesel's `count_star()` refuses to compile here. Go figure.
+            .select((a::node_id, sql::<BigInt>("count(*)")))
             .group_by(a::node_id)
             .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
@@ -1263,7 +1264,8 @@ impl<'a> Connection<'a> {
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(ds::shard.eq_any(shards))
-            .select((ds::shard, count_star()))
+            // Diesel's `count_star()` refuses to compile here. Go figure.
+            .select((ds::shard, sql::<BigInt>("count(*)")))
             .group_by(ds::shard)
             .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
