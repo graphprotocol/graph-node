@@ -56,7 +56,7 @@ run_graph_node() {
         # postgres is up in this case, though we probably should
         wait_for_ipfs "$ipfs"
         sleep 5
-        graph-node \
+        exec graph-node \
             --node-id "$node_id" \
             --config "$GRAPH_NODE_CONFIG" \
             --ipfs "$ipfs" \
@@ -70,7 +70,7 @@ run_graph_node() {
         wait_for "$postgres_host:$postgres_port" -t 120
         sleep 5
 
-        graph-node \
+        exec graph-node \
             --node-id "$node_id" \
             --postgres-url "$postgres_url" \
             --ethereum-rpc $ethereum \
