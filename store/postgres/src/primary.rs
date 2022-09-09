@@ -8,7 +8,7 @@ use diesel::{
     dsl::{count_star, exists, not, select},
     pg::{Pg, PgValue},
     serialize::{Output, ToSql},
-    sql_types::{Array, BigInt, Integer, Text},
+    sql_types::{Array, Integer, Text},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -1225,9 +1225,10 @@ impl<'a> Connection<'a> {
 
         let assigned = a::table
             .filter(a::node_id.eq_any(&nodes))
-            // Diesel's `count_star()` refuses to compile here. Go figure.
-            .select((a::node_id, sql::<BigInt>("count(*)")))
+            // Diesel complains if we `.select` before `.group_by`, because of
+            // some obscure aggregate type rules.
             .group_by(a::node_id)
+            .select((a::node_id, count_star()))
             .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
 
@@ -1264,9 +1265,10 @@ impl<'a> Connection<'a> {
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(ds::shard.eq_any(shards))
-            // Diesel's `count_star()` refuses to compile here. Go figure.
-            .select((ds::shard, sql::<BigInt>("count(*)")))
+            // Diesel complains if we `.select` before `.group_by`, because of
+            // some obscure aggregate type rules.
             .group_by(ds::shard)
+            .select((ds::shard, count_star()))
             .order_by(count_star())
             .load::<(String, i64)>(self.conn.as_mut())?;
 

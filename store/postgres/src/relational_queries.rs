@@ -1471,9 +1471,9 @@ macro_rules! impl_load_query {
             const HAS_STATIC_QUERY_ID: bool = false;
         }
 
-        //impl<'a> Query for $typ<'a> {
-        //    type SqlType = (Text, Jsonb);
-        //}
+        impl<'a> Query for $typ<'a> {
+            type SqlType = (Text, Jsonb);
+        }
     };
 }
 
@@ -1486,11 +1486,11 @@ pub struct FindQuery<'a> {
 
 impl_load_query!(FindQuery);
 
-impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'a> {
-    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<EntityData> {
-        conn.query_by_name(&self)
-    }
-}
+//impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindQuery<'a> {
+//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<EntityData> {
+//        conn.query_by_name(&self)
+//    }
+//}
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
