@@ -698,7 +698,7 @@ impl Layout {
                     }
                 };
                 match e {
-                    DatabaseError(DatabaseErrorKind::__Unknown, ref info)
+                    DatabaseError(DatabaseErrorKind::Unknown, ref info)
                         if info.message().starts_with("syntax error in tsquery") =>
                     {
                         QueryExecutionError::FulltextQueryInvalidSyntax(info.message().to_string())
