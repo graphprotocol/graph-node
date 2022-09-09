@@ -73,7 +73,7 @@ impl CopyState {
 
         Ok(cs::table
             .filter(cs::dst.eq(dst))
-            .get_result::<CopyState>(&dconn)
+            .get_result::<CopyState>(&mut dconn)
             .optional()?
             .map(|state| (state, tables)))
     }

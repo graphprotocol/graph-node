@@ -15,7 +15,7 @@ mod ddl_tests;
 mod query_tests;
 
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
+use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;

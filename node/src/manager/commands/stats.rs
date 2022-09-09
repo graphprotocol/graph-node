@@ -110,7 +110,7 @@ pub fn show(
         .bind::<Text, _>(&site.namespace.as_str())
         .load::<VersionStats>(&mut conn)?;
 
-    let account_like = store_catalog::account_like(&conn, &site)?;
+    let account_like = store_catalog::account_like(&mut conn, &site)?;
 
     VersionStats::header();
     for stat in &stats {
