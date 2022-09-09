@@ -33,7 +33,9 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
+use crate::relational_queries::{
+    ConflictingEntityData, FindChangesQuery, FindPossibleDeletionsQuery,
+};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -613,7 +615,7 @@ impl Layout {
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
-            .load(conn)?
+            .load::<Vec<ConflictingEntityData>>(conn)?
             .pop()
             .map(|data| data.entity))
     }
