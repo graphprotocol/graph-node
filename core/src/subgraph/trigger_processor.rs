@@ -1,15 +1,15 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use graph::blockchain::{Block, Blockchain};
+use graph::blockchain::Blockchain;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::TriggerData;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
 };
 use graph::slog::Logger;
+use std::sync::Arc;
 
 pub struct SubgraphTriggerProcessor {}
 
@@ -24,7 +24,7 @@ where
         logger: &Logger,
         hosts: &[Arc<T::Host>],
         block: &Arc<C::Block>,
-        trigger: &C::TriggerData,
+        trigger: &TriggerData<C>,
         mut state: BlockState<C>,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
@@ -52,7 +52,7 @@ where
             state = host
                 .process_mapping_trigger(
                     logger,
-                    block.ptr(),
+                    mapping_trigger.block_ptr(),
                     mapping_trigger,
                     state,
                     proof_of_indexing.cheap_clone(),
@@ -61,6 +61,13 @@ where
                 .await?;
             let elapsed = start.elapsed().as_secs_f64();
             subgraph_metrics.observe_trigger_processing_duration(elapsed);
+
+            if host.data_source().as_offchain().is_some() {
+                // Remove this offchain data source since it has just been processed.
+                state
+                    .offchain_to_remove
+                    .push(host.data_source().as_stored_dynamic_data_source());
+            }
         }
 
         if let Some(proof_of_indexing) = proof_of_indexing {

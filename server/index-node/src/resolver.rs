@@ -2,14 +2,16 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
+use graph::data::query::Trace;
 use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
+use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -199,7 +201,7 @@ impl<S: Store> IndexNodeResolver<S> {
         })
     }
 
-    fn resolve_cached_ethereum_calls(
+    async fn resolve_cached_ethereum_calls(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -228,8 +230,8 @@ impl<S: Store> IndexNodeResolver<S> {
         let chain_store = chain.chain_store();
         let call_cache = chain.call_cache();
 
-        let block_number = match chain_store.block_number(&block_hash) {
-            Ok(Some((_, n))) => n,
+        let (block_number, timestamp) = match chain_store.block_number(&block_hash).await {
+            Ok(Some((_, n, timestamp))) => (n, timestamp),
             Ok(None) => {
                 error!(
                     self.logger,
@@ -275,6 +277,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         block: object! {
                             hash: cached_call.block_ptr.hash.hash_hex(),
                             number: cached_call.block_ptr.number,
+                            timestamp: timestamp.clone(),
                         },
                         contractAddress: &cached_call.contract_address[..],
                         returnValue: &cached_call.return_value[..],
@@ -528,7 +531,8 @@ impl<S: Store> IndexNodeResolver<S> {
                     )
                     .await?
                 }
-                BlockchainKind::Substream => unimplemented!(),
+                // TODO(filipe): Kick this can down the road!
+                BlockchainKind::Substreams => unimplemented!(),
             }
         };
 
@@ -542,6 +546,20 @@ impl<S: Store> IndexNodeResolver<S> {
         let response = Object::from_iter(response);
 
         Ok(r::Value::Object(response))
+    }
+
+    fn resolve_api_versions(&self, _field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+        Ok(r::Value::List(
+            VERSIONS
+                .iter()
+                .map(|version| {
+                    r::Value::Object(Object::from_iter(vec![(
+                        "version".to_string(),
+                        r::Value::String(version.to_string()),
+                    )]))
+                })
+                .collect(),
+        ))
     }
 }
 
@@ -644,7 +662,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 
     // First, we isolate updates and deletions with the same entity type.
     let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
-    let mut deletions: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<Word>> = BTreeMap::new();
 
     for change in entity_changes {
         match change {
@@ -688,7 +706,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
         deletions_graphql.push(object! {
             type: entity_type.to_string(),
             entities:
-                ids.into_iter().map(r::Value::String).collect::<Vec<r::Value>>(),
+                ids.into_iter().map(|s| s.to_string()).map(r::Value::String).collect::<Vec<r::Value>>(),
         });
     }
 
@@ -722,8 +740,8 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        Ok(None)
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
+        Ok((None, Trace::None))
     }
 
     /// Resolves a scalar value for a given scalar type.
@@ -750,7 +768,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         }
     }
 
-    fn resolve_objects(
+    async fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
         field: &a::Field,
@@ -766,7 +784,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
                 self.resolve_indexing_statuses_for_subgraph_name(field)
             }
             (None, "CachedEthereumCall", "cachedEthereumCalls") => {
-                self.resolve_cached_ethereum_calls(field)
+                self.resolve_cached_ethereum_calls(field).await
             }
 
             // The top-level `publicProofsOfIndexing` field
@@ -796,6 +814,8 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             }
             (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
+            // The top-level `subgraphVersions` field
+            (None, "apiVersions") => self.resolve_api_versions(field),
 
             // Resolve fields of `Object` values (e.g. the `latestBlock` field of `EthereumBlock`)
             (value, _) => Ok(value.unwrap_or(r::Value::Null)),

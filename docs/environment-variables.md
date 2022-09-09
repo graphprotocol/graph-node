@@ -58,19 +58,6 @@ those.
 
 - `GRAPH_MAPPING_HANDLER_TIMEOUT`: amount of time a mapping handler is allowed to
   take (in seconds, default is unlimited)
-- `GRAPH_IPFS_TIMEOUT`: timeout for IPFS, which includes requests for manifest files
-  and from mappings using `ipfs.cat` or `ipfs.map` (in seconds, default is 30).
-- `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be retrieved
-  with `ipfs.cat` (in bytes, default is unlimited)
-- `GRAPH_MAX_IPFS_MAP_FILE_SIZE`: maximum size of files that can be processed
-  with `ipfs.map`. When a file is processed through `ipfs.map`, the entities
-  generated from that are kept in memory until the entire file is done
-  processing. This setting therefore limits how much memory a call to `ipfs.map`
-  may use. (in bytes, defaults to 256MB)
-- `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached in the the
-  `ipfs.cat` cache (defaults to 50).
-- `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of files that are cached in the
-  `ipfs.cat` cache (defaults to 1MiB)
 - `GRAPH_ENTITY_CACHE_SIZE`: Size of the entity cache, in kilobytes. Defaults to 10000 which is 10MB.
 - `GRAPH_MAX_API_VERSION`: Maximum `apiVersion` supported, if a developer tries to create a subgraph
   with a higher `apiVersion` than this in their mappings, they'll receive an error. Defaults to `0.0.7`.
@@ -78,6 +65,20 @@ those.
   with a higher `apiVersion` than this, they'll receive an error. Defaults to `0.0.5`.
 - `GRAPH_RUNTIME_MAX_STACK_SIZE`: Maximum stack size for the WASM runtime, if exceeded the execution
   stops and an error is thrown. Defaults to 512KiB.
+
+## IPFS
+
+- `GRAPH_IPFS_TIMEOUT`: timeout for IPFS, which includes requests for manifest files
+  and from mappings (in seconds, default is 30).
+- `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be retrieved (in bytes, default is 256 MiB).
+- `GRAPH_MAX_IPFS_MAP_FILE_SIZE`: maximum size of files that can be processed
+  with `ipfs.map`. When a file is processed through `ipfs.map`, the entities
+  generated from that are kept in memory until the entire file is done
+  processing. This setting therefore limits how much memory a call to `ipfs.map`
+  may use (in bytes, defaults to 256MB).
+- `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
+- `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
+- `GRAPH_MAX_IPFS_CONCURRENT_REQUESTS`: maximum concurrent requests to IPFS from file data sources (defaults to 100).
 
 ## GraphQL
 
@@ -135,6 +136,12 @@ those.
   in parallel and deploy to specific nodes; each ID must be unique among the set
   of nodes. A single node should have the same value between consecutive restarts.
   Subgraphs get assigned to node IDs and are not reassigned to other nodes automatically.
+- `GRAPH_NODE_ID_USE_LITERAL_VALUE`: (Docker only) Use the literal `node_id`
+  provided to the docker start script instead of replacing hyphens (-) in names
+  with underscores (\_). Changing this for an existing `graph-node`
+  installation requires also changing the assigned node IDs in the
+  `subgraphs.subgraph_deployment_assignment` table in the database. This can be
+  done with GraphMan or via the PostgreSQL command line.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running

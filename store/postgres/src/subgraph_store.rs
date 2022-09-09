@@ -26,8 +26,8 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
+        ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
+        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
@@ -692,8 +692,8 @@ impl SubgraphStoreInner {
         for_subscription: bool,
     ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
-            QueryTarget::Name(name) => self.mirror.current_deployment_for_subgraph(&name)?,
-            QueryTarget::Deployment(id) => id,
+            QueryTarget::Name(name, _) => self.mirror.current_deployment_for_subgraph(&name)?,
+            QueryTarget::Deployment(id, _) => id,
         };
 
         let (store, site) = self.store(&id)?;
@@ -1143,10 +1143,14 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(info.input)
     }
 
-    fn api_schema(&self, id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError> {
+    fn api_schema(
+        &self,
+        id: &DeploymentHash,
+        version: &ApiVersion,
+    ) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
-        Ok(info.api)
+        Ok(info.api.get(version).unwrap().clone())
     }
 
     fn debug_fork(

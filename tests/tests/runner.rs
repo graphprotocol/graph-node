@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
+use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
+use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
@@ -53,15 +55,25 @@ async fn data_source_revert() -> anyhow::Result<()> {
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
 
-    fixture::cleanup(&ctx.store, &subgraph_name, &hash);
+    let query_res = ctx
+        .query(r#"{ dataSourceCount(id: "4") { id, count } }"#)
+        .await
+        .unwrap();
+
+    // TODO: The semantically correct value for `count` would be 5. But because the test fixture
+    // uses a `NoopTriggersAdapter` the data sources are not reprocessed in the block in which they
+    // are created.
+    assert_eq!(
+        query_res,
+        Some(object! { dataSourceCount: object!{ id: "4", count: 4 } })
+    );
 
     Ok(())
 }
 
 #[tokio::test]
 async fn typename() -> anyhow::Result<()> {
-    let subgraph_name = SubgraphName::new("typename")
-        .expect("Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'");
+    let subgraph_name = SubgraphName::new("typename").unwrap();
 
     let hash = {
         let test_dir = format!("./integration-tests/{}", subgraph_name);
@@ -89,7 +101,53 @@ async fn typename() -> anyhow::Result<()> {
 
     ctx.start_and_sync_to(stop_block).await;
 
-    fixture::cleanup(&ctx.store, &subgraph_name, &hash);
-
     Ok(())
+}
+
+#[tokio::test]
+async fn file_data_sources() {
+    let stores = stores("./integration-tests/config.simple.toml").await;
+
+    let subgraph_name = SubgraphName::new("file-data-sources").unwrap();
+    let hash = {
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir).await
+    };
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = test_ptr(1);
+    let chain = Arc::new(chain(blocks, &stores).await);
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None).await;
+    ctx.start_and_sync_to(stop_block).await;
+
+    // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
+    // `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
+    let id = format!(
+        "0x{}",
+        hex::encode(
+            Cid::try_from("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ")
+                .unwrap()
+                .to_bytes(),
+        )
+    );
+
+    let query_res = ctx
+        .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! { ipfsFile: object!{ id: id , content: "[]" } })
+    );
+
+    // Test loading offchain data sources from DB.
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    let stop_block = test_ptr(2);
+    ctx.start_and_sync_to(stop_block).await;
 }

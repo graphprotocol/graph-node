@@ -4,11 +4,11 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::blockchain::BlockPtr;
-use crate::blockchain::DataSource;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
-use crate::prelude::ENV_VARS;
+use crate::data_source::DataSource;
+use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
 /// A cache for entities from the store that provides the basic functionality
@@ -35,7 +35,9 @@ pub struct EntityCache {
     data_sources: Vec<s::StoredDynamicDataSource>,
 
     /// The store is only used to read entities.
-    pub store: Arc<dyn s::WritableStore>,
+    pub store: Arc<dyn s::ReadStore>,
+
+    schema: Arc<Schema>,
 }
 
 impl Debug for EntityCache {
@@ -54,19 +56,20 @@ pub struct ModificationsAndCache {
 }
 
 impl EntityCache {
-    pub fn new(store: Arc<dyn s::WritableStore>) -> Self {
+    pub fn new(store: Arc<dyn s::ReadStore>) -> Self {
         Self {
             current: LfuCache::new(),
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
             data_sources: vec![],
+            schema: store.input_schema(),
             store,
         }
     }
 
     pub fn with_current(
-        store: Arc<dyn s::WritableStore>,
+        store: Arc<dyn s::ReadStore>,
         current: LfuCache<EntityKey, Option<Entity>>,
     ) -> EntityCache {
         EntityCache {
@@ -75,6 +78,7 @@ impl EntityCache {
             handler_updates: HashMap::new(),
             in_handler: false,
             data_sources: vec![],
+            schema: store.input_schema(),
             store,
         }
     }
@@ -101,14 +105,14 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(&mut self, key: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
+    pub fn get(&mut self, eref: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, key)?;
-        if let Some(op) = self.updates.get(key).cloned() {
+        let mut entity = self.current.get_entity(&*self.store, eref)?;
+        if let Some(op) = self.updates.get(eref).cloned() {
             entity = op.apply_to(entity)
         }
-        if let Some(op) = self.handler_updates.get(key).cloned() {
+        if let Some(op) = self.handler_updates.get(eref).cloned() {
             entity = op.apply_to(entity)
         }
         Ok(entity)
@@ -125,7 +129,7 @@ impl EntityCache {
     /// returned.
     pub fn set(&mut self, key: EntityKey, mut entity: Entity) -> Result<(), anyhow::Error> {
         fn check_id(key: &EntityKey, prev_id: &str) -> Result<(), anyhow::Error> {
-            if prev_id != key.entity_id {
+            if prev_id != key.entity_id.as_str() {
                 return Err(anyhow!(
                     "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
                 {} != {}",
@@ -147,12 +151,12 @@ impl EntityCache {
                 // The validation will catch the type mismatch
             }
             None => {
-                let value = self.store.input_schema().id_value(&key)?;
+                let value = self.schema.id_value(&key)?;
                 entity.set("id", value);
             }
         }
 
-        let is_valid = entity.validate(&self.store.input_schema(), &key).is_ok();
+        let is_valid = entity.validate(&self.schema, &key).is_ok();
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 
@@ -167,7 +171,7 @@ impl EntityCache {
                     key.entity_id
                 )
             })?;
-            entity.validate(&self.store.input_schema(), &key)?;
+            entity.validate(&self.schema, &key)?;
         }
 
         Ok(())
@@ -189,7 +193,7 @@ impl EntityCache {
     }
 
     /// Add a dynamic data source
-    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &impl DataSource<C>) {
+    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &DataSource<C>) {
         self.data_sources
             .push(data_source.as_stored_dynamic_data_source());
     }
@@ -240,30 +244,23 @@ impl EntityCache {
         // is wrong and the store already has a version of the entity from a
         // previous block, the attempt to insert will trigger a constraint
         // violation in the database, ensuring correctness
-        let missing =
-            missing.filter(|key| !self.store.input_schema().is_immutable(&key.entity_type));
+        let missing = missing.filter(|key| !self.schema.is_immutable(&key.entity_type));
 
-        let mut missing_by_subgraph: BTreeMap<_, BTreeMap<&EntityType, Vec<&str>>> =
-            BTreeMap::new();
+        let mut missing_by_type: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::new();
         for key in missing {
-            missing_by_subgraph
-                .entry(&key.subgraph_id)
-                .or_default()
+            missing_by_type
                 .entry(&key.entity_type)
                 .or_default()
                 .push(&key.entity_id);
         }
 
-        for (subgraph_id, keys) in missing_by_subgraph {
-            for (entity_type, entities) in self.store.get_many(keys)? {
-                for entity in entities {
-                    let key = EntityKey {
-                        subgraph_id: subgraph_id.clone(),
-                        entity_type: entity_type.clone(),
-                        entity_id: entity.id().unwrap(),
-                    };
-                    self.current.insert(key, Some(entity));
-                }
+        for (entity_type, entities) in self.store.get_many(missing_by_type)? {
+            for entity in entities {
+                let key = EntityKey {
+                    entity_type: entity_type.clone(),
+                    entity_id: entity.id().unwrap().into(),
+                };
+                self.current.insert(key, Some(entity));
             }
         }
 
@@ -327,7 +324,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     // Helper for cached lookup of an entity.
     fn get_entity(
         &mut self,
-        store: &(impl s::WritableStore + ?Sized),
+        store: &(impl s::ReadStore + ?Sized),
         key: &EntityKey,
     ) -> Result<Option<Entity>, s::QueryExecutionError> {
         match self.get(key) {

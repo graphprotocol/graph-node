@@ -4,6 +4,7 @@ extern crate pretty_assertions;
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
+use graph::data::query::Trace;
 use graph::prelude::{
     async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult, Schema,
@@ -27,11 +28,11 @@ impl Resolver for MockResolver {
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
-    ) -> Result<Option<r::Value>, Vec<QueryExecutionError>> {
-        Ok(None)
+    ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
+        Ok((None, Trace::None))
     }
 
-    fn resolve_objects<'a>(
+    async fn resolve_objects(
         &self,
         _: Option<r::Value>,
         _field: &a::Field,

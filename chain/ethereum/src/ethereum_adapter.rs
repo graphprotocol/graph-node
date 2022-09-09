@@ -1895,7 +1895,13 @@ async fn get_logs_and_transactions(
 ) -> Result<Vec<EthereumTrigger>, anyhow::Error> {
     // Obtain logs externally
     let logs = adapter
-        .logs_in_block_range(logger, subgraph_metrics, from, to, log_filter.clone())
+        .logs_in_block_range(
+            logger,
+            subgraph_metrics.cheap_clone(),
+            from,
+            to,
+            log_filter.clone(),
+        )
         .await?;
 
     // Not all logs have associated transaction hashes, nor do all triggers require them.
@@ -1931,6 +1937,7 @@ async fn get_logs_and_transactions(
     let transaction_receipts_by_hash = get_transaction_receipts_for_transaction_hashes(
         &adapter,
         &transaction_hashes_by_block,
+        subgraph_metrics,
         logger.cheap_clone(),
     )
     .await?;
@@ -1952,6 +1959,7 @@ async fn get_logs_and_transactions(
 async fn get_transaction_receipts_for_transaction_hashes(
     adapter: &EthereumAdapter,
     transaction_hashes_by_block: &HashMap<H256, HashSet<H256>>,
+    subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     logger: Logger,
 ) -> Result<HashMap<H256, Arc<TransactionReceipt>>, anyhow::Error> {
     use std::collections::hash_map::Entry::Vacant;
@@ -1983,7 +1991,28 @@ async fn get_transaction_receipts_for_transaction_hashes(
             receipt_futures.push(receipt_future)
         }
     }
-    let receipts: Vec<_> = receipt_futures.try_collect().await?;
+
+    // Execute futures while monitoring elapsed time
+    let start = Instant::now();
+    let receipts: Vec<_> = match receipt_futures.try_collect().await {
+        Ok(receipts) => {
+            let elapsed = start.elapsed().as_secs_f64();
+            subgraph_metrics.observe_request(
+                elapsed,
+                "eth_getTransactionReceipt",
+                &adapter.provider,
+            );
+            receipts
+        }
+        Err(ingestor_error) => {
+            subgraph_metrics.add_error("eth_getTransactionReceipt", &adapter.provider);
+            debug!(
+                logger,
+                "Error querying transaction receipts: {}", ingestor_error
+            );
+            return Err(ingestor_error.into());
+        }
+    };
 
     // Build a map between transaction hashes and their receipts
     for receipt in receipts.into_iter() {

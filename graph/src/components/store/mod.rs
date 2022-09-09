@@ -22,32 +22,32 @@ use std::time::Duration;
 use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
+use crate::data::value::Word;
 use crate::prelude::*;
-use crate::util::stable_hash_glue::impl_stable_hash;
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityType(String);
+pub struct EntityType(Word);
 
 impl EntityType {
     /// Construct a new entity type. Ideally, this is only called when
     /// `entity_type` either comes from the GraphQL schema, or from
     /// the database from fields that are known to contain a valid entity type
     pub fn new(entity_type: String) -> Self {
-        Self(entity_type)
+        Self(entity_type.into())
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 
     pub fn into_string(self) -> String {
-        self.0
+        self.0.to_string()
     }
 
     pub fn is_poi(&self) -> bool {
-        &self.0 == "Poi$"
+        self.0.as_str() == "Poi$"
     }
 }
 
@@ -93,55 +93,26 @@ impl EntityFilterDerivative {
     }
 }
 
-// Note: Do not modify fields without making a backward compatible change to
-// the StableHash impl (below)
-/// Key by which an individual entity in the store can be accessed.
+/// Key by which an individual entity in the store can be accessed. Stores
+/// only the entity type and id. The deployment must be known from context.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
-    /// ID of the subgraph.
-    pub subgraph_id: DeploymentHash,
-
     /// Name of the entity type.
     pub entity_type: EntityType,
 
     /// ID of the individual entity.
-    pub entity_id: String,
+    pub entity_id: Word,
 }
 
-impl_stable_hash!(EntityKey {
-    subgraph_id,
-    entity_type: EntityType::as_str,
-    entity_id
-});
-
 impl EntityKey {
-    pub fn data(subgraph_id: DeploymentHash, entity_type: String, entity_id: String) -> Self {
+    pub fn data(entity_type: String, entity_id: String) -> Self {
         Self {
-            subgraph_id,
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         }
     }
 }
 
-#[test]
-fn key_stable_hash() {
-    use stable_hash_legacy::crypto::SetHasher;
-    use stable_hash_legacy::utils::stable_hash;
-
-    #[track_caller]
-    fn hashes_to(key: &EntityKey, exp: &str) {
-        let hash = hex::encode(stable_hash::<SetHasher, _>(&key));
-        assert_eq!(exp, hash.as_str());
-    }
-
-    let id = DeploymentHash::new("QmP9MRvVzwHxr3sGvujihbvJzcTz2LYLMfi5DyihBg6VUd").unwrap();
-    let key = EntityKey::data(id.clone(), "Account".to_string(), "0xdeadbeef".to_string());
-    hashes_to(
-        &key,
-        "905b57035d6f98cff8281e7b055e10570a2bd31190507341c6716af2d3c1ad98",
-    );
-}
 #[derive(Clone, Debug, PartialEq)]
 pub struct Child {
     pub attr: Attribute,
@@ -565,9 +536,9 @@ pub enum EntityChange {
 }
 
 impl EntityChange {
-    pub fn for_data(key: EntityKey) -> Self {
+    pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
         Self::Data {
-            subgraph_id: key.subgraph_id,
+            subgraph_id: subgraph_id,
             entity_type: key.entity_type,
         }
     }
@@ -608,23 +579,6 @@ pub struct StoreEvent {
     pub changes: HashSet<EntityChange>,
 }
 
-impl<'a> FromIterator<&'a EntityModification> for StoreEvent {
-    fn from_iter<I: IntoIterator<Item = &'a EntityModification>>(mods: I) -> Self {
-        let changes: Vec<_> = mods
-            .into_iter()
-            .map(|op| {
-                use self::EntityModification::*;
-                match op {
-                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
-                        EntityChange::for_data(key.clone())
-                    }
-                }
-            })
-            .collect();
-        StoreEvent::new(changes)
-    }
-}
-
 impl StoreEvent {
     pub fn new(changes: Vec<EntityChange>) -> StoreEvent {
         static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
@@ -632,6 +586,24 @@ impl StoreEvent {
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
         let changes = changes.into_iter().collect();
         StoreEvent { tag, changes }
+    }
+
+    pub fn from_mods<'a, I: IntoIterator<Item = &'a EntityModification>>(
+        subgraph_id: &DeploymentHash,
+        mods: I,
+    ) -> Self {
+        let changes: Vec<_> = mods
+            .into_iter()
+            .map(|op| {
+                use self::EntityModification::*;
+                match op {
+                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
+                        EntityChange::for_data(subgraph_id.clone(), key.clone())
+                    }
+                }
+            })
+            .collect();
+        StoreEvent::new(changes)
     }
 
     /// Extend `ev1` with `ev2`. If `ev1` is `None`, just set it to `ev2`
@@ -827,6 +799,7 @@ pub struct StoredDynamicDataSource {
     pub param: Option<Bytes>,
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
+    pub is_offchain: bool,
 }
 
 /// An internal identifer for the specific instance of a deployment. The
@@ -901,7 +874,7 @@ pub enum EntityModification {
 }
 
 impl EntityModification {
-    pub fn entity_key(&self) -> &EntityKey {
+    pub fn entity_ref(&self) -> &EntityKey {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
@@ -1073,5 +1046,33 @@ impl TryFrom<i32> for DeploymentSchemaVersion {
 impl fmt::Display for DeploymentSchemaVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&(*self as i32), f)
+    }
+}
+
+/// A `ReadStore` that is always empty.
+pub struct EmptyStore {
+    schema: Arc<Schema>,
+}
+
+impl EmptyStore {
+    pub fn new(schema: Arc<Schema>) -> Self {
+        EmptyStore { schema }
+    }
+}
+
+impl ReadStore for EmptyStore {
+    fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        Ok(None)
+    }
+
+    fn get_many(
+        &self,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        self.schema.cheap_clone()
     }
 }

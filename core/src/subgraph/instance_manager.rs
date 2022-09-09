@@ -1,17 +1,21 @@
+use crate::polling_monitor::ipfs_service::IpfsService;
 use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 use crate::subgraph::runner::SubgraphRunner;
-use crate::subgraph::SubgraphInstance;
 use graph::blockchain::block_stream::BlockStreamMetrics;
+use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
-use graph::blockchain::{Blockchain, DataSourceTemplate};
 use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::components::subgraph::ProofOfIndexingVersion;
+use graph::data::subgraph::SPEC_VERSION_0_0_6;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
+use graph_runtime_wasm::module::ToAscPtr;
 use graph_runtime_wasm::RuntimeHostBuilder;
 use tokio::task;
 
+use super::context::OffchainMonitor;
 use super::SubgraphTriggerProcessor;
 
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
@@ -22,6 +26,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     manager_metrics: SubgraphInstanceManagerMetrics,
     instances: SharedInstanceKeepAliveMap,
     link_resolver: Arc<dyn LinkResolver>,
+    ipfs_service: IpfsService,
     static_filters: bool,
 }
 
@@ -83,7 +88,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                         )
                         .await
                 }
-                BlockchainKind::Substream => {
+                BlockchainKind::Substreams => {
                     instance_manager
                         .start_subgraph_inner::<graph_chain_substreams::Chain>(
                             logger,
@@ -133,6 +138,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<dyn MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
+        ipfs_service: IpfsService,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -146,6 +152,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             metrics_registry,
             instances: SharedInstanceKeepAliveMap::default(),
             link_resolver,
+            ipfs_service,
             static_filters,
         }
     }
@@ -157,7 +164,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        <C as Blockchain>::MappingTrigger: ToAscPtr,
+    {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
         let store = self
@@ -192,7 +202,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             let manifest_idx_and_name: Vec<(u32, String)> = manifest
                 .templates
                 .iter()
-                .map(|t: &C::DataSourceTemplate| t.name().to_owned())
+                .map(|t| t.name().to_owned())
                 .enumerate()
                 .map(|(idx, name)| (ds_len + idx as u32, name))
                 .collect();
@@ -220,7 +230,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             (manifest, manifest_idx_and_name)
         };
 
-        let required_capabilities = C::NodeCapabilities::from_data_sources(&manifest.data_sources);
+        let onchain_data_sources = manifest
+            .data_sources
+            .iter()
+            .filter_map(|d| d.as_onchain().cloned())
+            .collect::<Vec<_>>();
+        let required_capabilities = C::NodeCapabilities::from_data_sources(&onchain_data_sources);
         let network = manifest.network_name();
 
         let chain = self
@@ -230,10 +245,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .clone();
 
         // Obtain filters from the manifest
-        let mut filter = C::TriggerFilter::from_data_sources(manifest.data_sources.iter());
+        let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
 
         if self.static_filters {
-            filter.extend_with_template(manifest.templates.clone().into_iter());
+            filter.extend_with_template(
+                manifest
+                    .templates
+                    .iter()
+                    .filter_map(|ds| ds.as_onchain())
+                    .cloned(),
+            );
         }
 
         let start_blocks = manifest.start_blocks();
@@ -279,6 +300,13 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
+        let mut offchain_monitor = OffchainMonitor::new(
+            logger.cheap_clone(),
+            registry.cheap_clone(),
+            &manifest.id,
+            self.ipfs_service.cheap_clone(),
+        );
+
         // Initialize deployment_head with current deployment head. Any sort of trouble in
         // getting the deployment head ptr leads to initializing with 0
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
@@ -292,12 +320,18 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let features = manifest.features.clone();
         let unified_api_version = manifest.unified_mapping_api_version()?;
-        let instance = SubgraphInstance::from_manifest(
+        let poi_version = if manifest.spec_version.ge(&SPEC_VERSION_0_0_6) {
+            ProofOfIndexingVersion::Fast
+        } else {
+            ProofOfIndexingVersion::Legacy
+        };
+
+        let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
             host_builder,
-            tp,
             host_metrics.clone(),
+            &mut offchain_monitor,
         )?;
 
         let inputs = IndexingInputs {
@@ -313,14 +347,18 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             unified_api_version,
             static_filters: self.static_filters,
             manifest_idx_and_name,
+            poi_version,
+            network,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time
-        let ctx = IndexingContext {
+        let ctx = IndexingContext::new(
             instance,
-            instances: self.instances.cheap_clone(),
+            self.instances.cheap_clone(),
             filter,
-        };
+            offchain_monitor,
+            tp,
+        );
 
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,

@@ -16,18 +16,27 @@ use graph::{
 
 use crate::{mapper::Mapper, Chain, TriggerFilter};
 
-pub(crate) struct BlockStreamBuilder {}
+pub struct BlockStreamBuilder {}
+
+impl BlockStreamBuilder {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 #[async_trait]
+/// Substreams doesn't actually use Firehose, the configuration for firehose and the grpc substream
+/// is very similar, so we can re-use the configuration and the builder for it.
+/// This is probably something to improve but for now it works.
 impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
         block_cursor: FirehoseCursor,
-        start_blocks: Vec<BlockNumber>,
+        _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<TriggerFilter>,
+        filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         let firehose_endpoint = match chain.endpoints.random() {
@@ -40,7 +49,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         let logger = chain
             .logger_factory
             .subgraph_logger(&deployment)
-            .new(o!("component" => "FirehoseBlockStream"));
+            .new(o!("component" => "SubstreamsBlockStream"));
 
         Ok(Box::new(SubstreamsBlockStream::new(
             deployment.hash,
@@ -48,9 +57,9 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
             None,
             block_cursor.as_ref().clone(),
             mapper,
-            None,
-            "graph_out".into(),
-            start_blocks,
+            filter.modules.clone(),
+            filter.module_name.clone(),
+            filter.start_block.map(|x| vec![x]).unwrap_or(vec![]),
             vec![],
             logger,
             chain.metrics_registry.clone(),

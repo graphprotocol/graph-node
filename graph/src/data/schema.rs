@@ -626,7 +626,7 @@ impl Schema {
             .get_base_type();
 
         match base_type {
-            "ID" | "String" => Ok(store::Value::String(key.entity_id.clone())),
+            "ID" | "String" => Ok(store::Value::String(key.entity_id.to_string())),
             "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
                 &key.entity_id,
             )?)),

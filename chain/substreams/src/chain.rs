@@ -1,4 +1,4 @@
-use crate::{data_source::*, EntitiesChanges, TriggerData, TriggerFilter, TriggersAdapter};
+use crate::{data_source::*, Block, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use core::fmt;
 use graph::firehose::FirehoseEndpoints;
@@ -7,7 +7,7 @@ use graph::{
     blockchain::{
         self,
         block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor},
-        BlockPtr, Blockchain, BlockchainKind, IngestorError, RuntimeAdapter,
+        BlockPtr, Blockchain, BlockchainKind, IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
@@ -17,44 +17,19 @@ use graph::{
 };
 use std::{str::FromStr, sync::Arc};
 
-#[derive(Clone, Debug, Default)]
-pub struct Block {
-    pub block_num: BlockNumber,
-    pub block_hash: BlockHash,
-    pub parent_block_num: BlockNumber,
-    pub parent_block_hash: BlockHash,
-    pub entities_changes: EntitiesChanges,
-}
-
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
         return BlockPtr {
-            hash: self.block_hash.clone(),
-            number: self.block_num as i32,
+            hash: BlockHash(Box::from(self.block_id.clone())),
+            number: self.block_number as i32,
         };
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         Some(BlockPtr {
-            hash: BlockHash(Box::from(self.parent_block_hash.as_slice())),
-            number: self.parent_block_num as i32,
+            hash: BlockHash(Box::from(self.prev_block_id.clone())),
+            number: self.prev_block_number as i32,
         })
-    }
-
-    fn number(&self) -> i32 {
-        self.ptr().number
-    }
-
-    fn hash(&self) -> BlockHash {
-        self.ptr().hash
-    }
-
-    fn parent_hash(&self) -> Option<BlockHash> {
-        self.parent_ptr().map(|ptr| ptr.hash)
-    }
-
-    fn data(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
-        Ok(jsonrpc_core::serde_json::Value::Null)
     }
 }
 
@@ -63,14 +38,14 @@ pub struct Chain {
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
 
     pub(crate) logger_factory: LoggerFactory,
-    pub(crate) endpoints: Arc<FirehoseEndpoints>,
+    pub(crate) endpoints: FirehoseEndpoints,
     pub(crate) metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
-        endpoints: Arc<FirehoseEndpoints>,
+        endpoints: FirehoseEndpoints,
         metrics_registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
@@ -118,7 +93,7 @@ impl graph::blockchain::NodeCapabilities<Chain> for NodeCapabilities {
 
 #[async_trait]
 impl Blockchain for Chain {
-    const KIND: BlockchainKind = BlockchainKind::Substream;
+    const KIND: BlockchainKind = BlockchainKind::Substreams;
 
     type Block = Block;
     type DataSource = DataSource;
@@ -157,15 +132,17 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        self.block_stream_builder.build_firehose(
-            self,
-            deployment,
-            block_cursor,
-            start_blocks,
-            subgraph_current_block,
-            filter,
-            unified_api_version,
-        )
+        self.block_stream_builder
+            .build_firehose(
+                self,
+                deployment,
+                block_cursor,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 
     async fn new_polling_block_stream(
@@ -186,15 +163,32 @@ impl Blockchain for Chain {
     async fn block_pointer_from_number(
         &self,
         _logger: &Logger,
-        _number: BlockNumber,
+        number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        unimplemented!()
+        // This is the same thing TriggersAdapter does, not sure if it's going to work but
+        // we also don't yet have a good way of getting this value until we sort out the
+        // chain store.
+        // TODO(filipe): Fix this once the chain_store is correctly setup for substreams.
+        Ok(BlockPtr {
+            hash: BlockHash::from(vec![0xff; 32]),
+            number,
+        })
     }
-    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>> {
-        unimplemented!()
+    fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
+        Arc::new(RuntimeAdapter {})
     }
 
     fn is_firehose_supported(&self) -> bool {
-        unimplemented!()
+        true
+    }
+}
+
+pub struct RuntimeAdapter {}
+impl RuntimeAdapterTrait<crate::Chain> for RuntimeAdapter {
+    fn host_fns(
+        &self,
+        _ds: &<crate::Chain as Blockchain>::DataSource,
+    ) -> Result<Vec<blockchain::HostFn>, Error> {
+        todo!()
     }
 }

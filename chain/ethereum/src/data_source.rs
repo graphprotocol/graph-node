@@ -131,6 +131,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .as_ref()
                 .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
+            is_offchain: false,
         }
     }
 
@@ -143,7 +144,13 @@ impl blockchain::DataSource<Chain> for DataSource {
             param,
             context,
             creation_block,
+            is_offchain,
         } = stored;
+
+        ensure!(
+            !is_offchain,
+            "attempted to convert offchain data source to ethereum data source"
+        );
 
         let context = context.map(serde_json::from_value).transpose()?;
 
@@ -485,11 +492,12 @@ impl DataSource {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
-                Ok(Some(TriggerWithHandler::new(
+                Ok(Some(TriggerWithHandler::<Chain>::new(
                     MappingTrigger::Block {
                         block: block.cheap_clone(),
                     },
                     handler.handler,
+                    block.block_ptr(),
                 )))
             }
             EthereumTrigger::Log(log, receipt) => {
@@ -587,7 +595,7 @@ impl DataSource {
                     "address" => format!("{}", &log.address),
                     "transaction" => format!("{}", &transaction.hash),
                 });
-                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
                         transaction: Arc::new(transaction),
@@ -596,6 +604,7 @@ impl DataSource {
                         receipt: receipt.clone(),
                     },
                     event_handler.handler,
+                    block.block_ptr(),
                     logging_extras,
                 )))
             }
@@ -696,7 +705,7 @@ impl DataSource {
                     "to" => format!("{}", &call.to),
                     "transaction" => format!("{}", &transaction.hash),
                 });
-                Ok(Some(TriggerWithHandler::new_with_logging_extras(
+                Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {
                         block: block.cheap_clone(),
                         transaction,
@@ -705,6 +714,7 @@ impl DataSource {
                         outputs,
                     },
                     handler.handler,
+                    block.block_ptr(),
                     logging_extras,
                 )))
             }
@@ -757,6 +767,9 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             context,
             creation_block,
         } = info;
+        let template = template.into_onchain().ok_or(anyhow!(
+            "Cannot create onchain data source from offchain template"
+        ))?;
 
         // Obtain the address from the parameters
         let string = params

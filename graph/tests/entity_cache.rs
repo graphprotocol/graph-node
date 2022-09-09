@@ -8,10 +8,12 @@ use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use graph::components::store::{EntityType, StoredDynamicDataSource, WritableStore};
+use graph::components::store::{
+    EntityKey, EntityType, ReadStore, StoredDynamicDataSource, WritableStore,
+};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityKey, EntityModification, Value},
+    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Value},
 };
 
 lazy_static! {
@@ -41,6 +43,32 @@ struct MockStore {
 impl MockStore {
     fn new(get_many_res: BTreeMap<EntityType, Vec<Entity>>) -> Self {
         Self { get_many_res }
+    }
+}
+
+impl ReadStore for MockStore {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        match self.get_many_res.get(&key.entity_type) {
+            Some(entities) => Ok(entities
+                .iter()
+                .find(|entity| entity.id().ok().as_deref() == Some(key.entity_id.as_str()))
+                .cloned()),
+            None => Err(StoreError::Unknown(anyhow!(
+                "nothing for type {}",
+                key.entity_type
+            ))),
+        }
+    }
+
+    fn get_many(
+        &self,
+        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        Ok(self.get_many_res.clone())
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        SCHEMA.clone()
     }
 }
 
@@ -86,19 +114,6 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        match self.get_many_res.get(&key.entity_type) {
-            Some(entities) => Ok(entities
-                .iter()
-                .find(|entity| entity.id().ok().as_ref() == Some(&key.entity_id))
-                .cloned()),
-            None => Err(StoreError::Unknown(anyhow!(
-                "nothing for type {}",
-                key.entity_type
-            ))),
-        }
-    }
-
     async fn transact_block_operations(
         &self,
         _: BlockPtr,
@@ -108,15 +123,9 @@ impl WritableStore for MockStore {
         _: Vec<StoredDynamicDataSource>,
         _: Vec<SubgraphError>,
         _: Vec<(u32, String)>,
+        _: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         unimplemented!()
-    }
-
-    fn get_many(
-        &self,
-        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        Ok(self.get_many_res.clone())
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
@@ -146,10 +155,6 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
-        SCHEMA.clone()
-    }
-
     async fn flush(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -157,13 +162,16 @@ impl WritableStore for MockStore {
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
     (
-        EntityKey::data(SUBGRAPH_ID.clone(), "Band".to_string(), id.into()),
+        EntityKey {
+            entity_type: EntityType::new("Band".to_string()),
+            entity_id: id.into(),
+        },
         Entity::from(data),
     )
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
-    mods.sort_by_key(|m| m.entity_key().clone());
+    mods.sort_by_key(|m| m.entity_ref().clone());
     mods
 }
 

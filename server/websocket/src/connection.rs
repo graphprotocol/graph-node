@@ -297,7 +297,7 @@ where
                     };
 
                     // Construct a subscription
-                    let target = QueryTarget::Deployment(deployment.clone());
+                    let target = QueryTarget::Deployment(deployment.clone(), Default::default());
                     let subscription = Subscription {
                         // Subscriptions currently do not benefit from the generational cache
                         // anyways, so don't bother passing a network.

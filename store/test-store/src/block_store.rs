@@ -6,8 +6,8 @@ use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block,
     prelude::{
-        serde_json, web3::types::H256, BlockHash, BlockNumber, BlockPtr, EthereumBlock,
-        LightEthereumBlock,
+        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
+        EthereumBlock, LightEthereumBlock,
     },
 };
 
@@ -16,23 +16,28 @@ lazy_static! {
     pub static ref GENESIS_BLOCK: FakeBlock = FakeBlock {
         number: super::GENESIS_PTR.number,
         hash: super::GENESIS_PTR.hash_hex(),
+        timestamp: None,
         parent_hash: NO_PARENT.to_string()
     };
     pub static ref BLOCK_ONE: FakeBlock = GENESIS_BLOCK
-        .make_child("8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13");
+        .make_child("8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13", None);
     pub static ref BLOCK_ONE_SIBLING: FakeBlock =
-        GENESIS_BLOCK.make_child("b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1");
+        GENESIS_BLOCK.make_child("b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1", None);
     pub static ref BLOCK_ONE_NO_PARENT: FakeBlock = FakeBlock::make_no_parent(
         1,
         "7205bdfcf4521874cf38ce38c879ff967bf3a069941286bfe267109ad275a63d"
     );
 
-    pub static ref BLOCK_TWO: FakeBlock = BLOCK_ONE.make_child("f8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6");
+    pub static ref BLOCK_TWO: FakeBlock = BLOCK_ONE.make_child("f8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6", None);
     pub static ref BLOCK_TWO_NO_PARENT: FakeBlock = FakeBlock::make_no_parent(2, "3b652b00bff5e168b1218ff47593d516123261c4487629c4175f642ee56113fe");
-    pub static ref BLOCK_THREE: FakeBlock = BLOCK_TWO.make_child("7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c");
+    pub static ref BLOCK_THREE: FakeBlock = BLOCK_TWO.make_child("7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c", None);
     pub static ref BLOCK_THREE_NO_PARENT: FakeBlock = FakeBlock::make_no_parent(3, "fa9ebe3f74de4c56908b49f5c4044e85825f7350f3fa08a19151de82a82a7313");
-    pub static ref BLOCK_FOUR: FakeBlock = BLOCK_THREE.make_child("7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e");
-    pub static ref BLOCK_FIVE: FakeBlock = BLOCK_FOUR.make_child("7b0ea919e258eb2b119eb32de56b85d12d50ac6a9f7c5909f843d6172c8ba196");
+    pub static ref BLOCK_THREE_TIMESTAMP: FakeBlock = BLOCK_TWO.make_child("6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b", Some(U256::from(1657712166)));
+    // This block is special and serializes in a slightly different way, this is needed to simulate non-ethereum behaviour at the store level. If you're not sure
+    // what you are doing, don't use this block for other tests.
+    pub static ref BLOCK_THREE_NO_TIMESTAMP: FakeBlock = BLOCK_TWO.make_child("6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b", None);
+    pub static ref BLOCK_FOUR: FakeBlock = BLOCK_THREE.make_child("7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e", None);
+    pub static ref BLOCK_FIVE: FakeBlock = BLOCK_FOUR.make_child("7b0ea919e258eb2b119eb32de56b85d12d50ac6a9f7c5909f843d6172c8ba196", None);
     pub static ref BLOCK_SIX_NO_PARENT: FakeBlock = FakeBlock::make_no_parent(6, "6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b");
 }
 
@@ -45,14 +50,16 @@ pub struct FakeBlock {
     pub number: BlockNumber,
     pub hash: String,
     pub parent_hash: String,
+    pub timestamp: Option<U256>,
 }
 
 impl FakeBlock {
-    pub fn make_child(&self, hash: &str) -> Self {
+    pub fn make_child(&self, hash: &str, timestamp: Option<U256>) -> Self {
         FakeBlock {
             number: self.number + 1,
             hash: hash.to_owned(),
             parent_hash: self.hash.clone(),
+            timestamp,
         }
     }
 
@@ -61,6 +68,7 @@ impl FakeBlock {
             number,
             hash: hash.to_owned(),
             parent_hash: NO_PARENT.to_string(),
+            timestamp: None,
         }
     }
 
@@ -79,6 +87,9 @@ impl FakeBlock {
         block.number = Some(self.number.into());
         block.parent_hash = parent_hash;
         block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
+        if let Some(ts) = self.timestamp {
+            block.timestamp = ts;
+        }
 
         EthereumBlock {
             block: Arc::new(block),
@@ -104,7 +115,23 @@ impl Block for FakeBlock {
     }
 
     fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
-        serde_json::to_value(self.as_ethereum_block())
+        let mut value: serde_json::Value = serde_json::to_value(self.as_ethereum_block())?;
+        if !self.eq(&BLOCK_THREE_NO_TIMESTAMP) {
+            return Ok(value);
+        };
+
+        // Remove the timestamp for block BLOCK_THREE_NO_TIMESTAMP in order to simulate the non EVM behaviour
+        // In these cases timestamp is not there at all but LightEthereumBlock uses U256 as timestamp so it
+        // can never be null and therefore impossible to test without manipulating the JSON blob directly.
+        if let serde_json::Value::Object(ref mut map) = value {
+            map.entry("block").and_modify(|ref mut block| {
+                if let serde_json::Value::Object(ref mut block) = block {
+                    block.remove_entry("timestamp");
+                }
+            });
+        };
+
+        Ok(value)
     }
 }
 

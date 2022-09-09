@@ -1,4 +1,3 @@
-use graph::blockchain;
 use graph::blockchain::TriggerData;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
@@ -24,6 +23,7 @@ use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
 use graph::semver::Version;
+use graph_runtime_wasm::module::ToAscPtr;
 use std::convert::TryFrom;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
@@ -111,7 +111,7 @@ impl std::fmt::Debug for MappingTrigger {
     }
 }
 
-impl blockchain::MappingTrigger for MappingTrigger {
+impl ToAscPtr for MappingTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,

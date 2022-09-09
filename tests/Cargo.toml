@@ -14,13 +14,17 @@ async-stream = "0.3.3"
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-mock = { path = "../mock" }
+graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+graphql-parser = "0.4.0"
+hex = "0.4.3"
 
 [dev-dependencies]
 bollard = "0.10"
-anyhow = "1.0.61"
+anyhow = "1.0.62"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 serde_yaml = "0.8"
+cid = "0.8.6"
 graph-chain-near = { path = "../chain/near" }

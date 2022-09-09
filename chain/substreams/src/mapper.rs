@@ -1,4 +1,4 @@
-use crate::{Block, Chain, EntitiesChanges};
+use crate::{Block, Chain, TriggerData};
 use graph::blockchain::block_stream::SubstreamsError::{
     MultipleModuleOutputError, UnexpectedStoreDeltaOutput,
 };
@@ -40,20 +40,19 @@ impl SubstreamsMapper<Chain> for Mapper {
 
         match module_output.data.as_ref().unwrap() {
             Data::MapOutput(msg) => {
-                let changes: EntitiesChanges = Message::decode(msg.value.as_slice()).unwrap();
+                let changes: Block = Message::decode(msg.value.as_slice()).unwrap();
+
                 use ForkStep::*;
                 match step {
-                    StepIrreversible => Ok(Some(BlockStreamEvent::ProcessBlock(
-                        BlockWithTriggers::new(
-                            Block {
-                                block_num: changes.block_number as BlockNumber,
-                                block_hash: changes.block_id.clone().into(),
-                                parent_block_num: changes.prev_block_number as BlockNumber,
-                                parent_block_hash: changes.prev_block_id.clone().into(),
-                                entities_changes: changes,
-                            },
-                            vec![],
-                        ),
+                    StepIrreversible | StepNew => Ok(Some(BlockStreamEvent::ProcessBlock(
+                        // Even though the trigger processor for substreams doesn't care about TriggerData
+                        // there are a bunch of places in the runner that check if trigger data
+                        // empty and skip processing if so. This will prolly breakdown
+                        // close to head so we will need to improve things.
+
+                        // TODO(filipe): Fix once either trigger data can be empty
+                        // or we move the changes into trigger data.
+                        BlockWithTriggers::new(changes, vec![TriggerData {}]),
                         FirehoseCursor::from(cursor.clone()),
                     ))),
                     StepUndo => {
@@ -67,10 +66,6 @@ impl SubstreamsMapper<Chain> for Mapper {
                             FirehoseCursor::from(cursor.clone()),
                         )))
                     }
-                    StepNew => {
-                        panic!("Fix me when substream support more then just irreversible")
-                    }
-
                     StepUnknown => {
                         panic!("unknown step should not happen in the Firehose response")
                     }

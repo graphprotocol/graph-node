@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use graph::data::value::Word;
-
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::QueryStore as QueryStoreTrait;
+use graph::data::query::Trace;
+use graph::data::value::Word;
 use graph::prelude::*;
 
 use crate::primary::Site;
@@ -13,6 +13,7 @@ pub(crate) struct QueryStore {
     replica_id: ReplicaId,
     store: Arc<DeploymentStore>,
     chain_store: Arc<crate::ChainStore>,
+    api_version: Arc<ApiVersion>,
 }
 
 impl QueryStore {
@@ -21,12 +22,14 @@ impl QueryStore {
         chain_store: Arc<crate::ChainStore>,
         site: Arc<Site>,
         replica_id: ReplicaId,
+        api_version: Arc<ApiVersion>,
     ) -> Self {
         QueryStore {
             site,
             replica_id,
             store,
             chain_store,
+            api_version,
         }
     }
 }
@@ -36,7 +39,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError> {
+    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store
@@ -57,8 +60,10 @@ impl QueryStoreTrait for QueryStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
         self.store.block_ptr(self.site.cheap_clone()).await
     }
-
-    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError> {
+    async fn block_number_with_timestamp(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
         // We should also really check that the block with the given hash is
         // on the chain starting at the subgraph's current head. That check is
         // very expensive though with the data structures we have currently
@@ -67,10 +72,11 @@ impl QueryStoreTrait for QueryStore {
         // database the blocks on the main chain that we consider final
         let subgraph_network = self.network_name();
         self.chain_store
-            .block_number(block_hash)?
-            .map(|(network_name, number)| {
+            .block_number(block_hash)
+            .await?
+            .map(|(network_name, number, timestamp)| {
                 if network_name == subgraph_network {
-                    Ok(number)
+                    Ok((number, timestamp))
                 } else {
                     Err(StoreError::QueryExecutionError(format!(
                         "subgraph {} belongs to network {} but block {:x} belongs to network {}",
@@ -79,6 +85,15 @@ impl QueryStoreTrait for QueryStore {
                 }
             })
             .transpose()
+    }
+
+    async fn block_number(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockNumber>, StoreError> {
+        self.block_number_with_timestamp(block_hash)
+            .await
+            .map(|opt| opt.map(|(number, _)| number))
     }
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {
@@ -103,7 +118,7 @@ impl QueryStoreTrait for QueryStore {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
         let info = self.store.subgraph_info(&self.site)?;
-        Ok(info.api)
+        Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
     fn network_name(&self) -> &str {

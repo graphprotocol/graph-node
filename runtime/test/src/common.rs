@@ -1,6 +1,7 @@
 use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
+use graph::data_source;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
@@ -27,35 +28,37 @@ fn mock_host_exports(
     store: Arc<impl SubgraphStore>,
     api_version: Version,
 ) -> HostExports<Chain> {
-    let templates = vec![DataSourceTemplate {
-        kind: String::from("ethereum/contract"),
-        name: String::from("example template"),
-        manifest_idx: 0,
-        network: Some(String::from("mainnet")),
-        source: TemplateSource {
-            abi: String::from("foo"),
-        },
-        mapping: Mapping {
-            kind: String::from("ethereum/events"),
-            api_version,
-            language: String::from("wasm/assemblyscript"),
-            entities: vec![],
-            abis: vec![],
-            event_handlers: vec![],
-            call_handlers: vec![],
-            block_handlers: vec![],
-            link: Link {
-                link: "link".to_owned(),
+    let templates = vec![data_source::DataSourceTemplate::Onchain(
+        DataSourceTemplate {
+            kind: String::from("ethereum/contract"),
+            name: String::from("example template"),
+            manifest_idx: 0,
+            network: Some(String::from("mainnet")),
+            source: TemplateSource {
+                abi: String::from("foo"),
             },
-            runtime: Arc::new(vec![]),
+            mapping: Mapping {
+                kind: String::from("ethereum/events"),
+                api_version,
+                language: String::from("wasm/assemblyscript"),
+                entities: vec![],
+                abis: vec![],
+                event_handlers: vec![],
+                call_handlers: vec![],
+                block_handlers: vec![],
+                link: Link {
+                    link: "link".to_owned(),
+                },
+                runtime: Arc::new(vec![]),
+            },
         },
-    }];
+    )];
 
     let network = data_source.network.clone().unwrap();
     let ens_lookup = store.ens_lookup();
     HostExports::new(
         subgraph_id,
-        &data_source,
+        &data_source::DataSource::Onchain(data_source),
         network,
         Arc::new(templates),
         Arc::new(graph_core::LinkResolver::new(

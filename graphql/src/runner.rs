@@ -108,7 +108,8 @@ where
         // while the query is running. `self.store` can not be used after this
         // point, and everything needs to go through the `store` we are
         // setting up here
-        let store = self.store.query_store(target, false).await?;
+
+        let store = self.store.query_store(target.clone(), false).await?;
         let state = store.deployment_state().await?;
         let network = Some(store.network_name().to_string());
         let schema = store.api_schema()?;
@@ -144,6 +145,7 @@ where
 
         // Note: This will always iterate at least once.
         for (bc, (selection_set, error_policy)) in by_block_constraint {
+            let query_start = Instant::now();
             let resolver = StoreResolver::at_block(
                 &self.logger,
                 store.cheap_clone(),
@@ -159,7 +161,7 @@ where
             let query_res = execute_query(
                 query.clone(),
                 Some(selection_set),
-                resolver.block_ptr.clone(),
+                resolver.block_ptr.as_ref().map(Into::into).clone(),
                 QueryExecutionOptions {
                     resolver,
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
@@ -169,6 +171,7 @@ where
                 },
             )
             .await;
+            query_res.trace.finish(query_start.elapsed());
             result.append(query_res);
         }
 
@@ -225,7 +228,7 @@ where
         subscription: Subscription,
         target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError> {
-        let store = self.store.query_store(target, true).await?;
+        let store = self.store.query_store(target.clone(), true).await?;
         let schema = store.api_schema()?;
         let network = store.network_name().to_string();
 

@@ -75,9 +75,11 @@ impl QueryStoreManager for Store {
         graph::prelude::QueryExecutionError,
     > {
         let store = self.subgraph_store.cheap_clone();
+        let api_version = target.get_version();
+        let target = target.clone();
         let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
             store
-                .replica_for_query(target, for_subscription)
+                .replica_for_query(target.clone(), for_subscription)
                 .map_err(|e| e.into())
         })
         .await
@@ -92,7 +94,13 @@ impl QueryStoreManager for Store {
             )
         })?;
 
-        Ok(Arc::new(QueryStore::new(store, chain_store, site, replica)))
+        Ok(Arc::new(QueryStore::new(
+            store,
+            chain_store,
+            site,
+            replica,
+            Arc::new(api_version.clone()),
+        )))
     }
 }
 

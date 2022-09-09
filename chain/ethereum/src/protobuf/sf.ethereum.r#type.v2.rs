@@ -10,6 +10,11 @@ pub struct Block {
     pub size: u64,
     #[prost(message, optional, tag="5")]
     pub header: ::core::option::Option<BlockHeader>,
+    /// Uncles represents block produced with a valid solution but were not actually choosen
+    /// as the canonical block for the given height so they are mostly "forked" blocks.
+    ///
+    /// If the Block has been produced using the Proof of Stake consensus algorithm, this
+    /// field will actually be always empty.
     #[prost(message, repeated, tag="6")]
     pub uncles: ::prost::alloc::vec::Vec<BlockHeader>,
     #[prost(message, repeated, tag="10")]
@@ -65,7 +70,11 @@ pub struct BlockRef {
 pub struct BlockHeader {
     #[prost(bytes="vec", tag="1")]
     pub parent_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`
+    /// Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`, also
+    /// referred as `ommers` in EIP specification.
+    ///
+    /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+    /// consensus algorithm, this field will actually be constant and set to `0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347`.
     #[prost(bytes="vec", tag="2")]
     pub uncle_hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes="vec", tag="3")]
@@ -78,9 +87,18 @@ pub struct BlockHeader {
     pub receipt_root: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes="vec", tag="7")]
     pub logs_bloom: ::prost::alloc::vec::Vec<u8>,
+    /// Difficulty is the difficulty of the Proof of Work algorithm that was required to compute a solution.
+    ///
+    /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+    /// consensus algorithm, this field will actually be constant and set to `0x00`.
     #[prost(message, optional, tag="8")]
     pub difficulty: ::core::option::Option<BigInt>,
-    /// Sum of all previous blocks difficulty including this block difficulty.
+    /// TotalDifficulty is the sum of all previous blocks difficulty including this block difficulty.
+    ///
+    /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+    /// consensus algorithm, this field will actually be constant and set to the terminal total difficulty
+    /// that was required to transition to Proof of Stake algorithm, which varies per network. It is set to
+    /// 58 750 000 000 000 000 000 000 on Ethereum Mainnet and to 10 790 000 on Ethereum Testnet Goerli.
     #[prost(message, optional, tag="17")]
     pub total_difficulty: ::core::option::Option<BigInt>,
     #[prost(uint64, tag="9")]
@@ -91,12 +109,46 @@ pub struct BlockHeader {
     pub gas_used: u64,
     #[prost(message, optional, tag="12")]
     pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    /// ExtraData is free-form bytes included in the block by the "miner". While on Yellow paper of
+    /// Ethereum this value is maxed to 32 bytes, other consensus algorithm like Clique and some other
+    /// forks are using bigger values to carry special consensus data.
+    ///
+    /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+    /// consensus algorithm, this field is strictly enforced to be <= 32 bytes.
     #[prost(bytes="vec", tag="13")]
     pub extra_data: ::prost::alloc::vec::Vec<u8>,
+    /// MixHash is used to prove, when combined with the `nonce` that sufficient amount of computation has been
+    /// achieved and that the solution found is valid.
     #[prost(bytes="vec", tag="14")]
     pub mix_hash: ::prost::alloc::vec::Vec<u8>,
+    /// Nonce is used to prove, when combined with the `mix_hash` that sufficient amount of computation has been
+    /// achieved and that the solution found is valid.
+    ///
+    /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
+    /// consensus algorithm, this field will actually be constant and set to `0`.
     #[prost(uint64, tag="15")]
     pub nonce: u64,
+    /// Hash is the hash of the block which is actually the computation:
+    ///
+    ///  Keccak256(rlp([
+    ///    parent_hash,
+    ///    uncle_hash,
+    ///    coinbase,
+    ///    state_root,
+    ///    transactions_root,
+    ///    receipt_root,
+    ///    logs_bloom,
+    ///    difficulty,
+    ///    number,
+    ///    gas_limit,
+    ///    gas_used,
+    ///    timestamp,
+    ///    extra_data,
+    ///    mix_hash,
+    ///    nonce,
+    ///    base_fee_per_gas
+    ///  ]))
+    ///
     #[prost(bytes="vec", tag="16")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     /// Base fee per gas according to EIP-1559 (e.g. London Fork) rules, only set if London is present/active on the chain.
@@ -152,7 +204,7 @@ pub struct TransactionTrace {
     /// The value is always set even for transaction before Berlin fork because those before the fork are still legacy transactions.
     #[prost(enumeration="transaction_trace::Type", tag="12")]
     pub r#type: i32,
-    /// AccessList represents the storage access this transaction has agreed to do in which case those storage
+    /// AcccessList represents the storage access this transaction has agreed to do in which case those storage
     /// access cost less gas unit per access.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_ACCESS_LIST || TRX_TYPE_DYNAMIC_FEE` which
@@ -162,14 +214,14 @@ pub struct TransactionTrace {
     /// MaxFeePerGas is the maximum fee per gas the user is willing to pay for the transaction gas used.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_DYNAMIC_FEE` which is possible only
-    /// if Londong fork is active on the chain.
+    /// if London fork is active on the chain.
     #[prost(message, optional, tag="11")]
     pub max_fee_per_gas: ::core::option::Option<BigInt>,
     /// MaxPriorityFeePerGas is priority fee per gas the user to pay in extra to the miner on top of the block's
     /// base fee.
     ///
     /// This will is populated only if `TransactionTrace.Type == TRX_TYPE_DYNAMIC_FEE` which is possible only
-    /// if Londong fork is active on the chain.
+    /// if London fork is active on the chain.
     #[prost(message, optional, tag="13")]
     pub max_priority_fee_per_gas: ::core::option::Option<BigInt>,
     /// meta
@@ -201,7 +253,7 @@ pub mod transaction_trace {
     pub enum Type {
         /// All transactions that ever existed prior Berlin fork before EIP-2718 was implemented.
         TrxTypeLegacy = 0,
-        /// Transaction that specify an access list of contract/storage_keys that is going to be used
+        /// Field that specifies an access list of contract/storage_keys that is going to be used
         /// in this transaction.
         ///
         /// Added in Berlin fork (EIP-2930).
@@ -231,27 +283,19 @@ pub struct TransactionTraceWithBlockRef {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct TransactionReceipt {
-    /// consensus
-    ///
-    /// this was an intermediate state_root hash,
-    /// computed in-between transactions to make
-    /// SURE you could build a proof and point to
-    /// state in the middle of a block; geth:
-    /// PostState + root + PostStateOrStatus,
-    /// parity: status_code, root... this piles
+    /// State root is an intermediate state_root hash, computed in-between transactions to make
+    /// **sure** you could build a proof and point to state in the middle of a block. Geth client
+    /// uses `PostState + root + PostStateOrStatus`` while Parity used `status_code, root...`` this piles
     /// hardforks, see (read the EIPs first):
-    /// <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147>
-    /// and
-    /// <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86>
-    /// and
-    /// <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md>
-    /// and the notion of Outcome in parity, which
-    /// segregates the two concepts, which are
-    /// stored in the same field
-    ///status_code can be computed based on such a
-    ///hack of the `state_root` field, following
-    ///EIP-658. This is optional before the
-    ///BYZANTINIUM hardfork. 
+    /// - <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147>
+    /// - <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86>
+    /// - <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md>
+    ///
+    /// Moreover, the notion of `Outcome`` in parity, which segregates the two concepts, which are
+    /// stored in the same field `status_code`` can be computed based on such a hack of the `state_root`
+    /// field, following `EIP-658`.
+    ///
+    /// Before Byzantinium hard fork, this field is always empty.
     #[prost(bytes="vec", tag="1")]
     pub state_root: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint64, tag="2")]

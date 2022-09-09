@@ -189,7 +189,7 @@ impl Config {
         })
     }
 
-    /// Genrate a JSON representation of the config.
+    /// Generate a JSON representation of the config.
     pub fn to_json(&self) -> Result<String> {
         // It would be nice to produce a TOML representation, but that runs
         // into this error: https://github.com/alexcrichton/toml-rs/issues/142
@@ -546,6 +546,7 @@ pub struct Provider {
 pub enum ProviderDetails {
     Firehose(FirehoseProvider),
     Web3(Web3Provider),
+    Substreams(FirehoseProvider),
 }
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";
@@ -623,8 +624,7 @@ impl Web3Provider {
     pub fn limit_for(&self, node: &NodeId) -> usize {
         self.rules
             .iter()
-            .filter_map(|l| l.limit_for(node))
-            .next()
+            .find_map(|l| l.limit_for(node))
             .unwrap_or(usize::MAX)
     }
 }
@@ -637,7 +637,8 @@ impl Provider {
         validate_name(&self.label).context("illegal provider name")?;
 
         match self.details {
-            ProviderDetails::Firehose(ref mut firehose) => {
+            ProviderDetails::Firehose(ref mut firehose)
+            | ProviderDetails::Substreams(ref mut firehose) => {
                 firehose.url = shellexpand::env(&firehose.url)?.into_owned();
 
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
@@ -1339,6 +1340,29 @@ mod tests {
         );
     }
 
+    #[test]
+    fn it_works_on_substreams_provider_from_toml() {
+        let actual = toml::from_str(
+            r#"
+                label = "bananas"
+                details = { type = "substreams", url = "http://localhost:9000", features = [] }
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "bananas".to_owned(),
+                details: ProviderDetails::Substreams(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                    token: None,
+                    features: BTreeSet::new(),
+                    conn_pool_size: 10,
+                }),
+            },
+            actual
+        );
+    }
     #[test]
     fn it_works_on_new_firehose_provider_from_toml_no_features() {
         let actual = toml::from_str(

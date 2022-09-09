@@ -10,14 +10,15 @@ async-stream = "0.3"
 atomic_refcell = "0.1.8"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"
+cid = "0.8.3"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 diesel_derives = "1.4"
-chrono = "0.4.21"
+chrono = "0.4.22"
 envconfig = "0.10.0"
 Inflector = "0.11.3"
 isatty = "0.1.9"
 reqwest = { version = "0.11.2", features = ["json", "stream", "multipart"] }
-ethabi = "17.1"
+ethabi = "17.2"
 hex = "0.4.3"
 http = "0.2.3"
 futures = "0.1.21"

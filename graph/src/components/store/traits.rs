@@ -4,6 +4,8 @@ use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
+use crate::components::versions::ApiVersion;
+use crate::data::query::Trace;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
@@ -111,7 +113,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
-    fn api_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<ApiSchema>, StoreError>;
+    fn api_schema(
+        &self,
+        subgraph_id: &DeploymentHash,
+        api_version: &ApiVersion,
+    ) -> Result<Arc<ApiSchema>, StoreError>;
 
     /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
     /// that is used for debugging purposes only.
@@ -143,12 +149,44 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
 }
 
+pub trait ReadStore: Send + Sync + 'static {
+    /// Looks up an entity using the given store key at the latest block.
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
+
+    /// Look up multiple entities as of the latest block. Returns a map of
+    /// entities by type.
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
+
+    fn input_schema(&self) -> Arc<Schema>;
+}
+
+// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
+    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+        (**self).get(key)
+    }
+
+    fn get_many(
+        &self,
+        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
+    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        (**self).get_many(ids_for_type)
+    }
+
+    fn input_schema(&self) -> Arc<Schema> {
+        (**self).input_schema()
+    }
+}
+
 /// A view of the store for indexing. All indexing-related operations need
 /// to go through this trait. Methods in this trait will never return a
 /// `StoreError::DatabaseUnavailable`. Instead, they will retry the
 /// operation indefinitely until it succeeds.
 #[async_trait]
-pub trait WritableStore: Send + Sync + 'static {
+pub trait WritableStore: ReadStore {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
@@ -189,9 +227,6 @@ pub trait WritableStore: Send + Sync + 'static {
 
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
-    /// Looks up an entity using the given store key at the latest block.
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
-
     /// Transact the entity changes from a single block atomically into the store, and update the
     /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
     ///
@@ -205,14 +240,8 @@ pub trait WritableStore: Send + Sync + 'static {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
+        offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError>;
-
-    /// Look up multiple entities as of the latest block. Returns a map of
-    /// entities by type.
-    fn get_many(
-        &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
 
     /// The deployment `id` finished syncing, mark it as synced in the database
     /// and promote it to the current version in the subgraphs where it was the
@@ -236,8 +265,6 @@ pub trait WritableStore: Send + Sync + 'static {
     fn shard(&self) -> &str;
 
     async fn health(&self) -> Result<SubgraphHealth, StoreError>;
-
-    fn input_schema(&self) -> Arc<Schema>;
 
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;
@@ -355,8 +382,14 @@ pub trait ChainStore: Send + Sync + 'static {
     /// may purge any other blocks with that number
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
 
-    /// Find the block with `block_hash` and return the network name and number
-    fn block_number(&self, hash: &BlockHash) -> Result<Option<(String, BlockNumber)>, StoreError>;
+    /// Find the block with `block_hash` and return the network name, number and timestamp if present.
+    /// Currently, the timestamp is only returned if it's present in the top level block. This format is
+    /// depends on the chain and the implementation of Blockchain::Block for the specific chain.
+    /// eg: {"block": { "timestamp": 123123123 } }
+    async fn block_number(
+        &self,
+        hash: &BlockHash,
+    ) -> Result<Option<(String, BlockNumber, Option<u64>)>, StoreError>;
 
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
@@ -395,13 +428,22 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<Vec<BTreeMap<Word, r::Value>>, QueryExecutionError>;
+    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
-    fn block_number(&self, block_hash: &BlockHash) -> Result<Option<BlockNumber>, StoreError>;
+    async fn block_number(&self, block_hash: &BlockHash)
+        -> Result<Option<BlockNumber>, StoreError>;
+
+    /// Returns the blocknumber as well as the timestamp. Timestamp depends on the chain block type
+    /// and can have multiple formats, it can also not be prevent. For now this is only available
+    /// for EVM chains both firehose and rpc.
+    async fn block_number_with_timestamp(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError>;
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 

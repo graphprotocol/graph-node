@@ -8,7 +8,7 @@ use std::sync::Arc;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
 use graph::prelude::{serde_json as json, EthereumBlock};
-use graph::prelude::{BlockNumber, QueryStoreManager};
+use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
 use graph::{cheap_clone::CheapClone, prelude::web3::types::H160};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
 use graph::{components::store::ChainStore as _, prelude::EthereumCallCache as _};
@@ -167,7 +167,7 @@ fn long_chain_with_uncles() {
 }
 
 #[test]
-fn block_number() {
+fn test_get_block_number() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
     let subgraph = DeploymentHash::new("nonExistentSubgraph").unwrap();
 
@@ -177,22 +177,28 @@ fn block_number() {
             create_test_subgraph(&subgraph, "type Dummy @entity { id: ID! }").await;
 
             let query_store = subgraph_store
-                .query_store(subgraph.cheap_clone().into(), false)
+                .query_store(
+                    QueryTarget::Deployment(subgraph.cheap_clone().into(), Default::default()),
+                    false,
+                )
                 .await
                 .unwrap();
 
             let block = query_store
                 .block_number(&GENESIS_BLOCK.block_hash())
+                .await
                 .expect("Found genesis block");
             assert_eq!(Some(0), block);
 
             let block = query_store
                 .block_number(&BLOCK_ONE.block_hash())
+                .await
                 .expect("Found block 1");
             assert_eq!(Some(1), block);
 
             let block = query_store
                 .block_number(&BLOCK_THREE.block_hash())
+                .await
                 .expect("Looked for block 3");
             assert!(block.is_none());
         }

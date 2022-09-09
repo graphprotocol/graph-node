@@ -14,7 +14,7 @@ use graph::util::monitored::MonitoredVecDeque as VecDeque;
 use tokio::sync::{mpsc, watch};
 use tower::{Service, ServiceExt};
 
-use self::metrics::PollingMonitorMetrics;
+pub use self::metrics::PollingMonitorMetrics;
 
 /// Spawn a monitor that actively polls a service. Whenever the service has capacity, the monitor
 /// pulls object ids from the queue and polls the service. If the object is not present or in case

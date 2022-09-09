@@ -1,5 +1,5 @@
 #[rustfmt::skip]
-#[path = "protobuf/sf.ethereum.r#type.v1.rs"]
+#[path = "protobuf/sf.ethereum.r#type.v2.rs"]
 mod pbcodec;
 
 use anyhow::format_err;

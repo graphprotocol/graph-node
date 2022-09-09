@@ -211,7 +211,7 @@ async fn execute_subscription_event(
         Err(e) => return Arc::new(e.into()),
     };
 
-    let block_ptr = resolver.block_ptr.clone();
+    let block_ptr = resolver.block_ptr.as_ref().map(Into::into);
 
     // Create a fresh execution context with deadline.
     let ctx = Arc::new(ExecutionContext {

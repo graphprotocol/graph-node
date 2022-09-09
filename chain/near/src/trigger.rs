@@ -1,4 +1,3 @@
-use graph::blockchain;
 use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
@@ -6,6 +5,7 @@ use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
+use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -35,7 +35,7 @@ impl std::fmt::Debug for NearTrigger {
     }
 }
 
-impl blockchain::MappingTrigger for NearTrigger {
+impl ToAscPtr for NearTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
@@ -159,8 +159,7 @@ mod tests {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
 
-        let result =
-            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
+        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 
@@ -173,8 +172,7 @@ mod tests {
             receipt: receipt().unwrap(),
         }));
 
-        let result =
-            blockchain::MappingTrigger::to_asc_ptr(trigger, &mut heap, &GasCounter::default());
+        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::default());
         assert!(result.is_ok());
     }
 

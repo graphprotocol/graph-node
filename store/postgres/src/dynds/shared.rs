@@ -81,6 +81,10 @@ pub(super) fn load(
             param: Some(address.into()),
             context: context.map(|ctx| serde_json::from_str(&ctx)).transpose()?,
             creation_block,
+
+            // The shared schema is only used for legacy deployments, and therefore not used for
+            // subgraphs that use file data sources.
+            is_offchain: false,
         };
 
         if data_sources.last().and_then(|d| d.creation_block) > data_source.creation_block {
@@ -116,7 +120,15 @@ pub(super) fn insert(
                 param,
                 context,
                 creation_block: _,
+                is_offchain,
             } = ds;
+
+            if *is_offchain {
+                return Err(constraint_violation!(
+                    "using shared data source schema with file data sources"
+                ));
+            }
+
             let address = match param {
                 Some(param) => param,
                 None => {

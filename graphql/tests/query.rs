@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate pretty_assertions;
 
+use graph::components::store::{EntityKey, EntityType};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
@@ -24,8 +25,8 @@ use graph::{
     },
     prelude::{
         futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
-        DeploymentHash, Entity, EntityKey, EntityOperation, FutureExtension, GraphQlRunner as _,
-        Logger, NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
+        DeploymentHash, Entity, EntityOperation, FutureExtension, GraphQlRunner as _, Logger,
+        NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
         QueryVariables, Schema, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
@@ -120,7 +121,6 @@ async fn setup(
             data_sources: vec![],
             graft: None,
             templates: vec![],
-            offchain_data_sources: vec![],
             chain: PhantomData,
         };
 
@@ -221,11 +221,12 @@ async fn insert_test_entities(
 
     async fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
-            key: EntityKey::data(
-                deployment.hash.clone(),
-                data.get("__typename").unwrap().clone().as_string().unwrap(),
-                data.get("id").unwrap().clone().as_string().unwrap(),
-            ),
+            key: EntityKey {
+                entity_type: EntityType::new(
+                    data.get("__typename").unwrap().clone().as_string().unwrap(),
+                ),
+                entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
+            },
             data,
         });
 
@@ -263,7 +264,7 @@ async fn execute_query_document_with_variables(
         LOAD_MANAGER.clone(),
         METRICS_REGISTRY.clone(),
     ));
-    let target = QueryTarget::Deployment(id.clone());
+    let target = QueryTarget::Deployment(id.clone(), Default::default());
     let query = Query::new(query, variables);
 
     runner
@@ -364,7 +365,7 @@ where
                     LOAD_MANAGER.clone(),
                     METRICS_REGISTRY.clone(),
                 ));
-                let target = QueryTarget::Deployment(id.clone());
+                let target = QueryTarget::Deployment(id.clone(), Default::default());
                 let query = Query::new(query, variables);
 
                 runner
@@ -388,7 +389,10 @@ async fn run_subscription(
     let deployment = setup_readonly(store.as_ref()).await;
     let logger = Logger::root(slog::Discard, o!());
     let query_store = store
-        .query_store(deployment.hash.clone().into(), true)
+        .query_store(
+            QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
+            true,
+        )
         .await
         .unwrap();
 
@@ -407,7 +411,10 @@ async fn run_subscription(
         max_skip: std::u32::MAX,
         graphql_metrics: graphql_metrics(),
     };
-    let schema = STORE.subgraph_store().api_schema(&deployment.hash).unwrap();
+    let schema = STORE
+        .subgraph_store()
+        .api_schema(&deployment.hash, &Default::default())
+        .unwrap();
 
     execute_subscription(Subscription { query }, schema.clone(), options)
 }
@@ -734,7 +741,6 @@ fn mixed_parent_child_id() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
-        dbg!(&data);
     })
 }
 
@@ -931,7 +937,7 @@ fn instant_timeout() {
         match first_result(
             execute_subgraph_query_with_deadline(
                 query,
-                deployment.hash.into(),
+                QueryTarget::Deployment(deployment.hash.into(), Default::default()),
                 Some(Instant::now()),
             )
             .await,

@@ -8,12 +8,12 @@ use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
-use graph::blockchain::DataSource;
-use graph::blockchain::{Blockchain, DataSourceTemplate as _};
-use graph::components::store::EntityType;
-use graph::components::store::{EnsLookup, EntityKey};
+use graph::blockchain::Blockchain;
+use graph::components::store::EnsLookup;
+use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
+use graph::data_source::{DataSource, DataSourceTemplate};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
@@ -66,7 +66,7 @@ pub struct HostExports<C: Blockchain> {
     /// and merge the results later. Right now, this is just the ethereum
     /// networks but will be expanded for ipfs and the availability chain.
     causality_region: String,
-    templates: Arc<Vec<C::DataSourceTemplate>>,
+    templates: Arc<Vec<DataSourceTemplate<C>>>,
     pub(crate) link_resolver: Arc<dyn LinkResolver>,
     ens_lookup: Arc<dyn EnsLookup>,
 }
@@ -74,9 +74,9 @@ pub struct HostExports<C: Blockchain> {
 impl<C: Blockchain> HostExports<C> {
     pub fn new(
         subgraph_id: DeploymentHash,
-        data_source: &impl DataSource<C>,
+        data_source: &DataSource<C>,
         data_source_network: String,
-        templates: Arc<Vec<C::DataSourceTemplate>>,
+        templates: Arc<Vec<DataSourceTemplate<C>>>,
         link_resolver: Arc<dyn LinkResolver>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Self {
@@ -84,7 +84,7 @@ impl<C: Blockchain> HostExports<C> {
             subgraph_id,
             api_version: data_source.api_version(),
             data_source_name: data_source.name().to_owned(),
-            data_source_address: data_source.address().unwrap_or_default().to_owned(),
+            data_source_address: data_source.address().unwrap_or_default(),
             data_source_context: data_source.context().cheap_clone(),
             causality_region: CausalityRegion::from_network(&data_source_network),
             data_source_network,
@@ -151,9 +151,8 @@ impl<C: Blockchain> HostExports<C> {
         poi_section.end();
 
         let key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
@@ -183,9 +182,8 @@ impl<C: Blockchain> HostExports<C> {
             logger,
         );
         let key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         gas.consume_host_fn(gas::STORE_REMOVE.with_args(complexity::Size, &key))?;
@@ -203,9 +201,8 @@ impl<C: Blockchain> HostExports<C> {
         gas: &GasCounter,
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
-            subgraph_id: self.subgraph_id.clone(),
             entity_type: EntityType::new(entity_type),
-            entity_id,
+            entity_id: entity_id.into(),
         };
 
         let result = state.entity_cache.get(&store_key)?;

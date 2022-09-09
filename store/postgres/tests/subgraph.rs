@@ -3,6 +3,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{DeploymentId, DeploymentLocator, StatusStore},
     },
+    data::query::QueryTarget,
     data::subgraph::schema::SubgraphHealth,
     data::subgraph::schema::{DeploymentCreate, SubgraphError},
     prelude::BlockPtr,
@@ -145,7 +146,6 @@ fn create_subgraph() {
             data_sources: vec![],
             graft: None,
             templates: vec![],
-            offchain_data_sources: vec![],
             chain: PhantomData,
         };
         let deployment = DeploymentCreate::new(&manifest, None);
@@ -551,7 +551,10 @@ fn fatal_vs_non_fatal() {
     run_test_sequentially(|store| async move {
         let deployment = setup().await;
         let query_store = store
-            .query_store(deployment.hash.clone().into(), false)
+            .query_store(
+                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
+                false,
+            )
             .await
             .unwrap();
 
@@ -612,7 +615,10 @@ fn fail_unfail_deterministic_error() {
         let deployment = setup().await;
 
         let query_store = store
-            .query_store(deployment.hash.cheap_clone().into(), false)
+            .query_store(
+                QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
+                false,
+            )
             .await
             .unwrap();
 

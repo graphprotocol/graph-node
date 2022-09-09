@@ -56,8 +56,8 @@ run_graph_node() {
         # postgres is up in this case, though we probably should
         wait_for_ipfs "$ipfs"
         sleep 5
-        graph-node \
-            --node-id "${node_id//-/_}" \
+        exec graph-node \
+            --node-id "$node_id" \
             --config "$GRAPH_NODE_CONFIG" \
             --ipfs "$ipfs" \
             ${fork_base:+ --fork-base "$fork_base"}
@@ -70,8 +70,8 @@ run_graph_node() {
         wait_for "$postgres_host:$postgres_port" -t 120
         sleep 5
 
-        graph-node \
-            --node-id "${node_id//-/_}" \
+        exec graph-node \
+            --node-id "$node_id" \
             --postgres-url "$postgres_url" \
             --ethereum-rpc $ethereum \
             --ipfs "$ipfs" \
@@ -97,6 +97,14 @@ start_index_node() {
 start_combined_node() {
     run_graph_node
 }
+
+# Allow operators to opt out of legacy character
+# restrictions on the node ID by setting enablement
+# variable to a non-zero length string:
+if [ -z "$GRAPH_NODE_ID_USE_LITERAL_VALUE" ]
+then
+	node_id="${node_id//-/_}"
+fi
 
 if [ -n "$disable_core_dumps" ]
 then

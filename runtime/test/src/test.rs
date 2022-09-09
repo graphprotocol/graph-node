@@ -418,23 +418,15 @@ async fn test_ipfs_block() {
 // The user_data value we use with calls to ipfs_map
 const USER_DATA: &str = "user_data";
 
-fn make_thing(
-    subgraph_id: &str,
-    id: &str,
-    value: &str,
-    api_version: Version,
-) -> (String, EntityModification) {
-    let subgraph_id_with_api_version = subgraph_id_with_api_version(subgraph_id, api_version);
-
+fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     let mut data = Entity::new();
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey::data(
-        DeploymentHash::new(&subgraph_id_with_api_version).unwrap(),
-        "Thing".to_string(),
-        id.to_string(),
-    );
+    let key = EntityKey {
+        entity_type: EntityType::new("Thing".to_string()),
+        entity_id: id.into(),
+    };
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },
@@ -486,9 +478,9 @@ async fn run_ipfs_map(
 
         // Bring the modifications into a predictable order (by entity_id)
         mods.sort_by(|a, b| {
-            a.entity_key()
+            a.entity_ref()
                 .entity_id
-                .partial_cmp(&b.entity_key().entity_id)
+                .partial_cmp(&b.entity_ref().entity_id)
                 .unwrap()
         });
         Ok(mods)
@@ -502,8 +494,8 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     let subgraph_id = "ipfsMap";
 
     // Try it with two valid objects
-    let (str1, thing1) = make_thing(&subgraph_id, "one", "eins", api_version.clone());
-    let (str2, thing2) = make_thing(&subgraph_id, "two", "zwei", api_version.clone());
+    let (str1, thing1) = make_thing("one", "eins");
+    let (str2, thing2) = make_thing("two", "zwei");
     let ops = run_ipfs_map(
         ipfs.clone(),
         subgraph_id,
@@ -841,7 +833,7 @@ async fn test_data_source_create(api_version: Version, gas_used: u64) {
     .await
     .expect("unexpected error returned from dataSourceCreate");
     assert_eq!(result[0].params, params.clone());
-    assert_eq!(result[0].template.name, template);
+    assert_eq!(result[0].template.name(), template);
 
     // Test with a template that doesn't exist
     let template = String::from("nonexistent template");
@@ -981,7 +973,7 @@ async fn test_entity_store(api_version: Version) {
     let writable = store.writable(LOGGER.clone(), deployment.id).await.unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
-        EntityCache::new(writable.clone()),
+        EntityCache::new(Arc::new(writable.clone())),
     );
     let mut mods = cache.as_modifications().unwrap().modifications;
     assert_eq!(1, mods.len());

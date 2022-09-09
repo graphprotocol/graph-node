@@ -1,4 +1,3 @@
-use graph::blockchain;
 use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
@@ -9,6 +8,7 @@ use graph::runtime::gas::GasCounter;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
 use graph::runtime::DeterministicHostError;
+use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -33,7 +33,7 @@ impl std::fmt::Debug for ArweaveTrigger {
     }
 }
 
-impl blockchain::MappingTrigger for ArweaveTrigger {
+impl ToAscPtr for ArweaveTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,

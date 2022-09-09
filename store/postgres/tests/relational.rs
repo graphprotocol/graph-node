@@ -1,13 +1,14 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::BlockNumber;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityKey, EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value,
-    ValueType, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
+    BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
@@ -217,11 +218,7 @@ fn insert_entity_at(
     let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::data(
-                THINGS_SUBGRAPH_ID.clone(),
-                entity_type.to_owned(),
-                entity.id().unwrap(),
-            );
+            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
@@ -260,11 +257,7 @@ fn update_entity_at(
     let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::data(
-                THINGS_SUBGRAPH_ID.clone(),
-                entity_type.to_owned(),
-                entity.id().unwrap(),
-            );
+            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
             (key, entity)
         })
         .collect();
@@ -554,11 +547,7 @@ fn update() {
         entity.set("string", "updated");
         entity.remove("strings");
         entity.set("bool", Value::Null);
-        let key = EntityKey::data(
-            THINGS_SUBGRAPH_ID.clone(),
-            "Scalar".to_owned(),
-            entity.id().unwrap().clone(),
-        );
+        let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
 
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(&key, Cow::from(&entity))];
@@ -607,13 +596,7 @@ fn update_many() {
         let entity_type = EntityType::from("Scalar");
         let keys: Vec<EntityKey> = ["one", "two", "three"]
             .iter()
-            .map(|id| {
-                EntityKey::data(
-                    THINGS_SUBGRAPH_ID.clone(),
-                    "Scalar".to_owned(),
-                    String::from(*id),
-                )
-            })
+            .map(|id| EntityKey::data("Scalar".to_owned(), String::from(*id)))
             .collect();
 
         let entities_vec = vec![one, two, three];
@@ -683,11 +666,7 @@ fn serialize_bigdecimal() {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d);
 
-            let key = EntityKey::data(
-                THINGS_SUBGRAPH_ID.clone(),
-                "Scalar".to_owned(),
-                entity.id().unwrap().clone(),
-            );
+            let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
             let entity_type = EntityType::from("Scalar");
             let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout
@@ -729,6 +708,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
             BLOCK_NUMBER_MAX,
             None,
         )
+        .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
 }
@@ -742,11 +722,7 @@ fn delete() {
         insert_entity(&conn, &layout, "Scalar", vec![two]);
 
         // Delete where nothing is getting deleted
-        let key = EntityKey::data(
-            THINGS_SUBGRAPH_ID.clone(),
-            "Scalar".to_owned(),
-            "no such entity".to_owned(),
-        );
+        let key = EntityKey::data("Scalar".to_owned(), "no such entity".to_owned());
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
@@ -963,6 +939,7 @@ fn revert_block() {
                     BLOCK_NUMBER_MAX,
                     None,
                 )
+                .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
             let mut skipped = 0;
@@ -1044,7 +1021,8 @@ impl<'a> QueryChecker<'a> {
                 BLOCK_NUMBER_MAX,
                 None,
             )
-            .expect("layout.query failed to execute query");
+            .expect("layout.query failed to execute query")
+            .0;
 
         let mut entity_ids: Vec<_> = entities
             .into_iter()
@@ -1701,7 +1679,8 @@ impl<'a> FilterChecker<'a> {
                 BLOCK_NUMBER_MAX,
                 None,
             )
-            .expect("layout.query failed to execute query");
+            .expect("layout.query failed to execute query")
+            .0;
 
         let entity_ids: Vec<_> = entities
             .into_iter()

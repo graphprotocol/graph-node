@@ -30,6 +30,14 @@ RUN cd /graph-node \
     && echo "CARGO_VERSION='$(cargo --version)'" >> /etc/image-info \
     && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info
 
+# Debug image to access core dumps
+FROM graph-node-build as graph-node-debug
+RUN apt-get update \
+    && apt-get install -y curl gdb postgresql-client
+
+COPY docker/Dockerfile /Dockerfile
+COPY docker/bin/* /usr/local/bin/
+
 # The graph-node runtime image with only the executable
 FROM debian:buster-slim as graph-node
 ENV RUST_LOG ""
@@ -82,11 +90,3 @@ COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bi
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY docker/Dockerfile /Dockerfile
 CMD start
-
-# Debug image to access core dumps
-FROM graph-node-build as graph-node-debug
-RUN apt-get update \
-    && apt-get install -y curl gdb postgresql-client
-
-COPY docker/Dockerfile /Dockerfile
-COPY docker/bin/* /usr/local/bin/

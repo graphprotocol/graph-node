@@ -4,10 +4,12 @@ use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{EntityType, StoredDynamicDataSource};
+use graph::components::store::{EntityKey, EntityType, StoredDynamicDataSource};
+use graph::components::versions::VERSIONS;
+use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
-    tokio, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
+    tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
@@ -29,9 +31,9 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
-    CheapClone, DeploymentHash, DeploymentState, Entity, EntityKey, EntityModification,
-    EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
-    StoreEvent, UnfailOutcome, Value, ENV_VARS,
+    CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
+    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome,
+    Value, ENV_VARS,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -64,7 +66,7 @@ pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
     pub(crate) input: Arc<Schema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
-    pub(crate) api: Arc<ApiSchema>,
+    pub(crate) api: HashMap<ApiVersion, Arc<ApiSchema>>,
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
     pub(crate) graft_block: Option<BlockNumber>,
@@ -230,7 +232,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         site: Arc<Site>,
         query: EntityQuery,
-    ) -> Result<Vec<T>, QueryExecutionError> {
+    ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         let layout = self.layout(conn, site)?;
 
         let logger = query.logger.unwrap_or_else(|| self.logger.clone());
@@ -252,8 +254,6 @@ impl DeploymentStore {
         layout: &Layout,
         key: &EntityKey,
     ) -> Result<(), StoreError> {
-        assert_eq!(&key.subgraph_id, &layout.site.deployment);
-
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
         //
@@ -264,7 +264,12 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_info_with_conn(conn, &layout.site)?.api;
+        let schema = self
+            .subgraph_info_with_conn(conn, &layout.site)?
+            .api
+            .get(&Default::default())
+            .expect("API schema should be present")
+            .clone();
         let types_for_interface = schema.types_for_interface();
         let entity_type = key.entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
@@ -284,7 +289,7 @@ impl DeploymentStore {
             {
                 return Err(StoreError::ConflictingId(
                     entity_type,
-                    key.entity_id.clone(),
+                    key.entity_id.to_string(),
                     conflicting_entity,
                 ));
             }
@@ -552,10 +557,16 @@ impl DeploymentStore {
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well
-        let mut schema = input_schema.clone();
-        schema.document =
-            api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
-        schema.add_subgraph_id_directives(site.deployment.clone());
+        let mut api: HashMap<ApiVersion, Arc<ApiSchema>> = HashMap::new();
+
+        for version in VERSIONS.iter() {
+            let api_version = ApiVersion::from_version(version).expect("Invalid API version");
+            let mut schema = input_schema.clone();
+            schema.document =
+                api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
+            schema.add_subgraph_id_directives(site.deployment.clone());
+            api.insert(api_version, Arc::new(ApiSchema::from_api_schema(schema)?));
+        }
 
         let spec_version = Version::from_str(&spec_version).map_err(anyhow::Error::from)?;
         let poi_version = if spec_version.ge(&SPEC_VERSION_0_0_6) {
@@ -566,7 +577,7 @@ impl DeploymentStore {
 
         let info = SubgraphInfo {
             input: Arc::new(input_schema),
-            api: Arc::new(ApiSchema::from_api_schema(schema)?),
+            api,
             graft_block,
             debug_fork,
             description,
@@ -866,6 +877,7 @@ impl DeploymentStore {
                     );
                     let entities = store
                         .execute_query::<Entity>(conn, site4, query)
+                        .map(|(entities, _)| entities)
                         .map_err(anyhow::Error::from)?;
 
                     Ok(Some(entities))
@@ -962,6 +974,7 @@ impl DeploymentStore {
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let conn = self.get_conn()?;
         self.execute_query(&conn, site, query)
+            .map(|(entities, _)| entities)
     }
 
     pub(crate) fn transact_block_operations(
@@ -974,19 +987,8 @@ impl DeploymentStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
+        offchain_to_remove: &[StoredDynamicDataSource],
     ) -> Result<StoreEvent, StoreError> {
-        // All operations should apply only to data or metadata for this subgraph
-        if mods
-            .iter()
-            .map(|modification| modification.entity_key())
-            .any(|key| key.subgraph_id != site.deployment)
-        {
-            panic!(
-                "transact_block_operations must affect only entities \
-                 in the subgraph or in the subgraph of subgraphs"
-            );
-        }
-
         let conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
             self.get_conn()?
@@ -997,7 +999,7 @@ impl DeploymentStore {
             // wait with sending it until we have done all our other work
             // so that we do not hold a lock on the notification queue
             // for longer than we have to
-            let event: StoreEvent = mods.iter().collect();
+            let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
 
             // Make the changes
             let layout = self.layout(&conn, site.clone())?;
@@ -1018,6 +1020,8 @@ impl DeploymentStore {
                 block_ptr_to,
                 manifest_idx_and_name,
             )?;
+
+            dynds::remove_offchain(&conn, &site, offchain_to_remove)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(

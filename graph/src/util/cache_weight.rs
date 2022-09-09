@@ -1,7 +1,7 @@
 use crate::{
-    components::store::EntityType,
+    components::store::{EntityKey, EntityType},
     data::value::Word,
-    prelude::{q, BigDecimal, BigInt, EntityKey, Value},
+    prelude::{q, BigDecimal, BigInt, Value},
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -123,9 +123,7 @@ impl CacheWeight for EntityType {
 
 impl CacheWeight for EntityKey {
     fn indirect_weight(&self) -> usize {
-        self.subgraph_id.indirect_weight()
-            + self.entity_id.indirect_weight()
-            + self.entity_type.indirect_weight()
+        self.entity_id.indirect_weight() + self.entity_type.indirect_weight()
     }
 }
 

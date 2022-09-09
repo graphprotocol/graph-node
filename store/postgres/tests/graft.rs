@@ -146,7 +146,6 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
-        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -263,11 +262,10 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey::data(
-            TEST_SUBGRAPH_ID.clone(),
-            entity_type.to_owned(),
-            id.to_owned(),
-        ),
+        key: EntityKey {
+            entity_type: EntityType::new(entity_type.to_string()),
+            entity_id: id.into(),
+        },
         data: test_entity,
     }
 }
@@ -330,7 +328,10 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com");
     let op = EntityOperation::Set {
-        key: EntityKey::data(deployment.hash.clone(), USER.to_owned(), "3".to_owned()),
+        key: EntityKey {
+            entity_type: EntityType::new(USER.to_owned()),
+            entity_id: "3".into(),
+        },
         data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])

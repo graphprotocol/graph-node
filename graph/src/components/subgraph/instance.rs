@@ -1,11 +1,15 @@
-use crate::blockchain::Blockchain;
-use crate::prelude::*;
-use crate::util::lfu_cache::LfuCache;
-use crate::{components::store::WritableStore, data::subgraph::schema::SubgraphError};
+use crate::{
+    blockchain::Blockchain,
+    components::store::{EntityKey, ReadStore, StoredDynamicDataSource},
+    data::subgraph::schema::SubgraphError,
+    data_source::DataSourceTemplate,
+    prelude::*,
+    util::lfu_cache::LfuCache,
+};
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo<C: Blockchain> {
-    pub template: C::DataSourceTemplate,
+    pub template: DataSourceTemplate<C>,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
     pub creation_block: BlockNumber,
@@ -20,20 +24,21 @@ pub struct BlockState<C: Blockchain> {
     // Data sources created in the current handler.
     handler_created_data_sources: Vec<DataSourceTemplateInfo<C>>,
 
+    // offchain data sources to be removed because they've been processed.
+    pub offchain_to_remove: Vec<StoredDynamicDataSource>,
+
     // Marks whether a handler is currently executing.
     in_handler: bool,
 }
 
 impl<C: Blockchain> BlockState<C> {
-    pub fn new(
-        store: Arc<dyn WritableStore>,
-        lfu_cache: LfuCache<EntityKey, Option<Entity>>,
-    ) -> Self {
+    pub fn new(store: impl ReadStore, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
-            entity_cache: EntityCache::with_current(store, lfu_cache),
+            entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache),
             deterministic_errors: Vec::new(),
             created_data_sources: Vec::new(),
             handler_created_data_sources: Vec::new(),
+            offchain_to_remove: Vec::new(),
             in_handler: false,
         }
     }
@@ -46,6 +51,7 @@ impl<C: Blockchain> BlockState<C> {
             deterministic_errors,
             created_data_sources,
             handler_created_data_sources,
+            offchain_to_remove,
             in_handler,
         } = self;
 
@@ -55,6 +61,7 @@ impl<C: Blockchain> BlockState<C> {
         }
         deterministic_errors.extend(other.deterministic_errors);
         entity_cache.extend(other.entity_cache);
+        offchain_to_remove.extend(other.offchain_to_remove);
     }
 
     pub fn has_errors(&self) -> bool {

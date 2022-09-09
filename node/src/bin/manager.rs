@@ -186,6 +186,13 @@ pub enum Command {
     Copy(CopyCommand),
     /// Run a GraphQL query
     Query {
+        /// Save the JSON query result in this file
+        #[structopt(long, short)]
+        output: Option<String>,
+        /// Save the query trace in this file
+        #[structopt(long, short)]
+        trace: Option<String>,
+
         /// The subgraph to query
         ///
         /// Either a deployment id `Qm..` or a subgraph name
@@ -853,6 +860,7 @@ async fn main() -> anyhow::Result<()> {
                 force,
                 sleep,
             )
+            .await
         }
         Run {
             network_name,
@@ -921,10 +929,12 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Query {
+            output,
+            trace,
             target,
             query,
             vars,
-        } => commands::query::run(ctx.graphql_runner(), target, query, vars).await,
+        } => commands::query::run(ctx.graphql_runner(), target, query, vars, output, trace).await,
         Chain(cmd) => {
             use ChainCommand::*;
             match cmd {

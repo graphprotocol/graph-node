@@ -8,7 +8,7 @@ use std::iter::FromIterator;
 /// An immutable string that is more memory-efficient since it only has an
 /// overhead of 16 bytes for storing a string vs the 24 bytes that `String`
 /// requires
-#[derive(Clone, Default, Debug, PartialOrd, Ord, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Word(Box<str>);
 
 impl Word {
@@ -40,6 +40,24 @@ impl From<&str> for Word {
 impl From<String> for Word {
     fn from(s: String) -> Self {
         Word(s.into_boxed_str())
+    }
+}
+
+impl Serialize for Word {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Word {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Into::into)
     }
 }
 

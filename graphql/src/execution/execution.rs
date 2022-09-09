@@ -1,7 +1,8 @@
 use super::cache::{QueryBlockCache, QueryCache};
+use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::{schema::META_FIELD_NAME, value::Object},
+    data::{query::Trace, schema::META_FIELD_NAME, value::Object},
     prelude::{s, CheapClone},
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
@@ -239,11 +240,11 @@ where
     }
 }
 
-pub(crate) fn execute_root_selection_set_uncached(
+pub(crate) async fn execute_root_selection_set_uncached(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
     root_type: &sast::ObjectType,
-) -> Result<Object, Vec<QueryExecutionError>> {
+) -> Result<(Object, Trace), Vec<QueryExecutionError>> {
     // Split the top-level fields into introspection fields and
     // regular data fields
     let mut data_set = a::SelectionSet::empty_from(selection_set);
@@ -264,27 +265,33 @@ pub(crate) fn execute_root_selection_set_uncached(
     }
 
     // If we are getting regular data, prefetch it from the database
-    let mut values = if data_set.is_empty() && meta_items.is_empty() {
-        Object::default()
+    let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
+        (Object::default(), Trace::None)
     } else {
-        let initial_data = ctx.resolver.prefetch(ctx, &data_set)?;
+        let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
         data_set.push_fields(meta_items)?;
-        execute_selection_set_to_map(ctx, &data_set, root_type, initial_data)?
+        (
+            execute_selection_set_to_map(ctx, &data_set, root_type, initial_data).await?,
+            trace,
+        )
     };
 
     // Resolve introspection fields, if there are any
     if !intro_set.is_empty() {
         let ictx = ctx.as_introspection_context();
 
-        values.extend(execute_selection_set_to_map(
-            &ictx,
-            ctx.query.selection_set.as_ref(),
-            &*INTROSPECTION_QUERY_TYPE,
-            None,
-        )?);
+        values.extend(
+            execute_selection_set_to_map(
+                &ictx,
+                ctx.query.selection_set.as_ref(),
+                &*INTROSPECTION_QUERY_TYPE,
+                None,
+            )
+            .await?,
+        );
     }
 
-    Ok(values)
+    Ok((values, trace))
 }
 
 /// Executes the root selection set of a query.
@@ -347,11 +354,12 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         let query_text = execute_ctx.query.query_text.cheap_clone();
         let variables_text = execute_ctx.query.variables_text.cheap_clone();
         match graph::spawn_blocking_allow_panic(move || {
-            let mut query_res = QueryResult::from(execute_root_selection_set_uncached(
-                &execute_ctx,
-                &execute_selection_set,
-                &execute_root_type,
-            ));
+            let mut query_res =
+                QueryResult::from(graph::block_on(execute_root_selection_set_uncached(
+                    &execute_ctx,
+                    &execute_selection_set,
+                    &execute_root_type,
+                )));
 
             // Unwrap: In practice should never fail, but if it does we will catch the panic.
             execute_ctx.resolver.post_process(&mut query_res).unwrap();
@@ -444,21 +452,18 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 /// Executes a selection set, requiring the result to be of the given object type.
 ///
 /// Allows passing in a parent value during recursive processing of objects and their fields.
-fn execute_selection_set<'a>(
+async fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_set: &'a a::SelectionSet,
     object_type: &sast::ObjectType,
     prefetched_value: Option<r::Value>,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
-    Ok(r::Value::Object(execute_selection_set_to_map(
-        ctx,
-        selection_set,
-        object_type,
-        prefetched_value,
-    )?))
+    Ok(r::Value::Object(
+        execute_selection_set_to_map(ctx, selection_set, object_type, prefetched_value).await?,
+    ))
 }
 
-fn execute_selection_set_to_map<'a>(
+async fn execute_selection_set_to_map<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_set: &'a a::SelectionSet,
     object_type: &sast::ObjectType,
@@ -520,7 +525,7 @@ fn execute_selection_set_to_map<'a>(
         if field.name.as_str() == "__typename" && field_value.is_none() {
             results.push((response_key, r::Value::String(object_type.name.clone())));
         } else {
-            match execute_field(ctx, object_type, field_value, field, field_type) {
+            match execute_field(ctx, object_type, field_value, field, field_type).await {
                 Ok(v) => {
                     results.push((response_key, v));
                 }
@@ -540,7 +545,7 @@ fn execute_selection_set_to_map<'a>(
 }
 
 /// Executes a field.
-fn execute_field(
+async fn execute_field(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
@@ -556,10 +561,12 @@ fn execute_field(
         &field_definition.field_type,
     )
     .and_then(|value| complete_value(ctx, field, &field_definition.field_type, value))
+    .await
 }
 
 /// Resolves the value of a field.
-fn resolve_field_value(
+#[async_recursion]
+async fn resolve_field_value(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
@@ -568,14 +575,17 @@ fn resolve_field_value(
     field_type: &s::Type,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match field_type {
-        s::Type::NonNullType(inner_type) => resolve_field_value(
-            ctx,
-            object_type,
-            field_value,
-            field,
-            field_definition,
-            inner_type.as_ref(),
-        ),
+        s::Type::NonNullType(inner_type) => {
+            resolve_field_value(
+                ctx,
+                object_type,
+                field_value,
+                field,
+                field_definition,
+                inner_type.as_ref(),
+            )
+            .await
+        }
 
         s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
             ctx,
@@ -586,14 +596,17 @@ fn resolve_field_value(
             name,
         ),
 
-        s::Type::ListType(inner_type) => resolve_field_value_for_list_type(
-            ctx,
-            object_type,
-            field_value,
-            field,
-            field_definition,
-            inner_type.as_ref(),
-        ),
+        s::Type::ListType(inner_type) => {
+            resolve_field_value_for_list_type(
+                ctx,
+                object_type,
+                field_value,
+                field,
+                field_definition,
+                inner_type.as_ref(),
+            )
+            .await
+        }
     }
 }
 
@@ -643,7 +656,8 @@ fn resolve_field_value_for_named_type(
 }
 
 /// Resolves the value of a field that corresponds to a list type.
-fn resolve_field_value_for_list_type(
+#[async_recursion]
+async fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
@@ -652,14 +666,17 @@ fn resolve_field_value_for_list_type(
     inner_type: &s::Type,
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match inner_type {
-        s::Type::NonNullType(inner_type) => resolve_field_value_for_list_type(
-            ctx,
-            object_type,
-            field_value,
-            field,
-            field_definition,
-            inner_type,
-        ),
+        s::Type::NonNullType(inner_type) => {
+            resolve_field_value_for_list_type(
+                ctx,
+                object_type,
+                field_value,
+                field,
+                field_definition,
+                inner_type,
+            )
+            .await
+        }
 
         s::Type::NamedType(ref type_name) => {
             let named_type = ctx
@@ -674,6 +691,7 @@ fn resolve_field_value_for_list_type(
                 s::TypeDefinition::Object(t) => ctx
                     .resolver
                     .resolve_objects(field_value, field, field_definition, t.into())
+                    .await
                     .map_err(|e| vec![e]),
 
                 // Let the resolver decide how values in the resolved object value
@@ -691,6 +709,7 @@ fn resolve_field_value_for_list_type(
                 s::TypeDefinition::Interface(t) => ctx
                     .resolver
                     .resolve_objects(field_value, field, field_definition, t.into())
+                    .await
                     .map_err(|e| vec![e]),
 
                 s::TypeDefinition::Union(_) => Err(vec![QueryExecutionError::Unimplemented(
@@ -711,7 +730,8 @@ fn resolve_field_value_for_list_type(
 }
 
 /// Ensures that a value matches the expected return type.
-fn complete_value(
+#[async_recursion]
+async fn complete_value(
     ctx: &ExecutionContext<impl Resolver>,
     field: &a::Field,
     field_type: &s::Type,
@@ -720,7 +740,7 @@ fn complete_value(
     match field_type {
         // Fail if the field type is non-null but the value is null
         s::Type::NonNullType(inner_type) => {
-            match complete_value(ctx, field, inner_type, resolved_value)? {
+            match complete_value(ctx, field, inner_type, resolved_value).await? {
                 r::Value::Null => Err(vec![QueryExecutionError::NonNullError(
                     field.position,
                     field.name.to_string(),
@@ -744,7 +764,7 @@ fn complete_value(
                     for value_place in &mut values {
                         // Put in a placeholder, complete the value, put the completed value back.
                         let value = std::mem::replace(value_place, r::Value::Null);
-                        match complete_value(ctx, field, inner_type, value) {
+                        match complete_value(ctx, field, inner_type, value).await {
                             Ok(value) => {
                                 *value_place = value;
                             }
@@ -807,6 +827,7 @@ fn complete_value(
                         &object_type,
                         Some(resolved_value),
                     )
+                    .await
                 }
 
                 // Resolve interface types using the resolved value and complete the value recursively
@@ -819,6 +840,7 @@ fn complete_value(
                         &object_type,
                         Some(resolved_value),
                     )
+                    .await
                 }
 
                 // Resolve union types using the resolved value and complete the value recursively
@@ -831,6 +853,7 @@ fn complete_value(
                         &object_type,
                         Some(resolved_value),
                     )
+                    .await
                 }
 
                 s::TypeDefinition::InputObject(_) => {

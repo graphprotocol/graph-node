@@ -22,7 +22,7 @@ To answer this question, you need to process all [`Birth` events](https://github
 
 Even for this relatively simple question, it would take hours or even days for a dApp running in a browser to find an answer. Indexing and caching data off blockchains is hard. There are also edge cases around finality, chain reorganizations, uncled blocks, etc., which make it even more difficult to display deterministic data to the end user.
 
-The Graph solves this issue by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data. The entire community can contribute to and utilize this tool. In the current implemention, it exposes functionality through a GraphQL API for end users.
+The Graph solves this issue by providing an open source node implementation, [Graph Node](../README.md), which handles indexing and caching of blockchain data. The entire community can contribute to and utilize this tool. In the current implementation, it exposes functionality through a GraphQL API for end users.
 
 ### 0.2 How Does It Work?
 
@@ -123,7 +123,7 @@ The ABI JSON file must contain the correct ABI to source all the events or any c
 * If you are building a subgraph for a public project, you can download that project to your computer and generate the ABI by using [`truffle compile`](https://truffleframework.com/docs/truffle/overview) or `solc` to compile. This creates the ABI files that you can then transfer to your subgraph `/abi` folder.
 * Sometimes, you can also find the ABI on [Etherscan](https://etherscan.io), but this is not always reliable because the uploaded ABI may be out of date. Make sure you have the correct ABI. Otherwise, you will not be able to start a Graph Node.
 
-If you run into trouble here, double check the ABI and ensure that the event signatures exist *exactly* as you expect them by examining the smart contract code you are sourcing. Also, note with the ABI, you only need the array for the ABI. Compiling the contracts locally results in a `.json` file that contains the complete ABI nested within the `.json` file under the key `abi`.
+If you run into trouble here, double-check the ABI and ensure that the event signatures exist *exactly* as you expect them by examining the smart contract code you are sourcing. Also, note with the ABI, you only need the array for the ABI. Compiling the contracts locally results in a `.json` file that contains the complete ABI nested within the `.json` file under the key `abi`.
 
 An example `abi` for the `Transfer` event is shown below and would be stored in the `/abi` folder with the name `ERC721ABI.json`:
 
@@ -238,7 +238,7 @@ A few things to note from this code:
 
 The only way that entities may be added to The Graph is by calling `<entity>.save()`, which may be called multiple times in an event handler. `<entity>.save()` will only set the entity attributes that have explicitly been set on the `entity`. Attributes that are not explicitly set or are unset by calling `Entity.unset(<attribute>)` will not be overwritten. This means you can safely update one field of an entity and not worry about overwriting other fields not referenced in the mapping.
 
-The definitiion for `<entity>.save()` is:
+The definition for `<entity>.save()` is:
 
 ```typescript
 entity.save() // Entity is representative of the entity type being updated. In our example above, it is Token.
@@ -246,7 +246,7 @@ entity.save() // Entity is representative of the entity type being updated. In o
 
  `<entity>.load()` expects the entity type and ID of the entity. Use `<entity>.load()` to retrieve information previously added with `<entity>.save()`.
 
-The definitiion for `<entity>.load()` is:
+The definition for `<entity>.load()` is:
 
  ```typescript
 entity.load() // Entity is representative of the entity type being updated. In our example above, it is Token.
@@ -315,7 +315,7 @@ createdb <POSTGRES_DB_NAME>
 ```
 Name the database something relevant to the project so that you always know how to access it.
 
-### 2.3 Start the Graph Node and Connect to an Etheruem Node
+### 2.3 Start the Graph Node and Connect to an Ethereum Node
 
 When you start the Graph Node, you need to specify which Ethereum network it should connect to. There are three common ways to do this:
  * Infura

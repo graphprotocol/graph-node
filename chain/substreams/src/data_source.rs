@@ -8,12 +8,11 @@ use graph::{
     prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
     slog::Logger,
 };
+
+use prost::Message;
 use serde::Deserialize;
 
-use crate::{
-    chain::{Block, Chain},
-    TriggerData,
-};
+use crate::{chain::Chain, Block, TriggerData};
 
 pub const SUBSTREAMS_KIND: &str = "substreams";
 
@@ -22,9 +21,9 @@ const TEMPLATE_ERROR: &str = "Substreams do not support templates";
 
 const ALLOWED_MAPPING_KIND: [&'static str; 1] = ["substreams/graph-entities"];
 
-// TODO(filipe): Remove once we implement the TriggerProcessor for substreams.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+/// Represents the DataSource portion of the manifest once it has been parsed
+/// and the substream spkg has been downloaded + parsed.
 pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
@@ -32,6 +31,7 @@ pub struct DataSource {
     pub(crate) source: Source,
     pub mapping: Mapping,
     pub context: Arc<Option<graph::prelude::DataSourceContext>>,
+    pub initial_block: Option<BlockNumber>,
 }
 
 impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
@@ -48,8 +48,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn start_block(&self) -> BlockNumber {
-        // TODO(filipe): Figure out how to handle this
-        0
+        self.initial_block.unwrap_or(0)
     }
 
     fn name(&self) -> &str {
@@ -134,6 +133,13 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+/// Module name comes from the manifest, package is the parsed spkg file.
+pub struct Source {
+    pub module_name: String,
+    pub package: graph::substreams::Package,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mapping {
     pub api_version: semver::Version,
@@ -141,16 +147,18 @@ pub struct Mapping {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+/// Raw representation of the data source for deserialization purposes.
 pub struct UnresolvedDataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
-    pub(crate) source: Source,
+    pub(crate) source: UnresolvedSource,
     pub mapping: UnresolvedMapping,
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+/// Text api_version, before parsing and validation.
 pub struct UnresolvedMapping {
     pub api_version: String,
     pub kind: String,
@@ -160,38 +168,59 @@ pub struct UnresolvedMapping {
 impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     async fn resolve(
         self,
-        _resolver: &Arc<dyn LinkResolver>,
-        _logger: &Logger,
+        resolver: &Arc<dyn LinkResolver>,
+        logger: &Logger,
         _manifest_idx: u32,
     ) -> Result<DataSource, Error> {
+        let content = resolver.cat(logger, &self.source.package.file).await?;
+
+        let package = graph::substreams::Package::decode(content.as_ref())?;
+
+        let initial_block: Option<u64> = match package.modules {
+            Some(ref modules) => modules.modules.iter().map(|x| x.initial_block).min(),
+            None => None,
+        };
+
+        let initial_block: Option<i32> = initial_block
+            .map_or(Ok(None), |x: u64| TryInto::<i32>::try_into(x).map(Some))
+            .map_err(anyhow::Error::from)?;
+
         Ok(DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: self.network,
             name: self.name,
-            source: self.source,
+            source: Source {
+                module_name: self.source.package.module_name,
+                package,
+            },
             mapping: Mapping {
                 api_version: semver::Version::parse(&self.mapping.api_version)?,
                 kind: self.mapping.kind,
             },
             context: Arc::new(None),
+            initial_block,
         })
     }
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Source {
-    package: Package,
+/// Source is a part of the manifest and this is needed for parsing.
+pub struct UnresolvedSource {
+    package: UnresolvedPackage,
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Package {
+/// The unresolved Package section of the manifest.
+pub struct UnresolvedPackage {
     pub module_name: String,
     pub file: Link,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+/// This is necessary for the Blockchain trait associated types, substreams do not support
+/// data source templates so this is a noop and is not expected to be called.
 pub struct NoopDataSourceTemplate {}
 
 impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
@@ -238,6 +267,14 @@ mod test {
 
     use crate::{DataSource, Mapping, UnresolvedDataSource, UnresolvedMapping, SUBSTREAMS_KIND};
 
+    const EMPTY_PACKAGE: graph::substreams::Package = graph::substreams::Package {
+        proto_files: vec![],
+        version: 0,
+        modules: None,
+        module_meta: vec![],
+        package_meta: vec![],
+    };
+
     #[test]
     fn parse_data_source() {
         let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
@@ -245,8 +282,8 @@ mod test {
             kind: SUBSTREAMS_KIND.into(),
             network: Some("mainnet".into()),
             name: "Uniswap".into(),
-            source: crate::Source {
-                package: crate::Package {
+            source: crate::UnresolvedSource {
+                package: crate::UnresolvedPackage {
                     module_name: "output".into(),
                     file: Link {
                         link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
@@ -272,18 +309,15 @@ mod test {
             network: Some("mainnet".into()),
             name: "Uniswap".into(),
             source: crate::Source {
-                package: crate::Package {
-                    module_name: "output".into(),
-                    file: Link {
-                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
-                    },
-                },
+                module_name: "output".into(),
+                package: EMPTY_PACKAGE,
             },
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
             },
             context: Arc::new(None),
+            initial_block: None,
         };
         assert_eq!(ds, expected);
     }
@@ -316,18 +350,15 @@ mod test {
             network: Some("mainnet".into()),
             name: "Uniswap".into(),
             source: crate::Source {
-                package: crate::Package {
-                    module_name: "output".into(),
-                    file: Link {
-                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
-                    },
-                },
+                module_name: "".to_string(),
+                package: EMPTY_PACKAGE,
             },
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
             },
             context: Arc::new(None),
+            initial_block: None,
         }
     }
 
@@ -360,7 +391,7 @@ mod test {
         }
 
         async fn cat(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
-            unimplemented!()
+            Ok(vec![])
         }
 
         async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {

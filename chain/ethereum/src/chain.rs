@@ -51,7 +51,7 @@ pub struct EthereumStreamBuilder {}
 
 #[async_trait]
 impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
-    fn build_firehose(
+    async fn build_firehose(
         &self,
         chain: &Chain,
         deployment: DeploymentLocator,
@@ -245,6 +245,7 @@ impl Chain {
 #[async_trait]
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Ethereum;
+    const ALIASES: &'static [&'static str] = &["ethereum/contract"];
 
     type Block = BlockFinality;
 
@@ -283,15 +284,17 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        self.block_stream_builder.build_firehose(
-            self,
-            deployment,
-            block_cursor,
-            start_blocks,
-            subgraph_current_block,
-            filter,
-            unified_api_version,
-        )
+        self.block_stream_builder
+            .build_firehose(
+                self,
+                deployment,
+                block_cursor,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
     }
 
     async fn new_polling_block_stream(
@@ -385,6 +388,12 @@ pub enum BlockFinality {
 
     // If a block may still be reorged, we need to work with more local data.
     NonFinal(EthereumBlockWithCalls),
+}
+
+impl Default for BlockFinality {
+    fn default() -> Self {
+        Self::Final(Arc::default())
+    }
 }
 
 impl BlockFinality {

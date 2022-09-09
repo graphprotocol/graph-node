@@ -4,8 +4,7 @@ use lazy_static::lazy_static;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, WritableStore};
-use graph::components::store::{EntityKey, EntityType};
+use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
@@ -44,7 +43,6 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         data_sources: vec![],
         graft: None,
         templates: vec![],
-        offchain_data_sources: vec![],
         chain: PhantomData,
     };
 
@@ -103,12 +101,8 @@ fn block_pointer(number: u8) -> BlockPtr {
     BlockPtr::from((hash, number as BlockNumber))
 }
 
-fn count_key(deployment: &DeploymentLocator, id: &str) -> EntityKey {
-    EntityKey {
-        subgraph_id: deployment.hash.clone(),
-        entity_type: EntityType::from(COUNTER),
-        entity_id: id.to_owned(),
-    }
+fn count_key(id: &str) -> EntityKey {
+    EntityKey::data(COUNTER.to_owned(), id.to_owned())
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
@@ -117,7 +111,7 @@ async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentL
         count: count as i32
     };
     let entity_op = EntityOperation::Set {
-        key: count_key(deployment, &data.get("id").unwrap().to_string()),
+        key: count_key(&data.get("id").unwrap().to_string()),
         data,
     };
     transact_entity_operations(store, deployment, block_pointer(count), vec![entity_op])
@@ -141,7 +135,7 @@ fn tracker() {
         let subgraph_store = store.subgraph_store();
 
         let read_count = || {
-            let counter = writable.get(&count_key(&deployment, "1")).unwrap().unwrap();
+            let counter = writable.get(&count_key("1")).unwrap().unwrap();
             counter.get("count").unwrap().as_int().unwrap()
         };
         for count in 1..4 {

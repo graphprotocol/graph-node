@@ -18,9 +18,9 @@ pub mod cheap_clone;
 
 pub mod ipfs_client;
 
-pub mod blockchain;
+pub mod data_source;
 
-pub mod offchain;
+pub mod blockchain;
 
 pub mod runtime;
 
@@ -122,10 +122,10 @@ pub mod prelude {
     pub use crate::components::store::{
         AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, Child, ChildMultiplicity,
         EntityCache, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
-        EntityKey, EntityLink, EntityModification, EntityOperation, EntityOrder, EntityQuery,
-        EntityRange, EntityWindow, EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats,
-        QueryStore, QueryStoreManager, StoreError, StoreEvent, StoreEventStream,
-        StoreEventStreamBox, SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
+        EntityLink, EntityModification, EntityOperation, EntityOrder, EntityQuery, EntityRange,
+        EntityWindow, EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats, QueryStore,
+        QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
+        SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,
@@ -133,6 +133,7 @@ pub mod prelude {
         SubgraphVersionSwitchingMode,
     };
     pub use crate::components::trigger_processor::TriggerProcessor;
+    pub use crate::components::versions::{ApiVersion, FeatureFlag};
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
     pub use crate::env::ENV_VARS;
 
@@ -141,14 +142,14 @@ pub mod prelude {
         shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,
     };
     pub use crate::data::query::{
-        Query, QueryError, QueryExecutionError, QueryResult, QueryVariables,
+        Query, QueryError, QueryExecutionError, QueryResult, QueryTarget, QueryVariables,
     };
     pub use crate::data::schema::{ApiSchema, Schema};
     pub use crate::data::store::ethereum::*;
     pub use crate::data::store::scalar::{BigDecimal, BigInt, BigIntSign};
     pub use crate::data::store::{
-        AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, ToEntityId, ToEntityKey,
-        TryIntoEntity, Value, ValueType,
+        AssignmentEvent, Attribute, Entity, NodeId, SubscriptionFilter, TryIntoEntity, Value,
+        ValueType,
     };
     pub use crate::data::subgraph::schema::SubgraphDeploymentEntity;
     pub use crate::data::subgraph::{
