@@ -1,13 +1,13 @@
 [package]
 name = "graph-graphql"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 
 [dependencies]
 crossbeam = "0.8"
 graph = { path = "../graph" }
 graphql-parser = "0.4.0"
-graphql-tools = { git = "https://github.com/dotansimha/graphql-tools-rs", branch = "clone-validation-error" }
+graphql-tools = "0.0.20" 
 indexmap = "1.9"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"

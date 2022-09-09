@@ -150,7 +150,7 @@ impl Config {
     /// a config from the command line arguments in `opt`
     pub fn load(logger: &Logger, opt: &Opt) -> Result<Config> {
         if let Some(config) = &opt.config {
-            Self::from_file(logger, config)
+            Self::from_file(logger, config, &opt.node_id)
         } else {
             info!(
                 logger,
@@ -160,13 +160,15 @@ impl Config {
         }
     }
 
-    pub fn from_file(logger: &Logger, path: &str) -> Result<Config> {
+    pub fn from_file(logger: &Logger, path: &str, node: &str) -> Result<Config> {
         info!(logger, "Reading configuration file `{}`", path);
-        Self::from_str(&read_to_string(path)?)
+        Self::from_str(&read_to_string(path)?, node)
     }
 
-    pub fn from_str(config: &str) -> Result<Config> {
+    pub fn from_str(config: &str, node: &str) -> Result<Config> {
         let mut config: Config = toml::from_str(&config)?;
+        config.node =
+            NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
     }
@@ -548,10 +550,17 @@ pub enum ProviderDetails {
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";
 const FIREHOSE_PROVIDER_FEATURES: [&str; 1] = [FIREHOSE_FILTER_FEATURE];
+
+fn ten() -> u16 {
+    10
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FirehoseProvider {
     pub url: String,
     pub token: Option<String>,
+    #[serde(default = "ten")]
+    pub conn_pool_size: u16,
     #[serde(default)]
     pub features: BTreeSet<String>,
 }
@@ -1323,6 +1332,7 @@ mod tests {
                     url: "http://localhost:9000".to_owned(),
                     token: None,
                     features: BTreeSet::new(),
+                    conn_pool_size: 10,
                 }),
             },
             actual
@@ -1346,6 +1356,7 @@ mod tests {
                     url: "http://localhost:9000".to_owned(),
                     token: None,
                     features: BTreeSet::new(),
+                    conn_pool_size: 10,
                 }),
             },
             actual

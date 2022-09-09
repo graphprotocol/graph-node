@@ -28,23 +28,30 @@ pub struct EthereumNetworkAdapters {
 }
 
 impl EthereumNetworkAdapters {
-    pub fn cheapest_with(
+    pub fn all_cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
-    ) -> Result<Arc<EthereumAdapter>, Error> {
+    ) -> impl Iterator<Item = Arc<EthereumAdapter>> + '_ {
         let cheapest_sufficient_capability = self
             .adapters
             .iter()
             .find(|adapter| &adapter.capabilities >= required_capabilities)
             .map(|adapter| &adapter.capabilities);
 
-        // Select randomly from the cheapest adapters that have sufficent capabilities.
         self.adapters
             .iter()
-            .filter(|adapter| Some(&adapter.capabilities) == cheapest_sufficient_capability)
+            .filter(move |adapter| Some(&adapter.capabilities) == cheapest_sufficient_capability)
             .filter(|adapter| Arc::strong_count(&adapter.adapter) < adapter.limit)
-            .choose(&mut rand::thread_rng())
             .map(|adapter| adapter.adapter.cheap_clone())
+    }
+
+    pub fn cheapest_with(
+        &self,
+        required_capabilities: &NodeCapabilities,
+    ) -> Result<Arc<EthereumAdapter>, Error> {
+        // Select randomly from the cheapest adapters that have sufficent capabilities.
+        self.all_cheapest_with(required_capabilities)
+            .choose(&mut rand::thread_rng())
             .with_context(|| {
                 anyhow!(
                     "A matching Ethereum network with {:?} was not found.",

@@ -1,6 +1,6 @@
 [package]
 name = "graph-runtime-test"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2021"
 
 [dependencies]
@@ -10,6 +10,9 @@ graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
 graph-core = { path = "../../core" }
+graph-runtime-derive = { path = "../derive" }
+rand = "0.8.5"
+
 
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }

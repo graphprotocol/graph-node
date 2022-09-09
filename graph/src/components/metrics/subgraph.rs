@@ -1,5 +1,5 @@
-use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
+use crate::blockchain::block_stream::BlockStreamMetrics;
+use crate::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
 

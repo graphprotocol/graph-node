@@ -7,6 +7,7 @@ pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
 pub mod polling_block_stream;
+pub mod substreams_block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
@@ -240,6 +241,7 @@ pub trait UnresolvedDataSourceTemplate<C: Blockchain>:
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        manifest_idx: u32,
     ) -> Result<C::DataSourceTemplate, anyhow::Error>;
 }
 
@@ -247,6 +249,7 @@ pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn api_version(&self) -> semver::Version;
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
     fn name(&self) -> &str;
+    fn manifest_idx(&self) -> u32;
 }
 
 #[async_trait]
@@ -257,6 +260,7 @@ pub trait UnresolvedDataSource<C: Blockchain>:
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        manifest_idx: u32,
     ) -> Result<C::DataSource, anyhow::Error>;
 }
 

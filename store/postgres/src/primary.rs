@@ -1087,12 +1087,12 @@ impl<'a> Connection<'a> {
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
+        schema_version: DeploymentSchemaVersion,
     ) -> Result<Site, StoreError> {
         if let Some(site) = queries::find_active_site(self.conn.as_ref(), subgraph)? {
             return Ok(site);
         }
 
-        let schema_version = DeploymentSchemaVersion::LATEST;
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }
 
@@ -1108,14 +1108,6 @@ impl<'a> Connection<'a> {
             queries::find_site_in_shard(self.conn.as_ref(), &src.deployment, &shard)?
         {
             return Ok(site);
-        }
-
-        if src.schema_version != DeploymentSchemaVersion::LATEST {
-            return Err(StoreError::Unknown(anyhow!(
-                "Attempted to copy from deployment {} which is on an old schema version.
-                This means a schema migration is ongoing, please try again later.",
-                src.id
-            )));
         }
 
         self.create_site(

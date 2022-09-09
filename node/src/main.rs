@@ -222,9 +222,7 @@ async fn main() {
     let mut firehose_networks_by_kind = if query_only {
         BTreeMap::new()
     } else {
-        create_firehose_networks(logger.clone(), metrics_registry.clone(), &config)
-            .await
-            .expect("Failed to parse Firehose networks")
+        create_firehose_networks(logger.clone(), &config)
     };
 
     let graphql_metrics_registry = metrics_registry.clone();
@@ -490,6 +488,7 @@ async fn main() {
                             node_id,
                             debug_fork,
                             start_block,
+                            None,
                         )
                         .await
                 }

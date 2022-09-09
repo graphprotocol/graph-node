@@ -1,12 +1,12 @@
-use core::fmt;
-use std::{str::FromStr, sync::Arc};
-
+use crate::{data_source::*, EntitiesChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
-use graph::prelude::BlockHash;
+use core::fmt;
+use graph::firehose::FirehoseEndpoints;
+use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
     blockchain::{
         self,
-        block_stream::{BlockStream, FirehoseCursor},
+        block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor},
         BlockPtr, Blockchain, BlockchainKind, IngestorError, RuntimeAdapter,
     },
     components::store::DeploymentLocator,
@@ -15,32 +15,26 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
-
-use crate::codec::EntitiesChanges;
-use crate::{data_source::*, TriggerData, TriggerFilter, TriggersAdapter};
+use std::{str::FromStr, sync::Arc};
 
 #[derive(Clone, Debug, Default)]
 pub struct Block {
-    pub block_num: u64,
-    pub block_hash: Vec<u8>,
-    pub parent_block_num: u64,
-    pub parent_block_hash: Vec<u8>,
+    pub block_num: BlockNumber,
+    pub block_hash: BlockHash,
+    pub parent_block_num: BlockNumber,
+    pub parent_block_hash: BlockHash,
     pub entities_changes: EntitiesChanges,
 }
 
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
         return BlockPtr {
-            hash: BlockHash(Box::from(self.block_hash.as_slice())),
+            hash: self.block_hash.clone(),
             number: self.block_num as i32,
         };
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        if self.parent_block_hash.is_empty() {
-            return None;
-        }
-
         Some(BlockPtr {
             hash: BlockHash(Box::from(self.parent_block_hash.as_slice())),
             number: self.parent_block_num as i32,
@@ -64,8 +58,38 @@ impl blockchain::Block for Block {
     }
 }
 
-#[derive(Debug)]
-pub struct Chain {}
+pub struct Chain {
+    chain_store: Arc<dyn ChainStore>,
+    block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+
+    pub(crate) logger_factory: LoggerFactory,
+    pub(crate) endpoints: Arc<FirehoseEndpoints>,
+    pub(crate) metrics_registry: Arc<dyn MetricsRegistry>,
+}
+
+impl Chain {
+    pub fn new(
+        logger_factory: LoggerFactory,
+        endpoints: Arc<FirehoseEndpoints>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
+        chain_store: Arc<dyn ChainStore>,
+        block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+    ) -> Self {
+        Self {
+            logger_factory,
+            endpoints,
+            metrics_registry,
+            chain_store,
+            block_stream_builder,
+        }
+    }
+}
+
+impl std::fmt::Debug for Chain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "chain: substreams")
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
 pub struct NodeCapabilities {}
@@ -126,14 +150,22 @@ impl Blockchain for Chain {
 
     async fn new_firehose_block_stream(
         &self,
-        _deployment: DeploymentLocator,
-        _block_cursor: FirehoseCursor,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<Self::TriggerFilter>,
-        _unified_api_version: UnifiedMappingApiVersion,
+        deployment: DeploymentLocator,
+        block_cursor: FirehoseCursor,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<Self::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        unimplemented!("this should never be called for substreams")
+        self.block_stream_builder.build_firehose(
+            self,
+            deployment,
+            block_cursor,
+            start_blocks,
+            subgraph_current_block,
+            filter,
+            unified_api_version,
+        )
     }
 
     async fn new_polling_block_stream(
@@ -148,7 +180,7 @@ impl Blockchain for Chain {
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
-        unimplemented!()
+        self.chain_store.clone()
     }
 
     async fn block_pointer_from_number(

@@ -116,7 +116,18 @@ where
         let deployment = insert_test_data(store.clone()).await;
 
         // Run test
-        test(store, deployment).await.expect("graft test succeeds");
+        test(store.cheap_clone(), deployment.clone())
+            .await
+            .expect("graft test succeeds");
+
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), deployment.id)
+            .await
+            .unwrap()
+            .flush()
+            .await
+            .unwrap();
     })
 }
 

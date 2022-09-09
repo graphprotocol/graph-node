@@ -79,7 +79,7 @@ impl StoreResolver {
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
 
         let has_non_fatal_errors = store
-            .has_non_fatal_errors(Some(block_ptr.block_number()))
+            .has_deterministic_errors(block_ptr.block_number())
             .await?;
 
         let resolver = StoreResolver {

@@ -2,10 +2,47 @@
 
 ## Unreleased
 
-- `GRAPH_MAX_GAS_PER_HANDLER` is set to a very high value by default,
-  effectively disabling handler gas limits until the costs are better
-  benchmarked and refined.
-- Pipeline store writes #3084 #3177
+### New DB table for dynamic data sources
+
+For new subgraph deployments, dynamic data sources will be recorded under the `sgd*.data_sources$`
+table, rather than `subgraphs.dynamic_ethereum_contract_data_source`. As a consequence
+new deployments will not work correctly on earlier graph node versions, so
+_downgrading to an earlier graph node version is not supported_.
+See issue #3405 for other details.
+
+## 0.27.0
+
+- Store writes are now carried out in parallel to the rest of the subgraph process, improving indexing performance for subgraphs with significant store interaction. Metrics & monitoring was updated for this new pipelined process;
+- This adds support for apiVersion 0.0.7, which makes receipts accessible in Ethereum event handlers. [Documentation link](https://thegraph.com/docs/en/developing/creating-a-subgraph/#transaction-receipts-in-event-handlers);
+- This introduces some improvements to the subgraph GraphQL API, which now supports filtering on the basis of, and filtering for entities which changed from a certain block;
+- Support was added for Arweave indexing. Tendermint was renamed to Cosmos in Graph Node. These integrations are still in "beta";
+- Callhandler block filtering for contract calls now works as intended (this was a longstanding bug);
+- Gas costing for mappings is still set at a very high default, as we continue to benchmark and refine this metric;
+- A new `graphman fix block` command was added to easily refresh a block in the block cache, or clear the cache for a given network;
+- IPFS file fetching now uses `files/stat`, as `object` was deprecated;
+- Subgraphs indexing via a Firehose can now take advantage of Firehose-side filtering;
+- NEAR subgraphs can now match accounts for receipt filtering via prefixes or suffixes.
+
+## Upgrade notes
+
+- In the case of you having custom SQL, there's a [new SQL migration](https://github.com/graphprotocol/graph-node/blob/master/store/postgres/migrations/2022-04-26-125552_alter_deployment_schemas_version/up.sql);
+- On the pipelining of the store writes, there's now a new environment variable `GRAPH_STORE_WRITE_QUEUE` (default value is `5`), that if set to `0`, the old synchronous behaviour will come in instead. The value stands for the amount of write/revert parallel operations [#3177](https://github.com/graphprotocol/graph-node/pull/3177);
+- There's now support for TLS connections in the PostgreSQL `notification_listener` [#3503](https://github.com/graphprotocol/graph-node/pull/3503);
+- GraphQL HTTP and WebSocket ports can now be set via environment variables [#2832](https://github.com/graphprotocol/graph-node/pull/2832);
+- The genesis block can be set via the `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER` env var [#3650](https://github.com/graphprotocol/graph-node/pull/3650);
+- There's a new experimental feature to limit the number of subgraphs for a specific web3 provider. [Link for documentation](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md#controlling-the-number-of-subgraphs-using-a-provider);
+- Two new GraphQL validation environment variables were included: `ENABLE_GRAPHQL_VALIDATIONS` and `SILENT_GRAPHQL_VALIDATIONS`, which are documented [here](https://github.com/graphprotocol/graph-node/blob/master/docs/environment-variables.md#graphql);
+- A bug fix for `graphman index` was landed, which fixed the behavior where if one deployment was used by multiple names would result in the command not working [#3416](https://github.com/graphprotocol/graph-node/pull/3416);
+- Another fix landed for `graphman`, the bug would allow the `unassign`/`reassign` commands to make two or more nodes index the same subgraph by mistake [#3478](https://github.com/graphprotocol/graph-node/pull/3478);
+- Error messages of eth RPC providers should be clearer during `graph-node` start up [#3422](https://github.com/graphprotocol/graph-node/pull/3422);
+- Env var `GRAPH_STORE_CONNECTION_MIN_IDLE` will no longer panic, instead it will log a warning if it exceeds the `pool_size` [#3489](https://github.com/graphprotocol/graph-node/pull/3489);
+- Failed GraphQL queries now have proper timing information in the service metrics [#3508](https://github.com/graphprotocol/graph-node/pull/3508);
+- Non-primary shards now can be disabled through setting the `pool_size` to `0` [#3513](https://github.com/graphprotocol/graph-node/pull/3513);
+- Queries with large results now have a `query_id` [#3514](https://github.com/graphprotocol/graph-node/pull/3514);
+- It's now possible to disable the LFU Cache by setting `GRAPH_QUERY_LFU_CACHE_SHARDS` to `0` [#3522](https://github.com/graphprotocol/graph-node/pull/3522);
+- `GRAPH_ACCOUNT_TABLES` env var is not supported anymore [#3525](https://github.com/graphprotocol/graph-node/pull/3525);
+- [New documentation](https://github.com/graphprotocol/graph-node/blob/master/docs/implementation/metadata.md) landed on the metadata tables;
+- `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION` for GraphQL subscriptions now has a default of `1000` [#3735](https://github.com/graphprotocol/graph-node/pull/3735)
 
 ## 0.26.0
 

@@ -28,11 +28,13 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
 
     // This is needed bacause the stream builder only works for firehose and this will only be called if there
     // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
-    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(
-        FirehoseEndpoint::new(logger.clone(), "", "https://example.com", None, true)
-            .await
-            .expect("unable to create endpoint"),
-    )]
+    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
+        "",
+        "https://example.com",
+        None,
+        true,
+        0,
+    ))]
     .into();
 
     Chain::new(

@@ -52,6 +52,8 @@ pub mod store;
 
 pub mod link_resolver;
 
+pub mod trigger_processor;
+
 /// Components dealing with collecting metrics
 pub mod metrics;
 

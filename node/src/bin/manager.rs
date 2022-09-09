@@ -263,6 +263,16 @@ pub enum ConfigCommand {
         #[structopt(short, long)]
         shard: bool,
     },
+    /// Show eligible providers
+    ///
+    /// Prints the providers that can be used for a deployment on a given
+    /// network with the given features. Set the name of the node for which
+    /// to simulate placement with the toplevel `--node-id` option
+    Provider {
+        #[structopt(short, long, default_value = "")]
+        features: String,
+        network: String,
+    },
 }
 
 #[derive(Clone, Debug, StructOpt)]
@@ -481,6 +491,7 @@ impl From<Opt> for config::Opt {
         let mut config_opt = config::Opt::default();
         config_opt.config = Some(opt.config);
         config_opt.store_connection_pool_size = 5;
+        config_opt.node_id = opt.node_id;
         config_opt
     }
 }
@@ -807,6 +818,12 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Check { print } => commands::config::check(&ctx.config, print),
                 Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
+                Provider { features, network } => {
+                    let logger = ctx.logger.clone();
+                    let registry = ctx.registry.clone();
+                    commands::config::provider(logger, &ctx.config, registry, features, network)
+                        .await
+                }
             }
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), name),

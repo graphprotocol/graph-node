@@ -1,9 +1,6 @@
 specVersion: 0.0.4
-repository: https://github.com/graphprotocol/example-subgraph
 schema:
   file: ./schema.graphql
-features:
-  - nonFatalErrors
 dataSources:
   - kind: ethereum/contract
     name: Contract

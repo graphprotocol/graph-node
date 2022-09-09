@@ -1,7 +1,6 @@
 use anyhow::Error;
 use graph::{
     env::env_var,
-    log::logger,
     prelude::{prost, tokio, tonic},
     {firehose, firehose::FirehoseEndpoint, firehose::ForkStep},
 };
@@ -20,17 +19,13 @@ async fn main() -> Result<(), Error> {
         token = Some(token_env);
     }
 
-    let logger = logger(true);
-    let firehose = Arc::new(
-        FirehoseEndpoint::new(
-            logger,
-            "firehose",
-            "https://api.streamingfast.io:443",
-            token,
-            false,
-        )
-        .await?,
-    );
+    let firehose = Arc::new(FirehoseEndpoint::new(
+        "firehose",
+        "https://api.streamingfast.io:443",
+        token,
+        false,
+        1,
+    ));
 
     loop {
         println!("Connecting to the stream!");

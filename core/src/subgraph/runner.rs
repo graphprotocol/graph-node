@@ -1,7 +1,6 @@
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
-use crate::subgraph::metrics::RunnerMetrics;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
@@ -22,34 +21,30 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::TriggerProcessor;
-
 const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub struct SubgraphRunner<C, T, TP>
+pub struct SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
-    TP: TriggerProcessor<C, T>,
 {
-    ctx: IndexingContext<C, T, TP>,
+    ctx: IndexingContext<C, T>,
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
     metrics: RunnerMetrics,
 }
 
-impl<C, T, TP> SubgraphRunner<C, T, TP>
+impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
-    TP: TriggerProcessor<C, T>,
 {
     pub fn new(
         inputs: IndexingInputs<C>,
-        ctx: IndexingContext<C, T, TP>,
+        ctx: IndexingContext<C, T>,
         logger: Logger,
         metrics: RunnerMetrics,
     ) -> Self {
@@ -72,7 +67,7 @@ where
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
-        if let Some(current_ptr) = self.inputs.store.block_ptr().await {
+        if let Some(current_ptr) = self.inputs.store.block_ptr() {
             if let Some(parent_ptr) = self
                 .inputs
                 .triggers_adapter
@@ -375,6 +370,7 @@ where
                 &self.metrics.host.stopwatch,
                 data_sources,
                 deterministic_errors,
+                self.inputs.manifest_idx_and_name.clone(),
             )
             .await
             .context("Failed to transact block operations")?;
@@ -526,11 +522,10 @@ where
     }
 }
 
-impl<C, T, TP> SubgraphRunner<C, T, TP>
+impl<C, T> SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
-    TP: TriggerProcessor<C, T>,
 {
     async fn handle_stream_event(
         &mut self,
@@ -584,11 +579,10 @@ trait StreamEventHandler<C: Blockchain> {
 }
 
 #[async_trait]
-impl<C, T, TP> StreamEventHandler<C> for SubgraphRunner<C, T, TP>
+impl<C, T> StreamEventHandler<C> for SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
-    TP: TriggerProcessor<C, T>,
 {
     async fn handle_process_block(
         &mut self,
@@ -677,6 +671,13 @@ where
                     }
                 }
 
+                if let Some(stop_block) = &self.inputs.stop_block {
+                    if block_ptr.number >= *stop_block {
+                        info!(self.logger, "stop block reached for subgraph");
+                        return Ok(Action::Stop);
+                    }
+                }
+
                 if matches!(action, Action::Restart) {
                     // Cancel the stream for real
                     self.ctx
@@ -687,13 +688,6 @@ where
 
                     // And restart the subgraph
                     return Ok(Action::Restart);
-                }
-
-                if let Some(stop_block) = &self.inputs.stop_block {
-                    if block_ptr.number >= *stop_block {
-                        info!(self.logger, "stop block reached for subgraph");
-                        return Ok(Action::Stop);
-                    }
                 }
 
                 return Ok(Action::Continue);
@@ -797,7 +791,7 @@ where
         //
         // Safe unwrap because in a Revert event we're sure the subgraph has
         // advanced at least once.
-        let subgraph_ptr = self.inputs.store.block_ptr().await.unwrap();
+        let subgraph_ptr = self.inputs.store.block_ptr().unwrap();
         if revert_to_ptr.number >= subgraph_ptr.number {
             info!(&self.logger, "Block to revert is higher than subgraph pointer, nothing to do"; "subgraph_ptr" => &subgraph_ptr, "revert_to_ptr" => &revert_to_ptr);
             return Ok(Action::Continue);

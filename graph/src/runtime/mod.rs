@@ -8,7 +8,9 @@ pub mod gas;
 mod asc_heap;
 mod asc_ptr;
 
-pub use asc_heap::{asc_get, asc_new, AscHeap, FromAscObj, ToAscObj};
+pub use asc_heap::{
+    asc_get, asc_new, asc_new_or_missing, asc_new_or_null, AscHeap, FromAscObj, ToAscObj,
+};
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
@@ -267,22 +269,22 @@ pub enum IndexForAscTypeId {
 
     // Reserved discriminant space for Cosmos type IDs: [1,500, 2,499]
     CosmosAny = 1500,
-    CosmosArrayAny = 1501,
-    CosmosArrayBytes = 1502,
-    CosmosArrayCoin = 1503,
-    CosmosArrayCommitSig = 1504,
-    CosmosArrayEvent = 1505,
-    CosmosArrayEventAttribute = 1506,
-    CosmosArrayEvidence = 1507,
-    CosmosArrayModeInfo = 1508,
-    CosmosArraySignerInfo = 1509,
-    CosmosArrayTxResult = 1510,
-    CosmosArrayValidator = 1511,
-    CosmosArrayValidatorUpdate = 1512,
+    CosmosAnyArray = 1501,
+    CosmosBytesArray = 1502,
+    CosmosCoinArray = 1503,
+    CosmosCommitSigArray = 1504,
+    CosmosEventArray = 1505,
+    CosmosEventAttributeArray = 1506,
+    CosmosEvidenceArray = 1507,
+    CosmosModeInfoArray = 1508,
+    CosmosSignerInfoArray = 1509,
+    CosmosTxResultArray = 1510,
+    CosmosValidatorArray = 1511,
+    CosmosValidatorUpdateArray = 1512,
     CosmosAuthInfo = 1513,
     CosmosBlock = 1514,
-    CosmosBlockID = 1515,
-    CosmosBlockIDFlagEnum = 1516,
+    CosmosBlockId = 1515,
+    CosmosBlockIdFlagEnum = 1516,
     CosmosBlockParams = 1517,
     CosmosCoin = 1518,
     CosmosCommit = 1519,
@@ -364,6 +366,17 @@ pub enum IndexForAscTypeId {
     //    name and implementation before running this script.
     // 2. Replace `3500` part with the first number of that blockchain's reserved discriminant space.
     // 3. Insert the output right before the end of this block.
+    UnitTestNetworkUnitTestTypeU32 = u32::MAX - 7,
+    UnitTestNetworkUnitTestTypeU32Array = u32::MAX - 6,
+
+    UnitTestNetworkUnitTestTypeU16 = u32::MAX - 5,
+    UnitTestNetworkUnitTestTypeU16Array = u32::MAX - 4,
+
+    UnitTestNetworkUnitTestTypeI8 = u32::MAX - 3,
+    UnitTestNetworkUnitTestTypeI8Array = u32::MAX - 2,
+
+    UnitTestNetworkUnitTestTypeBool = u32::MAX - 1,
+    UnitTestNetworkUnitTestTypeBoolArray = u32::MAX,
 }
 
 impl ToAscObj<u32> for IndexForAscTypeId {

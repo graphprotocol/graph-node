@@ -20,10 +20,10 @@ use crate::common::{mock_context, mock_data_source};
 
 mod abi;
 
-const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
-const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
+pub const API_VERSION_0_0_4: Version = Version::new(0, 0, 4);
+pub const API_VERSION_0_0_5: Version = Version::new(0, 0, 5);
 
-fn wasm_file_path(wasm_file: &str, api_version: Version) -> String {
+pub fn wasm_file_path(wasm_file: &str, api_version: Version) -> String {
     format!(
         "wasm_test/api_version_{}_{}_{}/{}",
         api_version.major, api_version.minor, api_version.patch, wasm_file
@@ -113,7 +113,7 @@ async fn test_valid_module_and_store_with_timeout(
     (module, store.subgraph_store(), deployment)
 }
 
-async fn test_module(
+pub async fn test_module(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
@@ -124,7 +124,7 @@ async fn test_module(
 }
 
 // A test module using the latest API version
-async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
+pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
     let version = ENV_VARS.mappings.max_api_version.clone();
     let ds = mock_data_source(
         &wasm_file_path(wasm_file, API_VERSION_0_0_5.clone()),
@@ -135,7 +135,7 @@ async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<
         .0
 }
 
-trait WasmInstanceExt {
+pub trait WasmInstanceExt {
     fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap>;
     fn invoke_export1_val_void<V: wasmtime::WasmTy>(
         &self,

@@ -150,11 +150,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
 #[async_trait]
 pub trait WritableStore: Send + Sync + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
-    async fn block_ptr(&self) -> Option<BlockPtr>;
+    fn block_ptr(&self) -> Option<BlockPtr>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    async fn block_cursor(&self) -> FirehoseCursor;
+    fn block_cursor(&self) -> FirehoseCursor;
 
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
@@ -204,6 +204,7 @@ pub trait WritableStore: Send + Sync + 'static {
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
+        manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<(), StoreError>;
 
     /// Look up multiple entities as of the latest block. Returns a map of
@@ -225,7 +226,10 @@ pub trait WritableStore: Send + Sync + 'static {
     fn unassign_subgraph(&self) -> Result<(), StoreError>;
 
     /// Load the dynamic data sources for the given deployment
-    async fn load_dynamic_data_sources(&self) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+    async fn load_dynamic_data_sources(
+        &self,
+        manifest_idx_and_name: Vec<(u32, String)>,
+    ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
@@ -401,8 +405,7 @@ pub trait QueryStore: Send + Sync {
 
     fn wait_stats(&self) -> Result<PoolWaitStats, StoreError>;
 
-    /// If `block` is `None`, assumes the latest block.
-    async fn has_non_fatal_errors(&self, block: Option<BlockNumber>) -> Result<bool, StoreError>;
+    async fn has_deterministic_errors(&self, block: BlockNumber) -> Result<bool, StoreError>;
 
     /// Find the current state for the subgraph deployment `id` and
     /// return details about it needed for executing queries

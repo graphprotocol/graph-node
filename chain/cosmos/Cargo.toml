@@ -1,10 +1,11 @@
 [package]
 name = "graph-chain-cosmos"
-version = "0.26.0"
+version = "0.27.0"
 edition = "2018"
 
 [build-dependencies]
 tonic-build = { version = "0.7.1", features = ["prost"] }
+graph-chain-common = { path = "../common" }
 
 [dependencies]
 graph = { path = "../../graph" }

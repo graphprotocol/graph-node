@@ -40,6 +40,7 @@ pub struct DataSource {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
+    pub manifest_idx: u32,
     pub address: Option<Address>,
     pub start_block: BlockNumber,
     pub mapping: Mapping,
@@ -92,6 +93,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             kind,
             network,
             name,
+            manifest_idx,
             address,
             mapping,
             context,
@@ -109,6 +111,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         kind == &other.kind
             && network == &other.network
             && name == &other.name
+            && manifest_idx == &other.manifest_idx
             && address == &other.address
             && mapping.abis == other.mapping.abis
             && mapping.event_handlers == other.mapping.event_handlers
@@ -120,7 +123,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         let param = self.address.map(|addr| addr.0.into());
         StoredDynamicDataSource {
-            name: self.name.to_owned(),
+            manifest_idx: self.manifest_idx,
             param,
             context: self
                 .context
@@ -136,7 +139,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         let StoredDynamicDataSource {
-            name: _,
+            manifest_idx,
             param,
             context,
             creation_block,
@@ -151,6 +154,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
             name: template.name.clone(),
+            manifest_idx,
             address,
             start_block: 0,
             mapping: template.mapping.clone(),
@@ -232,6 +236,7 @@ impl DataSource {
         source: Source,
         mapping: Mapping,
         context: Option<DataSourceContext>,
+        manifest_idx: u32,
     ) -> Result<Self, Error> {
         // Data sources in the manifest are created "before genesis" so they have no creation block.
         let creation_block = None;
@@ -243,6 +248,7 @@ impl DataSource {
             kind,
             network,
             name,
+            manifest_idx,
             address: source.address,
             start_block: source.start_block,
             mapping,
@@ -722,6 +728,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        manifest_idx: u32,
     ) -> Result<DataSource, anyhow::Error> {
         let UnresolvedDataSource {
             kind,
@@ -736,7 +743,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 
         let mapping = mapping.resolve(&*resolver, logger).await?;
 
-        DataSource::from_manifest(kind, network, name, source, mapping, context)
+        DataSource::from_manifest(kind, network, name, source, mapping, context, manifest_idx)
     }
 }
 
@@ -778,6 +785,7 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
             kind: template.kind,
             network: template.network,
             name: template.name,
+            manifest_idx: template.manifest_idx,
             address: Some(address),
             start_block: 0,
             mapping: template.mapping,
@@ -789,16 +797,23 @@ impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
-pub struct BaseDataSourceTemplate<M> {
+pub struct UnresolvedDataSourceTemplate {
     pub kind: String,
     pub network: Option<String>,
     pub name: String,
     pub source: TemplateSource,
-    pub mapping: M,
+    pub mapping: UnresolvedMapping,
 }
 
-pub type UnresolvedDataSourceTemplate = BaseDataSourceTemplate<UnresolvedMapping>;
-pub type DataSourceTemplate = BaseDataSourceTemplate<Mapping>;
+#[derive(Clone, Debug)]
+pub struct DataSourceTemplate {
+    pub kind: String,
+    pub network: Option<String>,
+    pub name: String,
+    pub manifest_idx: u32,
+    pub source: TemplateSource,
+    pub mapping: Mapping,
+}
 
 #[async_trait]
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
@@ -806,6 +821,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
+        manifest_idx: u32,
     ) -> Result<DataSourceTemplate, anyhow::Error> {
         let UnresolvedDataSourceTemplate {
             kind,
@@ -821,6 +837,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             kind,
             network,
             name,
+            manifest_idx,
             source,
             mapping: mapping.resolve(resolver, logger).await?,
         })
@@ -838,6 +855,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         Some(self.mapping.runtime.cheap_clone())
+    }
+
+    fn manifest_idx(&self) -> u32 {
+        self.manifest_idx
     }
 }
 

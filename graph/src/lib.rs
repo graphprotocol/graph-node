@@ -26,6 +26,8 @@ pub mod runtime;
 
 pub mod firehose;
 
+pub mod substreams;
+
 /// Helpers for parsing environment variables.
 pub mod env;
 
@@ -37,6 +39,7 @@ pub use task_spawn::{
 
 pub use anyhow;
 pub use bytes;
+pub use itertools;
 pub use parking_lot;
 pub use petgraph;
 pub use prometheus;
@@ -107,9 +110,9 @@ pub mod prelude {
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
-        aggregate::Aggregate, stopwatch::StopwatchMetrics, Collector, Counter, CounterVec, Gauge,
-        GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError,
-        Registry,
+        aggregate::Aggregate, stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter,
+        CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts,
+        PrometheusError, Registry,
     };
     pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::index_node::IndexNodeServer;
@@ -129,6 +132,7 @@ pub mod prelude {
         SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
+    pub use crate::components::trigger_processor::TriggerProcessor;
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
     pub use crate::env::ENV_VARS;
 

@@ -34,6 +34,7 @@ use graph::{
 
 use crate::{
     advisory_lock,
+    dynds::DataSourcesTable,
     primary::{DeploymentId, Site},
 };
 use crate::{connection_pool::ConnectionPool, relational::Layout};
@@ -599,6 +600,15 @@ impl Connection {
         target_block: BlockPtr,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
+
+        if src.site.schema_version != dst.site.schema_version {
+            return Err(StoreError::ConstraintViolation(format!(
+                "attempted to copy between different schema versions, \
+                 source version is {} but destination version is {}",
+                src.site.schema_version, dst.site.schema_version
+            )));
+        }
+
         let mut last_log = Instant::now();
         let conn = pool.get_fdw(&logger, || {
             if last_log.elapsed() > LOG_INTERVAL {
@@ -621,6 +631,17 @@ impl Connection {
         F: FnOnce(&PgConnection) -> Result<T, StoreError>,
     {
         self.conn.transaction(|| f(&self.conn))
+    }
+
+    fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
+        if state.src.site.schema_version.private_data_sources() {
+            DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
+                &self.conn,
+                &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                state.target_block.number,
+            )?;
+        }
+        Ok(())
     }
 
     pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
@@ -652,6 +673,8 @@ impl Connection {
             }
             progress.table_finished(table);
         }
+
+        self.copy_private_data_sources(&state)?;
 
         self.transaction(|conn| state.finished(conn))?;
         progress.finished();

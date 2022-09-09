@@ -5,12 +5,13 @@ use crate::{
     components::store::BlockNumber,
     firehose::{decode_firehose_block, ForkStep},
     prelude::{debug, info},
+    substreams,
 };
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc};
+use std::{collections::BTreeMap, fmt::Display, iter, sync::Arc, time::Duration};
 use tonic::{
     metadata::MetadataValue,
     transport::{Channel, ClientTlsConfig},
@@ -22,33 +23,31 @@ use super::codec as firehose;
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
-    pub uri: String,
     pub token: Option<String>,
     pub filters_enabled: bool,
     channel: Channel,
-    _logger: Logger,
 }
 
 impl Display for FirehoseEndpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.uri.as_str(), f)
+        Display::fmt(self.provider.as_str(), f)
     }
 }
 
 impl FirehoseEndpoint {
-    pub async fn new<S: AsRef<str>>(
-        logger: Logger,
+    pub fn new<S: AsRef<str>>(
         provider: S,
         url: S,
         token: Option<String>,
         filters_enabled: bool,
-    ) -> Result<Self, anyhow::Error> {
+        conn_pool_size: u16,
+    ) -> Self {
         let uri = url
             .as_ref()
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
 
-        let endpoint = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
+        let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
             "https" => Channel::builder(uri)
                 .tls_config(ClientTlsConfig::new())
@@ -56,19 +55,33 @@ impl FirehoseEndpoint {
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
 
-        let uri = endpoint.uri().to_string();
-        //connect_lazy() used to return Result, but not anymore, that makes sence since Channel is not used immediatelly
-        //FirehoseEndpoint has all the info to report error - provider & uri
-        let channel = endpoint.connect_lazy();
+        // Note on the connection window size: We run multiple block streams on a same connection,
+        // and a problematic subgraph with a stalled block stream might consume the entire window
+        // capacity for its http2 stream and never release it. If there are enough stalled block
+        // streams to consume all the capacity on the http2 connection, then _all_ subgraphs using
+        // this same http2 connection will stall. At a default stream window size of 2^16, setting
+        // the connection window size to the maximum of 2^31 allows for 2^15 streams without any
+        // contention, which is effectively unlimited for normal graph node operation.
+        //
+        // Note: Do not set `http2_keep_alive_interval` or `http2_adaptive_window`, as these will
+        // send ping frames, and many cloud load balancers will drop connections that frequently
+        // send pings.
+        let endpoint = endpoint_builder
+            .initial_connection_window_size(Some((1 << 31) - 1))
+            .connect_timeout(Duration::from_secs(10))
+            .tcp_keepalive(Some(Duration::from_secs(15)))
+            // Timeout on each request, so the timeout to estabilish each 'Blocks' stream.
+            .timeout(Duration::from_secs(30));
 
-        Ok(FirehoseEndpoint {
+        // Load balancing on a same endpoint is useful because it creates a connection pool.
+        let channel = Channel::balance_list(iter::repeat(endpoint).take(conn_pool_size as usize));
+
+        FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
-            uri,
             channel,
             token,
-            _logger: logger,
             filters_enabled,
-        })
+        }
     }
 
     pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
@@ -129,7 +142,7 @@ impl FirehoseEndpoint {
             .blocks(firehose::Request {
                 start_block_num: number as i64,
                 stop_block_num: number as u64,
-                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepIrreversible as i32],
+                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
                 ..Default::default()
             })
             .await?;
@@ -202,7 +215,34 @@ impl FirehoseEndpoint {
 
         Ok(block_stream)
     }
+
+    pub async fn substreams(
+        self: Arc<Self>,
+        request: substreams::Request,
+    ) -> Result<tonic::Streaming<substreams::Response>, anyhow::Error> {
+        let token_metadata = match self.token.clone() {
+            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            None => None,
+        };
+
+        let mut client = substreams::stream_client::StreamClient::with_interceptor(
+            self.channel.cheap_clone(),
+            move |mut r: Request<()>| {
+                if let Some(ref t) = token_metadata {
+                    r.metadata_mut().insert("authorization", t.clone());
+                }
+
+                Ok(r)
+            },
+        );
+
+        let response_stream = client.blocks(request).await?;
+        let block_stream = response_stream.into_inner();
+
+        Ok(block_stream)
+    }
 }
+
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoints(Vec<Arc<FirehoseEndpoint>>);
 

@@ -973,6 +973,7 @@ impl DeploymentStore {
         stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
+        manifest_idx_and_name: &[(u32, String)],
     ) -> Result<StoreEvent, StoreError> {
         // All operations should apply only to data or metadata for this subgraph
         if mods
@@ -1010,7 +1011,13 @@ impl DeploymentStore {
             )?;
             section.end();
 
-            dynds::insert(&conn, &site, data_sources, block_ptr_to)?;
+            dynds::insert(
+                &conn,
+                &site,
+                data_sources,
+                block_ptr_to,
+                manifest_idx_and_name,
+            )?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(
@@ -1178,9 +1185,10 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         block: BlockNumber,
+        manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&conn, &site, block))
+            conn.transaction(|| crate::dynds::load(&conn, &site, block, manifest_idx_and_name))
                 .map_err(Into::into)
         })
         .await
@@ -1248,9 +1256,13 @@ impl DeploymentStore {
 
             let conn = self.get_conn()?;
             conn.transaction(|| -> Result<(), StoreError> {
-                // Copy dynamic data sources and adjust their ID
+                // Copy shared dynamic data sources and adjust their ID; if
+                // the subgraph uses private data sources, that is done by
+                // `copy::Connection::copy_data` since it requires access to
+                // the source schema which in sharded setups is only
+                // available while that function runs
                 let start = Instant::now();
-                let count = dynds::copy(&conn, &src.site, &dst.site, &block)?;
+                let count = dynds::shared::copy(&conn, &src.site, &dst.site, block.number)?;
                 info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
@@ -1337,7 +1349,7 @@ impl DeploymentStore {
             use deployment::SubgraphHealth::*;
             // Decide status based on if there are any errors for the previous/parent block
             let prev_health =
-                if deployment::has_non_fatal_errors(conn, deployment_id, Some(parent_ptr.number))? {
+                if deployment::has_deterministic_errors(conn, deployment_id, parent_ptr.number)? {
                     Unhealthy
                 } else {
                     Healthy

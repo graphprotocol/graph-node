@@ -15,10 +15,11 @@ pub fn load(
     conn: &PgConnection,
     site: &Site,
     block: BlockNumber,
+    manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).load(conn, block),
-        false => shared::load(conn, site.deployment.as_str(), block),
+        false => shared::load(conn, site.deployment.as_str(), block, manifest_idx_and_name),
     }
 }
 
@@ -27,6 +28,7 @@ pub(crate) fn insert(
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
     block_ptr: &BlockPtr,
+    manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).insert(
@@ -34,26 +36,13 @@ pub(crate) fn insert(
             data_sources,
             block_ptr.number,
         ),
-        false => shared::insert(conn, &site.deployment, data_sources, block_ptr),
-    }
-}
-
-pub(crate) fn copy(
-    conn: &PgConnection,
-    src: &Site,
-    dst: &Site,
-    target_block: &BlockPtr,
-) -> Result<usize, StoreError> {
-    if src.schema_version != dst.schema_version {
-        return Err(StoreError::ConstraintViolation(format!(
-            "attempted to copy between different schema versions, \
-             source version is {} but destination version is {}",
-            src.schema_version, dst.schema_version
-        )));
-    }
-    match src.schema_version.private_data_sources() {
-        true => todo!(),
-        false => shared::copy(conn, src, dst, target_block),
+        false => shared::insert(
+            conn,
+            &site.deployment,
+            data_sources,
+            block_ptr,
+            manifest_idx_and_name,
+        ),
     }
 }
 
