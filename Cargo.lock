@@ -1693,6 +1693,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graphql-parser",
  "graphql-tools",
+ "indexmap",
  "lazy_static",
  "parking_lot 0.12.1",
  "pretty_assertions",
@@ -1949,11 +1950,12 @@ dependencies = [
 
 [[package]]
 name = "graphql-tools"
-version = "0.0.20"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a792425b9e2ed860d0c1393dab3cb56af6d96558b64b469b99d1e58e43c16b8a"
+checksum = "1a71c3ac880d8383537914ea7b45d99c6946e15976faa33a42b6c339ef4a2fb8"
 dependencies = [
  "graphql-parser",
+ "lazy_static",
  "serde",
  "serde_json",
 ]
