@@ -1044,6 +1044,16 @@ impl SubgraphStoreInner {
         let (store, site) = self.store(&deployment.hash)?;
         store.drop_index(site, index_name).await
     }
+
+    pub async fn set_account_like(
+        &self,
+        deployment: &DeploymentLocator,
+        table: &str,
+        is_account_like: bool,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&deployment.hash)?;
+        store.set_account_like(site, table, is_account_like).await
+    }
 }
 
 struct EnsLookup {

@@ -986,7 +986,17 @@ async fn main() -> anyhow::Result<()> {
                     clear,
                     deployment,
                     table,
-                } => commands::stats::account_like(ctx.pools(), clear, &deployment, table),
+                } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    commands::stats::account_like(
+                        store.subgraph_store(),
+                        primary_pool,
+                        clear,
+                        &deployment,
+                        table,
+                    )
+                    .await
+                }
                 Show { deployment, table } => {
                     commands::stats::show(ctx.pools(), &deployment, table)
                 }

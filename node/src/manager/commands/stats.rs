@@ -10,8 +10,8 @@ use diesel::PgConnection;
 use diesel::RunQueryDsl;
 use graph::prelude::anyhow;
 use graph::prelude::anyhow::bail;
+use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
-use graph_store_postgres::command_support::{catalog as store_catalog, SqlName};
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
@@ -36,16 +36,16 @@ fn site_and_conn(
     Ok((site, conn))
 }
 
-pub fn account_like(
-    pools: HashMap<Shard, ConnectionPool>,
+pub async fn account_like(
+    store: Arc<SubgraphStore>,
+    primary_pool: ConnectionPool,
     clear: bool,
     search: &DeploymentSearch,
     table: String,
 ) -> Result<(), anyhow::Error> {
-    let table = SqlName::from(table);
-    let (site, conn) = site_and_conn(pools, search)?;
+    let locator = search.locate_unique(&primary_pool)?;
 
-    store_catalog::set_account_like(&conn, &site, &table, !clear)?;
+    store.set_account_like(&locator, &table, !clear).await?;
     let clear_text = if clear { "cleared" } else { "set" };
     println!("{}: account-like flag {}", table, clear_text);
 

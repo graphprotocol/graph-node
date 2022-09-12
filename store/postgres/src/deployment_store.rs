@@ -781,6 +781,22 @@ impl DeploymentStore {
         })
         .await
     }
+
+    pub(crate) async fn set_account_like(
+        &self,
+        site: Arc<Site>,
+        table: &str,
+        is_account_like: bool,
+    ) -> Result<(), StoreError> {
+        let store = self.clone();
+        let table = table.to_string();
+        self.with_conn(move |conn, _| {
+            let layout = store.layout(conn, site.clone())?;
+            let table = resolve_table_name(&layout, &table)?;
+            catalog::set_account_like(conn, &site, &table.name, is_account_like).map_err(Into::into)
+        })
+        .await
+    }
 }
 
 /// Methods that back the trait `graph::components::Store`, but have small
