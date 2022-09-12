@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::relational_queries::{
-    ConflictingEntityData, FindChangesQuery, FindPossibleDeletionsQuery,
+    ConflictingEntityData, FindChangesQuery, FindPossibleDeletionsQuery, ReturnedEntityData,
 };
 use crate::{
     primary::{Namespace, Site},
@@ -602,7 +602,7 @@ impl Layout {
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
-                .get_results(conn)
+                .get_results::<ReturnedEntityData>(conn)
                 .map(|ids| ids.len())?
         }
         Ok(count)
@@ -615,7 +615,7 @@ impl Layout {
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
-            .load::<Vec<ConflictingEntityData>>(conn)?
+            .load::<ConflictingEntityData>(conn)?
             .pop()
             .map(|data| data.entity))
     }
@@ -809,7 +809,7 @@ impl Layout {
             // Remove all versions whose entire block range lies beyond
             // `block`
             let removed = RevertRemoveQuery::new(table, block)
-                .get_results(conn)?
+                .get_results::<ReturnedEntityData>(conn)?
                 .into_iter()
                 .map(|data| data.id)
                 .collect::<HashSet<_>>();
@@ -820,7 +820,7 @@ impl Layout {
                 HashSet::new()
             } else {
                 RevertClampQuery::new(table, block - 1)?
-                    .get_results(conn)?
+                    .get_results::<ReturnedEntityData>(conn)?
                     .into_iter()
                     .map(|data| data.id)
                     .collect::<HashSet<_>>()

@@ -10,7 +10,7 @@ use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::methods::SingleValueDsl;
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, SingleValue, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, SingleValue, Text, Untyped};
 use diesel::Connection;
 
 use graph::components::store::EntityKey;
@@ -1472,7 +1472,7 @@ macro_rules! impl_load_query {
         }
 
         impl<'a> Query for $typ<'a> {
-            type SqlType = (Text, Jsonb);
+            type SqlType = diesel::sql_types::Untyped;
         }
     };
 }
@@ -1484,19 +1484,7 @@ pub struct FindQuery<'a> {
     block: BlockNumber,
 }
 
-//impl_load_query!(FindQuery)
-
-impl<'a> QueryId for FindQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> Query for FindQuery<'a> {
-    type SqlType = (Text, Jsonb);
-}
-
-impl<'a> RunQueryDsl<PgConnection> for FindQuery<'a> {}
+impl_load_query!(FindQuery);
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
@@ -1549,12 +1537,6 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
         Ok(())
     }
 }
-
-//impl<'a> LoadQuery<'a, PgConnection, EntityData> for FindChangesQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
-//        conn.query_by_name(&self)
-//    }
-//}
 
 /// Builds a query over a given set of [`Table`]s in an attempt to find deleted
 /// entities; i.e. such that the block range's lower bound is equal to said
@@ -1774,13 +1756,6 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
     }
 }
 
-//impl<'a> LoadQuery<'a, PgConnection, ReturnedEntityData> for InsertQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-//        conn.query_by_name(&self)
-//            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-//    }
-//}
-
 #[derive(Debug, Clone)]
 pub struct ConflictingEntityQuery<'a> {
     _layout: &'a Layout,
@@ -1837,12 +1812,6 @@ pub struct ConflictingEntityData {
     #[diesel(sql_type = Text)]
     pub entity: String,
 }
-
-//impl<'a> LoadQuery<'a, PgConnection, ConflictingEntityData> for ConflictingEntityQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
-//        conn.query_by_name(&self)
-//    }
-//}
 
 /// A string where we have checked that it is safe to embed it literally
 /// in a string in a SQL query. In particular, we have escaped any use
@@ -3102,6 +3071,8 @@ impl<'a> FilterQuery<'a> {
     }
 }
 
+impl_load_query!(FilterQuery);
+
 impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
@@ -3140,20 +3111,6 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         }
     }
 }
-
-impl<'a> QueryId for FilterQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-//impl<'a> LoadQuery<'a, PgConnection, EntityData> for FilterQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<EntityData>> {
-//        conn.query_by_name(&self)
-//    }
-//}
-
-impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
 
 /// Reduce the upper bound of the current entry's block range to `block` as
 /// long as that does not result in an empty block range
@@ -3261,6 +3218,8 @@ impl<'a> RevertRemoveQuery<'a> {
     }
 }
 
+impl_load_query!(RevertRemoveQuery);
+
 impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
@@ -3279,21 +3238,6 @@ impl<'a> QueryFragment<Pg> for RevertRemoveQuery<'a> {
         Ok(())
     }
 }
-
-impl<'a> QueryId for RevertRemoveQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-//impl<'a> LoadQuery<'a, PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-//        conn.query_by_name(&self)
-//            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-//    }
-//}
-
-impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
 
 /// A query that unclamps the block range of all versions that contain
 /// `block` by setting the upper bound of the block range to infinity.
@@ -3314,6 +3258,8 @@ impl<'a> RevertClampQuery<'a> {
         }
     }
 }
+
+impl_load_query!(RevertClampQuery);
 
 impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
@@ -3362,21 +3308,6 @@ impl<'a> QueryFragment<Pg> for RevertClampQuery<'a> {
         Ok(())
     }
 }
-
-impl<'a> QueryId for RevertClampQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-//impl<'a> LoadQuery<'a, PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
-//    fn internal_load(self, conn: &mut PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-//        conn.query_by_name(&self)
-//            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-//    }
-//}
-
-impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}
 
 #[test]
 fn block_number_max_is_i32_max() {
@@ -3434,6 +3365,8 @@ impl<'a> CopyEntityBatchQuery<'a> {
         })
     }
 }
+
+impl_load_query!(CopyEntityBatchQuery);
 
 impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
@@ -3509,14 +3442,6 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         Ok(())
     }
 }
-
-impl<'a> QueryId for CopyEntityBatchQuery<'a> {
-    type QueryId = ();
-
-    const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityBatchQuery<'a> {}
 
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
