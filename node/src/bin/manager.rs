@@ -406,7 +406,8 @@ pub enum StatsCommand {
     Show {
         /// The deployment (see `help info`).
         deployment: DeploymentSearch,
-        /// The name of a table to fully count
+        /// The name of a table to fully count which can be very slow
+        #[structopt(long, short)]
         table: Option<String>,
     },
     /// Perform a SQL ANALYZE in a Entity table
