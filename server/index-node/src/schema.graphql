@@ -43,7 +43,7 @@ type Query {
     network: String!
     blockHash: Bytes!
   ): [CachedEthereumCall!]
-  apiVersions(subgraphId: String!): [SubgraphVersion!]!
+  apiVersions(subgraphId: String!): [ApiVersion!]!
 }
 
 type SubgraphIndexingStatus {
