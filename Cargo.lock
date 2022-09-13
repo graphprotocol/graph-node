@@ -1693,7 +1693,6 @@ dependencies = [
  "graph-chain-ethereum",
  "graphql-parser",
  "graphql-tools",
- "indexmap",
  "lazy_static",
  "parking_lot 0.12.1",
  "pretty_assertions",
