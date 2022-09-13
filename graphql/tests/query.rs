@@ -1801,3 +1801,46 @@ fn deterministic_error() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
     })
 }
+
+#[test]
+fn can_query_with_or_filter() {
+    const QUERY: &str = "
+    query {
+        musicians(where: { OR: { name: \"John\", id: \"m2\" } }) {
+            name
+            id
+        }
+    }
+    ";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John", id: "m1" },
+                object! { name: "Lisa", id: "m2" },
+            ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_and_filter() {
+    const QUERY: &str = "
+    query {
+        musicians(where: { AND: { name: \"John\", id: \"m2\" } }) {
+            name
+            id
+        }
+    }
+    ";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: r::Value::List(vec![]),
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
