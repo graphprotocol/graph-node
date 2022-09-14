@@ -550,7 +550,9 @@ pub enum ProviderDetails {
 }
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";
-const FIREHOSE_PROVIDER_FEATURES: [&str; 1] = [FIREHOSE_FILTER_FEATURE];
+const FIREHOSE_COMPRESSION_FEATURE: &str = "compression";
+const FIREHOSE_PROVIDER_FEATURES: [&str; 2] =
+    [FIREHOSE_FILTER_FEATURE, FIREHOSE_COMPRESSION_FEATURE];
 
 fn ten() -> u16 {
     10
@@ -569,6 +571,9 @@ pub struct FirehoseProvider {
 impl FirehoseProvider {
     pub fn filters_enabled(&self) -> bool {
         self.features.contains(FIREHOSE_FILTER_FEATURE)
+    }
+    pub fn compression_enabled(&self) -> bool {
+        self.features.contains(FIREHOSE_COMPRESSION_FEATURE)
     }
 }
 

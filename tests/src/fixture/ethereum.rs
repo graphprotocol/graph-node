@@ -33,6 +33,7 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
         "https://example.com",
         None,
         true,
+        false,
         0,
     ))]
     .into();

@@ -50,6 +50,7 @@ async fn main() -> Result<(), Error> {
         &endpoint,
         token,
         false,
+        false,
         1,
     ));
 
