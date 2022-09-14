@@ -80,23 +80,26 @@ run_graph_node() {
 }
 
 start_query_node() {
+    # Query nodes are never the block ingestor
     export DISABLE_BLOCK_INGESTOR=true
     run_graph_node
 }
 
 start_index_node() {
-    # Only the index node with the name set in BLOCK_INGESTOR should ingest
-    # blocks
-    if [[ ${node_id} != "${BLOCK_INGESTOR}" ]]; then
-        export DISABLE_BLOCK_INGESTOR=true
-    fi
-
     run_graph_node
 }
 
 start_combined_node() {
     run_graph_node
 }
+
+# Only the index node with the name set in BLOCK_INGESTOR should ingest
+# blocks. For historical reasons, that name is set to the unmangled version
+# of `node_id` and we need to check whether we are the block ingestor
+# before possibly mangling the node_id.
+if [[ ${node_id} != "${BLOCK_INGESTOR}" ]]; then
+    export DISABLE_BLOCK_INGESTOR=true
+fi
 
 # Allow operators to opt out of legacy character
 # restrictions on the node ID by setting enablement
