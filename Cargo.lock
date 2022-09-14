@@ -218,7 +218,7 @@ dependencies = [
  "cc",
  "cfg-if 1.0.0",
  "libc",
- "miniz_oxide",
+ "miniz_oxide 0.4.4",
  "object 0.26.0",
  "rustc-demangle",
 ]
@@ -1237,6 +1237,16 @@ name = "fixedbitset"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "398ea4fabe40b9b0d885340a2a991a44c8a645624075ad966d21f88688e2b69e"
+
+[[package]]
+name = "flate2"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f82b0f4c27ad9f8bfd1f3208d882da2b09c301bc1c828fd3a00d0216d2fbbff6"
+dependencies = [
+ "crc32fast",
+ "miniz_oxide 0.5.3",
+]
 
 [[package]]
 name = "fnv"
@@ -2549,6 +2559,15 @@ checksum = "a92518e98c078586bc6c934028adcca4c92a53d6a958196de835170a01d84e4b"
 dependencies = [
  "adler",
  "autocfg",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f5c75688da582b8ffc1f1799e9db273f32133c49e048f614d22ec3256773ccc"
+dependencies = [
+ "adler",
 ]
 
 [[package]]
@@ -4476,6 +4495,7 @@ dependencies = [
  "axum",
  "base64",
  "bytes",
+ "flate2",
  "futures-core",
  "futures-util",
  "h2",
@@ -4536,7 +4556,7 @@ dependencies = [
 [[package]]
 name = "tower"
 version = "0.4.12"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#c5632a26aaedf6c7eff07e758cc2634f248b8579"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -4576,7 +4596,7 @@ checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
 [[package]]
 name = "tower-layer"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#c5632a26aaedf6c7eff07e758cc2634f248b8579"
 
 [[package]]
 name = "tower-service"
@@ -4587,12 +4607,12 @@ checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
 [[package]]
 name = "tower-service"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#c5632a26aaedf6c7eff07e758cc2634f248b8579"
 
 [[package]]
 name = "tower-test"
 version = "0.4.0"
-source = "git+https://github.com/tower-rs/tower.git#ee826286fd1f994eabf14229e1e579ae29237386"
+source = "git+https://github.com/tower-rs/tower.git#c5632a26aaedf6c7eff07e758cc2634f248b8579"
 dependencies = [
  "futures-util",
  "pin-project-lite",
