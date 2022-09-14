@@ -25,7 +25,7 @@ use crate::{
     Block, Chain, NodeCapabilities, NoopDataSourceTemplate,
 };
 
-#[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
+#[derive(Eq, PartialEq, PartialOrd, Ord, Debug, Clone)]
 pub struct TriggerData {}
 
 impl blockchain::TriggerData for TriggerData {

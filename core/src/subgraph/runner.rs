@@ -119,6 +119,32 @@ where
                     block_stream.next().await
                 };
 
+                let has_triggers = match &event {
+                    Some(Ok(BlockStreamEvent::ProcessBlock(block_triggers, _))) => {
+                        block_triggers.trigger_data.iter().any(|td| {
+                            if block_triggers.block.number() == 11390000 {
+                                println!("### td: {:?}", td);
+                            }
+                            self.ctx.instance.hosts.iter().any(|host| {
+                                matches!(
+                                    host.match_and_decode(
+                                        &TriggerData::Onchain(td.clone()),
+                                        &Arc::new(block_triggers.block.clone()),
+                                        &self.logger,
+                                    ),
+                                    Ok(Some(_))
+                                )
+                            })
+                        })
+                    }
+                    _ => true,
+                };
+
+                if !has_triggers {
+                    println!("### skipping block");
+                    continue;
+                }
+
                 // TODO: move cancel handle to the Context
                 // This will require some code refactor in how the BlockStream is created
                 match self
