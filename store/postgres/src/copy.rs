@@ -626,7 +626,7 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
     where
         F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
@@ -644,7 +644,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
+    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
         let mut state = self.transaction(|conn| {
             CopyState::new(
                 conn,

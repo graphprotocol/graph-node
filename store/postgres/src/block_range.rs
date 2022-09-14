@@ -94,7 +94,7 @@ pub struct BlockRangeLowerBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
-    fn walk_ast<'b>(&'b self, out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("lower(");
@@ -113,7 +113,7 @@ pub struct BlockRangeUpperBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
-    fn walk_ast<'b>(&'b self, out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("coalesce(upper(");

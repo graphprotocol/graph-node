@@ -110,7 +110,7 @@ pub mod primary {
         ident: &ChainIdentifier,
         shard: &Shard,
     ) -> Result<Chain, StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
         // For tests, we want to have a chain that still uses the
         // shared `ethereum_blocks` table
@@ -148,7 +148,7 @@ pub mod primary {
     }
 
     pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
         delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())
@@ -397,7 +397,7 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let conn = match pool.get() {
+                    let mut conn = match pool.get() {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
@@ -483,7 +483,7 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let connection = primary_pool.get()?;
+        let mut connection = primary_pool.get()?;
         let version: i64 = dbv::table
             .select(dbv::version)
             .get_result(&mut connection)?;

@@ -956,7 +956,7 @@ impl PoolInner {
         self.pool
             .get()
             .ok()
-            .map(|conn| sql_query("select 1").execute(&mut conn).is_ok())
+            .map(|mut conn| sql_query("select 1").execute(&mut conn).is_ok())
             .unwrap_or(false)
     }
 
@@ -977,7 +977,7 @@ impl PoolInner {
         }
 
         let pool = self.clone();
-        let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+        let mut conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
         advisory_lock::lock_migration(&mut conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
@@ -1005,15 +1005,15 @@ impl PoolInner {
 
     fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let conn = self.get()?;
+        let mut conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction(|conn| {
             let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 if current_servers.contains(&server.name) {
-                    server.update(&mut conn)?;
+                    server.update(conn)?;
                 } else {
-                    server.create(&mut conn)?;
+                    server.create(conn)?;
                 }
             }
             Ok(())
@@ -1027,7 +1027,7 @@ impl PoolInner {
     /// change one of the mapped tables actually show up in the imported tables
     fn map_primary(&self) -> Result<(), StoreError> {
         info!(&self.logger, "Mapping primary");
-        let conn = self.get()?;
+        let mut conn = self.get()?;
         conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))
     }
 
@@ -1049,7 +1049,7 @@ impl PoolInner {
     // servers to ourselves. The mapping is recreated on every server start
     // so that we pick up possible schema changes in the mappings
     fn map_metadata(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
-        let conn = self.get()?;
+        let mut conn = self.get()?;
         conn.transaction(|conn| {
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 server.map_metadata(conn)?;

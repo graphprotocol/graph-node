@@ -272,7 +272,7 @@ impl ChainHeadUpdateSender {
             "head_block_number": number
         });
 
-        let conn = self.pool.get()?;
+        let mut conn = self.pool.get()?;
         self.sender.notify(
             &mut conn,
             CHANNEL_NAME.as_str(),

@@ -170,11 +170,11 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| -> Result<_, StoreError> {
-            let exists = deployment::exists(&mut conn, &site)?;
+            let exists = deployment::exists(conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
             if replace || !exists {
-                deployment::create_deployment(&mut conn, &site, deployment, exists, replace)?;
+                deployment::create_deployment(conn, &site, deployment, exists, replace)?;
             };
 
             // Create the schema for the subgraph data
@@ -182,7 +182,7 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query)?;
 
-                let layout = Layout::create_relational_schema(&mut conn, site.clone(), schema)?;
+                let layout = Layout::create_relational_schema(conn, site.clone(), schema)?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
                     let errors = layout.can_copy_from(&base);
@@ -219,11 +219,11 @@ impl DeploymentStore {
     pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| {
-            crate::deployment::drop_schema(&mut conn, &site.namespace)?;
+            crate::deployment::drop_schema(conn, &site.namespace)?;
             if !site.schema_version.private_data_sources() {
-                crate::dynds::shared::drop(&mut conn, &site.deployment)?;
+                crate::dynds::shared::drop(conn, &site.deployment)?;
             }
-            crate::deployment::drop_metadata(&mut conn, site)
+            crate::deployment::drop_metadata(conn, site)
         })
     }
 
@@ -487,7 +487,7 @@ impl DeploymentStore {
         &self,
         replica: ReplicaId,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        let mut conn = match replica {
+        let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
         };
@@ -613,9 +613,7 @@ impl DeploymentStore {
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|conn| -> Result<_, StoreError> {
-            detail::deployment_details(&mut conn, ids)
-        })
+        conn.transaction(|conn| -> Result<_, StoreError> { detail::deployment_details(conn, ids) })
     }
 
     pub(crate) fn deployment_statuses(
@@ -624,7 +622,7 @@ impl DeploymentStore {
     ) -> Result<Vec<status::Info>, StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| -> Result<Vec<status::Info>, StoreError> {
-            detail::deployment_statuses(&mut conn, sites)
+            detail::deployment_statuses(conn, sites)
         })
     }
 
@@ -638,7 +636,7 @@ impl DeploymentStore {
 
     pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction(|conn| deployment::set_synced(&mut conn, id))
+        conn.transaction(|conn| deployment::set_synced(conn, id))
     }
 
     // Only used for tests
@@ -1249,7 +1247,7 @@ impl DeploymentStore {
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
-            let copy_conn = crate::copy::Connection::new(
+            let mut copy_conn = crate::copy::Connection::new(
                 logger,
                 self.pool.clone(),
                 src.clone(),
@@ -1337,7 +1335,7 @@ impl DeploymentStore {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let conn = &mut self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1433,7 +1431,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let conn = &mut self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {

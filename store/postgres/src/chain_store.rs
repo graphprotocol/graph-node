@@ -1298,7 +1298,7 @@ impl ChainStore {
         matches!(self.status, ChainStatus::Ingestible)
     }
 
-    fn get_conn(&mut self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.pool.get().map_err(Error::from)
     }
 
@@ -1392,13 +1392,13 @@ impl ChainStore {
     }
 
     pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
             .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage.truncate_block_cache(&mut conn)?;
         Ok(())
     }
@@ -1618,7 +1618,7 @@ impl ChainStoreTrait for ChainStore {
             .pool
             .with_conn(move |conn, _| {
                 self.storage
-                    .ancestor_block(&mut conn, block_ptr, offset)
+                    .ancestor_block(conn, block_ptr, offset)
                     .map_err(|e| CancelableError::from(StoreError::from(e)))
             })
             .await?)
@@ -1653,7 +1653,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -1691,13 +1691,13 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
     }
 
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
@@ -1712,7 +1712,7 @@ impl ChainStoreTrait for ChainStore {
         self.pool
             .with_conn(move |conn, _| {
                 storage
-                    .block_number(&mut conn, &hash)
+                    .block_number(conn, &hash)
                     .map(|opt| opt.map(|(number, timestamp)| (chain.clone(), number, timestamp)))
                     .map_err(|e| StoreError::from(e).into())
             })
@@ -1728,7 +1728,7 @@ impl ChainStoreTrait for ChainStore {
         let block_hash = block_hash.to_owned();
         pool.with_conn(move |conn, _| {
             storage
-                .find_transaction_receipts_in_block(&mut conn, block_hash)
+                .find_transaction_receipts_in_block(conn, block_hash)
                 .map_err(|e| StoreError::from(e).into())
         })
         .await

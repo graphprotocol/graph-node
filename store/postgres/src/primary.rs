@@ -681,7 +681,7 @@ impl<'a> Connection<'a> {
         Self { conn: conn.into() }
     }
 
-    pub(crate) fn transaction<T, E, F>(&self, f: F) -> Result<T, E>
+    pub(crate) fn transaction<T, E, F>(&mut self, f: F) -> Result<T, E>
     where
         F: FnOnce(&mut PooledConnection<ConnectionManager<diesel::PgConnection>>) -> Result<T, E>,
         E: From<diesel::result::Error>,
@@ -692,18 +692,18 @@ impl<'a> Connection<'a> {
     /// Signal any copy process that might be copying into one of these
     /// deployments that it should stop. Copying is cancelled whenever we
     /// remove the assignment for a deployment
-    fn cancel_copies(&self, ids: Vec<DeploymentId>) -> Result<(), StoreError> {
+    fn cancel_copies(&mut self, ids: Vec<DeploymentId>) -> Result<(), StoreError> {
         use active_copies as ac;
 
         update(ac::table.filter(ac::dst.eq_any(ids)))
-            .set(ac::cancelled_at.eq(sql("now()")))
+            .set(ac::cancelled_at.eq(diesel::dsl::now))
             .execute(self.conn.as_mut())?;
         Ok(())
     }
 
     /// Delete all assignments for deployments that are neither the current nor the
     /// pending version of a subgraph and return the deployment id's
-    fn remove_unused_assignments(&self) -> Result<Vec<EntityChange>, StoreError> {
+    fn remove_unused_assignments(&mut self) -> Result<Vec<EntityChange>, StoreError> {
         use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -760,7 +760,10 @@ impl<'a> Connection<'a> {
     /// the pending version so far, and remove any assignments that are not needed
     /// any longer as a result. Return the changes that were made to assignments
     /// in the process
-    pub fn promote_deployment(&self, id: &DeploymentHash) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn promote_deployment(
+        &mut self,
+        id: &DeploymentHash,
+    ) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
@@ -797,7 +800,7 @@ impl<'a> Connection<'a> {
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph
-    pub fn create_subgraph(&self, name: &SubgraphName) -> Result<String, StoreError> {
+    pub fn create_subgraph(&mut self, name: &SubgraphName) -> Result<String, StoreError> {
         use subgraph as s;
 
         let conn = self.conn.as_mut();
@@ -829,7 +832,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn create_subgraph_version<F>(
-        &self,
+        &mut self,
         name: SubgraphName,
         site: &Site,
         node_id: NodeId,
@@ -844,7 +847,7 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use SubgraphVersionSwitchingMode::*;
 
-        let conn = self.conn.as_mut();
+        let mut conn = self.conn.as_mut();
 
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -951,7 +954,7 @@ impl<'a> Connection<'a> {
         Ok(changes)
     }
 
-    pub fn remove_subgraph(&self, name: SubgraphName) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn remove_subgraph(&mut self, name: SubgraphName) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
@@ -974,7 +977,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn reassign_subgraph(
-        &self,
+        &mut self,
         site: &Site,
         node: &NodeId,
     ) -> Result<Vec<EntityChange>, StoreError> {
@@ -999,7 +1002,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn assign_subgraph(
-        &self,
+        &mut self,
         site: &Site,
         node: &NodeId,
     ) -> Result<Vec<EntityChange>, StoreError> {
@@ -1014,7 +1017,7 @@ impl<'a> Connection<'a> {
         Ok(vec![change])
     }
 
-    pub fn unassign_subgraph(&self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
+    pub fn unassign_subgraph(&mut self, site: &Site) -> Result<Vec<EntityChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = self.conn.as_mut();
@@ -1042,7 +1045,7 @@ impl<'a> Connection<'a> {
     /// caller must check that other conditions (like whether there already
     /// is an active site for the deployment) are met
     fn create_site(
-        &self,
+        &mut self,
         shard: Shard,
         deployment: DeploymentHash,
         network: String,
@@ -1085,7 +1088,7 @@ impl<'a> Connection<'a> {
 
     /// Create a site for a brand new deployment.
     pub fn allocate_site(
-        &self,
+        &mut self,
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
@@ -1098,14 +1101,14 @@ impl<'a> Connection<'a> {
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }
 
-    pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
+    pub fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {
         queries::assigned_node(self.conn.as_mut(), site)
     }
 
     /// Create a copy of the site `src` in the shard `shard`, but mark it as
     /// not active. If there already is a site in `shard`, return that
     /// instead.
-    pub fn copy_site(&self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
+    pub fn copy_site(&mut self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
         if let Some(site) =
             queries::find_site_in_shard(self.conn.as_mut(), &src.deployment, &shard)?
         {
@@ -1121,7 +1124,7 @@ impl<'a> Connection<'a> {
         )
     }
 
-    pub(crate) fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    pub(crate) fn activate(&mut self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         use deployment_schemas as ds;
 
         // We need to tread lightly so we do not violate the unique constraint on
@@ -1139,14 +1142,12 @@ impl<'a> Connection<'a> {
 
     /// Remove all subgraph versions and the entry in `deployment_schemas` for
     /// subgraph `id` in a transaction
-    pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {
+    pub fn drop_site(&mut self, site: &Site) -> Result<(), StoreError> {
         use deployment_schemas as ds;
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|_| {
-            let conn = self.conn.as_mut();
-
+        self.transaction(|conn| {
             delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
 
             // If there is no site for this deployment any more, we can get
