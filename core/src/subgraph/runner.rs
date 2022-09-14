@@ -122,9 +122,6 @@ where
                 let has_triggers = match &event {
                     Some(Ok(BlockStreamEvent::ProcessBlock(block_triggers, _))) => {
                         block_triggers.trigger_data.iter().any(|td| {
-                            if block_triggers.block.number() == 11390000 {
-                                println!("### td: {:?}", td);
-                            }
                             self.ctx.instance.hosts.iter().any(|host| {
                                 matches!(
                                     host.match_and_decode(
@@ -141,7 +138,6 @@ where
                 };
 
                 if !has_triggers {
-                    println!("### skipping block");
                     continue;
                 }
 
