@@ -313,7 +313,7 @@ impl Resolver for StoreResolver {
         }
     }
 
-    fn resolve_object(
+    async fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
         field: &a::Field,
