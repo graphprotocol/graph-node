@@ -587,14 +587,17 @@ async fn resolve_field_value(
             .await
         }
 
-        s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
-            ctx,
-            object_type,
-            field_value,
-            field,
-            field_definition,
-            name,
-        ),
+        s::Type::NamedType(ref name) => {
+            resolve_field_value_for_named_type(
+                ctx,
+                object_type,
+                field_value,
+                field,
+                field_definition,
+                name,
+            )
+            .await
+        }
 
         s::Type::ListType(inner_type) => {
             resolve_field_value_for_list_type(
@@ -611,7 +614,7 @@ async fn resolve_field_value(
 }
 
 /// Resolves the value of a field that corresponds to a named type.
-fn resolve_field_value_for_named_type(
+async fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
@@ -641,6 +644,7 @@ fn resolve_field_value_for_named_type(
         s::TypeDefinition::Scalar(t) => {
             ctx.resolver
                 .resolve_scalar_value(object_type, field, t, field_value)
+                .await
         }
 
         s::TypeDefinition::Interface(i) => {
