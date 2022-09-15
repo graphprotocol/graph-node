@@ -240,14 +240,29 @@ fn build_filter_from_object(
                                         let (field_name, op) = sast::parse_field_as_filter(key);
                                         let field = sast::get_field(entity, &field_name)
                                             .ok_or_else(|| {
-                                                QueryExecutionError::EntityFieldError(
-                                                    entity.name().to_owned(),
-                                                    field_name.clone(),
-                                                )
-                                            })?;
-                                        let ty = &field.field_type;
-                                        let store_value = Value::from_query_value(value, ty)?;
-                                        return build_entity_filter(field_name, op, store_value);
+                                                // When we have `AND`/`OR` filters we can not get a field back
+                                                // Instead we want to building the entity filter from the object
+                                                // If it works out great otherwise we return an error
+                                                return build_filter_from_object(
+                                                    entity, object, schema,
+                                                );
+                                            });
+                                        return match field {
+                                            Ok(field) => {
+                                                let ty = &field.field_type;
+                                                let store_value =
+                                                    Value::from_query_value(value, ty)?;
+                                                return build_entity_filter(
+                                                    field_name,
+                                                    op,
+                                                    store_value,
+                                                );
+                                            }
+                                            Err(result) => match result {
+                                                Ok(filter) => Ok(filter),
+                                                Err(e) => Err(e),
+                                            },
+                                        };
                                     })
                                     .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>();
                                 return match filters {
