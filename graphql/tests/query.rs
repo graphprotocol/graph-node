@@ -1806,7 +1806,7 @@ fn deterministic_error() {
 fn can_query_with_or_filter() {
     const QUERY: &str = "
     query {
-        musicians(where: { OR: { name: \"John\", id: \"m2\" } }) {
+        musicians(where: { or: { name: \"John\", id: \"m2\" } }) {
             name
             id
         }
@@ -1829,7 +1829,7 @@ fn can_query_with_or_filter() {
 fn can_query_with_and_filter() {
     const QUERY: &str = "
     query {
-        musicians(where: { AND: { name: \"John\", id: \"m2\" } }) {
+        musicians(where: { and: { name: \"John\", id: \"m2\" } }) {
             name
             id
         }

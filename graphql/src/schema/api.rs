@@ -190,7 +190,7 @@ fn add_filter_type(
             generated_filter_fields.push(InputValue {
                 position: Pos::default(),
                 description: None,
-                name: "AND".to_string(),
+                name: "and".to_string(),
                 value_type: Type::NamedType(filter_type_name.to_owned()),
                 default_value: None,
                 directives: vec![],
@@ -198,15 +198,7 @@ fn add_filter_type(
             generated_filter_fields.push(InputValue {
                 position: Pos::default(),
                 description: None,
-                name: "AND".to_string(),
-                value_type: Type::NamedType(filter_type_name.to_owned()),
-                default_value: None,
-                directives: vec![],
-            });
-            generated_filter_fields.push(InputValue {
-                position: Pos::default(),
-                description: None,
-                name: "OR".to_string(),
+                name: "or".to_string(),
                 value_type: Type::NamedType(filter_type_name.to_owned()),
                 default_value: None,
                 directives: vec![],
@@ -1217,7 +1209,9 @@ mod tests {
                 "favoritePet_ends_with_nocase",
                 "favoritePet_not_ends_with",
                 "favoritePet_not_ends_with_nocase",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)

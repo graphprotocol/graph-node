@@ -223,7 +223,7 @@ fn build_filter_from_object(
                 let (field_name, op) = sast::parse_field_as_filter(key);
 
                 Ok(match op {
-                    AND => {
+                    And => {
                         return match value {
                             r::Value::Object(object) => {
                                 return build_filter_from_object(entity, object, schema);
@@ -231,7 +231,7 @@ fn build_filter_from_object(
                             _ => Err(QueryExecutionError::InvalidFilterError),
                         };
                     }
-                    OR => {
+                    Or => {
                         return match value {
                             r::Value::Object(object) => {
                                 let filters = object
