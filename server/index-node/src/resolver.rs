@@ -60,6 +60,7 @@ impl IntoValue for PublicProofOfIndexingResult {
 }
 
 /// Resolver for the index node GraphQL API.
+#[derive(Clone)]
 pub struct IndexNodeResolver<S: Store> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
@@ -713,18 +714,6 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     object! {
         updates: updates_graphql,
         deletions: deletions_graphql,
-    }
-}
-
-impl<S: Store> Clone for IndexNodeResolver<S> {
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            blockchain_map: self.blockchain_map.clone(),
-            store: self.store.clone(),
-            link_resolver: self.link_resolver.clone(),
-            bearer_token: self.bearer_token.clone(),
-        }
     }
 }
 
