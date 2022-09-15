@@ -156,7 +156,7 @@ impl AsRef<Option<String>> for FirehoseCursor {
 
 #[derive(Debug)]
 pub struct BlockWithTriggers<C: Blockchain> {
-    pub block: C::Block,
+    pub block: Arc<C::Block>,
     pub trigger_data: Vec<C::TriggerData>,
 }
 
@@ -177,7 +177,7 @@ impl<C: Blockchain> BlockWithTriggers<C> {
         // This is where triggers get sorted.
         trigger_data.sort();
         Self {
-            block,
+            block: Arc::new(block),
             trigger_data,
         }
     }
@@ -398,7 +398,7 @@ pub trait ChainHeadUpdateListener: Send + Sync + 'static {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, task::Poll};
+    use std::{collections::HashSet, sync::Arc, task::Poll};
 
     use anyhow::Error;
     use futures03::{Stream, StreamExt, TryStreamExt};
@@ -429,9 +429,9 @@ mod test {
             self.number += 1;
             Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(
                 BlockWithTriggers::<MockBlockchain> {
-                    block: MockBlock {
+                    block: Arc::new(MockBlock {
                         number: self.number - 1,
-                    },
+                    }),
                     trigger_data: vec![],
                 },
                 FirehoseCursor::None,
@@ -453,7 +453,7 @@ mod test {
             .map_err(CancelableError::Error)
             .cancelable(&guard, || Err(CancelableError::Cancel));
 
-        let mut blocks = HashSet::<MockBlock>::new();
+        let mut blocks = HashSet::<Arc<MockBlock>>::new();
         let mut count = 0;
         loop {
             match stream.next().await {

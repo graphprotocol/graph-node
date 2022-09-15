@@ -1652,7 +1652,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
 
     // And obtain all Transaction values for the calls in this block.
     let transactions: Vec<&Transaction> = {
-        match &block.block {
+        match &block.block.as_ref() {
             BlockFinality::Final(ref block) => block
                 .transactions
                 .iter()

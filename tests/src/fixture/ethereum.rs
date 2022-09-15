@@ -59,11 +59,11 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
 pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     let ptr = test_ptr(0);
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+        block: Arc::new(BlockFinality::Final(Arc::new(LightEthereumBlock {
             hash: Some(H256::from_slice(ptr.hash.as_slice())),
             number: Some(U64::from(ptr.number)),
             ..Default::default()
-        })),
+        }))),
         trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
     }
 }
@@ -76,12 +76,12 @@ pub fn empty_block(
     assert!(ptr.number > parent_ptr.number);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock {
+        block: Arc::new(BlockFinality::Final(Arc::new(LightEthereumBlock {
             hash: Some(H256::from_slice(ptr.hash.as_slice())),
             number: Some(U64::from(ptr.number)),
             parent_hash: H256::from_slice(parent_ptr.hash.as_slice()),
             ..Default::default()
-        })),
+        }))),
         trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
     }
 }

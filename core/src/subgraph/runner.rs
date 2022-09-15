@@ -5,7 +5,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
+use graph::blockchain::{Block, Blockchain, BlockchainKind, TriggerFilter as _};
 use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
@@ -137,6 +137,24 @@ where
         }
     }
 
+    /// Consumes triggers for mutation and returns the same vec without redundant triggers and the count of dropped values.
+    fn filter_triggers(
+        &self,
+        triggers: Vec<C::TriggerData>,
+        block: &Arc<C::Block>,
+    ) -> (Vec<C::TriggerData>, usize) {
+        if !self.inputs.static_filters || !matches!(C::KIND, BlockchainKind::Ethereum) {
+            return (triggers, 0);
+        }
+
+        let mut triggers = triggers;
+        let count = triggers.len();
+        self.ctx.filter_triggers(&mut triggers, &block);
+        let count = count - triggers.len();
+
+        (triggers, count)
+    }
+
     /// Processes a block and returns the updated context and a boolean flag indicating
     /// whether new dynamic data sources have been added to the subgraph.
     async fn process_block(
@@ -145,14 +163,26 @@ where
         block: BlockWithTriggers<C>,
         firehose_cursor: FirehoseCursor,
     ) -> Result<Action, BlockProcessingError> {
-        let triggers = block.trigger_data;
-        let block = Arc::new(block.block);
+        let BlockWithTriggers {
+            block,
+            trigger_data: triggers,
+        } = block;
         let block_ptr = block.ptr();
 
         let logger = self.logger.new(o!(
                 "block_number" => format!("{:?}", block_ptr.number),
                 "block_hash" => format!("{}", block_ptr.hash)
         ));
+
+        // If we're using static filters, check for false positivies at this point.
+        // No other chain supports dynamic data sources so we can optimize and avoid doing this work.
+        let (triggers, dropped_count) = self.filter_triggers(triggers, &block);
+        if dropped_count != 0 {
+            debug!(&self.logger, "{} candidate triggers dropped", dropped_count);
+        }
+        if triggers.is_empty() {
+            return Ok(Action::Continue);
+        };
 
         if triggers.len() == 1 {
             debug!(&logger, "1 candidate trigger in this block");

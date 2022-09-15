@@ -7,15 +7,15 @@ use anyhow::{self, Error};
 use bytes::Bytes;
 use cid::Cid;
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{Blockchain, BlockchainKind, DataSource as _},
     components::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{MappingError, SharedProofOfIndexing},
     },
     data_source::{offchain, DataSource, TriggerData},
     prelude::{
-        BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
-        SubgraphInstanceMetrics, TriggerProcessor,
+        BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHost,
+        RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -59,6 +59,19 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             offchain_monitor,
             trigger_processor,
         }
+    }
+
+    #[inline]
+    pub fn filter_triggers(&self, triggers: &mut Vec<C::TriggerData>, block: &Arc<C::Block>) {
+        filter_triggers(
+            triggers,
+            block,
+            self.instance
+                .hosts
+                .iter()
+                .map(|h| h.data_source())
+                .collect(),
+        );
     }
 
     pub async fn process_trigger(
@@ -142,6 +155,28 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     }
 }
 
+/// Filters a set of triggers, removing any that do not match any datasources,
+/// which is useful when using the static filters feature to remove false positives.
+/// This is potentially hot code, hence the mutation here to avoid cloning.
+fn filter_triggers<C: Blockchain>(
+    triggers: &mut Vec<C::TriggerData>,
+    block: &Arc<C::Block>,
+    data_sources: Vec<&DataSource<C>>,
+) {
+    // Ethereum is the only protocol with support for dynamic data sources so in
+    // every other case we can just skip the filtering.
+    if !matches!(C::KIND, BlockchainKind::Ethereum) {
+        return;
+    }
+
+    triggers.retain_mut(|td| {
+        data_sources.iter().any(|ds| match ds {
+            &DataSource::Onchain(data_source) => data_source.is_address_match(td, &block),
+            &DataSource::Offchain(_) => true,
+        })
+    });
+}
+
 pub(crate) struct OffchainMonitor {
     ipfs_monitor: PollingMonitor<Cid>,
     ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
@@ -191,5 +226,154 @@ impl OffchainMonitor {
             }
         }
         Ok(triggers)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::Arc;
+
+    use graph::{
+        blockchain::BlockchainKind,
+        data_source::DataSource,
+        prelude::{
+            ethabi::Contract, web3::types::H160, EthereumBlock, EthereumBlockWithCalls,
+            EthereumCall, Link,
+        },
+    };
+    use graph_chain_ethereum::{
+        chain::BlockFinality, trigger::EthereumTrigger, Mapping, MappingABI,
+    };
+    use semver::Version;
+
+    use super::filter_triggers;
+
+    #[test]
+    fn trigger_filter() {
+        let addr1 = H160::from_low_u64_le(1);
+        let addr2 = H160::from_low_u64_le(2);
+        let no_match_addr = H160::from_low_u64_le(3);
+
+        let pass_all_ds: DataSource<graph_chain_ethereum::Chain> =
+            DataSource::Onchain(new_data_source(None));
+
+        let addr1_ds: DataSource<graph_chain_ethereum::Chain> =
+            DataSource::Onchain(new_data_source(Some(addr1)));
+
+        let addr2_ds: DataSource<graph_chain_ethereum::Chain> =
+            DataSource::Onchain(new_data_source(Some(addr2)));
+
+        // This isn't used atm.
+        let block = Arc::new(BlockFinality::NonFinal(EthereumBlockWithCalls {
+            ethereum_block: EthereumBlock::default(),
+            calls: None,
+        }));
+
+        struct Case<'a> {
+            name: &'a str,
+            data_sources: Vec<&'a DataSource<graph_chain_ethereum::Chain>>,
+            triggers: Vec<EthereumTrigger>,
+            expected_result: Vec<EthereumTrigger>,
+        }
+
+        let cases: Vec<Case<'_>> = vec![
+            Case {
+                name: "pass all",
+                data_sources: vec![&pass_all_ds, &addr1_ds, &addr2_ds],
+                triggers: vec![new_eth_call(no_match_addr, no_match_addr)],
+                expected_result: vec![new_eth_call(no_match_addr, no_match_addr)],
+            },
+            Case {
+                name: "addr1 only",
+                data_sources: vec![&addr1_ds],
+                triggers: vec![
+                    new_eth_call(addr1, addr2),
+                    new_eth_call(no_match_addr, addr2),
+                    new_eth_call(addr1, no_match_addr),
+                    new_eth_call(no_match_addr, addr1),
+                ],
+                expected_result: vec![new_eth_call(no_match_addr, addr1)],
+            },
+            Case {
+                name: "addr1 && addr2",
+                data_sources: vec![&addr1_ds, &addr2_ds],
+                triggers: vec![
+                    new_eth_call(addr1, addr2),
+                    new_eth_call(no_match_addr, addr2),
+                    new_eth_call(addr1, no_match_addr),
+                    new_eth_call(no_match_addr, addr1),
+                ],
+                expected_result: vec![
+                    new_eth_call(addr1, addr2),
+                    new_eth_call(no_match_addr, addr2),
+                    new_eth_call(no_match_addr, addr1),
+                ],
+            },
+            Case {
+                name: "no matches",
+                data_sources: vec![&addr2_ds],
+                triggers: vec![
+                    new_eth_call(no_match_addr, addr1),
+                    new_eth_call(addr1, no_match_addr),
+                ],
+                expected_result: vec![],
+            },
+        ];
+
+        for mut case in cases.into_iter() {
+            filter_triggers(&mut case.triggers, &block, case.data_sources);
+            assert_eq!(case.triggers, case.expected_result, "case: {:?}", case.name);
+        }
+    }
+
+    fn new_eth_call(from: H160, to: H160) -> EthereumTrigger {
+        let mut call = EthereumCall::default();
+        call.from = from;
+        call.to = to;
+
+        EthereumTrigger::Call(Arc::new(call))
+    }
+
+    fn new_data_source(address: Option<H160>) -> graph_chain_ethereum::DataSource {
+        graph_chain_ethereum::DataSource {
+            kind: BlockchainKind::Ethereum.to_string(),
+            network: None,
+            name: "asd".to_string(),
+            manifest_idx: 0,
+            address,
+            start_block: 0,
+            mapping: Mapping {
+                api_version: Version::parse("1.0.0").expect("unable to parse version"),
+                language: "".to_string(),
+                entities: vec![],
+                block_handlers: vec![],
+                runtime: Arc::new(vec![]),
+                link: Link::default(),
+                kind: "".to_string(),
+                abis: vec![],
+                call_handlers: vec![],
+                event_handlers: vec![],
+            },
+            context: Arc::new(None),
+            creation_block: None,
+            contract_abi: Arc::new(MappingABI {
+                name: "mock_abi".to_string(),
+                contract: Contract::load(
+                    r#"[
+            {
+                "inputs": [
+                    {
+                        "name": "a",
+                        "type": "address"
+                    }
+                ],
+                "type": "constructor"
+            }
+        ]"#
+                    .as_bytes(),
+                )
+                .unwrap(),
+            }),
+        }
     }
 }

@@ -45,6 +45,17 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.source.start_block
     }
 
+    // Cosmos doesn't support dynamic data sources so all matched triggers will
+    // be relevant for every data source.
+    #[inline]
+    fn is_address_match(
+        &self,
+        _trigger: &<Chain as Blockchain>::TriggerData,
+        _block: &Arc<<Chain as Blockchain>::Block>,
+    ) -> bool {
+        true
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,

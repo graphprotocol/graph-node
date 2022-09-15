@@ -79,6 +79,12 @@ impl blockchain::DataSource<Chain> for DataSource {
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         None
     }
+    // Substreams doesn't support dynamic data sources so all matched triggers will
+    // be relevant for every data source.
+    #[inline]
+    fn is_address_match(&self, _trigger: &crate::TriggerData, _block: &Arc<crate::Block>) -> bool {
+        true
+    }
 
     // match_and_decode only seems to be used on the default trigger processor which substreams
     // bypasses so it should be fine to leave it unimplemented.

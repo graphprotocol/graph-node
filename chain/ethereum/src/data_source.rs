@@ -58,9 +58,18 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.start_block
     }
 
-    fn match_and_decode(
+    #[inline]
+    fn is_address_match(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
+        _block: &Arc<<Chain as Blockchain>::Block>,
+    ) -> bool {
+        self.matches_trigger_address(trigger)
+    }
+
+    fn match_and_decode(
+        &self,
+        trigger: &EthereumTrigger,
         block: &Arc<<Chain as Blockchain>::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
@@ -450,6 +459,7 @@ impl DataSource {
             })
     }
 
+    #[inline]
     fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
         let ds_address = match self.address {
             Some(addr) => addr,

@@ -117,6 +117,14 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     fn validate(&self) -> Vec<anyhow::Error> {
         todo!()
     }
+
+    fn is_address_match(
+        &self,
+        _trigger: &<C as Blockchain>::TriggerData,
+        _block: &Arc<<C as Blockchain>::Block>,
+    ) -> bool {
+        todo!()
+    }
 }
 
 #[derive(Clone, Default, Deserialize)]

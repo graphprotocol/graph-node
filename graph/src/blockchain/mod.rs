@@ -221,6 +221,10 @@ pub trait DataSource<C: Blockchain>:
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<C>>, Error>;
 
+    /// Performs the match part of match and decode, this is useful for performing early filtering
+    /// specially for the case of static filters where false positive may be processed.
+    fn is_address_match(&self, trigger: &C::TriggerData, block: &Arc<C::Block>) -> bool;
+
     fn is_duplicate_of(&self, other: &Self) -> bool;
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource;
