@@ -1010,7 +1010,9 @@ mod tests {
                 "favoritePet_",
                 "leastFavoritePet_",
                 "mostFavoritePets_",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)
@@ -1087,7 +1089,9 @@ mod tests {
                 "mostLovedBy_not_contains",
                 "mostLovedBy_not_contains_nocase",
                 "mostLovedBy_",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)
