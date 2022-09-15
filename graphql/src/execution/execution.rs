@@ -587,14 +587,17 @@ async fn resolve_field_value(
             .await
         }
 
-        s::Type::NamedType(ref name) => resolve_field_value_for_named_type(
-            ctx,
-            object_type,
-            field_value,
-            field,
-            field_definition,
-            name,
-        ),
+        s::Type::NamedType(ref name) => {
+            resolve_field_value_for_named_type(
+                ctx,
+                object_type,
+                field_value,
+                field,
+                field_definition,
+                name,
+            )
+            .await
+        }
 
         s::Type::ListType(inner_type) => {
             resolve_field_value_for_list_type(
@@ -611,7 +614,7 @@ async fn resolve_field_value(
 }
 
 /// Resolves the value of a field that corresponds to a named type.
-fn resolve_field_value_for_named_type(
+async fn resolve_field_value_for_named_type(
     ctx: &ExecutionContext<impl Resolver>,
     object_type: &s::ObjectType,
     field_value: Option<r::Value>,
@@ -630,6 +633,7 @@ fn resolve_field_value_for_named_type(
         s::TypeDefinition::Object(t) => {
             ctx.resolver
                 .resolve_object(field_value, field, field_definition, t.into())
+                .await
         }
 
         // Let the resolver decide how values in the resolved object value
@@ -646,6 +650,7 @@ fn resolve_field_value_for_named_type(
         s::TypeDefinition::Interface(i) => {
             ctx.resolver
                 .resolve_object(field_value, field, field_definition, i.into())
+                .await
         }
 
         s::TypeDefinition::Union(_) => Err(QueryExecutionError::Unimplemented("unions".to_owned())),

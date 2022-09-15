@@ -797,7 +797,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         }
     }
 
-    fn resolve_object(
+    async fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
         field: &a::Field,
@@ -812,7 +812,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
             (None, "indexingStatusForPendingVersion") => {
                 self.resolve_indexing_status_for_version(field, false)
             }
-            (None, "subgraphFeatures") => graph::block_on(self.resolve_subgraph_features(field)),
+            (None, "subgraphFeatures") => self.resolve_subgraph_features(field).await,
             (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
             // The top-level `subgraphVersions` field
             (None, "apiVersions") => self.resolve_api_versions(field),
