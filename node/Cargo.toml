@@ -44,5 +44,5 @@ toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
-prometheus = { version ="0.13.1", features = ["push"] }
+prometheus = { version ="0.13.2", features = ["push"] }
 json-structural-diff = {version = "0.1", features = ["colorize"] }
