@@ -1,0 +1,5 @@
+wrap_comments = true
+
+group_imports = "StdExternalCrate"
+# "Crate" looks better but this is more easily greppable.
+imports_granularity = "Module"
