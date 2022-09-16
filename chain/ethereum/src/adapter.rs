@@ -167,21 +167,18 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             trigger_every_block,
         } = self.block.clone();
 
-        if trigger_every_block {
-            return Vec::new();
-        }
-
         let log_filters: Vec<LogFilter> = self.log.into();
         let mut call_filters: Vec<CallToFilter> = self.call.into();
         call_filters.extend(Into::<Vec<CallToFilter>>::into(self.block));
 
-        if call_filters.is_empty() && log_filters.is_empty() {
+        if call_filters.is_empty() && log_filters.is_empty() && !trigger_every_block {
             return Vec::new();
         }
 
         let combined_filter = CombinedFilter {
             log_filters,
             call_filters,
+            send_all_block_headers: trigger_every_block,
         };
 
         vec![Any {
