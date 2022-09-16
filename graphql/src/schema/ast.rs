@@ -12,7 +12,6 @@ use graph::prelude::{s, Error, ValueType};
 
 use crate::query::ast as qast;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum FilterOp {
     Not,
     GreaterThan,
