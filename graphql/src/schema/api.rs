@@ -208,7 +208,7 @@ fn add_filter_type(
                 description: None,
                 name: filter_type_name,
                 directives: vec![],
-                fields: generated_filter_fields.clone(),
+                fields: generated_filter_fields,
             });
             let def = Definition::TypeDefinition(typedef);
             schema.definitions.push(def);
