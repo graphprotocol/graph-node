@@ -645,6 +645,7 @@ async fn resolve_field_value_for_named_type(
         s::TypeDefinition::Scalar(t) => {
             ctx.resolver
                 .resolve_scalar_value(object_type, field, t, field_value)
+                .await
         }
 
         s::TypeDefinition::Interface(i) => {

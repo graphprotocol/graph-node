@@ -202,6 +202,75 @@ impl<S: Store> IndexNodeResolver<S> {
         })
     }
 
+    async fn resolve_block_hash_from_number(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let network = field
+            .get_required::<String>("network")
+            .expect("Valid network required");
+        let block_number = field
+            .get_required::<BlockNumber>("blockNumber")
+            .expect("Valid blockNumber required");
+
+        macro_rules! try_resolve_for_chain {
+            ( $typ:path ) => {
+                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
+
+                if let Some(blockchain) = blockchain {
+                    debug!(
+                        self.logger,
+                        "Fetching block hash from number";
+                        "network" => &network,
+                        "block_number" => block_number,
+                    );
+
+                    let block_ptr_res = blockchain
+                        .block_pointer_from_number(&self.logger, block_number)
+                        .await;
+
+                        if let Err(e) = block_ptr_res {
+                            warn!(
+                                self.logger,
+                                "Failed to fetch block hash from number";
+                                "network" => &network,
+                                "chain" => <$typ as Blockchain>::KIND.to_string(),
+                                "block_number" => block_number,
+                                "error" => e.to_string(),
+                            );
+                            return Ok(r::Value::Null);
+                        }
+
+                    let block_ptr = block_ptr_res.unwrap();
+                    return Ok(r::Value::String(block_ptr.hash_hex()));
+                }
+            };
+        }
+
+        // Ugly, but we can't get back an object trait from the `BlockchainMap`,
+        // so this seems like the next best thing.
+        try_resolve_for_chain!(graph_chain_ethereum::Chain);
+        try_resolve_for_chain!(graph_chain_arweave::Chain);
+        try_resolve_for_chain!(graph_chain_cosmos::Chain);
+        try_resolve_for_chain!(graph_chain_near::Chain);
+
+        // If you're adding support for a new chain and this `match` clause just
+        // gave you a compiler error, then this message is for you! You need to
+        // add a new `try_resolve!` macro invocation above for your new chain
+        // type.
+        match BlockchainKind::Ethereum {
+            // Note: we don't actually care about substreams here.
+            BlockchainKind::Substreams
+            | BlockchainKind::Arweave
+            | BlockchainKind::Ethereum
+            | BlockchainKind::Cosmos
+            | BlockchainKind::Near => (),
+        }
+
+        // The given network does not exist.
+        Ok(r::Value::Null)
+    }
+
     async fn resolve_cached_ethereum_calls(
         &self,
         field: &a::Field,
@@ -734,7 +803,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
     }
 
     /// Resolves a scalar value for a given scalar type.
-    fn resolve_scalar_value(
+    async fn resolve_scalar_value(
         &self,
         parent_object_type: &s::ObjectType,
         field: &a::Field,
@@ -748,6 +817,9 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         ) {
             ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
             ("Query", "blockData", "JSONObject") => self.resolve_block_data(field),
+            ("Query", "blockHashFromNumber", "Bytes") => {
+                self.resolve_block_hash_from_number(field).await
+            }
 
             // Fallback to the same as is in the default trait implementation. There
             // is no way to call back into the default implementation for the trait.

@@ -51,7 +51,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     }
 
     /// Resolves a scalar value for a given scalar type.
-    fn resolve_scalar_value(
+    async fn resolve_scalar_value(
         &self,
         _parent_object_type: &s::ObjectType,
         _field: &a::Field,
