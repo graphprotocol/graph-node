@@ -296,8 +296,10 @@ impl AdaptiveBatchSize {
     // get close to TARGET_DURATION for the time it takes to copy one
     // batch, but don't step up batch_size by more than 2x at once
     pub fn adapt(&mut self, duration: Duration) {
+        // Avoid division by zero
+        let duration = duration.as_millis().max(1);
         let new_batch_size =
-            self.size as f64 * TARGET_DURATION.as_millis() as f64 / duration.as_millis() as f64;
+            self.size as f64 * TARGET_DURATION.as_millis() as f64 / duration as f64;
         self.size = (2 * self.size).min(new_batch_size.round() as i64);
     }
 }

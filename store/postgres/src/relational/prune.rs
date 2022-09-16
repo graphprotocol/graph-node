@@ -226,6 +226,32 @@ impl Layout {
     /// that they will not be modified in any way while pruning is running.
     /// Only tables where the ratio of entities to entity versions is below
     /// `prune_ratio` will actually be pruned.
+    ///
+    /// The strategy for `prune_by_copying` is to copy all data that is
+    /// needed to respond to queries at block heights at or after
+    /// `earliest_block` to a new table and then to replace the existing
+    /// tables with these new tables atomically in a transaction. Copying
+    /// happens in two stages: we first copy data for final blocks without
+    /// blocking writes, and then copy data for nonfinal blocks. The latter
+    /// blocks writes by taking a lock on the row for the deployment in
+    /// `subgraph_deployment` (via `deployment::lock`) The process for
+    /// switching to the new tables needs to take the naming of various
+    /// database objects that Postgres creates automatically into account so
+    /// that they all have the same names as the original objects to ensure
+    /// that pruning can be done again without risking name clashes.
+    ///
+    /// The reason this strategy works well when a lot (or even the
+    /// majority) of the data needs to be removed is that in the more
+    /// straightforward strategy of simply deleting unneeded data, accessing
+    /// the remaining data becomes very inefficient since it is scattered
+    /// over a large number of pages, often with just one row per page. We
+    /// would therefore need to do a full vacuum of the tables after
+    /// deleting which effectively copies the remaining data into new
+    /// tables. But a full vacuum takes an `access exclusive` lock which
+    /// prevents both reads and writes to the table, which means it would
+    /// also block queries to the deployment, often for extended periods of
+    /// time. The `prune_by_copying` strategy never blocks reads, it only
+    /// ever blocks writes.
     pub fn prune_by_copying(
         &self,
         _logger: &Logger,

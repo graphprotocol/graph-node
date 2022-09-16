@@ -1024,9 +1024,10 @@ pub fn set_earliest_block(
     Ok(())
 }
 
-/// Lock the row for `site` in `subgraph_deployment` for update. This lock
-/// is used to coordinate the changes that the subgraph writer makes with
-/// changes that other parts of the system, in particular, pruning make
+/// Lock the row for `site` in `subgraph_deployment` for update for the
+/// remainder of the current transaction. This lock is used to coordinate
+/// the changes that the subgraph writer makes with changes that other parts
+/// of the system, in particular, pruning make
 //  see also: deployment-lock-for-update
 pub fn lock(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
     use subgraph_deployment as d;
