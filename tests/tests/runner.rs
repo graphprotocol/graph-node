@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
+use graph::env::EnvVars;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
@@ -33,7 +34,15 @@ async fn data_source_revert() -> anyhow::Result<()> {
     };
 
     let chain = Arc::new(chain(blocks.clone(), &stores).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain.clone(), None).await;
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain.clone(),
+        None,
+        None,
+    )
+    .await;
 
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
@@ -51,7 +60,15 @@ async fn data_source_revert() -> anyhow::Result<()> {
     )
     .await;
     let graft_block = Some(test_ptr(3));
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, graft_block).await;
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        graft_block,
+        None,
+    )
+    .await;
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
 
@@ -97,7 +114,7 @@ async fn typename() -> anyhow::Result<()> {
 
     let stores = stores("./integration-tests/config.simple.toml").await;
     let chain = Arc::new(chain(blocks, &stores).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -122,7 +139,7 @@ async fn file_data_sources() {
     };
     let stop_block = test_ptr(1);
     let chain = Arc::new(chain(blocks, &stores).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
     ctx.start_and_sync_to(stop_block).await;
 
     // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
@@ -150,4 +167,57 @@ async fn file_data_sources() {
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
+}
+
+#[tokio::test]
+async fn template_static_filters_false_positives() {
+    let stores = stores("./integration-tests/config.simple.toml").await;
+
+    let subgraph_name = SubgraphName::new("dynamic-data-source").unwrap();
+    let hash = {
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir).await
+    };
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = test_ptr(1);
+    let chain = Arc::new(chain(blocks, &stores).await);
+
+    let mut env_vars = EnvVars::default();
+    env_vars.experimental_static_filters = true;
+
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        None,
+        Some(env_vars),
+    )
+    .await;
+    ctx.start_and_sync_to(stop_block).await;
+
+    let poi = ctx
+        .store
+        .get_proof_of_indexing(&ctx.deployment.hash, &None, test_ptr(1))
+        .await
+        .unwrap();
+
+    // This check exists to prevent regression of https://github.com/graphprotocol/graph-node/issues/3963
+    // when false positives go through the block stream, they should be discarded by
+    // `DataSource::match_and_decode`. The POI below is generated consistently from the empty
+    // POI table. If this fails it's likely that either the bug was re-introduced or there is
+    // a change in the POI infrastructure.
+    assert_eq!(
+        poi.unwrap(),
+        [
+            196, 173, 167, 52, 226, 19, 154, 61, 189, 94, 19, 229, 18, 7, 0, 252, 234, 49, 110,
+            179, 105, 64, 16, 46, 25, 194, 83, 94, 195, 225, 56, 252
+        ],
+    );
 }

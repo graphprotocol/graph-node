@@ -228,7 +228,7 @@ impl SubgraphStore {
         }
     }
 
-    pub(crate) async fn get_proof_of_indexing(
+    pub async fn get_proof_of_indexing(
         &self,
         id: &DeploymentHash,
         indexer: &Option<Address>,

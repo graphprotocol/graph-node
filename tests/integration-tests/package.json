@@ -12,6 +12,7 @@
     "remove-then-update",
     "typename",
     "value-roundtrip",
+    "dynamic-data-source",
     "file-data-sources"
   ]
 }

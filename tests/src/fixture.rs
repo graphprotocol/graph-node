@@ -20,7 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
-use graph::env::ENV_VARS;
+use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
@@ -28,6 +28,7 @@ use graph::prelude::{
     MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
+use graph::slog::crit;
 use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -38,7 +39,7 @@ use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
-use slog::{crit, info, Logger};
+use slog::{info, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -216,7 +217,13 @@ pub async fn setup<C: Blockchain>(
     stores: &Stores,
     chain: Arc<C>,
     graft_block: Option<BlockPtr>,
+    env_vars: Option<EnvVars>,
 ) -> TestContext {
+    let env_vars = match env_vars {
+        Some(ev) => ev,
+        None => EnvVars::from_env().unwrap(),
+    };
+
     let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.clone(), None);
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
@@ -229,7 +236,7 @@ pub async fn setup<C: Blockchain>(
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain);
 
-    let static_filters = ENV_VARS.experimental_static_filters;
+    let static_filters = env_vars.experimental_static_filters;
 
     let ipfs = IpfsClient::localhost();
     let link_resolver = Arc::new(LinkResolver::new(
@@ -238,9 +245,9 @@ pub async fn setup<C: Blockchain>(
     ));
     let ipfs_service = IpfsService::new(
         ipfs,
-        ENV_VARS.mappings.max_ipfs_file_bytes as u64,
-        ENV_VARS.mappings.ipfs_timeout,
-        ENV_VARS.mappings.max_ipfs_concurrent_requests,
+        env_vars.mappings.max_ipfs_file_bytes as u64,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.max_ipfs_concurrent_requests,
     );
 
     let blockchain_map = Arc::new(blockchain_map);
