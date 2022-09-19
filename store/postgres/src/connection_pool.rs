@@ -983,7 +983,7 @@ impl PoolInner {
         let result = pool
             .configure_fdw(servers.as_ref())
             .and_then(|()| migrate_schema(&pool.logger, &conn))
-            .and_then(|()| pool.map_primary())
+            .and_then(|had_migrations| pool.map_primary())
             .and_then(|()| pool.map_metadata(servers.as_ref()));
         debug!(&pool.logger, "Release migration lock");
         advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
@@ -1068,19 +1068,22 @@ embed_migrations!("./migrations");
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<(), StoreError> {
+fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<bool, StoreError> {
     // Collect migration logging output
     let mut output = vec![];
+
+    let old_count = catalog::migration_count(conn)?;
 
     info!(logger, "Running migrations");
     let result = embedded_migrations::run_with_output(conn, &mut output);
     info!(logger, "Migrations finished");
 
+    let had_migrations = catalog::migration_count(conn)? != old_count;
+
     // If there was any migration output, log it now
     let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
     let msg = msg.trim();
-    let has_output = !msg.is_empty();
-    if has_output {
+    if !msg.is_empty() {
         let msg = msg.replace('\n', " ");
         if let Err(e) = result {
             error!(logger, "Postgres migration error"; "output" => msg);
@@ -1090,13 +1093,11 @@ fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<(), StoreError
         }
     }
 
-    if has_output {
-        // We take getting output as a signal that a migration was actually
-        // run, which is not easy to tell from the Diesel API, and reset the
-        // query statistics since a schema change makes them not all that
-        // useful. An error here is not serious and can be ignored.
+    if had_migrations {
+        // Reset the query statistics since a schema change makes them not
+        // all that useful. An error here is not serious and can be ignored.
         conn.batch_execute("select pg_stat_statements_reset()").ok();
     }
 
-    Ok(())
+    Ok(had_migrations)
 }
