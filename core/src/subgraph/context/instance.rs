@@ -1,10 +1,9 @@
-use futures01::sync::mpsc::Sender;
-use graph::{
-    blockchain::Blockchain,
-    data_source::{DataSource, DataSourceTemplate},
-    prelude::*,
-};
 use std::collections::HashMap;
+
+use futures01::sync::mpsc::Sender;
+use graph::blockchain::Blockchain;
+use graph::data_source::{DataSource, DataSourceTemplate};
+use graph::prelude::*;
 
 use super::OffchainMonitor;
 
@@ -22,7 +21,8 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
 
-    /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
+    /// Maps the hash of a module to a channel to the thread in which the module
+    /// is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 }
 
@@ -56,9 +56,10 @@ where
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
         for ds in manifest.data_sources {
-            // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
-            // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
-            // `IndexingContext`.
+            // TODO: This is duplicating code from
+            // `IndexingContext::add_dynamic_data_source` and
+            // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be
+            // refactored into `IndexingContext`.
 
             let runtime = ds.runtime();
             let module_bytes = match runtime {
@@ -77,8 +78,9 @@ where
         Ok(this)
     }
 
-    // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure that this
-    // function is only called for data_sources for which data_source.runtime().is_some() is true.
+    // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure
+    // that this function is only called for data_sources for which
+    // data_source.runtime().is_some() is true.
     fn new_host(
         &mut self,
         logger: Logger,

@@ -1,14 +1,15 @@
+use std::collections::HashMap;
+
 use futures::sync::mpsc;
 use futures03::stream::SplitStream;
+use graph::data::query::QueryTarget;
+use graph::prelude::*;
 use graphql_parser::parse_query;
 use http::StatusCode;
-use std::collections::HashMap;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
 use uuid::Uuid;
-
-use graph::{data::query::QueryTarget, prelude::*};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -60,9 +60,9 @@ async fn data_source_revert() -> anyhow::Result<()> {
         .await
         .unwrap();
 
-    // TODO: The semantically correct value for `count` would be 5. But because the test fixture
-    // uses a `NoopTriggersAdapter` the data sources are not reprocessed in the block in which they
-    // are created.
+    // TODO: The semantically correct value for `count` would be 5. But because the
+    // test fixture uses a `NoopTriggersAdapter` the data sources are not
+    // reprocessed in the block in which they are created.
     assert_eq!(
         query_res,
         Some(object! { dataSourceCount: object!{ id: "4", count: 4 } })

@@ -1,12 +1,11 @@
-use jsonrpc_core::types::Call;
-use jsonrpc_core::Value;
-
-use web3::transports::{http, ipc, ws};
-use web3::RequestId;
+use std::future::Future;
 
 use graph::prelude::*;
 use graph::url::Url;
-use std::future::Future;
+use jsonrpc_core::types::Call;
+use jsonrpc_core::Value;
+use web3::transports::{http, ipc, ws};
+use web3::RequestId;
 
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]

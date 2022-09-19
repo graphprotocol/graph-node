@@ -1,24 +1,19 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use graph::components::store::SubscriptionManager;
+use graph::data::graphql::effort::LoadManager;
+use graph::data::query::{QueryResults, QueryTarget};
+use graph::prelude::{
+    async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
+    GraphQlRunner as GraphQlRunnerTrait, Logger, MetricsRegistry, Query, QueryExecutionError,
+    QueryStore, QueryStoreManager, Subscription, SubscriptionError, SubscriptionResult, ENV_VARS,
+};
+
 use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::prelude::MetricsRegistry;
-use graph::{
-    components::store::SubscriptionManager,
-    prelude::{
-        async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
-        GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, Subscription,
-        SubscriptionError, SubscriptionResult, ENV_VARS,
-    },
-};
-use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
-use graph::{
-    data::query::{QueryResults, QueryTarget},
-    prelude::QueryStore,
-};
 
 /// GraphQL runner implementation for The Graph.
 pub struct GraphQlRunner<S, SM> {

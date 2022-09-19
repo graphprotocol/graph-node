@@ -1,16 +1,14 @@
+use std::net::{Ipv4Addr, SocketAddrV4};
+
+use graph::blockchain::BlockchainMap;
+use graph::components::store::Store;
+use graph::prelude::{IndexNodeServer as IndexNodeServerTrait, *};
 use hyper;
 use hyper::service::make_service_fn;
 use hyper::Server;
-use std::net::{Ipv4Addr, SocketAddrV4};
-
-use graph::{
-    blockchain::BlockchainMap,
-    components::store::Store,
-    prelude::{IndexNodeServer as IndexNodeServerTrait, *},
-};
+use thiserror::Error;
 
 use crate::service::IndexNodeService;
-use thiserror::Error;
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]

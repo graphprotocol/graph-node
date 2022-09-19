@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -8,7 +9,6 @@ use slog::Logger;
 
 use crate::data::subgraph::Link;
 use crate::prelude::Error;
-use std::fmt::Debug;
 
 /// The values that `json_stream` returns. The struct contains the deserialized
 /// JSON value from the input stream, together with the line number from which
@@ -37,8 +37,8 @@ pub trait LinkResolver: Send + Sync + 'static + Debug {
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error>;
 
     /// Read the contents of `link` and deserialize them into a stream of JSON
-    /// values. The values must each be on a single line; newlines are significant
-    /// as they are used to split the file contents and each line is deserialized
-    /// separately.
+    /// values. The values must each be on a single line; newlines are
+    /// significant as they are used to split the file contents and each
+    /// line is deserialized separately.
     async fn json_stream(&self, logger: &Logger, link: &Link) -> Result<JsonValueStream, Error>;
 }

@@ -1,13 +1,16 @@
-use crate::{chain::BlockFinality, EthereumAdapter, EthereumAdapterTrait, ENV_VARS};
-use graph::{
-    blockchain::{BlockHash, BlockPtr, IngestorError},
-    cheap_clone::CheapClone,
-    prelude::{
-        error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore, Error,
-        EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
-    },
+use std::sync::Arc;
+use std::time::Duration;
+
+use graph::blockchain::{BlockHash, BlockPtr, IngestorError};
+use graph::cheap_clone::CheapClone;
+use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::{
+    error, info, tokio, trace, warn, ChainStore, Error, EthereumBlockWithCalls, Future01CompatExt,
+    LogCode, Logger,
 };
-use std::{sync::Arc, time::Duration};
+
+use crate::chain::BlockFinality;
+use crate::{EthereumAdapter, EthereumAdapterTrait, ENV_VARS};
 
 pub struct BlockIngestor {
     logger: Logger,
@@ -94,9 +97,10 @@ impl BlockIngestor {
         // Get chain head ptr from store
         let head_block_ptr_opt = self.chain_store.cheap_clone().chain_head_ptr().await?;
 
-        // To check if there is a new block or not, fetch only the block header since that's cheaper
-        // than the full block. This is worthwhile because most of the time there won't be a new
-        // block, as we expect the poll interval to be much shorter than the block time.
+        // To check if there is a new block or not, fetch only the block header since
+        // that's cheaper than the full block. This is worthwhile because most
+        // of the time there won't be a new block, as we expect the poll
+        // interval to be much shorter than the block time.
         let latest_block = self.latest_block().await?;
 
         // If latest block matches head block in store, nothing needs to be done
@@ -149,17 +153,16 @@ impl BlockIngestor {
         // blockchain in the block number range we care about.
         //
         // Loop will terminate because:
-        // - The number of blocks in the ChainStore in the block number
-        //   range [latest - ancestor_count, latest] is finite.
-        // - The missing parents in the first iteration have at most block
-        //   number latest-1.
-        // - Each iteration loads parents of all blocks in the range whose
-        //   parent blocks are not already in the ChainStore, so blocks
-        //   with missing parents in one iteration will not have missing
-        //   parents in the next.
-        // - Therefore, if the missing parents in one iteration have at
-        //   most block number N, then the missing parents in the next
-        //   iteration will have at most block number N-1.
+        // - The number of blocks in the ChainStore in the block number range [latest -
+        //   ancestor_count, latest] is finite.
+        // - The missing parents in the first iteration have at most block number
+        //   latest-1.
+        // - Each iteration loads parents of all blocks in the range whose parent blocks
+        //   are not already in the ChainStore, so blocks with missing parents in one
+        //   iteration will not have missing parents in the next.
+        // - Therefore, if the missing parents in one iteration have at most block
+        //   number N, then the missing parents in the next iteration will have at most
+        //   block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
         while let Some(hash) = missing_block_hash {
             missing_block_hash = self.ingest_block(&hash).await?;

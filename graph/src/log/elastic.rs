@@ -8,13 +8,12 @@ use std::time::Duration;
 use chrono::prelude::{SecondsFormat, Utc};
 use futures03::TryFutureExt;
 use http::header::CONTENT_TYPE;
-use reqwest;
 use reqwest::Client;
 use serde::ser::Serializer as SerdeSerializer;
 use serde::Serialize;
 use serde_json::json;
 use slog::*;
-use slog_async;
+use {reqwest, slog_async};
 
 use crate::util::futures::retry;
 

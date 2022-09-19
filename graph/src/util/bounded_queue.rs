@@ -1,4 +1,5 @@
-use std::{collections::VecDeque, sync::Mutex};
+use std::collections::VecDeque;
+use std::sync::Mutex;
 
 use crate::prelude::tokio::sync::Semaphore;
 

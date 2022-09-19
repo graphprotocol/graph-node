@@ -1,14 +1,14 @@
 use graph::components::store::UnitStream;
+use graph::data::graphql::ObjectOrInterface;
 use graph::data::query::Trace;
-use graph::prelude::{async_trait, s, tokio, ApiSchema, Error, QueryExecutionError};
-use graph::{
-    data::graphql::ObjectOrInterface,
-    prelude::{r, QueryResult},
+use graph::prelude::{
+    async_trait, r, s, tokio, ApiSchema, Error, QueryExecutionError, QueryResult,
 };
 
 use crate::execution::{ast as a, ExecutionContext};
 
-/// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
+/// A GraphQL resolver that can resolve entities, enum values, scalar types and
+/// interfaces/unions.
 #[async_trait]
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
@@ -22,7 +22,8 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         selection_set: &a::SelectionSet,
     ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>>;
 
-    /// Resolves list of objects, `prefetched_objects` is `Some` if the parent already calculated the value.
+    /// Resolves list of objects, `prefetched_objects` is `Some` if the parent
+    /// already calculated the value.
     async fn resolve_objects(
         &self,
         prefetched_objects: Option<r::Value>,
@@ -31,7 +32,8 @@ pub trait Resolver: Sized + Send + Sync + 'static {
         object_type: ObjectOrInterface<'_>,
     ) -> Result<r::Value, QueryExecutionError>;
 
-    /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
+    /// Resolves an object, `prefetched_object` is `Some` if the parent already
+    /// calculated the value.
     async fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,

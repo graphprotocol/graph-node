@@ -2,7 +2,8 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 
-use crate::{components::store::DeploymentLocator, prelude::*};
+use crate::components::store::DeploymentLocator;
+use crate::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SubgraphVersionSwitchingMode {

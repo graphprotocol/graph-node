@@ -1,7 +1,7 @@
-use crate::prelude::BlockNumber;
 use std::sync::Arc;
 
 use crate::components::store::DeploymentLocator;
+use crate::prelude::BlockNumber;
 
 /// A `SubgraphInstanceManager` loads and manages subgraph instances.
 ///

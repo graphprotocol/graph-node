@@ -1,10 +1,10 @@
-use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
-use graph::data::query::Trace;
-use graphql_parser::Pos;
 use std::collections::BTreeMap;
 
+use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
+use graph::data::query::Trace;
 use graph::prelude::*;
+use graphql_parser::Pos;
 
 use crate::execution::ast as a;
 use crate::prelude::*;
@@ -352,7 +352,8 @@ impl IntrospectionResolver {
     }
 }
 
-/// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
+/// A GraphQL resolver that can resolve entities, enum values, scalar types and
+/// interfaces/unions.
 #[async_trait]
 impl Resolver for IntrospectionResolver {
     // `IntrospectionResolver` is not used as a "top level" resolver,

@@ -1,8 +1,7 @@
-use graph::blockchain::block_stream::FirehoseCursor;
-use lazy_static::lazy_static;
-use std::{marker::PhantomData, str::FromStr};
-use test_store::*;
+use std::marker::PhantomData;
+use std::str::FromStr;
 
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
     DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter,
 };
@@ -12,6 +11,8 @@ use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
 use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
+use lazy_static::lazy_static;
+use test_store::*;
 
 const USER_GQL: &str = "
 enum Color { yellow, red, blue, green }
@@ -127,8 +128,8 @@ where
 
 /// Inserts test data into the store.
 ///
-/// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A for the tests to
-/// use.
+/// Inserts data in test blocks 1, 2, and 3, leaving test blocks 3A, 4, and 4A
+/// for the tests to use.
 async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
     let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
         id: TEST_SUBGRAPH_ID.clone(),

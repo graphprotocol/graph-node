@@ -1,30 +1,33 @@
 //! Stores all the gas costs is one place so they can be compared easily.
-//! Determinism: Once deployed, none of these values can be changed without a version upgrade.
+//! Determinism: Once deployed, none of these values can be changed without a
+//! version upgrade.
 
 use super::*;
 
 /// Using 10 gas = ~1ns for WASM instructions.
 const GAS_PER_SECOND: u64 = 10_000_000_000;
 
-/// Set max gas to 1000 seconds worth of gas per handler. The intent here is to have the determinism
-/// cutoff be very high, while still allowing more reasonable timer based cutoffs. Having a unit
-/// like 10 gas for ~1ns allows us to be granular in instructions which are aggregated into metered
-/// blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
+/// Set max gas to 1000 seconds worth of gas per handler. The intent here is to
+/// have the determinism cutoff be very high, while still allowing more
+/// reasonable timer based cutoffs. Having a unit like 10 gas for ~1ns allows us
+/// to be granular in instructions which are aggregated into metered blocks via https://docs.rs/pwasm-utils/0.16.0/pwasm_utils/fn.inject_gas_counter.html But we can
 /// still charge very high numbers for other things.
 pub const CONST_MAX_GAS_PER_HANDLER: u64 = 1000 * GAS_PER_SECOND;
 
-/// Gas for instructions are aggregated into blocks, so hopefully gas calls each have relatively
-/// large gas. But in the case they don't, we don't want the overhead of calling out into a host
-/// export to be the dominant cost that causes unexpectedly high execution times.
+/// Gas for instructions are aggregated into blocks, so hopefully gas calls each
+/// have relatively large gas. But in the case they don't, we don't want the
+/// overhead of calling out into a host export to be the dominant cost that
+/// causes unexpectedly high execution times.
 ///
-/// This value is based on the benchmark of an empty infinite loop, which does basically nothing
-/// other than call the gas function. The benchmark result was closer to 5000 gas but use 10_000 to
-/// be conservative.
+/// This value is based on the benchmark of an empty infinite loop, which does
+/// basically nothing other than call the gas function. The benchmark result was
+/// closer to 5000 gas but use 10_000 to be conservative.
 pub const HOST_EXPORT_GAS: Gas = Gas(10_000);
 
-/// As a heuristic for the cost of host fns it makes sense to reason in terms of bandwidth and
-/// calculate the cost from there. Because we don't have benchmarks for each host fn, we go with
-/// pessimistic assumption of performance of 10 MB/s, which nonetheless allows for 10 GB to be
+/// As a heuristic for the cost of host fns it makes sense to reason in terms of
+/// bandwidth and calculate the cost from there. Because we don't have
+/// benchmarks for each host fn, we go with pessimistic assumption of
+/// performance of 10 MB/s, which nonetheless allows for 10 GB to be
 /// processed through host exports by a single handler at a 1000 seconds budget.
 const DEFAULT_BYTE_PER_SECOND: u64 = 10_000_000;
 
@@ -40,8 +43,8 @@ pub const DEFAULT_GAS_OP: GasOp = GasOp {
     size_mult: DEFAULT_GAS_PER_BYTE,
 };
 
-/// Because big math has a multiplicative complexity, that can result in high sizes, so assume a
-/// bandwidth of 100 MB/s, faster than the default.
+/// Because big math has a multiplicative complexity, that can result in high
+/// sizes, so assume a bandwidth of 100 MB/s, faster than the default.
 const BIG_MATH_BYTE_PER_SECOND: u64 = 100_000_000;
 const BIG_MATH_GAS_PER_BYTE: u64 = GAS_PER_SECOND / BIG_MATH_BYTE_PER_SECOND;
 

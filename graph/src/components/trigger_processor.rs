@@ -3,12 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use slog::Logger;
 
-use crate::{blockchain::Blockchain, data_source::TriggerData, prelude::SubgraphInstanceMetrics};
-
-use super::{
-    store::SubgraphFork,
-    subgraph::{BlockState, MappingError, RuntimeHostBuilder, SharedProofOfIndexing},
-};
+use super::store::SubgraphFork;
+use super::subgraph::{BlockState, MappingError, RuntimeHostBuilder, SharedProofOfIndexing};
+use crate::blockchain::Blockchain;
+use crate::data_source::TriggerData;
+use crate::prelude::SubgraphInstanceMetrics;
 
 #[async_trait]
 pub trait TriggerProcessor<C, T>: Sync + Send

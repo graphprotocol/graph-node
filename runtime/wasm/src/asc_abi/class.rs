@@ -1,15 +1,13 @@
 use ethabi;
-use semver::Version;
-
-use graph::{
-    data::store,
-    runtime::{
-        gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, ToAscObj,
-    },
+use graph::data::store;
+use graph::prelude::{serde_json, slog};
+use graph::runtime::gas::GasCounter;
+use graph::runtime::{
+    AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, IndexForAscTypeId,
+    ToAscObj,
 };
-use graph::{prelude::serde_json, runtime::DeterministicHostError};
-use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
+use semver::Version;
 
 use crate::asc_abi::{v0_0_4, v0_0_5};
 
@@ -572,10 +570,10 @@ impl Default for StoreValueKind {
 
 impl AscValue for StoreValueKind {}
 
-/// Big ints are represented using signed number representation. Note: This differs
-/// from how U256 and U128 are represented (they use two's complement). So whenever
-/// we convert between them, we need to make sure we handle signed and unsigned
-/// cases correctly.
+/// Big ints are represented using signed number representation. Note: This
+/// differs from how U256 and U128 are represented (they use two's complement).
+/// So whenever we convert between them, we need to make sure we handle signed
+/// and unsigned cases correctly.
 pub type AscBigInt = Uint8Array;
 
 pub type AscAddress = Uint8Array;

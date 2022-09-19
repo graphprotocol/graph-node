@@ -1,7 +1,8 @@
-use crate::{Chain, DataSource};
 use anyhow::Result;
 use blockchain::HostFn;
 use graph::blockchain;
+
+use crate::{Chain, DataSource};
 
 pub struct RuntimeAdapter {}
 

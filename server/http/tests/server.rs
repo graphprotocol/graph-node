@@ -1,17 +1,12 @@
-use http::StatusCode;
-use hyper::{Body, Client, Request};
 use std::time::Duration;
 
-use graph::data::{
-    graphql::effort::LoadManager,
-    query::{QueryResults, QueryTarget},
-    value::Object,
-};
+use graph::data::graphql::effort::LoadManager;
+use graph::data::query::{QueryResults, QueryTarget};
+use graph::data::value::Object;
 use graph::prelude::*;
-
-use graph_server_http::test_utils;
-use graph_server_http::GraphQLServer as HyperGraphQLServer;
-
+use graph_server_http::{test_utils, GraphQLServer as HyperGraphQLServer};
+use http::StatusCode;
+use hyper::{Body, Client, Request};
 use tokio::time::sleep;
 
 pub struct TestGraphQLMetrics;

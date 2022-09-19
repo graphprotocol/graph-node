@@ -1,11 +1,11 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
+use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
 use hyper::service::make_service_fn;
 use hyper::Server;
+use thiserror::Error;
 
 use crate::service::GraphQLService;
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
-use thiserror::Error;
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]

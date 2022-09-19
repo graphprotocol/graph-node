@@ -1,5 +1,6 @@
+use graph::data::graphql::object;
+use graph::data::query::QueryResults;
 use graph::data::value::Object;
-use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
 

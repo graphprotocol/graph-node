@@ -8,7 +8,8 @@ use std::time::{Duration, Instant};
 pub struct TimeoutStopwatch {
     /// The time the stopwatch was started last, if ever.
     start_time: Option<Instant>,
-    /// The time elapsed while the stopwatch was running (between start() and stop()).
+    /// The time elapsed while the stopwatch was running (between start() and
+    /// stop()).
     pub elapsed: Duration,
 }
 

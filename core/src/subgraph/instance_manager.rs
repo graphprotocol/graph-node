@@ -1,22 +1,22 @@
-use crate::polling_monitor::ipfs_service::IpfsService;
-use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
-use crate::subgraph::inputs::IndexingInputs;
-use crate::subgraph::loader::load_dynamic_data_sources;
-use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::Blockchain;
-use graph::blockchain::NodeCapabilities;
-use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::blockchain::{
+    Blockchain, BlockchainKind, BlockchainMap, NodeCapabilities, TriggerFilter,
+};
+use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::SPEC_VERSION_0_0_6;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
-use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
 use graph_runtime_wasm::RuntimeHostBuilder;
 use tokio::task;
 
 use super::context::OffchainMonitor;
 use super::SubgraphTriggerProcessor;
+use crate::polling_monitor::ipfs_service::IpfsService;
+use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
+use crate::subgraph::inputs::IndexingInputs;
+use crate::subgraph::loader::load_dynamic_data_sources;
+use crate::subgraph::runner::SubgraphRunner;
 
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
     logger_factory: LoggerFactory,
@@ -196,8 +196,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .await
             .context("Failed to resolve subgraph from IPFS")?;
 
-            // We cannot include static data sources in the map because a static data source and a
-            // template may have the same name in the manifest.
+            // We cannot include static data sources in the map because a static data source
+            // and a template may have the same name in the manifest.
             let ds_len = manifest.data_sources.len() as u32;
             let manifest_idx_and_name: Vec<(u32, String)> = manifest
                 .templates
@@ -307,8 +307,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             self.ipfs_service.cheap_clone(),
         );
 
-        // Initialize deployment_head with current deployment head. Any sort of trouble in
-        // getting the deployment head ptr leads to initializing with 0
+        // Initialize deployment_head with current deployment head. Any sort of trouble
+        // in getting the deployment head ptr leads to initializing with 0
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
@@ -372,13 +372,14 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // block stream and include events for the new data sources going
         // forward; this is easier than updating the existing block stream.
         //
-        // This is a long-running and unfortunately a blocking future (see #905), so it is run in
-        // its own thread. It is also run with `task::unconstrained` because we have seen deadlocks
-        // occur without it, possibly caused by our use of legacy futures and tokio versions in the
-        // codebase and dependencies, which may not play well with the tokio 1.0 cooperative
-        // scheduling. It is also logical in terms of performance to run this with `unconstrained`,
-        // it has a dedicated OS thread so the OS will handle the preemption. See
-        // https://github.com/tokio-rs/tokio/issues/3493.
+        // This is a long-running and unfortunately a blocking future (see #905), so it
+        // is run in its own thread. It is also run with `task::unconstrained`
+        // because we have seen deadlocks occur without it, possibly caused by
+        // our use of legacy futures and tokio versions in the codebase and
+        // dependencies, which may not play well with the tokio 1.0 cooperative
+        // scheduling. It is also logical in terms of performance to run this with
+        // `unconstrained`, it has a dedicated OS thread so the OS will handle
+        // the preemption. See https://github.com/tokio-rs/tokio/issues/3493.
         graph::spawn_thread(deployment.to_string(), move || {
             let runner = SubgraphRunner::new(inputs, ctx, logger.cheap_clone(), metrics);
             if let Err(e) = graph::block_on(task::unconstrained(runner.run())) {

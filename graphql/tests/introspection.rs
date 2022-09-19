@@ -13,8 +13,7 @@ use graph_graphql::prelude::{
     a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
     Resolver,
 };
-use test_store::graphql_metrics;
-use test_store::LOAD_MANAGER;
+use test_store::{graphql_metrics, LOAD_MANAGER};
 
 /// Mock resolver used in tests that don't need a resolver.
 #[derive(Clone)]

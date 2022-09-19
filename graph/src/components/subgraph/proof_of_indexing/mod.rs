@@ -2,12 +2,12 @@ mod event;
 mod online;
 mod reference;
 
+use std::sync::Arc;
+
+use atomic_refcell::AtomicRefCell;
 pub use event::ProofOfIndexingEvent;
 pub use online::{ProofOfIndexing, ProofOfIndexingFinisher};
 pub use reference::CausalityRegion;
-
-use atomic_refcell::AtomicRefCell;
-use std::sync::Arc;
 
 #[derive(Copy, Clone, Debug)]
 pub enum ProofOfIndexingVersion {
@@ -34,20 +34,24 @@ pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::prelude::{BlockPtr, DeploymentHash, Value};
+    use std::collections::HashMap;
+    use std::convert::TryInto;
+
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
     use slog::{o, Discard, Logger};
-    use stable_hash::{fast_stable_hash, utils::check_for_child_errors};
+    use stable_hash::fast_stable_hash;
+    use stable_hash::utils::check_for_child_errors;
     use stable_hash_legacy::crypto::SetHasher;
     use stable_hash_legacy::utils::stable_hash as stable_hash_legacy;
-    use std::collections::HashMap;
-    use std::convert::TryInto;
     use web3::types::{Address, H256};
 
-    /// Verify that the stable hash of a reference and online implementation match
+    use super::*;
+    use crate::prelude::{BlockPtr, DeploymentHash, Value};
+
+    /// Verify that the stable hash of a reference and online implementation
+    /// match
     fn check(case: Case, cache: &mut HashMap<String, &str>) {
         let logger = Logger::root(Discard, o!());
 
@@ -308,8 +312,9 @@ mod tests {
             },
         ];
 
-        // Lots of data up there ⬆️ to test. Finally, loop over each case, comparing the reference and
-        // online version, then checking that there are no conflicts for the reference versions.
+        // Lots of data up there ⬆️ to test. Finally, loop over each case, comparing the
+        // reference and online version, then checking that there are no
+        // conflicts for the reference versions.
         let mut results = HashMap::new();
         for case in cases.drain(..) {
             check(case, &mut results);

@@ -1,7 +1,8 @@
-use crate::blockchain::block_stream::BlockStreamMetrics;
-use crate::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use crate::blockchain::block_stream::BlockStreamMetrics;
+use crate::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 
 pub struct SubgraphInstanceMetrics {
     pub block_trigger_count: Box<Histogram>,

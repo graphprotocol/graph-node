@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
+use web3::types::{Address, H256};
+
 use super::ProofOfIndexingEvent;
 use crate::prelude::DeploymentHash;
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
-use std::collections::HashMap;
-use web3::types::{Address, H256};
 
 /// The PoI is the StableHash of this struct. This reference implementation is
 /// mostly here just to make sure that the online implementation is

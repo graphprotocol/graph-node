@@ -1,28 +1,21 @@
-use diesel::sql_types::{Bool, Integer};
-use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
-use diesel::{insert_into, OptionalExtension};
-use diesel::{pg::PgConnection, sql_query};
-use diesel::{
-    sql_types::{Array, Double, Nullable, Text},
-    ExpressionMethods, QueryDsl,
-};
-use graph::components::store::VersionStats;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
+use diesel::connection::SimpleConnection;
+use diesel::pg::PgConnection;
+use diesel::prelude::RunQueryDsl;
+use diesel::sql_types::{Array, Bool, Double, Integer, Nullable, Text};
+use diesel::{insert_into, select, sql_query, ExpressionMethods, OptionalExtension, QueryDsl};
+use graph::components::store::VersionStats;
+use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::anyhow::anyhow;
-use graph::{
-    data::subgraph::schema::POI_TABLE,
-    prelude::{lazy_static, StoreError},
-};
+use graph::prelude::{lazy_static, StoreError};
 
 use crate::connection_pool::ForeignServer;
-use crate::{
-    primary::{Namespace, Site},
-    relational::SqlName,
-};
+use crate::primary::{Namespace, Site};
+use crate::relational::SqlName;
 
 // This is a view not a table. We only read from it
 table! {

@@ -1,16 +1,17 @@
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::marker::PhantomData;
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::{
-    blockchain::Block as BlockchainBlock,
-    components::store::ChainStore,
-    firehose::{self, decode_firehose_block, FirehoseEndpoint},
-    prelude::{error, info, Logger},
-    util::backoff::ExponentialBackoff,
-};
 use anyhow::{Context, Error};
 use futures03::StreamExt;
 use slog::trace;
 use tonic::Streaming;
+
+use crate::blockchain::Block as BlockchainBlock;
+use crate::components::store::ChainStore;
+use crate::firehose::{self, decode_firehose_block, FirehoseEndpoint};
+use crate::prelude::{error, info, Logger};
+use crate::util::backoff::ExponentialBackoff;
 
 pub struct FirehoseBlockIngestor<M>
 where
@@ -97,9 +98,9 @@ where
         }
     }
 
-    /// Consumes the incoming stream of blocks infinitely until it hits an error. In which case
-    /// the error is logged right away and the latest available cursor is returned
-    /// upstream for future consumption.
+    /// Consumes the incoming stream of blocks infinitely until it hits an
+    /// error. In which case the error is logged right away and the latest
+    /// available cursor is returned upstream for future consumption.
     async fn process_blocks(
         &self,
         cursor: String,

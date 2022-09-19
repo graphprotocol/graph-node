@@ -2,11 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::chain::create_firehose_networks;
-use crate::config::{Config, ProviderDetails};
-use crate::manager::PanicSubscriptionManager;
-use crate::store_builder::StoreBuilder;
-use crate::MetricsContext;
 use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use futures::future::join_all;
@@ -32,6 +27,12 @@ use graph_core::{
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use url::Url;
+
+use crate::chain::create_firehose_networks;
+use crate::config::{Config, ProviderDetails};
+use crate::manager::PanicSubscriptionManager;
+use crate::store_builder::StoreBuilder;
+use crate::MetricsContext;
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(&hash)?;
@@ -104,8 +105,8 @@ pub async fn run(
     let eth_adapters2 = eth_adapters.clone();
 
     let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
-    // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
-    //     &logger,
+    // let (near_networks, near_idents) =
+    // connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(     &logger,
     //     firehose_networks_by_kind
     //         .remove(&BlockchainKind::Near)
     //         .unwrap_or_else(|| FirehoseNetworks::new()),
@@ -354,7 +355,8 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
         .collect()
 }
 
-/// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
+/// Parses an Ethereum connection string and returns the network name and
+/// Ethereum adapter.
 pub async fn create_ethereum_networks(
     logger: Logger,
     registry: Arc<dyn MetricsRegistryTrait>,

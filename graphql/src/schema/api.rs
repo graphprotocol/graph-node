@@ -1,18 +1,15 @@
 use std::str::FromStr;
 
+use graph::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
+use graph::data::schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME};
+use graph::prelude::s::{Value, *};
+use graph::prelude::*;
 use graphql_parser::Pos;
 use inflector::Inflector;
 use lazy_static::lazy_static;
+use thiserror::Error;
 
 use crate::schema::ast;
-
-use graph::data::{
-    graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
-    schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME},
-};
-use graph::prelude::s::{Value, *};
-use graph::prelude::*;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {
@@ -130,7 +127,8 @@ fn add_types_for_object_types(
     Ok(())
 }
 
-/// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the schema.
+/// Adds `*_orderBy` and `*_filter` enum types for the given interfaces to the
+/// schema.
 fn add_types_for_interface_types(
     schema: &mut Document,
     interface_types: &[&InterfaceType],
@@ -400,7 +398,8 @@ fn field_list_filter_input_values(
     })
 }
 
-/// Generates a `*_filter` input value for the given field name, suffix and value type.
+/// Generates a `*_filter` input value for the given field name, suffix and
+/// value type.
 fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue {
     InputValue {
         position: Pos::default(),
@@ -615,7 +614,7 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+            name: type_name.to_camel_case(), /* Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()` */
             arguments: by_id_arguments,
             field_type: Type::NamedType(type_name.to_owned()),
             directives: vec![],
@@ -623,7 +622,7 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
         Field {
             position: Pos::default(),
             description: None,
-            name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+            name: type_name.to_plural().to_camel_case(), /* Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()` */
             arguments: collection_arguments,
             field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
                 Box::new(Type::NamedType(type_name.to_owned())),

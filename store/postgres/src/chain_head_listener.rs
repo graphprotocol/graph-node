@@ -1,28 +1,25 @@
-use graph::{
-    blockchain::ChainHeadUpdateStream,
-    prelude::{
-        futures03::{self, FutureExt},
-        tokio, StoreError,
-    },
-    prometheus::{CounterVec, GaugeVec},
-    util::timed_rw_lock::TimedRwLock,
-};
 use std::collections::BTreeMap;
-use std::sync::atomic;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::atomic::AtomicBool;
+use std::sync::{atomic, Arc};
 
-use lazy_static::lazy_static;
-
-use crate::{
-    connection_pool::ConnectionPool,
-    notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
-    NotificationSender,
+use graph::blockchain::{
+    ChainHeadUpdateListener as ChainHeadUpdateListenerTrait, ChainHeadUpdateStream,
 };
-use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
+use graph::prelude::futures03::{self, FutureExt};
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
-use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
-use graph::prelude::{crit, debug, o, CheapClone, Logger, MetricsRegistry, ENV_VARS};
+use graph::prelude::tokio::sync::mpsc::Receiver;
+use graph::prelude::tokio::sync::watch;
+use graph::prelude::{
+    crit, debug, o, tokio, CheapClone, Logger, MetricsRegistry, StoreError, ENV_VARS,
+};
+use graph::prometheus::{CounterVec, GaugeVec};
+use graph::util::timed_rw_lock::TimedRwLock;
+use lazy_static::lazy_static;
+
+use crate::connection_pool::ConnectionPool;
+use crate::notification_listener::{JsonNotification, NotificationListener, SafeChannelName};
+use crate::NotificationSender;
 
 lazy_static! {
     pub static ref CHANNEL_NAME: SafeChannelName =
@@ -208,8 +205,9 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             } else {
                 // This is the first subscription for this network, a lock is required.
                 //
-                // Race condition: Another task could have simoultaneously entered this branch and
-                // inserted a writer, so we should check the entry again after acquiring the lock.
+                // Race condition: Another task could have simoultaneously entered this branch
+                // and inserted a writer, so we should check the entry again
+                // after acquiring the lock.
                 self.watchers
                     .write(&logger)
                     .entry(network_name)

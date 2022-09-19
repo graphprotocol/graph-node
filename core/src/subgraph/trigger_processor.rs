@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use graph::blockchain::Blockchain;
 use graph::cheap_clone::CheapClone;
@@ -9,7 +11,6 @@ use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
 };
 use graph::slog::Logger;
-use std::sync::Arc;
 
 pub struct SubgraphTriggerProcessor {}
 

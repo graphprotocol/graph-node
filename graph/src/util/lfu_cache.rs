@@ -1,12 +1,15 @@
-use crate::env::ENV_VARS;
-use crate::prelude::CacheWeight;
-use priority_queue::PriorityQueue;
 use std::cmp::Reverse;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::time::{Duration, Instant};
 
-// The number of `evict` calls without access after which an entry is considered stale.
+use priority_queue::PriorityQueue;
+
+use crate::env::ENV_VARS;
+use crate::prelude::CacheWeight;
+
+// The number of `evict` calls without access after which an entry is considered
+// stale.
 const STALE_PERIOD: u64 = 100;
 
 /// `PartialEq` and `Hash` are delegated to the `key`.
@@ -54,8 +57,8 @@ impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
     }
 }
 
-// The priorities are `(stale, frequency)` tuples, first all stale entries will be popped and
-// then non-stale entries by least frequency.
+// The priorities are `(stale, frequency)` tuples, first all stale entries will
+// be popped and then non-stale entries by least frequency.
 type Priority = (bool, Reverse<u64>);
 
 /// Statistics about what happened during cache eviction
@@ -74,11 +77,12 @@ pub struct EvictStats {
     pub evict_time: Duration,
 }
 
-/// Each entry in the cache has a frequency, which is incremented by 1 on access. Entries also have
-/// a weight, upon eviction first stale entries will be removed and then non-stale entries by order
-/// of least frequency until the max weight is respected. This cache only removes entries on calls
-/// to `evict`, so the max weight may be exceeded until `evict` is called. Every STALE_PERIOD
-/// evictions entities are checked for staleness.
+/// Each entry in the cache has a frequency, which is incremented by 1 on
+/// access. Entries also have a weight, upon eviction first stale entries will
+/// be removed and then non-stale entries by order of least frequency until the
+/// max weight is respected. This cache only removes entries on calls
+/// to `evict`, so the max weight may be exceeded until `evict` is called. Every
+/// STALE_PERIOD evictions entities are checked for staleness.
 #[derive(Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
     queue: PriorityQueue<CacheEntry<K, V>, Priority>,
@@ -159,8 +163,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        // `PriorityQueue` doesn't have a remove method, so emulate that by setting the priority to
-        // the absolute minimum and popping.
+        // `PriorityQueue` doesn't have a remove method, so emulate that by setting the
+        // priority to the absolute minimum and popping.
         let key_entry = CacheEntry::cache_key(key.clone());
         self.queue
             .change_priority(&key_entry, (true, Reverse(u64::min_value())))
@@ -215,10 +219,11 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         if self.stale_counter == stale_period {
             self.stale_counter = 0;
 
-            // Entries marked `will_stale` were not accessed in this period. Properly mark them as
-            // stale in their priorities. Also mark all entities as `will_stale` for the _next_
-            // period so that they will be marked stale next time unless they are updated or looked
-            // up between now and then.
+            // Entries marked `will_stale` were not accessed in this period. Properly mark
+            // them as stale in their priorities. Also mark all entities as
+            // `will_stale` for the _next_ period so that they will be marked
+            // stale next time unless they are updated or looked up between now
+            // and then.
             for (e, p) in self.queue.iter_mut() {
                 p.0 = e.will_stale;
                 e.will_stale = true;

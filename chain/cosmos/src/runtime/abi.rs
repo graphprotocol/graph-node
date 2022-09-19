@@ -1,10 +1,11 @@
-use crate::protobuf::*;
+pub use graph::runtime::gas::GasCounter;
+pub use graph::runtime::{
+    asc_new, AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError,
+    IndexForAscTypeId, ToAscObj,
+};
 pub use graph::semver::Version;
 
-pub use graph::runtime::{
-    asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-    DeterministicHostError, IndexForAscTypeId, ToAscObj,
-};
+use crate::protobuf::*;
 /*
 TODO: AscBytesArray seem to be generic to all chains, but AscIndexId pins it to Cosmos
 ****************** this can be moved to runtime graph/runtime/src/asc_heap.rs, but  IndexForAscTypeId::CosmosBytesArray ******

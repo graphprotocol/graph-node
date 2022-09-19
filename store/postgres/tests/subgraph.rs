@@ -1,28 +1,19 @@
-use graph::{
-    components::{
-        server::index_node::VersionInfo,
-        store::{DeploymentId, DeploymentLocator, StatusStore},
-    },
-    data::query::QueryTarget,
-    data::subgraph::schema::SubgraphHealth,
-    data::subgraph::schema::{DeploymentCreate, SubgraphError},
-    prelude::BlockPtr,
-    prelude::EntityChange,
-    prelude::EntityChangeOperation,
-    prelude::QueryStoreManager,
-    prelude::Schema,
-    prelude::SubgraphManifest,
-    prelude::SubgraphName,
-    prelude::SubgraphVersionSwitchingMode,
-    prelude::UnfailOutcome,
-    prelude::{futures03, StoreEvent},
-    prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
-    semver::Version,
+use std::collections::HashSet;
+use std::marker::PhantomData;
+use std::sync::Arc;
+
+use graph::components::server::index_node::VersionInfo;
+use graph::components::store::{DeploymentId, DeploymentLocator, StatusStore};
+use graph::data::query::QueryTarget;
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
+use graph::prelude::{
+    futures03, BlockPtr, CheapClone, DeploymentHash, EntityChange, EntityChangeOperation, NodeId,
+    QueryStoreManager, Schema, StoreEvent, SubgraphManifest, SubgraphName, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, UnfailOutcome,
 };
+use graph::semver::Version;
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
-
-use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 
 const SUBGRAPH_GQL: &str = "
@@ -800,7 +791,8 @@ fn fail_unfail_deterministic_error_noop() {
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
-        // Running unfail_deterministic_error against a NON-deterministic error will do nothing.
+        // Running unfail_deterministic_error against a NON-deterministic error will do
+        // nothing.
         let outcome = writable
             .unfail_deterministic_error(&BLOCKS[1], &BLOCKS[0])
             .await
@@ -1024,7 +1016,8 @@ fn fail_unfail_non_deterministic_error_noop() {
         assert_eq!(true, vi.failed);
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
 
-        // Running unfail_non_deterministic_error will be NOOP, the error is deterministic.
+        // Running unfail_non_deterministic_error will be NOOP, the error is
+        // deterministic.
         let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // Nothing happeened, state continues the same.
@@ -1046,7 +1039,8 @@ fn fail_unfail_non_deterministic_error_noop() {
         // Fail the subgraph with a non-deterministic error, but with an advanced block.
         writable.fail_subgraph(error).await.unwrap();
 
-        // Since the block range of the block won't match the deployment head, this will be NOOP.
+        // Since the block range of the block won't match the deployment head, this will
+        // be NOOP.
         let outcome = writable.unfail_non_deterministic_error(&BLOCKS[1]).unwrap();
 
         // State continues the same besides a new error added to the database.

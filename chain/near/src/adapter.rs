@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 
-use crate::capabilities::NodeCapabilities;
-use crate::data_source::PartialAccounts;
-use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::firehose::{BasicReceiptFilter, PrefixSuffixPair};
 use graph::prelude::*;
 use prost::Message;
 use prost_types::Any;
+
+use crate::capabilities::NodeCapabilities;
+use crate::data_source::{DataSource, PartialAccounts};
+use crate::Chain;
 
 const BASIC_RECEIPT_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.near.transform.v1.BasicReceiptFilter";
@@ -74,8 +75,8 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 
 pub(crate) type Account = String;
 
-/// NearReceiptFilter requires the account to be set, it will match every receipt where `source.account` is the recipient.
-/// see docs: https://thegraph.com/docs/en/supported-networks/near/
+/// NearReceiptFilter requires the account to be set, it will match every
+/// receipt where `source.account` is the recipient. see docs: https://thegraph.com/docs/en/supported-networks/near/
 #[derive(Clone, Debug, Default)]
 pub(crate) struct NearReceiptFilter {
     pub accounts: HashSet<Account>,
@@ -138,8 +139,8 @@ impl NearReceiptFilter {
             .map(|s| s.account.as_ref().cloned().unwrap())
             .collect();
 
-        // Parse all the partial accounts, produces all possible combinations of the values
-        // eg:
+        // Parse all the partial accounts, produces all possible combinations of the
+        // values eg:
         // prefix [a,b] and suffix [d] would produce [a,d], [b,d]
         // prefix [a] and suffix [c,d] would produce [a,c], [a,d]
         // prefix [] and suffix [c, d] would produce [None, c], [None, d]
@@ -226,14 +227,13 @@ impl NearBlockFilter {
 mod test {
     use std::collections::HashSet;
 
-    use super::NearBlockFilter;
-    use crate::adapter::{TriggerFilter, BASIC_RECEIPT_FILTER_TYPE_URL};
-    use graph::{
-        blockchain::TriggerFilter as _,
-        firehose::{BasicReceiptFilter, PrefixSuffixPair},
-    };
+    use graph::blockchain::TriggerFilter as _;
+    use graph::firehose::{BasicReceiptFilter, PrefixSuffixPair};
     use prost::Message;
     use prost_types::Any;
+
+    use super::NearBlockFilter;
+    use crate::adapter::{TriggerFilter, BASIC_RECEIPT_FILTER_TYPE_URL};
 
     #[test]
     fn near_trigger_empty_filter() {

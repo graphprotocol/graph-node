@@ -44,8 +44,8 @@ pub struct EnvVarsGraphQl {
     /// Set by the environment variable `GRAPH_QUERY_CACHE_BLOCKS`. The default
     /// value is 2.
     pub query_cache_blocks: usize,
-    /// Maximum total memory to be used by the cache. Each block has a max size of
-    /// `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
+    /// Maximum total memory to be used by the cache. Each block has a max size
+    /// of `QUERY_CACHE_MAX_MEM` / (`QUERY_CACHE_BLOCKS` *
     /// `GRAPH_QUERY_BLOCK_CACHE_SHARDS`).
     ///
     /// Set by the environment variable `GRAPH_QUERY_CACHE_MAX_MEM` (expressed
@@ -54,8 +54,8 @@ pub struct EnvVarsGraphQl {
     /// Set by the environment variable `GRAPH_QUERY_CACHE_STALE_PERIOD`. The
     /// default value is 100.
     pub query_cache_stale_period: u64,
-    /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed in
-    /// seconds). No default value is provided.
+    /// Set by the environment variable `GRAPH_GRAPHQL_QUERY_TIMEOUT` (expressed
+    /// in seconds). No default value is provided.
     pub query_timeout: Option<Duration>,
     /// Set by the environment variable `GRAPH_GRAPHQL_MAX_COMPLEXITY`. No
     /// default value is provided.
@@ -86,7 +86,8 @@ pub struct EnvVarsGraphQl {
     pub max_operations_per_connection: usize,
 }
 
-// This does not print any values avoid accidentally leaking any sensitive env vars
+// This does not print any values avoid accidentally leaking any sensitive env
+// vars
 impl fmt::Debug for EnvVarsGraphQl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")

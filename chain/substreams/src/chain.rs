@@ -1,21 +1,24 @@
-use crate::{data_source::*, Block, TriggerData, TriggerFilter, TriggersAdapter};
-use anyhow::Error;
 use core::fmt;
-use graph::firehose::FirehoseEndpoints;
-use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
-use graph::{
-    blockchain::{
-        self,
-        block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor},
-        BlockPtr, Blockchain, BlockchainKind, IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
-    },
-    components::store::DeploymentLocator,
-    data::subgraph::UnifiedMappingApiVersion,
-    impl_slog_value,
-    prelude::{async_trait, BlockNumber, ChainStore},
-    slog::Logger,
+use std::str::FromStr;
+use std::sync::Arc;
+
+use anyhow::Error;
+use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor};
+use graph::blockchain::{
+    self, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+    RuntimeAdapter as RuntimeAdapterTrait,
 };
-use std::{str::FromStr, sync::Arc};
+use graph::components::store::DeploymentLocator;
+use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::firehose::FirehoseEndpoints;
+use graph::impl_slog_value;
+use graph::prelude::{
+    async_trait, BlockHash, BlockNumber, ChainStore, LoggerFactory, MetricsRegistry,
+};
+use graph::slog::Logger;
+
+use crate::data_source::*;
+use crate::{Block, TriggerData, TriggerFilter, TriggersAdapter};
 
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
@@ -165,10 +168,11 @@ impl Blockchain for Chain {
         _logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        // This is the same thing TriggersAdapter does, not sure if it's going to work but
-        // we also don't yet have a good way of getting this value until we sort out the
-        // chain store.
-        // TODO(filipe): Fix this once the chain_store is correctly setup for substreams.
+        // This is the same thing TriggersAdapter does, not sure if it's going to work
+        // but we also don't yet have a good way of getting this value until we
+        // sort out the chain store.
+        // TODO(filipe): Fix this once the chain_store is correctly setup for
+        // substreams.
         Ok(BlockPtr {
             hash: BlockHash::from(vec![0xff; 32]),
             number,

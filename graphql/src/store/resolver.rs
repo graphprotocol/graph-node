@@ -2,21 +2,19 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
+use graph::components::store::*;
+use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::Trace;
+use graph::data::schema::{BLOCK_FIELD_TYPE, META_FIELD_TYPE};
 use graph::data::value::Object;
-use graph::data::{
-    graphql::{object, ObjectOrInterface},
-    schema::META_FIELD_TYPE,
-};
 use graph::prelude::*;
-use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
+use crate::prelude::*;
 use crate::query::ext::BlockConstraint;
+use crate::schema::api::ErrorPolicy;
 use crate::schema::ast as sast;
-use crate::{prelude::*, schema::api::ErrorPolicy};
-
 use crate::store::query::collect_entities_from_query_field;
 
 /// A resolver that fetches entities from a `Store`.
@@ -124,7 +122,8 @@ impl StoreResolver {
             .unwrap_or(BLOCK_NUMBER_MAX)
     }
 
-    /// locate_block returns the block pointer and it's timestamp when available.
+    /// locate_block returns the block pointer and it's timestamp when
+    /// available.
     async fn locate_block(
         store: &dyn QueryStore,
         bc: BlockConstraint,
@@ -364,7 +363,8 @@ impl Resolver for StoreResolver {
     }
 
     fn post_process(&self, result: &mut QueryResult) -> Result<(), anyhow::Error> {
-        // Post-processing is only necessary for queries with indexing errors, and no query errors.
+        // Post-processing is only necessary for queries with indexing errors, and no
+        // query errors.
         if !self.has_non_fatal_errors || result.has_errors() {
             return Ok(());
         }

@@ -1,18 +1,18 @@
+use std::env;
+use std::str::FromStr;
+
 use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
-use graph::data_source;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
-use graph::log;
 use graph::prelude::*;
+use graph::{data_source, log};
 use graph_chain_ethereum::{
     Chain, DataSource, DataSourceTemplate, Mapping, MappingABI, TemplateSource,
 };
 use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
-use std::env;
-use std::str::FromStr;
 use web3::types::Address;
 
 lazy_static! {

@@ -1,26 +1,17 @@
-use graph::{
-    anyhow::Error,
-    blockchain::BlockchainKind,
-    prelude::{
-        anyhow::{anyhow, bail, Context, Result},
-        info,
-        serde::{
-            de::{self, value, SeqAccess, Visitor},
-            Deserialize, Deserializer, Serialize,
-        },
-        serde_json, Logger, NodeId, StoreError,
-    },
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+use std::fs::read_to_string;
+
+use graph::anyhow::Error;
+use graph::blockchain::BlockchainKind;
+use graph::prelude::anyhow::{anyhow, bail, Context, Result};
+use graph::prelude::serde::de::{self, value, SeqAccess, Visitor};
+use graph::prelude::serde::{Deserialize, Deserializer, Serialize};
+use graph::prelude::{info, serde_json, Logger, NodeId, StoreError};
 use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
-
 use http::{HeaderMap, Uri};
 use regex::Regex;
-use std::fs::read_to_string;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
 use url::Url;
 
 const ANY_NAME: &str = ".*";
@@ -437,7 +428,8 @@ impl ChainSection {
                 ));
             } else {
                 // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
-                // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
+                // "NETWORK_NAME::URL" which will default to
+                // NETWORK_CAPABILITIES="archive,traces")
                 let colon = arg.find(':').ok_or_else(|| {
                     return anyhow!(
                         "A network name must be provided alongside the \
@@ -1097,22 +1089,25 @@ where
 #[cfg(test)]
 mod tests {
 
-    use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
-    };
-    use graph::blockchain::BlockchainKind;
-    use graph::prelude::NodeId;
-    use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
     use std::path::{Path, PathBuf};
+
+    use graph::blockchain::BlockchainKind;
+    use graph::prelude::NodeId;
+    use http::{HeaderMap, HeaderValue};
+
+    use super::{
+        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
+    };
 
     #[test]
     fn it_works_on_standard_config() {
         let content = read_resource_as_string("full_config.toml");
         let actual: Config = toml::from_str(&content).unwrap();
 
-        // We do basic checks because writing the full equality method is really too long
+        // We do basic checks because writing the full equality method is really too
+        // long
 
         assert_eq!(
             "query_node_.*".to_string(),

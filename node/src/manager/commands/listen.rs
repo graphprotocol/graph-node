@@ -1,6 +1,7 @@
+use std::collections::BTreeSet;
+use std::io::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
-use std::{collections::BTreeSet, io::Write};
 
 use futures::compat::Future01CompatExt;
 //use futures::future;

@@ -1,22 +1,22 @@
-use super::cache::{QueryBlockCache, QueryCache};
+use std::borrow::ToOwned;
+use std::collections::HashSet;
+use std::time::Instant;
+
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
-use graph::{
-    data::{query::Trace, schema::META_FIELD_NAME, value::Object},
-    prelude::{s, CheapClone},
-    util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
-};
+use graph::data::graphql::*;
+use graph::data::query::{CacheStatus, Trace};
+use graph::data::schema::META_FIELD_NAME;
+use graph::data::value::Object;
+use graph::env::CachedSubgraphIds;
+use graph::prelude::{s, CheapClone, *};
+use graph::util::lfu_cache::{EvictStats, LfuCache};
+use graph::util::stable_hash_glue::impl_stable_hash;
+use graph::util::timed_rw_lock::TimedMutex;
 use lazy_static::lazy_static;
 use parking_lot::MutexGuard;
-use std::time::Instant;
-use std::{borrow::ToOwned, collections::HashSet};
 
-use graph::data::graphql::*;
-use graph::data::query::CacheStatus;
-use graph::env::CachedSubgraphIds;
-use graph::prelude::*;
-use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
-
+use super::cache::{QueryBlockCache, QueryCache};
 use super::QueryHash;
 use crate::execution::ast as a;
 use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
@@ -315,9 +315,11 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 
     if should_check_cache {
         if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
-            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two
+            // reasons:
             // - Metadata queries are not cacheable.
-            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are
+            //   old.
             if block_ptr.number != BLOCK_NUMBER_MAX {
                 // Calculate the hash outside of the lock
                 let cache_key = cache_key(&ctx, &selection_set, block_ptr);
@@ -361,7 +363,8 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
                     &execute_root_type,
                 )));
 
-            // Unwrap: In practice should never fail, but if it does we will catch the panic.
+            // Unwrap: In practice should never fail, but if it does we will catch the
+            // panic.
             execute_ctx.resolver.post_process(&mut query_res).unwrap();
             query_res.deployment = Some(execute_ctx.query.schema.id().clone());
             Arc::new(query_res)
@@ -404,8 +407,8 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
 
     // Check if this query should be cached.
     // Share errors from the herd cache, but don't store them in generational cache.
-    // In particular, there is a problem where asking for a block pointer beyond the chain
-    // head can cause the legitimate cache to be thrown out.
+    // In particular, there is a problem where asking for a block pointer beyond the
+    // chain head can cause the legitimate cache to be thrown out.
     // It would be redundant to insert herd cache hits.
     let no_cache = herd_hit || result.has_errors();
     if let (false, Some(key), Some(block_ptr), Some(network)) =
@@ -426,7 +429,8 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         if inserted {
             ctx.cache_status.store(CacheStatus::Insert);
         } else if let Some(mut cache) = lfu_cache(&ctx.logger, &key) {
-            // Results that are too old for the QUERY_BLOCK_CACHE go into the QUERY_LFU_CACHE
+            // Results that are too old for the QUERY_BLOCK_CACHE go into the
+            // QUERY_LFU_CACHE
             let max_mem = ENV_VARS.graphql.query_cache_max_mem
                 / ENV_VARS.graphql.query_lfu_cache_shards as usize;
 
@@ -449,9 +453,11 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
     result
 }
 
-/// Executes a selection set, requiring the result to be of the given object type.
+/// Executes a selection set, requiring the result to be of the given object
+/// type.
 ///
-/// Allows passing in a parent value during recursive processing of objects and their fields.
+/// Allows passing in a parent value during recursive processing of objects and
+/// their fields.
 async fn execute_selection_set<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     selection_set: &'a a::SelectionSet,
@@ -836,7 +842,8 @@ async fn complete_value(
                     .await
                 }
 
-                // Resolve interface types using the resolved value and complete the value recursively
+                // Resolve interface types using the resolved value and complete the value
+                // recursively
                 s::TypeDefinition::Interface(_) => {
                     let object_type = resolve_abstract_type(ctx, named_type, &resolved_value)?;
 
@@ -870,14 +877,15 @@ async fn complete_value(
     }
 }
 
-/// Resolves an abstract type (interface, union) into an object type based on the given value.
+/// Resolves an abstract type (interface, union) into an object type based on
+/// the given value.
 fn resolve_abstract_type<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     abstract_type: &s::TypeDefinition,
     object_value: &r::Value,
 ) -> Result<sast::ObjectType, Vec<QueryExecutionError>> {
-    // Let the resolver handle the type resolution, return an error if the resolution
-    // yields nothing
+    // Let the resolver handle the type resolution, return an error if the
+    // resolution yields nothing
     let obj_type = ctx
         .resolver
         .resolve_abstract_type(&ctx.query.schema, abstract_type, object_value)

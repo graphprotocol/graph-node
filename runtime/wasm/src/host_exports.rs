@@ -3,27 +3,25 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
-use never::Never;
-use semver::Version;
-use wasmtime::Trap;
-use web3::types::H160;
-
 use graph::blockchain::Blockchain;
-use graph::components::store::EnsLookup;
-use graph::components::store::{EntityKey, EntityType};
+use graph::components::store::{EnsLookup, EntityKey, EntityType};
 use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
 use graph::data::store;
 use graph::data_source::{DataSource, DataSourceTemplate};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
-use graph::prelude::serde_json;
-use graph::prelude::{slog::b, slog::record_static, *};
+use graph::prelude::slog::{b, record_static};
+use graph::prelude::{serde_json, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
+use never::Never;
+use semver::Version;
+use wasmtime::Trap;
+use web3::types::H160;
 
-use crate::module::{WasmInstance, WasmInstanceContext};
-use crate::{error::DeterminismLevel, module::IntoTrap};
+use crate::error::DeterminismLevel;
+use crate::module::{IntoTrap, WasmInstance, WasmInstanceContext};
 
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
@@ -212,8 +210,9 @@ impl<C: Blockchain> HostExports<C> {
     }
 
     /// Prints the module of `n` in hex.
-    /// Integers are encoded using the least amount of digits (no leading zero digits).
-    /// Their encoding may be of uneven length. The number zero encodes as "0x0".
+    /// Integers are encoded using the least amount of digits (no leading zero
+    /// digits). Their encoding may be of uneven length. The number zero
+    /// encodes as "0x0".
     ///
     /// https://godoc.org/github.com/ethereum/go-ethereum/common/hexutil#hdr-Encoding_Rules
     pub(crate) fn big_int_to_hex(
@@ -235,9 +234,9 @@ impl<C: Blockchain> HostExports<C> {
     }
 
     pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
-        // Does not consume gas because this is not a part of the deterministic feature set.
-        // Ideally this would first consume gas for fetching the file stats, and then again
-        // for the bytes of the file.
+        // Does not consume gas because this is not a part of the deterministic feature
+        // set. Ideally this would first consume gas for fetching the file
+        // stats, and then again for the bytes of the file.
         graph::block_on(self.link_resolver.cat(logger, &Link { link }))
     }
 
@@ -246,9 +245,9 @@ impl<C: Blockchain> HostExports<C> {
         logger: &Logger,
         link: String,
     ) -> Result<Vec<u8>, anyhow::Error> {
-        // Does not consume gas because this is not a part of the deterministic feature set.
-        // Ideally this would first consume gas for fetching the file stats, and then again
-        // for the bytes of the file.
+        // Does not consume gas because this is not a part of the deterministic feature
+        // set. Ideally this would first consume gas for fetching the file
+        // stats, and then again for the bytes of the file.
         graph::block_on(self.link_resolver.get_block(logger, &Link { link }))
     }
 
@@ -790,8 +789,8 @@ fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
         )
     }
 
-    // The string may have been encoded in a fixed length buffer and padded with null
-    // characters, so trim trailing nulls.
+    // The string may have been encoded in a fixed length buffer and padded with
+    // null characters, so trim trailing nulls.
     s.trim_end_matches('\u{0000}').to_string()
 }
 

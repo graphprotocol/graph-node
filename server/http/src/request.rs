@@ -1,8 +1,6 @@
-use graph::prelude::serde_json;
-use hyper::body::Bytes;
-
 use graph::components::server::query::GraphQLServerError;
-use graph::prelude::*;
+use graph::prelude::{serde_json, *};
+use hyper::body::Bytes;
 
 pub fn parse_graphql_request(body: &Bytes) -> Result<Query, GraphQLServerError> {
     // Parse request body as JSON
@@ -47,14 +45,12 @@ pub fn parse_graphql_request(body: &Bytes) -> Result<Query, GraphQLServerError> 
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser;
-    use hyper;
     use std::collections::HashMap;
 
-    use graph::{
-        data::{query::QueryTarget, value::Object},
-        prelude::*,
-    };
+    use graph::data::query::QueryTarget;
+    use graph::data::value::Object;
+    use graph::prelude::*;
+    use {graphql_parser, hyper};
 
     use super::parse_graphql_request;
 

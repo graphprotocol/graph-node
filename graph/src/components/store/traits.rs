@@ -5,10 +5,10 @@ use crate::blockchain::block_stream::FirehoseCursor;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
-use crate::data::query::Trace;
+use crate::data::query::{QueryTarget, Trace};
+use crate::data::subgraph::schema::*;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
-use crate::data::{query::QueryTarget, subgraph::schema::*};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
@@ -16,7 +16,8 @@ pub trait SubscriptionManager: Send + Sync + 'static {
     /// Returns a stream of store events that match the input arguments.
     fn subscribe(&self, entities: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox;
 
-    /// If the payload is not required, use for a more efficient subscription mechanism backed by a watcher.
+    /// If the payload is not required, use for a more efficient subscription
+    /// mechanism backed by a watcher.
     fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream;
 }
 
@@ -54,8 +55,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn ens_lookup(&self) -> Arc<dyn EnsLookup>;
 
     /// Check if the store is accepting queries for the specified subgraph.
-    /// May return true even if the specified subgraph is not currently assigned to an indexing
-    /// node, as the store will still accept queries.
+    /// May return true even if the specified subgraph is not currently assigned
+    /// to an indexing node, as the store will still accept queries.
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Create a new deployment for the subgraph `name`. If the deployment
@@ -119,8 +120,8 @@ pub trait SubgraphStore: Send + Sync + 'static {
         api_version: &ApiVersion,
     ) -> Result<Arc<ApiSchema>, StoreError>;
 
-    /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment argument,
-    /// that is used for debugging purposes only.
+    /// Return a `SubgraphFork`, derived from the user's `debug-fork` deployment
+    /// argument, that is used for debugging purposes only.
     fn debug_fork(
         &self,
         subgraph_id: &DeploymentHash,
@@ -190,33 +191,36 @@ pub trait WritableStore: ReadStore {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
-    /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
-    /// is used when re-connecting a Firehose stream to start back exactly where we left off.
+    /// Returns the Firehose `cursor` this deployment is currently at in the
+    /// block stream of events. This is used when re-connecting a Firehose
+    /// stream to start back exactly where we left off.
     fn block_cursor(&self) -> FirehoseCursor;
 
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
-    /// Revert the entity changes from a single block atomically in the store, and update the
-    /// subgraph block pointer to `block_ptr_to`.
+    /// Revert the entity changes from a single block atomically in the store,
+    /// and update the subgraph block pointer to `block_ptr_to`.
     ///
-    /// `block_ptr_to` must point to the parent block of the subgraph block pointer.
+    /// `block_ptr_to` must point to the parent block of the subgraph block
+    /// pointer.
     async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError>;
 
-    /// If a deterministic error happened, this function reverts the block operations from the
-    /// current block to the previous block.
+    /// If a deterministic error happened, this function reverts the block
+    /// operations from the current block to the previous block.
     async fn unfail_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError>;
 
-    /// If a non-deterministic error happened and the current deployment head is past the error
-    /// block range, this function unfails the subgraph and deletes the error.
+    /// If a non-deterministic error happened and the current deployment head is
+    /// past the error block range, this function unfails the subgraph and
+    /// deletes the error.
     fn unfail_non_deterministic_error(
         &self,
         current_ptr: &BlockPtr,
@@ -227,10 +231,12 @@ pub trait WritableStore: ReadStore {
 
     async fn supports_proof_of_indexing(&self) -> Result<bool, StoreError>;
 
-    /// Transact the entity changes from a single block atomically into the store, and update the
-    /// subgraph block pointer to `block_ptr_to`, and update the firehose cursor to `firehose_cursor`
+    /// Transact the entity changes from a single block atomically into the
+    /// store, and update the subgraph block pointer to `block_ptr_to`, and
+    /// update the firehose cursor to `firehose_cursor`
     ///
-    /// `block_ptr_to` must point to a child block of the current subgraph block pointer.
+    /// `block_ptr_to` must point to a child block of the current subgraph block
+    /// pointer.
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
@@ -272,13 +278,15 @@ pub trait WritableStore: ReadStore {
 
 #[async_trait]
 pub trait QueryStoreManager: Send + Sync + 'static {
-    /// Get a new `QueryStore`. A `QueryStore` is tied to a DB replica, so if Graph Node is
-    /// configured to use secondary DB servers the queries will be distributed between servers.
+    /// Get a new `QueryStore`. A `QueryStore` is tied to a DB replica, so if
+    /// Graph Node is configured to use secondary DB servers the queries
+    /// will be distributed between servers.
     ///
     /// The query store is specific to a deployment, and `id` must indicate
-    /// which deployment will be queried. It is not possible to use the id of the
-    /// metadata subgraph, though the resulting store can be used to query
-    /// metadata about the deployment `id` (but not metadata about other deployments).
+    /// which deployment will be queried. It is not possible to use the id of
+    /// the metadata subgraph, though the resulting store can be used to
+    /// query metadata about the deployment `id` (but not metadata about
+    /// other deployments).
     ///
     /// If `for_subscription` is true, the main replica will always be used.
     async fn query_store(
@@ -305,30 +313,35 @@ pub trait ChainStore: Send + Sync + 'static {
 
     fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error>;
 
-    /// Try to update the head block pointer to the block with the highest block number.
+    /// Try to update the head block pointer to the block with the highest block
+    /// number.
     ///
-    /// Only updates pointer if there is a block with a higher block number than the current head
-    /// block, and the `ancestor_count` most recent ancestors of that block are in the store.
-    /// Note that this means if the Ethereum node returns a different "latest block" with a
+    /// Only updates pointer if there is a block with a higher block number than
+    /// the current head block, and the `ancestor_count` most recent
+    /// ancestors of that block are in the store. Note that this means if
+    /// the Ethereum node returns a different "latest block" with a
     /// different hash but same number, we do not update the chain head pointer.
-    /// This situation can happen on e.g. Infura where requests are load balanced across many
-    /// Ethereum nodes, in which case it's better not to continuously revert and reapply the latest
-    /// blocks.
+    /// This situation can happen on e.g. Infura where requests are load
+    /// balanced across many Ethereum nodes, in which case it's better not
+    /// to continuously revert and reapply the latest blocks.
     ///
-    /// If the pointer was updated, returns `Ok(vec![])`, and fires a HeadUpdateEvent.
+    /// If the pointer was updated, returns `Ok(vec![])`, and fires a
+    /// HeadUpdateEvent.
     ///
-    /// If no block has a number higher than the current head block, returns `Ok(vec![])`.
+    /// If no block has a number higher than the current head block, returns
+    /// `Ok(vec![])`.
     ///
-    /// If the candidate new head block had one or more missing ancestors, returns
-    /// `Ok(missing_blocks)`, where `missing_blocks` is a nonexhaustive list of missing blocks.
+    /// If the candidate new head block had one or more missing ancestors,
+    /// returns `Ok(missing_blocks)`, where `missing_blocks` is a
+    /// nonexhaustive list of missing blocks.
     async fn attempt_chain_head_update(
         self: Arc<Self>,
         ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error>;
 
     /// Get the current head block pointer for this chain.
-    /// Any changes to the head block pointer will be to a block with a larger block number, never
-    /// to a block with a smaller or equal block number.
+    /// Any changes to the head block pointer will be to a block with a larger
+    /// block number, never to a block with a smaller or equal block number.
     ///
     /// The head block pointer will be None on initial set up.
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
@@ -354,9 +367,9 @@ pub trait ChainStore: Send + Sync + 'static {
     /// Returns the blocks present in the store.
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
 
-    /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
-    /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to
-    /// missing blocks in the chain store.
+    /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the
+    /// block matching `block_hash` and offset=1 means its parent. Returns
+    /// None if unable to complete due to missing blocks in the chain store.
     ///
     /// Returns an error if the offset would reach past the genesis block.
     async fn ancestor_block(
@@ -382,10 +395,11 @@ pub trait ChainStore: Send + Sync + 'static {
     /// may purge any other blocks with that number
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error>;
 
-    /// Find the block with `block_hash` and return the network name, number and timestamp if present.
-    /// Currently, the timestamp is only returned if it's present in the top level block. This format is
-    /// depends on the chain and the implementation of Blockchain::Block for the specific chain.
-    /// eg: {"block": { "timestamp": 123123123 } }
+    /// Find the block with `block_hash` and return the network name, number and
+    /// timestamp if present. Currently, the timestamp is only returned if
+    /// it's present in the top level block. This format is depends on the
+    /// chain and the implementation of Blockchain::Block for the specific
+    /// chain. eg: {"block": { "timestamp": 123123123 } }
     async fn block_number(
         &self,
         hash: &BlockHash,
@@ -437,9 +451,10 @@ pub trait QueryStore: Send + Sync {
     async fn block_number(&self, block_hash: &BlockHash)
         -> Result<Option<BlockNumber>, StoreError>;
 
-    /// Returns the blocknumber as well as the timestamp. Timestamp depends on the chain block type
-    /// and can have multiple formats, it can also not be prevent. For now this is only available
-    /// for EVM chains both firehose and rpc.
+    /// Returns the blocknumber as well as the timestamp. Timestamp depends on
+    /// the chain block type and can have multiple formats, it can also not
+    /// be prevent. For now this is only available for EVM chains both
+    /// firehose and rpc.
     async fn block_number_with_timestamp(
         &self,
         block_hash: &BlockHash,
@@ -482,8 +497,8 @@ pub trait StatusStore: Send + Sync + 'static {
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError>;
 
-    /// Support for the explorer-specific API. Returns a vector of (name, version) of all
-    /// subgraphs for a given deployment hash.
+    /// Support for the explorer-specific API. Returns a vector of (name,
+    /// version) of all subgraphs for a given deployment hash.
     fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,

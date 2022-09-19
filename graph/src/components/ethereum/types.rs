@@ -1,11 +1,14 @@
+use std::convert::TryFrom;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, sync::Arc};
 use web3::types::{
     Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
     U64,
 };
 
-use crate::{blockchain::BlockPtr, prelude::BlockNumber};
+use crate::blockchain::BlockPtr;
+use crate::prelude::BlockNumber;
 
 pub type LightEthereumBlock = Block<Transaction>;
 
@@ -66,7 +69,8 @@ pub struct EthereumBlockWithCalls {
 }
 
 impl EthereumBlockWithCalls {
-    /// Given an `EthereumCall`, check within receipts if that transaction was successful.
+    /// Given an `EthereumCall`, check within receipts if that transaction was
+    /// successful.
     pub fn transaction_for_call_succeeded(&self, call: &EthereumCall) -> anyhow::Result<bool> {
         let call_transaction_hash = call.transaction_hash.ok_or(anyhow::anyhow!(
             "failed to find a transaction for this call"
@@ -88,7 +92,8 @@ impl EthereumBlockWithCalls {
 /// Evaluates if a given transaction was successful.
 ///
 /// Returns `true` on success and `false` on failure.
-/// If a receipt does not have a status value (EIP-658), assume the transaction was successful.
+/// If a receipt does not have a status value (EIP-658), assume the transaction
+/// was successful.
 pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
     receipt_status
         .map(|status| !status.is_zero())
@@ -117,15 +122,17 @@ pub struct EthereumCall {
 
 impl EthereumCall {
     pub fn try_from_trace(trace: &Trace) -> Option<Self> {
-        // The parity-ethereum tracing api returns traces for operations which had execution errors.
-        // Filter errorful traces out, since call handlers should only run on successful CALLs.
+        // The parity-ethereum tracing api returns traces for operations which had
+        // execution errors. Filter errorful traces out, since call handlers
+        // should only run on successful CALLs.
         if trace.error.is_some() {
             return None;
         }
         // We are only interested in traces from CALLs
         let call = match &trace.action {
             // Contract to contract value transfers compile to the CALL opcode
-            // and have no input. Call handlers are for triggering on explicit method calls right now.
+            // and have no input. Call handlers are for triggering on explicit method calls right
+            // now.
             Action::Call(call) if call.input.0.len() >= 4 => call,
             _ => return None,
         };
@@ -134,8 +141,8 @@ impl EthereumCall {
             _ => return None,
         };
 
-        // The only traces without transactions are those from Parity block reward contracts, we
-        // don't support triggering on that.
+        // The only traces without transactions are those from Parity block reward
+        // contracts, we don't support triggering on that.
         let transaction_index = trace.transaction_position? as u64;
 
         Some(EthereumCall {

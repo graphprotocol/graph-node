@@ -1,35 +1,34 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
-use crate::data_source::MappingABI;
-use crate::{
-    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
-    EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
-};
 use anyhow::{Context, Error};
 use blockchain::HostFn;
+use graph::blockchain::{self, BlockPtr, HostFnCtx};
+use graph::cheap_clone::CheapClone;
+use graph::prelude::ethabi::{self, Address, Token};
+use graph::prelude::{EthereumCallCache, Future01CompatExt};
 use graph::runtime::gas::Gas;
-use graph::runtime::{AscIndexId, IndexForAscTypeId};
-use graph::{
-    blockchain::{self, BlockPtr, HostFnCtx},
-    cheap_clone::CheapClone,
-    prelude::{
-        ethabi::{self, Address, Token},
-        EthereumCallCache, Future01CompatExt,
-    },
-    runtime::{asc_get, asc_new, AscPtr, HostExportError},
-    semver::Version,
-    slog::{info, trace, Logger},
-};
+use graph::runtime::{asc_get, asc_new, AscIndexId, AscPtr, HostExportError, IndexForAscTypeId};
+use graph::semver::Version;
+use graph::slog::{info, trace, Logger};
 use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
+use crate::capabilities::NodeCapabilities;
+use crate::data_source::MappingABI;
+use crate::network::EthereumNetworkAdapters;
+use crate::{
+    Chain, DataSource, EthereumAdapter, EthereumAdapterTrait, EthereumContractCall,
+    EthereumContractCallError,
+};
 
-// When making an ethereum call, the maximum ethereum gas is ETH_CALL_GAS which is 50 million. One
-// unit of Ethereum gas is at least 100ns according to these benchmarks [1], so 1000 of our gas. In
-// the worst case an Ethereum call could therefore consume 50 billion of our gas. However the
-// averarge call a subgraph makes is much cheaper or even cached in the call cache. So this cost is
-// set to 5 billion gas as a compromise. This allows for 2000 calls per handler with the current
-// limits.
+// When making an ethereum call, the maximum ethereum gas is ETH_CALL_GAS which
+// is 50 million. One unit of Ethereum gas is at least 100ns according to these
+// benchmarks [1], so 1000 of our gas. In the worst case an Ethereum call could
+// therefore consume 50 billion of our gas. However the averarge call a subgraph
+// makes is much cheaper or even cached in the call cache. So this cost is
+// set to 5 billion gas as a compromise. This allows for 2000 calls per handler
+// with the current limits.
 //
 // [1] - https://www.sciencedirect.com/science/article/abs/pii/S0166531620300900
 pub const ETHEREUM_CALL: Gas = Gas::new(5_000_000_000);

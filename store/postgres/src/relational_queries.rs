@@ -1,3 +1,10 @@
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
+use std::fmt::{self, Display};
+use std::iter::FromIterator;
+use std::str::FromStr;
+
 ///! This module contains the gory details of using Diesel to query
 ///! a database schema that is not known at compile time. The code in this
 ///! module is mostly concerned with constructing SQL queries and some
@@ -11,38 +18,27 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
-
-use graph::components::store::EntityKey;
+use graph::components::store::{AttributeNames, EntityKey, EntityType};
+use graph::data::schema::FulltextAlgorithm;
+use graph::data::store::scalar;
 use graph::data::value::Word;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
     QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::{
-    components::store::{AttributeNames, EntityType},
-    data::{schema::FulltextAlgorithm, store::scalar},
-};
 use itertools::Itertools;
-use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::TryFrom;
-use std::fmt::{self, Display};
-use std::iter::FromIterator;
-use std::str::FromStr;
 
+use crate::block_range::{
+    BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
+    BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
+};
+use crate::primary::Namespace;
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::sql_value::SqlValue;
-use crate::{
-    block_range::{
-        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
-        BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
-    },
-    primary::Namespace,
-};
 
 /// Those are columns that we always want to fetch from the database.
 const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
@@ -598,7 +594,8 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         out.push_sql("[]");
                         Ok(())
                     }
-                    // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
+                    // TSVector will only be in a Value::List() for inserts so "to_tsvector" can
+                    // always be used here
                     ColumnType::TSVector(config) => {
                         if sql_values.is_empty() {
                             out.push_sql("''::tsvector");
@@ -948,8 +945,9 @@ impl<'a> QueryFilter<'a> {
                     )?;
                 }
             }
-            // This is a special case since we want to allow passing "block" column filter, but we dont
-            // want to fail/error when this is passed here, since this column is not really an entity column.
+            // This is a special case since we want to allow passing "block" column filter, but we
+            // dont want to fail/error when this is passed here, since this column is
+            // not really an entity column.
             ChangeBlockGte(..) => {}
             Contains(attr, _)
             | ContainsNoCase(attr, _)
@@ -1692,7 +1690,8 @@ impl<'a> InsertQuery<'a> {
         })
     }
 
-    /// Build the column name list using the subset of all keys among present entities.
+    /// Build the column name list using the subset of all keys among present
+    /// entities.
     fn unique_columns(
         table: &'a Table,
         entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
@@ -2237,8 +2236,8 @@ impl<'a> FilterWindow<'a> {
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
         // Generate
-        //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id),
-        //           children c
+        //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id,
+        // child_id),           children c
         //     where c.id = p.child_id
         //       and .. other conditions on c ..
 
@@ -3591,8 +3590,8 @@ fn jsonb_build_object(
     Ok(())
 }
 
-/// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and the provided attribute
-/// names, yielding valid SQL names for the given table.
+/// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and
+/// the provided attribute names, yielding valid SQL names for the given table.
 fn iter_column_names<'a, 'b>(
     attribute_names: &'a BTreeSet<String>,
     table: &'b Table,

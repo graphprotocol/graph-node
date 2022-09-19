@@ -1,5 +1,6 @@
-use crate::prelude::q::*;
 use serde::ser::*;
+
+use crate::prelude::q::*;
 
 /// Serializable wrapper around a GraphQL value.
 pub struct SerializableValue<'a>(pub &'a Value);

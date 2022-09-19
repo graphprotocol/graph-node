@@ -2,14 +2,12 @@
 #[path = "protobuf/sf.near.codec.v1.rs"]
 pub mod pbcodec;
 
-use graph::{
-    blockchain::Block as BlockchainBlock,
-    blockchain::BlockPtr,
-    prelude::{hex, web3::types::H256, BlockNumber},
-};
 use std::convert::TryFrom;
 use std::fmt::LowerHex;
 
+use graph::blockchain::{Block as BlockchainBlock, BlockPtr};
+use graph::prelude::web3::types::H256;
+use graph::prelude::{hex, BlockNumber};
 pub use pbcodec::*;
 
 impl From<&CryptoHash> for H256 {

@@ -1,14 +1,12 @@
+use std::collections::HashMap;
 use std::iter::FromIterator;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use futures::future::join_all;
 use graph::blockchain::ChainIdentifier;
-use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::prelude::{info, o, CheapClone, Logger, MetricsRegistry, NodeId};
 use graph::url::Url;
-use graph::{
-    prelude::{info, CheapClone, Logger},
-    util::security::SafeDisplay,
-};
+use graph::util::security::SafeDisplay;
 use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,

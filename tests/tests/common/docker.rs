@@ -1,8 +1,9 @@
+use std::collections::HashMap;
+
 use bollard::image::CreateImageOptions;
 use bollard::models::HostConfig;
 use bollard::{container, Docker};
 use graph_tests::helpers::{contains_subslice, postgres_test_database_name, MappedPorts};
-use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
 
@@ -122,7 +123,8 @@ impl TestContainerService {
     }
 }
 
-/// Handles the connection to the docker daemon and keeps track the service running inside it.
+/// Handles the connection to the docker daemon and keeps track the service
+/// running inside it.
 pub struct DockerTestClient {
     service: TestContainerService,
     client: Docker,
@@ -187,8 +189,9 @@ impl DockerTestClient {
         Ok(mapped_ports)
     }
 
-    /// halts execution until a trigger message is detected on stdout or, optionally,
-    /// waits for a specified amount of time after the message appears.
+    /// halts execution until a trigger message is detected on stdout or,
+    /// optionally, waits for a specified amount of time after the message
+    /// appears.
     pub async fn wait_for_message(
         &self,
         trigger_message: &[u8],

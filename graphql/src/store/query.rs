@@ -1,17 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
+use graph::components::store::EntityType;
 use graph::data::graphql::ext::DirectiveFinder;
-use graph::data::graphql::TypeExt as _;
-use graph::data::value::Object;
-use graph::data::value::Value as DataValue;
+use graph::data::graphql::{ObjectOrInterface, TypeExt as _};
+use graph::data::value::{Object, Value as DataValue};
 use graph::prelude::*;
-use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
-
-use crate::execution::ast as a;
-use crate::schema::ast as sast;
 
 use super::prefetch::SelectedAttributes;
+use crate::execution::ast as a;
+use crate::schema::ast as sast;
 
 #[derive(Debug)]
 enum OrderDirection {
@@ -434,7 +432,8 @@ pub fn parse_subgraph_id<'a>(
         .map_err(|_| QueryExecutionError::SubgraphDeploymentIdError(entity_name.to_owned()))
 }
 
-/// Recursively collects entities involved in a query field as `(subgraph ID, name)` tuples.
+/// Recursively collects entities involved in a query field as `(subgraph ID,
+/// name)` tuples.
 pub(crate) fn collect_entities_from_query_field(
     schema: &ApiSchema,
     object_type: sast::ObjectType,
@@ -485,20 +484,20 @@ pub(crate) fn collect_entities_from_query_field(
 
 #[cfg(test)]
 mod tests {
-    use graph::{
-        components::store::EntityType,
-        data::value::Object,
-        prelude::{
-            r, ApiSchema, AttributeNames, DeploymentHash, EntityCollection, EntityFilter,
-            EntityRange, Schema, Value, ValueType, BLOCK_NUMBER_MAX,
-        },
-        prelude::{
-            s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
-            EntityOrder,
-        },
+    use std::collections::BTreeMap;
+    use std::iter::FromIterator;
+    use std::sync::Arc;
+
+    use graph::components::store::EntityType;
+    use graph::data::value::Object;
+    use graph::prelude::s::{
+        self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue,
+    };
+    use graph::prelude::{
+        r, ApiSchema, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityOrder,
+        EntityRange, Schema, Value, ValueType, BLOCK_NUMBER_MAX,
     };
     use graphql_parser::Pos;
-    use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
 
     use super::{a, build_query};
 

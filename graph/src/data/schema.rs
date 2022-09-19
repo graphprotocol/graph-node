@@ -1,22 +1,3 @@
-use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, SubgraphStore};
-use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
-use crate::data::graphql::ObjectTypeExt;
-use crate::data::store::{self, ValueType};
-use crate::data::subgraph::{DeploymentHash, SubgraphName};
-use crate::prelude::{
-    anyhow, lazy_static,
-    q::Value,
-    s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
-};
-
-use anyhow::{Context, Error};
-use graphql_parser::{self, Pos};
-use inflector::Inflector;
-use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
@@ -25,8 +6,24 @@ use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use anyhow::{Context, Error};
+use graphql_parser::{self, Pos};
+use inflector::Inflector;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
 use super::graphql::ObjectOrInterface;
 use super::store::scalar;
+use crate::cheap_clone::CheapClone;
+use crate::components::store::{EntityKey, EntityType, SubgraphStore};
+use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
+use crate::data::graphql::ObjectTypeExt;
+use crate::data::store::{self, ValueType};
+use crate::data::subgraph::{DeploymentHash, SubgraphName};
+use crate::prelude::q::Value;
+use crate::prelude::s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *};
+use crate::prelude::{anyhow, lazy_static};
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
@@ -218,8 +215,9 @@ pub struct FulltextDefinition {
 }
 
 impl From<&s::Directive> for FulltextDefinition {
-    // Assumes the input is a Fulltext Directive that has already been validated because it makes
-    // liberal use of unwrap() where specific types are expected
+    // Assumes the input is a Fulltext Directive that has already been validated
+    // because it makes liberal use of unwrap() where specific types are
+    // expected
     fn from(directive: &Directive) -> Self {
         let name = directive.argument("name").unwrap().as_str().unwrap();
 
@@ -233,7 +231,8 @@ impl From<&s::Directive> for FulltextDefinition {
                 .unwrap();
 
         let included_entity_list = directive.argument("include").unwrap().as_list().unwrap();
-        // Currently fulltext query fields are limited to 1 entity, so we just take the first (and only) included Entity
+        // Currently fulltext query fields are limited to 1 entity, so we just take the
+        // first (and only) included Entity
         let included_entity = included_entity_list.first().unwrap().as_object().unwrap();
         let included_field_values = included_entity.get("fields").unwrap().as_list().unwrap();
         let included_fields: HashSet<String> = included_field_values
@@ -817,7 +816,8 @@ impl Schema {
         self.interfaces_for_type.get(type_name)
     }
 
-    // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the schema.
+    // Adds a @subgraphId(id: ...) directive to object/interface/enum types in the
+    // schema.
     pub fn add_subgraph_id_directives(&mut self, id: DeploymentHash) {
         for definition in self.document.definitions.iter_mut() {
             let subgraph_id_argument = (String::from("id"), s::Value::String(id.to_string()));
@@ -1039,9 +1039,10 @@ impl Schema {
             .into_iter()
             .collect();
 
-        // Validate that the fulltext field doesn't collide with any top-level Query fields
-        // generated for entity types. The field name conversions should always align with those used
-        // to create the field names in `graphql::schema::api::query_fields_for_type()`.
+        // Validate that the fulltext field doesn't collide with any top-level Query
+        // fields generated for entity types. The field name conversions should
+        // always align with those used to create the field names in
+        // `graphql::schema::api::query_fields_for_type()`.
         if local_types.iter().any(|typ| {
             typ.fields.iter().any(|field| {
                 name == &field.name.as_str().to_camel_case()
@@ -1159,7 +1160,8 @@ impl Schema {
                             _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
                         };
 
-                        // Validate the included field is a String field on the local entity types specified
+                        // Validate the included field is a String field on the local entity types
+                        // specified
                         if !&entity_type
                             .fields
                             .iter()
@@ -1502,7 +1504,8 @@ impl Schema {
         object: &ObjectType,
         interface: &InterfaceType,
     ) -> Result<(), SchemaValidationError> {
-        // Check that all fields in the interface exist in the object with same name and type.
+        // Check that all fields in the interface exist in the object with same name and
+        // type.
         let mut missing_fields = vec![];
         for i in &interface.fields {
             if !object

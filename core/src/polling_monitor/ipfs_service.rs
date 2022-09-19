@@ -1,13 +1,15 @@
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::Poll;
+use std::time::Duration;
+
 use anyhow::{anyhow, Error};
 use bytes::Bytes;
 use cid::Cid;
 use futures::{Future, FutureExt};
-use graph::{
-    cheap_clone::CheapClone,
-    ipfs_client::{IpfsClient, StatApi},
-    tokio::sync::Semaphore,
-};
-use std::{pin::Pin, sync::Arc, task::Poll, time::Duration};
+use graph::cheap_clone::CheapClone;
+use graph::ipfs_client::{IpfsClient, StatApi};
+use graph::tokio::sync::Semaphore;
 use tower::Service;
 
 const CLOUDFLARE_TIMEOUT: u16 = 524;
@@ -91,8 +93,8 @@ impl Service<Cid> for IpfsService {
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // The permit is acquired and immediately dropped, as tower does not yet allow returning it.
-        // So this is only indicative of capacity being available.
+        // The permit is acquired and immediately dropped, as tower does not yet allow
+        // returning it. So this is only indicative of capacity being available.
         Pin::new(&mut self.concurrency_limiter.acquire().boxed())
             .poll(cx)
             .map_ok(|_| ())
@@ -109,8 +111,8 @@ impl Service<Cid> for IpfsService {
     }
 }
 
-// Multihashes that are collision resistant. This is not complete but covers the commonly used ones.
-// Code table: https://github.com/multiformats/multicodec/blob/master/table.csv
+// Multihashes that are collision resistant. This is not complete but covers the
+// commonly used ones. Code table: https://github.com/multiformats/multicodec/blob/master/table.csv
 // rust-multihash code enum: https://github.com/multiformats/rust-multihash/blob/master/src/multihash_impl.rs
 const SAFE_MULTIHASHES: [u64; 15] = [
     0x0,    // Identity

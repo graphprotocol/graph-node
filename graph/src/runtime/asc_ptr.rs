@@ -1,13 +1,16 @@
-use super::gas::GasCounter;
-use super::{padding_to_16, DeterministicHostError};
-
-use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
-use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 
-/// The `rt_size` field contained in an AssemblyScript header has a size of 4 bytes.
+use semver::Version;
+
+use super::gas::GasCounter;
+use super::{
+    padding_to_16, AscHeap, AscIndexId, AscType, DeterministicHostError, IndexForAscTypeId,
+};
+
+/// The `rt_size` field contained in an AssemblyScript header has a size of 4
+/// bytes.
 const SIZE_OF_RT_SIZE: u32 = 4;
 
 /// A pointer to an object in the Asc heap.
@@ -132,9 +135,12 @@ impl<C: AscType> AscPtr<C> {
 
     /// Helper that generates an AssemblyScript header.
     /// An AssemblyScript header has 20 bytes and it is composed of 5 values.
-    /// - mm_info: usize -> size of all header contents + payload contents + padding
-    /// - gc_info: usize -> first GC info (we don't free memory so it's irrelevant)
-    /// - gc_info2: usize -> second GC info (we don't free memory so it's irrelevant)
+    /// - mm_info: usize -> size of all header contents + payload contents +
+    ///   padding
+    /// - gc_info: usize -> first GC info (we don't free memory so it's
+    ///   irrelevant)
+    /// - gc_info2: usize -> second GC info (we don't free memory so it's
+    ///   irrelevant)
     /// - rt_id: u32 -> identifier for the class being allocated
     /// - rt_size: u32 -> content size
     /// Only used for version >= 0.0.5.
@@ -166,7 +172,8 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Helper to read the length from the header.
-    /// An AssemblyScript header has 20 bytes, and it's right before the content, and composed by:
+    /// An AssemblyScript header has 20 bytes, and it's right before the
+    /// content, and composed by:
     /// - mm_info: usize
     /// - gc_info: usize
     /// - gc_info2: usize
@@ -198,14 +205,16 @@ impl<C: AscType> AscPtr<C> {
         self.0 as u64
     }
 
-    /// We typically assume `AscPtr` is never null, but for types such as `string | null` it can be.
+    /// We typically assume `AscPtr` is never null, but for types such as
+    /// `string | null` it can be.
     pub fn is_null(&self) -> bool {
         self.0 == 0
     }
 
-    /// There's no problem in an AscPtr being 'null' (see above AscPtr::is_null function).
-    /// However if one tries to read that pointer, it should fail with a helpful error message,
-    /// this function does this error handling.
+    /// There's no problem in an AscPtr being 'null' (see above AscPtr::is_null
+    /// function). However if one tries to read that pointer, it should fail
+    /// with a helpful error message, this function does this error
+    /// handling.
     ///
     /// Summary: ALWAYS call this before reading an AscPtr.
     pub fn check_is_not_null(&self) -> Result<(), DeterministicHostError> {

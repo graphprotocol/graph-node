@@ -1,8 +1,8 @@
-use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::effort::LoadManager;
+use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 
 use crate::execution::{ast as a, *};
 

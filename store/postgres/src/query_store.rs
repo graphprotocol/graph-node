@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
-use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::QueryStore as QueryStoreTrait;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::prelude::*;
 
+use crate::deployment_store::{DeploymentStore, ReplicaId};
 use crate::primary::Site;
 
 pub(crate) struct QueryStore {

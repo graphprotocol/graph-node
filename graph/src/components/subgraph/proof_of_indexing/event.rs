@@ -1,9 +1,11 @@
-use crate::prelude::{impl_slog_value, Value};
-use stable_hash_legacy::StableHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
+
+use stable_hash_legacy::StableHasher;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
+
+use crate::prelude::{impl_slog_value, Value};
 
 #[derive(AsStaticStr)]
 pub enum ProofOfIndexingEvent<'a> {

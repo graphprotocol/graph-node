@@ -1,13 +1,13 @@
+use std::sync::Arc;
+
 use anyhow::Error;
-use graph::{
-    env::env_var,
-    prelude::{prost, tokio, tonic},
-    {firehose, firehose::FirehoseEndpoint, firehose::ForkStep},
-};
+use graph::env::env_var;
+use graph::firehose;
+use graph::firehose::{FirehoseEndpoint, ForkStep};
+use graph::prelude::{prost, tokio, tonic};
 use graph_chain_ethereum::codec;
 use hex::ToHex;
 use prost::Message;
-use std::sync::Arc;
 use tonic::Streaming;
 
 #[tokio::main]

@@ -1,39 +1,32 @@
-use diesel::r2d2::Builder;
-use diesel::{connection::SimpleConnection, pg::PgConnection};
-use diesel::{
-    r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool, PooledConnection},
-    Connection,
-};
-use diesel::{sql_query, RunQueryDsl};
-
-use graph::cheap_clone::CheapClone;
-use graph::constraint_violation;
-use graph::prelude::tokio;
-use graph::prelude::tokio::time::Instant;
-use graph::slog::warn;
-use graph::util::timed_rw_lock::TimedMutex;
-use graph::{
-    prelude::{
-        anyhow::{self, anyhow, bail},
-        crit, debug, error, info, o,
-        tokio::sync::Semaphore,
-        CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
-        MetricsRegistry, MovingStats, PoolWaitStats, StoreError, ENV_VARS,
-    },
-    util::security::SafeDisplay,
-};
-
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use std::{collections::HashMap, sync::RwLock};
 
+use diesel::connection::SimpleConnection;
+use diesel::pg::PgConnection;
+use diesel::r2d2::{
+    self, event as e, Builder, ConnectionManager, HandleEvent, Pool, PooledConnection,
+};
+use diesel::{sql_query, Connection, RunQueryDsl};
+use graph::cheap_clone::CheapClone;
+use graph::constraint_violation;
+use graph::prelude::anyhow::{self, anyhow, bail};
+use graph::prelude::tokio::sync::Semaphore;
+use graph::prelude::tokio::time::Instant;
+use graph::prelude::{
+    crit, debug, error, info, o, tokio, CancelGuard, CancelHandle, CancelToken as _,
+    CancelableError, Counter, Gauge, Logger, MetricsRegistry, MovingStats, PoolWaitStats,
+    StoreError, ENV_VARS,
+};
+use graph::slog::warn;
+use graph::util::security::SafeDisplay;
+use graph::util::timed_rw_lock::TimedMutex;
 use postgres::config::{Config, Host};
 
 use crate::primary::{self, NAMESPACE_PUBLIC};
-use crate::{advisory_lock, catalog};
-use crate::{Shard, PRIMARY_SHARD};
+use crate::{advisory_lock, catalog, Shard, PRIMARY_SHARD};
 
 pub struct ForeignServer {
     pub name: String,
@@ -383,8 +376,8 @@ impl ConnectionPool {
     /// Execute a closure with a connection to the database.
     ///
     /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
+    ///   The API of using a closure to bound the usage of the connection serves
+    /// several   purposes:
     ///
     ///   * Moves blocking database access out of the `Future::poll`. Within
     ///     `Future::poll` (which includes all `async` methods) it is illegal to
@@ -806,8 +799,8 @@ impl PoolInner {
     /// Execute a closure with a connection to the database.
     ///
     /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
+    ///   The API of using a closure to bound the usage of the connection serves
+    /// several   purposes:
     ///
     ///   * Moves blocking database access out of the `Future::poll`. Within
     ///     `Future::poll` (which includes all `async` methods) it is illegal to

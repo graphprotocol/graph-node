@@ -3,12 +3,12 @@
 //! to be done on a tight deadline, solely for work that needs to be done
 //! at reasonably long intervals (like a few hours)
 
-use slog::{debug, info, o, trace, warn, Logger};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use slog::{debug, info, o, trace, warn, Logger};
 
 /// An individual job to run. Each job should be written in a way that it
 /// doesn't take more than a few minutes.
@@ -94,9 +94,11 @@ impl Runner {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::sync::{Arc, Mutex};
+
     use test_store::LOGGER;
+
+    use super::*;
 
     struct CounterJob {
         count: Arc<Mutex<usize>>,

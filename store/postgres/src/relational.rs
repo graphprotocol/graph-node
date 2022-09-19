@@ -16,17 +16,6 @@ mod query_tests;
 
 mod prune;
 
-use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
-use graph::cheap_clone::CheapClone;
-use graph::constraint_violation;
-use graph::data::graphql::TypeExt as _;
-use graph::data::query::Trace;
-use graph::data::value::Word;
-use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
-use graph::slog::warn;
-use inflector::Inflector;
-use lazy_static::lazy_static;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
@@ -35,28 +24,36 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
-use crate::{
-    primary::{Namespace, Site},
-    relational_queries::{
-        ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
-        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
-    },
-};
+use diesel::connection::SimpleConnection;
+use diesel::{debug_query, Connection, OptionalExtension, PgConnection, RunQueryDsl};
+use graph::cheap_clone::CheapClone;
 use graph::components::store::{EntityKey, EntityType};
+use graph::constraint_violation;
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
+use graph::data::graphql::TypeExt as _;
+use graph::data::query::Trace;
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
+use graph::data::value::Word;
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
+    anyhow, info, q, s, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
     EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, QueryExecutionError,
-    StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    StopwatchMetrics, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX, ENV_VARS,
 };
+use graph::slog::warn;
+use inflector::Inflector;
+use lazy_static::lazy_static;
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
+use crate::primary::{Namespace, Site};
+use crate::relational_queries::{
+    ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
+    FilterQuery, FindChangesQuery, FindManyQuery, FindPossibleDeletionsQuery, FindQuery,
+    InsertQuery, RevertClampQuery, RevertRemoveQuery,
+};
 use crate::{catalog, deployment};
 
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
@@ -382,9 +379,9 @@ impl Layout {
                     use_prefix_comparison: false,
                 },
             ],
-            /// The position of this table in all the tables for this layout; this
-            /// is really only needed for the tests to make the names of indexes
-            /// predictable
+            /// The position of this table in all the tables for this layout;
+            /// this is really only needed for the tests to make the
+            /// names of indexes predictable
             position: position as u32,
             is_account_like: false,
             immutable: false,
@@ -595,10 +592,10 @@ impl Layout {
         let table = self.table_for_entity(entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
         let mut count = 0;
-        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
-        // so we need to act in chunks whose size is defined by the number of entities times the
-        // number of attributes each entity type has.
-        // We add 1 to account for the `block_range` bind parameter
+        // Each operation must respect the maximum number of bindings allowed in
+        // PostgreSQL queries, so we need to act in chunks whose size is defined
+        // by the number of entities times the number of attributes each entity
+        // type has. We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
@@ -758,10 +755,10 @@ impl Layout {
         let _section = stopwatch.start_section("update_modification_insert_query");
         let mut count = 0;
 
-        // Each operation must respect the maximum number of bindings allowed in PostgreSQL queries,
-        // so we need to act in chunks whose size is defined by the number of entities times the
-        // number of attributes each entity type has.
-        // We add 1 to account for the `block_range` bind parameter
+        // Each operation must respect the maximum number of bindings allowed in
+        // PostgreSQL queries, so we need to act in chunks whose size is defined
+        // by the number of entities times the number of attributes each entity
+        // type has. We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
@@ -908,7 +905,8 @@ impl Layout {
 /// A user-defined enum
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumType {
-    /// The name of the Postgres enum we created, fully qualified with the schema
+    /// The name of the Postgres enum we created, fully qualified with the
+    /// schema
     pub name: SqlName,
     /// The possible values the enum can take
     values: Arc<BTreeSet<String>>,

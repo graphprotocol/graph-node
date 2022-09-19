@@ -1,12 +1,13 @@
-use anyhow::{anyhow, Error};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
+use anyhow::{anyhow, Error};
+use web3::types::H160;
+
 use crate::blockchain::BlockHash;
 use crate::data::value::Object;
 use crate::prelude::{r, BigInt, Entity};
-use web3::types::H160;
 
 pub trait TryFromValue: Sized {
     fn try_from_value(value: &r::Value) -> Result<Self, Error>;

@@ -1,27 +1,23 @@
+use std::collections::{HashMap, HashSet};
+use std::marker::Unpin;
+use std::{cmp, fmt};
+
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
+use graph::blockchain as bc;
 use graph::blockchain::ChainIdentifier;
-use graph::firehose::CallToFilter;
-use graph::firehose::CombinedFilter;
-use graph::firehose::LogFilter;
+use graph::components::metrics::{CounterVec, GaugeVec, HistogramVec};
+use graph::firehose::{CallToFilter, CombinedFilter, LogFilter};
+use graph::petgraph::graphmap::GraphMap;
+use graph::petgraph::{self};
+use graph::prelude::*;
 use itertools::Itertools;
 use prost::Message;
 use prost_types::Any;
-use std::cmp;
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use std::marker::Unpin;
 use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Log, H256};
-
-use graph::prelude::*;
-use graph::{
-    blockchain as bc,
-    components::metrics::{CounterVec, GaugeVec, HistogramVec},
-    petgraph::{self, graphmap::GraphMap},
-};
 
 const COMBINED_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.ethereum.transform.v1.CombinedFilter";
@@ -193,14 +189,16 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EthereumLogFilter {
-    /// Log filters can be represented as a bipartite graph between contracts and events. An edge
-    /// exists between a contract and an event if a data source for the contract has a trigger for
-    /// the event.
-    /// Edges are of `bool` type and indicates when a trigger requires a transaction receipt.
+    /// Log filters can be represented as a bipartite graph between contracts
+    /// and events. An edge exists between a contract and an event if a data
+    /// source for the contract has a trigger for the event.
+    /// Edges are of `bool` type and indicates when a trigger requires a
+    /// transaction receipt.
     contracts_and_events_graph: GraphMap<LogFilterNode, bool, petgraph::Undirected>,
 
     /// Event sigs with no associated address, matching on all addresses.
-    /// Maps to a boolean representing if a trigger requires a transaction receipt.
+    /// Maps to a boolean representing if a trigger requires a transaction
+    /// receipt.
     wildcard_events: HashMap<EventSignature, bool>,
 }
 
@@ -247,7 +245,8 @@ impl EthereumLogFilter {
         }
     }
 
-    /// Similar to [`matches`], checks if a transaction receipt is required for this log filter.
+    /// Similar to [`matches`], checks if a transaction receipt is required for
+    /// this log filter.
     pub fn requires_transaction_receipt(
         &self,
         event_signature: &H256,
@@ -328,9 +327,10 @@ impl EthereumLogFilter {
         contracts_and_events_graph.edge_count() == 0 && wildcard_events.is_empty()
     }
 
-    /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
-    /// to balance between having granular filters but too many calls and having few calls but too
-    /// broad filters causing the Ethereum endpoint to timeout.
+    /// Filters for `eth_getLogs` calls. The filters will not return false
+    /// positives. This attempts to balance between having granular filters
+    /// but too many calls and having few calls but too broad filters
+    /// causing the Ethereum endpoint to timeout.
     pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
         // Start with the wildcard event filters.
         let mut filters = self
@@ -339,19 +339,22 @@ impl EthereumLogFilter {
             .map(|(event, _)| EthGetLogsFilter::from_event(event))
             .collect_vec();
 
-        // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
-        // of its edges into a filter. This is nice because it is neutral between filtering by
-        // contract or by events, if there are many events that appear on only one data source
-        // we'll filter by many events on a single contract, but if there is an event that appears
-        // on a lot of data sources we'll filter by many contracts with a single event.
+        // The current algorithm is to repeatedly find the maximum cardinality vertex
+        // and turn all of its edges into a filter. This is nice because it is
+        // neutral between filtering by contract or by events, if there are many
+        // events that appear on only one data source we'll filter by many
+        // events on a single contract, but if there is an event that appears on
+        // a lot of data sources we'll filter by many contracts with a single event.
         //
-        // From a theoretical standpoint we're finding a vertex cover, and this is not the optimal
-        // algorithm to find a minimum vertex cover, but should be fine as an approximation.
+        // From a theoretical standpoint we're finding a vertex cover, and this is not
+        // the optimal algorithm to find a minimum vertex cover, but should be
+        // fine as an approximation.
         //
-        // One optimization we're not doing is to merge nodes that have the same neighbors into a
-        // single node. For example if a subgraph has two data sources, each with the same two
-        // events, we could cover that with a single filter and no false positives. However that
-        // might cause the filter to become too broad, so at the moment it seems excessive.
+        // One optimization we're not doing is to merge nodes that have the same
+        // neighbors into a single node. For example if a subgraph has two data
+        // sources, each with the same two events, we could cover that with a
+        // single filter and no false positives. However that might cause the
+        // filter to become too broad, so at the moment it seems excessive.
         let mut g = self.contracts_and_events_graph;
         while g.edge_count() > 0 {
             let mut push_filter = |filter: EthGetLogsFilter| {
@@ -437,8 +440,8 @@ impl Into<Vec<CallToFilter>> for EthereumCallFilter {
 impl EthereumCallFilter {
     pub fn matches(&self, call: &EthereumCall) -> bool {
         // Calls returned by Firehose actually contains pure transfers and smart
-        // contract calls. If the input is less than 4 bytes, we assume it's a pure transfer
-        // and discards those.
+        // contract calls. If the input is less than 4 bytes, we assume it's a pure
+        // transfer and discards those.
         if call.input.0.len() < 4 {
             return false;
         }
@@ -459,8 +462,8 @@ impl EthereumCallFilter {
             // on the same address
             Some(v) if v.1.is_empty() => true,
             // There are some relevant signatures to test
-            // this avoids having to call extend for every match call, checks the contract specific funtions, then falls
-            // back on wildcards
+            // this avoids having to call extend for every match call, checks the contract specific
+            // funtions, then falls back on wildcards
             Some(v) => {
                 let sig = &v.1;
                 sig.contains(call_signature) || self.wildcard_signatures.contains(call_signature)
@@ -516,7 +519,8 @@ impl EthereumCallFilter {
         } = other;
 
         // Extend existing address / function signature key pairs
-        // Add new address / function signature key pairs from the provided EthereumCallFilter
+        // Add new address / function signature key pairs from the provided
+        // EthereumCallFilter
         for (address, (proposed_start_block, new_sigs)) in
             contract_addresses_function_signatures.into_iter()
         {
@@ -612,10 +616,12 @@ impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
 }
 
 impl EthereumBlockFilter {
-    /// from_mapping ignores contract addresses in this use case because templates can't provide Address or BlockNumber
-    /// ahead of time. This means the filters applied to the block_stream need to be broad, in this case,
-    /// specifically, will match all blocks. The blocks are then further filtered by the subgraph instance manager
-    /// which keeps track of deployed contracts and relevant addresses.
+    /// from_mapping ignores contract addresses in this use case because
+    /// templates can't provide Address or BlockNumber ahead of time. This
+    /// means the filters applied to the block_stream need to be broad, in this
+    /// case, specifically, will match all blocks. The blocks are then
+    /// further filtered by the subgraph instance manager which keeps track
+    /// of deployed contracts and relevant addresses.
     pub fn from_mapping(mapping: &Mapping) -> Self {
         Self {
             contract_addresses: HashSet::new(),
@@ -846,8 +852,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// The `provider.label` from the adapter's configuration
     fn provider(&self) -> &str;
 
-    /// Ask the Ethereum node for some identifying information about the Ethereum network it is
-    /// connected to.
+    /// Ask the Ethereum node for some identifying information about the
+    /// Ethereum network it is connected to.
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
@@ -868,8 +874,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_hash: H256,
     ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
 
-    /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
-    /// May use the `chain_store` as a cache.
+    /// Load Ethereum blocks in bulk, returning results as they come back as a
+    /// Stream. May use the `chain_store` as a cache.
     fn load_blocks(
         &self,
         logger: Logger,
@@ -890,7 +896,8 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         block_number: BlockNumber,
     ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
 
-    /// Load full information for the specified `block` (in particular, transaction receipts).
+    /// Load full information for the specified `block` (in particular,
+    /// transaction receipts).
     fn load_full_block(
         &self,
         logger: &Logger,
@@ -907,12 +914,13 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// Find a block by its number, according to the Ethereum node.
     ///
     /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// Chain reorgs could happen at any time, and could affect the answer
+    /// received. Generally, it is only safe to use this function with
+    /// blocks that have received enough confirmations to guarantee no
+    /// further reorgs, **and** where the Ethereum node is aware of
     /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks
+    /// can be subject to reorgs.
     fn block_hash_by_block_number(
         &self,
         logger: &Logger,
@@ -930,26 +938,25 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::{FunctionSelector, COMBINED_FILTER_TYPE_URL};
-
-    use super::{EthereumBlockFilter, LogFilterNode};
-    use super::{EthereumCallFilter, EthereumLogFilter, TriggerFilter};
+    use std::collections::{HashMap, HashSet};
+    use std::iter::FromIterator;
+    use std::str::FromStr;
 
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
     use graph::prelude::ethabi::ethereum_types::H256;
-    use graph::prelude::web3::types::Address;
-    use graph::prelude::web3::types::Bytes;
+    use graph::prelude::web3::types::{Address, Bytes};
     use graph::prelude::EthereumCall;
     use hex::ToHex;
     use itertools::Itertools;
     use prost::Message;
     use prost_types::Any;
 
-    use std::collections::{HashMap, HashSet};
-    use std::iter::FromIterator;
-    use std::str::FromStr;
+    use super::{
+        EthereumBlockFilter, EthereumCallFilter, EthereumLogFilter, LogFilterNode, TriggerFilter,
+    };
+    use crate::adapter::{FunctionSelector, COMBINED_FILTER_TYPE_URL};
 
     #[test]
     fn ethereum_log_filter_codec() {
@@ -990,8 +997,8 @@ mod tests {
             addresses: vec![address.to_fixed_bytes().to_vec()],
             event_signatures: sigs,
         };
-        // This base64 was provided by Streamingfast as a binding example of the expected encoded for the
-        // addresses and signatures above.
+        // This base64 was provided by Streamingfast as a binding example of the
+        // expected encoded for the addresses and signatures above.
         let expected_base64 = "CloKFEx7hZHFD0rTCNB9YpTylF4HRCD1EiCvtC8ZQBTs533w+eS8PO2XV1Vdwf59yAMWGi3jt8SDmhIg3fJSrRviyJtpwrBo/DeNqpUrp/FjxKEWKPVaTfUjs+8=";
 
         let filter = MultiLogFilter {
@@ -1021,8 +1028,8 @@ mod tests {
             event_signatures: vec![fs.to_vec()],
         };
 
-        // This base64 was provided by Streamingfast as a binding example of the expected encoded for the
-        // addresses and signatures above.
+        // This base64 was provided by Streamingfast as a binding example of the
+        // expected encoded for the addresses and signatures above.
         let expected_base64 = "ChTu0rd1bilakwDlPdBJrrB1GJm64xIEqQWcuw==";
 
         let output = base64::encode(filter.encode_to_vec());
@@ -1429,8 +1436,9 @@ mod tests {
     }
 }
 
-// Tests `eth_get_logs_filters` in instances where all events are filtered on by all contracts.
-// This represents, for example, the relationship between dynamic data sources and their events.
+// Tests `eth_get_logs_filters` in instances where all events are filtered on by
+// all contracts. This represents, for example, the relationship between dynamic
+// data sources and their events.
 #[test]
 fn complete_log_filter() {
     use std::collections::BTreeSet;
@@ -1462,7 +1470,8 @@ fn complete_log_filter() {
             .eth_get_logs_filters()
             .collect();
 
-            // Assert that a contract or event is filtered on iff it was present in the graph.
+            // Assert that a contract or event is filtered on iff it was present in the
+            // graph.
             assert_eq!(
                 logs_filters
                     .iter()

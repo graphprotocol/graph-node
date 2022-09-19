@@ -1,20 +1,16 @@
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
-use std::{collections::HashMap, sync::Arc, time::SystemTime};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::SystemTime;
 
-use graph::{
-    components::store::BlockStore as _,
-    data::query::QueryTarget,
-    prelude::{
-        anyhow::{anyhow, bail, Error},
-        chrono::{DateTime, Duration, SecondsFormat, Utc},
-        BlockPtr, ChainStore, DeploymentHash, NodeId, QueryStoreManager,
-    },
-};
-use graph_store_postgres::{
-    command_support::catalog::{self, copy_state, copy_table_state},
-    PRIMARY_SHARD,
-};
-use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
+use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
+use graph::components::store::BlockStore as _;
+use graph::data::query::QueryTarget;
+use graph::prelude::anyhow::{anyhow, bail, Error};
+use graph::prelude::chrono::{DateTime, Duration, SecondsFormat, Utc};
+use graph::prelude::{BlockPtr, ChainStore, DeploymentHash, NodeId, QueryStoreManager};
+use graph_store_postgres::command_support::catalog::{self, copy_state, copy_table_state};
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::{Shard, Store, SubgraphStore, PRIMARY_SHARD};
 
 use crate::manager::deployment::DeploymentSearch;
 use crate::manager::display::List;
@@ -57,8 +53,7 @@ impl CopyState {
         shard: &Shard,
         dst: i32,
     ) -> Result<Option<(CopyState, Vec<CopyTableState>)>, Error> {
-        use copy_state as cs;
-        use copy_table_state as cts;
+        use {copy_state as cs, copy_table_state as cts};
 
         let dpool = pools
             .get(shard)
@@ -159,8 +154,7 @@ pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) ->
 }
 
 pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
-    use catalog::active_copies as ac;
-    use catalog::deployment_schemas as ds;
+    use catalog::{active_copies as ac, deployment_schemas as ds};
 
     let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
     let conn = primary.get()?;
@@ -217,8 +211,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
 }
 
 pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> Result<(), Error> {
-    use catalog::active_copies as ac;
-    use catalog::deployment_schemas as ds;
+    use catalog::{active_copies as ac, deployment_schemas as ds};
 
     fn done(ts: &Option<UtcDateTime>) -> String {
         ts.map(|_| "✓").unwrap_or(".").to_string()

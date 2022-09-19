@@ -1,6 +1,7 @@
+use web3::types::{Address, Bytes, H2048, H256, H64, U128, U256, U64};
+
 use super::scalar;
 use crate::prelude::*;
-use web3::types::{Address, Bytes, H2048, H256, H64, U128, U256, U64};
 
 impl From<U128> for Value {
     fn from(n: U128) -> Value {

@@ -3,6 +3,6 @@
 pub mod pbcodec;
 
 pub use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, AscString, Uint8Array};
+pub use pbcodec::*;
 
 pub use crate::runtime::abi::*;
-pub use pbcodec::*;

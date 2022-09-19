@@ -1,11 +1,11 @@
-use crate::prelude::Schema;
-use crate::{components::store::EntityType, prelude::s};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
 use super::ObjectTypeExt;
+use crate::components::store::EntityType;
+use crate::prelude::{s, Schema};
 
 #[derive(Copy, Clone, Debug)]
 pub enum ObjectOrInterface<'a> {
@@ -122,8 +122,9 @@ impl<'a> ObjectOrInterface<'a> {
         }
     }
 
-    /// `typename` is the name of an object type. Matches if `self` is an object and has the same
-    /// name, or if self is an interface implemented by `typename`.
+    /// `typename` is the name of an object type. Matches if `self` is an object
+    /// and has the same name, or if self is an interface implemented by
+    /// `typename`.
     pub fn matches(
         self,
         typename: &str,

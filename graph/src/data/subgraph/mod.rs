@@ -8,48 +8,42 @@ pub use api_version::*;
 pub mod features;
 pub mod status;
 
-pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
-
-use anyhow::ensure;
-use anyhow::{anyhow, Error};
-use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
-use semver::Version;
-use serde::{de, ser};
-use serde_yaml;
-use slog::{debug, info, Logger};
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
-use std::{collections::BTreeSet, marker::PhantomData};
-use thiserror::Error;
-use wasmparser;
-use web3::types::Address;
-
-use crate::{
-    blockchain::{BlockPtr, Blockchain, DataSource as _},
-    components::{
-        link_resolver::LinkResolver,
-        store::{DeploymentLocator, StoreError, SubgraphStore},
-    },
-    data::{
-        graphql::TryFromValue,
-        query::QueryExecutionError,
-        schema::{Schema, SchemaImportError, SchemaValidationError},
-        store::Entity,
-        subgraph::features::validate_subgraph_features,
-    },
-    data_source::{
-        offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
-        UnresolvedDataSourceTemplate,
-    },
-    prelude::{r, CheapClone, ENV_VARS},
-};
-
-use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
-
+use std::collections::BTreeSet;
 use std::fmt;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
+
+use anyhow::{anyhow, ensure, Error};
+pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
+use futures03::future::try_join3;
+use futures03::stream::FuturesOrdered;
+use futures03::TryStreamExt as _;
+use semver::Version;
+use serde::{de, ser};
+use slog::{debug, info, Logger};
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
+use thiserror::Error;
+use web3::types::Address;
+use {serde_yaml, wasmparser};
+
+use crate::blockchain::{BlockPtr, Blockchain, DataSource as _};
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::{DeploymentLocator, StoreError, SubgraphStore};
+use crate::data::graphql::TryFromValue;
+use crate::data::query::QueryExecutionError;
+use crate::data::schema::{Schema, SchemaImportError, SchemaValidationError};
+use crate::data::store::Entity;
+use crate::data::subgraph::features::validate_subgraph_features;
+use crate::data_source::offchain::OFFCHAIN_KINDS;
+use crate::data_source::{
+    DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+};
+use crate::prelude::{
+    impl_slog_value, r, BlockNumber, CheapClone, Deserialize, Serialize, ENV_VARS,
+};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -175,8 +169,9 @@ impl SubgraphName {
     pub fn new(s: impl Into<String>) -> Result<Self, ()> {
         let s = s.into();
 
-        // Note: these validation rules must be kept consistent with the validation rules
-        // implemented in any other components that rely on subgraph names.
+        // Note: these validation rules must be kept consistent with the validation
+        // rules implemented in any other components that rely on subgraph
+        // names.
 
         // Enforce length limits
         if s.is_empty() || s.len() > 255 {
@@ -552,7 +547,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
     /// Validates the subgraph manifest file.
     ///
-    /// Graft base validation will be skipped if the parameter `validate_graft_base` is false.
+    /// Graft base validation will be skipped if the parameter
+    /// `validate_graft_base` is false.
     pub async fn validate<S: SubgraphStore>(
         self,
         store: Arc<S>,
@@ -573,7 +569,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             }));
         }
 
-        // For API versions newer than 0.0.5, validate that all mappings uses the same api_version
+        // For API versions newer than 0.0.5, validate that all mappings uses the same
+        // api_version
         if let Err(different_api_versions) = self.0.unified_mapping_api_version() {
             errors.push(different_api_versions.into());
         };

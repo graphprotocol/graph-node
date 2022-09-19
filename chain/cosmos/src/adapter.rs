@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 
+use graph::blockchain as bc;
+use graph::firehose::EventTypeFilter;
+use graph::prelude::*;
 use prost::Message;
 use prost_types::Any;
 
 use crate::capabilities::NodeCapabilities;
-use crate::{data_source::DataSource, Chain};
-use graph::blockchain as bc;
-use graph::firehose::EventTypeFilter;
-use graph::prelude::*;
+use crate::data_source::DataSource;
+use crate::Chain;
 
 const EVENT_TYPE_FILTER_TYPE_URL: &str =
     "type.googleapis.com/sf.cosmos.transform.v1.EventTypeFilter";

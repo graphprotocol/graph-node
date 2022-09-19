@@ -1,16 +1,17 @@
-use graphql_parser::Pos;
-use hex::FromHexError;
-use num_bigint;
-use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 
+use graphql_parser::Pos;
+use hex::FromHexError;
+use num_bigint;
+use serde::ser::*;
+
+use crate::components::store::StoreError;
 use crate::data::subgraph::*;
-use crate::prelude::q;
-use crate::{components::store::StoreError, prelude::CacheWeight};
+use crate::prelude::{q, CacheWeight};
 
 #[derive(Debug)]
 pub struct CloneableAnyhowError(Arc<anyhow::Error>);

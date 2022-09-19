@@ -1,16 +1,18 @@
-use graph::blockchain::Block;
-use graph::blockchain::TriggerData;
+use std::cmp::Ordering;
+use std::sync::Arc;
+
+use graph::blockchain::{Block, TriggerData};
 use graph::cheap_clone::CheapClone;
-use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
-use graph::prelude::BlockNumber;
-use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
+use graph::prelude::{hex, BlockNumber};
+use graph::runtime::gas::GasCounter;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
 use graph_runtime_wasm::module::ToAscPtr;
-use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
 
-// Logging the block is too verbose, so this strips the block from the trigger for Debug.
+// Logging the block is too verbose, so this strips the block from the trigger
+// for Debug.
 impl std::fmt::Debug for NearTrigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[derive(Debug)]
@@ -144,15 +146,13 @@ pub struct ReceiptWithOutcome {
 mod tests {
     use std::convert::TryFrom;
 
-    use super::*;
+    use graph::anyhow::anyhow;
+    use graph::data::subgraph::API_VERSION_0_0_5;
+    use graph::prelude::{hex, BigInt};
+    use graph::runtime::gas::GasCounter;
+    use graph::util::mem::init_slice;
 
-    use graph::{
-        anyhow::anyhow,
-        data::subgraph::API_VERSION_0_0_5,
-        prelude::{hex, BigInt},
-        runtime::gas::GasCounter,
-        util::mem::init_slice,
-    };
+    use super::*;
 
     #[test]
     fn block_trigger_to_asc_ptr() {
@@ -299,7 +299,8 @@ mod tests {
                                     permission: Some(
                                         codec::access_key_permission::Permission::FunctionCall(
                                             codec::FunctionCallPermission {
-                                                // allowance can be None, so let's test this out here
+                                                // allowance can be None, so let's test this out
+                                                // here
                                                 allowance: None,
                                                 receiver_id: "receiver".to_string(),
                                                 method_names: vec!["sayGm".to_string()],
@@ -494,7 +495,8 @@ mod tests {
             &mut self,
             type_id_index: graph::runtime::IndexForAscTypeId,
         ) -> Result<u32, DeterministicHostError> {
-            // Not totally clear what is the purpose of this method, why not a default implementation here?
+            // Not totally clear what is the purpose of this method, why not a default
+            // implementation here?
             Ok(type_id_index as u32)
         }
     }

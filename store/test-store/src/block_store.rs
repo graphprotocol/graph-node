@@ -1,15 +1,14 @@
-use std::{convert::TryFrom, str::FromStr, sync::Arc};
+use std::convert::TryFrom;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use lazy_static::lazy_static;
-
+use graph::blockchain::Block;
 use graph::components::store::BlockStore;
-use graph::{
-    blockchain::Block,
-    prelude::{
-        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
-        EthereumBlock, LightEthereumBlock,
-    },
+use graph::prelude::web3::types::{H256, U256};
+use graph::prelude::{
+    serde_json, BlockHash, BlockNumber, BlockPtr, EthereumBlock, LightEthereumBlock,
 };
+use lazy_static::lazy_static;
 
 lazy_static! {
     // Genesis block
@@ -120,9 +119,10 @@ impl Block for FakeBlock {
             return Ok(value);
         };
 
-        // Remove the timestamp for block BLOCK_THREE_NO_TIMESTAMP in order to simulate the non EVM behaviour
-        // In these cases timestamp is not there at all but LightEthereumBlock uses U256 as timestamp so it
-        // can never be null and therefore impossible to test without manipulating the JSON blob directly.
+        // Remove the timestamp for block BLOCK_THREE_NO_TIMESTAMP in order to simulate
+        // the non EVM behaviour In these cases timestamp is not there at all
+        // but LightEthereumBlock uses U256 as timestamp so it can never be null
+        // and therefore impossible to test without manipulating the JSON blob directly.
         if let serde_json::Value::Object(ref mut map) = value {
             map.entry("block").and_modify(|ref mut block| {
                 if let serde_json::Value::Object(ref mut block) = block {

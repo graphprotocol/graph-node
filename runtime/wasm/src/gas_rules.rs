@@ -1,4 +1,5 @@
-use std::{convert::TryInto, num::NonZeroU32};
+use std::convert::TryInto;
+use std::num::NonZeroU32;
 
 use graph::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
 use parity_wasm::elements::Instruction;
@@ -15,7 +16,8 @@ impl Rules for GasRules {
         let weight = match instruction {
             // These are taken from this post: https://github.com/paritytech/substrate/pull/7361#issue-506217103
             // from the table under the "Schedule" dropdown. Each decimal is multiplied by 10.
-            // Note that those were calculated for wasi, not wasmtime, so they are likely very conservative.
+            // Note that those were calculated for wasi, not wasmtime, so they are likely very
+            // conservative.
             I64Const(_) => 16,
             I64Load(_, _) => GAS_COST_LOAD,
             I64Store(_, _) => GAS_COST_STORE,

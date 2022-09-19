@@ -1,11 +1,12 @@
 use ethabi;
-
-use graph::prelude::{BigDecimal, BigInt};
+use graph::data::store;
+use graph::prelude::web3::types as web3;
+use graph::prelude::{serde_json, BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, ToAscObj};
-use graph::{data::store, runtime::DeterministicHostError};
-use graph::{prelude::serde_json, runtime::FromAscObj};
-use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use graph::runtime::{
+    asc_get, asc_new, AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError,
+    FromAscObj, ToAscObj,
+};
 
 use crate::asc_abi::class::*;
 
@@ -91,8 +92,8 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBigDecimal, DeterministicHostError> {
-        // From the docs: "Note that a positive exponent indicates a negative power of 10",
-        // so "exponent" is the opposite of what you'd expect.
+        // From the docs: "Note that a positive exponent indicates a negative power of
+        // 10", so "exponent" is the opposite of what you'd expect.
         let (digits, negative_exp) = self.as_bigint_and_exponent();
         Ok(AscBigDecimal {
             exp: asc_new(heap, &BigInt::from(-negative_exp), gas)?,

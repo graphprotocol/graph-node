@@ -36,71 +36,50 @@ mod task_spawn;
 pub use task_spawn::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
-
-pub use anyhow;
-pub use bytes;
-pub use itertools;
-pub use parking_lot;
-pub use petgraph;
-pub use prometheus;
-pub use semver;
-pub use slog;
-pub use stable_hash_legacy;
-pub use tokio;
-pub use tokio_stream;
-pub use url;
+pub use {
+    anyhow, bytes, itertools, parking_lot, petgraph, prometheus, semver, slog, stable_hash_legacy,
+    tokio, tokio_stream, url,
+};
 
 /// A prelude that makes all system component traits and data types available.
 ///
-/// Add the following code to import all traits and data types listed below at once.
+/// Add the following code to import all traits and data types listed below at
+/// once.
 ///
 /// ```
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use super::entity;
-    pub use ::anyhow;
-    pub use anyhow::{anyhow, Context as _, Error};
-    pub use async_trait::async_trait;
-    pub use bigdecimal;
-    pub use chrono;
-    pub use envconfig;
-    pub use ethabi;
-    pub use futures::future;
-    pub use futures::prelude::*;
-    pub use futures::stream;
-    pub use futures03;
-    pub use futures03::compat::{Future01CompatExt, Sink01CompatExt, Stream01CompatExt};
-    pub use futures03::future::{FutureExt as _, TryFutureExt};
-    pub use futures03::sink::SinkExt as _;
-    pub use futures03::stream::{StreamExt as _, TryStreamExt};
-    pub use hex;
-    pub use lazy_static::lazy_static;
-    pub use prost;
-    pub use rand;
-    pub use reqwest;
-    pub use serde;
-    pub use serde_derive::{Deserialize, Serialize};
-    pub use serde_json;
-    pub use serde_yaml;
-    pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
     pub use std::convert::TryFrom;
     pub use std::fmt::Debug;
     pub use std::iter::FromIterator;
     pub use std::pin::Pin;
     pub use std::sync::Arc;
     pub use std::time::Duration;
-    pub use thiserror;
-    pub use tiny_keccak;
-    pub use tokio;
-    pub use tonic;
-    pub use web3;
+
+    pub use anyhow::{anyhow, Context as _, Error};
+    pub use async_trait::async_trait;
+    pub use futures::prelude::*;
+    pub use futures::{future, stream};
+    pub use futures03::compat::{Future01CompatExt, Sink01CompatExt, Stream01CompatExt};
+    pub use futures03::future::{FutureExt as _, TryFutureExt};
+    pub use futures03::sink::SinkExt as _;
+    pub use futures03::stream::{StreamExt as _, TryStreamExt};
+    pub use lazy_static::lazy_static;
+    pub use serde_derive::{Deserialize, Serialize};
+    pub use slog::{self, crit, debug, error, info, o, trace, warn, Logger};
+    pub use {
+        ::anyhow, bigdecimal, chrono, envconfig, ethabi, futures03, hex, prost, rand, reqwest,
+        serde, serde_json, serde_yaml, thiserror, tiny_keccak, tokio, tonic, web3,
+    };
+
+    pub use super::entity;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::blockchain::{BlockHash, BlockPtr};
-
+    pub use crate::cheap_clone::CheapClone;
     pub use crate::components::ethereum::{
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,
@@ -109,10 +88,12 @@ pub mod prelude {
         GraphQLMetrics, GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
+    pub use crate::components::metrics::aggregate::Aggregate;
+    pub use crate::components::metrics::stopwatch::StopwatchMetrics;
+    pub use crate::components::metrics::subgraph::*;
     pub use crate::components::metrics::{
-        aggregate::Aggregate, stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter,
-        CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts,
-        PrometheusError, Registry,
+        Collector, Counter, CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec,
+        MetricsRegistry, Opts, PrometheusError, Registry,
     };
     pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::index_node::IndexNodeServer;
@@ -135,12 +116,8 @@ pub mod prelude {
     pub use crate::components::trigger_processor::TriggerProcessor;
     pub use crate::components::versions::{ApiVersion, FeatureFlag};
     pub use crate::components::{transaction_receipt, EventConsumer, EventProducer};
-    pub use crate::env::ENV_VARS;
-
-    pub use crate::cheap_clone::CheapClone;
-    pub use crate::data::graphql::{
-        shape_hash::shape_hash, SerializableValue, TryFromValue, ValueMap,
-    };
+    pub use crate::data::graphql::shape_hash::shape_hash;
+    pub use crate::data::graphql::{SerializableValue, TryFromValue, ValueMap};
     pub use crate::data::query::{
         Query, QueryError, QueryExecutionError, QueryResult, QueryTarget, QueryVariables,
     };
@@ -161,6 +138,7 @@ pub mod prelude {
     pub use crate::data::subscription::{
         QueryResultStream, Subscription, SubscriptionError, SubscriptionResult,
     };
+    pub use crate::env::ENV_VARS;
     pub use crate::ext::futures::{
         CancelGuard, CancelHandle, CancelToken, CancelableError, FutureExtension,
         SharedCancelGuard, StreamExtension,

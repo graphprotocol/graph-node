@@ -1,33 +1,30 @@
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::EntityKey;
-use graph::components::store::ReadStore;
+use graph::cheap_clone::CheapClone;
+use graph::components::store::{
+    self, EntityKey, EntityType, ReadStore, WritableStore as WritableStoreTrait,
+};
 use graph::data::subgraph::schema;
+use graph::data::subgraph::schema::SubgraphError;
 use graph::env::env_var;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX,
+    BlockNumber, BlockPtr, DeploymentHash, Entity, EntityModification, Error, Logger,
+    MetricsRegistry, Schema, StopwatchMetrics, StoreError, StoreEvent, SubgraphStore as _,
+    UnfailOutcome, BLOCK_NUMBER_MAX, ENV_VARS,
 };
-use graph::slog::info;
+use graph::slog::{error, info, warn};
+use graph::util::backoff::ExponentialBackoff;
 use graph::util::bounded_queue::BoundedQueue;
-use graph::{
-    cheap_clone::CheapClone,
-    components::store::{self, EntityType, WritableStore as WritableStoreTrait},
-    data::subgraph::schema::SubgraphError,
-    prelude::{
-        BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,
-        StoreEvent, UnfailOutcome, ENV_VARS,
-    },
-    slog::{error, warn},
-    util::backoff::ExponentialBackoff,
-};
 use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
-use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
+use crate::primary::Site;
+use crate::relational::Layout;
+use crate::{primary, SubgraphStore};
 
 graph::prelude::lazy_static! {
     /// The size of the write queue; this many blocks can be buffered for
@@ -498,7 +495,8 @@ struct Queue {
 pub(crate) mod test_support {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    use graph::{prelude::lazy_static, util::bounded_queue::BoundedQueue};
+    use graph::prelude::lazy_static;
+    use graph::util::bounded_queue::BoundedQueue;
 
     lazy_static! {
         static ref DO_STEP: AtomicBool = AtomicBool::new(false);

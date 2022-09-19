@@ -1,14 +1,14 @@
-use graph::cheap_clone::CheapClone;
-use graphql_parser::Pos;
-use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use graph::cheap_clone::CheapClone;
 use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::{DocumentExt, ObjectOrInterface};
 use graph::prelude::anyhow::anyhow;
 use graph::prelude::{s, Error, ValueType};
+use graphql_parser::Pos;
+use lazy_static::lazy_static;
 
 use crate::query::ast as qast;
 
@@ -36,7 +36,8 @@ pub(crate) enum FilterOp {
     Child,
 }
 
-/// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
+/// Split a "name_eq" style name into an attribute ("name") and a filter op
+/// (`Equal`).
 pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
     let (suffix, op) = match key {
         k if k.ends_with("_not") => ("_not", FilterOp::Not),

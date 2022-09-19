@@ -1,8 +1,9 @@
+use std::fmt;
+use std::sync::Arc;
+
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
-use std::fmt;
-use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -11,8 +12,9 @@ use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose;
+use crate::prelude::*;
+use crate::prometheus::labels;
 use crate::substreams::BlockScopedData;
-use crate::{prelude::*, prometheus::labels};
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
@@ -84,7 +86,8 @@ pub trait BlockStream<C: Blockchain>:
 {
 }
 
-/// BlockStreamBuilder is an abstraction that would separate the logic for building streams from the blockchain trait
+/// BlockStreamBuilder is an abstraction that would separate the logic for
+/// building streams from the blockchain trait
 #[async_trait]
 pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
     async fn build_firehose(
@@ -129,8 +132,8 @@ impl fmt::Display for FirehoseCursor {
 
 impl From<String> for FirehoseCursor {
     fn from(cursor: String) -> Self {
-        // Treat a cursor of "" as None, not absolutely necessary for correctness since the firehose
-        // treats both as the same, but makes it a little clearer.
+        // Treat a cursor of "" as None, not absolutely necessary for correctness since
+        // the firehose treats both as the same, but makes it a little clearer.
         if cursor == "" {
             FirehoseCursor::None
         } else {
@@ -246,11 +249,13 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
         filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
-    /// Returns the [BlockPtr] value for this given block number. This is the block pointer
-    /// of the longuest according to Firehose view of the blockchain state.
+    /// Returns the [BlockPtr] value for this given block number. This is the
+    /// block pointer of the longuest according to Firehose view of the
+    /// blockchain state.
     ///
-    /// This is a thin wrapper around [FirehoseEndpoint#block_ptr_for_number] to make
-    /// it chain agnostic and callable from chain agnostic [FirehoseBlockStream].
+    /// This is a thin wrapper around [FirehoseEndpoint#block_ptr_for_number] to
+    /// make it chain agnostic and callable from chain agnostic
+    /// [FirehoseBlockStream].
     async fn block_ptr_for_number(
         &self,
         logger: &Logger,
@@ -262,12 +267,13 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     /// the confirmations threshold configured for the Firehose stack (currently
     /// hard-coded to 200).
     ///
-    /// On some other chain like NEAR, the actual final block number is determined
-    /// from the block itself since it contains information about which block number
-    /// is final against the current block.
+    /// On some other chain like NEAR, the actual final block number is
+    /// determined from the block itself since it contains information about
+    /// which block number is final against the current block.
     ///
     /// To take an example, assuming we are on Ethereum, the final block pointer
-    /// for block #10212 would be the determined final block #10012 (10212 - 200 = 10012).
+    /// for block #10212 would be the determined final block #10012 (10212 - 200
+    /// = 10012).
     async fn final_block_ptr_for(
         &self,
         logger: &Logger,
@@ -288,7 +294,8 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
 
 #[derive(Error, Debug)]
 pub enum FirehoseError {
-    /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
+    /// We were unable to decode the received block payload into the chain
+    /// specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
@@ -299,7 +306,8 @@ pub enum FirehoseError {
 
 #[derive(Error, Debug)]
 pub enum SubstreamsError {
-    /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
+    /// We were unable to decode the received block payload into the chain
+    /// specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
@@ -316,7 +324,8 @@ pub enum SubstreamsError {
 
 #[derive(Debug)]
 pub enum BlockStreamEvent<C: Blockchain> {
-    // The payload is the block the subgraph should revert to, so it becomes the new subgraph head.
+    // The payload is the block the subgraph should revert to, so it becomes the new subgraph
+    // head.
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
@@ -398,19 +407,17 @@ pub trait ChainHeadUpdateListener: Send + Sync + 'static {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::HashSet, task::Poll};
+    use std::collections::HashSet;
+    use std::task::Poll;
 
     use anyhow::Error;
     use futures03::{Stream, StreamExt, TryStreamExt};
 
-    use crate::{
-        blockchain::mock::{MockBlock, MockBlockchain},
-        ext::futures::{CancelableError, SharedCancelGuard, StreamExtension},
-    };
-
     use super::{
         BlockStream, BlockStreamEvent, BlockWithTriggers, BufferedBlockStream, FirehoseCursor,
     };
+    use crate::blockchain::mock::{MockBlock, MockBlockchain};
+    use crate::ext::futures::{CancelableError, SharedCancelGuard, StreamExtension};
 
     #[derive(Debug)]
     struct TestStream {

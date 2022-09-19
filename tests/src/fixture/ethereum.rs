@@ -1,22 +1,21 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::{
-    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticStreamBuilder, Stores, NODE_ID,
-};
+use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::BlockPtr;
 use graph::cheap_clone::CheapClone;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
-use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::ethabi::ethereum_types::{H256, U64};
 use graph::prelude::{LightEthereumBlock, LoggerFactory, NodeId};
-use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
+use graph_chain_ethereum::chain::BlockFinality;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
-use graph_chain_ethereum::{
-    chain::BlockFinality,
-    trigger::{EthereumBlockTriggerType, EthereumTrigger},
-};
+use graph_chain_ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 use graph_chain_ethereum::{Chain, ENV_VARS};
 use graph_mock::MockMetricsRegistry;
+
+use super::{
+    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticStreamBuilder, Stores, NODE_ID,
+};
 
 pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Chain {
     let logger = graph::log::logger(true);
@@ -26,8 +25,9 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
 
     let chain_store = stores.chain_store.cheap_clone();
 
-    // This is needed bacause the stream builder only works for firehose and this will only be called if there
-    // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
+    // This is needed bacause the stream builder only works for firehose and this
+    // will only be called if there are > 1 firehose endpoints. The endpoint
+    // itself is never used because it's mocked.
     let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
         "",
         "https://example.com",

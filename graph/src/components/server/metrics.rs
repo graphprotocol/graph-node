@@ -4,7 +4,8 @@ use futures::prelude::*;
 pub trait MetricsServer {
     type ServeError;
 
-    /// Creates a new Tokio task that, when spawned, brings up the index node server.
+    /// Creates a new Tokio task that, when spawned, brings up the index node
+    /// server.
     fn serve(
         &mut self,
         port: u16,

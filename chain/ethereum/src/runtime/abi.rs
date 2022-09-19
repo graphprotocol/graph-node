@@ -1,17 +1,9 @@
-use super::runtime_adapter::UnresolvedContractCall;
-use crate::trigger::{
-    EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
-};
-use graph::{
-    prelude::{
-        ethabi,
-        web3::types::{Log, TransactionReceipt, H256},
-        BigInt,
-    },
-    runtime::{
-        asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType,
-        DeterministicHostError, FromAscObj, IndexForAscTypeId, ToAscObj,
-    },
+use graph::prelude::web3::types::{Log, TransactionReceipt, H256};
+use graph::prelude::{ethabi, BigInt};
+use graph::runtime::gas::GasCounter;
+use graph::runtime::{
+    asc_get, asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, FromAscObj,
+    IndexForAscTypeId, ToAscObj,
 };
 use graph_runtime_derive::AscType;
 use graph_runtime_wasm::asc_abi::class::{
@@ -19,6 +11,11 @@ use graph_runtime_wasm::asc_abi::class::{
     Uint8Array,
 };
 use semver::Version;
+
+use super::runtime_adapter::UnresolvedContractCall;
+use crate::trigger::{
+    EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
+};
 
 type AscH256 = Uint8Array;
 type AscH2048 = Uint8Array;
@@ -340,8 +337,8 @@ impl AscIndexId for AscEthereumTransactionReceipt {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TransactionReceipt;
 }
 
-/// Introduced in API Version 0.0.7, this is the same as [`AscEthereumEvent`] with an added
-/// `receipt` field.
+/// Introduced in API Version 0.0.7, this is the same as [`AscEthereumEvent`]
+/// with an added `receipt` field.
 #[repr(C)]
 #[derive(AscType)]
 pub(crate) struct AscEthereumEvent_0_0_7<T, B>

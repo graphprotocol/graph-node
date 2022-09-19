@@ -1,12 +1,9 @@
-use crate::{
-    components::store::{EntityKey, EntityType},
-    data::value::Word,
-    prelude::{q, BigDecimal, BigInt, Value},
-};
-use std::{
-    collections::{BTreeMap, HashMap},
-    mem,
-};
+use std::collections::{BTreeMap, HashMap};
+use std::mem;
+
+use crate::components::store::{EntityKey, EntityType};
+use crate::data::value::Word;
+use crate::prelude::{q, BigDecimal, BigInt, Value};
 
 /// Estimate of how much memory a value consumes.
 /// Useful for measuring the size of caches.
@@ -16,8 +13,8 @@ pub trait CacheWeight {
         mem::size_of_val(self) + self.indirect_weight()
     }
 
-    /// The weight of values pointed to by this value but logically owned by it, which is not
-    /// accounted for by `size_of`.
+    /// The weight of values pointed to by this value but logically owned by it,
+    /// which is not accounted for by `size_of`.
     fn indirect_weight(&self) -> usize;
 }
 
@@ -172,7 +169,8 @@ fn big_decimal_cache_weight() {
 pub mod btree {
     use std::collections::BTreeMap;
     use std::mem;
-    use std::{mem::MaybeUninit, ptr::NonNull};
+    use std::mem::MaybeUninit;
+    use std::ptr::NonNull;
 
     const B: usize = 6;
     const CAPACITY: usize = 2 * B - 1;
@@ -185,9 +183,10 @@ pub mod btree {
     struct InternalNode<K, V> {
         _data: LeafNode<K, V>,
 
-        /// The pointers to the children of this node. `len + 1` of these are considered
-        /// initialized and valid, except that near the end, while the tree is held
-        /// through borrow type `Dying`, some of these pointers are dangling.
+        /// The pointers to the children of this node. `len + 1` of these are
+        /// considered initialized and valid, except that near the end,
+        /// while the tree is held through borrow type `Dying`, some of
+        /// these pointers are dangling.
         _edges: [MaybeUninit<BoxedNode<K, V>>; 2 * B],
     }
 
@@ -196,15 +195,16 @@ pub mod btree {
         _parent: Option<NonNull<InternalNode<K, V>>>,
 
         /// This node's index into the parent node's `edges` array.
-        /// `*node.parent.edges[node.parent_idx]` should be the same thing as `node`.
-        /// This is only guaranteed to be initialized when `parent` is non-null.
+        /// `*node.parent.edges[node.parent_idx]` should be the same thing as
+        /// `node`. This is only guaranteed to be initialized when
+        /// `parent` is non-null.
         _parent_idx: MaybeUninit<u16>,
 
         /// The number of keys and values this node stores.
         _len: u16,
 
-        /// The arrays storing the actual data of the node. Only the first `len` elements of each
-        /// array are initialized and valid.
+        /// The arrays storing the actual data of the node. Only the first `len`
+        /// elements of each array are initialized and valid.
         _keys: [MaybeUninit<K>; CAPACITY],
         _vals: [MaybeUninit<V>; CAPACITY],
     }

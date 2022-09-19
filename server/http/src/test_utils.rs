@@ -1,9 +1,10 @@
-use graph::prelude::serde_json;
-use graph::prelude::*;
+use graph::prelude::{serde_json, *};
 use http::StatusCode;
-use hyper::{header::ACCESS_CONTROL_ALLOW_ORIGIN, Body, Response};
+use hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN;
+use hyper::{Body, Response};
 
-/// Asserts that the response is a successful GraphQL response; returns its `"data"` field.
+/// Asserts that the response is a successful GraphQL response; returns its
+/// `"data"` field.
 pub fn assert_successful_response(
     response: Response<Body>,
 ) -> serde_json::Map<String, serde_json::Value> {
@@ -28,7 +29,8 @@ pub fn assert_successful_response(
     .unwrap()
 }
 
-/// Asserts that the response is a failed GraphQL response; returns its `"errors"` field.
+/// Asserts that the response is a failed GraphQL response; returns its
+/// `"errors"` field.
 pub fn assert_error_response(
     response: Response<Body>,
     expected_status: StatusCode,

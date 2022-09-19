@@ -4,25 +4,23 @@ use std::time::Duration;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use futures01::{stream::poll_fn, try_ready};
+use futures01::stream::poll_fn;
+use futures01::try_ready;
 use futures03::stream::FuturesUnordered;
 use graph::env::EnvVars;
+use graph::ipfs_client::{IpfsClient, StatApi};
+use graph::prelude::{LinkResolver as LinkResolverTrait, *};
 use graph::util::futures::RetryConfigNoTimeout;
 use lru_time_cache::LruCache;
 use serde_json::Value;
-
-use graph::{
-    ipfs_client::{IpfsClient, StatApi},
-    prelude::{LinkResolver as LinkResolverTrait, *},
-};
 
 fn retry_policy<I: Send + Sync>(
     always_retry: bool,
     op: &'static str,
     logger: &Logger,
 ) -> RetryConfigNoTimeout<I, graph::prelude::reqwest::Error> {
-    // Even if retries were not requested, networking errors are still retried until we either get
-    // a valid HTTP response or a timeout.
+    // Even if retries were not requested, networking errors are still retried until
+    // we either get a valid HTTP response or a timeout.
     if always_retry {
         retry(op, logger).no_limit()
     } else {
@@ -36,11 +34,11 @@ fn retry_policy<I: Send + Sync>(
     .no_timeout() // The timeout should be set in the internal future.
 }
 
-/// The IPFS APIs don't have a quick "do you have the file" function. Instead, we
-/// just rely on whether an API times out. That makes sense for IPFS, but not for
-/// our application. We want to be able to quickly select from a potential list
-/// of clients where hopefully one already has the file, and just get the file
-/// from that.
+/// The IPFS APIs don't have a quick "do you have the file" function. Instead,
+/// we just rely on whether an API times out. That makes sense for IPFS, but not
+/// for our application. We want to be able to quickly select from a potential
+/// list of clients where hopefully one already has the file, and just get the
+/// file from that.
 ///
 /// The strategy here then is to use a stat API as a proxy for "do you have the
 /// file". Whichever client has or gets the file first wins. This API is a good
@@ -194,7 +192,8 @@ impl LinkResolverTrait for LinkResolver {
             })
             .await?;
 
-        // The size reported by `files/stat` is not guaranteed to be exact, so check the limit again.
+        // The size reported by `files/stat` is not guaranteed to be exact, so check the
+        // limit again.
         restrict_file_size(&path, data.len() as u64, max_file_size)?;
 
         // Only cache files if they are not too large
@@ -325,9 +324,10 @@ impl LinkResolverTrait for LinkResolver {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use graph::env::EnvVars;
     use serde_json::json;
+
+    use super::*;
 
     #[tokio::test]
     async fn max_file_size() {

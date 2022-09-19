@@ -10,7 +10,7 @@
 //!
 //! We use the following 2x 32-bit locks
 //!   * 1, n: to lock copying of the deployment with id n in the destination
-//!           shard
+//!     shard
 
 use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::prelude::StoreError;

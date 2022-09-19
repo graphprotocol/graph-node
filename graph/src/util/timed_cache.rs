@@ -1,11 +1,9 @@
-use std::{
-    borrow::Borrow,
-    cmp::Eq,
-    collections::HashMap,
-    hash::Hash,
-    sync::{Arc, RwLock},
-    time::{Duration, Instant},
-};
+use std::borrow::Borrow;
+use std::cmp::Eq;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 /// Caching of values for a specified amount of time
 #[derive(Debug)]

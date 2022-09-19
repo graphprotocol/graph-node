@@ -1,7 +1,6 @@
+use graph::runtime::AscPtr;
 use never::Never;
 use wasmtime::Trap;
-
-use graph::runtime::AscPtr;
 
 /// Helper trait for the `link!` macro.
 pub trait IntoWasmRet {

@@ -1,14 +1,13 @@
-use serde::de::Deserializer;
-use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use crate::{
-    data::graphql::shape_hash::shape_hash,
-    prelude::{q, r, ApiVersion, DeploymentHash, SubgraphName, ENV_VARS},
-};
+use serde::de::Deserializer;
+use serde::Deserialize;
+
+use crate::data::graphql::shape_hash::shape_hash;
+use crate::prelude::{q, r, ApiVersion, DeploymentHash, SubgraphName, ENV_VARS};
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
 where
@@ -124,7 +123,8 @@ impl QueryTarget {
     }
 }
 
-/// A GraphQL query as submitted by a client, either directly or through a subscription.
+/// A GraphQL query as submitted by a client, either directly or through a
+/// subscription.
 #[derive(Clone, Debug)]
 pub struct Query {
     pub document: q::Document,

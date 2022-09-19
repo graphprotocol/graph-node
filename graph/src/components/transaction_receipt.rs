@@ -1,7 +1,7 @@
 //! Code for retrieving transaction receipts from the database.
 //!
-//! This module exposes the [`LightTransactionReceipt`] type, which holds basic information about
-//! the retrieved transaction receipts.
+//! This module exposes the [`LightTransactionReceipt`] type, which holds basic
+//! information about the retrieved transaction receipts.
 
 use web3::types::{TransactionReceipt, H256, U256, U64};
 

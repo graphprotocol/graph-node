@@ -1,9 +1,9 @@
-use graph::{
-    components::store::EntityKey,
-    prelude::Entity,
-    util::{backoff::ExponentialBackoff, lfu_cache::LfuCache},
-};
 use std::time::Instant;
+
+use graph::components::store::EntityKey;
+use graph::prelude::Entity;
+use graph::util::backoff::ExponentialBackoff;
+use graph::util::lfu_cache::LfuCache;
 
 pub struct IndexingState {
     /// `true` -> `false` on the first run

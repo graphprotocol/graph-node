@@ -2,15 +2,6 @@ mod cache;
 mod err;
 mod traits;
 
-pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
-pub use err::StoreError;
-use itertools::Itertools;
-pub use traits::*;
-
-use futures::stream::poll_fn;
-use futures::{Async, Poll, Stream};
-use graphql_parser::schema as s;
-use serde::{Deserialize, Serialize};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
@@ -18,6 +9,15 @@ use std::fmt::Display;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+
+pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
+pub use err::StoreError;
+use futures::stream::poll_fn;
+use futures::{Async, Poll, Stream};
+use graphql_parser::schema as s;
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+pub use traits::*;
 
 use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
@@ -647,8 +647,9 @@ impl PartialEq for StoreEvent {
     }
 }
 
-/// A `StoreEventStream` produces the `StoreEvents`. Various filters can be applied
-/// to it to reduce which and how many events are delivered by the stream.
+/// A `StoreEventStream` produces the `StoreEvents`. Various filters can be
+/// applied to it to reduce which and how many events are delivered by the
+/// stream.
 pub struct StoreEventStream<S> {
     source: S,
 }
@@ -680,9 +681,9 @@ where
         StoreEventStream { source }
     }
 
-    /// Filter a `StoreEventStream` by subgraph and entity. Only events that have
-    /// at least one change to one of the given (subgraph, entity) combinations
-    /// will be delivered by the filtered stream.
+    /// Filter a `StoreEventStream` by subgraph and entity. Only events that
+    /// have at least one change to one of the given (subgraph, entity)
+    /// combinations will be delivered by the filtered stream.
     pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
         let source = self.source.filter(move |event| event.matches(&filters));
 
@@ -705,9 +706,9 @@ where
         store: Arc<dyn QueryStore>,
         interval: Duration,
     ) -> StoreEventStreamBox {
-        // Check whether a deployment is marked as synced in the store. Note that in the moment a
-        // subgraph becomes synced any existing subscriptions will continue to be throttled since
-        // this is not re-checked.
+        // Check whether a deployment is marked as synced in the store. Note that in the
+        // moment a subgraph becomes synced any existing subscriptions will
+        // continue to be throttled since this is not re-checked.
         let synced = store.is_deployment_synced().await.unwrap_or(false);
 
         let mut pending_event: Option<StoreEvent> = None;
@@ -779,8 +780,9 @@ where
 /// An entity operation that can be transacted into the store.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EntityOperation {
-    /// Locates the entity specified by `key` and sets its attributes according to the contents of
-    /// `data`.  If no entity exists with this key, creates a new entity.
+    /// Locates the entity specified by `key` and sets its attributes according
+    /// to the contents of `data`.  If no entity exists with this key,
+    /// creates a new entity.
     Set { key: EntityKey, data: Entity },
 
     /// Removes an entity with the specified key, if one exists.
@@ -1011,7 +1013,8 @@ pub enum DeploymentSchemaVersion {
     /// V0, baseline version, in which:
     /// - A relational schema is used.
     /// - Each deployment has its own namespace for entity tables.
-    /// - Dynamic data sources are stored in `subgraphs.dynamic_ethereum_contract_data_source`.
+    /// - Dynamic data sources are stored in
+    ///   `subgraphs.dynamic_ethereum_contract_data_source`.
     V0 = 0,
 
     /// V1: Dynamic data sources moved to `sgd*.data_sources$`.

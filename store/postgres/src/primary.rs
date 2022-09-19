@@ -1,63 +1,48 @@
 //! Utilities for dealing with subgraph metadata that resides in the primary
 //! shard. Anything in this module can only be used with a database connection
 //! for the primary shard.
-use diesel::{
-    connection::SimpleConnection,
-    data_types::PgTimestamp,
-    dsl::{any, exists, not, select},
-    pg::Pg,
-    serialize::Output,
-    sql_types::{Array, Integer, Text},
-    types::{FromSql, ToSql},
-};
-use diesel::{
-    dsl::{delete, insert_into, sql, update},
-    r2d2::PooledConnection,
-};
-use diesel::{pg::PgConnection, r2d2::ConnectionManager};
-use diesel::{
-    prelude::{
-        BoolExpressionMethods, ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods,
-        OptionalExtension, QueryDsl, RunQueryDsl,
-    },
-    Connection as _,
-};
-use graph::{
-    components::store::DeploymentLocator,
-    constraint_violation,
-    data::subgraph::status,
-    prelude::{
-        anyhow, bigdecimal::ToPrimitive, serde_json, DeploymentHash, EntityChange,
-        EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
-    },
-};
-use graph::{
-    components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
-    prelude::{chrono, CancelHandle, CancelToken},
-};
-use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
-use itertools::Itertools;
-use maybe_owned::MaybeOwned;
-use std::{
-    borrow::Borrow,
-    collections::HashMap,
-    convert::TryFrom,
-    convert::TryInto,
-    fmt,
-    io::Write,
-    time::{SystemTime, UNIX_EPOCH},
-};
-
-use crate::{
-    block_range::UNVERSIONED_RANGE,
-    connection_pool::{ConnectionPool, ForeignServer},
-    detail::DeploymentDetail,
-    subgraph_store::{unused, Shard, PRIMARY_SHARD},
-    NotificationSender,
-};
-
+use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
+use std::fmt;
+use std::io::Write;
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use diesel::connection::SimpleConnection;
+use diesel::data_types::PgTimestamp;
+use diesel::dsl::{any, delete, exists, insert_into, not, select, sql, update};
+use diesel::pg::{Pg, PgConnection};
+use diesel::prelude::{
+    BoolExpressionMethods, ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, QueryDsl, RunQueryDsl,
+};
+use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::serialize::Output;
+use diesel::sql_types::{Array, Integer, Text};
+use diesel::types::{FromSql, ToSql};
+use diesel::Connection as _;
+use graph::components::store::{
+    DeploymentId as GraphDeploymentId, DeploymentLocator, DeploymentSchemaVersion,
+};
+use graph::constraint_violation;
+use graph::data::subgraph::schema::generate_entity_id;
+use graph::data::subgraph::status;
+use graph::prelude::bigdecimal::ToPrimitive;
+use graph::prelude::{
+    anyhow, chrono, serde_json, CancelHandle, CancelToken, DeploymentHash, EntityChange,
+    EntityChangeOperation, NodeId, StoreError, StoreEvent, SubgraphName,
+    SubgraphVersionSwitchingMode,
+};
+use itertools::Itertools;
+use maybe_owned::MaybeOwned;
+
+use crate::block_range::UNVERSIONED_RANGE;
+use crate::connection_pool::{ConnectionPool, ForeignServer};
+use crate::detail::DeploymentDetail;
+use crate::subgraph_store::{unused, Shard, PRIMARY_SHARD};
+use crate::NotificationSender;
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {
     /// Tests set this to true so that `send_store_event` will store a copy
@@ -393,6 +378,9 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
 /// mirrored through `Mirror::refresh_tables` and must be queries, i.e.,
 /// read-only
 mod queries {
+    use std::collections::HashMap;
+    use std::convert::{TryFrom, TryInto};
+
     use diesel::dsl::{any, exists, sql};
     use diesel::pg::PgConnection;
     use diesel::prelude::{
@@ -400,25 +388,19 @@ mod queries {
         OptionalExtension, QueryDsl, RunQueryDsl,
     };
     use diesel::sql_types::Text;
-    use graph::prelude::NodeId;
-    use graph::{
-        constraint_violation,
-        data::subgraph::status,
-        prelude::{DeploymentHash, StoreError, SubgraphName},
-    };
-    use std::{collections::HashMap, convert::TryFrom, convert::TryInto};
-
-    use crate::Shard;
-
-    use super::{DeploymentId, Schema, Site};
+    use graph::constraint_violation;
+    use graph::data::subgraph::status;
+    use graph::prelude::{DeploymentHash, NodeId, StoreError, SubgraphName};
 
     // These are the only tables that functions in this module may use. If
     // additional tables are needed, they need to be set up for mirroring
     // first
     use super::deployment_schemas as ds;
-    use super::subgraph as s;
-    use super::subgraph_deployment_assignment as a;
-    use super::subgraph_version as v;
+    use super::{
+        subgraph as s, subgraph_deployment_assignment as a, subgraph_version as v, DeploymentId,
+        Schema, Site,
+    };
+    use crate::Shard;
 
     pub(super) fn find_active_site(
         conn: &PgConnection,
@@ -699,13 +681,13 @@ impl<'a> Connection<'a> {
         Ok(())
     }
 
-    /// Delete all assignments for deployments that are neither the current nor the
-    /// pending version of a subgraph and return the deployment id's
+    /// Delete all assignments for deployments that are neither the current nor
+    /// the pending version of a subgraph and return the deployment id's
     fn remove_unused_assignments(&self) -> Result<Vec<EntityChange>, StoreError> {
-        use deployment_schemas as ds;
-        use subgraph as s;
-        use subgraph_deployment_assignment as a;
-        use subgraph_version as v;
+        use {
+            deployment_schemas as ds, subgraph as s, subgraph_deployment_assignment as a,
+            subgraph_version as v,
+        };
 
         let named = v::table
             .inner_join(
@@ -754,13 +736,12 @@ impl<'a> Connection<'a> {
         Ok(events)
     }
 
-    /// Promote the deployment `id` to the current version everywhere where it was
-    /// the pending version so far, and remove any assignments that are not needed
-    /// any longer as a result. Return the changes that were made to assignments
-    /// in the process
+    /// Promote the deployment `id` to the current version everywhere where it
+    /// was the pending version so far, and remove any assignments that are
+    /// not needed any longer as a result. Return the changes that were made
+    /// to assignments in the process
     pub fn promote_deployment(&self, id: &DeploymentHash) -> Result<Vec<EntityChange>, StoreError> {
-        use subgraph as s;
-        use subgraph_version as v;
+        use {subgraph as s, subgraph_version as v};
 
         let conn = self.conn.as_ref();
 
@@ -837,10 +818,8 @@ impl<'a> Connection<'a> {
     where
         F: Fn(&DeploymentHash) -> Result<bool, StoreError>,
     {
-        use subgraph as s;
-        use subgraph_deployment_assignment as a;
-        use subgraph_version as v;
         use SubgraphVersionSwitchingMode::*;
+        use {subgraph as s, subgraph_deployment_assignment as a, subgraph_version as v};
 
         let conn = self.conn.as_ref();
 
@@ -950,8 +929,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn remove_subgraph(&self, name: SubgraphName) -> Result<Vec<EntityChange>, StoreError> {
-        use subgraph as s;
-        use subgraph_version as v;
+        use {subgraph as s, subgraph_version as v};
 
         let conn = self.conn.as_ref();
 
@@ -1138,9 +1116,7 @@ impl<'a> Connection<'a> {
     /// Remove all subgraph versions and the entry in `deployment_schemas` for
     /// subgraph `id` in a transaction
     pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {
-        use deployment_schemas as ds;
-        use subgraph_version as v;
-        use unused_deployments as u;
+        use {deployment_schemas as ds, subgraph_version as v, unused_deployments as u};
 
         self.transaction(|| {
             let conn = self.conn.as_ref();
@@ -1255,8 +1231,7 @@ impl<'a> Connection<'a> {
     /// particular, that ignores deployments that are going to be removed
     /// soon.
     pub fn least_used_shard(&self, shards: &[Shard]) -> Result<Option<Shard>, StoreError> {
-        use deployment_schemas as ds;
-        use subgraph_deployment_assignment as a;
+        use {deployment_schemas as ds, subgraph_deployment_assignment as a};
 
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
@@ -1313,12 +1288,10 @@ impl<'a> Connection<'a> {
     /// `unused_deployments` table. Only values that are available in the
     /// primary will be filled in `unused_deployments`
     pub fn detect_unused_deployments(&self) -> Result<Vec<Site>, StoreError> {
-        use active_copies as cp;
-        use deployment_schemas as ds;
-        use subgraph as s;
-        use subgraph_deployment_assignment as a;
-        use subgraph_version as v;
-        use unused_deployments as u;
+        use {
+            active_copies as cp, deployment_schemas as ds, subgraph as s,
+            subgraph_deployment_assignment as a, subgraph_version as v, unused_deployments as u,
+        };
 
         // Deployment is assigned
         let assigned = a::table.filter(a::id.eq(ds::id));
@@ -1391,8 +1364,9 @@ impl<'a> Connection<'a> {
         &self,
         details: &[DeploymentDetail],
     ) -> Result<(), StoreError> {
-        use crate::detail::block;
         use unused_deployments as u;
+
+        use crate::detail::block;
 
         for detail in details {
             let (latest_hash, latest_number) = block(
@@ -1464,8 +1438,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn subgraphs_using_deployment(&self, site: &Site) -> Result<Vec<String>, StoreError> {
-        use subgraph as s;
-        use subgraph_version as v;
+        use {subgraph as s, subgraph_version as v};
 
         Ok(s::table
             .inner_join(

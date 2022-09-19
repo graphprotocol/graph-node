@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashMap};
+
 use super::ObjectOrInterface;
 use crate::data::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use crate::prelude::s::{
@@ -5,7 +7,6 @@ use crate::prelude::s::{
     TypeDefinition, Value,
 };
 use crate::prelude::ENV_VARS;
-use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {
     fn field(&self, name: &str) -> Option<&Field>;
@@ -399,7 +400,8 @@ mod directive_finder_tests {
         transaction: Transaction! @derivedFrom(field: \"buyEvent\")
     }";
 
-    /// Makes sure that the DirectiveFinder::find_directive implementation for ObjectiveType and Field works
+    /// Makes sure that the DirectiveFinder::find_directive implementation for
+    /// ObjectiveType and Field works
     #[test]
     fn find_directive_impls() {
         let ast = parse_schema::<String>(SCHEMA).unwrap();
@@ -422,7 +424,8 @@ mod directive_finder_tests {
         assert!(fields[1].find_directive("derivedFrom").is_some());
     }
 
-    /// Makes sure that the DirectiveFinder::is_derived implementation for ObjectiveType and Field works
+    /// Makes sure that the DirectiveFinder::is_derived implementation for
+    /// ObjectiveType and Field works
     #[test]
     fn is_derived_impls() {
         let ast = parse_schema::<String>(SCHEMA).unwrap();

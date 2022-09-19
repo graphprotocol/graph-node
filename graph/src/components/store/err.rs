@@ -1,9 +1,10 @@
-use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
-use crate::prelude::QueryExecutionError;
 use anyhow::{anyhow, Error};
 use diesel::result::Error as DieselError;
 use thiserror::Error;
 use tokio::task::JoinError;
+
+use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
+use crate::prelude::QueryExecutionError;
 
 #[derive(Error, Debug)]
 pub enum StoreError {

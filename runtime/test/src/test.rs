@@ -1,18 +1,19 @@
+use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
+
+use graph::components::store::*;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
+use graph::ipfs_client::IpfsClient;
 use graph::prelude::web3::types::U256;
 use graph::prelude::*;
-use graph::runtime::{AscIndexId, AscType};
-use graph::runtime::{AscPtr, ToAscObj};
-use graph::{components::store::*, ipfs_client::IpfsClient};
+use graph::runtime::{AscIndexId, AscPtr, AscType, ToAscObj};
 use graph_chain_ethereum::{Chain, DataSource};
 use graph_mock::MockMetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 use hex;
 use semver::Version;
-use std::collections::{BTreeMap, HashMap};
-use std::str::FromStr;
 use test_store::{LOGGER, STORE};
 use web3::types::H160;
 

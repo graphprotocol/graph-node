@@ -4,7 +4,6 @@ use std::time::Instant;
 use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
-
 use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -14,11 +13,11 @@ use graph::data_source::{
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
-
-use crate::mapping::{MappingContext, MappingRequest};
-use crate::module::ToAscPtr;
-use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
+
+use crate::host_exports::HostExports;
+use crate::mapping::{MappingContext, MappingRequest};
+use crate::module::{ExperimentalFeatures, ToAscPtr};
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
@@ -123,8 +122,8 @@ where
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
-        // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
-        // implementing `Clone` for `HostExports`.
+        // Create new instance of externally hosted functions invoker. The `Arc` is
+        // simply to avoid implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
             subgraph_id,
             &data_source,

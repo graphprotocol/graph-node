@@ -23,7 +23,8 @@ pub struct LoggerFactory {
 }
 
 impl LoggerFactory {
-    /// Creates a new factory using a parent logger and optional Elasticsearch configuration.
+    /// Creates a new factory using a parent logger and optional Elasticsearch
+    /// configuration.
     pub fn new(logger: Logger, elastic_config: Option<ElasticLoggingConfig>) -> Self {
         Self {
             parent: logger,

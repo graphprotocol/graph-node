@@ -1,7 +1,11 @@
-use crate::manager::deployment::DeploymentSearch;
+use std::collections::HashSet;
+use std::sync::Arc;
+
 use graph::prelude::{anyhow, StoreError};
-use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore};
-use std::{collections::HashSet, sync::Arc};
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::SubgraphStore;
+
+use crate::manager::deployment::DeploymentSearch;
 
 fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
     // Must be non-empty. Double checking, since [`StructOpt`] already checks this.

@@ -2,18 +2,15 @@ use std::sync::Arc;
 
 use graph::blockchain::BlockPtr;
 use graph::cheap_clone::CheapClone;
-use graph::prelude::BlockNumber;
-use graph::prelude::ChainStore as _;
-use graph::prelude::EthereumBlock;
-use graph::prelude::LightEthereumBlockExt as _;
-use graph::prelude::{anyhow, anyhow::bail};
-use graph::{
-    components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
+use graph::components::store::BlockStore as _;
+use graph::prelude::anyhow::{bail, Error};
+use graph::prelude::{
+    anyhow, serde_json as json, BlockNumber, ChainStore as _, EthereumBlock,
+    LightEthereumBlockExt as _,
 };
+use graph_store_postgres::command_support::catalog::block_store;
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::BlockStore;
-use graph_store_postgres::{
-    command_support::catalog::block_store, connection_pool::ConnectionPool,
-};
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {

@@ -1,8 +1,8 @@
 use graph::prelude::q::*;
-
 use graph::prelude::QueryExecutionError;
 
-/// Returns the operation for the given name (or the only operation if no name is defined).
+/// Returns the operation for the given name (or the only operation if no name
+/// is defined).
 pub fn get_operation<'a>(
     document: &'a Document,
     name: Option<&str>,

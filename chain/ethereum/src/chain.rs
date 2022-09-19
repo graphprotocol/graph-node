@@ -1,48 +1,40 @@
-use anyhow::Result;
-use anyhow::{Context, Error};
-use graph::blockchain::{BlockchainKind, TriggersAdapterSelector};
-use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
-use graph::prelude::{EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
-use graph::slog::debug;
-use graph::{
-    blockchain::{
-        block_stream::{
-            BlockStreamEvent, BlockWithTriggers, FirehoseError,
-            FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
-        },
-        firehose_block_stream::FirehoseBlockStream,
-        polling_block_stream::PollingBlockStream,
-        Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _,
-    },
-    cheap_clone::CheapClone,
-    components::store::DeploymentLocator,
-    firehose,
-    prelude::{
-        async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
-    },
-};
-use prost::Message;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
-use crate::data_source::DataSourceTemplate;
-use crate::data_source::UnresolvedDataSourceTemplate;
-use crate::{
-    adapter::EthereumAdapter as _,
-    codec,
-    data_source::{DataSource, UnresolvedDataSource},
-    ethereum_adapter::{
-        blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
-        parse_log_triggers,
-    },
-    SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
+use anyhow::{Context, Error, Result};
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+    FirehoseError, FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
 };
-use crate::{network::EthereumNetworkAdapters, EthereumAdapter};
-use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor};
+use graph::blockchain::firehose_block_stream::FirehoseBlockStream;
+use graph::blockchain::polling_block_stream::PollingBlockStream;
+use graph::blockchain::{
+    Block, BlockPtr, Blockchain, BlockchainKind, ChainHeadUpdateListener, IngestorError,
+    RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _, TriggersAdapterSelector,
+};
+use graph::cheap_clone::CheapClone;
+use graph::components::store::DeploymentLocator;
+use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::firehose;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
+use graph::prelude::{
+    async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlock,
+    EthereumBlockWithCalls, EthereumCallCache, Future01CompatExt, LightEthereumBlock,
+    LightEthereumBlockExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+};
+use graph::slog::debug;
+use prost::Message;
+
+use crate::adapter::EthereumAdapter as _;
+use crate::data_source::{
+    DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+};
+use crate::ethereum_adapter::{
+    blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers, parse_log_triggers,
+};
+use crate::network::EthereumNetworkAdapters;
+use crate::{codec, EthereumAdapter, SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS};
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
@@ -322,9 +314,10 @@ impl Blockchain for Chain {
             .chain_head_update_listener
             .subscribe(self.name.clone(), logger.clone());
 
-        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
-        // This is ok because Celo blocks are always final. And we _need_ to do this because
-        // some events appear only in eth_getLogs but not in transaction receipts.
+        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is
+        // always used. This is ok because Celo blocks are always final. And we
+        // _need_ to do this because some events appear only in eth_getLogs but
+        // not in transaction receipts.
         // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
         let chain_id = self.eth_adapters.cheapest().unwrap().chain_id().await?;
         let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
@@ -378,9 +371,10 @@ impl Blockchain for Chain {
     }
 }
 
-/// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for
-/// newly created data sources. This allows the re-processing to be reorg safe without having to
-/// always fetch the full block data.
+/// This is used in `EthereumAdapter::triggers_in_block`, called when
+/// re-processing a block for newly created data sources. This allows the
+/// re-processing to be reorg safe without having to always fetch the full block
+/// data.
 #[derive(Clone, Debug)]
 pub enum BlockFinality {
     /// If a block is final, we only need the header and the triggers.
@@ -608,20 +602,22 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .as_ref()
             .expect("block payload information should always be present");
 
-        // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
-        // is defined right now, only block hash and block number is necessary. However, this information
-        // is not part of the actual firehose::Response payload. As such, we need to decode the full
+        // Right now, this is done in all cases but in reality, with how the
+        // BlockStreamEvent::Revert is defined right now, only block hash and
+        // block number is necessary. However, this information is not part of
+        // the actual firehose::Response payload. As such, we need to decode the full
         // block which is useless.
         //
-        // Check about adding basic information about the block in the firehose::Response or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        // Check about adding basic information about the block in the
+        // firehose::Response or maybe define a slimmed down stuct that would
+        // decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
         use firehose::ForkStep::*;
         match step {
             StepNew => {
-                // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
-                // is empty
+                // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is
+                // always Some even if calls is empty
                 let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
 
                 // triggers in block never actually calls the ethereum traces api.
@@ -672,9 +668,9 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         logger: &Logger,
         block: &BlockFinality,
     ) -> Result<BlockPtr, Error> {
-        // Firehose for Ethereum has an hard-coded confirmations for finality sets to 200 block
-        // behind the current block. The magic value 200 here comes from this hard-coded Firehose
-        // value.
+        // Firehose for Ethereum has an hard-coded confirmations for finality sets to
+        // 200 block behind the current block. The magic value 200 here comes
+        // from this hard-coded Firehose value.
         let final_block_number = match block.number() {
             x if x >= 200 => x - 200,
             _ => 0,

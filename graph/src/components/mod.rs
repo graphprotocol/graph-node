@@ -23,11 +23,12 @@
 //! These events are communicated through sinks and streams (typically senders
 //! and receivers of channels), which are managed by long-running Tokio tasks.
 //! Each component may have an internal task for handling input events and
-//! sending out output events, and the "dumb pipes" that plug together components
-//! are tasks that send out events in the order that they are received.
+//! sending out output events, and the "dumb pipes" that plug together
+//! components are tasks that send out events in the order that they are
+//! received.
 //!
-//! A component declares it's inputs and outputs by having `EventConsumer<U>` and
-//! `EventProducer<T>` traits as supertraits.
+//! A component declares it's inputs and outputs by having `EventConsumer<U>`
+//! and `EventProducer<T>` traits as supertraits.
 //!
 //! Components should use the helper functions in this module (e.g. `forward`)
 //! that define common operations on event streams, facilitating the

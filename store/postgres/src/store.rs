@@ -1,31 +1,30 @@
-use async_trait::async_trait;
 use std::sync::Arc;
 
-use graph::{
-    components::{
-        server::index_node::VersionInfo,
-        store::{
-            BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore, Store as StoreTrait,
-        },
-    },
-    constraint_violation,
-    data::subgraph::status,
-    prelude::{
-        tokio, web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
-        PartialBlockPtr, QueryExecutionError, StoreError,
-    },
+use async_trait::async_trait;
+use graph::components::server::index_node::VersionInfo;
+use graph::components::store::{
+    BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore, Store as StoreTrait,
+};
+use graph::constraint_violation;
+use graph::data::subgraph::status;
+use graph::prelude::web3::types::Address;
+use graph::prelude::{
+    tokio, BlockNumber, BlockPtr, CheapClone, DeploymentHash, PartialBlockPtr, QueryExecutionError,
+    StoreError,
 };
 
-use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
+use crate::block_store::BlockStore;
+use crate::query_store::QueryStore;
+use crate::SubgraphStore;
 
 /// The overall store of the system, consisting of a [`SubgraphStore`] and a
 /// [`BlockStore`], each of which multiplex across multiple database shards.
 /// The `SubgraphStore` is responsible for storing all data and metadata related
-/// to individual subgraphs, and the `BlockStore` does the same for data belonging
-/// to the chains that are being processed.
+/// to individual subgraphs, and the `BlockStore` does the same for data
+/// belonging to the chains that are being processed.
 ///
-/// This struct should only be used during configuration and setup of `graph-node`.
-/// Code that needs to access the store should use the traits from
+/// This struct should only be used during configuration and setup of
+/// `graph-node`. Code that needs to access the store should use the traits from
 /// [`graph::components::store`] and only require the smallest traits that are
 /// suitable for their purpose.
 #[derive(Clone)]

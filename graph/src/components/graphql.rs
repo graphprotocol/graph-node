@@ -1,13 +1,13 @@
-use futures::prelude::*;
-
-use crate::data::query::{CacheStatus, Query, QueryTarget};
-use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
-use crate::data::{graphql::effort::LoadManager, query::QueryResults};
-use crate::prelude::DeploymentHash;
-
-use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
+
+use async_trait::async_trait;
+use futures::prelude::*;
+
+use crate::data::graphql::effort::LoadManager;
+use crate::data::query::{CacheStatus, Query, QueryResults, QueryTarget};
+use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
+use crate::prelude::DeploymentHash;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
@@ -18,13 +18,15 @@ pub enum GraphQlTarget {
     Deployment(DeploymentHash),
 }
 
-/// A component that can run GraphqL queries against a [Store](../store/trait.Store.html).
+/// A component that can run GraphqL queries against a
+/// [Store](../store/trait.Store.html).
 #[async_trait]
 pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL query and returns its result.
     async fn run_query(self: Arc<Self>, query: Query, target: QueryTarget) -> QueryResults;
 
-    /// Runs a GraphqL query up to the given complexity. Overrides the global complexity limit.
+    /// Runs a GraphqL query up to the given complexity. Overrides the global
+    /// complexity limit.
     async fn run_query_with_complexity(
         self: Arc<Self>,
         query: Query,

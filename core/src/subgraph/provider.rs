@@ -2,11 +2,8 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-
-use graph::{
-    components::store::{DeploymentId, DeploymentLocator},
-    prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *},
-};
+use graph::components::store::{DeploymentId, DeploymentLocator};
+use graph::prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *};
 
 pub struct SubgraphAssignmentProvider<I> {
     logger_factory: LoggerFactory,

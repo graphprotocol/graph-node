@@ -3,16 +3,13 @@ extern crate jsonrpc_http_server;
 extern crate lazy_static;
 extern crate serde;
 
-use graph::prelude::serde_json;
-use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
-use jsonrpc_http_server::{
-    jsonrpc_core::{self, Compatibility, IoHandler, Params, Value},
-    RestApi, Server, ServerBuilder,
-};
-
 use std::collections::BTreeMap;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4};
+
+use graph::prelude::{serde_json, JsonRpcServer as JsonRpcServerTrait, *};
+use jsonrpc_http_server::jsonrpc_core::{self, Compatibility, IoHandler, Params, Value};
+use jsonrpc_http_server::{RestApi, Server, ServerBuilder};
 
 const JSON_RPC_DEPLOY_ERROR: i64 = 0;
 const JSON_RPC_REMOVE_ERROR: i64 = 1;

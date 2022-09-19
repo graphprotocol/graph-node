@@ -1,23 +1,17 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
-use graph::{
-    block_on,
-    components::store::SubgraphFork as SubgraphForkTrait,
-    data::graphql::ext::DirectiveFinder,
-    prelude::{
-        info,
-        r::Value as RValue,
-        reqwest,
-        s::{Definition, Field, ObjectType, TypeDefinition},
-        serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize, StoreError,
-        Value, ValueType,
-    },
-    url::Url,
+use graph::block_on;
+use graph::components::store::SubgraphFork as SubgraphForkTrait;
+use graph::data::graphql::ext::DirectiveFinder;
+use graph::prelude::r::Value as RValue;
+use graph::prelude::s::{Definition, Field, ObjectType, TypeDefinition};
+use graph::prelude::{
+    info, reqwest, serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize,
+    StoreError, Value, ValueType,
 };
+use graph::url::Url;
 use inflector::Inflector;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -64,10 +58,11 @@ impl SubgraphForkTrait for SubgraphFork {
 
         info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
 
-        // NOTE: Subgraph fork compatibility checking (similar to the grafting compatibility checks)
-        // will be added in the future (in a separate PR).
-        // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
-        // incompatible fetched entities in the local store results in an error.
+        // NOTE: Subgraph fork compatibility checking (similar to the grafting
+        // compatibility checks) will be added in the future (in a separate PR).
+        // Currently, forking incompatible subgraphs is allowed, but, for example,
+        // storing the incompatible fetched entities in the local store results
+        // in an error.
 
         let fields = self.get_fields_of(&entity_type)?;
         let query = Query {
@@ -236,16 +231,16 @@ query Query ($id: String) {{
 
 #[cfg(test)]
 mod tests {
-    use std::{iter::FromIterator, str::FromStr};
+    use std::iter::FromIterator;
+    use std::str::FromStr;
+
+    use graph::data::store::scalar;
+    use graph::prelude::s::Type;
+    use graph::prelude::DeploymentHash;
+    use graph::slog::{self, o};
+    use graphql_parser::parse_schema;
 
     use super::*;
-
-    use graph::{
-        data::store::scalar,
-        prelude::{s::Type, DeploymentHash},
-        slog::{self, o},
-    };
-    use graphql_parser::parse_schema;
 
     fn test_base() -> Url {
         Url::parse("https://api.thegraph.com/subgraph/id/").unwrap()

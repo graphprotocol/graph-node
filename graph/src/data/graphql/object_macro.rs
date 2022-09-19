@@ -1,11 +1,11 @@
-use crate::data::value::Object;
-use crate::prelude::q;
-use crate::prelude::r;
 use std::iter::FromIterator;
 
+use crate::data::value::Object;
+use crate::prelude::{q, r};
+
 /// Creates a `graphql_parser::query::Value::Object` from key/value pairs.
-/// If you don't need to determine which keys are included dynamically at runtime
-/// consider using the `object! {}` macro instead.
+/// If you don't need to determine which keys are included dynamically at
+/// runtime consider using the `object! {}` macro instead.
 pub fn object_value(data: Vec<(&str, r::Value)>) -> r::Value {
     r::Value::Object(Object::from_iter(
         data.into_iter().map(|(k, v)| (k.to_string(), v)),

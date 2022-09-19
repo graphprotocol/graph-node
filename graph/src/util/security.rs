@@ -1,4 +1,5 @@
 use std::fmt;
+
 use url::Url;
 
 /// Helper function to redact passwords from URLs

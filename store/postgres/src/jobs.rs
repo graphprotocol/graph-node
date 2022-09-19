@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use diesel::{prelude::RunQueryDsl, sql_query, sql_types::Double};
-
+use diesel::prelude::RunQueryDsl;
+use diesel::sql_query;
+use diesel::sql_types::Double;
 use graph::prelude::{error, Logger, MetricsRegistry, StoreError, ENV_VARS};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};

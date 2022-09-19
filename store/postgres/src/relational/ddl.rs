@@ -1,16 +1,13 @@
-use std::{
-    fmt::{self, Write},
-    iter,
-};
+use std::fmt::{self, Write};
+use std::iter;
 
 use graph::prelude::BLOCK_NUMBER_MAX;
 
+use super::{Column, Layout, SqlName, Table};
 use crate::relational::{
     Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
     STRING_PREFIX_SIZE, VID_COLUMN,
 };
-
-use super::{Column, Layout, SqlName, Table};
 
 impl Layout {
     /// Generate the DDL for the entire layout, i.e., all `create table`
@@ -58,7 +55,6 @@ impl Layout {
 
 impl Table {
     /// Return an iterator over all the column names of this table
-    ///
     // This needs to stay in sync with `create_table`
     pub(crate) fn column_names(&self) -> impl Iterator<Item = &str> {
         let block_column = if self.immutable {

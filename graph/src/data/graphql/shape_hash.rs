@@ -4,9 +4,10 @@
 //! are any values used with filters, and any differences in the query
 //! name or response keys
 
-use crate::prelude::{q, s};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+use crate::prelude::{q, s};
 
 type ShapeHasher = DefaultHasher;
 
@@ -150,8 +151,9 @@ impl ShapeHash for q::TypeCondition {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use graphql_parser::parse_query;
+
+    use super::*;
 
     #[test]
     fn identical_and_different() {

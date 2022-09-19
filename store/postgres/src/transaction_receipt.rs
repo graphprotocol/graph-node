@@ -1,8 +1,9 @@
+use std::convert::TryFrom;
+
 use diesel::sql_types::{Binary, Nullable};
 use diesel_derives::QueryableByName;
 use graph::prelude::transaction_receipt::LightTransactionReceipt;
 use itertools::Itertools;
-use std::convert::TryFrom;
 
 /// Type that comes straight out of a SQL query
 #[derive(QueryableByName)]

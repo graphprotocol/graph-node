@@ -2,24 +2,22 @@ mod graphql;
 mod mappings;
 mod store;
 
+use std::collections::HashSet;
+use std::env::VarError;
+use std::fmt;
+use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
 use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
-use std::{
-    collections::HashSet,
-    env::VarError,
-    fmt,
-    str::FromStr,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
 
 use self::graphql::*;
 use self::mappings::*;
 use self::store::*;
-use crate::{
-    components::subgraph::SubgraphVersionSwitchingMode, runtime::gas::CONST_MAX_GAS_PER_HANDLER,
-};
+use crate::components::subgraph::SubgraphVersionSwitchingMode;
+use crate::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
 
 pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
 
@@ -82,8 +80,8 @@ pub struct EnvVars {
     pub mappings: EnvVarsMapping,
     pub store: EnvVarsStore,
 
-    /// Enables query throttling when getting database connections goes over this value.
-    /// Load management can be disabled by setting this to 0.
+    /// Enables query throttling when getting database connections goes over
+    /// this value. Load management can be disabled by setting this to 0.
     ///
     /// Set by the environment variable `GRAPH_LOAD_THRESHOLD` (expressed in
     /// milliseconds). The default value is 0.
@@ -290,7 +288,8 @@ impl Default for EnvVars {
     }
 }
 
-// This does not print any values avoid accidentally leaking any sensitive env vars
+// This does not print any values avoid accidentally leaking any sensitive env
+// vars
 impl fmt::Debug for EnvVars {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")

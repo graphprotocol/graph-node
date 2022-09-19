@@ -1,9 +1,8 @@
-use graphql_parser::parse_schema;
-use std::env;
-use std::fs;
 use std::process::exit;
+use std::{env, fs};
 
 use graph_graphql::schema::api::api_schema;
+use graphql_parser::parse_schema;
 
 pub fn usage(msg: &str) -> ! {
     println!("{}", msg);

@@ -2,8 +2,8 @@
 #[path = "protobuf/sf.arweave.r#type.v1.rs"]
 mod pbcodec;
 
-use graph::{blockchain::Block as BlockchainBlock, blockchain::BlockPtr, prelude::BlockNumber};
-
+use graph::blockchain::{Block as BlockchainBlock, BlockPtr};
+use graph::prelude::BlockNumber;
 pub use pbcodec::*;
 
 impl BlockchainBlock for Block {

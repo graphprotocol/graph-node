@@ -1,8 +1,7 @@
 use std::io;
 use std::sync::Arc;
 
-use crate::prelude::Logger;
-use crate::prelude::NodeId;
+use crate::prelude::{Logger, NodeId};
 
 /// Common trait for JSON-RPC admin server implementations.
 pub trait JsonRpcServer<P> {

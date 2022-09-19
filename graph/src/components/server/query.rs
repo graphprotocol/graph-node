@@ -1,9 +1,10 @@
-use crate::data::query::QueryError;
-use futures::prelude::*;
 use std::error::Error;
 use std::fmt;
 
+use futures::prelude::*;
+
 use crate::components::store::StoreError;
+use crate::data::query::QueryError;
 
 /// Errors that can occur while processing incoming requests.
 #[derive(Debug)]
@@ -62,7 +63,8 @@ impl Error for GraphQLServerError {
 pub trait GraphQLServer {
     type ServeError;
 
-    /// Creates a new Tokio task that, when spawned, brings up the GraphQL server.
+    /// Creates a new Tokio task that, when spawned, brings up the GraphQL
+    /// server.
     fn serve(
         &mut self,
         port: u16,

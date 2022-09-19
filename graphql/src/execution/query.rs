@@ -1,31 +1,32 @@
-use graph::data::graphql::DocumentExt as _;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::convert::TryFrom;
+use std::hash::{Hash, Hasher};
+use std::iter::FromIterator;
+use std::sync::Arc;
+use std::time::Instant;
+
+use graph::data::graphql::ext::TypeExt;
+use graph::data::graphql::{DocumentExt as _, ObjectOrInterface};
+use graph::data::query::{Query as GraphDataQuery, QueryExecutionError, QueryVariables};
+use graph::data::schema::ApiSchema;
 use graph::data::value::Object;
+use graph::prelude::{
+    info, o, q, r, s, warn, BlockNumber, CheapClone, GraphQLMetrics, Logger, TryFromValue, ENV_VARS,
+};
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::utils::ValidationError;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::sync::Arc;
-use std::time::Instant;
-use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
-use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
-use graph::data::query::QueryExecutionError;
-use graph::data::query::{Query as GraphDataQuery, QueryVariables};
-use graph::data::schema::ApiSchema;
-use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, GraphQLMetrics, Logger, TryFromValue, ENV_VARS,
-};
-
-use crate::execution::ast as a;
-use crate::query::{ast as qast, ext::BlockConstraint};
+use crate::execution::{ast as a, get_field};
+use crate::query::ast as qast;
+use crate::query::ext::BlockConstraint;
+use crate::schema::api::ErrorPolicy;
 use crate::schema::ast::{self as sast};
 use crate::values::coercion;
-use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_CACHE: Mutex<HashMap<u64, Vec<ValidationError>>> =
@@ -124,7 +125,8 @@ impl<'a> std::fmt::Display for SelectedFields<'a> {
 pub struct Query {
     /// The schema against which to execute the query
     pub schema: Arc<ApiSchema>,
-    /// The root selection set of the query. All variable references have already been resolved
+    /// The root selection set of the query. All variable references have
+    /// already been resolved
     pub selection_set: Arc<a::SelectionSet>,
     /// The ShapeHash of the original query
     pub shape_hash: u64,

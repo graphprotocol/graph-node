@@ -1,23 +1,21 @@
 use std::sync::Arc;
 
-use graph::blockchain::block_stream::FirehoseCursor;
+use graph::anyhow::anyhow;
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseCursor, FirehoseError,
+    FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
+};
+use graph::blockchain::firehose_block_stream::FirehoseBlockStream;
+use graph::blockchain::{
+    Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+    RuntimeAdapter as RuntimeAdapterTrait,
+};
 use graph::cheap_clone::CheapClone;
+use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::prelude::MetricsRegistry;
-use graph::{
-    anyhow::anyhow,
-    blockchain::{
-        block_stream::{
-            BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseError,
-            FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
-        },
-        firehose_block_stream::FirehoseBlockStream,
-        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait,
-    },
-    components::store::DeploymentLocator,
-    firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
-    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
+use graph::firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep};
+use graph::prelude::{
+    async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, MetricsRegistry,
 };
 use prost::Message;
 
@@ -26,8 +24,7 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::CosmosTrigger;
-use crate::RuntimeAdapter;
-use crate::{codec, TriggerFilter};
+use crate::{codec, RuntimeAdapter, TriggerFilter};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -260,7 +257,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-/// Returns a new event trigger only if the given event matches the event filter.
+/// Returns a new event trigger only if the given event matches the event
+/// filter.
 fn filter_event_trigger(
     filter: &TriggerFilter,
     event: codec::Event,
@@ -299,13 +297,15 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .as_ref()
             .expect("block payload information should always be present");
 
-        // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
-        // is defined right now, only block hash and block number is necessary. However, this information
-        // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
-        // block which is useless.
+        // Right now, this is done in all cases but in reality, with how the
+        // BlockStreamEvent::Revert is defined right now, only block hash and
+        // block number is necessary. However, this information is not part of
+        // the actual bstream::BlockResponseV2 payload. As such, we need to decode the
+        // full block which is useless.
         //
-        // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down struct that would decode only a few fields and ignore all the rest.
+        // Check about adding basic information about the block in the
+        // bstream::BlockResponseV2 or maybe define a slimmed down struct that
+        // would decode only a few fields and ignore all the rest.
         let sp = codec::Block::decode(any_block.value.as_ref())?;
 
         match step {
@@ -360,17 +360,14 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod test {
-    use graph::prelude::{
-        slog::{o, Discard, Logger},
-        tokio,
-    };
-
-    use super::*;
-
     use codec::{
         Block, Event, Header, HeaderOnlyBlock, ResponseBeginBlock, ResponseDeliverTx,
         ResponseEndBlock, TxResult,
     };
+    use graph::prelude::slog::{o, Discard, Logger};
+    use graph::prelude::tokio;
+
+    use super::*;
 
     #[tokio::test]
     async fn test_trigger_filters() {

@@ -6,8 +6,8 @@ pub enum BlockProcessingError {
     #[error("{0:#}")]
     Unknown(Error),
 
-    // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose to
-    // halt processing due to the error.
+    // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose
+    // to halt processing due to the error.
     #[error("{0}")]
     Deterministic(SubgraphError),
 

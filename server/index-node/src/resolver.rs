@@ -2,18 +2,17 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use either::Either;
-use graph::data::query::Trace;
-use web3::types::Address;
-
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
+use graph::data::query::Trace;
 use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
+use web3::types::Address;
 
 use crate::auth::PoiProtection;
 
@@ -414,9 +413,9 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<Vec<PublicProofOfIndexingRequest>>("requests")
             .expect("valid requests required, validation should have caught this");
 
-        // Only 10 requests are allowed at a time to avoid generating too many SQL queries;
-        // NOTE: Indexers should rate limit the status API anyway, but this adds some soft
-        // extra protection
+        // Only 10 requests are allowed at a time to avoid generating too many SQL
+        // queries; NOTE: Indexers should rate limit the status API anyway, but
+        // this adds some soft extra protection
         if requests.len() > 10 {
             return Err(QueryExecutionError::TooExpensive);
         }
@@ -468,7 +467,8 @@ impl<S: Store> IndexNodeResolver<S> {
         // If `true` return the current version, if `false` return the pending version.
         current_version: bool,
     ) -> Result<r::Value, QueryExecutionError> {
-        // We can safely unwrap because the argument is non-nullable and has been validated.
+        // We can safely unwrap because the argument is non-nullable and has been
+        // validated.
         let subgraph_name = field.get_required::<String>("subgraphName").unwrap();
 
         debug!(
@@ -494,17 +494,19 @@ impl<S: Store> IndexNodeResolver<S> {
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
-        // We can safely unwrap because the argument is non-nullable and has been validated.
+        // We can safely unwrap because the argument is non-nullable and has been
+        // validated.
         let subgraph_id = field.get_required::<String>("subgraphId").unwrap();
 
         // TODO:
         //
-        // An interesting optimization would involve trying to get the subgraph manifest from the
-        // SubgraphStore before hitting IPFS, but we must fix a dependency cycle between the `graph`
-        // and `server` crates first.
+        // An interesting optimization would involve trying to get the subgraph manifest
+        // from the SubgraphStore before hitting IPFS, but we must fix a
+        // dependency cycle between the `graph` and `server` crates first.
         //
-        // 1. implement a new method in subgraph store to retrieve the SubgraphManifest of a given deployment id
-        // 2. try to fetch this subgraph from our SubgraphStore before hitting IPFS
+        // 1. implement a new method in subgraph store to retrieve the SubgraphManifest
+        // of a given deployment id 2. try to fetch this subgraph from our
+        // SubgraphStore before hitting IPFS
 
         // Try to build a deployment hash with the input string
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
@@ -606,8 +608,8 @@ impl<S: Store> IndexNodeResolver<S> {
             }
         };
 
-        // We then bulid a GraphqQL `Object` value that contains the feature detection and
-        // validation results and send it back as a response.
+        // We then bulid a GraphqQL `Object` value that contains the feature detection
+        // and validation results and send it back as a response.
         let response = [
             ("features".to_string(), features),
             ("errors".to_string(), errors),
@@ -649,9 +651,9 @@ where
 {
     // Validate the subgraph we've just obtained.
     //
-    // Note that feature valiadation errors will be inside the error variant vector (because
-    // `validate` also validates subgraph features), so we must filter them out to build our
-    // response.
+    // Note that feature valiadation errors will be inside the error variant vector
+    // (because `validate` also validates subgraph features), so we must filter
+    // them out to build our response.
     let subgraph_validation: Either<_, _> = match unvalidated_subgraph_manifest
         .validate(subgraph_store.clone(), false)
         .await
@@ -687,7 +689,8 @@ where
     // 1. A valid subgraph manifest with no errors.
     // 2. No subgraph manifest and a set of feature validation errors.
     //
-    // For this step we must collect whichever results we have into GraphQL `Value` types.
+    // For this step we must collect whichever results we have into GraphQL `Value`
+    // types.
     match subgraph_validation {
         Either::Left(subgraph_manifest) => {
             let features = r::Value::List(

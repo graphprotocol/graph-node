@@ -1,17 +1,11 @@
 use std::ops::Bound;
 
-use diesel::{
-    pg::types::sql_types,
-    sql_query,
-    sql_types::{Binary, Integer, Jsonb, Nullable},
-    PgConnection, QueryDsl, RunQueryDsl,
-};
-
-use graph::{
-    components::store::StoredDynamicDataSource,
-    constraint_violation,
-    prelude::{serde_json, BlockNumber, StoreError},
-};
+use diesel::pg::types::sql_types;
+use diesel::sql_types::{Binary, Integer, Jsonb, Nullable};
+use diesel::{sql_query, PgConnection, QueryDsl, RunQueryDsl};
+use graph::components::store::StoredDynamicDataSource;
+use graph::constraint_violation;
+use graph::prelude::{serde_json, BlockNumber, StoreError};
 
 use crate::primary::Namespace;
 
@@ -72,9 +66,10 @@ impl DataSourcesTable {
         )
     }
 
-    // Query to load the data sources which are live at `block`. Ordering by the creation block and
-    // `vid` makes sure they are in insertion order which is important for the correctness of
-    // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+    // Query to load the data sources which are live at `block`. Ordering by the
+    // creation block and `vid` makes sure they are in insertion order which is
+    // important for the correctness of reverts and the execution order of
+    // triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     pub(super) fn load(
         &self,
         conn: &PgConnection,
@@ -126,7 +121,8 @@ impl DataSourcesTable {
             )
             .collect();
 
-        // This sort is stable and `tuples` was ordered by vid, so `dses` will be ordered by `(creation_block, vid)`.
+        // This sort is stable and `tuples` was ordered by vid, so `dses` will be
+        // ordered by `(creation_block, vid)`.
         dses.sort_by_key(|v| v.creation_block);
 
         Ok(dses)
@@ -157,8 +153,9 @@ impl DataSourcesTable {
                 ));
             }
 
-            // Offchain data sources have a unique causality region assigned from a sequence in the
-            // database, while onchain data sources always have causality region 0.
+            // Offchain data sources have a unique causality region assigned from a sequence
+            // in the database, while onchain data sources always have causality
+            // region 0.
             let query = match is_offchain {
                 false => format!(
                     "insert into {}(block_range, manifest_idx, param, context, causality_region) \
@@ -199,8 +196,8 @@ impl DataSourcesTable {
         Ok(())
     }
 
-    /// Copy the dynamic data sources from `self` to `dst`. All data sources that
-    /// were created up to and including `target_block` will be copied.
+    /// Copy the dynamic data sources from `self` to `dst`. All data sources
+    /// that were created up to and including `target_block` will be copied.
     pub(crate) fn copy_to(
         &self,
         conn: &PgConnection,
@@ -241,7 +238,8 @@ impl DataSourcesTable {
         Ok(count)
     }
 
-    // Remove offchain data sources by checking for equality. Their range will be set to the empty range.
+    // Remove offchain data sources by checking for equality. Their range will be
+    // set to the empty range.
     pub(super) fn remove_offchain(
         &self,
         conn: &PgConnection,

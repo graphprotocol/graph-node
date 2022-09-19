@@ -1,5 +1,6 @@
-use prometheus::{Counter, Gauge};
 use std::collections::VecDeque;
+
+use prometheus::{Counter, Gauge};
 
 pub struct MonitoredVecDeque<T> {
     vec_deque: VecDeque<T>,

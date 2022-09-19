@@ -1,17 +1,20 @@
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
+use async_stream::try_stream;
+use futures03::{Stream, StreamExt};
+use tonic::Status;
+
 use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::{Blockchain, TriggersAdapter};
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
+use crate::firehose;
+use crate::firehose::FirehoseEndpoint;
 use crate::firehose::ForkStep::*;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
-use crate::{firehose, firehose::FirehoseEndpoint};
-use async_stream::try_stream;
-use futures03::{Stream, StreamExt};
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
-use tonic::Status;
 
 struct FirehoseBlockStreamMetrics {
     deployment: DeploymentHash,
@@ -167,38 +170,40 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     let mut start_block_num = subgraph_current_block
         .as_ref()
         .map(|ptr| {
-            // Firehose start block is inclusive while the subgraph_current_block is where the actual
-            // subgraph is currently at. So to process the actual next block, we must start one block
-            // further in the chain.
+            // Firehose start block is inclusive while the subgraph_current_block is where
+            // the actual subgraph is currently at. So to process the actual
+            // next block, we must start one block further in the chain.
             ptr.block_number() + 1 as BlockNumber
         })
         .unwrap_or(manifest_start_block_num);
 
     // Sanity check when starting from a subgraph block ptr directly. When
-    // this happens, we must ensure that Firehose first picked block directly follows the
-    // subgraph block ptr. So we check that Firehose first picked block's parent is
-    // equal to subgraph block ptr.
+    // this happens, we must ensure that Firehose first picked block directly
+    // follows the subgraph block ptr. So we check that Firehose first picked
+    // block's parent is equal to subgraph block ptr.
     //
-    // This can happen for example when rewinding, unfailing a deterministic error or
-    // when switching from RPC to Firehose on Ethereum.
+    // This can happen for example when rewinding, unfailing a deterministic error
+    // or when switching from RPC to Firehose on Ethereum.
     //
-    // What could go wrong is that the subgraph block ptr points to a forked block but
-    // since Firehose only accepts `block_number`, it could pick right away the canonical
-    // block of the longuest chain creating inconsistencies in the data (because it would
-    // not revert the forked the block).
+    // What could go wrong is that the subgraph block ptr points to a forked block
+    // but since Firehose only accepts `block_number`, it could pick right away
+    // the canonical block of the longuest chain creating inconsistencies in the
+    // data (because it would not revert the forked the block).
     //
-    // If a Firehose cursor is present, it's used to resume the stream and as such, there is no need to
-    // perform the chain continuity check.
+    // If a Firehose cursor is present, it's used to resume the stream and as such,
+    // there is no need to perform the chain continuity check.
     //
-    // If there was no cursor, now we need to check if the subgraph current block is set to something.
-    // When the graph node deploys a new subgraph, it always create a subgraph ptr for this subgraph, the
-    // initial subgraph block pointer points to the parent block of the manifest's start block, which is usually
-    // equivalent (but not always) to manifest's start block number - 1.
+    // If there was no cursor, now we need to check if the subgraph current block is
+    // set to something. When the graph node deploys a new subgraph, it always
+    // create a subgraph ptr for this subgraph, the initial subgraph block
+    // pointer points to the parent block of the manifest's start block, which is
+    // usually equivalent (but not always) to manifest's start block number - 1.
     //
-    // Hence, we only need to check the chain continuity if the subgraph current block ptr is higher or equal
-    // to the subgraph manifest's start block number. Indeed, only in this case (and when there is no firehose
-    // cursor) it means the subgraph was started and advanced with something else than Firehose and as such,
-    // chain continuity check needs to be performed.
+    // Hence, we only need to check the chain continuity if the subgraph current
+    // block ptr is higher or equal to the subgraph manifest's start block
+    // number. Indeed, only in this case (and when there is no firehose
+    // cursor) it means the subgraph was started and advanced with something else
+    // than Firehose and as such, chain continuity check needs to be performed.
     let mut check_subgraph_continuity = must_check_subgraph_continuity(
         &logger,
         &subgraph_current_block,
@@ -209,10 +214,12 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
         debug!(&logger, "Going to check continuity of chain on first block");
     }
 
-    // Back off exponentially whenever we encounter a connection error or a stream with bad data
+    // Back off exponentially whenever we encounter a connection error or a stream
+    // with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
-    // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+    // This attribute is needed because `try_stream!` seems to break detection of
+    // `skip_backoff` assignments
     #[allow(unused_assignments)]
     let mut skip_backoff = false;
 
@@ -381,8 +388,9 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
                 if revert_to.number < manifest_start_block_num {
                     warn!(&logger, "We would return before subgraph manifest's start block, limiting rewind to manifest's start block");
 
-                    // We must revert up to parent's of manifest start block to ensure we delete everything "including" the start
-                    // block that was processed.
+                    // We must revert up to parent's of manifest start block to ensure we delete
+                    // everything "including" the start block that was
+                    // processed.
                     let mut block_num = manifest_start_block_num - 1;
                     if block_num < 0 {
                         block_num = 0;
@@ -439,11 +447,11 @@ fn must_check_subgraph_continuity(
 
 #[cfg(test)]
 mod tests {
-    use crate::blockchain::{
-        block_stream::FirehoseCursor, firehose_block_stream::must_check_subgraph_continuity,
-        BlockPtr,
-    };
     use slog::{o, Logger};
+
+    use crate::blockchain::block_stream::FirehoseCursor;
+    use crate::blockchain::firehose_block_stream::must_check_subgraph_continuity;
+    use crate::blockchain::BlockPtr;
 
     #[test]
     fn check_continuity() {
@@ -482,7 +490,8 @@ mod tests {
             true,
         );
 
-        // Some cursor, subgraph current block ptr <, ==, > than manifest start block num
+        // Some cursor, subgraph current block ptr <, ==, > than manifest start block
+        // num
 
         assert_eq!(
             must_check_subgraph_continuity(&logger, &no_current_block, &some_cursor, 10),

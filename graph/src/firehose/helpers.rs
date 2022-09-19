@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use anyhow::Error;
+
 use crate::blockchain::Block as BlockchainBlock;
 use crate::firehose;
-use anyhow::Error;
 
 pub fn decode_firehose_block<M>(
     block_response: &firehose::Response,

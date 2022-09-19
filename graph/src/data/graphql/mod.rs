@@ -9,7 +9,6 @@ mod values;
 
 /// Serializable wrapper around a GraphQL value.
 pub use self::serialization::SerializableValue;
-
 pub use self::values::{
     // Trait for converting from GraphQL values into other types.
     TryFromValue,
@@ -29,5 +28,6 @@ pub mod object_or_interface;
 pub use object_or_interface::ObjectOrInterface;
 
 pub mod object_macro;
-pub use crate::object;
 pub use object_macro::{object_value, IntoValue};
+
+pub use crate::object;

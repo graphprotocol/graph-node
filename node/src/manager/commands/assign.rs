@@ -1,7 +1,8 @@
-use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
-use graph_store_postgres::{
-    command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
-};
+use graph::prelude::anyhow::anyhow;
+use graph::prelude::{Error, NodeId, StoreEvent};
+use graph_store_postgres::command_support::catalog;
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::NotificationSender;
 
 use crate::manager::deployment::DeploymentSearch;
 

@@ -1,29 +1,24 @@
 //! Test relational schemas that use `Bytes` to store ids
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::str::FromStr;
+use std::sync::Arc;
+
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::components::store::EntityKey;
+use graph::components::store::{EntityKey, EntityType};
 use graph::data::store::scalar;
+use graph::data::store::scalar::{BigDecimal, BigInt};
+use graph::prelude::web3::types::H256;
+use graph::prelude::{
+    o, slog, AttributeNames, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
+    EntityLink, EntityOrder, EntityRange, EntityWindow, Logger, ParentLink, Schema,
+    StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+};
 use graph_mock::MockMetricsRegistry;
+use graph_store_postgres::layout_for_tests::{make_dummy_site, Layout, Namespace};
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::borrow::Cow;
-use std::str::FromStr;
-use std::{collections::BTreeMap, sync::Arc};
-
-use graph::prelude::{
-    o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
-    EntityCollection, EntityLink, EntityOrder, EntityRange, EntityWindow, Logger, ParentLink,
-    Schema, StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
-};
-use graph::{
-    components::store::EntityType,
-    data::store::scalar::{BigDecimal, BigInt},
-};
-use graph_store_postgres::{
-    layout_for_tests::make_dummy_site,
-    layout_for_tests::{Layout, Namespace},
-};
-
 use test_store::*;
 
 const THINGS_GQL: &str = "
@@ -340,15 +335,14 @@ const CHILD2: &str = "0xbabe02";
 const GRANDCHILD1: &str = "0xfafa01";
 const GRANDCHILD2: &str = "0xfafa02";
 
-/// Create a set of test data that forms a tree through the `parent` and `children` attributes.
-/// The tree has this form:
+/// Create a set of test data that forms a tree through the `parent` and
+/// `children` attributes. The tree has this form:
 ///
 ///   root
 ///     +- child1
 ///          +- grandchild1
 ///     +- child2
 ///          +- grandchild2
-///
 fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
     let root = entity! {
         id: ROOT,

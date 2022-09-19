@@ -1,22 +1,23 @@
 //! This is an online (streaming) implementation of the reference implementation
-//! Any hash constructed from here should be the same as if the same data was given
-//! to the reference implementation, but this is updated incrementally
+//! Any hash constructed from here should be the same as if the same data was
+//! given to the reference implementation, but this is updated incrementally
 
-use super::{ProofOfIndexingEvent, ProofOfIndexingVersion};
-use crate::{
-    blockchain::BlockPtr,
-    prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
-    util::stable_hash_glue::AsBytes,
-};
-use stable_hash::{fast::FastStableHasher, FieldAddress, StableHash, StableHasher};
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fmt;
+
+use stable_hash::fast::FastStableHasher;
+use stable_hash::{FieldAddress, StableHash, StableHasher};
 use stable_hash_legacy::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash_legacy::prelude::{
     StableHash as StableHashLegacy, StableHasher as StableHasherLegacy, *,
 };
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::fmt;
 use web3::types::Address;
+
+use super::{ProofOfIndexingEvent, ProofOfIndexingVersion};
+use crate::blockchain::BlockPtr;
+use crate::prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS};
+use crate::util::stable_hash_glue::AsBytes;
 
 pub struct BlockEventStream {
     vec_length: u64,
@@ -92,7 +93,8 @@ impl Hashers {
 ///    0, // Vec<Inner>[0]
 ///    1, // Inner.inner_str
 ///])
-// Performance: Could write a specialized function for this, avoiding a bunch of clones of Blake3SeqNo
+// Performance: Could write a specialized function for this, avoiding a bunch of
+// clones of Blake3SeqNo
 fn traverse_seq_no(counts: &[u64]) -> Blake3SeqNo {
     counts.iter().fold(Blake3SeqNo::root(), |mut s, i| {
         s.skip(*i as usize);
@@ -162,10 +164,10 @@ impl BlockEventStream {
 pub struct ProofOfIndexing {
     version: ProofOfIndexingVersion,
     block_number: BlockNumber,
-    /// The POI is updated for each data source independently. This is necessary because
-    /// some data sources (eg: IPFS files) may be unreliable and therefore cannot mix
-    /// state with other data sources. This may also give us some freedom to change
-    /// the order of triggers in the future.
+    /// The POI is updated for each data source independently. This is necessary
+    /// because some data sources (eg: IPFS files) may be unreliable and
+    /// therefore cannot mix state with other data sources. This may also
+    /// give us some freedom to change the order of triggers in the future.
     per_causality_region: HashMap<String, BlockEventStream>,
 }
 
@@ -198,7 +200,8 @@ impl ProofOfIndexing {
         )
     }
 
-    /// Adds an event to the digest of the ProofOfIndexingStream local to the causality region
+    /// Adds an event to the digest of the ProofOfIndexingStream local to the
+    /// causality region
     pub fn write(
         &mut self,
         logger: &Logger,
@@ -277,7 +280,8 @@ impl ProofOfIndexingFinisher {
         let mut state = Hashers::from_bytes(region);
 
         // Finish the blocks vec by writing kvp[v], CausalityRegion.blocks.len()
-        // + 1 is to account that the length of the blocks array for the genesis block is 1, not 0.
+        // + 1 is to account that the length of the blocks array for the genesis block
+        // is 1, not 0.
         state.write(&(self.block_number + 1), &[1, 0]);
 
         // Add the name (kvp[k]).

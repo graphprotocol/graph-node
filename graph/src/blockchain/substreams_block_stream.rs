@@ -1,3 +1,11 @@
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::time::{Duration, Instant};
+
+use async_stream::try_stream;
+use futures03::{Stream, StreamExt};
+use tonic::Status;
+
 use super::block_stream::SubstreamsMapper;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
@@ -7,12 +15,6 @@ use crate::substreams::response::Message;
 use crate::substreams::ForkStep::{StepNew, StepUndo};
 use crate::substreams::{Modules, Request, Response};
 use crate::util::backoff::ExponentialBackoff;
-use async_stream::try_stream;
-use futures03::{Stream, StreamExt};
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
-use tonic::Status;
 
 struct SubstreamsBlockStreamMetrics {
     deployment: DeploymentHash,
@@ -182,10 +184,12 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
         ..Default::default()
     };
 
-    // Back off exponentially whenever we encounter a connection error or a stream with bad data
+    // Back off exponentially whenever we encounter a connection error or a stream
+    // with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
-    // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+    // This attribute is needed because `try_stream!` seems to break detection of
+    // `skip_backoff` assignments
     #[allow(unused_assignments)]
     let mut skip_backoff = false;
 

@@ -1,28 +1,20 @@
-use std::{
-    collections::{HashMap, HashSet},
-    iter::FromIterator,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::collections::{HashMap, HashSet};
+use std::iter::FromIterator;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use graph::{
-    blockchain::ChainIdentifier,
-    components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, warn, BlockNumber, BlockPtr, Logger},
+use graph::blockchain::ChainIdentifier;
+use graph::components::store::BlockStore as BlockStoreTrait;
+use graph::constraint_violation;
+use graph::prelude::{
+    anyhow, error, tokio, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError,
 };
-use graph::{
-    constraint_violation,
-    prelude::{anyhow, CheapClone},
-};
-use graph::{
-    prelude::{tokio, StoreError},
-    util::timed_cache::TimedCache,
-};
+use graph::util::timed_cache::TimedCache;
 
-use crate::{
-    chain_head_listener::ChainHeadUpdateSender, connection_pool::ConnectionPool,
-    primary::Mirror as PrimaryMirror, ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
-};
+use crate::chain_head_listener::ChainHeadUpdateSender;
+use crate::connection_pool::ConnectionPool;
+use crate::primary::Mirror as PrimaryMirror;
+use crate::{ChainStore, NotificationSender, Shard, PRIMARY_SHARD};
 
 #[cfg(debug_assertions)]
 pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
@@ -42,14 +34,13 @@ pub mod primary {
         delete, insert_into, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
         RunQueryDsl,
     };
-    use graph::{
-        blockchain::{BlockHash, ChainIdentifier},
-        constraint_violation,
-        prelude::StoreError,
-    };
+    use graph::blockchain::{BlockHash, ChainIdentifier};
+    use graph::constraint_violation;
+    use graph::prelude::StoreError;
 
     use crate::chain_store::Storage;
-    use crate::{connection_pool::ConnectionPool, Shard};
+    use crate::connection_pool::ConnectionPool;
+    use crate::Shard;
 
     table! {
             chains(id) {
@@ -64,7 +55,8 @@ pub mod primary {
 
     /// Information about the mapping of chains to storage shards. We persist
     /// this information in the database to make it possible to detect a
-    /// change in the configuration file that doesn't match what is in the database
+    /// change in the configuration file that doesn't match what is in the
+    /// database
     #[derive(Clone, Queryable)]
     pub struct Chain {
         pub id: i32,
@@ -475,8 +467,9 @@ impl BlockStore {
     }
 
     pub fn update_db_version(&self) -> Result<(), StoreError> {
-        use crate::primary::db_version as dbv;
         use diesel::prelude::*;
+
+        use crate::primary::db_version as dbv;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
         let connection = primary_pool.get()?;

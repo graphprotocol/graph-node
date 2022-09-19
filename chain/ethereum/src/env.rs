@@ -1,8 +1,9 @@
+use std::fmt;
+use std::time::Duration;
+
 use envconfig::Envconfig;
 use graph::env::EnvVarBoolean;
 use graph::prelude::{envconfig, lazy_static, BlockNumber};
-use std::fmt;
-use std::time::Duration;
 
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
@@ -35,9 +36,9 @@ pub struct EnvVars {
     /// Maximum range size for `eth.getLogs` requests that don't filter on
     /// contract address, only event signature, and are therefore expensive.
     ///
-    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`. The
-    /// default value is 500 blocks, which is reasonable according to Ethereum
-    /// node operators.
+    /// Set by the environment variable `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`.
+    /// The default value is 500 blocks, which is reasonable according to
+    /// Ethereum node operators.
     pub max_event_only_range: BlockNumber,
     /// Set by the environment variable `ETHEREUM_BLOCK_BATCH_SIZE`. The
     /// default value is 10 blocks.
@@ -91,7 +92,8 @@ pub struct EnvVars {
     pub genesis_block_number: u64,
 }
 
-// This does not print any values avoid accidentally leaking any sensitive env vars
+// This does not print any values avoid accidentally leaking any sensitive env
+// vars
 impl fmt::Debug for EnvVars {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")

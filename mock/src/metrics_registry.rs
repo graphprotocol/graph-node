@@ -1,8 +1,8 @@
+use std::collections::HashMap;
+
 use graph::components::metrics::{Collector, Counter, Gauge, Opts, PrometheusError};
 use graph::prelude::MetricsRegistry as MetricsRegistryTrait;
 use graph::prometheus::{CounterVec, GaugeVec, HistogramOpts, HistogramVec};
-
-use std::collections::HashMap;
 
 pub struct MockMetricsRegistry {}
 

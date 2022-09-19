@@ -1,15 +1,14 @@
 extern crate clap;
 extern crate graph_store_postgres;
 
-use clap::{arg, Command};
+use std::fs;
 use std::process::exit;
-use std::{fs, sync::Arc};
+use std::sync::Arc;
 
+use clap::{arg, Command};
 use graph::prelude::{DeploymentHash, Schema};
-use graph_store_postgres::{
-    command_support::{Catalog, Column, ColumnType, Layout, Namespace},
-    layout_for_tests::make_dummy_site,
-};
+use graph_store_postgres::command_support::{Catalog, Column, ColumnType, Layout, Namespace};
+use graph_store_postgres::layout_for_tests::make_dummy_site;
 
 pub fn usage(msg: &str) -> ! {
     println!("layout: {}", msg);

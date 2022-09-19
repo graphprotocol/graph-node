@@ -1,30 +1,30 @@
+use std::collections::HashSet;
+use std::marker::PhantomData;
+use std::str::FromStr;
+use std::sync::Mutex;
+use std::time::Duration;
+
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::DataSource;
+use graph::components::store::{
+    BlockStore as _, DeploymentLocator, EntityFilter, EntityKey, EntityOrder, EntityQuery,
+    EntityType, StatusStore, SubscriptionManager as _, WritableStore,
+};
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
+use graph::data::store::scalar;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data::subgraph::*;
+use graph::prelude::ethabi::Contract;
+use graph::prelude::*;
+use graph::semver::Version;
 use graph_chain_ethereum::{Mapping, MappingABI};
 use graph_mock::MockMetricsRegistry;
-use hex_literal::hex;
-use lazy_static::lazy_static;
-use std::time::Duration;
-use std::{collections::HashSet, sync::Mutex};
-use std::{marker::PhantomData, str::FromStr};
-use test_store::*;
-
-use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
-use graph::data::subgraph::*;
-use graph::prelude::*;
-use graph::{
-    blockchain::DataSource,
-    components::store::{
-        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, EntityType, StatusStore,
-        SubscriptionManager as _,
-    },
-    prelude::ethabi::Contract,
-};
-use graph::{data::store::scalar, semver::Version};
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
+use hex_literal::hex;
+use lazy_static::lazy_static;
+use test_store::*;
 use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
@@ -446,7 +446,8 @@ fn update_existing() {
             _ => unreachable!(),
         };
 
-        // Verify that the entity before updating is different from what we expect afterwards
+        // Verify that the entity before updating is different from what we expect
+        // afterwards
         assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
 
         // Set test entity; as the entity already exists an update should be performed

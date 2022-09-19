@@ -1,15 +1,12 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use graph::{
-    anyhow::bail,
-    components::metrics::MetricsRegistry,
-    itertools::Itertools,
-    prelude::{
-        anyhow::{anyhow, Error},
-        NodeId,
-    },
-    slog::Logger,
-};
+use graph::anyhow::bail;
+use graph::components::metrics::MetricsRegistry;
+use graph::itertools::Itertools;
+use graph::prelude::anyhow::{anyhow, Error};
+use graph::prelude::NodeId;
+use graph::slog::Logger;
 use graph_chain_ethereum::{EthereumAdapterTrait, NodeCapabilities};
 use graph_store_postgres::DeploymentPlacer;
 

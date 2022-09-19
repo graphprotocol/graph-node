@@ -1,21 +1,20 @@
-use diesel::pg::PgConnection;
-use diesel::select;
-use diesel::sql_types::Text;
-use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
-use graph::util::backoff::ExponentialBackoff;
-use lazy_static::lazy_static;
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
-use postgres::Notification;
-use postgres::{fallible_iterator::FallibleIterator, Client};
-use postgres_openssl::MakeTlsConnector;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::{channel, Receiver};
 
-use graph::prelude::serde_json;
-use graph::prelude::*;
+use diesel::pg::PgConnection;
+use diesel::select;
+use diesel::sql_types::Text;
+use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
+use graph::prelude::{serde_json, *};
+use graph::util::backoff::ExponentialBackoff;
+use lazy_static::lazy_static;
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use postgres::fallible_iterator::FallibleIterator;
+use postgres::{Client, Notification};
+use postgres_openssl::MakeTlsConnector;
+use tokio::sync::mpsc::{channel, Receiver};
 
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {
@@ -26,8 +25,8 @@ lazy_static::lazy_static! {
 }
 
 #[derive(Clone)]
-/// This newtype exists to make it hard to misuse the `NotificationListener` API in a way that
-/// could impact security.
+/// This newtype exists to make it hard to misuse the `NotificationListener` API
+/// in a way that could impact security.
 pub struct SafeChannelName(String);
 
 impl SafeChannelName {
@@ -57,10 +56,11 @@ pub struct NotificationListener {
 }
 
 impl NotificationListener {
-    /// Connect to the specified database and listen for Postgres notifications on the specified
-    /// channel.
+    /// Connect to the specified database and listen for Postgres notifications
+    /// on the specified channel.
     ///
-    /// Must call `.start()` to begin receiving notifications on the returned receiver.
+    /// Must call `.start()` to begin receiving notifications on the returned
+    /// receiver.
     //
     /// The listener will handle dropping the database connection by
     /// indefinitely trying to reconnect to the database. Users of the
@@ -418,8 +418,7 @@ impl NotificationSender {
         network: Option<&str>,
         data: &serde_json::Value,
     ) -> Result<(), StoreError> {
-        use diesel::ExpressionMethods;
-        use diesel::RunQueryDsl;
+        use diesel::{ExpressionMethods, RunQueryDsl};
         use public::large_notifications::dsl::*;
 
         sql_function! {

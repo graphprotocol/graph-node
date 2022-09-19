@@ -1,54 +1,43 @@
-use diesel::{
-    pg::Pg,
-    serialize::Output,
-    sql_types::Text,
-    types::{FromSql, ToSql},
-};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
-use std::{fmt, io::Write};
-use std::{iter::FromIterator, time::Duration};
+use std::collections::HashMap;
+use std::fmt;
+use std::io::Write;
+use std::iter::FromIterator;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use graph::{
-    cheap_clone::CheapClone,
-    components::{
-        server::index_node::VersionInfo,
-        store::{
-            self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, PruneReporter, SubgraphFork,
-        },
-    },
-    constraint_violation,
-    data::query::QueryTarget,
-    data::subgraph::{schema::DeploymentCreate, status},
-    prelude::StoreEvent,
-    prelude::{
-        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
-        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
-    },
-    url::Url,
-    util::timed_cache::TimedCache,
+use diesel::pg::Pg;
+use diesel::serialize::Output;
+use diesel::sql_types::Text;
+use diesel::types::{FromSql, ToSql};
+use graph::cheap_clone::CheapClone;
+use graph::components::server::index_node::VersionInfo;
+use graph::components::store::{
+    self, BlockStore, DeploymentLocator, DeploymentSchemaVersion, EnsLookup as EnsLookupTrait,
+    PruneReporter, SubgraphFork,
 };
+use graph::constraint_violation;
+use graph::data::query::QueryTarget;
+use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data::subgraph::status;
+use graph::prelude::futures03::future::join_all;
+use graph::prelude::web3::types::Address;
+use graph::prelude::{
+    anyhow, lazy_static, o, ApiSchema, ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore,
+    DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema,
+    StoreError, StoreEvent, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+    SubgraphVersionSwitchingMode,
+};
+use graph::url::Url;
+use graph::util::timed_cache::TimedCache;
 
-use crate::fork;
-use crate::{
-    connection_pool::ConnectionPool,
-    deployment::SubgraphHealth,
-    primary,
-    primary::{DeploymentId, Mirror as PrimaryMirror, Site},
-    relational::Layout,
-    writable::WritableStore,
-    NotificationSender,
-};
-use crate::{
-    deployment_store::{DeploymentStore, ReplicaId},
-    detail::DeploymentDetail,
-    primary::UnusedDeployment,
-};
+use crate::connection_pool::ConnectionPool;
+use crate::deployment::SubgraphHealth;
+use crate::deployment_store::{DeploymentStore, ReplicaId};
+use crate::detail::DeploymentDetail;
+use crate::primary::{DeploymentId, Mirror as PrimaryMirror, Site, UnusedDeployment};
+use crate::relational::Layout;
+use crate::writable::WritableStore;
+use crate::{fork, primary, NotificationSender};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
@@ -149,14 +138,14 @@ pub mod unused {
 /// document](https://github.com/graphprotocol/graph-node/blob/master/docs/config.md)
 ///
 /// The primary uses the following database tables:
-/// - `public.deployment_schemas`: immutable data about deployments,
-///   including the shard that stores the deployment data and metadata, the
-///   namespace in the shard that contains the deployment data, and the
-///   network/chain that the  deployment is indexing
-/// - `subgraphs.subgraph` and `subgraphs.subgraph_version`: information
-///   about named subgraphs and how they map to deployments
-/// - `subgraphs.subgraph_deployment_assignment`: which index node is
-///   indexing what deployment
+/// - `public.deployment_schemas`: immutable data about deployments, including
+///   the shard that stores the deployment data and metadata, the namespace in
+///   the shard that contains the deployment data, and the network/chain that
+///   the  deployment is indexing
+/// - `subgraphs.subgraph` and `subgraphs.subgraph_version`: information about
+///   named subgraphs and how they map to deployments
+/// - `subgraphs.subgraph_deployment_assignment`: which index node is indexing
+///   what deployment
 ///
 /// The primary is also the database that is used to send and receive
 /// notifications through Postgres' `LISTEN`/`NOTIFY` mechanism. That is
@@ -172,17 +161,17 @@ pub mod unused {
 /// metadata is stored in tables in the `subgraphs` namespace in the same
 /// shard as the deployment data. The most important of these tables are
 ///
-/// - `subgraphs.subgraph_deployment`: the main table for deployment
-///   metadata; most importantly, it stores the pointer to the current
-///   subgraph head, i.e., the block up to which the subgraph has indexed
-///   the chain, together with other things like whether the subgraph has
-///   synced, whether it has failed and whether it encountered any errors
-/// - `subgraphs.subgraph_manifest`: immutable information derived from the
-///   YAML manifest for the deployment
-/// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources
-///   that the subgraph has created from templates in the manifest.
-/// - `subgraphs.subgraph_error`: details about errors that the deployment
-///   has encountered
+/// - `subgraphs.subgraph_deployment`: the main table for deployment metadata;
+///   most importantly, it stores the pointer to the current subgraph head,
+///   i.e., the block up to which the subgraph has indexed the chain, together
+///   with other things like whether the subgraph has synced, whether it has
+///   failed and whether it encountered any errors
+/// - `subgraphs.subgraph_manifest`: immutable information derived from the YAML
+///   manifest for the deployment
+/// - `subgraphs.dynamic_ethereum_contract_data_source`: the data sources that
+///   the subgraph has created from templates in the manifest.
+/// - `subgraphs.subgraph_error`: details about errors that the deployment has
+///   encountered
 ///
 /// The `SubgraphStore` mostly orchestrates access to the primary and the
 /// shards.  The actual work is done by code in the `primary` module for
@@ -201,17 +190,18 @@ impl SubgraphStore {
     /// Create a new store for subgraphs that distributes deployments across
     /// multiple databases
     ///
-    /// `stores` is a list of the shards. The tuple contains the shard name, the main
-    /// connection pool for the database, a list of read-only connections
-    /// for the same database, and a list of weights determining how often
-    /// to use the main pool and the read replicas for queries. The list
-    /// of weights must be one longer than the list of read replicas, and
-    /// `weights[0]` is used for the main pool.
+    /// `stores` is a list of the shards. The tuple contains the shard name, the
+    /// main connection pool for the database, a list of read-only
+    /// connections for the same database, and a list of weights determining
+    /// how often to use the main pool and the read replicas for queries.
+    /// The list of weights must be one longer than the list of read
+    /// replicas, and `weights[0]` is used for the main pool.
     ///
     /// All write operations for a shard are performed against the main
     /// pool. One of the shards must be named `primary`
     ///
-    /// The `placer` determines where `create_subgraph_deployment` puts a new deployment
+    /// The `placer` determines where `create_subgraph_deployment` puts a new
+    /// deployment
     pub fn new(
         logger: &Logger,
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
@@ -281,17 +271,18 @@ impl SubgraphStoreInner {
     /// Create a new store for subgraphs that distributes deployments across
     /// multiple databases
     ///
-    /// `stores` is a list of the shards. The tuple contains the shard name, the main
-    /// connection pool for the database, a list of read-only connections
-    /// for the same database, and a list of weights determining how often
-    /// to use the main pool and the read replicas for queries. The list
-    /// of weights must be one longer than the list of read replicas, and
-    /// `weights[0]` is used for the main pool.
+    /// `stores` is a list of the shards. The tuple contains the shard name, the
+    /// main connection pool for the database, a list of read-only
+    /// connections for the same database, and a list of weights determining
+    /// how often to use the main pool and the read replicas for queries.
+    /// The list of weights must be one longer than the list of read
+    /// replicas, and `weights[0]` is used for the main pool.
     ///
     /// All write operations for a shard are performed against the main
     /// pool. One of the shards must be named `primary`
     ///
-    /// The `placer` determines where `create_subgraph_deployment` puts a new deployment
+    /// The `placer` determines where `create_subgraph_deployment` puts a new
+    /// deployment
     pub fn new(
         logger: &Logger,
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
@@ -550,8 +541,8 @@ impl SubgraphStoreInner {
             store.deployment_exists_and_synced(id)
         };
 
-        // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
-        // potentially deadlock.
+        // FIXME: This simultaneously holds a `primary_conn` and a shard connection,
+        // which can potentially deadlock.
         let pconn = self.primary_conn()?;
         pconn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
@@ -703,8 +694,8 @@ impl SubgraphStoreInner {
     }
 
     /// Delete all entities. This function exists solely for integration tests
-    /// and should never be called from any other code. Unfortunately, Rust makes
-    /// it very hard to export items just for testing
+    /// and should never be called from any other code. Unfortunately, Rust
+    /// makes it very hard to export items just for testing
     #[cfg(debug_assertions)]
     pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
         let pconn = self.primary_conn()?;
@@ -780,9 +771,10 @@ impl SubgraphStoreInner {
         self.primary_conn()?.list_unused_deployments(filter)
     }
 
-    /// Remove a deployment, i.e., all its data and metadata. This is only permissible
-    /// if the deployment is unused in the sense that it is neither the current nor
-    /// pending version of any subgraph, and is not currently assigned to any node
+    /// Remove a deployment, i.e., all its data and metadata. This is only
+    /// permissible if the deployment is unused in the sense that it is
+    /// neither the current nor pending version of any subgraph, and is not
+    /// currently assigned to any node
     pub fn remove_deployment(&self, id: DeploymentId) -> Result<(), StoreError> {
         let site = self.find_site(id)?;
         let store = self.for_site(site.as_ref())?;

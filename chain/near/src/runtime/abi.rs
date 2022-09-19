@@ -1,11 +1,11 @@
-use crate::codec;
-use crate::trigger::ReceiptWithOutcome;
 use graph::anyhow::anyhow;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
+use crate::codec;
+use crate::trigger::ReceiptWithOutcome;
 
 impl ToAscObj<AscBlock> for codec::Block {
     fn to_asc_obj<H: AscHeap + ?Sized>(

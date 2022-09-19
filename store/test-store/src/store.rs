@@ -1,17 +1,21 @@
+use std::collections::{BTreeSet, HashMap};
+use std::marker::PhantomData;
+use std::sync::Mutex;
+use std::time::Instant;
+
 use diesel::{self, PgConnection};
-use graph::data::graphql::effort::LoadManager;
-use graph::data::query::QueryResults;
-use graph::data::query::QueryTarget;
-use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
-use graph::log;
-use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
-use graph::semver::Version;
-use graph::{
-    blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
-    components::store::DeploymentLocator, components::store::EntityKey,
-    components::store::EntityType, components::store::StatusStore,
-    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
+use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::ChainIdentifier;
+use graph::components::store::{
+    DeploymentLocator, EntityKey, EntityType, StatusStore, StoredDynamicDataSource,
 };
+use graph::data::graphql::effort::LoadManager;
+use graph::data::query::{QueryResults, QueryTarget};
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::data::subgraph::status;
+use graph::log;
+use graph::prelude::{NodeId, QueryStoreManager as _, SubgraphStore as _, *};
+use graph::semver::Version;
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
@@ -19,18 +23,14 @@ use graph_graphql::test_support::GraphQLMetrics;
 use graph_mock::MockMetricsRegistry;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
-use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{
-    BlockStore as DieselBlockStore, DeploymentPlacer, SubgraphStore as DieselSubgraphStore,
-    PRIMARY_SHARD,
+    BlockStore as DieselBlockStore, DeploymentPlacer, Shard, SubgraphStore as DieselSubgraphStore,
+    SubscriptionManager, PRIMARY_SHARD,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::time::Instant;
-use std::{marker::PhantomData, sync::Mutex};
 use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;
 
@@ -257,7 +257,8 @@ pub async fn transact_entity_operations(
     .await
 }
 
-/// Convenience to transact EntityOperation instead of EntityModification and wait for the store to process the operations
+/// Convenience to transact EntityOperation instead of EntityModification and
+/// wait for the store to process the operations
 pub async fn transact_and_wait(
     store: &Arc<DieselSubgraphStore>,
     deployment: &DeploymentLocator,

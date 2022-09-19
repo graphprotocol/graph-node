@@ -2,11 +2,10 @@ use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
 use anyhow::anyhow;
-use semver::Version;
-
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
 use graph_runtime_derive::AscType;
+use semver::Version;
 
 use crate::asc_abi::class;
 
@@ -140,7 +139,8 @@ impl<T: AscValue> TypedArray<T> {
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
-        // - The second (self.data_start) points to where in this ArrayBuffer the data starts.
+        // - The second (self.data_start) points to where in this ArrayBuffer the data
+        //   starts.
         // So this is basically getting the offset.
         // Related docs: https://www.assemblyscript.org/memory.html#arraybufferview-layout
         let data_start_with_offset = self
@@ -240,7 +240,8 @@ impl AscType for AscString {
     }
 
     fn content_len(&self, _asc_bytes: &[u8]) -> usize {
-        self.byte_length as usize * 2 // without extra_capacity, and times 2 because the content is measured in u8s
+        self.byte_length as usize * 2 // without extra_capacity, and times 2
+                                      // because the content is measured in u8s
     }
 }
 
@@ -291,7 +292,8 @@ impl<T: AscValue> Array<T> {
         // This subtraction is needed because on the ArrayBufferView memory layout
         // there are two pointers to the data.
         // - The first (self.buffer) points to the related ArrayBuffer.
-        // - The second (self.buffer_data_start) points to where in this ArrayBuffer the data starts.
+        // - The second (self.buffer_data_start) points to where in this ArrayBuffer the
+        //   data starts.
         // So this is basically getting the offset.
         // Related docs: https://www.assemblyscript.org/memory.html#arraybufferview-layout
         let buffer_data_start_with_offset = self

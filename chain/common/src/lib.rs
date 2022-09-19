@@ -1,16 +1,12 @@
 use std::collections::HashMap;
+use std::convert::From;
 use std::fmt::Debug;
+use std::path::Path;
 
 use anyhow::Error;
-use protobuf::descriptor::field_descriptor_proto::Label;
-use protobuf::descriptor::field_descriptor_proto::Type;
-use protobuf::descriptor::DescriptorProto;
-use protobuf::descriptor::FieldDescriptorProto;
-use protobuf::descriptor::OneofDescriptorProto;
-use protobuf::Message;
-use protobuf::UnknownValueRef;
-use std::convert::From;
-use std::path::Path;
+use protobuf::descriptor::field_descriptor_proto::{Label, Type};
+use protobuf::descriptor::{DescriptorProto, FieldDescriptorProto, OneofDescriptorProto};
+use protobuf::{Message, UnknownValueRef};
 
 const REQUIRED_ID: u32 = 66001;
 

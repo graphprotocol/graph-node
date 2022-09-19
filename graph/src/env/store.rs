@@ -71,8 +71,8 @@ pub struct EnvVarsStore {
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
     // `GRAPH_STORE_CONNECTION_IDLE_TIMEOUT`. It's likely that they should be
     // configured differently for each pool.
-    /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
-    /// in milliseconds). The default value is 5000ms.
+    /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT`
+    /// (expressed in milliseconds). The default value is 5000ms.
     pub connection_timeout: Duration,
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
     /// default value is provided.
@@ -93,7 +93,8 @@ pub struct EnvVarsStore {
     pub disable_error_for_toplevel_parents: bool,
 }
 
-// This does not print any values avoid accidentally leaking any sensitive env vars
+// This does not print any values avoid accidentally leaking any sensitive env
+// vars
 impl fmt::Debug for EnvVarsStore {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")

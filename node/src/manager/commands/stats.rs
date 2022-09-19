@@ -1,19 +1,16 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use crate::manager::deployment::DeploymentSearch;
-use diesel::r2d2::ConnectionManager;
-use diesel::r2d2::PooledConnection;
+use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::PgConnection;
 use graph::components::store::VersionStats;
 use graph::prelude::anyhow;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::connection_pool::ConnectionPool;
-use graph_store_postgres::Shard;
-use graph_store_postgres::SubgraphStore;
-use graph_store_postgres::PRIMARY_SHARD;
+use graph_store_postgres::{Shard, SubgraphStore, PRIMARY_SHARD};
+
+use crate::manager::deployment::DeploymentSearch;
 
 fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,

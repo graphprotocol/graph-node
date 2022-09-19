@@ -5,12 +5,12 @@ pub mod runtime_adapter;
 
 #[cfg(test)]
 mod test {
-    use crate::protobuf::*;
-
     use graph::semver::Version;
 
-    /// A macro that takes an ASC struct value definition and calls AscBytes methods to check that
-    /// memory layout is padded properly.
+    use crate::protobuf::*;
+
+    /// A macro that takes an ASC struct value definition and calls AscBytes
+    /// methods to check that memory layout is padded properly.
     macro_rules! assert_asc_bytes {
         ($struct_name:ident {
             $($field:ident : $field_value:expr),+
@@ -45,7 +45,8 @@ mod test {
 
     #[test]
     fn test_asc_type_alignment() {
-        // TODO: automatically generate these tests for each struct in derive(AscType) macro
+        // TODO: automatically generate these tests for each struct in derive(AscType)
+        // macro
 
         assert_asc_bytes!(AscBlock {
             header: new_asc_ptr(),

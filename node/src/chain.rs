@@ -1,4 +1,7 @@
-use crate::config::{Config, ProviderDetails};
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
+use std::time::Duration;
+
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::join_all;
 use futures::TryFutureExt;
@@ -7,15 +10,13 @@ use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifie
 use graph::cheap_clone::CheapClone;
 use graph::firehose::{FirehoseEndpoint, FirehoseNetworks};
 use graph::ipfs_client::IpfsClient;
-use graph::prelude::{anyhow, tokio};
-use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};
+use graph::prelude::{anyhow, prost, tokio, MetricsRegistry as MetricsRegistryTrait};
 use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
-use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
-use std::time::Duration;
+
+use crate::config::{Config, ProviderDetails};
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]
@@ -102,7 +103,8 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
         .collect()
 }
 
-/// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
+/// Parses an Ethereum connection string and returns the network name and
+/// Ethereum adapter.
 pub async fn create_ethereum_networks(
     logger: Logger,
     registry: Arc<dyn MetricsRegistryTrait>,
@@ -423,14 +425,16 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::chain::create_ethereum_networks;
-    use crate::config::{Config, Opt};
+    use std::sync::Arc;
+
     use graph::log::logger;
     use graph::prelude::tokio;
     use graph::prometheus::Registry;
     use graph_chain_ethereum::NodeCapabilities;
     use graph_core::MetricsRegistry;
-    use std::sync::Arc;
+
+    use crate::chain::create_ethereum_networks;
+    use crate::config::{Config, Opt};
 
     #[tokio::test]
     async fn correctly_parse_ethereum_networks() {

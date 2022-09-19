@@ -1,42 +1,24 @@
-use graph::blockchain::TriggerData;
-use graph::data::subgraph::API_VERSION_0_0_2;
-use graph::data::subgraph::API_VERSION_0_0_6;
-use graph::data::subgraph::API_VERSION_0_0_7;
-use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::ethabi::ethereum_types::U128;
-use graph::prelude::ethabi::ethereum_types::U256;
-use graph::prelude::ethabi::ethereum_types::U64;
-use graph::prelude::ethabi::Address;
-use graph::prelude::ethabi::Bytes;
-use graph::prelude::ethabi::LogParam;
-use graph::prelude::web3::types::Block;
-use graph::prelude::web3::types::Log;
-use graph::prelude::web3::types::Transaction;
-use graph::prelude::web3::types::TransactionReceipt;
-use graph::prelude::BlockNumber;
-use graph::prelude::BlockPtr;
-use graph::prelude::{CheapClone, EthereumCall};
-use graph::runtime::asc_new;
-use graph::runtime::gas::GasCounter;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
-use graph::semver::Version;
-use graph_runtime_wasm::module::ToAscPtr;
+use std::cmp::Ordering;
 use std::convert::TryFrom;
 use std::ops::Deref;
-use std::{cmp::Ordering, sync::Arc};
+use std::sync::Arc;
 
-use crate::runtime::abi::AscEthereumBlock;
-use crate::runtime::abi::AscEthereumBlock_0_0_6;
-use crate::runtime::abi::AscEthereumCall;
-use crate::runtime::abi::AscEthereumCall_0_0_3;
-use crate::runtime::abi::AscEthereumEvent;
-use crate::runtime::abi::AscEthereumEvent_0_0_7;
-use crate::runtime::abi::AscEthereumTransaction_0_0_1;
-use crate::runtime::abi::AscEthereumTransaction_0_0_2;
-use crate::runtime::abi::AscEthereumTransaction_0_0_6;
+use graph::blockchain::TriggerData;
+use graph::data::subgraph::{API_VERSION_0_0_2, API_VERSION_0_0_6, API_VERSION_0_0_7};
+use graph::prelude::ethabi::ethereum_types::{H160, H256, U128, U256, U64};
+use graph::prelude::ethabi::{Address, Bytes, LogParam};
+use graph::prelude::web3::types::{Block, Log, Transaction, TransactionReceipt};
+use graph::prelude::{BlockNumber, BlockPtr, CheapClone, EthereumCall};
+use graph::runtime::gas::GasCounter;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
+use graph::semver::Version;
+use graph_runtime_wasm::module::ToAscPtr;
+
+use crate::runtime::abi::{
+    AscEthereumBlock, AscEthereumBlock_0_0_6, AscEthereumCall, AscEthereumCall_0_0_3,
+    AscEthereumEvent, AscEthereumEvent_0_0_7, AscEthereumTransaction_0_0_1,
+    AscEthereumTransaction_0_0_2, AscEthereumTransaction_0_0_6,
+};
 
 // ETHDEP: This should be defined in only one place.
 type LightEthereumBlock = Block<Transaction>;
@@ -61,7 +43,8 @@ pub enum MappingTrigger {
     },
 }
 
-// Logging the block is too verbose, so this strips the block from the trigger for Debug.
+// Logging the block is too verbose, so this strips the block from the trigger
+// for Debug.
 impl std::fmt::Debug for MappingTrigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[derive(Debug)]
@@ -442,7 +425,8 @@ impl Clone for EthereumEventData {
     }
 }
 
-/// An Ethereum call executed within a transaction within a block to a contract address.
+/// An Ethereum call executed within a transaction within a block to a contract
+/// address.
 #[derive(Debug)]
 pub struct EthereumCallData {
     pub from: Address,

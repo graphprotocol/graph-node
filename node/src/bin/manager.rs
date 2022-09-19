@@ -1,32 +1,32 @@
+use std::collections::HashMap;
+use std::env;
+use std::num::ParseIntError;
+use std::sync::Arc;
+use std::time::Duration;
+
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
-use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
-use graph::{
-    log::logger,
-    prelude::{
-        anyhow::{self, Context as AnyhowContextTrait},
-        info, o, slog, tokio, Logger, NodeId, ENV_VARS,
-    },
-    url::Url,
-};
+use graph::data::graphql::effort::LoadManager;
+use graph::log::logger;
+use graph::prelude::anyhow::{self, Context as AnyhowContextTrait};
+use graph::prelude::{chrono, info, o, slog, tokio, Logger, NodeId, ENV_VARS};
+use graph::prometheus::Registry;
+use graph::url::Url;
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
 use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
+use graph_node::chain::create_ethereum_networks;
 use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::commands;
-use graph_node::{
-    chain::create_ethereum_networks,
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
-};
-use graph_store_postgres::ChainStore;
+use graph_node::manager::deployment::DeploymentSearch;
+use graph_node::manager::{commands, PanicSubscriptionManager};
+use graph_node::store_builder::StoreBuilder;
+use graph_node::MetricsContext;
+use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    BlockStore, ChainStore, NotificationSender, Shard, Store, SubgraphStore, SubscriptionManager,
+    PRIMARY_SHARD,
 };
 use lazy_static::lazy_static;
-use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
 use structopt::StructOpt;
 
 const VERSION_LABEL_KEY: &str = "version";
@@ -159,7 +159,10 @@ pub enum Command {
         /// The deployments to rewind (see `help info`)
         deployments: Vec<DeploymentSearch>,
     },
-    /// Deploy and run an arbitrary subgraph up to a certain block, although it can surpass it by a few blocks, it's not exact (use for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
+    /// Deploy and run an arbitrary subgraph up to a certain block, although it
+    /// can surpass it by a few blocks, it's not exact (use for dev and testing
+    /// purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN
+    /// PRODUCTION
     ///
     /// Also worth noting that the deployed subgraph will be removed at the end.
     Run {
@@ -214,7 +217,8 @@ pub enum Command {
     Prune {
         /// The deployment to prune (see `help info`)
         deployment: DeploymentSearch,
-        /// Prune tables with a ratio of entities to entity versions lower than this
+        /// Prune tables with a ratio of entities to entity versions lower than
+        /// this
         #[structopt(long, short, default_value = "0.20")]
         prune_ratio: f64,
         /// How much history to keep in blocks
@@ -253,7 +257,8 @@ pub enum UnusedCommand {
         /// Remove a specific deployment
         #[structopt(short, long, conflicts_with = "count")]
         deployment: Option<String>,
-        /// Remove unused deployments that were recorded at least this many minutes ago
+        /// Remove unused deployments that were recorded at least this many
+        /// minutes ago
         #[structopt(short, long)]
         older: Option<u32>,
     },
@@ -371,7 +376,8 @@ pub enum ChainCommand {
     /// subgraphs and/or deployments using the chain must first be removed
     Remove { name: String },
 
-    /// Compares cached blocks with fresh ones and clears the block cache when they differ.
+    /// Compares cached blocks with fresh ones and clears the block cache when
+    /// they differ.
     CheckBlocks {
         #[structopt(subcommand)] // Note that we mark a field as a subcommand
         method: CheckBlockMethod,
@@ -429,11 +435,12 @@ pub enum StatsCommand {
 pub enum IndexCommand {
     /// Creates a new database index.
     ///
-    /// The new index will be created concurrenly for the provided entity and its fields. whose
-    /// names must be declared the in camel case, following GraphQL conventions.
+    /// The new index will be created concurrenly for the provided entity and
+    /// its fields. whose names must be declared the in camel case,
+    /// following GraphQL conventions.
     ///
-    /// The index will have its validity checked after the operation and will be dropped if it is
-    /// invalid.
+    /// The index will have its validity checked after the operation and will be
+    /// dropped if it is invalid.
     ///
     /// This command may be time-consuming.
     Create {
@@ -442,14 +449,14 @@ pub enum IndexCommand {
         deployment: DeploymentSearch,
         /// The Entity name.
         ///
-        /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
-        /// (as its SQL table name).
+        /// Can be expressed either in upper camel case (as its GraphQL
+        /// definition) or in snake case (as its SQL table name).
         #[structopt(empty_values = false)]
         entity: String,
         /// The Field names.
         ///
-        /// Each field can be expressed either in camel case (as its GraphQL definition) or in snake
-        /// case (as its SQL colmun name).
+        /// Each field can be expressed either in camel case (as its GraphQL
+        /// definition) or in snake case (as its SQL colmun name).
         #[structopt(min_values = 1, required = true)]
         fields: Vec<String>,
         /// The index method. Defaults to `btree`.
@@ -466,8 +473,8 @@ pub enum IndexCommand {
         deployment: DeploymentSearch,
         /// The Entity name.
         ///
-        /// Can be expressed either in upper camel case (as its GraphQL definition) or in snake case
-        /// (as its SQL table name).
+        /// Can be expressed either in upper camel case (as its GraphQL
+        /// definition) or in snake case (as its SQL table name).
         #[structopt(empty_values = false)]
         entity: String,
     },

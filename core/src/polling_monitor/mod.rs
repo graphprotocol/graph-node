@@ -16,12 +16,13 @@ use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
 
-/// Spawn a monitor that actively polls a service. Whenever the service has capacity, the monitor
-/// pulls object ids from the queue and polls the service. If the object is not present or in case
-/// of error, the object id is pushed to the back of the queue to be polled again.
+/// Spawn a monitor that actively polls a service. Whenever the service has
+/// capacity, the monitor pulls object ids from the queue and polls the service.
+/// If the object is not present or in case of error, the object id is pushed to
+/// the back of the queue to be polled again.
 ///
-/// The service returns the request ID along with errors or responses. The response is an
-/// `Option`, to represent the object not being found.
+/// The service returns the request ID along with errors or responses. The
+/// response is an `Option`, to represent the object not being found.
 pub fn spawn_monitor<ID, S, E, Response: Send + 'static>(
     service: S,
     response_sender: mpsc::Sender<(ID, Response)>,
@@ -112,12 +113,13 @@ pub struct PollingMonitor<ID> {
 }
 
 impl<ID> PollingMonitor<ID> {
-    /// Add an object id to the polling queue. New requests have priority and are pushed to the
-    /// front of the queue.
+    /// Add an object id to the polling queue. New requests have priority and
+    /// are pushed to the front of the queue.
     pub fn monitor(&self, id: ID) {
         let mut queue = self.queue.lock();
         if queue.is_empty() {
-            // If the send fails, the response receiver has been dropped, so this handle is useless.
+            // If the send fails, the response receiver has been dropped, so this handle is
+            // useless.
             let _ = self.wake_up_queue.send(());
         }
         queue.push_front(id);
@@ -126,10 +128,12 @@ impl<ID> PollingMonitor<ID> {
 
 #[cfg(test)]
 mod tests {
+    use std::pin::Pin;
+    use std::task::Poll;
+
     use anyhow::anyhow;
     use futures::{Future, FutureExt, TryFutureExt};
     use graph::log;
-    use std::{pin::Pin, task::Poll};
     use tower_test::mock;
 
     use super::*;
@@ -188,9 +192,11 @@ mod tests {
             PollingMonitorMetrics::mock(),
         );
 
-        // Test unorderedness of the response stream, and the LIFO semantics of `monitor`.
+        // Test unorderedness of the response stream, and the LIFO semantics of
+        // `monitor`.
         //
-        // `req-1` has priority since it is the last request, but `req-0` is responded first.
+        // `req-1` has priority since it is the last request, but `req-0` is responded
+        // first.
         monitor.monitor("req-0");
         monitor.monitor("req-1");
         let req_1 = handle.next_request().await.unwrap().1;

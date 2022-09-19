@@ -1,35 +1,33 @@
-use graph::blockchain::{Block, BlockchainKind};
+use std::sync::Arc;
+
+use graph::anyhow;
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseCursor, FirehoseError,
+    FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
+};
+use graph::blockchain::firehose_block_stream::FirehoseBlockStream;
+use graph::blockchain::{
+    Block, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
+    RuntimeAdapter as RuntimeAdapterTrait,
+};
 use graph::cheap_clone::CheapClone;
+use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
-use graph::prelude::{MetricsRegistry, TryFutureExt};
-use graph::{
-    anyhow,
-    blockchain::{
-        block_stream::{
-            BlockStreamEvent, BlockWithTriggers, FirehoseError,
-            FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
-        },
-        firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
-    },
-    components::store::DeploymentLocator,
-    firehose::{self as firehose, ForkStep},
-    prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
+use graph::firehose::{self as firehose, FirehoseEndpoint, FirehoseEndpoints, ForkStep};
+use graph::prelude::{
+    async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory, MetricsRegistry,
+    TryFutureExt,
 };
 use prost::Message;
-use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
 use crate::capabilities::NodeCapabilities;
-use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
+use crate::codec;
+use crate::data_source::{
+    DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+};
 use crate::runtime::RuntimeAdapter;
 use crate::trigger::{self, ArweaveTrigger};
-use crate::{
-    codec,
-    data_source::{DataSource, UnresolvedDataSource},
-};
-use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -274,13 +272,15 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             .as_ref()
             .expect("block payload information should always be present");
 
-        // Right now, this is done in all cases but in reality, with how the BlockStreamEvent::Revert
-        // is defined right now, only block hash and block number is necessary. However, this information
-        // is not part of the actual bstream::BlockResponseV2 payload. As such, we need to decode the full
-        // block which is useless.
+        // Right now, this is done in all cases but in reality, with how the
+        // BlockStreamEvent::Revert is defined right now, only block hash and
+        // block number is necessary. However, this information is not part of
+        // the actual bstream::BlockResponseV2 payload. As such, we need to decode the
+        // full block which is useless.
         //
-        // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
-        // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
+        // Check about adding basic information about the block in the
+        // bstream::BlockResponseV2 or maybe define a slimmed down stuct that
+        // would decode only a few fields and ignore all the rest.
         let block = codec::Block::decode(any_block.value.as_ref())?;
 
         use ForkStep::*;

@@ -1,15 +1,15 @@
-use graph::blockchain::block_stream::FirehoseCursor;
-use graph::data::subgraph::schema::DeploymentCreate;
-use lazy_static::lazy_static;
 use std::marker::PhantomData;
-use test_store::*;
 
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
+use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
 use graph_store_postgres::layout_for_tests::writable;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
+use lazy_static::lazy_static;
+use test_store::*;
 use web3::types::H256;
 
 const SCHEMA_GQL: &str = "

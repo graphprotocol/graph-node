@@ -1,11 +1,10 @@
-use anyhow::Error;
-use graph::impl_slog_value;
+use std::cmp::{Ord, Ordering, PartialOrd};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
-use std::{
-    cmp::{Ord, Ordering, PartialOrd},
-    collections::BTreeSet,
-};
+
+use anyhow::Error;
+use graph::impl_slog_value;
 
 use crate::DataSource;
 

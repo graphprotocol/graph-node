@@ -1,6 +1,7 @@
-//! The `blockchain` module exports the necessary traits and data structures to integrate a
-//! blockchain into Graph Node. A blockchain is represented by an implementation of the `Blockchain`
-//! trait which is the centerpiece of this module.
+//! The `blockchain` module exports the necessary traits and data structures to
+//! integrate a blockchain into Graph Node. A blockchain is represented by an
+//! implementation of the `Blockchain` trait which is the centerpiece of this
+//! module.
 
 pub mod block_stream;
 pub mod firehose_block_ingestor;
@@ -11,40 +12,34 @@ pub mod substreams_block_stream;
 mod types;
 
 // Try to reexport most of the necessary types
-use crate::{
-    cheap_clone::CheapClone,
-    components::store::{DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::UnifiedMappingApiVersion,
-    data_source,
-    prelude::DataSourceContext,
-    runtime::{gas::GasCounter, AscHeap, HostExportError},
-};
-use crate::{
-    components::{
-        store::{BlockNumber, ChainStore},
-        subgraph::DataSourceTemplateInfo,
-    },
-    prelude::{thiserror::Error, LinkResolver},
-};
+use std::any::Any;
+use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::fmt::{self, Debug};
+use std::str::FromStr;
+use std::sync::Arc;
+
 use anyhow::{anyhow, Context, Error};
 use async_trait::async_trait;
+pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
-use std::{
-    any::Any,
-    collections::HashMap,
-    convert::TryFrom,
-    fmt::{self, Debug},
-    str::FromStr,
-    sync::Arc,
-};
+pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 use web3::types::H256;
 
-pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
-pub use types::{BlockHash, BlockPtr, ChainIdentifier};
-
 use self::block_stream::{BlockStream, FirehoseCursor};
+use crate::cheap_clone::CheapClone;
+use crate::components::store::{
+    BlockNumber, ChainStore, DeploymentLocator, StoredDynamicDataSource,
+};
+use crate::components::subgraph::DataSourceTemplateInfo;
+use crate::data::subgraph::UnifiedMappingApiVersion;
+use crate::data_source;
+use crate::prelude::thiserror::Error;
+use crate::prelude::{DataSourceContext, LinkResolver};
+use crate::runtime::gas::GasCounter;
+use crate::runtime::{AscHeap, HostExportError};
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -83,8 +78,9 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     const KIND: BlockchainKind;
     const ALIASES: &'static [&'static str] = &[];
 
-    // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
-    // owned `Block`. It would be good to come up with a way to remove this bound.
+    // The `Clone` bound is used when reprocessing a block, because
+    // `triggers_in_block` requires an owned `Block`. It would be good to come
+    // up with a way to remove this bound.
     type Block: Block + Clone + Debug + Default;
     type DataSource: DataSource<Self>;
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
@@ -145,13 +141,13 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
 #[derive(Error, Debug)]
 pub enum IngestorError {
-    /// The Ethereum node does not know about this block for some reason, probably because it
-    /// disappeared in a chain reorg.
+    /// The Ethereum node does not know about this block for some reason,
+    /// probably because it disappeared in a chain reorg.
     #[error("Block data unavailable, block was likely uncled (block hash = {0:?})")]
     BlockUnavailable(H256),
 
-    /// The Ethereum node does not know about this block for some reason, probably because it
-    /// disappeared in a chain reorg.
+    /// The Ethereum node does not know about this block for some reason,
+    /// probably because it disappeared in a chain reorg.
     #[error("Receipt for tx {1:?} unavailable, block was likely uncled (block hash = {0:?})")]
     ReceiptUnavailable(H256, H256),
 
@@ -203,17 +199,20 @@ pub trait DataSource<C: Blockchain>:
     fn api_version(&self) -> semver::Version;
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
 
-    /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
-    /// A return of `Ok(None)` mean the trigger does not match.
+    /// Checks if `trigger` matches this data source, and if so decodes it into
+    /// a `MappingTrigger`. A return of `Ok(None)` mean the trigger does not
+    /// match.
     ///
-    /// Performance note: This is very hot code, because in the worst case it could be called a
-    /// quadratic T*D times where T is the total number of triggers in the chain and D is the number
-    /// of data sources in the subgraph. So it could be called billions, or even trillions, of times
+    /// Performance note: This is very hot code, because in the worst case it
+    /// could be called a quadratic T*D times where T is the total number of
+    /// triggers in the chain and D is the number of data sources in the
+    /// subgraph. So it could be called billions, or even trillions, of times
     /// in the sync time of a subgraph.
     ///
-    /// This is typicaly reduced by the triggers being pre-filtered in the block stream. But with
-    /// dynamic data sources the block stream does not filter on the dynamic parameters, so the
-    /// matching should efficently discard false positives.
+    /// This is typicaly reduced by the triggers being pre-filtered in the block
+    /// stream. But with dynamic data sources the block stream does not
+    /// filter on the dynamic parameters, so the matching should efficently
+    /// discard false positives.
     fn match_and_decode(
         &self,
         trigger: &C::TriggerData,
@@ -230,7 +229,8 @@ pub trait DataSource<C: Blockchain>:
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error>;
 
-    /// Used as part of manifest validation. If there are no errors, return an empty vector.
+    /// Used as part of manifest validation. If there are no errors, return an
+    /// empty vector.
     fn validate(&self) -> Vec<Error>;
 }
 
@@ -266,8 +266,9 @@ pub trait UnresolvedDataSource<C: Blockchain>:
 }
 
 pub trait TriggerData {
-    /// If there is an error when processing this trigger, this will called to add relevant context.
-    /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
+    /// If there is an error when processing this trigger, this will called to
+    /// add relevant context. For example an useful return is: `"block #<N>
+    /// (<hash>), transaction <tx_hash>".
     fn error_context(&self) -> String;
 }
 

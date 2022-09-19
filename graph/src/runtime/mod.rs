@@ -1,23 +1,24 @@
-//! Facilities for creating and reading objects on the memory of an AssemblyScript (Asc) WASM
-//! module. Objects are passed through the `asc_new` and `asc_get` methods of an `AscHeap`
-//! implementation. These methods take types that implement `To`/`FromAscObj` and are therefore
-//! convertible to/from an `AscType`.
+//! Facilities for creating and reading objects on the memory of an
+//! AssemblyScript (Asc) WASM module. Objects are passed through the `asc_new`
+//! and `asc_get` methods of an `AscHeap` implementation. These methods take
+//! types that implement `To`/`FromAscObj` and are therefore convertible to/from
+//! an `AscType`.
 
 pub mod gas;
 
 mod asc_heap;
 mod asc_ptr;
 
+use std::convert::TryInto;
+use std::fmt;
+use std::mem::size_of;
+
+use anyhow::Error;
 pub use asc_heap::{
     asc_get, asc_new, asc_new_or_missing, asc_new_or_null, AscHeap, FromAscObj, ToAscObj,
 };
 pub use asc_ptr::AscPtr;
-
-use anyhow::Error;
 use semver::Version;
-use std::convert::TryInto;
-use std::fmt;
-use std::mem::size_of;
 
 use self::gas::GasCounter;
 
@@ -36,14 +37,16 @@ pub trait AscIndexId {
 /// A type that has a direct correspondence to an Asc type.
 ///
 /// This can be derived for structs that are `#[repr(C)]`, contain no padding
-/// and whose fields are all `AscValue`. Enums can derive if they are `#[repr(u32)]`.
+/// and whose fields are all `AscValue`. Enums can derive if they are
+/// `#[repr(u32)]`.
 ///
 /// Special classes like `ArrayBuffer` use custom impls.
 ///
 /// See https://github.com/graphprotocol/graph-node/issues/607 for more considerations.
 pub trait AscType: Sized {
     /// Transform the Rust representation of this instance into an sequence of
-    /// bytes that is precisely the memory layout of a corresponding Asc instance.
+    /// bytes that is precisely the memory layout of a corresponding Asc
+    /// instance.
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
@@ -141,19 +144,21 @@ macro_rules! impl_asc_type {
 
 impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 
-/// Contains type IDs and their discriminants for every blockchain supported by Graph-Node.
+/// Contains type IDs and their discriminants for every blockchain supported by
+/// Graph-Node.
 ///
-/// Each variant corresponds to the unique ID of an AssemblyScript concrete class used in the
-/// [`runtime`].
+/// Each variant corresponds to the unique ID of an AssemblyScript concrete
+/// class used in the [`runtime`].
 ///
 /// # Rules for updating this enum
 ///
-/// 1 .The discriminants must have the same value as their counterparts in `TypeId` enum from
-///    graph-ts' `global` module. If not, the runtime will fail to determine the correct class
-///    during allocation.
-/// 2. Each supported blockchain has a reserved space of 1,000 contiguous variants.
-/// 3. Once defined, items and their discriminants cannot be changed, as this would break running
-///    subgraphs compiled in previous versions of this representation.
+/// 1 .The discriminants must have the same value as their counterparts in
+/// `TypeId` enum from    graph-ts' `global` module. If not, the runtime will
+/// fail to determine the correct class    during allocation.
+/// 2. Each supported blockchain has a reserved space of 1,000 contiguous
+/// variants. 3. Once defined, items and their discriminants cannot be changed,
+/// as this would break running    subgraphs compiled in previous versions of
+/// this representation.
 #[repr(u32)]
 #[derive(Copy, Clone, Debug)]
 pub enum IndexForAscTypeId {
@@ -364,8 +369,8 @@ pub enum IndexForAscTypeId {
     // INSTRUCTIONS:
     // 1. Replace the IDENTIFIER_PREFIX and the SRC_FILE placeholders according to the blockchain
     //    name and implementation before running this script.
-    // 2. Replace `3500` part with the first number of that blockchain's reserved discriminant space.
-    // 3. Insert the output right before the end of this block.
+    // 2. Replace `3500` part with the first number of that blockchain's reserved discriminant
+    // space. 3. Insert the output right before the end of this block.
     UnitTestNetworkUnitTestTypeU32 = u32::MAX - 7,
     UnitTestNetworkUnitTestTypeU32Array = u32::MAX - 6,
 

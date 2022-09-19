@@ -1,9 +1,7 @@
 use std::collections::BTreeSet;
 
-use graph::{
-    components::store::{SubscriptionManager, UnitStream},
-    prelude::{StoreEventStreamBox, SubscriptionFilter},
-};
+use graph::components::store::{SubscriptionManager, UnitStream};
+use graph::prelude::{StoreEventStreamBox, SubscriptionFilter};
 
 pub mod catalog;
 pub mod commands;

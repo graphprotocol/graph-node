@@ -1,23 +1,24 @@
 pub mod offchain;
 
-use crate::{
-    blockchain::{
-        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
-        UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
-    },
-    components::{
-        link_resolver::LinkResolver,
-        store::{BlockNumber, StoredDynamicDataSource},
-        subgraph::DataSourceTemplateInfo,
-    },
-    data_source::offchain::OFFCHAIN_KINDS,
-    prelude::{CheapClone as _, DataSourceContext},
-};
+use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::Arc;
+
 use anyhow::Error;
 use semver::Version;
-use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
+use serde::de::IntoDeserializer as _;
+use serde::{Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
-use std::{collections::BTreeMap, fmt, sync::Arc};
+
+use crate::blockchain::{
+    BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
+    UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
+};
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::{BlockNumber, StoredDynamicDataSource};
+use crate::components::subgraph::DataSourceTemplateInfo;
+use crate::data_source::offchain::OFFCHAIN_KINDS;
+use crate::prelude::{CheapClone as _, DataSourceContext};
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
@@ -312,7 +313,8 @@ impl<T> TriggerWithHandler<T> {
         }
     }
 
-    /// Additional key-value pairs to be logged with the "Done processing trigger" message.
+    /// Additional key-value pairs to be logged with the "Done processing
+    /// trigger" message.
     pub fn logging_extras(&self) -> Arc<dyn SendSyncRefUnwindSafeKV> {
         self.logging_extras.cheap_clone()
     }

@@ -1,32 +1,28 @@
+use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
+use std::iter::FromIterator;
+use std::sync::Arc;
+use std::time::Duration;
+
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    iter::FromIterator,
-    sync::Arc,
-    time::Duration,
-};
-
 use graph::blockchain::{Block, BlockHash, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
+use graph::prelude::transaction_receipt::LightTransactionReceipt;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    async_trait, ethabi, serde_json as json, transaction_receipt::LightTransactionReceipt,
-    BlockNumber, BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait,
-    Error, EthereumCallCache, StoreError,
+    async_trait, ethabi, serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall,
+    CancelableError, ChainStore as ChainStoreTrait, Error, EthereumCallCache, StoreError,
 };
 use graph::util::timed_cache::TimedCache;
 use graph::{constraint_violation, ensure};
 
-use crate::{
-    block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
-    connection_pool::ConnectionPool,
-};
+use crate::block_store::ChainStatus;
+use crate::chain_head_listener::ChainHeadUpdateSender;
+use crate::connection_pool::ConnectionPool;
 
 /// Tables in the 'public' database schema that store chain-specific data
 mod public {
@@ -47,20 +43,19 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use diesel::sql_types::{Array, Binary};
-    use diesel::{connection::SimpleConnection, insert_into};
-    use diesel::{delete, prelude::*, sql_query};
-    use diesel::{dsl::sql, pg::PgConnection};
-    use diesel::{
-        pg::Pg,
-        serialize::Output,
-        sql_types::Text,
-        types::{FromSql, ToSql},
-    };
-    use diesel::{
-        sql_types::{BigInt, Bytea, Integer, Jsonb},
-        update,
-    };
+    use std::convert::TryFrom;
+    use std::fmt;
+    use std::io::Write;
+    use std::iter::FromIterator;
+
+    use diesel::connection::SimpleConnection;
+    use diesel::dsl::sql;
+    use diesel::pg::{Pg, PgConnection};
+    use diesel::prelude::*;
+    use diesel::serialize::Output;
+    use diesel::sql_types::{Array, BigInt, Binary, Bytea, Integer, Jsonb, Text};
+    use diesel::types::{FromSql, ToSql};
+    use diesel::{delete, insert_into, sql_query, update};
     use graph::blockchain::{Block, BlockHash};
     use graph::constraint_violation;
     use graph::prelude::ethabi::ethereum_types::H160;
@@ -69,9 +64,6 @@ mod data {
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
-    use std::fmt;
-    use std::iter::FromIterator;
-    use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -272,8 +264,8 @@ mod data {
 
     #[derive(Clone, Debug, AsExpression, FromSqlRow)]
     #[sql_type = "diesel::sql_types::Text"]
-    /// Storage for a chain. The underlying namespace (database schema) is either
-    /// `public` or of the form `chain[0-9]+`.
+    /// Storage for a chain. The underlying namespace (database schema) is
+    /// either `public` or of the form `chain[0-9]+`.
     pub enum Storage {
         /// Chain data is stored in shared tables
         Shared,
@@ -589,8 +581,9 @@ mod data {
             }
         }
 
-        /// timestamp's representation depends the blockchain::Block implementation, on
-        /// ethereum this is a U256 but on different chains it will most likely be different.
+        /// timestamp's representation depends the blockchain::Block
+        /// implementation, on ethereum this is a U256 but on different
+        /// chains it will most likely be different.
         pub(super) fn block_number(
             &self,
             conn: &PgConnection,
@@ -948,8 +941,7 @@ mod data {
         ) -> Result<Option<(Vec<u8>, bool)>, Error> {
             match self {
                 Storage::Shared => {
-                    use public::eth_call_cache as cache;
-                    use public::eth_call_meta as meta;
+                    use public::{eth_call_cache as cache, eth_call_meta as meta};
 
                     cache::table
                         .find(id.as_ref())
@@ -1064,8 +1056,7 @@ mod data {
         ) -> Result<(), Error> {
             let result = match self {
                 Storage::Shared => {
-                    use public::eth_call_cache as cache;
-                    use public::eth_call_meta as meta;
+                    use public::{eth_call_cache as cache, eth_call_meta as meta};
 
                     insert_into(cache::table)
                         .values((
@@ -1167,9 +1158,7 @@ mod data {
 
             match self {
                 Storage::Shared => {
-                    use public::eth_call_cache as c;
-                    use public::eth_call_meta as m;
-                    use public::ethereum_blocks as b;
+                    use public::{eth_call_cache as c, eth_call_meta as m, ethereum_blocks as b};
 
                     diesel::delete(b::table.filter(b::network_name.eq(chain_name)))
                         .execute(conn)
@@ -1208,7 +1197,8 @@ mod data {
                 .unwrap();
         }
 
-        /// Queries the database for all the transaction receipts in a given block.
+        /// Queries the database for all the transaction receipts in a given
+        /// block.
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
             conn: &PgConnection,
@@ -1234,9 +1224,10 @@ from (
             ));
 
             let query_results: Result<Vec<RawTransactionReceipt>, diesel::result::Error> = {
-                // The `hash` column has different types between the `public.ethereum_blocks` and the
-                // `chain*.blocks` tables, so we must check which one is being queried to bind the
-                // `block_hash` parameter to the correct type
+                // The `hash` column has different types between the `public.ethereum_blocks`
+                // and the `chain*.blocks` tables, so we must check which one is
+                // being queried to bind the `block_hash` parameter to the
+                // correct type
                 match self {
                     Storage::Shared => query
                         .bind::<Text, _>(format!("{:x}", block_hash))
@@ -1807,9 +1798,10 @@ impl EthereumCallCache for ChainStore {
     }
 }
 
-/// The id is the hashed encoded_call + contract_address + block hash to uniquely identify the call.
-/// 256 bits of output, and therefore 128 bits of security against collisions, are needed since this
-/// could be targeted by a birthday attack.
+/// The id is the hashed encoded_call + contract_address + block hash to
+/// uniquely identify the call. 256 bits of output, and therefore 128 bits of
+/// security against collisions, are needed since this could be targeted by a
+/// birthday attack.
 fn contract_call_id(
     contract_address: &ethabi::Address,
     encoded_call: &[u8],

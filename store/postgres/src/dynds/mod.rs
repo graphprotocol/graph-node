@@ -1,16 +1,14 @@
 mod private;
 pub(crate) mod shared;
 
+use diesel::PgConnection;
+use graph::blockchain::BlockPtr;
+use graph::components::store::StoredDynamicDataSource;
+use graph::constraint_violation;
+use graph::prelude::{BlockNumber, StoreError};
 pub(crate) use private::DataSourcesTable;
 
 use crate::primary::Site;
-use diesel::PgConnection;
-use graph::{
-    blockchain::BlockPtr,
-    components::store::StoredDynamicDataSource,
-    constraint_violation,
-    prelude::{BlockNumber, StoreError},
-};
 
 pub fn load(
     conn: &PgConnection,

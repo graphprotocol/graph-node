@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 
-use graph::{
-    components::store::EntityType,
-    data::graphql::ObjectOrInterface,
-    prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap},
-};
+use graph::components::store::EntityType;
+use graph::data::graphql::ObjectOrInterface;
+use graph::prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap};
 use graphql_parser::Pos;
 
 use crate::schema::ast::ObjectType;

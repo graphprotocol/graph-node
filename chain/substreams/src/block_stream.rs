@@ -1,20 +1,17 @@
-use anyhow::Result;
 use std::sync::Arc;
 
-use graph::{
-    blockchain::{
-        block_stream::{
-            BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
-        },
-        substreams_block_stream::SubstreamsBlockStream,
-    },
-    components::store::DeploymentLocator,
-    data::subgraph::UnifiedMappingApiVersion,
-    prelude::{async_trait, BlockNumber, BlockPtr},
-    slog::o,
+use anyhow::Result;
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
 };
+use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
+use graph::components::store::DeploymentLocator;
+use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::prelude::{async_trait, BlockNumber, BlockPtr};
+use graph::slog::o;
 
-use crate::{mapper::Mapper, Chain, TriggerFilter};
+use crate::mapper::Mapper;
+use crate::{Chain, TriggerFilter};
 
 pub struct BlockStreamBuilder {}
 
@@ -25,9 +22,10 @@ impl BlockStreamBuilder {
 }
 
 #[async_trait]
-/// Substreams doesn't actually use Firehose, the configuration for firehose and the grpc substream
-/// is very similar, so we can re-use the configuration and the builder for it.
-/// This is probably something to improve but for now it works.
+/// Substreams doesn't actually use Firehose, the configuration for firehose and
+/// the grpc substream is very similar, so we can re-use the configuration and
+/// the builder for it. This is probably something to improve but for now it
+/// works.
 impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
     async fn build_firehose(
         &self,

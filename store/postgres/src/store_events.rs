@@ -1,17 +1,18 @@
+use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock};
+
 use futures03::TryStreamExt;
+use graph::components::store::{SubscriptionManager as SubscriptionManagerTrait, UnitStream};
 use graph::parking_lot::Mutex;
+use graph::prelude::{serde_json, *};
+use graph::tokio_stream;
 use graph::tokio_stream::wrappers::ReceiverStream;
-use std::collections::BTreeSet;
-use std::sync::{atomic::Ordering, Arc, RwLock};
-use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
-use graph::components::store::{SubscriptionManager as SubscriptionManagerTrait, UnitStream};
-use graph::prelude::serde_json;
-use graph::{prelude::*, tokio_stream};
 
 pub struct StoreEventListener {
     notification_listener: NotificationListener,

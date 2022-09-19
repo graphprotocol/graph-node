@@ -2,22 +2,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use graph::blockchain::NodeCapabilities as _;
+use graph::components::link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait};
+use graph::components::store::EntityType;
 use graph::data::subgraph::schema::SubgraphError;
-use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
+use graph::data::subgraph::{SubgraphFeature, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
 use graph::data_source::DataSourceTemplate;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
 };
-use graph::{
-    blockchain::NodeCapabilities as _,
-    components::{
-        link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
-        store::EntityType,
-    },
-    data::subgraph::SubgraphFeature,
-};
-
 use graph_chain_ethereum::{Chain, NodeCapabilities};
 use semver::Version;
 use test_store::LOGGER;

@@ -1,20 +1,20 @@
-use async_trait::async_trait;
-use graph::blockchain::block_stream::FirehoseCursor;
-use graph::blockchain::BlockPtr;
-use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
-use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
-use lazy_static::lazy_static;
-use slog::Logger;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockPtr;
 use graph::components::store::{
-    EntityKey, EntityType, ReadStore, StoredDynamicDataSource, WritableStore,
+    DeploymentId, DeploymentLocator, EntityKey, EntityType, ReadStore, StoredDynamicDataSource,
+    WritableStore,
 };
-use graph::{
-    components::store::{DeploymentId, DeploymentLocator},
-    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Value},
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::prelude::{
+    anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Schema, StopwatchMetrics,
+    StoreError, UnfailOutcome, Value,
 };
+use lazy_static::lazy_static;
+use slog::Logger;
 
 lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();

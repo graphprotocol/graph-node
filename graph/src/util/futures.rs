@@ -1,24 +1,26 @@
-use crate::ext::futures::FutureExtension;
-use futures03::{Future, FutureExt, TryFutureExt};
-use slog::{debug, trace, warn, Logger};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+
+use futures03::{Future, FutureExt, TryFutureExt};
+use slog::{debug, trace, warn, Logger};
 use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
+
+use crate::ext::futures::FutureExtension;
 
 /// Generic helper function for retrying async operations with built-in logging.
 ///
 /// To use this helper, do the following:
 ///
-/// 1. Call this function with an operation name (used for logging) and a `Logger`.
-/// 2. Optional: Chain a call to `.when(...)` to set a custom retry condition.
-/// 3. Optional: call `.log_after(...)` or `.no_logging()`.
+/// 1. Call this function with an operation name (used for logging) and a
+/// `Logger`. 2. Optional: Chain a call to `.when(...)` to set a custom retry
+/// condition. 3. Optional: call `.log_after(...)` or `.no_logging()`.
 /// 4. Call either `.limit(...)` or `.no_limit()`.
-/// 5. Call one of `.timeout_secs(...)`, `.timeout_millis(...)`, `.timeout(...)`, and
-///    `.no_timeout()`.
+/// 5. Call one of `.timeout_secs(...)`, `.timeout_millis(...)`,
+/// `.timeout(...)`, and    `.no_timeout()`.
 /// 6. Call `.run(...)`.
 ///
 /// All steps are required, except Step 2 and Step 3.
@@ -119,19 +121,20 @@ where
         self
     }
 
-    /// Set how long (in seconds) to wait for an attempt to complete before giving up on that
-    /// attempt.
+    /// Set how long (in seconds) to wait for an attempt to complete before
+    /// giving up on that attempt.
     pub fn timeout_secs(self, timeout_secs: u64) -> RetryConfigWithTimeout<I, E> {
         self.timeout(Duration::from_secs(timeout_secs))
     }
 
-    /// Set how long (in milliseconds) to wait for an attempt to complete before giving up on that
-    /// attempt.
+    /// Set how long (in milliseconds) to wait for an attempt to complete before
+    /// giving up on that attempt.
     pub fn timeout_millis(self, timeout_ms: u64) -> RetryConfigWithTimeout<I, E> {
         self.timeout(Duration::from_millis(timeout_ms))
     }
 
-    /// Set how long to wait for an attempt to complete before giving up on that attempt.
+    /// Set how long to wait for an attempt to complete before giving up on that
+    /// attempt.
     pub fn timeout(self, timeout: Duration) -> RetryConfigWithTimeout<I, E> {
         RetryConfigWithTimeout {
             inner: self,
@@ -139,7 +142,8 @@ where
         }
     }
 
-    /// Allow attempts to take as long as they need (or potentially hang forever).
+    /// Allow attempts to take as long as they need (or potentially hang
+    /// forever).
     pub fn no_timeout(self) -> RetryConfigNoTimeout<I, E> {
         RetryConfigNoTimeout { inner: self }
     }
@@ -425,12 +429,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Mutex;
 
     use futures::future;
     use futures03::compat::Future01CompatExt;
     use slog::o;
-    use std::sync::Mutex;
+
+    use super::*;
 
     #[test]
     fn test() {

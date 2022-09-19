@@ -1,19 +1,18 @@
-use graph::blockchain::Block;
-use graph::blockchain::TriggerData;
+use std::cmp::Ordering;
+use std::sync::Arc;
+
+use graph::blockchain::{Block, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
-use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::AscHeap;
-use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError};
 use graph_runtime_wasm::module::ToAscPtr;
-use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
 
-// Logging the block is too verbose, so this strips the block from the trigger for Debug.
+// Logging the block is too verbose, so this strips the block from the trigger
+// for Debug.
 impl std::fmt::Debug for ArweaveTrigger {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         #[derive(Debug)]

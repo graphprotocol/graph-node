@@ -1,17 +1,12 @@
 use std::sync::Arc;
 
-use graph::{
-    blockchain::{block_stream::BlockWithTriggers, BlockPtr},
-    prelude::{
-        web3::types::{Address, Bytes, Log, H160, H256, U64},
-        EthereumCall,
-    },
-};
+use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::blockchain::BlockPtr;
+use graph::prelude::web3::types::{Address, Bytes, Log, H160, H256, U64};
+use graph::prelude::EthereumCall;
 
-use crate::{
-    chain::BlockFinality,
-    trigger::{EthereumBlockTriggerType, EthereumTrigger},
-};
+use crate::chain::BlockFinality;
+use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 
 #[test]
 fn test_trigger_ordering() {

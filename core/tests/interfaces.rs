@@ -1,9 +1,10 @@
 // Tests for graphql interfaces.
 
+use graph::components::store::EntityType;
+use graph::data::graphql::object;
+use graph::data::query::QueryTarget;
+use graph::prelude::*;
 use pretty_assertions::assert_eq;
-
-use graph::{components::store::EntityType, data::graphql::object};
-use graph::{data::query::QueryTarget, prelude::*};
 use test_store::*;
 
 // `entities` is `(entity, type)`.

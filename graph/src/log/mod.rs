@@ -17,12 +17,11 @@ macro_rules! impl_slog_value {
     };
 }
 
-use isatty;
-use slog::*;
-use slog_async;
-use slog_envlogger;
-use slog_term::*;
 use std::{fmt, io, result};
+
+use slog::*;
+use slog_term::*;
+use {isatty, slog_async, slog_envlogger};
 
 use crate::prelude::ENV_VARS;
 

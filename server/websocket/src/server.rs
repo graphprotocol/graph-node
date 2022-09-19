@@ -1,11 +1,10 @@
-use graph::{
-    data::query::QueryTarget,
-    prelude::{SubscriptionServer as SubscriptionServerTrait, *},
-};
-use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
-use http::{HeaderValue, Response, StatusCode};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
+
+use graph::data::query::QueryTarget;
+use graph::prelude::{SubscriptionServer as SubscriptionServerTrait, *};
+use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
+use http::{HeaderValue, Response, StatusCode};
 use tokio::net::TcpListener;
 use tokio_tungstenite::accept_hdr_async;
 use tokio_tungstenite::tungstenite::handshake::server::Request;

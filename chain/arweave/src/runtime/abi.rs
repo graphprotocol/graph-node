@@ -1,10 +1,10 @@
-use crate::codec;
-use crate::trigger::TransactionWithBlockPtr;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
 pub(crate) use super::generated::*;
+use crate::codec;
+use crate::trigger::TransactionWithBlockPtr;
 
 impl ToAscObj<AscTag> for codec::Tag {
     fn to_asc_obj<H: AscHeap + ?Sized>(

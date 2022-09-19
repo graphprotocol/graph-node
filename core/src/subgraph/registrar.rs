@@ -2,9 +2,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use graph::blockchain::Blockchain;
-use graph::blockchain::BlockchainKind;
-use graph::blockchain::BlockchainMap;
+use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
@@ -74,22 +72,23 @@ where
         // - Read assignments table and start assigned subgraphs
         // - Start processing assignment event stream
         //
-        // Starting the event stream before reading the assignments table ensures that no
-        // assignments are missed in the period of time between the table read and starting event
-        // processing.
-        // Delaying the start of event processing until after the table has been read and processed
-        // ensures that Remove events happen after the assigned subgraphs have been started, not
-        // before (otherwise a subgraph could be left running due to a race condition).
+        // Starting the event stream before reading the assignments table ensures that
+        // no assignments are missed in the period of time between the table
+        // read and starting event processing.
+        // Delaying the start of event processing until after the table has been read
+        // and processed ensures that Remove events happen after the assigned
+        // subgraphs have been started, not before (otherwise a subgraph could
+        // be left running due to a race condition).
         //
-        // The discrepancy between the start time of the event stream and the table read can result
-        // in some extraneous events on start up. Examples:
-        // - The event stream sees an Add event for subgraph A, but the table query finds that
-        //   subgraph A is already in the table.
-        // - The event stream sees a Remove event for subgraph B, but the table query finds that
-        //   subgraph B has already been removed.
-        // The `handle_assignment_events` function handles these cases by ignoring AlreadyRunning
-        // (on subgraph start) or NotRunning (on subgraph stop) error types, which makes the
-        // operations idempotent.
+        // The discrepancy between the start time of the event stream and the table read
+        // can result in some extraneous events on start up. Examples:
+        // - The event stream sees an Add event for subgraph A, but the table query
+        //   finds that subgraph A is already in the table.
+        // - The event stream sees a Remove event for subgraph B, but the table query
+        //   finds that subgraph B has already been removed.
+        // The `handle_assignment_events` function handles these cases by ignoring
+        // AlreadyRunning (on subgraph start) or NotRunning (on subgraph stop)
+        // error types, which makes the operations idempotent.
 
         // Start event stream
         let assignment_event_stream = self.assignment_events();
@@ -405,8 +404,8 @@ where
 
     /// Reassign a subgraph deployment to a different node.
     ///
-    /// Reassigning to a nodeId that does not match any reachable graph-nodes will effectively pause the
-    /// subgraph syncing process.
+    /// Reassigning to a nodeId that does not match any reachable graph-nodes
+    /// will effectively pause the subgraph syncing process.
     async fn reassign_subgraph(
         &self,
         hash: &DeploymentHash,

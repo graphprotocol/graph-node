@@ -6,13 +6,15 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::blockchain::Blockchain;
+use crate::components::metrics::HistogramVec;
 use crate::components::store::SubgraphFork;
+use crate::components::subgraph::SharedProofOfIndexing;
 use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
 use crate::prelude::*;
-use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
-use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
+use crate::runtime::DeterministicHostError;
 
 #[derive(Debug)]
 pub enum MappingError {
@@ -161,8 +163,9 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;
 
-    /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be
-    /// cached and shared among mappings that use the same wasm file.
+    /// Spawn a mapping and return a channel for mapping requests. The sender
+    /// should be able to be cached and shared among mappings that use the
+    /// same wasm file.
     fn spawn_mapping(
         raw_module: &[u8],
         logger: Logger,

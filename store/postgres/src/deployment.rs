@@ -1,34 +1,35 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{detail::GraphNodeVersion, primary::DeploymentId};
-use diesel::{
-    connection::SimpleConnection,
-    dsl::{count, delete, insert_into, select, sql, update},
-    sql_types::Integer,
-};
-use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
-use diesel::{
-    prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
-    sql_query,
-    sql_types::{Nullable, Text},
-};
-use graph::data::subgraph::{
-    schema::{DeploymentCreate, SubgraphManifestEntity},
-    SubgraphFeature,
-};
-use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-    DeploymentHash, DeploymentState, Schema, StoreError,
-};
-use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
-use stable_hash_legacy::crypto::SetHasher;
-use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
-use std::{str::FromStr, sync::Arc};
+use std::collections::BTreeSet;
+use std::convert::TryFrom;
+use std::ops::Bound;
+use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::connection_pool::ForeignServer;
-use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
+use diesel::connection::SimpleConnection;
+use diesel::dsl::{count, delete, insert_into, select, sql, update};
+use diesel::expression::SqlLiteral;
+use diesel::pg::PgConnection;
+use diesel::prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::sql_query;
+use diesel::sql_types::{Integer, Nullable, Numeric, Text};
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::constraint_violation;
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphManifestEntity};
+use graph::data::subgraph::SubgraphFeature;
+use graph::prelude::bigdecimal::ToPrimitive;
+use graph::prelude::web3::types::H256;
+use graph::prelude::{
+    anyhow, hex, BigDecimal, BlockNumber, BlockPtr, DeploymentHash, DeploymentState, Schema,
+    StoreError,
+};
+use stable_hash_legacy::crypto::SetHasher;
+
+use crate::block_range::BLOCK_RANGE_COLUMN;
+use crate::connection_pool::ForeignServer;
+use crate::detail::GraphNodeVersion;
+use crate::primary::{DeploymentId, Site};
 
 #[derive(DbEnum, Debug, Clone, Copy)]
 pub enum SubgraphHealth {
@@ -283,8 +284,9 @@ pub fn transact_block(
     full_count_query: &str,
     count: i32,
 ) -> Result<(), StoreError> {
-    use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
+
+    use crate::diesel::BoolExpressionMethods;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
@@ -341,8 +343,9 @@ pub fn forward_block_ptr(
     id: &DeploymentHash,
     ptr: &BlockPtr,
 ) -> Result<(), StoreError> {
-    use crate::diesel::BoolExpressionMethods;
     use subgraph_deployment as d;
+
+    use crate::diesel::BoolExpressionMethods;
 
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
@@ -448,8 +451,7 @@ pub fn block_ptr(conn: &PgConnection, id: &DeploymentHash) -> Result<Option<Bloc
 /// `latest_ethereum_block` is set already, do nothing. If it is still
 /// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
 pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-    use subgraph_manifest as m;
+    use {subgraph_deployment as d, subgraph_manifest as m};
 
     let needs_init = d::table
         .filter(d::id.eq(site.id))
@@ -711,8 +713,9 @@ pub(crate) fn error_count(conn: &PgConnection, id: &DeploymentHash) -> Result<us
         .get_result::<i64>(conn)? as usize)
 }
 
-/// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
-/// block if `None`, based on the presence of deterministic errors. Has no effect on failed subgraphs.
+/// Checks if the subgraph is healthy or unhealthy as of the given block, or the
+/// subgraph latest block if `None`, based on the presence of deterministic
+/// errors. Has no effect on failed subgraphs.
 fn check_health(
     conn: &PgConnection,
     id: &DeploymentHash,
@@ -764,9 +767,9 @@ pub(crate) fn revert_subgraph_errors(
     )
     .execute(conn)?;
 
-    // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
-    // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
-    // is the block being reverted to.
+    // The result will be the same at `reverted_block` or `reverted_block - 1` since
+    // the errors at `reverted_block` were just deleted, but semantically we
+    // care about `reverted_block - 1` which is the block being reverted to.
     check_health(conn, id, reverted_block - 1)
 }
 
@@ -867,8 +870,7 @@ pub fn create_deployment(
     exists: bool,
     replace: bool,
 ) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-    use subgraph_manifest as m;
+    use {subgraph_deployment as d, subgraph_manifest as m};
 
     fn b(ptr: &Option<BlockPtr>) -> Option<&[u8]> {
         ptr.as_ref().map(|ptr| ptr.hash_slice())

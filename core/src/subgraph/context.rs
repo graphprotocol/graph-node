@@ -1,37 +1,34 @@
 pub mod instance;
 
-use crate::polling_monitor::{
-    ipfs_service::IpfsService, spawn_monitor, PollingMonitor, PollingMonitorMetrics,
-};
-use anyhow::{self, Error};
-use bytes::Bytes;
-use cid::Cid;
-use graph::{
-    blockchain::Blockchain,
-    components::{
-        store::{DeploymentId, SubgraphFork},
-        subgraph::{MappingError, SharedProofOfIndexing},
-    },
-    data_source::{offchain, DataSource, TriggerData},
-    prelude::{
-        BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
-        SubgraphInstanceMetrics, TriggerProcessor,
-    },
-    slog::Logger,
-    tokio::sync::mpsc,
-};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use anyhow::{self, Error};
+use bytes::Bytes;
+use cid::Cid;
+use graph::blockchain::Blockchain;
+use graph::components::store::{DeploymentId, SubgraphFork};
+use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
+use graph::data_source::{offchain, DataSource, TriggerData};
+use graph::prelude::{
+    BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
+    SubgraphInstanceMetrics, TriggerProcessor,
+};
+use graph::slog::Logger;
+use graph::tokio::sync::mpsc;
+
 use self::instance::SubgraphInstance;
+use crate::polling_monitor::ipfs_service::IpfsService;
+use crate::polling_monitor::{spawn_monitor, PollingMonitor, PollingMonitorMetrics};
 
 pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
 
-// The context keeps track of mutable in-memory state that is retained across blocks.
+// The context keeps track of mutable in-memory state that is retained across
+// blocks.
 //
-// Currently most of the changes are applied in `runner.rs`, but ideally more of that would be
-// refactored into the context so it wouldn't need `pub` fields. The entity cache should probaby
-// also be moved here.
+// Currently most of the changes are applied in `runner.rs`, but ideally more of
+// that would be refactored into the context so it wouldn't need `pub` fields.
+// The entity cache should probaby also be moved here.
 pub(crate) struct IndexingContext<C, T>
 where
     T: RuntimeHostBuilder<C>,
@@ -113,13 +110,14 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             .await
     }
 
-    // Removes data sources hosts with a creation block greater or equal to `reverted_block`, so
-    // that they are no longer candidates for `process_trigger`.
-    //
-    // This does not currently affect the `offchain_monitor` or the `filter`, so they will continue
-    // to include data sources that have been reverted. This is not ideal for performance, but it
-    // does not affect correctness since triggers that have no matching host will be ignored by
+    // Removes data sources hosts with a creation block greater or equal to
+    // `reverted_block`, so that they are no longer candidates for
     // `process_trigger`.
+    //
+    // This does not currently affect the `offchain_monitor` or the `filter`, so
+    // they will continue to include data sources that have been reverted. This
+    // is not ideal for performance, but it does not affect correctness since
+    // triggers that have no matching host will be ignored by `process_trigger`.
     pub fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         self.instance.revert_data_sources(reverted_block)
     }

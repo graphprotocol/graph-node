@@ -1,7 +1,10 @@
 //! Queries to support the index node API
-//!
 // For git_testament_macros
 #![allow(unused_macros)]
+use std::convert::TryFrom;
+use std::ops::Bound;
+use std::sync::Arc;
+
 use diesel::dsl;
 use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, PgConnection,
@@ -10,15 +13,13 @@ use diesel::prelude::{
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
+use graph::constraint_violation;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
-use graph::prelude::{
-    bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
-    SubgraphDeploymentEntity,
-};
-use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
+use graph::data::subgraph::status;
+use graph::prelude::bigdecimal::ToPrimitive;
+use graph::prelude::web3::types::H256;
+use graph::prelude::{BigDecimal, BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity};
 use itertools::Itertools;
-use std::convert::TryFrom;
-use std::{ops::Bound, sync::Arc};
 
 use crate::deployment::{
     graph_node_versions, subgraph_deployment, subgraph_error, subgraph_manifest,
@@ -92,8 +93,7 @@ impl ErrorDetail {
         conn: &PgConnection,
         deployment_id: &DeploymentHash,
     ) -> Result<Option<Self>, StoreError> {
-        use subgraph_deployment as d;
-        use subgraph_error as e;
+        use {subgraph_deployment as d, subgraph_error as e};
 
         d::table
             .filter(d::deployment.eq(deployment_id.as_str()))
@@ -272,8 +272,7 @@ pub(crate) fn deployment_statuses(
     conn: &PgConnection,
     sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
-    use subgraph_deployment as d;
-    use subgraph_error as e;
+    use {subgraph_deployment as d, subgraph_error as e};
 
     // First, we fetch all deployment information along with any fatal errors.
     // Subsequently, we fetch non-fatal errors and we group them by deployment
@@ -421,8 +420,7 @@ pub fn deployment_entity(
     conn: &PgConnection,
     site: &Site,
 ) -> Result<SubgraphDeploymentEntity, StoreError> {
-    use subgraph_deployment as d;
-    use subgraph_manifest as m;
+    use {subgraph_deployment as d, subgraph_manifest as m};
 
     let manifest = m::table
         .find(site.id)

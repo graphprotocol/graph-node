@@ -1,54 +1,53 @@
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
+use std::convert::Into;
+use std::iter::FromIterator;
+use std::ops::{Bound, Deref};
+use std::str::FromStr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
+
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
+use graph::components::store::{
+    EntityCollection, EntityKey, EntityType, PruneReporter, StoredDynamicDataSource,
+};
+use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::components::versions::VERSIONS;
+use graph::constraint_violation;
 use graph::data::query::Trace;
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::prelude::{
-    tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
-    SubgraphDeploymentEntity,
+    anyhow, debug, info, o, tokio, warn, web3, ApiSchema, ApiVersion, AttributeNames, BlockNumber,
+    BlockPtr, CancelHandle, CancelToken, CancelableError, CheapClone, DeploymentHash,
+    DeploymentState, Entity, EntityModification, EntityOperation, EntityQuery, Error, Logger,
+    PoolWaitStats, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
+    SubgraphDeploymentEntity, UnfailOutcome, Value, ENV_VARS,
 };
 use graph::semver::Version;
-use lru_time_cache::LruCache;
-use rand::{seq::SliceRandom, thread_rng};
-use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::Into;
-use std::iter::FromIterator;
-use std::ops::Bound;
-use std::ops::Deref;
-use std::str::FromStr;
-use std::sync::{atomic::AtomicUsize, Arc, Mutex};
-use std::time::Instant;
-
-use graph::components::store::EntityCollection;
-use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
-use graph::constraint_violation;
-use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
-use graph::prelude::{
-    anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
-    CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome,
-    Value, ENV_VARS,
-};
 use graph_graphql::prelude::api_schema;
+use lru_time_cache::LruCache;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use web3::types::Address;
 
 use crate::block_range::block_number;
-use crate::catalog;
-use crate::deployment;
+use crate::connection_pool::ConnectionPool;
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
+use crate::primary::Site;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{connection_pool::ConnectionPool, detail};
-use crate::{dynds, primary::Site};
+use crate::{catalog, deployment, detail, dynds};
 
-/// When connected to read replicas, this allows choosing which DB server to use for an operation.
+/// When connected to read replicas, this allows choosing which DB server to use
+/// for an operation.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ReplicaId {
     /// The main server has write and read access.
@@ -65,7 +64,8 @@ pub enum ReplicaId {
 pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
     pub(crate) input: Arc<Schema>,
-    /// The schema we derive from `input` with `graphql::schema::api::api_schema`
+    /// The schema we derive from `input` with
+    /// `graphql::schema::api::api_schema`
     pub(crate) api: HashMap<ApiVersion, Arc<ApiSchema>>,
     /// The block number at which this subgraph was grafted onto
     /// another one. We do not allow reverting past this block
@@ -421,8 +421,8 @@ impl DeploymentStore {
     /// Execute a closure with a connection to the database.
     ///
     /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
+    ///   The API of using a closure to bound the usage of the connection serves
+    /// several   purposes:
     ///
     ///   * Moves blocking database access out of the `Future::poll`. Within
     ///     `Future::poll` (which includes all `async` methods) it is illegal to
@@ -701,7 +701,8 @@ impl DeploymentStore {
         table.analyze(conn)
     }
 
-    /// Creates a new index in the specified Entity table if it doesn't already exist.
+    /// Creates a new index in the specified Entity table if it doesn't already
+    /// exist.
     ///
     /// This is a potentially time-consuming operation.
     pub(crate) async fn create_manual_index(
@@ -1146,7 +1147,8 @@ impl DeploymentStore {
                 }
             }
 
-            // The revert functions want the number of the first block that we need to get rid of
+            // The revert functions want the number of the first block that we need to get
+            // rid of
             let block = block_ptr_to.number + 1;
 
             deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to, firehose_cursor)?;
@@ -1194,8 +1196,9 @@ impl DeploymentStore {
             );
         }
 
-        // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
-        // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
+        // When rewinding, we reset the firehose cursor. That way, on resume, Firehose
+        // will start from the block_ptr instead (with sanity check to ensure
+        // it's resume at the exact block).
         self.rewind_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None)
     }
 
@@ -1591,8 +1594,8 @@ impl DeploymentStore {
 
 /// Tries to fetch a [`Table`] either by its Entity name or its SQL name.
 ///
-/// Since we allow our input to be either camel-case or snake-case, we must retry the
-/// search using the latter if the search for the former fails.
+/// Since we allow our input to be either camel-case or snake-case, we must
+/// retry the search using the latter if the search for the former fails.
 fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table, StoreError> {
     layout
         .table_for_entity(&EntityType::new(name.to_owned()))
@@ -1607,8 +1610,8 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
 
 // Resolves column names.
 //
-// Since we allow our input to be either camel-case or snake-case, we must retry the
-// search using the latter if the search for the former fails.
+// Since we allow our input to be either camel-case or snake-case, we must retry
+// the search using the latter if the search for the former fails.
 fn resolve_column_names<'a, T: AsRef<str>>(
     table: &'a Table,
     field_names: &[T],

@@ -1,38 +1,31 @@
 #[macro_use]
 extern crate pretty_assertions;
 
-use graph::components::store::{EntityKey, EntityType};
-use graph::data::subgraph::schema::DeploymentCreate;
-use graph::entity;
-use graph::prelude::SubscriptionResult;
-use graphql_parser::Pos;
+use std::collections::{BTreeSet, HashMap};
 use std::iter::FromIterator;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::{
-    collections::{BTreeSet, HashMap},
-    marker::PhantomData,
-};
 
-use graph::{
-    components::store::DeploymentLocator,
-    data::graphql::{object, object_value},
-    data::subgraph::schema::SubgraphError,
-    data::{
-        query::{QueryResults, QueryTarget},
-        subgraph::SubgraphFeature,
-    },
-    prelude::{
-        futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
-        DeploymentHash, Entity, EntityOperation, FutureExtension, GraphQlRunner as _, Logger,
-        NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
-        QueryVariables, Schema, SubgraphManifest, SubgraphName, SubgraphStore,
-        SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
-    },
-    semver::Version,
+use graph::components::store::{DeploymentLocator, EntityKey, EntityType};
+use graph::data::graphql::{object, object_value};
+use graph::data::query::{QueryResults, QueryTarget};
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::data::subgraph::SubgraphFeature;
+use graph::entity;
+use graph::prelude::futures03::stream::StreamExt;
+use graph::prelude::{
+    lazy_static, o, q, r, serde_json, slog, BlockPtr, DeploymentHash, Entity, EntityOperation,
+    FutureExtension, GraphQlRunner as _, Logger, NodeId, Query, QueryError, QueryExecutionError,
+    QueryResult, QueryStoreManager, QueryVariables, Schema, SubgraphManifest, SubgraphName,
+    SubgraphStore, SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
+    SubscriptionResult,
 };
-use graph_graphql::{prelude::*, subscription::execute_subscription};
+use graph::semver::Version;
+use graph_graphql::prelude::*;
+use graph_graphql::subscription::execute_subscription;
+use graphql_parser::Pos;
 use test_store::{
     deployment_state, execute_subgraph_query_with_deadline, graphql_metrics, revert_block,
     run_test_sequentially, transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER,

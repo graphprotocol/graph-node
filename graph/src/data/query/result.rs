@@ -1,16 +1,17 @@
-use super::error::{QueryError, QueryExecutionError};
-use crate::data::value::Object;
-use crate::prelude::{r, CacheWeight, DeploymentHash};
+use std::convert::TryFrom;
+use std::sync::Arc;
+
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
 };
 use serde::ser::*;
 use serde::Serialize;
-use std::convert::TryFrom;
-use std::sync::Arc;
 
+use super::error::{QueryError, QueryExecutionError};
 use super::Trace;
+use crate::data::value::Object;
+use crate::prelude::{r, CacheWeight, DeploymentHash};
 
 fn serialize_data<S>(data: &Option<Data>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -220,8 +221,8 @@ impl QueryResult {
     }
 
     /// This is really `clone`, but we do not want to implement `Clone`;
-    /// this is only meant for test purposes and should not be used in production
-    /// code since cloning query results can be very expensive
+    /// this is only meant for test purposes and should not be used in
+    /// production code since cloning query results can be very expensive
     pub fn duplicate(&self) -> Self {
         Self {
             data: self.data.clone(),

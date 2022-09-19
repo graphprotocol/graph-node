@@ -1,9 +1,11 @@
-use crate::prelude::{q, s, CacheWeight};
-use serde::ser::{SerializeMap, SerializeSeq, Serializer};
-use serde::Serialize;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
+
+use serde::ser::{SerializeMap, SerializeSeq, Serializer};
+use serde::Serialize;
+
+use crate::prelude::{q, s, CacheWeight};
 
 /// An immutable string that is more memory-efficient since it only has an
 /// overhead of 16 bytes for storing a string vs the 24 bytes that `String`

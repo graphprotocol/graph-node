@@ -1,27 +1,29 @@
+use std::convert::TryFrom;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use atomic_refcell::AtomicRefCell;
+use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
+use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
+use graph::components::store::{
+    EmptyStore, EntityKey, ModificationsAndCache, StoredDynamicDataSource,
+};
+use graph::components::subgraph::{
+    CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing,
+};
+use graph::data::store::scalar::Bytes;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, POI_OBJECT};
+use graph::data::subgraph::SubgraphFeature;
+use graph::data_source::{offchain, DataSource, TriggerData};
+use graph::prelude::*;
+use graph::util::backoff::ExponentialBackoff;
+use graph::util::lfu_cache::LfuCache;
+
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::BlockProcessingError;
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
-use atomic_refcell::AtomicRefCell;
-use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
-use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
-use graph::components::{
-    store::ModificationsAndCache,
-    subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
-};
-use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::{
-    schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
-    SubgraphFeature,
-};
-use graph::data_source::{offchain, DataSource, TriggerData};
-use graph::prelude::*;
-use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
-use std::convert::TryFrom;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -66,9 +68,9 @@ where
     }
 
     pub async fn run(mut self) -> Result<(), Error> {
-        // If a subgraph failed for deterministic reasons, before start indexing, we first
-        // revert the deployment head. It should lead to the same result since the error was
-        // deterministic.
+        // If a subgraph failed for deterministic reasons, before start indexing, we
+        // first revert the deployment head. It should lead to the same result
+        // since the error was deterministic.
         if let Some(current_ptr) = self.inputs.store.block_ptr() {
             if let Some(parent_ptr) = self
                 .inputs
@@ -101,8 +103,8 @@ where
                 .map_err(CancelableError::Error)
                 .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
-            // Keep the stream's cancel guard around to be able to shut it down when the subgraph
-            // deployment is unassigned
+            // Keep the stream's cancel guard around to be able to shut it down when the
+            // subgraph deployment is unassigned
             self.ctx
                 .instances
                 .write()
@@ -137,8 +139,9 @@ where
         }
     }
 
-    /// Processes a block and returns the updated context and a boolean flag indicating
-    /// whether new dynamic data sources have been added to the subgraph.
+    /// Processes a block and returns the updated context and a boolean flag
+    /// indicating whether new dynamic data sources have been added to the
+    /// subgraph.
     async fn process_block(
         &mut self,
         block_stream_cancel_handle: &CancelHandle,
@@ -198,19 +201,20 @@ where
                     "error" => format!("{:#}", e),
                 );
 
-                // In case of a possible reorg, we want this function to do nothing and restart the
-                // block stream so it has a chance to detect the reorg.
+                // In case of a possible reorg, we want this function to do nothing and restart
+                // the block stream so it has a chance to detect the reorg.
                 //
-                // The state is unchanged at this point, except for having cleared the entity cache.
-                // Losing the cache is a bit annoying but not an issue for correctness.
+                // The state is unchanged at this point, except for having cleared the entity
+                // cache. Losing the cache is a bit annoying but not an issue
+                // for correctness.
                 //
                 // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
                 return Ok(Action::Restart);
             }
         };
 
-        // If new data sources have been created, and static filters are not in use, it is necessary
-        // to restart the block stream with the new filters.
+        // If new data sources have been created, and static filters are not in use, it
+        // is necessary to restart the block stream with the new filters.
         let needs_restart = block_state.has_created_data_sources() && !self.inputs.static_filters;
 
         // This loop will:
@@ -218,9 +222,10 @@ where
         // 2. Process those data sources for the current block.
         // Until no data sources are created or MAX_DATA_SOURCES is hit.
 
-        // Note that this algorithm processes data sources spawned on the same block _breadth
-        // first_ on the tree implied by the parent-child relationship between data sources. Only a
-        // very contrived subgraph would be able to observe this.
+        // Note that this algorithm processes data sources spawned on the same block
+        // _breadth first_ on the tree implied by the parent-child relationship
+        // between data sources. Only a very contrived subgraph would be able to
+        // observe this.
         while block_state.has_created_data_sources() {
             // Instantiate dynamic data sources, removing them from the block state.
             let (data_sources, runtime_hosts) =
@@ -274,9 +279,10 @@ where
                     )
                     .await
                     .map_err(|e| {
-                        // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                        // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                        // way to revert the effect of `create_dynamic_data_sources` so we may return a
+                        // This treats a `PossibleReorg` as an ordinary error which will fail the
+                        // subgraph. This can cause an unnecessary subgraph
+                        // failure, to fix it we need to figure out a way to
+                        // revert the effect of `create_dynamic_data_sources` so we may return a
                         // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
                         match e {
                             MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
@@ -325,14 +331,15 @@ where
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
-        // Check for offchain events and process them, including their entity modifications in the
-        // set to be transacted.
+        // Check for offchain events and process them, including their entity
+        // modifications in the set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
         let (offchain_mods, offchain_to_remove) =
             self.handle_offchain_triggers(offchain_events).await?;
         mods.extend(offchain_mods);
 
-        // Put the cache back in the state, asserting that the placeholder cache was not used.
+        // Put the cache back in the state, asserting that the placeholder cache was not
+        // used.
         assert!(self.state.entity_lfu_cache.is_empty());
         self.state.entity_lfu_cache = cache;
 
@@ -356,7 +363,8 @@ where
 
         let store = &self.inputs.store;
 
-        // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
+        // If a deterministic error has happened, make the PoI to be the only entity
+        // that'll be stored.
         if has_errors && !is_non_fatal_errors_active {
             let is_poi_entity =
                 |entity_mod: &EntityModification| entity_mod.entity_ref().entity_type.is_poi();
@@ -407,15 +415,15 @@ where
             .block_ops_transaction_duration
             .observe(elapsed);
 
-        // To prevent a buggy pending version from replacing a current version, if errors are
-        // present the subgraph will be unassigned.
+        // To prevent a buggy pending version from replacing a current version, if
+        // errors are present the subgraph will be unassigned.
         if has_errors && !ENV_VARS.disable_fail_fast && !store.is_deployment_synced().await? {
             store
                 .unassign_subgraph()
                 .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
 
-            // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
-            // just transacted so it will be already be set to unhealthy.
+            // Use `Canceled` to avoiding setting the subgraph health to failed, an error
+            // was just transacted so it will be already be set to unhealthy.
             return Err(BlockProcessingError::Canceled);
         }
 
@@ -554,7 +562,8 @@ where
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => self.handle_err(e, cancel_handle).await?,
             // If the block stream ends, that means that there is no more indexing to do.
-            // Typically block streams produce indefinitely, but tests are an example of finite block streams.
+            // Typically block streams produce indefinitely, but tests are an example of finite
+            // block streams.
             None => Action::Stop,
         };
 
@@ -569,8 +578,8 @@ where
         let mut offchain_to_remove = vec![];
 
         for trigger in triggers {
-            // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
-            // get causality region isolation.
+            // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift
+            // way to get causality region isolation.
             let schema = self.inputs.store.input_schema();
             let mut block_state = BlockState::<C>::new(EmptyStore::new(schema), LfuCache::new());
 
@@ -578,7 +587,8 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            // We'll eventually need to do better here, but using an empty block works for now.
+            // We'll eventually need to do better here, but using an empty block works for
+            // now.
             let block = Arc::default();
             block_state = self
                 .ctx
@@ -871,7 +881,8 @@ where
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
 
-            // Exit inner block stream consumption loop and go up to loop that restarts subgraph
+            // Exit inner block stream consumption loop and go up to loop that restarts
+            // subgraph
             return Ok(Action::Restart);
         }
 
@@ -958,7 +969,8 @@ async fn update_proof_of_indexing(
     Ok(())
 }
 
-/// Checks if the Deployment BlockPtr is at least X blocks behind to the chain head.
+/// Checks if the Deployment BlockPtr is at least X blocks behind to the chain
+/// head.
 fn close_to_chain_head(
     deployment_head_ptr: &BlockPtr,
     chain_head_ptr: Option<BlockPtr>,

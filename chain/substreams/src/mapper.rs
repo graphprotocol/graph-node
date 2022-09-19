@@ -1,4 +1,3 @@
-use crate::{Block, Chain, TriggerData};
 use graph::blockchain::block_stream::SubstreamsError::{
     MultipleModuleOutputError, UnexpectedStoreDeltaOutput,
 };
@@ -9,6 +8,8 @@ use graph::prelude::{async_trait, BlockNumber, BlockPtr, Logger};
 use graph::substreams::module_output::Data;
 use graph::substreams::{BlockScopedData, ForkStep};
 use prost::Message;
+
+use crate::{Block, Chain, TriggerData};
 
 pub struct Mapper {}
 
@@ -45,9 +46,10 @@ impl SubstreamsMapper<Chain> for Mapper {
                 use ForkStep::*;
                 match step {
                     StepIrreversible | StepNew => Ok(Some(BlockStreamEvent::ProcessBlock(
-                        // Even though the trigger processor for substreams doesn't care about TriggerData
-                        // there are a bunch of places in the runner that check if trigger data
-                        // empty and skip processing if so. This will prolly breakdown
+                        // Even though the trigger processor for substreams doesn't care about
+                        // TriggerData there are a bunch of places in the
+                        // runner that check if trigger data empty and skip
+                        // processing if so. This will prolly breakdown
                         // close to head so we will need to improve things.
 
                         // TODO(filipe): Fix once either trigger data can be empty

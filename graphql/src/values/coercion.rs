@@ -1,8 +1,10 @@
-use crate::schema;
-use graph::prelude::s::{EnumType, InputValue, ScalarType, Type, TypeDefinition};
-use graph::prelude::{q, r, QueryExecutionError};
 use std::collections::BTreeMap;
 use std::convert::TryFrom;
+
+use graph::prelude::s::{EnumType, InputValue, ScalarType, Type, TypeDefinition};
+use graph::prelude::{q, r, QueryExecutionError};
+
+use crate::schema;
 
 /// A GraphQL value that can be coerced according to a type.
 pub trait MaybeCoercible<T> {
@@ -157,8 +159,9 @@ pub(crate) fn coerce_value<'a>(
 
         // Non-null values may be coercible into non-null types
         (Type::NonNullType(_), val) => {
-            // We cannot bind `t` in the pattern above because "binding by-move and by-ref in the
-            // same pattern is unstable". Refactor this and the others when Rust fixes this.
+            // We cannot bind `t` in the pattern above because "binding by-move and by-ref
+            // in the same pattern is unstable". Refactor this and the others
+            // when Rust fixes this.
             let t = match ty {
                 Type::NonNullType(ty) => ty,
                 _ => unreachable!(),
@@ -224,13 +227,15 @@ mod tests {
         });
         let resolver = |_: &str| Some(&enum_type);
 
-        // We can coerce from Value::Enum -> TypeDefinition::Enum if the variant is valid
+        // We can coerce from Value::Enum -> TypeDefinition::Enum if the variant is
+        // valid
         assert_eq!(
             coerce_to_definition(Value::Enum("ValidVariant".to_string()), "", &resolver,),
             Ok(Value::Enum("ValidVariant".to_string()))
         );
 
-        // We cannot coerce from Value::Enum -> TypeDefinition::Enum if the variant is invalid
+        // We cannot coerce from Value::Enum -> TypeDefinition::Enum if the variant is
+        // invalid
         assert!(
             coerce_to_definition(Value::Enum("InvalidVariant".to_string()), "", &resolver,)
                 .is_err()

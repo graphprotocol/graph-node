@@ -1,7 +1,8 @@
-use anyhow::anyhow;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
+
+use anyhow::anyhow;
 
 use crate::blockchain::BlockPtr;
 use crate::components::store::{

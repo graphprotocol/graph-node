@@ -1,5 +1,6 @@
-use super::{Gas, GasSizeOf};
 use std::cmp::{max, min};
+
+use super::{Gas, GasSizeOf};
 
 pub mod complexity {
     use super::*;

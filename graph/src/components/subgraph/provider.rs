@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-use crate::{components::store::DeploymentLocator, prelude::*};
+use crate::components::store::DeploymentLocator;
+use crate::prelude::*;
 
 /// Common trait for subgraph providers.
 #[async_trait]

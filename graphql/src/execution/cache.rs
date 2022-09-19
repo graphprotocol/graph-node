@@ -1,20 +1,16 @@
-use futures03::future::FutureExt;
-use futures03::future::Shared;
-use graph::{
-    prelude::{debug, futures03, BlockPtr, CheapClone, Logger, QueryResult},
-    util::timed_rw_lock::TimedMutex,
-};
-use stable_hash_legacy::crypto::SetHasher;
-use stable_hash_legacy::prelude::*;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::{collections::HashMap, time::Duration};
-use std::{
-    collections::{hash_map::Entry, VecDeque},
-    time::Instant,
-};
+use std::time::{Duration, Instant};
+
+use futures03::future::{FutureExt, Shared};
+use graph::prelude::{debug, futures03, BlockPtr, CheapClone, Logger, QueryResult};
+use graph::util::timed_rw_lock::TimedMutex;
+use stable_hash_legacy::crypto::SetHasher;
+use stable_hash_legacy::prelude::*;
 
 use super::QueryHash;
 
@@ -110,7 +106,8 @@ impl CacheByBlock {
         Some(value)
     }
 
-    /// Returns `true` if the insert was successful or `false` if the cache was full.
+    /// Returns `true` if the insert was successful or `false` if the cache was
+    /// full.
     fn insert(&mut self, key: QueryHash, value: Arc<QueryResult>, weight: usize) -> bool {
         // We never try to insert errors into this cache, and always resolve some value.
         assert!(!value.has_errors());
@@ -181,7 +178,8 @@ impl QueryBlockCache {
 
         // We're creating a new `CacheByBlock` if:
         // - There are none yet, this is the first query being cached, or
-        // - `block_ptr` is of higher or equal number than the most recent block in the cache.
+        // - `block_ptr` is of higher or equal number than the most recent block in the
+        //   cache.
         // Otherwise this is a historical query that does not belong in the block cache.
         if let Some(highest) = cache.iter().next() {
             if highest.block.number > block_ptr.number {
@@ -220,7 +218,8 @@ impl QueryBlockCache {
             });
         }
 
-        // Create a new cache by block, insert this entry, and add it to the QUERY_CACHE.
+        // Create a new cache by block, insert this entry, and add it to the
+        // QUERY_CACHE.
         let mut cache_by_block = CacheByBlock::new(block_ptr, self.max_weight);
         let cache_insert = cache_by_block.insert(key, result, weight);
         cache.push_front(cache_by_block);

@@ -1,23 +1,20 @@
-use crate::{
-    components::{link_resolver::LinkResolver, store::BlockNumber},
-    prelude::DataSourceTemplateInfo,
-};
+use core::fmt;
+use std::convert::TryFrom;
+use std::sync::Arc;
+
 use anyhow::Error;
 use async_trait::async_trait;
-use core::fmt;
 use serde::Deserialize;
-use std::{convert::TryFrom, sync::Arc};
 
+use super::block_stream::{self, BlockWithTriggers, FirehoseCursor};
 use super::{
-    block_stream::{self, FirehoseCursor},
-    HostFn, IngestorError, TriggerWithHandler,
+    Block, BlockPtr, Blockchain, BlockchainKind, DataSource, DataSourceTemplate, HostFn,
+    IngestorError, NodeCapabilities, RuntimeAdapter, TriggerData, TriggerFilter,
+    TriggerWithHandler, TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
-
-use super::{
-    block_stream::BlockWithTriggers, Block, BlockPtr, Blockchain, BlockchainKind, DataSource,
-    DataSourceTemplate, NodeCapabilities, RuntimeAdapter, TriggerData, TriggerFilter,
-    TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
-};
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::BlockNumber;
+use crate::prelude::DataSourceTemplateInfo;
 
 #[derive(Debug)]
 pub struct MockBlockchain;

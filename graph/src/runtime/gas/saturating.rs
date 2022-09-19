@@ -1,5 +1,6 @@
-use super::Gas;
 use std::convert::TryInto as _;
+
+use super::Gas;
 
 pub trait SaturatingFrom<T> {
     fn saturating_from(value: T) -> Self;

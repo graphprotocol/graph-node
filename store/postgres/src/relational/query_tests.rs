@@ -1,18 +1,13 @@
 use std::sync::Arc;
 
-use diesel::{debug_query, pg::Pg};
-use graph::{
-    components::store::EntityType,
-    prelude::{r, serde_json as json, DeploymentHash, EntityFilter, Schema},
-};
+use diesel::debug_query;
+use diesel::pg::Pg;
+use graph::components::store::EntityType;
+use graph::prelude::{r, serde_json as json, DeploymentHash, EntityFilter, Schema};
 
-use crate::{
-    layout_for_tests::{make_dummy_site, Namespace},
-    relational::{Catalog, ColumnType, Layout},
-    relational_queries::FromColumnValue,
-};
-
-use crate::relational_queries::QueryFilter;
+use crate::layout_for_tests::{make_dummy_site, Namespace};
+use crate::relational::{Catalog, ColumnType, Layout};
+use crate::relational_queries::{FromColumnValue, QueryFilter};
 
 #[test]
 fn gql_value_from_bytes() {

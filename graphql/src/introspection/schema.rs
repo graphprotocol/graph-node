@@ -1,11 +1,8 @@
 use std::sync::Arc;
 
-use graphql_parser;
-
-use graph::data::graphql::ext::DocumentExt;
-use graph::data::graphql::ext::ObjectTypeExt;
+use graph::data::graphql::ext::{DocumentExt, ObjectTypeExt};
 use graph::prelude::s::Document;
-
+use graphql_parser;
 use lazy_static::lazy_static;
 
 use crate::schema::ast as sast;

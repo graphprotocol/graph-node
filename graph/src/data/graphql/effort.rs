@@ -1,18 +1,19 @@
 //! Utilities to keep moving statistics about queries
 
-use prometheus::core::GenericCounter;
-use rand::{prelude::Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
+use prometheus::core::GenericCounter;
+use rand::prelude::Rng;
+use rand::thread_rng;
+
 use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
-use crate::prelude::q;
-use crate::prelude::{async_trait, debug, info, o, warn, Logger, QueryLoadManager, ENV_VARS};
+use crate::prelude::{async_trait, debug, info, o, q, warn, Logger, QueryLoadManager, ENV_VARS};
 use crate::util::stats::MovingStats;
 
 struct QueryEffort {

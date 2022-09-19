@@ -1,21 +1,4 @@
 //! Test mapping of GraphQL schema to a relational schema
-use diesel::connection::SimpleConnection as _;
-use diesel::pg::PgConnection;
-use graph::components::store::EntityKey;
-use graph::data::store::scalar;
-use graph::entity;
-use graph::prelude::BlockNumber;
-use graph::prelude::{
-    o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
-    BLOCK_NUMBER_MAX,
-};
-use graph_mock::MockMetricsRegistry;
-use graph_store_postgres::layout_for_tests::set_account_like;
-use graph_store_postgres::layout_for_tests::LayoutCache;
-use graph_store_postgres::layout_for_tests::SqlName;
-use hex_literal::hex;
-use lazy_static::lazy_static;
 use std::borrow::Cow;
 use std::panic;
 use std::str::FromStr;
@@ -23,15 +6,24 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
-use graph::{
-    components::store::{AttributeNames, EntityType},
-    data::store::scalar::{BigDecimal, BigInt, Bytes},
+use diesel::connection::SimpleConnection as _;
+use diesel::pg::PgConnection;
+use graph::components::store::{AttributeNames, EntityKey, EntityType};
+use graph::data::store::scalar;
+use graph::data::store::scalar::{BigDecimal, BigInt, Bytes};
+use graph::entity;
+use graph::prelude::web3::types::H256;
+use graph::prelude::{
+    o, slog, tokio, BlockNumber, DeploymentHash, Entity, EntityCollection, EntityFilter,
+    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
+    BLOCK_NUMBER_MAX,
 };
-use graph_store_postgres::{
-    layout_for_tests::make_dummy_site,
-    layout_for_tests::{Layout, Namespace, STRING_PREFIX_SIZE},
+use graph_mock::MockMetricsRegistry;
+use graph_store_postgres::layout_for_tests::{
+    make_dummy_site, set_account_like, Layout, LayoutCache, Namespace, SqlName, STRING_PREFIX_SIZE,
 };
-
+use hex_literal::hex;
+use lazy_static::lazy_static;
 use test_store::*;
 
 const THINGS_GQL: &str = r#"
@@ -777,8 +769,9 @@ fn insert_many_and_delete_many() {
 
 #[tokio::test]
 async fn layout_cache() {
-    // We need to use `block_on` to call the `create_test_subgraph` function which must be called
-    // from a sync context, so we replicate what we do `spawn_module`.
+    // We need to use `block_on` to call the `create_test_subgraph` function which
+    // must be called from a sync context, so we replicate what we do
+    // `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
         run_test_with_conn(|conn| {

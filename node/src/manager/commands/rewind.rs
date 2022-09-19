@@ -1,13 +1,14 @@
+use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use std::{collections::HashSet, convert::TryFrom};
 
 use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _};
 use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
-use graph_store_postgres::BlockStore;
-use graph_store_postgres::{connection_pool::ConnectionPool, Store};
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::{BlockStore, Store};
 
 use crate::manager::deployment::{Deployment, DeploymentSearch};
 

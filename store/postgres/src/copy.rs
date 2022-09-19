@@ -11,39 +11,30 @@
 //! `subgraphs.copy_state` and `subgraphs.copy_table_state` so that a copy
 //! operation can resume after an interruption, for example, because
 //! `graph-node` was restarted while the copy was running.
-use std::{
-    convert::TryFrom,
-    io::Write,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::convert::TryFrom;
+use std::io::Write;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use diesel::dsl::sql;
+use diesel::pg::Pg;
+use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::serialize::Output;
+use diesel::sql_types::{BigInt, Integer};
+use diesel::types::{FromSql, ToSql};
 use diesel::{
-    dsl::sql,
-    insert_into,
-    pg::Pg,
-    r2d2::{ConnectionManager, PooledConnection},
-    select,
-    serialize::Output,
-    sql_query,
-    sql_types::{BigInt, Integer},
-    types::{FromSql, ToSql},
-    update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
-    RunQueryDsl,
+    insert_into, select, sql_query, update, Connection as _, ExpressionMethods, OptionalExtension,
+    PgConnection, QueryDsl, RunQueryDsl,
 };
-use graph::{
-    components::store::EntityType,
-    constraint_violation,
-    prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError},
-};
+use graph::components::store::EntityType;
+use graph::constraint_violation;
+use graph::prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError};
 
-use crate::{
-    advisory_lock,
-    dynds::DataSourcesTable,
-    primary::{DeploymentId, Site},
-};
-use crate::{connection_pool::ConnectionPool, relational::Layout};
-use crate::{relational::Table, relational_queries as rq};
+use crate::connection_pool::ConnectionPool;
+use crate::dynds::DataSourcesTable;
+use crate::primary::{DeploymentId, Site};
+use crate::relational::{Layout, Table};
+use crate::{advisory_lock, relational_queries as rq};
 
 /// The initial batch size for tables that do not have an array column
 const INITIAL_BATCH_SIZE: i64 = 10_000;
@@ -178,8 +169,7 @@ impl CopyState {
         dst: Arc<Layout>,
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
-        use copy_state as cs;
-        use copy_table_state as cts;
+        use {copy_state as cs, copy_table_state as cts};
 
         insert_into(cs::table)
             .values((

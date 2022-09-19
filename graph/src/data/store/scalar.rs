@@ -1,22 +1,20 @@
-use diesel::deserialize::FromSql;
-use diesel::serialize::ToSql;
-use diesel_derives::{AsExpression, FromSqlRow};
-use hex;
-use num_bigint;
-use serde::{self, Deserialize, Serialize};
-use stable_hash::utils::AsInt;
-use stable_hash::{FieldAddress, StableHash};
-use stable_hash_legacy::SequenceNumber;
-use thiserror::Error;
-use web3::types::*;
-
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::io::Write;
 use std::ops::{Add, BitAnd, BitOr, Deref, Div, Mul, Rem, Shl, Shr, Sub};
 use std::str::FromStr;
 
+use diesel::deserialize::FromSql;
+use diesel::serialize::ToSql;
+use diesel_derives::{AsExpression, FromSqlRow};
 pub use num_bigint::Sign as BigIntSign;
+use serde::{self, Deserialize, Serialize};
+use stable_hash::utils::AsInt;
+use stable_hash::{FieldAddress, StableHash};
+use stable_hash_legacy::SequenceNumber;
+use thiserror::Error;
+use web3::types::*;
+use {hex, num_bigint};
 
 use crate::blockchain::BlockHash;
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
@@ -39,8 +37,8 @@ impl From<bigdecimal::BigDecimal> for BigDecimal {
 }
 
 impl BigDecimal {
-    /// These are the limits of IEEE-754 decimal128, a format we may want to switch to. See
-    /// https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
+    /// These are the limits of IEEE-754 decimal128, a format we may want to
+    /// switch to. See https://en.wikipedia.org/wiki/Decimal128_floating-point_format.
     pub const MIN_EXP: i32 = -6143;
     pub const MAX_EXP: i32 = 6144;
     pub const MAX_SIGNFICANT_DIGITS: i32 = 34;
@@ -68,8 +66,8 @@ impl BigDecimal {
         self.0.digits()
     }
 
-    // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream version once it
-    // is included in a released version supported by Diesel.
+    // Copy-pasted from `bigdecimal::BigDecimal::normalize`. We can use the upstream
+    // version once it is included in a released version supported by Diesel.
     #[must_use]
     pub fn normalized(&self) -> BigDecimal {
         if self == &BigDecimal::zero() {
@@ -213,16 +211,18 @@ impl stable_hash_legacy::StableHash for BigDecimal {
 
 impl StableHash for BigDecimal {
     fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        // This implementation allows for backward compatible changes from integers (signed or unsigned)
-        // when the exponent is zero.
+        // This implementation allows for backward compatible changes from integers
+        // (signed or unsigned) when the exponent is zero.
         let (int, exp) = self.as_bigint_and_exponent();
         StableHash::stable_hash(&exp, field_address.child(1), state);
-        // Normally it would be a red flag to pass field_address in after having used a child slot.
-        // But, we know the implementation of StableHash for BigInt will not use child(1) and that
-        // it will not in the future due to having no forward schema evolutions for ints and the
+        // Normally it would be a red flag to pass field_address in after having used a
+        // child slot. But, we know the implementation of StableHash for BigInt
+        // will not use child(1) and that it will not in the future due to
+        // having no forward schema evolutions for ints and the
         // stability guarantee.
         //
-        // For reference, ints use child(0) for the sign and write the little endian bytes to the parent slot.
+        // For reference, ints use child(0) for the sign and write the little endian
+        // bytes to the parent slot.
         BigInt(int).stable_hash(field_address, state);
     }
 }
@@ -626,12 +626,14 @@ impl From<Vec<u8>> for Bytes {
 
 #[cfg(test)]
 mod test {
-    use super::{BigDecimal, BigInt, Bytes};
+    use std::str::FromStr;
+
     use stable_hash_legacy::crypto::SetHasher;
     use stable_hash_legacy::prelude::*;
     use stable_hash_legacy::utils::stable_hash;
-    use std::str::FromStr;
     use web3::types::U64;
+
+    use super::{BigDecimal, BigInt, Bytes};
 
     #[test]
     fn bigint_to_from_u64() {

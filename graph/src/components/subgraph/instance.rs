@@ -1,11 +1,9 @@
-use crate::{
-    blockchain::Blockchain,
-    components::store::{EntityKey, ReadStore, StoredDynamicDataSource},
-    data::subgraph::schema::SubgraphError,
-    data_source::DataSourceTemplate,
-    prelude::*,
-    util::lfu_cache::LfuCache,
-};
+use crate::blockchain::Blockchain;
+use crate::components::store::{EntityKey, ReadStore, StoredDynamicDataSource};
+use crate::data::subgraph::schema::SubgraphError;
+use crate::data_source::DataSourceTemplate;
+use crate::prelude::*;
+use crate::util::lfu_cache::LfuCache;
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplateInfo<C: Blockchain> {

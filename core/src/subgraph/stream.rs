@@ -1,8 +1,10 @@
-use crate::subgraph::inputs::IndexingInputs;
+use std::sync::Arc;
+
 use graph::blockchain::block_stream::{BlockStream, BufferedBlockStream};
 use graph::blockchain::Blockchain;
 use graph::prelude::Error;
-use std::sync::Arc;
+
+use crate::subgraph::inputs::IndexingInputs;
 
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;

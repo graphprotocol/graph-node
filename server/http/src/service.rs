@@ -1,12 +1,12 @@
 use std::convert::TryFrom;
 use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
+use std::task::{Context, Poll};
 use std::time::Instant;
 
+use graph::components::server::query::GraphQLServerError;
+use graph::data::query::QueryTarget;
 use graph::prelude::*;
 use graph::semver::VersionReq;
-use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -343,20 +343,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use graph::data::graphql::effort::LoadManager;
+    use graph::data::query::{QueryResults, QueryTarget};
     use graph::data::value::Object;
+    use graph::prelude::*;
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
 
-    use graph::data::{
-        graphql::effort::LoadManager,
-        query::{QueryResults, QueryTarget},
-    };
-    use graph::prelude::*;
-
-    use crate::test_utils;
-
     use super::GraphQLService;
+    use crate::test_utils;
 
     /// A simple stupid query runner for testing.
     pub struct TestGraphQlRunner;

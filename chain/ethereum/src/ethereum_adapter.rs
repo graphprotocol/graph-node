@@ -1,40 +1,3 @@
-use futures::future;
-use futures::prelude::*;
-use futures03::{future::BoxFuture, stream::FuturesUnordered};
-use graph::blockchain::BlockHash;
-use graph::blockchain::ChainIdentifier;
-use graph::components::transaction_receipt::LightTransactionReceipt;
-use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::data::subgraph::API_VERSION_0_0_5;
-use graph::data::subgraph::API_VERSION_0_0_7;
-use graph::prelude::ethabi::ParamType;
-use graph::prelude::ethabi::Token;
-use graph::prelude::tokio::try_join;
-use graph::{
-    blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
-    prelude::{
-        anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi,
-        futures03::{self, compat::Future01CompatExt, FutureExt, StreamExt, TryStreamExt},
-        hex, info, retry, serde_json as json, stream, tiny_keccak, trace, warn,
-        web3::{
-            self,
-            types::{
-                Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter,
-                FilterBuilder, Log, Transaction, TransactionReceipt, H256,
-            },
-        },
-        BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache, Logger,
-        TimeoutError, TryFutureExt,
-    },
-};
-use graph::{
-    components::ethereum::*,
-    prelude::web3::api::Web3,
-    prelude::web3::transports::Batch,
-    prelude::web3::types::{Trace, TraceFilter, TraceFilterBuilder, H160},
-};
-use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -42,18 +5,43 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::adapter::ProviderStatus;
-use crate::chain::BlockFinality;
-use crate::{
-    adapter::{
-        EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
-        EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumLogFilter,
-        ProviderEthRpcMetrics, SubgraphEthRpcMetrics,
-    },
-    transport::Transport,
-    trigger::{EthereumBlockTriggerType, EthereumTrigger},
-    TriggerFilter, ENV_VARS,
+use futures::future;
+use futures::prelude::*;
+use futures03::future::BoxFuture;
+use futures03::stream::FuturesUnordered;
+use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::blockchain::{BlockHash, BlockPtr, ChainIdentifier, IngestorError};
+use graph::components::ethereum::*;
+use graph::components::transaction_receipt::LightTransactionReceipt;
+use graph::data::subgraph::{UnifiedMappingApiVersion, API_VERSION_0_0_5, API_VERSION_0_0_7};
+use graph::prelude::anyhow::{self, anyhow, bail, ensure, Context};
+use graph::prelude::ethabi::{ParamType, Token};
+use graph::prelude::futures03::compat::Future01CompatExt;
+use graph::prelude::futures03::{self, FutureExt, StreamExt, TryStreamExt};
+use graph::prelude::tokio::try_join;
+use graph::prelude::web3::api::Web3;
+use graph::prelude::web3::transports::Batch;
+use graph::prelude::web3::types::{
+    Address, BlockId, BlockNumber as Web3BlockNumber, Bytes, CallRequest, Filter, FilterBuilder,
+    Log, Trace, TraceFilter, TraceFilterBuilder, Transaction, TransactionReceipt, H160, H256,
 };
+use graph::prelude::web3::{self};
+use graph::prelude::{
+    async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, stream, tiny_keccak,
+    trace, warn, BlockNumber, ChainStore, CheapClone, DynTryFuture, Error, EthereumCallCache,
+    Logger, TimeoutError, TryFutureExt,
+};
+use itertools::Itertools;
+
+use crate::adapter::{
+    EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
+    EthereumCallFilter, EthereumContractCall, EthereumContractCallError, EthereumLogFilter,
+    ProviderEthRpcMetrics, ProviderStatus, SubgraphEthRpcMetrics,
+};
+use crate::chain::BlockFinality;
+use crate::transport::Transport;
+use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
+use crate::{TriggerFilter, ENV_VARS};
 
 #[derive(Clone)]
 pub struct EthereumAdapter {
@@ -66,13 +54,13 @@ pub struct EthereumAdapter {
     supports_eip_1898: bool,
 }
 
-/// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
-/// should be changed only for debugging purposes and never on an indexer in the network. This
-/// value was chosen because it is the Geth default
-/// https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
-/// It is not safe to set something higher because Geth will silently override the gas limit
-/// with the default. This means that we do not support indexing against a Geth node with
-/// `RPCGasCap` set below 50 million.
+/// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide
+/// parameter so this should be changed only for debugging purposes and never on
+/// an indexer in the network. This value was chosen because it is the Geth
+/// default https://github.com/ethereum/go-ethereum/blob/e4b687cf462870538743b3218906940ae590e7fd/eth/ethconfig/config.go#L91.
+/// It is not safe to set something higher because Geth will silently override
+/// the gas limit with the default. This means that we do not support indexing
+/// against a Geth node with `RPCGasCap` set below 50 million.
 // See also f0af4ab0-6b7c-4b68-9141-5b79346a5f61.
 const ETH_CALL_GAS: u32 = 50_000_000;
 
@@ -98,7 +86,8 @@ impl EthereumAdapter {
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
     ) -> Self {
-        // Unwrap: The transport was constructed with this url, so it is valid and has a host.
+        // Unwrap: The transport was constructed with this url, so it is valid and has a
+        // host.
         let hostname = graph::url::Url::parse(url)
             .unwrap()
             .host_str()
@@ -107,8 +96,8 @@ impl EthereumAdapter {
 
         let web3 = Arc::new(Web3::new(transport));
 
-        // Use the client version to check if it is ganache. For compatibility with unit tests, be
-        // are lenient with errors, defaulting to false.
+        // Use the client version to check if it is ganache. For compatibility with unit
+        // tests, be are lenient with errors, defaulting to false.
         let is_ganache = web3
             .web3()
             .client_version()
@@ -331,8 +320,9 @@ impl EthereumAdapter {
         to: BlockNumber,
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<Log>, Error> {
-        // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
-        // The first one is for Infura when it hits the log limit, the rest for Alchemy timeouts.
+        // Codes returned by Ethereum node providers if an eth_getLogs request is too
+        // heavy. The first one is for Infura when it hits the log limit, the
+        // rest for Alchemy timeouts.
         const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
             "ServerError(-32005)",
             "503 Service Unavailable",
@@ -356,9 +346,9 @@ impl EthereumAdapter {
             true => (to - from).min(ENV_VARS.max_event_only_range - 1),
         };
 
-        // Typically this will loop only once and fetch the entire range in one request. But if the
-        // node returns an error that signifies the request is to heavy to process, the range will
-        // be broken down to smaller steps.
+        // Typically this will loop only once and fetch the entire range in one request.
+        // But if the node returns an error that signifies the request is to
+        // heavy to process, the range will be broken down to smaller steps.
         futures03::stream::try_unfold((from, step), move |(start, step)| {
             let logger = logger.cheap_clone();
             let filter = filter.cheap_clone();
@@ -486,15 +476,16 @@ impl EthereumAdapter {
                     const GETH_EXECUTION_ERRORS: &[&str] = &[
                         // The "revert" substring covers a few known error messages, including:
                         // Hardhat: "error: transaction reverted",
-                        // Ganache and Moonbeam: "vm exception while processing transaction: revert",
-                        // Geth: "execution reverted"
+                        // Ganache and Moonbeam: "vm exception while processing transaction:
+                        // revert", Geth: "execution reverted"
                         // And others.
                         "revert",
                         "invalid jump destination",
                         "invalid opcode",
                         // Ethereum says 1024 is the stack sizes limit, so this is deterministic.
                         "stack limit reached 1024",
-                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
+                        // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is
+                        // considered deterministic.
                         "out of gas",
                     ];
 
@@ -641,16 +632,17 @@ impl EthereumAdapter {
         .map(|b| b.into())
     }
 
-    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
-    /// node.
+    /// Check if `block_ptr` refers to a block that is on the main chain,
+    /// according to the Ethereum node.
     ///
     /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
+    /// Chain reorgs could happen at any time, and could affect the answer
+    /// received. Generally, it is only safe to use this function with
+    /// blocks that have received enough confirmations to guarantee no
+    /// further reorgs, **and** where the Ethereum node is aware of
     /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
+    /// If the Ethereum node is far behind in processing blocks, even old blocks
+    /// can be subject to reorgs.
     pub(crate) async fn is_on_main_chain(
         &self,
         logger: &Logger,
@@ -793,8 +785,8 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
     ) -> Box<dyn Future<Item = Vec<BlockPtr>, Error = Error> + Send> {
-        // Currently we can't go to the DB for this because there might be duplicate entries for
-        // the same block number.
+        // Currently we can't go to the DB for this because there might be duplicate
+        // entries for the same block number.
         debug!(&logger, "Requesting hashes for blocks [{}, {}]", from, to);
         Box::new(
             self.load_block_ptrs_rpc(logger, (from..=to).collect())
@@ -1257,7 +1249,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         )
     }
 
-    /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
+    /// Load Ethereum blocks in bulk, returning results as they come back as a
+    /// Stream.
     fn load_blocks(
         &self,
         logger: Logger,
@@ -1307,19 +1300,20 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 }
 
-/// Returns blocks with triggers, corresponding to the specified range and filters.
-/// If a block contains no triggers, there may be no corresponding item in the stream.
-/// However the `to` block will always be present, even if triggers are empty.
+/// Returns blocks with triggers, corresponding to the specified range and
+/// filters. If a block contains no triggers, there may be no corresponding item
+/// in the stream. However the `to` block will always be present, even if
+/// triggers are empty.
 ///
 /// Careful: don't use this function without considering race conditions.
 /// Chain reorgs could happen at any time, and could affect the answer received.
-/// Generally, it is only safe to use this function with blocks that have received enough
-/// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-/// those confirmations.
-/// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-/// reorgs.
-/// It is recommended that `to` be far behind the block number of latest block the Ethereum
-/// node is aware of.
+/// Generally, it is only safe to use this function with blocks that have
+/// received enough confirmations to guarantee no further reorgs, **and** where
+/// the Ethereum node is aware of those confirmations.
+/// If the Ethereum node is far behind in processing blocks, even old blocks can
+/// be subject to reorgs.
+/// It is recommended that `to` be far behind the block number of latest block
+/// the Ethereum node is aware of.
 pub(crate) async fn blocks_with_triggers(
     adapter: Arc<EthereumAdapter>,
     logger: Logger,
@@ -1666,13 +1660,14 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
         }
     };
 
-    // Confidence check: Did we collect all transactions for the current call triggers?
+    // Confidence check: Did we collect all transactions for the current call
+    // triggers?
     if transactions.len() != transaction_hashes.len() {
         bail!("failed to find transactions in block for the given call triggers")
     }
 
-    // We'll also need the receipts for those transactions. In this step we collect all receipts
-    // we have in store for the current block.
+    // We'll also need the receipts for those transactions. In this step we collect
+    // all receipts we have in store for the current block.
     let mut receipts = chain_store
         .transaction_receipts_in_block(&block.ptr().hash_as_h256())
         .await?
@@ -1706,10 +1701,12 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
             receipts_and_transactions.push((transaction, receipt.into()))
         });
 
-    // TODO: We should persist those fresh transaction receipts into the store, so we don't incur
-    // additional Ethereum API calls for future scans on this block.
+    // TODO: We should persist those fresh transaction receipts into the store, so
+    // we don't incur additional Ethereum API calls for future scans on this
+    // block.
 
-    // With all transactions and receipts in hand, we can evaluate the success of each transaction
+    // With all transactions and receipts in hand, we can evaluate the success of
+    // each transaction
     let mut transaction_success: BTreeMap<&H256, bool> = BTreeMap::new();
     for (transaction, receipt) in receipts_and_transactions.into_iter() {
         transaction_success.insert(
@@ -1755,7 +1752,8 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     Ok(block)
 }
 
-/// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry loop.
+/// Deprecated. Wraps the [`fetch_transaction_receipts_in_batch`] in a retry
+/// loop.
 async fn fetch_transaction_receipts_in_batch_with_retry(
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
@@ -1780,7 +1778,8 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
         .map_err(|_timeout| anyhow!(block_hash).into())
 }
 
-/// Deprecated. Attempts to fetch multiple transaction receipts in a batching contex.
+/// Deprecated. Attempts to fetch multiple transaction receipts in a batching
+/// contex.
 async fn fetch_transaction_receipts_in_batch(
     web3: Arc<Web3<Transport>>,
     hashes: Vec<H256>,
@@ -1844,9 +1843,10 @@ fn resolve_transaction_receipt(
         // A receipt might be missing because the block was uncled, and the transaction never
         // made it back into the main chain.
         Some(receipt) => {
-            // Check if the receipt has a block hash and is for the right block. Parity nodes seem
-            // to return receipts with no block hash when a transaction is no longer in the main
-            // chain, so treat that case the same as a receipt being absent entirely.
+            // Check if the receipt has a block hash and is for the right block. Parity
+            // nodes seem to return receipts with no block hash when a
+            // transaction is no longer in the main chain, so treat that case
+            // the same as a receipt being absent entirely.
             if receipt.block_hash != Some(block_hash) {
                 info!(
                     logger, "receipt block mismatch";
@@ -1858,9 +1858,9 @@ fn resolve_transaction_receipt(
                 );
 
                 // If the receipt came from a different block, then the Ethereum node no longer
-                // considers this block to be in the main chain. Nothing we can do from here except
-                // give up trying to ingest this block. There is no way to get the transaction
-                // receipt from this block.
+                // considers this block to be in the main chain. Nothing we can do from here
+                // except give up trying to ingest this block. There is no way
+                // to get the transaction receipt from this block.
                 Err(IngestorError::BlockUnavailable(block_hash.clone()))
             } else {
                 Ok(receipt)
@@ -1869,12 +1869,13 @@ fn resolve_transaction_receipt(
         None => {
             // No receipt was returned.
             //
-            // This can be because the Ethereum node no longer considers this block to be part of
-            // the main chain, and so the transaction is no longer in the main chain. Nothing we can
-            // do from here except give up trying to ingest this block.
+            // This can be because the Ethereum node no longer considers this block to be
+            // part of the main chain, and so the transaction is no longer in
+            // the main chain. Nothing we can do from here except give up trying
+            // to ingest this block.
             //
-            // This could also be because the receipt is simply not available yet. For that case, we
-            // should retry until it becomes available.
+            // This could also be because the receipt is simply not available yet. For that
+            // case, we should retry until it becomes available.
             Err(IngestorError::ReceiptUnavailable(
                 block_hash,
                 transaction_hash,
@@ -1883,7 +1884,8 @@ fn resolve_transaction_receipt(
     }
 }
 
-/// Retrieves logs and the associated transaction receipts, if required by the [`EthereumLogFilter`].
+/// Retrieves logs and the associated transaction receipts, if required by the
+/// [`EthereumLogFilter`].
 async fn get_logs_and_transactions(
     adapter: Arc<EthereumAdapter>,
     logger: &Logger,
@@ -1904,8 +1906,8 @@ async fn get_logs_and_transactions(
         )
         .await?;
 
-    // Not all logs have associated transaction hashes, nor do all triggers require them.
-    // We also restrict receipts retrieval for some api versions.
+    // Not all logs have associated transaction hashes, nor do all triggers require
+    // them. We also restrict receipts retrieval for some api versions.
     let transaction_hashes_by_block: HashMap<H256, HashSet<H256>> = logs
         .iter()
         .filter(|_| unified_api_version.equal_or_greater_than(&API_VERSION_0_0_7))
@@ -1920,8 +1922,8 @@ async fn get_logs_and_transactions(
             if let (Some(block), Some(txn)) = (log.block_hash, log.transaction_hash) {
                 Some((block, txn))
             } else {
-                // Absent block and transaction data might happen for pending transactions, which we
-                // don't handle.
+                // Absent block and transaction data might happen for pending transactions,
+                // which we don't handle.
                 None
             }
         })
@@ -1971,8 +1973,9 @@ async fn get_transaction_receipts_for_transaction_hashes(
         return Ok(receipts_by_hash);
     }
 
-    // Keep a record of all unique transaction hashes for which we'll request receipts. We will
-    // later use this to check if we have collected the receipts from all required transactions.
+    // Keep a record of all unique transaction hashes for which we'll request
+    // receipts. We will later use this to check if we have collected the
+    // receipts from all required transactions.
     let mut unique_transaction_hashes: HashSet<&H256> = HashSet::new();
 
     // Request transaction receipts concurrently
@@ -2038,16 +2041,17 @@ async fn get_transaction_receipts_for_transaction_hashes(
 #[cfg(test)]
 mod tests {
 
-    use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
+    use std::collections::HashSet;
+    use std::iter::FromIterator;
+    use std::sync::Arc;
 
-    use super::{parse_block_triggers, EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls};
     use graph::blockchain::BlockPtr;
     use graph::prelude::ethabi::ethereum_types::U64;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::EthereumCall;
-    use std::collections::HashSet;
-    use std::iter::FromIterator;
-    use std::sync::Arc;
+
+    use super::{parse_block_triggers, EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls};
+    use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 
     #[test]
     fn parse_block_triggers_every_block() {

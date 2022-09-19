@@ -1,11 +1,14 @@
-use crate::prelude::tokio::macros::support::Poll;
-use crate::prelude::{Pin, StoreError};
-use futures03::channel::oneshot;
-use futures03::{future::Fuse, Future, FutureExt, Stream};
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::Context;
 use std::time::Duration;
+
+use futures03::channel::oneshot;
+use futures03::future::Fuse;
+use futures03::{Future, FutureExt, Stream};
+
+use crate::prelude::tokio::macros::support::Poll;
+use crate::prelude::{Pin, StoreError};
 
 /// A cancelable stream or future.
 ///
@@ -207,7 +210,6 @@ impl Canceler for DummyCancelGuard {
 pub trait StreamExtension: Stream + Sized {
     /// When `cancel` is called on a `CancelGuard` or it is dropped,
     /// `Cancelable` receives an error.
-    ///
     fn cancelable<C: Fn() -> Self::Item>(
         self,
         guard: &impl Canceler,

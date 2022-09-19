@@ -1,11 +1,9 @@
-use graph::prelude::{ethabi::Token, web3::types::U256};
-use graph_runtime_wasm::{
-    asc_abi::class::{
-        ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind,
-        TypedArray,
-    },
-    TRAP_TIMEOUT,
+use graph::prelude::ethabi::Token;
+use graph::prelude::web3::types::U256;
+use graph_runtime_wasm::asc_abi::class::{
+    ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
 };
+use graph_runtime_wasm::TRAP_TIMEOUT;
 
 use super::*;
 

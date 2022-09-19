@@ -1,16 +1,14 @@
 use std::collections::{HashMap, HashSet};
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
-
-use graph::{
-    blockchain::{self, Block, Blockchain, TriggerWithHandler},
-    components::store::StoredDynamicDataSource,
-    data::subgraph::DataSourceContext,
-    prelude::{
-        anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
-        Link, LinkResolver, Logger,
-    },
+use graph::blockchain::{self, Block, Blockchain, TriggerWithHandler};
+use graph::components::store::StoredDynamicDataSource;
+use graph::data::subgraph::DataSourceContext;
+use graph::prelude::{
+    anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
+    LinkResolver, Logger,
 };
 
 use crate::chain::Chain;
@@ -115,9 +113,9 @@ impl blockchain::DataSource<Chain> for DataSource {
             creation_block: _,
         } = self;
 
-        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
-        // used at runtime but not needed to define uniqueness; each runtime host should be for a
-        // unique data source.
+        // mapping_request_sender, host_metrics, and (most of) host_exports are
+        // operational structs used at runtime but not needed to define
+        // uniqueness; each runtime host should be for a unique data source.
         kind == &other.kind
             && network == &other.network
             && name == &other.name
@@ -212,7 +210,8 @@ impl DataSource {
         mapping: Mapping,
         context: Option<DataSourceContext>,
     ) -> Result<Self> {
-        // Data sources in the manifest are created "before genesis" so they have no creation block.
+        // Data sources in the manifest are created "before genesis" so they have no
+        // creation block.
         let creation_block = None;
 
         Ok(DataSource {
@@ -464,9 +463,9 @@ fn combined_origins_err(event_type: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use graph::blockchain::DataSource as _;
+
+    use super::*;
 
     #[test]
     fn test_event_handlers_origin_validation() {

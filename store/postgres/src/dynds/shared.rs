@@ -1,22 +1,14 @@
 //! SQL queries to load dynamic data sources
 
-use diesel::{
-    delete,
-    dsl::{count, sql},
-    prelude::{ExpressionMethods, QueryDsl, RunQueryDsl},
-    sql_query,
-    sql_types::{Integer, Text},
-};
-use diesel::{insert_into, pg::PgConnection};
-
-use graph::{
-    components::store::StoredDynamicDataSource,
-    constraint_violation,
-    prelude::{
-        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, BlockPtr, DeploymentHash,
-        StoreError,
-    },
-};
+use diesel::dsl::{count, sql};
+use diesel::pg::PgConnection;
+use diesel::prelude::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::sql_types::{Integer, Text};
+use diesel::{delete, insert_into, sql_query};
+use graph::components::store::StoredDynamicDataSource;
+use graph::constraint_violation;
+use graph::prelude::bigdecimal::ToPrimitive;
+use graph::prelude::{serde_json, BigDecimal, BlockNumber, BlockPtr, DeploymentHash, StoreError};
 
 use crate::connection_pool::ForeignServer;
 use crate::primary::Site;
@@ -44,9 +36,10 @@ pub(super) fn load(
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
-    // Query to load the data sources. Ordering by the creation block and `vid` makes sure they are
-    // in insertion order which is important for the correctness of reverts and the execution order
-    // of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+    // Query to load the data sources. Ordering by the creation block and `vid`
+    // makes sure they are in insertion order which is important for the
+    // correctness of reverts and the execution order of triggers. See also
+    // 8f1bca33-d3b7-4035-affc-fd6161a12448.
     let dds: Vec<_> = decds::table
         .filter(decds::deployment.eq(id))
         .select((

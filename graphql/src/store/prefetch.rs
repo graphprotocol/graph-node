@@ -1,28 +1,25 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
-use anyhow::{anyhow, Error};
-use graph::constraint_violation;
-use graph::data::query::Trace;
-use graph::data::value::{Object, Word};
-use graph::prelude::{r, CacheWeight};
-use graph::slog::warn;
-use graph::util::cache_weight;
-use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::{components::store::EntityType, data::graphql::*};
-use graph::{
-    data::graphql::ext::DirectiveFinder,
-    prelude::{
-        s, ApiSchema, AttributeNames, BlockNumber, ChildMultiplicity, EntityCollection,
-        EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
-        QueryExecutionError, QueryStore, StoreError, Value as StoreValue, WindowAttribute,
-        ENV_VARS,
-    },
+use anyhow::{anyhow, Error};
+use graph::components::store::EntityType;
+use graph::constraint_violation;
+use graph::data::graphql::ext::DirectiveFinder;
+use graph::data::graphql::*;
+use graph::data::query::Trace;
+use graph::data::value::{Object, Word};
+use graph::prelude::{
+    r, s, ApiSchema, AttributeNames, BlockNumber, CacheWeight, ChildMultiplicity, EntityCollection,
+    EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink, QueryExecutionError,
+    QueryStore, StoreError, Value as StoreValue, WindowAttribute, ENV_VARS,
 };
+use graph::slog::warn;
+use graph::util::cache_weight;
+use lazy_static::lazy_static;
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
 use crate::metrics::GraphQLMetrics;
@@ -411,13 +408,14 @@ impl<'a> Join<'a> {
 
         // Add appropriate children using grouped map
         for parent in parents {
-            // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
-            // matching `children`, the field gets set (to an empty `Vec`).
+            // Set the `response_key` field in `parent`. Make sure that even if `parent` has
+            // no matching `children`, the field gets set (to an empty `Vec`).
             //
-            // This `insert` will overwrite in the case where the response key occurs both at the
-            // interface level and in nested object type conditions. The values for the interface
-            // query are always joined first, and may then be overwritten by the merged selection
-            // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+            // This `insert` will overwrite in the case where the response key occurs both
+            // at the interface level and in nested object type conditions. The
+            // values for the interface query are always joined first, and may
+            // then be overwritten by the merged selection set under the object
+            // type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
             let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
             parent.set_children(response_key.to_owned(), values.unwrap_or(vec![]));
         }
@@ -574,9 +572,10 @@ fn execute_selection_set<'a>(
                 &field.name,
             );
 
-            // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
-            // If this environment variable is set, the program will use an empty collection that,
-            // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
+            // "Select by Specific Attribute Names" is an experimental feature and can be
+            // disabled completely. If this environment variable is set, the
+            // program will use an empty collection that, effectively, causes
+            // the `AttributeNames::All` variant to be used as a fallback value for all
             // queries.
             let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
                 SelectedAttributes(BTreeMap::new())

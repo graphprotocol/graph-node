@@ -1,11 +1,12 @@
-use anyhow::anyhow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
+use anyhow::anyhow;
+use graph::runtime::gas::GasCounter;
 use graph::runtime::{
-    asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-    DeterministicHostError, FromAscObj, ToAscObj,
+    asc_get, asc_new, AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError,
+    FromAscObj, ToAscObj,
 };
 
 use crate::asc_abi::class::*;

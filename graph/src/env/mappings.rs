@@ -4,11 +4,12 @@ use super::*;
 
 #[derive(Clone)]
 pub struct EnvVarsMapping {
-    /// Forces the cache eviction policy to take its own memory overhead into account.
+    /// Forces the cache eviction policy to take its own memory overhead into
+    /// account.
     ///
-    /// Set by the flag `DEAD_WEIGHT`. Setting `DEAD_WEIGHT` is dangerous since it can lead to a
-    /// situation where an empty cache is bigger than the max_weight,
-    /// which leads to a panic. Off by default.
+    /// Set by the flag `DEAD_WEIGHT`. Setting `DEAD_WEIGHT` is dangerous since
+    /// it can lead to a situation where an empty cache is bigger than the
+    /// max_weight, which leads to a panic. Off by default.
     pub entity_cache_dead_weight: bool,
     /// Size limit of the entity LFU cache.
     ///
@@ -45,8 +46,8 @@ pub struct EnvVarsMapping {
     pub max_ipfs_map_file_size: usize,
     /// Sets the `ipfs.cat` file size limit.
     ///
-    /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
-    /// bytes). Defaults to 256 MiB.
+    /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed
+    /// in bytes). Defaults to 256 MiB.
     pub max_ipfs_file_bytes: usize,
     pub max_ipfs_concurrent_requests: u16,
     /// Set by the flag `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`. Off by
@@ -54,7 +55,8 @@ pub struct EnvVarsMapping {
     pub allow_non_deterministic_ipfs: bool,
 }
 
-// This does not print any values avoid accidentally leaking any sensitive env vars
+// This does not print any values avoid accidentally leaking any sensitive env
+// vars
 impl fmt::Debug for EnvVarsMapping {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")

@@ -1,10 +1,11 @@
-use anyhow::{anyhow, Context};
-use graph::cheap_clone::CheapClone;
-use graph::prelude::rand::{self, seq::IteratorRandom};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context};
+use graph::cheap_clone::CheapClone;
 pub use graph::impl_slog_value;
+use graph::prelude::rand::seq::IteratorRandom;
+use graph::prelude::rand::{self};
 use graph::prelude::Error;
 
 use crate::adapter::EthereumAdapter as _;
@@ -61,8 +62,9 @@ impl EthereumNetworkAdapters {
     }
 
     pub fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
-        // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
-        // struct is instantiated so they do not need to be sorted here
+        // EthereumAdapters are sorted by their NodeCapabilities when the
+        // EthereumNetworks struct is instantiated so they do not need to be
+        // sorted here
         self.adapters
             .iter()
             .next()

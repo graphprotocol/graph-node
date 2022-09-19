@@ -1,8 +1,10 @@
-use crate::prelude::FeatureFlag;
+use std::collections::HashMap;
+
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use semver::{Version, VersionReq};
-use std::collections::HashMap;
+
+use crate::prelude::FeatureFlag;
 
 lazy_static! {
     static ref VERSION_COLLECTION: HashMap<Version, Vec<FeatureFlag>> = {

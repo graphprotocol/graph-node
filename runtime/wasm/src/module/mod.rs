@@ -7,35 +7,31 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use anyhow::anyhow;
-use anyhow::Error;
-use never::Never;
-use semver::Version;
-use wasmtime::{Memory, Trap};
-
+use anyhow::{anyhow, Error};
 use graph::blockchain::{Blockchain, HostFnCtx};
+use graph::components::subgraph::MappingError;
 use graph::data::store;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data_source::{offchain, MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
+use graph::runtime::gas::{self, Gas, GasCounter, SaturatingInto};
 use graph::runtime::{
-    asc_get, asc_new,
-    gas::{self, Gas, GasCounter, SaturatingInto},
-    AscHeap, AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError,
-    IndexForAscTypeId, ToAscObj,
+    asc_get, asc_new, AscHeap, AscIndexId, AscPtr, AscType, DeterministicHostError, FromAscObj,
+    HostExportError, IndexForAscTypeId, ToAscObj,
 };
 use graph::util::mem::init_slice;
-use graph::{components::subgraph::MappingError, runtime::AscPtr};
 pub use into_wasm_ret::IntoWasmRet;
+use never::Never;
+use semver::Version;
 pub use stopwatch::TimeoutStopwatch;
+use wasmtime::{Memory, Trap};
 
 use crate::asc_abi::class::*;
 use crate::error::DeterminismLevel;
 use crate::gas_rules::{GAS_COST_LOAD, GAS_COST_STORE};
 pub use crate::host_exports;
 use crate::host_exports::HostExports;
-use crate::mapping::MappingContext;
-use crate::mapping::ValidModule;
+use crate::mapping::{MappingContext, ValidModule};
 
 mod into_wasm_ret;
 pub mod stopwatch;
@@ -47,8 +43,8 @@ pub trait IntoTrap {
     fn into_trap(self) -> Trap;
 }
 
-/// A flexible interface for writing a type to AS memory, any pointer can be returned.
-/// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
+/// A flexible interface for writing a type to AS memory, any pointer can be
+/// returned. Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
 pub trait ToAscPtr {
     fn to_asc_ptr<H: AscHeap>(
         self,
@@ -93,15 +89,16 @@ impl<T: ToAscPtr> ToAscPtr for TriggerWithHandler<T> {
     }
 }
 
-/// Handle to a WASM instance, which is terminated if and only if this is dropped.
+/// Handle to a WASM instance, which is terminated if and only if this is
+/// dropped.
 pub struct WasmInstance<C: Blockchain> {
     pub instance: wasmtime::Instance,
 
-    // This is the only reference to `WasmInstanceContext` that's not within the instance itself, so
-    // we can always borrow the `RefCell` with no concern for race conditions.
+    // This is the only reference to `WasmInstanceContext` that's not within the instance itself,
+    // so we can always borrow the `RefCell` with no concern for race conditions.
     //
-    // Also this is the only strong reference, so the instance will be dropped once this is dropped.
-    // The weak references are circulary held by instance itself through host exports.
+    // Also this is the only strong reference, so the instance will be dropped once this is
+    // dropped. The weak references are circulary held by instance itself through host exports.
     pub instance_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>>,
 
     // A reference to the gas counter used for reporting the gas used.
@@ -251,7 +248,8 @@ impl<C: Blockchain> WasmInstance<C> {
         if let Some(deterministic_error) = deterministic_error {
             let message = format!("{:#}", deterministic_error).replace("\n", "\t");
 
-            // Log the error and restore the updates snapshot, effectively reverting the handler.
+            // Log the error and restore the updates snapshot, effectively reverting the
+            // handler.
             error!(&self.instance_ctx().ctx.logger,
                 "Handler skipped due to execution failure";
                 "handler" => handler,
@@ -331,14 +329,15 @@ impl<C: Blockchain> WasmInstance<C> {
         let host_fns = ctx.host_fns.cheap_clone();
         let api_version = ctx.host_exports.api_version.clone();
 
-        // Used by exports to access the instance context. There are two ways this can be set:
+        // Used by exports to access the instance context. There are two ways this can
+        // be set:
         // - After instantiation, if no host export is called in the start function.
         // - During the start function, if it calls a host export.
         // Either way, after instantiation this will have been set.
         let shared_ctx: Rc<RefCell<Option<WasmInstanceContext<C>>>> = Rc::new(RefCell::new(None));
 
-        // We will move the ctx only once, to init `shared_ctx`. But we don't statically know where
-        // it will be moved so we need this ugly thing.
+        // We will move the ctx only once, to init `shared_ctx`. But we don't statically
+        // know where it will be moved so we need this ugly thing.
         let ctx: Rc<RefCell<Option<MappingContext<C>>>> = Rc::new(RefCell::new(Some(ctx)));
 
         // Start the timeout watchdog task.
@@ -512,9 +511,10 @@ impl<C: Blockchain> WasmInstance<C> {
             data
         );
 
-        // All IPFS-related functions exported by the host WASM runtime should be listed in the
-        // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES array for
-        // automatic feature detection to work.
+        // All IPFS-related functions exported by the host WASM runtime should be listed
+        // in the
+        // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES
+        // array for automatic feature detection to work.
         //
         // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
         link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
@@ -527,7 +527,8 @@ impl<C: Blockchain> WasmInstance<C> {
             user_data,
             flags
         );
-        // The previous ipfs-related functions are unconditionally linked for backward compatibility
+        // The previous ipfs-related functions are unconditionally linked for backward
+        // compatibility
         if experimental_features.allow_non_deterministic_ipfs {
             link!(
                 "ipfs.getBlock",
@@ -592,7 +593,8 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("log.log", log_log, level, msg_ptr);
 
-        // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must link it.
+        // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must
+        // link it.
         if api_version <= Version::new(0, 0, 4) {
             link!("arweave.transactionData", arweave_transaction_data, ptr);
             link!("box.profile", box_profile, ptr);
@@ -603,9 +605,10 @@ impl<C: Blockchain> WasmInstance<C> {
         {
             let gas = gas.cheap_clone();
             linker.func("gas", "gas", move |gas_used: u32| -> Result<(), Trap> {
-                // Gas metering has a relevant execution cost cost, being called tens of thousands
-                // of times per handler, but it's not worth having a stopwatch section here because
-                // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
+                // Gas metering has a relevant execution cost cost, being called tens of
+                // thousands of times per handler, but it's not worth having a
+                // stopwatch section here because the cost of measuring would be
+                // greater than the cost of `consume_host_fn`. Last
                 // time this was benchmarked it took < 100ns to run.
                 if let Err(e) = gas.consume_host_fn(gas_used.saturating_into()) {
                     deterministic_host_trap.store(true, Ordering::SeqCst);
@@ -618,7 +621,8 @@ impl<C: Blockchain> WasmInstance<C> {
 
         let instance = linker.instantiate(&valid_module.module)?;
 
-        // Usually `shared_ctx` is still `None` because no host fns were called during start.
+        // Usually `shared_ctx` is still `None` because no host fns were called during
+        // start.
         if shared_ctx.borrow().is_none() {
             *shared_ctx.borrow_mut() = Some(WasmInstanceContext::from_instance(
                 &instance,
@@ -652,24 +656,25 @@ impl<C: Blockchain> WasmInstance<C> {
 
 impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
-        // The cost of writing to wasm memory from the host is the same as of writing from wasm
-        // using load instructions.
+        // The cost of writing to wasm memory from the host is the same as of writing
+        // from wasm using load instructions.
         gas.consume_host_fn(Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64))?;
 
-        // We request large chunks from the AssemblyScript allocator to use as arenas that we
-        // manage directly.
+        // We request large chunks from the AssemblyScript allocator to use as arenas
+        // that we manage directly.
 
         static MIN_ARENA_SIZE: i32 = 10_000;
 
         let size = i32::try_from(bytes.len()).unwrap();
         if size > self.arena_free_size {
-            // Allocate a new arena. Any free space left in the previous arena is left unused. This
-            // causes at most half of memory to be wasted, which is acceptable.
+            // Allocate a new arena. Any free space left in the previous arena is left
+            // unused. This causes at most half of memory to be wasted, which is
+            // acceptable.
             let arena_size = size.max(MIN_ARENA_SIZE);
 
-            // Unwrap: This may panic if more memory needs to be requested from the OS and that
-            // fails. This error is not deterministic since it depends on the operating conditions
-            // of the node.
+            // Unwrap: This may panic if more memory needs to be requested from the OS and
+            // that fails. This error is not deterministic since it depends on
+            // the operating conditions of the node.
             self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap();
             self.arena_free_size = arena_size;
 
@@ -717,8 +722,8 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
     ) -> Result<&'a mut [u8], DeterministicHostError> {
-        // The cost of reading wasm memory from the host is the same as of reading from wasm using
-        // load instructions.
+        // The cost of reading wasm memory from the host is the same as of reading from
+        // wasm using load instructions.
         gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)))?;
 
         let offset = offset as usize;
@@ -753,7 +758,8 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         let type_id = self
             .id_of_type
             .as_ref()
-            .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
+            .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for
+            // AscPtr::generate_header
             .call(type_id_index as u32)
             .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
             .map_err(DeterministicHostError::from)?;
@@ -874,8 +880,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
 // Implementation of externals.
 impl<C: Blockchain> WasmInstanceContext<C> {
-    /// function abort(message?: string | null, fileName?: string | null, lineNumber?: u32, columnNumber?: u32): void
-    /// Always returns a trap.
+    /// function abort(message?: string | null, fileName?: string | null,
+    /// lineNumber?: u32, columnNumber?: u32): void Always returns a trap.
     pub fn abort(
         &mut self,
         gas: &GasCounter,
@@ -1223,7 +1229,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
 
         let flags = asc_get(self, flags, gas)?;
 
-        // Pause the timeout while running ipfs_map, ensure it will be restarted by using a guard.
+        // Pause the timeout while running ipfs_map, ensure it will be restarted by
+        // using a guard.
         self.timeout_stopwatch.lock().unwrap().stop();
         let defer_stopwatch = self.timeout_stopwatch.clone();
         let _stopwatch_guard = defer::defer(|| defer_stopwatch.lock().unwrap().start());
@@ -1614,7 +1621,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         )
     }
 
-    /// function createWithContext(name: string, params: Array<string>, context: DataSourceContext): void
+    /// function createWithContext(name: string, params: Array<string>, context:
+    /// DataSourceContext): void
     pub fn data_source_create_with_context(
         &mut self,
         gas: &GasCounter,
@@ -1676,7 +1684,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         // Not enabled on the network, no gas consumed.
         drop(gas);
 
-        // This is unrelated to IPFS, but piggyback on the config to disallow it on the network.
+        // This is unrelated to IPFS, but piggyback on the config to disallow it on the
+        // network.
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
                 "`ens_name_by_hash` is deprecated"

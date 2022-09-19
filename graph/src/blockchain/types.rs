@@ -1,13 +1,16 @@
-use anyhow::anyhow;
 use std::convert::TryFrom;
-use std::{fmt, str::FromStr};
+use std::fmt;
+use std::str::FromStr;
+
+use anyhow::anyhow;
 use web3::types::{Block, H256};
 
+use crate::cheap_clone::CheapClone;
+use crate::components::store::BlockNumber;
 use crate::data::graphql::IntoValue;
 use crate::object;
 use crate::prelude::{r, BigInt, TryFromValue, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
-use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
@@ -102,13 +105,14 @@ impl BlockPtr {
         Self { hash, number }
     }
 
-    /// Encodes the block hash into a hexadecimal string **without** a "0x" prefix.
-    /// Hashes are stored in the database in this format.
+    /// Encodes the block hash into a hexadecimal string **without** a "0x"
+    /// prefix. Hashes are stored in the database in this format.
     pub fn hash_hex(&self) -> String {
         self.hash.hash_hex()
     }
 
-    /// Block number to be passed into the store. Panics if it does not fit in an i32.
+    /// Block number to be passed into the store. Panics if it does not fit in
+    /// an i32.
     pub fn block_number(&self) -> BlockNumber {
         self.number
     }

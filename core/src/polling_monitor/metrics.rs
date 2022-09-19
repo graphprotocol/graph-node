@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use graph::{
-    prelude::{DeploymentHash, MetricsRegistry},
-    prometheus::{Counter, Gauge},
-};
+use graph::prelude::{DeploymentHash, MetricsRegistry};
+use graph::prometheus::{Counter, Gauge};
 
 pub struct PollingMonitorMetrics {
     pub requests: Counter,

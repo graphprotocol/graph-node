@@ -1,9 +1,10 @@
 //! All the operators go here
 //! Gas operations are all saturating and additive (never trending toward zero)
 
-use super::{Gas, SaturatingInto as _};
 use std::iter::Sum;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
+
+use super::{Gas, SaturatingInto as _};
 
 impl Add for Gas {
     type Output = Gas;

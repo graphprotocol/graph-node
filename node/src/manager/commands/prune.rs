@@ -1,22 +1,17 @@
-use std::{
-    collections::HashSet,
-    io::Write,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::collections::HashSet;
+use std::io::Write;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
-use graph::{
-    components::store::{PruneReporter, StatusStore},
-    data::subgraph::status,
-    prelude::{anyhow, BlockNumber},
-};
+use graph::components::store::{PruneReporter, StatusStore};
+use graph::data::subgraph::status;
+use graph::prelude::{anyhow, BlockNumber};
 use graph_chain_ethereum::ENV_VARS as ETH_ENV;
-use graph_store_postgres::{connection_pool::ConnectionPool, Store};
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::Store;
 
-use crate::manager::{
-    commands::stats::{abbreviate_table_name, show_stats},
-    deployment::DeploymentSearch,
-};
+use crate::manager::commands::stats::{abbreviate_table_name, show_stats};
+use crate::manager::deployment::DeploymentSearch;
 
 struct Progress {
     start: Instant,

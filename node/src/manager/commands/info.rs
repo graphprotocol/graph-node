@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use graph::{components::store::StatusStore, data::subgraph::status, prelude::anyhow};
-use graph_store_postgres::{connection_pool::ConnectionPool, Store};
+use graph::components::store::StatusStore;
+use graph::data::subgraph::status;
+use graph::prelude::anyhow;
+use graph_store_postgres::connection_pool::ConnectionPool;
+use graph_store_postgres::Store;
 
 use crate::manager::deployment::{Deployment, DeploymentSearch};
 

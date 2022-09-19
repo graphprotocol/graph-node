@@ -5,8 +5,8 @@ use prometheus::Gauge;
 
 use crate::prelude::ENV_VARS;
 
-/// One bin of durations. The bin starts at time `start`, and we've added `count`
-/// entries to it whose durations add up to `duration`
+/// One bin of durations. The bin starts at time `start`, and we've added
+/// `count` entries to it whose durations add up to `duration`
 struct Bin {
     start: Instant,
     duration: Duration,
@@ -155,7 +155,8 @@ impl MovingStats {
         self.total.duration
     }
 
-    /// Adds `duration` to the stats, and register the average ms to `avg_gauge`.
+    /// Adds `duration` to the stats, and register the average ms to
+    /// `avg_gauge`.
     pub fn add_and_register(&mut self, duration: Duration, avg_gauge: &Gauge) {
         let wait_avg = {
             self.add(duration);
@@ -168,8 +169,9 @@ impl MovingStats {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::time::{Duration, Instant};
+
+    use super::*;
 
     #[allow(dead_code)]
     fn dump_bin(msg: &str, bin: &Bin, start: Instant) {

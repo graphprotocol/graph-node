@@ -1,4 +1,11 @@
+use std::task::{Context, Poll};
+
 use graph::blockchain::BlockchainMap;
+use graph::components::server::query::GraphQLServerError;
+use graph::components::store::Store;
+use graph::data::query::QueryResults;
+use graph::prelude::*;
+use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
 use http::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
@@ -6,18 +13,9 @@ use http::header::{
 use hyper::body::Bytes;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use serde_json;
-use std::task::Context;
-use std::task::Poll;
-
-use graph::components::{server::query::GraphQLServerError, store::Store};
-use graph::data::query::QueryResults;
-use graph::prelude::*;
-use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
-use graphql_parser;
+use {graphql_parser, serde_json};
 
 use crate::auth::bearer_token;
-
 use crate::explorer::Explorer;
 use crate::resolver::IndexNodeResolver;
 use crate::schema::SCHEMA;
@@ -373,11 +371,13 @@ impl ValidatedRequest {
 
 #[cfg(test)]
 mod tests {
-    use graph::{data::value::Object, prelude::*};
+    use std::collections::HashMap;
+
+    use graph::data::value::Object;
+    use graph::prelude::*;
     use graphql_parser;
     use hyper::body::Bytes;
     use hyper::HeaderMap;
-    use std::collections::HashMap;
 
     use super::{GraphQLServerError, ValidatedRequest};
 

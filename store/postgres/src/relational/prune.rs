@@ -1,26 +1,21 @@
-use std::{fmt::Write, sync::Arc, time::Instant};
+use std::fmt::Write;
+use std::sync::Arc;
+use std::time::Instant;
 
-use diesel::{
-    connection::SimpleConnection,
-    sql_query,
-    sql_types::{BigInt, Integer, Nullable},
-    Connection, PgConnection, RunQueryDsl,
+use diesel::connection::SimpleConnection;
+use diesel::sql_types::{BigInt, Integer, Nullable};
+use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use graph::components::store::PruneReporter;
+use graph::prelude::{
+    BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError,
 };
-use graph::{
-    components::store::PruneReporter,
-    prelude::{BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError},
-    slog::Logger,
-};
+use graph::slog::Logger;
 use itertools::Itertools;
 
-use crate::{
-    catalog,
-    copy::AdaptiveBatchSize,
-    deployment,
-    relational::{Table, VID_COLUMN},
-};
-
 use super::{Layout, SqlName};
+use crate::copy::AdaptiveBatchSize;
+use crate::relational::{Table, VID_COLUMN};
+use crate::{catalog, deployment};
 
 /// Utility to copy relevant data out of a source table and into a new
 /// destination table and replace the source table with the destination

@@ -1,4 +1,7 @@
-use crate::prelude::CheapClone;
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+
 use anyhow::Error;
 use bytes::Bytes;
 use futures03::Stream;
@@ -6,8 +9,8 @@ use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::multipart;
 use serde::Deserialize;
-use std::time::Duration;
-use std::{str::FromStr, sync::Arc};
+
+use crate::prelude::CheapClone;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum StatApi {
@@ -75,7 +78,8 @@ impl IpfsClient {
         }
     }
 
-    /// Calls stat for the given API route, and returns the total size of the object.
+    /// Calls stat for the given API route, and returns the total size of the
+    /// object.
     pub async fn stat_size(
         &self,
         api: StatApi,
@@ -138,8 +142,8 @@ impl IpfsClient {
     }
 
     fn url(&self, route: &str, arg: &str) -> String {
-        // URL security: We control the base and the route, user-supplied input goes only into the
-        // query parameters.
+        // URL security: We control the base and the route, user-supplied input goes
+        // only into the query parameters.
         format!("{}api/v0/{}?arg={}", self.base, route, arg)
     }
 

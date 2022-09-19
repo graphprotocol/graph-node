@@ -1,17 +1,14 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::iter::FromIterator;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::Arc};
 
-use graph::data::query::Trace;
-use graph::prelude::r;
-use graph::{
-    data::query::QueryTarget,
-    prelude::{
-        anyhow::{self, anyhow},
-        serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
-    },
+use graph::data::query::{QueryTarget, Trace};
+use graph::prelude::anyhow::{self, anyhow};
+use graph::prelude::{
+    r, serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_store_postgres::Store;

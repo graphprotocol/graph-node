@@ -1,12 +1,10 @@
-pub(crate) use crate::protobuf::pbcodec::*;
-
-use graph::blockchain::Block as BlockchainBlock;
-use graph::{
-    blockchain::BlockPtr,
-    prelude::{anyhow::anyhow, BlockNumber, Error},
-};
-
 use std::convert::TryFrom;
+
+use graph::blockchain::{Block as BlockchainBlock, BlockPtr};
+use graph::prelude::anyhow::anyhow;
+use graph::prelude::{BlockNumber, Error};
+
+pub(crate) use crate::protobuf::pbcodec::*;
 
 impl Block {
     pub fn header(&self) -> Result<&Header, Error> {

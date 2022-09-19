@@ -2,13 +2,13 @@ use std::mem::MaybeUninit;
 
 use semver::Version;
 
-use super::{
-    gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, IndexForAscTypeId,
-};
+use super::gas::GasCounter;
+use super::{AscIndexId, AscPtr, AscType, DeterministicHostError, IndexForAscTypeId};
 /// A type that can read and write to the Asc heap. Call `asc_new` and `asc_get`
 /// for reading and writing Rust structs from and to Asc.
 ///
-/// The implementor must provide the direct Asc interface with `raw_new` and `get`.
+/// The implementor must provide the direct Asc interface with `raw_new` and
+/// `get`.
 pub trait AscHeap {
     /// Allocate new space and write `bytes`, return the allocated address.
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError>;
@@ -48,7 +48,8 @@ where
     AscPtr::alloc_obj(obj, heap, gas)
 }
 
-/// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.
+/// Map an optional object to its Asc equivalent if Some, otherwise return a
+/// missing field error.
 pub fn asc_new_or_missing<H, O, A>(
     heap: &mut H,
     object: &Option<O>,

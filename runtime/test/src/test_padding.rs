@@ -1,13 +1,14 @@
-use crate::protobuf;
 use graph::prelude::tokio;
 
 use self::data::BadFixed;
+use crate::protobuf;
 
 const WASM_FILE_NAME: &str = "test_padding.wasm";
 
 //for tests, to run in parallel, sub graph name has be unique
 fn rnd_sub_graph_name(size: usize) -> String {
-    use rand::{distributions::Alphanumeric, Rng};
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
     rand::thread_rng()
         .sample_iter(&Alphanumeric)
         .take(size)
@@ -109,9 +110,10 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    pub use graph::runtime::gas::GasCounter;
     pub use graph::runtime::{
-        asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-        DeterministicHostError, IndexForAscTypeId, ToAscObj,
+        asc_new, AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError,
+        IndexForAscTypeId, ToAscObj,
     };
 
     impl ToAscObj<AscBad> for Bad {

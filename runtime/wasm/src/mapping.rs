@@ -1,5 +1,7 @@
-use crate::gas_rules::GasRules;
-use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::thread;
+
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
 use graph::blockchain::{Blockchain, HostFn};
@@ -8,9 +10,9 @@ use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::thread;
+
+use crate::gas_rules::GasRules;
+use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module<C: Blockchain>(
@@ -145,9 +147,10 @@ pub struct ValidModule {
 
     // A wasm import consists of a `module` and a `name`. AS will generate imports such that they
     // have `module` set to the name of the file it is imported from and `name` set to the imported
-    // function name or `namespace.function` if inside a namespace. We'd rather not specify names of
-    // source files, so we consider that the import `name` uniquely identifies an import. Still we
-    // need to know the `module` to properly link it, so here we map import names to modules.
+    // function name or `namespace.function` if inside a namespace. We'd rather not specify names
+    // of source files, so we consider that the import `name` uniquely identifies an import.
+    // Still we need to know the `module` to properly link it, so here we map import names to
+    // modules.
     //
     // AS now has an `@external("module", "name")` decorator which would make things cleaner, but
     // the ship has sailed.
@@ -158,8 +161,8 @@ impl ValidModule {
     /// Pre-process and validate the module.
     pub fn new(logger: &Logger, raw_module: &[u8]) -> Result<Self, anyhow::Error> {
         // Add the gas calls here. Module name "gas" must match. See also
-        // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
-        // parity - injecting gas then serializing again.
+        // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module
+        // through parity - injecting gas then serializing again.
         let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
         let parity_module = match parity_module.parse_names() {
             Ok(module) => module,
@@ -180,9 +183,10 @@ impl ValidModule {
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.into_bytes()?;
 
-        // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
-        // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
-        // turn off optional optimizations to be conservative.
+        // We currently use Cranelift as a compilation engine. Cranelift is an
+        // optimizing compiler, but that should not cause determinism issues
+        // since it adheres to the Wasm spec. Still we turn off optional
+        // optimizations to be conservative.
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift).unwrap();
         config.interruptable(true); // For timeouts.

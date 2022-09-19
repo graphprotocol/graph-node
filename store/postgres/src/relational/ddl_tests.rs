@@ -1,7 +1,6 @@
 use itertools::Itertools;
 
 use super::*;
-
 use crate::layout_for_tests::make_dummy_site;
 
 const ID_TYPE: ColumnType = ColumnType::String;

@@ -1,35 +1,31 @@
-use anyhow::{anyhow, Error};
-use anyhow::{ensure, Context};
-use graph::blockchain::TriggerWithHandler;
+use std::convert::TryFrom;
+use std::str::FromStr;
+use std::sync::Arc;
+
+use anyhow::{anyhow, ensure, Context, Error};
+use graph::blockchain::{self, Blockchain, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
+use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
 use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::StateMutability;
+use graph::prelude::ethabi::{
+    Address, Contract, Event, Function, LogParam, ParamType, RawLog, StateMutability,
+};
 use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
-use graph::prelude::{Link, SubgraphManifestValidationError};
-use graph::slog::{o, trace};
-use std::str::FromStr;
-use std::{convert::TryFrom, sync::Arc};
-use tiny_keccak::{keccak256, Keccak};
-
-use graph::{
-    blockchain::{self, Blockchain},
-    prelude::{
-        async_trait,
-        ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
-        info, serde_json, warn,
-        web3::types::{Log, Transaction, H256},
-        BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
-        LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
-    },
+use graph::prelude::web3::types::{Log, Transaction, H256};
+use graph::prelude::{
+    async_trait, info, serde_json, warn, BlockNumber, CheapClone, DataSourceTemplateInfo,
+    Deserialize, EthereumCall, LightEthereumBlock, LightEthereumBlockExt, Link, LinkResolver,
+    Logger, SubgraphManifestValidationError, TryStreamExt,
 };
-
-use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
+use graph::slog::{o, trace};
+use tiny_keccak::{keccak256, Keccak};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
-// The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
+// The recommended kind is `ethereum`, `ethereum/contract` is accepted for
+// backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
 
 /// Runtime representation of a data source.
@@ -105,9 +101,9 @@ impl blockchain::DataSource<Chain> for DataSource {
             start_block: _,
         } = self;
 
-        // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
-        // used at runtime but not needed to define uniqueness; each runtime host should be for a
-        // unique data source.
+        // mapping_request_sender, host_metrics, and (most of) host_exports are
+        // operational structs used at runtime but not needed to define
+        // uniqueness; each runtime host should be for a unique data source.
         kind == &other.kind
             && network == &other.network
             && name == &other.name
@@ -209,7 +205,8 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
-        // Validate that event handlers don't require receipts for API versions lower than 0.0.7
+        // Validate that event handlers don't require receipts for API versions lower
+        // than 0.0.7
         let api_version = self.api_version();
         if api_version < semver::Version::new(0, 0, 7) {
             for event_handler in &self.mapping.event_handlers {
@@ -245,7 +242,8 @@ impl DataSource {
         context: Option<DataSourceContext>,
         manifest_idx: u32,
     ) -> Result<Self, Error> {
-        // Data sources in the manifest are created "before genesis" so they have no creation block.
+        // Data sources in the manifest are created "before genesis" so they have no
+        // creation block.
         let creation_block = None;
         let contract_abi = mapping
             .find_abi(&source.abi)
@@ -322,13 +320,15 @@ impl DataSource {
         }
     }
 
-    /// Returns the contract event with the given signature, if it exists. A an event from the ABI
-    /// will be matched if:
+    /// Returns the contract event with the given signature, if it exists. A an
+    /// event from the ABI will be matched if:
     /// 1. An event signature is equal to `signature`.
-    /// 2. There are no equal matches, but there is exactly one event that equals `signature` if all
-    ///    `indexed` modifiers are removed from the parameters.
+    /// 2. There are no equal matches, but there is exactly one event that
+    /// equals `signature` if all    `indexed` modifiers are removed from
+    /// the parameters.
     fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
-        // Returns an `Event(uint256,address)` signature for an event, without `indexed` hints.
+        // Returns an `Event(uint256,address)` signature for an event, without `indexed`
+        // hints.
         fn ambiguous_event_signature(event: &Event) -> String {
             format!(
                 "{}({})",
@@ -470,8 +470,9 @@ impl DataSource {
         ds_address == *trigger_address
     }
 
-    /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
-    /// A return of `Ok(None)` mean the trigger does not match.
+    /// Checks if `trigger` matches this data source, and if so decodes it into
+    /// a `MappingTrigger`. A return of `Ok(None)` mean the trigger does not
+    /// match.
     fn match_and_decode(
         &self,
         trigger: &EthereumTrigger,

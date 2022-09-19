@@ -1,6 +1,8 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
-use graph::prelude::{anyhow::Error, chrono};
+use graph::prelude::anyhow::Error;
+use graph::prelude::chrono;
 use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
 use crate::manager::display::List;

@@ -1,21 +1,19 @@
-use crate::{
-    blockchain::{BlockPtr, Blockchain},
-    components::{
-        link_resolver::LinkResolver,
-        store::{BlockNumber, StoredDynamicDataSource},
-        subgraph::DataSourceTemplateInfo,
-    },
-    data::store::scalar::Bytes,
-    data_source,
-    prelude::{DataSourceContext, Link},
-};
+use std::fmt;
+use std::sync::Arc;
+
 use anyhow::{self, Context, Error};
 use cid::Cid;
 use serde::Deserialize;
 use slog::{info, Logger};
-use std::{fmt, sync::Arc};
 
 use super::TriggerWithHandler;
+use crate::blockchain::{BlockPtr, Blockchain};
+use crate::components::link_resolver::LinkResolver;
+use crate::components::store::{BlockNumber, StoredDynamicDataSource};
+use crate::components::subgraph::DataSourceTemplateInfo;
+use crate::data::store::scalar::Bytes;
+use crate::data_source;
+use crate::prelude::{DataSourceContext, Link};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
@@ -108,8 +106,9 @@ impl DataSource {
         })
     }
 
-    /// The concept of an address may or not make sense for an offchain data source, but this is
-    /// used as the value to be returned to mappings from the `dataSource.address()` host function.
+    /// The concept of an address may or not make sense for an offchain data
+    /// source, but this is used as the value to be returned to mappings
+    /// from the `dataSource.address()` host function.
     pub fn address(&self) -> Option<Vec<u8>> {
         match self.source {
             Source::Ipfs(cid) => Some(cid.to_bytes()),

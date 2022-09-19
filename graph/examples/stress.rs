@@ -1,19 +1,19 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
-use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use graph::data::value::{Object, Word};
 use graph::object;
 use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
-use rand::SeedableRng;
-use rand::{rngs::SmallRng, Rng};
-use structopt::StructOpt;
-
 use graph::util::cache_weight::CacheWeight;
 use graph::util::lfu_cache::LfuCache;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
+use structopt::StructOpt;
 
 // Use a custom allocator that tracks how much memory the program
 // has allocated overall
@@ -57,7 +57,8 @@ static mut PRINT_SAMPLES: bool = false;
 
 mod btree {
     use std::mem;
-    use std::{mem::MaybeUninit, ptr::NonNull};
+    use std::mem::MaybeUninit;
+    use std::ptr::NonNull;
 
     const B: usize = 6;
     const CAPACITY: usize = 2 * B - 1;
@@ -70,9 +71,10 @@ mod btree {
     struct InternalNode<K, V> {
         _data: LeafNode<K, V>,
 
-        /// The pointers to the children of this node. `len + 1` of these are considered
-        /// initialized and valid, except that near the end, while the tree is held
-        /// through borrow type `Dying`, some of these pointers are dangling.
+        /// The pointers to the children of this node. `len + 1` of these are
+        /// considered initialized and valid, except that near the end,
+        /// while the tree is held through borrow type `Dying`, some of
+        /// these pointers are dangling.
         _edges: [MaybeUninit<BoxedNode<K, V>>; 2 * B],
     }
 
@@ -81,15 +83,16 @@ mod btree {
         _parent: Option<NonNull<InternalNode<K, V>>>,
 
         /// This node's index into the parent node's `edges` array.
-        /// `*node.parent.edges[node.parent_idx]` should be the same thing as `node`.
-        /// This is only guaranteed to be initialized when `parent` is non-null.
+        /// `*node.parent.edges[node.parent_idx]` should be the same thing as
+        /// `node`. This is only guaranteed to be initialized when
+        /// `parent` is non-null.
         _parent_idx: MaybeUninit<u16>,
 
         /// The number of keys and values this node stores.
         _len: u16,
 
-        /// The arrays storing the actual data of the node. Only the first `len` elements of each
-        /// array are initialized and valid.
+        /// The arrays storing the actual data of the node. Only the first `len`
+        /// elements of each array are initialized and valid.
         _keys: [MaybeUninit<K>; CAPACITY],
         _vals: [MaybeUninit<V>; CAPACITY],
     }
@@ -437,7 +440,8 @@ impl ValueMap {
     }
 }
 
-/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
+/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String,
+/// Value>`
 impl Template for ValueMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)
@@ -472,7 +476,8 @@ impl UsizeMap {
     }
 }
 
-/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String, Value>`
+/// Template for testing roughly a GraphQL response, i.e., a `BTreeMap<String,
+/// Value>`
 impl Template for UsizeMap {
     fn create(size: usize, rng: Option<&mut SmallRng>) -> Self {
         Self::make_map(size, rng)

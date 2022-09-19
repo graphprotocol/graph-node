@@ -1,15 +1,12 @@
-use graph::{
-    anyhow::{bail, ensure},
-    components::store::ChainStore as ChainStoreTrait,
-    prelude::{
-        anyhow::{self, anyhow, Context},
-        web3::types::H256,
-    },
-    slog::Logger,
-};
+use std::sync::Arc;
+
+use graph::anyhow::{bail, ensure};
+use graph::components::store::ChainStore as ChainStoreTrait;
+use graph::prelude::anyhow::{self, anyhow, Context};
+use graph::prelude::web3::types::H256;
+use graph::slog::Logger;
 use graph_chain_ethereum::{EthereumAdapter, EthereumAdapterTrait};
 use graph_store_postgres::ChainStore;
-use std::sync::Arc;
 
 pub async fn by_hash(
     hash: &str,
@@ -84,12 +81,14 @@ async fn run(
 }
 
 mod steps {
-    use super::*;
     use futures::compat::Future01CompatExt;
     use graph::prelude::serde_json::{self, Value};
     use json_structural_diff::{colorize as diff_to_string, JsonDiff};
 
-    /// Queries the [`ChainStore`] about the block hash for the given block number.
+    use super::*;
+
+    /// Queries the [`ChainStore`] about the block hash for the given block
+    /// number.
     ///
     /// Errors on a non-unary result.
     pub(super) fn resolve_block_hash_from_block_number(
@@ -141,7 +140,8 @@ mod steps {
 
     /// Compares two [`serde_json::Value`] values.
     ///
-    /// If they are different, returns a user-friendly string ready to be displayed.
+    /// If they are different, returns a user-friendly string ready to be
+    /// displayed.
     pub(super) fn diff_block_pair(a: &Value, b: &Value) -> Option<String> {
         if a == b {
             None
@@ -159,7 +159,8 @@ mod steps {
         }
     }
 
-    /// Prints the difference between two [`serde_json::Value`] values to the user.
+    /// Prints the difference between two [`serde_json::Value`] values to the
+    /// user.
     pub(super) fn report_difference(difference: Option<&str>, hash: &H256) {
         if let Some(diff) = difference {
             eprintln!("block {hash} diverges from cache:");
@@ -185,9 +186,11 @@ mod steps {
 }
 
 mod helpers {
-    use super::*;
-    use graph::prelude::hex;
     use std::io::{self, Write};
+
+    use graph::prelude::hex;
+
+    use super::*;
 
     /// Tries to parse a [`H256`] from a hex string.
     pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<H256> {

@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
-use graph::{
-    blockchain,
-    cheap_clone::CheapClone,
-    components::link_resolver::LinkResolver,
-    prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
-    slog::Logger,
-};
-
+use graph::blockchain;
+use graph::cheap_clone::CheapClone;
+use graph::components::link_resolver::LinkResolver;
+use graph::prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link};
+use graph::slog::Logger;
 use prost::Message;
 use serde::Deserialize;
 
-use crate::{chain::Chain, Block, TriggerData};
+use crate::chain::Chain;
+use crate::{Block, TriggerData};
 
 pub const SUBSTREAMS_KIND: &str = "substreams";
 
@@ -75,13 +73,14 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    // runtime is not needed for substreams, it will cause the host creation to be skipped.
+    // runtime is not needed for substreams, it will cause the host creation to be
+    // skipped.
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         None
     }
 
-    // match_and_decode only seems to be used on the default trigger processor which substreams
-    // bypasses so it should be fine to leave it unimplemented.
+    // match_and_decode only seems to be used on the default trigger processor which
+    // substreams bypasses so it should be fine to leave it unimplemented.
     fn match_and_decode(
         &self,
         _trigger: &TriggerData,
@@ -219,8 +218,9 @@ pub struct UnresolvedPackage {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-/// This is necessary for the Blockchain trait associated types, substreams do not support
-/// data source templates so this is a noop and is not expected to be called.
+/// This is necessary for the Blockchain trait associated types, substreams do
+/// not support data source templates so this is a noop and is not expected to
+/// be called.
 pub struct NoopDataSourceTemplate {}
 
 impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
@@ -255,15 +255,14 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for NoopDataSourceTemplate 
 
 #[cfg(test)]
 mod test {
-    use std::{str::FromStr, sync::Arc};
+    use std::str::FromStr;
+    use std::sync::Arc;
 
     use anyhow::Error;
-    use graph::{
-        blockchain::{DataSource as _, UnresolvedDataSource as _},
-        components::link_resolver::LinkResolver,
-        prelude::{async_trait, serde_yaml, JsonValueStream, Link},
-        slog::{o, Discard, Logger},
-    };
+    use graph::blockchain::{DataSource as _, UnresolvedDataSource as _};
+    use graph::components::link_resolver::LinkResolver;
+    use graph::prelude::{async_trait, serde_yaml, JsonValueStream, Link};
+    use graph::slog::{o, Discard, Logger};
 
     use crate::{DataSource, Mapping, UnresolvedDataSource, UnresolvedMapping, SUBSTREAMS_KIND};
 

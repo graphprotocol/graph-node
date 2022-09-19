@@ -2,22 +2,20 @@
 #[path = "protobuf/sf.ethereum.r#type.v2.rs"]
 mod pbcodec;
 
-use anyhow::format_err;
-use graph::{
-    blockchain::{Block as BlockchainBlock, BlockPtr},
-    prelude::{
-        web3,
-        web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
-        BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
-        LightEthereumBlock,
-    },
-};
+use std::convert::TryFrom;
+use std::fmt::Debug;
 use std::sync::Arc;
-use std::{convert::TryFrom, fmt::Debug};
+
+use anyhow::format_err;
+use graph::blockchain::{Block as BlockchainBlock, BlockPtr};
+use graph::prelude::web3::types::{Bytes, H160, H2048, H256, H64, U256, U64};
+use graph::prelude::{
+    web3, BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
+    LightEthereumBlock,
+};
+pub use pbcodec::*;
 
 use crate::chain::BlockFinality;
-
-pub use pbcodec::*;
 
 trait TryDecodeProto<U, V>: Sized
 where
@@ -106,7 +104,8 @@ impl Into<web3::types::CallType> for CallType {
             CallType::Delegate => web3::types::CallType::DelegateCall,
             CallType::Static => web3::types::CallType::StaticCall,
 
-            // FIXME (SF): Really not sure what this should map to, we are using None for now, need to revisit
+            // FIXME (SF): Really not sure what this should map to, we are using None for now, need
+            // to revisit
             CallType::Create => web3::types::CallType::None,
         }
     }
@@ -266,7 +265,9 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                             .as_ref()
                             .map_or_else(|| U256::default(), |v| v.into()),
                     ),
-                    // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
+                    // FIXME (SF): Firehose does not have seal fields, are they really used? Might
+                    // be required for POA chains only also, I've seen that stuff on xDai (is this
+                    // important?)
                     seal_fields: vec![],
                     uncles: self
                         .uncles
@@ -295,7 +296,8 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                                 ),
                                 block_number: Some(U64::from(self.number)),
                                 cumulative_gas_used: U256::from(r.cumulative_gas_used),
-                                // FIXME (SF): What is the rule here about gas_used being None, when it's 0?
+                                // FIXME (SF): What is the rule here about gas_used being None, when
+                                // it's 0?
                                 gas_used: Some(U256::from(t.gas_used)),
                                 contract_address: {
                                     match t.calls.len() {
@@ -355,8 +357,8 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     .map(Arc::new)
                     .collect(),
             },
-            // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the triggers_in_block
-            // TODO: Refactor in a way that this is no longer needed.
+            // Comment (437a9f17-67cc-478f-80a3-804fe554b227): This Some() will avoid calls in the
+            // triggers_in_block TODO: Refactor in a way that this is no longer needed.
             calls: Some(
                 self.transaction_traces
                     .iter()

@@ -1,24 +1,24 @@
-use crate::{
-    blockchain::Block as BlockchainBlock,
-    blockchain::BlockPtr,
-    cheap_clone::CheapClone,
-    components::store::BlockNumber,
-    firehose::{decode_firehose_block, ForkStep},
-    prelude::{debug, info},
-    substreams,
-};
+use std::collections::BTreeMap;
+use std::fmt::Display;
+use std::iter;
+use std::sync::Arc;
+use std::time::Duration;
+
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use rand::prelude::IteratorRandom;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, iter, sync::Arc, time::Duration};
-use tonic::{
-    metadata::MetadataValue,
-    transport::{Channel, ClientTlsConfig},
-    Request,
-};
+use tonic::metadata::MetadataValue;
+use tonic::transport::{Channel, ClientTlsConfig};
+use tonic::Request;
 
 use super::codec as firehose;
+use crate::blockchain::{Block as BlockchainBlock, BlockPtr};
+use crate::cheap_clone::CheapClone;
+use crate::components::store::BlockNumber;
+use crate::firehose::{decode_firehose_block, ForkStep};
+use crate::prelude::{debug, info};
+use crate::substreams;
 
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
@@ -57,17 +57,19 @@ impl FirehoseEndpoint {
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
 
-        // Note on the connection window size: We run multiple block streams on a same connection,
-        // and a problematic subgraph with a stalled block stream might consume the entire window
-        // capacity for its http2 stream and never release it. If there are enough stalled block
-        // streams to consume all the capacity on the http2 connection, then _all_ subgraphs using
-        // this same http2 connection will stall. At a default stream window size of 2^16, setting
-        // the connection window size to the maximum of 2^31 allows for 2^15 streams without any
-        // contention, which is effectively unlimited for normal graph node operation.
+        // Note on the connection window size: We run multiple block streams on a same
+        // connection, and a problematic subgraph with a stalled block stream
+        // might consume the entire window capacity for its http2 stream and
+        // never release it. If there are enough stalled block streams to
+        // consume all the capacity on the http2 connection, then _all_ subgraphs using
+        // this same http2 connection will stall. At a default stream window size of
+        // 2^16, setting the connection window size to the maximum of 2^31
+        // allows for 2^15 streams without any contention, which is effectively
+        // unlimited for normal graph node operation.
         //
-        // Note: Do not set `http2_keep_alive_interval` or `http2_adaptive_window`, as these will
-        // send ping frames, and many cloud load balancers will drop connections that frequently
-        // send pings.
+        // Note: Do not set `http2_keep_alive_interval` or `http2_adaptive_window`, as
+        // these will send ping frames, and many cloud load balancers will drop
+        // connections that frequently send pings.
         let endpoint = endpoint_builder
             .initial_connection_window_size(Some((1 << 31) - 1))
             .connect_timeout(Duration::from_secs(10))
@@ -75,7 +77,8 @@ impl FirehoseEndpoint {
             // Timeout on each request, so the timeout to estabilish each 'Blocks' stream.
             .timeout(Duration::from_secs(120));
 
-        // Load balancing on a same endpoint is useful because it creates a connection pool.
+        // Load balancing on a same endpoint is useful because it creates a connection
+        // pool.
         let channel = Channel::balance_list(iter::repeat(endpoint).take(conn_pool_size as usize));
 
         FirehoseEndpoint {
@@ -136,16 +139,17 @@ impl FirehoseEndpoint {
 
         // The trick is the following.
         //
-        // Firehose `start_block_num` and `stop_block_num` are both inclusive, so we specify
-        // the block we are looking for in both.
+        // Firehose `start_block_num` and `stop_block_num` are both inclusive, so we
+        // specify the block we are looking for in both.
         //
-        // Now, the remaining question is how the block from the canonical chain is picked. We
-        // leverage the fact that Firehose will always send the block in the longuest chain as the
-        // last message of this request.
+        // Now, the remaining question is how the block from the canonical chain is
+        // picked. We leverage the fact that Firehose will always send the block
+        // in the longuest chain as the last message of this request.
         //
-        // That way, we either get the final block if the block is now in a final segment of the
-        // chain (or probabilisticly if not finality concept exists for the chain). Or we get the
-        // block that is in the longuest chain according to Firehose.
+        // That way, we either get the final block if the block is now in a final
+        // segment of the chain (or probabilisticly if not finality concept
+        // exists for the chain). Or we get the block that is in the longuest
+        // chain according to Firehose.
         let response_stream = client
             .blocks(firehose::Request {
                 start_block_num: number as i64,
@@ -171,12 +175,14 @@ impl FirehoseEndpoint {
                         }
                         Some(ref actual_ptr) => {
                             // We want to receive all events related to a specific block number,
-                            // however, in some circumstances, it seems Firehose would not stop sending
-                            // blocks (`start_block_num: 0 and stop_block_num: 0` on NEAR seems to trigger
+                            // however, in some circumstances, it seems Firehose would not stop
+                            // sending blocks (`start_block_num: 0 and
+                            // stop_block_num: 0` on NEAR seems to trigger
                             // this).
                             //
-                            // To prevent looping infinitely, we stop as soon as a new received block's
-                            // number is higher than the latest received block's number, in which case it
+                            // To prevent looping infinitely, we stop as soon as a new received
+                            // block's number is higher than the latest
+                            // received block's number, in which case it
                             // means it's an event for a block we are not interested in.
                             if block.number > actual_ptr.number {
                                 break;
@@ -287,8 +293,9 @@ impl From<Vec<Arc<FirehoseEndpoint>>> for FirehoseEndpoints {
 
 #[derive(Clone, Debug)]
 pub struct FirehoseNetworks {
-    /// networks contains a map from chain id (`near-mainnet`, `near-testnet`, `solana-mainnet`, etc.)
-    /// to a list of FirehoseEndpoint (type wrapper around `Arc<Vec<FirehoseEndpoint>>`).
+    /// networks contains a map from chain id (`near-mainnet`, `near-testnet`,
+    /// `solana-mainnet`, etc.) to a list of FirehoseEndpoint (type wrapper
+    /// around `Arc<Vec<FirehoseEndpoint>>`).
     pub networks: BTreeMap<String, FirehoseEndpoints>,
 }
 

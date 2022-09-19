@@ -2,13 +2,12 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use anyhow::Error;
+use graph::prelude::{MetricsServer as MetricsServerTrait, *};
 use graph::prometheus::{Encoder, Registry, TextEncoder};
 use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use thiserror::Error;
-
-use graph::prelude::{MetricsServer as MetricsServerTrait, *};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]

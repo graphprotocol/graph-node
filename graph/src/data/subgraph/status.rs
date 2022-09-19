@@ -18,7 +18,8 @@ pub enum Filter {
     DeploymentIds(Vec<DeploymentId>),
 }
 
-/// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
+/// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL
+/// values.
 #[derive(Debug)]
 pub struct EthereumBlock(BlockPtr);
 
@@ -53,11 +54,12 @@ impl From<BlockPtr> for EthereumBlock {
 }
 
 /// Indexing status information related to the chain. Right now, we only
-/// support Ethereum, but once we support more chains, we'll have to turn this into
-/// an enum
+/// support Ethereum, but once we support more chains, we'll have to turn this
+/// into an enum
 #[derive(Debug)]
 pub struct ChainInfo {
-    /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
+    /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or
+    /// `goerli`).
     pub network: String,
     /// The current head block of the chain.
     pub chain_head_block: Option<EthereumBlock>,
@@ -98,13 +100,15 @@ pub struct Info {
     /// The deployment hash
     pub subgraph: String,
 
-    /// Whether or not the subgraph has synced all the way to the current chain head.
+    /// Whether or not the subgraph has synced all the way to the current chain
+    /// head.
     pub synced: bool,
     pub health: SubgraphHealth,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
 
-    /// Indexing status on different chains involved in the subgraph's data sources.
+    /// Indexing status on different chains involved in the subgraph's data
+    /// sources.
     pub chains: Vec<ChainInfo>,
 
     pub entity_count: u64,

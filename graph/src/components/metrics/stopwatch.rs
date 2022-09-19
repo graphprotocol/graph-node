@@ -1,6 +1,8 @@
-use crate::prelude::*;
-use std::sync::{atomic::AtomicBool, atomic::Ordering, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
+
+use crate::prelude::*;
 
 /// This is a "section guard", that closes the section on drop.
 pub struct Section {
@@ -90,7 +92,8 @@ impl StopwatchMetrics {
         }
     }
 
-    /// Turns `start_section` and `end_section` into no-ops, no more metrics will be updated.
+    /// Turns `start_section` and `end_section` into no-ops, no more metrics
+    /// will be updated.
     pub fn disable(&self) {
         self.disabled.store(true, Ordering::SeqCst)
     }
@@ -102,9 +105,10 @@ impl StopwatchMetrics {
     }
 }
 
-/// We want to account for all subgraph indexing time, based on "wall clock" time. To do this we
-/// break down indexing into _sequential_ sections, and register the total time spent in each. So
-/// that there is no double counting, time spent in child sections doesn't count for the parent.
+/// We want to account for all subgraph indexing time, based on "wall clock"
+/// time. To do this we break down indexing into _sequential_ sections, and
+/// register the total time spent in each. So that there is no double counting,
+/// time spent in child sections doesn't count for the parent.
 struct StopwatchInner {
     logger: Logger,
 

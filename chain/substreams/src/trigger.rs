@@ -1,29 +1,26 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::Error;
-use graph::{
-    blockchain::{self, block_stream::BlockWithTriggers, BlockPtr},
-    components::{
-        store::{DeploymentLocator, EntityKey, SubgraphFork},
-        subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
-    },
-    data::store::scalar::Bytes,
-    data_source,
-    prelude::{
-        anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
-        RuntimeHostBuilder, Value,
-    },
-    slog::Logger,
-    substreams::Modules,
+use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::blockchain::{self, BlockPtr};
+use graph::components::store::{DeploymentLocator, EntityKey, SubgraphFork};
+use graph::components::subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing};
+use graph::data::store::scalar::Bytes;
+use graph::data_source;
+use graph::prelude::{
+    anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
+    RuntimeHostBuilder, Value,
 };
+use graph::slog::Logger;
+use graph::substreams::Modules;
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
+use crate::codec::entity_change::Operation;
+use crate::codec::field::Type;
 use crate::codec::Field;
-use crate::{
-    codec::{entity_change::Operation, field::Type},
-    Block, Chain, NodeCapabilities, NoopDataSourceTemplate,
-};
+use crate::{Block, Chain, NodeCapabilities, NoopDataSourceTemplate};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct TriggerData {}
@@ -54,14 +51,14 @@ pub struct TriggerFilter {
     pub(crate) data_sources_len: u8,
 }
 
-// TriggerFilter should bypass all triggers and just rely on block since all the data received
-// should already have been processed.
+// TriggerFilter should bypass all triggers and just rely on block since all the
+// data received should already have been processed.
 impl blockchain::TriggerFilter<Chain> for TriggerFilter {
     fn extend_with_template(&mut self, _data_source: impl Iterator<Item = NoopDataSourceTemplate>) {
     }
 
-    /// this function is not safe to call multiple times, only one DataSource is supported for
-    ///
+    /// this function is not safe to call multiple times, only one DataSource is
+    /// supported for
     fn extend<'a>(
         &mut self,
         mut data_sources: impl Iterator<Item = &'a crate::DataSource> + Clone,
@@ -274,13 +271,12 @@ fn decode_entity_change(field: &Field, entity: &String) -> Result<Value, Mapping
 mod test {
     use std::str::FromStr;
 
+    use graph::data::store::scalar::Bytes;
+    use graph::prelude::{BigDecimal, BigInt, Value};
+
     use crate::codec::field::Type as FieldType;
     use crate::codec::Field;
     use crate::trigger::decode_entity_change;
-    use graph::{
-        data::store::scalar::Bytes,
-        prelude::{BigDecimal, BigInt, Value},
-    };
 
     #[test]
     fn validate_substreams_field_types() {

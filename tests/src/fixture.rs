@@ -1,11 +1,13 @@
 pub mod ethereum;
 
+use std::env::VarError;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
-use crate::helpers::run_cmd;
 use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
@@ -35,15 +37,14 @@ use graph_core::{
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
+use graph_node::config::Config;
 use graph_node::manager::PanicSubscriptionManager;
-use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use slog::{crit, info, Logger};
-use std::env::VarError;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::task::{Context, Poll};
 use tokio::fs::read_to_string;
+
+use crate::helpers::run_cmd;
 
 const NODE_ID: &str = "default";
 
@@ -355,9 +356,9 @@ pub async fn wait_for_sync(
     Ok(())
 }
 
-/// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the
-/// chain is not a descendant of the previous one, reorgs will be emitted until it is.
-/// See also: static-stream-builder
+/// `chain` is the sequence of chain heads to be processed. If the next block to
+/// be processed in the chain is not a descendant of the previous one, reorgs
+/// will be emitted until it is. See also: static-stream-builder
 struct StaticStreamBuilder<C: Blockchain> {
     chain: Vec<BlockWithTriggers<C>>,
 }

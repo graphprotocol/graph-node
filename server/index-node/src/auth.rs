@@ -1,6 +1,5 @@
-use hyper::header::AUTHORIZATION;
-
 use graph::env::EnvVars;
+use hyper::header::AUTHORIZATION;
 
 /// Validation logic for access tokens required to access POI results.
 pub struct PoiProtection {

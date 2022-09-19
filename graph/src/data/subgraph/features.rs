@@ -1,28 +1,36 @@
 //! Functions to detect subgraph features.
 //!
-//! The rationale of this module revolves around the concept of feature declaration and detection.
+//! The rationale of this module revolves around the concept of feature
+//! declaration and detection.
 //!
-//! Features are declared in the `subgraph.yml` file, also known as the subgraph's manifest, and are
-//! validated by a graph-node instance during the deploy phase or by direct request.
+//! Features are declared in the `subgraph.yml` file, also known as the
+//! subgraph's manifest, and are validated by a graph-node instance during the
+//! deploy phase or by direct request.
 //!
-//! A feature validation error will be triggered if a subgraph use any feature without declaring it
-//! in the `features` section of the manifest file.
+//! A feature validation error will be triggered if a subgraph use any feature
+//! without declaring it in the `features` section of the manifest file.
 //!
-//! Feature validation is performed by the [`validate_subgraph_features`] function.
+//! Feature validation is performed by the [`validate_subgraph_features`]
+//! function.
 
-use crate::{
-    blockchain::Blockchain,
-    data::{graphql::DocumentExt, schema::Schema, subgraph::SubgraphManifest},
-    prelude::{Deserialize, Serialize},
-};
+use std::collections::BTreeSet;
+use std::fmt;
+use std::str::FromStr;
+
 use itertools::Itertools;
-use std::{collections::BTreeSet, fmt, str::FromStr};
 
 use super::calls_host_fn;
+use crate::blockchain::Blockchain;
+use crate::data::graphql::DocumentExt;
+use crate::data::schema::Schema;
+use crate::data::subgraph::SubgraphManifest;
+use crate::prelude::{Deserialize, Serialize};
 
-/// This array must contain all IPFS-related functions that are exported by the host WASM runtime.
+/// This array must contain all IPFS-related functions that are exported by the
+/// host WASM runtime.
 ///
-/// For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
+/// For reference, search this codebase for:
+/// ff652476-e6ad-40e4-85b8-e815d6c6e5e2
 const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&'static str; 3] =
     ["ipfs.cat", "ipfs.getBlock", "ipfs.map"];
 
@@ -55,7 +63,8 @@ impl FromStr for SubgraphFeature {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Serialize, thiserror::Error, Debug)]
 pub enum SubgraphFeatureValidationError {
-    /// A feature is used by the subgraph but it is not declared in the `features` section of the manifest file.
+    /// A feature is used by the subgraph but it is not declared in the
+    /// `features` section of the manifest file.
     #[error("The feature `{}` is used by the subgraph but it is not declared in the manifest.", fmt_subgraph_features(.0))]
     Undeclared(BTreeSet<SubgraphFeature>),
 
@@ -145,8 +154,9 @@ fn detect_ipfs_on_ethereum_contracts<C: Blockchain>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use SubgraphFeature::*;
+
+    use super::*;
     const VARIANTS: [SubgraphFeature; 4] = [
         NonFatalErrors,
         Grafting,

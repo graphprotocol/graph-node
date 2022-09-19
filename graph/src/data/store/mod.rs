@@ -1,27 +1,25 @@
-use crate::{
-    components::store::{DeploymentLocator, EntityKey, EntityType},
-    data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError, Schema},
-    runtime::gas::{Gas, GasSizeOf},
-};
-use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
-use anyhow::{anyhow, Error};
-use itertools::Itertools;
-use serde::de;
-use serde::{Deserialize, Serialize};
-use stable_hash::{FieldAddress, StableHash, StableHasher};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-};
+
+use anyhow::{anyhow, Error};
+use itertools::Itertools;
+use serde::{de, Deserialize, Serialize};
+use stable_hash::{FieldAddress, StableHash, StableHasher};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
-use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
+use super::graphql::ext::DirectiveFinder;
+use super::graphql::{DocumentExt as _, TypeExt as _};
+use crate::components::store::{DeploymentLocator, EntityKey, EntityType};
+use crate::data::graphql::ObjectTypeExt;
+use crate::data::subgraph::DeploymentHash;
+use crate::prelude::anyhow::Context;
+use crate::prelude::{q, r, s, CacheWeight, EntityChange, QueryExecutionError, Schema};
+use crate::runtime::gas::{Gas, GasSizeOf};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -167,8 +165,10 @@ impl ValueType {
     }
 }
 
-// Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
-/// An attribute value is represented as an enum with variants for all supported value types.
+// Note: Do not modify fields without also making a backward compatible change
+// to the StableHash impl (below)
+/// An attribute value is represented as an enum with variants for all supported
+/// value types.
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
 #[derive(AsStaticStr)]
@@ -641,7 +641,8 @@ impl Entity {
         self.0.contains_key(key)
     }
 
-    // This collects the entity into an ordered vector so that it can be iterated deterministically.
+    // This collects the entity into an ordered vector so that it can be iterated
+    // deterministically.
     pub fn sorted(self) -> Vec<(String, Value)> {
         let mut v: Vec<_> = self.0.into_iter().collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
@@ -669,19 +670,22 @@ impl Entity {
     /// Merges an entity update `update` into this entity.
     ///
     /// If a key exists in both entities, the value from `update` is chosen.
-    /// If a key only exists on one entity, the value from that entity is chosen.
-    /// If a key is set to `Value::Null` in `update`, the key/value pair is set to `Value::Null`.
+    /// If a key only exists on one entity, the value from that entity is
+    /// chosen. If a key is set to `Value::Null` in `update`, the key/value
+    /// pair is set to `Value::Null`.
     pub fn merge(&mut self, update: Entity) {
         for (key, value) in update.0.into_iter() {
             self.insert(key, value);
         }
     }
 
-    /// Merges an entity update `update` into this entity, removing `Value::Null` values.
+    /// Merges an entity update `update` into this entity, removing
+    /// `Value::Null` values.
     ///
     /// If a key exists in both entities, the value from `update` is chosen.
-    /// If a key only exists on one entity, the value from that entity is chosen.
-    /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
+    /// If a key only exists on one entity, the value from that entity is
+    /// chosen. If a key is set to `Value::Null` in `update`, the key/value
+    /// pair is removed.
     pub fn merge_remove_null_fields(&mut self, update: Entity) {
         for (key, value) in update.0.into_iter() {
             match value {
@@ -716,7 +720,8 @@ impl Entity {
                                 .first()
                             {
                                 None => {
-                                    // Nothing is implementing this interface; we assume it's of type string
+                                    // Nothing is implementing this interface; we assume it's of
+                                    // type string
                                     // see also: id-type-for-unimplemented-interfaces
                                     ValueType::String
                                 }

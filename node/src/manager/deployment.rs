@@ -2,21 +2,17 @@ use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-use diesel::{dsl::sql, prelude::*};
-use diesel::{sql_types::Text, PgConnection};
-use regex::Regex;
-
-use graph::components::store::DeploymentId;
-use graph::{
-    components::store::DeploymentLocator,
-    data::subgraph::status,
-    prelude::{
-        anyhow::{self},
-        lazy_static, DeploymentHash,
-    },
-};
+use diesel::dsl::sql;
+use diesel::prelude::*;
+use diesel::sql_types::Text;
+use diesel::PgConnection;
+use graph::components::store::{DeploymentId, DeploymentLocator};
+use graph::data::subgraph::status;
+use graph::prelude::anyhow::{self};
+use graph::prelude::{lazy_static, DeploymentHash};
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
+use regex::Regex;
 
 use crate::manager::display::List;
 
@@ -78,10 +74,10 @@ impl DeploymentSearch {
     }
 
     pub fn lookup_with_conn(&self, conn: &PgConnection) -> Result<Vec<Deployment>, anyhow::Error> {
-        use store_catalog::deployment_schemas as ds;
-        use store_catalog::subgraph as s;
-        use store_catalog::subgraph_deployment_assignment as a;
-        use store_catalog::subgraph_version as v;
+        use store_catalog::{
+            deployment_schemas as ds, subgraph as s, subgraph_deployment_assignment as a,
+            subgraph_version as v,
+        };
 
         let query = ds::table
             .inner_join(v::table.on(v::deployment.eq(ds::subgraph)))

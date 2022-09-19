@@ -1,3 +1,10 @@
+use std::collections::{BTreeMap, HashMap};
+use std::env;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::sync::atomic;
+use std::time::Duration;
+
 use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
@@ -15,9 +22,7 @@ use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
 use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
-use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
-use graph_chain_substreams as substreams;
 use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -38,14 +43,9 @@ use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
 use near::NearStreamBuilder;
-use std::collections::BTreeMap;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::sync::atomic;
-use std::time::Duration;
-use std::{collections::HashMap, env};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
+use {graph_chain_ethereum as ethereum, graph_chain_substreams as substreams};
 
 git_testament!(TESTAMENT);
 
@@ -262,9 +262,9 @@ async fn main() {
         let chain_head_update_listener = store_builder.chain_head_update_listener();
         let primary_pool = store_builder.primary_pool();
 
-        // To support the ethereum block ingestor, ethereum networks are referenced both by the
-        // `blockchain_map` and `ethereum_chains`. Future chains should be referred to only in
-        // `blockchain_map`.
+        // To support the ethereum block ingestor, ethereum networks are referenced both
+        // by the `blockchain_map` and `ethereum_chains`. Future chains should
+        // be referred to only in `blockchain_map`.
         let mut blockchain_map = BlockchainMap::new();
 
         let (arweave_networks, arweave_idents) = connect_firehose_networks::<ArweaveBlock>(
