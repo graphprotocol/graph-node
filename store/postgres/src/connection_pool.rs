@@ -977,6 +977,7 @@ impl PoolInner {
         let pool = self.clone();
         let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
+        let start = Instant::now();
         advisory_lock::lock_migration(&conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
         let result = pool
@@ -984,10 +985,12 @@ impl PoolInner {
             .and_then(|()| migrate_schema(&pool.logger, &conn))
             .and_then(|()| pool.map_primary())
             .and_then(|()| pool.map_metadata(servers.as_ref()));
+        debug!(&pool.logger, "Release migration lock");
         advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
+        debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
         Ok(())
     }
 
@@ -1047,6 +1050,7 @@ impl PoolInner {
     // servers to ourselves. The mapping is recreated on every server start
     // so that we pick up possible schema changes in the mappings
     fn map_metadata(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+        info!(&self.logger, "Mapping metadata");
         let conn = self.get()?;
         conn.transaction(|| {
             for server in servers.iter().filter(|server| server.shard != self.shard) {
