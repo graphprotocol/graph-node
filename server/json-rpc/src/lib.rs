@@ -1,49 +1,80 @@
-extern crate graph;
-extern crate jsonrpc_http_server;
-extern crate lazy_static;
-extern crate serde;
-
-use graph::prelude::serde_json;
-use graph::prelude::{JsonRpcServer as JsonRpcServerTrait, *};
-use jsonrpc_http_server::{
-    jsonrpc_core::{self, Compatibility, IoHandler, Params, Value},
-    RestApi, Server, ServerBuilder,
-};
+use graph::prelude::{Value as GraphValue, *};
+use jsonrpsee::core::Error as JsonRpcError;
+use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
+use jsonrpsee::types::error::CallError;
+use jsonrpsee::types::ErrorObject;
+use jsonrpsee::RpcModule;
+use serde_json::{self, Value as JsonValue};
 
 use std::collections::BTreeMap;
-use std::io;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr};
 
-const JSON_RPC_DEPLOY_ERROR: i64 = 0;
-const JSON_RPC_REMOVE_ERROR: i64 = 1;
-const JSON_RPC_CREATE_ERROR: i64 = 2;
-const JSON_RPC_REASSIGN_ERROR: i64 = 3;
+type JsonRpcResult<T> = Result<T, jsonrpsee::core::Error>;
 
-#[derive(Debug, Deserialize)]
-struct SubgraphCreateParams {
-    name: SubgraphName,
+pub struct JsonRpcServer {
+    // TODO: in the future we might want to have some sort of async drop to stop
+    // the server. For now, we're just letting it run it forever.
+    _handle: HttpServerHandle,
 }
 
-#[derive(Debug, Deserialize)]
-struct SubgraphDeployParams {
-    name: SubgraphName,
-    ipfs_hash: DeploymentHash,
-    node_id: Option<NodeId>,
-    debug_fork: Option<DeploymentHash>,
+impl JsonRpcServer {
+    pub async fn serve<R>(
+        port: u16,
+        http_port: u16,
+        ws_port: u16,
+        registrar: Arc<R>,
+        node_id: NodeId,
+        logger: Logger,
+    ) -> JsonRpcResult<Self>
+    where
+        R: SubgraphRegistrar,
+    {
+        let logger = logger.new(o!("component" => "JsonRpcServer"));
+
+        info!(
+            logger,
+            "Starting JSON-RPC admin server at: http://localhost:{}", port
+        );
+
+        let state = ServerState {
+            registrar,
+            http_port,
+            ws_port,
+            node_id,
+            logger,
+        };
+
+        let socket_addr: SocketAddr = (Ipv4Addr::new(0, 0, 0, 0), port).into();
+        let http_server = HttpServerBuilder::default().build(socket_addr).await?;
+
+        let mut rpc_module = RpcModule::new(state);
+        rpc_module
+            .register_async_method("subgraph_create", |params, state| async move {
+                state.create_handler(params.parse()?).await
+            })
+            .unwrap();
+        rpc_module
+            .register_async_method("subgraph_deploy", |params, state| async move {
+                state.deploy_handler(params.parse()?).await
+            })
+            .unwrap();
+        rpc_module
+            .register_async_method("subgraph_remove", |params, state| async move {
+                state.remove_handler(params.parse()?).await
+            })
+            .unwrap();
+        rpc_module
+            .register_async_method("subgraph_reassign", |params, state| async move {
+                state.reassign_handler(params.parse()?).await
+            })
+            .unwrap();
+
+        let _handle = http_server.start(rpc_module)?;
+        Ok(Self { _handle })
+    }
 }
 
-#[derive(Debug, Deserialize)]
-struct SubgraphRemoveParams {
-    name: SubgraphName,
-}
-
-#[derive(Debug, Deserialize)]
-struct SubgraphReassignParams {
-    ipfs_hash: DeploymentHash,
-    node_id: NodeId,
-}
-
-pub struct JsonRpcServer<R> {
+struct ServerState<R> {
     registrar: Arc<R>,
     http_port: u16,
     ws_port: u16,
@@ -51,12 +82,14 @@ pub struct JsonRpcServer<R> {
     logger: Logger,
 }
 
-impl<R: SubgraphRegistrar> JsonRpcServer<R> {
+impl<R: SubgraphRegistrar> ServerState<R> {
+    const DEPLOY_ERROR: i64 = 0;
+    const REMOVE_ERROR: i64 = 1;
+    const CREATE_ERROR: i64 = 2;
+    const REASSIGN_ERROR: i64 = 3;
+
     /// Handler for the `subgraph_create` endpoint.
-    async fn create_handler(
-        &self,
-        params: SubgraphCreateParams,
-    ) -> Result<Value, jsonrpc_core::Error> {
+    async fn create_handler(&self, params: SubgraphCreateParams) -> JsonRpcResult<JsonValue> {
         info!(&self.logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
 
         match self.registrar.create_subgraph(params.name.clone()).await {
@@ -67,17 +100,14 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 &self.logger,
                 "subgraph_create",
                 e,
-                JSON_RPC_CREATE_ERROR,
+                Self::CREATE_ERROR,
                 params,
             )),
         }
     }
 
     /// Handler for the `subgraph_deploy` endpoint.
-    async fn deploy_handler(
-        &self,
-        params: SubgraphDeployParams,
-    ) -> Result<Value, jsonrpc_core::Error> {
+    async fn deploy_handler(&self, params: SubgraphDeployParams) -> JsonRpcResult<JsonValue> {
         info!(&self.logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
 
         let node_id = params.node_id.clone().unwrap_or(self.node_id.clone());
@@ -101,17 +131,14 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 &self.logger,
                 "subgraph_deploy",
                 e,
-                JSON_RPC_DEPLOY_ERROR,
+                Self::DEPLOY_ERROR,
                 params,
             )),
         }
     }
 
     /// Handler for the `subgraph_remove` endpoint.
-    async fn remove_handler(
-        &self,
-        params: SubgraphRemoveParams,
-    ) -> Result<Value, jsonrpc_core::Error> {
+    async fn remove_handler(&self, params: SubgraphRemoveParams) -> JsonRpcResult<GraphValue> {
         info!(&self.logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
 
         match self.registrar.remove_subgraph(params.name.clone()).await {
@@ -120,20 +147,15 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
                 &self.logger,
                 "subgraph_remove",
                 e,
-                JSON_RPC_REMOVE_ERROR,
+                Self::REMOVE_ERROR,
                 params,
             )),
         }
     }
 
     /// Handler for the `subgraph_assign` endpoint.
-    async fn reassign_handler(
-        &self,
-        params: SubgraphReassignParams,
-    ) -> Result<Value, jsonrpc_core::Error> {
-        let logger = self.logger.clone();
-
-        info!(logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
+    async fn reassign_handler(&self, params: SubgraphReassignParams) -> JsonRpcResult<GraphValue> {
+        info!(&self.logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
 
         match self
             .registrar
@@ -142,90 +164,13 @@ impl<R: SubgraphRegistrar> JsonRpcServer<R> {
         {
             Ok(_) => Ok(Value::Null),
             Err(e) => Err(json_rpc_error(
-                &logger,
+                &self.logger,
                 "subgraph_reassign",
                 e,
-                JSON_RPC_REASSIGN_ERROR,
+                Self::REASSIGN_ERROR,
                 params,
             )),
         }
-    }
-}
-
-impl<R> JsonRpcServerTrait<R> for JsonRpcServer<R>
-where
-    R: SubgraphRegistrar,
-{
-    type Server = Server;
-
-    fn serve(
-        port: u16,
-        http_port: u16,
-        ws_port: u16,
-        registrar: Arc<R>,
-        node_id: NodeId,
-        logger: Logger,
-    ) -> Result<Self::Server, io::Error> {
-        let logger = logger.new(o!("component" => "JsonRpcServer"));
-
-        info!(
-            logger,
-            "Starting JSON-RPC admin server at: http://localhost:{}", port
-        );
-
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
-
-        let mut handler = IoHandler::with_compatibility(Compatibility::Both);
-
-        let arc_self = Arc::new(JsonRpcServer {
-            registrar,
-            http_port,
-            ws_port,
-            node_id,
-            logger,
-        });
-
-        let me = arc_self.clone();
-        handler.add_method("subgraph_create", move |params: Params| {
-            let me = me.clone();
-            async move {
-                let params = params.parse()?;
-                me.create_handler(params).await
-            }
-        });
-
-        let me = arc_self.clone();
-        handler.add_method("subgraph_deploy", move |params: Params| {
-            let me = me.clone();
-            async move {
-                let params = params.parse()?;
-                me.deploy_handler(params).await
-            }
-        });
-
-        let me = arc_self.clone();
-        handler.add_method("subgraph_remove", move |params: Params| {
-            let me = me.clone();
-            async move {
-                let params = params.parse()?;
-                me.remove_handler(params).await
-            }
-        });
-
-        let me = arc_self;
-        handler.add_method("subgraph_reassign", move |params: Params| {
-            let me = me.clone();
-            async move {
-                let params = params.parse()?;
-                me.reassign_handler(params).await
-            }
-        });
-
-        ServerBuilder::new(handler)
-            // Enable REST API:
-            // POST /<method>/<param1>/<param2>
-            .rest_api(RestApi::Secure)
-            .start_http(&addr.into())
     }
 }
 
@@ -235,7 +180,7 @@ fn json_rpc_error(
     e: SubgraphRegistrarError,
     code: i64,
     params: impl std::fmt::Debug,
-) -> jsonrpc_core::Error {
+) -> JsonRpcError {
     error!(logger, "{} failed", operation;
         "error" => format!("{:?}", e),
         "params" => format!("{:?}", params));
@@ -246,26 +191,14 @@ fn json_rpc_error(
         e.to_string()
     };
 
-    jsonrpc_core::Error {
-        code: jsonrpc_core::ErrorCode::ServerError(code),
+    JsonRpcError::Call(CallError::Custom(ErrorObject::owned(
+        code as _,
         message,
-        data: None,
-    }
+        None::<String>,
+    )))
 }
 
-pub fn parse_response(response: Value) -> Result<(), jsonrpc_core::Error> {
-    // serde deserialization of the `id` field to an `Id` struct is somehow
-    // incompatible with the `arbitrary-precision` feature which we use, so we
-    // need custom parsing logic.
-    let object = response.as_object().unwrap();
-    if let Some(error) = object.get("error") {
-        Err(serde_json::from_value(error.clone()).unwrap())
-    } else {
-        Ok(())
-    }
-}
-
-fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
+fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> JsonValue {
     let http_base_url = ENV_VARS
         .external_http_base_url
         .clone()
@@ -288,5 +221,30 @@ fn subgraph_routes(name: &SubgraphName, http_port: u16, ws_port: u16) -> Value {
         "subscriptions",
         format!("{}/subgraphs/name/{}", ws_base_url, name),
     );
-    jsonrpc_core::to_value(map).unwrap()
+
+    serde_json::to_value(map).expect("invalid subgraph routes")
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphCreateParams {
+    name: SubgraphName,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphDeployParams {
+    name: SubgraphName,
+    ipfs_hash: DeploymentHash,
+    node_id: Option<NodeId>,
+    debug_fork: Option<DeploymentHash>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphRemoveParams {
+    name: SubgraphName,
+}
+
+#[derive(Debug, Deserialize)]
+struct SubgraphReassignParams {
+    ipfs_hash: DeploymentHash,
+    node_id: NodeId,
 }
