@@ -10,7 +10,7 @@ use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
-use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
+use graph::prelude::{IndexNodeServer as _, *};
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
@@ -460,6 +460,7 @@ async fn main() {
             node_id.clone(),
             logger.clone(),
         )
+        .await
         .expect("failed to start JSON-RPC admin server");
 
         // Let the server run forever.

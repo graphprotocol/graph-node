@@ -114,7 +114,6 @@ pub mod prelude {
         CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts,
         PrometheusError, Registry,
     };
-    pub use crate::components::server::admin::JsonRpcServer;
     pub use crate::components::server::index_node::IndexNodeServer;
     pub use crate::components::server::metrics::MetricsServer;
     pub use crate::components::server::query::GraphQLServer;

@@ -5,6 +5,5 @@ edition = "2021"
 
 [dependencies]
 graph = { path = "../../graph" }
-jsonrpc-http-server = "18.0.0"
-lazy_static = "1.2.0"
+jsonrpsee = { version = "0.15.1", features = ["http-server"] }
 serde = "1.0"
