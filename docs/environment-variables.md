@@ -136,6 +136,12 @@ those.
   in parallel and deploy to specific nodes; each ID must be unique among the set
   of nodes. A single node should have the same value between consecutive restarts.
   Subgraphs get assigned to node IDs and are not reassigned to other nodes automatically.
+- `GRAPH_NODE_ID_USE_LITERAL_VALUE`: (Docker only) Use the literal `node_id`
+  provided to the docker start script instead of replacing hyphens (-) in names
+  with underscores (\_). Changing this for an existing `graph-node`
+  installation requires also changing the assigned node IDs in the
+  `subgraphs.subgraph_deployment_assignment` table in the database. This can be
+  done with GraphMan or via the PostgreSQL command line.
 - `GRAPH_LOG`: control log levels, the same way that `RUST_LOG` is described
   [here](https://docs.rs/env_logger/0.6.0/env_logger/)
 - `THEGRAPH_STORE_POSTGRES_DIESEL_URL`: postgres instance used when running

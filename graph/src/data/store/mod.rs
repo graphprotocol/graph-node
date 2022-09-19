@@ -63,14 +63,8 @@ impl NodeId {
     pub fn new(s: impl Into<String>) -> Result<Self, ()> {
         let s = s.into();
 
-        // Enforce length limit
-        if s.len() > 63 {
-            return Err(());
-        }
-
-        // Check that the ID contains only allowed characters.
-        // Note: these restrictions are relied upon to prevent SQL injection
-        if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        // Enforce minimum and maximum length limit
+        if s.len() > 63 || s.len() < 1 {
             return Err(());
         }
 

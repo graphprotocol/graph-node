@@ -32,7 +32,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     ) -> Result<r::Value, QueryExecutionError>;
 
     /// Resolves an object, `prefetched_object` is `Some` if the parent already calculated the value.
-    fn resolve_object(
+    async fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
         field: &a::Field,
@@ -51,7 +51,7 @@ pub trait Resolver: Sized + Send + Sync + 'static {
     }
 
     /// Resolves a scalar value for a given scalar type.
-    fn resolve_scalar_value(
+    async fn resolve_scalar_value(
         &self,
         _parent_object_type: &s::ObjectType,
         _field: &a::Field,

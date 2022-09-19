@@ -3,16 +3,20 @@ use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{pg::PgConnection, sql_query};
 use diesel::{
-    sql_types::{Array, Nullable, Text},
+    sql_types::{Array, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
+use graph::components::store::VersionStats;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
 use graph::prelude::anyhow::anyhow;
-use graph::{data::subgraph::schema::POI_TABLE, prelude::StoreError};
+use graph::{
+    data::subgraph::schema::POI_TABLE,
+    prelude::{lazy_static, StoreError},
+};
 
 use crate::connection_pool::ForeignServer;
 use crate::{
@@ -119,7 +123,7 @@ impl Catalog {
 
     /// Whether to create exclusion indexes; if false, create gist indexes
     /// w/o an exclusion constraint
-    pub fn create_exclusion_constraint(&self) -> bool {
+    pub fn create_exclusion_constraint() -> bool {
         CREATE_EXCLUSION_CONSTRAINT
     }
 }
@@ -154,9 +158,10 @@ fn get_text_columns(
     Ok(map)
 }
 
-pub fn supports_proof_of_indexing(
-    conn: &diesel::pg::PgConnection,
+pub fn table_exists(
+    conn: &PgConnection,
     namespace: &Namespace,
+    table: &SqlName,
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
     struct Table {
@@ -167,10 +172,63 @@ pub fn supports_proof_of_indexing(
     let query =
         "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name=$2";
     let result: Vec<Table> = diesel::sql_query(query)
-        .bind::<Text, _>(namespace.as_str())
-        .bind::<Text, _>(POI_TABLE)
+        .bind::<Text, _>(namespace)
+        .bind::<Text, _>(table.as_str())
         .load(conn)?;
     Ok(result.len() > 0)
+}
+
+pub fn supports_proof_of_indexing(
+    conn: &diesel::pg::PgConnection,
+    namespace: &Namespace,
+) -> Result<bool, StoreError> {
+    lazy_static! {
+        static ref POI_TABLE_NAME: SqlName = SqlName::verbatim(POI_TABLE.to_owned());
+    }
+    table_exists(conn, namespace, &POI_TABLE_NAME)
+}
+
+/// Whether the given table has an exclusion constraint. When we create
+/// tables, they either have an exclusion constraint on `(id, block_range)`,
+/// or just a GIST index on those columns. If this returns `true`, there is
+/// an exclusion constraint on the table, if it returns `false` we only have
+/// an index.
+///
+/// This function only checks whether there is some exclusion constraint on
+/// the table since checking fully if that is exactly the constraint we
+/// think it is is a bit more complex. But if the table is part of a
+/// deployment that we created, the conclusions in hte previous paragraph
+/// are true.
+pub fn has_exclusion_constraint(
+    conn: &PgConnection,
+    namespace: &Namespace,
+    table: &SqlName,
+) -> Result<bool, StoreError> {
+    #[derive(Debug, QueryableByName)]
+    struct Row {
+        #[sql_type = "Bool"]
+        #[allow(dead_code)]
+        uses_excl: bool,
+    }
+
+    let query = "
+        select count(*) > 0 as uses_excl
+          from pg_catalog.pg_constraint con,
+               pg_catalog.pg_class rel,
+               pg_catalog.pg_namespace nsp
+         where rel.oid = con.conrelid
+           and nsp.oid = con.connamespace
+           and con.contype = 'x'
+           and nsp.nspname = $1
+           and rel.relname = $2;
+    ";
+
+    sql_query(query)
+        .bind::<Text, _>(namespace)
+        .bind::<Text, _>(table.as_str())
+        .get_result::<Row>(conn)
+        .map_err(StoreError::from)
+        .map(|row| row.uses_excl)
 }
 
 pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
@@ -500,4 +558,61 @@ pub(crate) fn drop_index(
         .execute(conn)
         .map_err::<StoreError, _>(Into::into)?;
     Ok(())
+}
+
+pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionStats>, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    pub struct DbStats {
+        #[sql_type = "Integer"]
+        pub entities: i32,
+        #[sql_type = "Integer"]
+        pub versions: i32,
+        #[sql_type = "Text"]
+        pub tablename: String,
+        /// The ratio `entities / versions`
+        #[sql_type = "Double"]
+        pub ratio: f64,
+    }
+
+    impl From<DbStats> for VersionStats {
+        fn from(s: DbStats) -> Self {
+            VersionStats {
+                entities: s.entities,
+                versions: s.versions,
+                tablename: s.tablename,
+                ratio: s.ratio,
+            }
+        }
+    }
+
+    // Get an estimate of number of rows (pg_class.reltuples) and number of
+    // distinct entities (based on the planners idea of how many distinct
+    // values there are in the `id` column) See the [Postgres
+    // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
+    // the precise meaning of n_distinct
+    let query = format!(
+        "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
+                     else s.n_distinct::int4
+                 end as entities,
+                 c.reltuples::int4  as versions,
+                 c.relname as tablename,
+                case when c.reltuples = 0 then 0::float8
+                     when s.n_distinct < 0 then (-s.n_distinct)::float8
+                     else greatest(s.n_distinct, 1)::float8 / c.reltuples::float8
+                 end as ratio
+           from pg_namespace n, pg_class c, pg_stats s
+          where n.nspname = $1
+            and c.relnamespace = n.oid
+            and s.schemaname = n.nspname
+            and s.attname = 'id'
+            and c.relname = s.tablename
+          order by c.relname"
+    );
+
+    let stats = sql_query(query)
+        .bind::<Text, _>(namespace.as_str())
+        .load::<DbStats>(conn)
+        .map_err(StoreError::from)?;
+
+    Ok(stats.into_iter().map(|s| s.into()).collect())
 }

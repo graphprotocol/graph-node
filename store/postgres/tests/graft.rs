@@ -1,11 +1,10 @@
 use graph::blockchain::block_stream::FirehoseCursor;
-use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
-    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType,
+    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -13,7 +12,6 @@ use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
 use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
-use web3::types::H256;
 
 const USER_GQL: &str = "
 enum Color { yellow, red, blue, green }
@@ -74,30 +72,24 @@ type User @entity(immutable: true) {
 
 const USER: &str = "User";
 
-macro_rules! block_pointer {
-    ($hash:expr, $number:expr) => {{
-        BlockPtr::from((H256::from(hex!($hash)), $number as u64))
-    }};
-}
-
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("testsubgraph").unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: Schema =
         Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
     static ref BLOCKS: Vec<BlockPtr> = vec![
-        block_pointer!(
-            "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
-            0
-        ),
-        block_pointer!(
-            "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
-            1
-        ),
-        block_pointer!(
-            "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
-            2
-        ),
-    ];
+        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+        "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
+        "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
+        "7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c",
+        "f8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6",
+        "7b0ea919e258eb2b119eb32de56b85d12d50ac6a9f7c5909f843d6172c8ba196",
+        "6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b",
+        "7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e"
+    ]
+    .iter()
+    .enumerate()
+    .map(|(idx, hash)| BlockPtr::try_from((*hash, idx as i64)).unwrap())
+    .collect();
 }
 
 /// Test harness for running database integration tests.
@@ -114,6 +106,8 @@ where
 
         // Seed database with test data
         let deployment = insert_test_data(store.clone()).await;
+
+        flush(&deployment).await.unwrap();
 
         // Run test
         test(store.cheap_clone(), deployment.clone())
@@ -447,5 +441,101 @@ fn copy() {
         store.activate(&deployment)?;
 
         check_graft(store, deployment).await
+    })
+}
+
+#[test]
+fn prune() {
+    fn check_at_block(
+        store: &DieselSubgraphStore,
+        src: &DeploymentLocator,
+        block: BlockNumber,
+        exp: Vec<&str>,
+    ) {
+        let query = EntityQuery::new(
+            src.hash.clone(),
+            block,
+            EntityCollection::All(vec![(
+                EntityType::new("User".to_string()),
+                AttributeNames::All,
+            )]),
+        );
+
+        let act: Vec<_> = store
+            .find(query)
+            .unwrap()
+            .into_iter()
+            .map(|entity| entity.id().unwrap())
+            .collect();
+        assert_eq!(act, exp);
+    }
+
+    async fn prune(
+        store: &DieselSubgraphStore,
+        src: &DeploymentLocator,
+        earliest_block: BlockNumber,
+    ) -> Result<(), StoreError> {
+        struct Progress;
+        impl PruneReporter for Progress {}
+        let reporter = Box::new(Progress);
+
+        store
+            .prune(reporter, &src, earliest_block, 1, 1.1)
+            .await
+            .map(|_| ())
+    }
+
+    run_test(|store, src| async move {
+        // The setup sets the subgraph pointer to block 2, we try to set
+        // earliest block to 5
+        prune(&store, &src, 5)
+            .await
+            .expect_err("setting earliest block later than latest does not work");
+
+        // Latest block 2 minus reorg threshold 1 means we need to copy
+        // final blocks from block 1, but want earliest as block 2, i.e. no
+        // final blocks which won't work
+        prune(&store, &src, 2)
+            .await
+            .expect_err("setting earliest block after last final block fails");
+
+        // Add another version for user 2 at block 4
+        let user2 = create_test_entity(
+            "2",
+            USER,
+            "Cindini",
+            "dinici@email.com",
+            44 as i32,
+            157.1,
+            true,
+            Some("red"),
+        );
+        transact_and_wait(&store, &src, BLOCKS[5].clone(), vec![user2])
+            .await
+            .unwrap();
+
+        // Setup and the above addition create these user versions:
+        // id | versions
+        // ---+---------
+        //  1 | [0,)
+        //  2 | [1,5) [5,)
+        //  3 | [1,2) [2,)
+
+        // Forward block ptr to block 5
+        transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
+            .await
+            .unwrap();
+        // Pruning only removes the [1,2) version of user 3
+        prune(&store, &src, 3).await.expect("pruning works");
+
+        // Check which versions exist at every block, even if they are
+        // before the new earliest block, since we don't have a convenient
+        // way to load all entity versions with their block range
+        check_at_block(&store, &src, 0, vec!["1"]);
+        check_at_block(&store, &src, 1, vec!["1", "2"]);
+        for block in 2..=5 {
+            check_at_block(&store, &src, block, vec!["1", "2", "3"]);
+        }
+        Ok(())
     })
 }

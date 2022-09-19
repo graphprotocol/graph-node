@@ -306,7 +306,7 @@ where
                 // Note: We can safely unwrap the subgraph ptr here, because
                 // if it was `None`, `is_on_main_chain` would be true.
                 let from = subgraph_ptr.unwrap();
-                let parent = self.parent_ptr(&from).await?;
+                let parent = self.parent_ptr(&from, "is_on_main_chain").await?;
 
                 return Ok(ReconciliationStep::Revert(parent));
             }
@@ -441,7 +441,7 @@ where
                             .await?;
                         Ok(ReconciliationStep::ProcessDescendantBlocks(vec![block], 1))
                     } else {
-                        let parent = self.parent_ptr(&subgraph_ptr).await?;
+                        let parent = self.parent_ptr(&subgraph_ptr, "nonfinal").await?;
 
                         // The subgraph ptr is not on the main chain.
                         // We will need to step back (possibly repeatedly) one block at a time
@@ -453,12 +453,11 @@ where
         }
     }
 
-    async fn parent_ptr(&self, block_ptr: &BlockPtr) -> Result<BlockPtr, Error> {
-        let ptr = self
-            .adapter
-            .parent_ptr(block_ptr)
-            .await?
-            .expect("genesis block can't be reverted");
+    async fn parent_ptr(&self, block_ptr: &BlockPtr, reason: &str) -> Result<BlockPtr, Error> {
+        let ptr =
+            self.adapter.parent_ptr(block_ptr).await?.ok_or_else(|| {
+                anyhow!("Failed to get parent pointer for {block_ptr} ({reason})")
+            })?;
 
         Ok(ptr)
     }

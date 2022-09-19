@@ -412,7 +412,7 @@ impl Resolver for IntrospectionResolver {
         }
     }
 
-    fn resolve_object(
+    async fn resolve_object(
         &self,
         prefetched_object: Option<r::Value>,
         field: &a::Field,

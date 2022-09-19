@@ -39,11 +39,12 @@ type Query {
   subgraphFeatures(subgraphId: String!): SubgraphFeatures!
   entityChangesInBlock(subgraphId: String!, blockNumber: Int!): EntityChanges!
   blockData(network: String!, blockHash: Bytes!): JSONObject
+  blockHashFromNumber(network: String!, blockNumber: Int!): Bytes
   cachedEthereumCalls(
     network: String!
     blockHash: Bytes!
   ): [CachedEthereumCall!]
-  apiVersions(subgraphId: String!): [SubgraphVersion!]!
+  apiVersions(subgraphId: String!): [ApiVersion!]!
 }
 
 type SubgraphIndexingStatus {

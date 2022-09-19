@@ -12,7 +12,7 @@ graph = { path = "../../graph" }
 prost = "0.10.1"
 prost-types = "0.10.1"
 serde = "1.0"
-sha2 = "0.10.2"
+sha2 = "0.10.5"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }

@@ -13,6 +13,7 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
+    io::Write,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -20,9 +21,13 @@ use std::{
 use diesel::{
     dsl::sql,
     insert_into,
+    pg::Pg,
     r2d2::{ConnectionManager, PooledConnection},
-    select, sql_query,
-    sql_types::Integer,
+    select,
+    serialize::Output,
+    sql_query,
+    sql_types::{BigInt, Integer},
+    types::{FromSql, ToSql},
     update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl,
 };
@@ -202,17 +207,17 @@ impl CopyState {
                     })
             })
             .collect::<Result<_, _>>()?;
-        tables.sort_by_key(|table| table.dst.object.to_string());
+        tables.sort_by_key(|table| table.batch.dst.object.to_string());
 
         let values = tables
             .iter()
             .map(|table| {
                 (
-                    cts::entity_type.eq(table.dst.object.as_str()),
+                    cts::entity_type.eq(table.batch.dst.object.as_str()),
                     cts::dst.eq(dst.site.id),
-                    cts::next_vid.eq(table.next_vid),
-                    cts::target_vid.eq(table.target_vid),
-                    cts::batch_size.eq(table.batch_size),
+                    cts::next_vid.eq(table.batch.next_vid),
+                    cts::target_vid.eq(table.batch.target_vid),
+                    cts::batch_size.eq(table.batch.batch_size.size),
                 )
             })
             .collect::<Vec<_>>();
@@ -268,14 +273,108 @@ impl CopyState {
     }
 }
 
-struct TableState {
-    dst_site: Arc<Site>,
+/// Track the desired size of a batch in such a way that doing the next
+/// batch gets close to TARGET_DURATION for the time it takes to copy one
+/// batch, but don't step up the size by more than 2x at once
+#[derive(Debug, Queryable)]
+pub(crate) struct AdaptiveBatchSize {
+    size: i64,
+}
+
+impl AdaptiveBatchSize {
+    pub fn new(table: &Table) -> Self {
+        let size = if table.columns.iter().any(|col| col.is_list()) {
+            INITIAL_BATCH_SIZE_LIST
+        } else {
+            INITIAL_BATCH_SIZE
+        };
+
+        Self { size }
+    }
+
+    // adjust batch size by trying to extrapolate in such a way that we
+    // get close to TARGET_DURATION for the time it takes to copy one
+    // batch, but don't step up batch_size by more than 2x at once
+    pub fn adapt(&mut self, duration: Duration) {
+        // Avoid division by zero
+        let duration = duration.as_millis().max(1);
+        let new_batch_size =
+            self.size as f64 * TARGET_DURATION.as_millis() as f64 / duration as f64;
+        self.size = (2 * self.size).min(new_batch_size.round() as i64);
+    }
+}
+
+impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <i64 as ToSql<BigInt, Pg>>::to_sql(&self.size, out)
+    }
+}
+
+impl FromSql<BigInt, Pg> for AdaptiveBatchSize {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let size = <i64 as FromSql<BigInt, Pg>>::from_sql(bytes)?;
+        Ok(AdaptiveBatchSize { size })
+    }
+}
+
+/// A helper to copy entities from one table to another in batches that are
+/// small enough to not interfere with the rest of the operations happening
+/// in the database. The `src` and `dst` table must have the same structure
+/// so that we can copy rows from one to the other with very little
+/// transformation. See `CopyEntityBatchQuery` for the details of what
+/// exactly that means
+pub(crate) struct BatchCopy {
     src: Arc<Table>,
     dst: Arc<Table>,
     /// The `vid` of the next entity version that we will copy
     next_vid: i64,
+    /// The last `vid` that should be copied
     target_vid: i64,
-    batch_size: i64,
+    batch_size: AdaptiveBatchSize,
+}
+
+impl BatchCopy {
+    pub fn new(src: Arc<Table>, dst: Arc<Table>, first_vid: i64, last_vid: i64) -> Self {
+        let batch_size = AdaptiveBatchSize::new(&dst);
+
+        Self {
+            src,
+            dst,
+            next_vid: first_vid,
+            target_vid: last_vid,
+            batch_size,
+        }
+    }
+
+    /// Copy one batch of entities and update internal state so that the
+    /// next call to `run` will copy the next batch
+    pub fn run(&mut self, conn: &PgConnection) -> Result<Duration, StoreError> {
+        let start = Instant::now();
+
+        // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
+        // but do not go over target_vid
+        let last_vid = (self.next_vid + self.batch_size.size - 1).min(self.target_vid);
+        rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, self.next_vid, last_vid)?
+            .execute(conn)?;
+
+        let duration = start.elapsed();
+
+        // remember how far we got
+        self.next_vid = last_vid + 1;
+
+        self.batch_size.adapt(duration);
+
+        Ok(duration)
+    }
+
+    pub fn finished(&self) -> bool {
+        self.next_vid > self.target_vid
+    }
+}
+
+struct TableState {
+    batch: BatchCopy,
+    dst_site: Arc<Site>,
     duration_ms: i64,
 }
 
@@ -309,25 +408,15 @@ impl TableState {
         .map(|v| v.max_vid)
         .unwrap_or(-1);
 
-        let batch_size = if dst.columns.iter().any(|col| col.is_list()) {
-            INITIAL_BATCH_SIZE_LIST
-        } else {
-            INITIAL_BATCH_SIZE
-        };
-
         Ok(Self {
+            batch: BatchCopy::new(src, dst, 0, target_vid),
             dst_site,
-            src,
-            dst,
-            next_vid: 0,
-            target_vid,
-            batch_size,
             duration_ms: 0,
         })
     }
 
     fn finished(&self) -> bool {
-        self.next_vid > self.target_vid
+        self.batch.finished()
     }
 
     fn load(
@@ -373,7 +462,7 @@ impl TableState {
             .load::<(i32, String, i64, i64, i64, i64)>(conn)?
             .into_iter()
             .map(
-                |(id, entity_type, current_vid, target_vid, batch_size, duration_ms)| {
+                |(id, entity_type, current_vid, target_vid, size, duration_ms)| {
                     let entity_type = EntityType::new(entity_type);
                     let src =
                         resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id);
@@ -385,15 +474,18 @@ impl TableState {
                         id,
                     );
                     match (src, dst) {
-                        (Ok(src), Ok(dst)) => Ok(TableState {
-                            dst_site: dst_layout.site.clone(),
-                            src,
-                            dst,
-                            next_vid: current_vid,
-                            target_vid,
-                            batch_size,
-                            duration_ms,
-                        }),
+                        (Ok(src), Ok(dst)) => {
+                            let mut batch = BatchCopy::new(src, dst, current_vid, target_vid);
+                            let batch_size = AdaptiveBatchSize { size };
+
+                            batch.batch_size = batch_size;
+
+                            Ok(TableState {
+                                batch,
+                                dst_site: dst_layout.site.clone(),
+                                duration_ms,
+                            })
+                        }
                         (Err(e), _) => Err(e),
                         (_, Err(e)) => Err(e),
                     }
@@ -420,20 +512,20 @@ impl TableState {
             update(
                 cts::table
                     .filter(cts::dst.eq(self.dst_site.id))
-                    .filter(cts::entity_type.eq(self.dst.object.as_str())),
+                    .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
             )
             .set(cts::started_at.eq(sql("now()")))
             .execute(conn)?;
         }
         let values = (
-            cts::next_vid.eq(self.next_vid),
-            cts::batch_size.eq(self.batch_size),
+            cts::next_vid.eq(self.batch.next_vid),
+            cts::batch_size.eq(self.batch.batch_size.size),
             cts::duration_ms.eq(self.duration_ms),
         );
         update(
             cts::table
                 .filter(cts::dst.eq(self.dst_site.id))
-                .filter(cts::entity_type.eq(self.dst.object.as_str())),
+                .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
         )
         .set(values)
         .execute(conn)?;
@@ -446,7 +538,7 @@ impl TableState {
         update(
             cts::table
                 .filter(cts::dst.eq(self.dst_site.id))
-                .filter(cts::entity_type.eq(self.dst.object.as_str())),
+                .filter(cts::entity_type.eq(self.batch.dst.object.as_str())),
         )
         .set(cts::finished_at.eq(sql("now()")))
         .execute(conn)?;
@@ -472,26 +564,9 @@ impl TableState {
     }
 
     fn copy_batch(&mut self, conn: &PgConnection) -> Result<Status, StoreError> {
-        let start = Instant::now();
+        let first_batch = self.batch.next_vid == 0;
 
-        // Copy all versions with next_vid <= vid <= next_vid + batch_size - 1,
-        // but do not go over target_vid
-        let first_batch = self.next_vid == 0;
-        let last_vid = (self.next_vid + self.batch_size - 1).min(self.target_vid);
-        rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, self.next_vid, last_vid)?
-            .execute(conn)?;
-
-        let duration = start.elapsed();
-
-        // remember how far we got
-        self.next_vid = last_vid + 1;
-
-        // adjust batch size by trying to extrapolate in such a way that we
-        // get close to TARGET_DURATION for the time it takes to copy one
-        // batch, but don't step up batch_size by more than 2x at once
-        let new_batch_size = self.batch_size as f64 * TARGET_DURATION.as_millis() as f64
-            / duration.as_millis() as f64;
-        self.batch_size = (2 * self.batch_size).min(new_batch_size.round() as i64);
+        let duration = self.batch.run(conn)?;
 
         self.record_progress(conn, duration, first_batch)?;
 
@@ -515,7 +590,11 @@ struct CopyProgress<'a> {
 
 impl<'a> CopyProgress<'a> {
     fn new(logger: &'a Logger, state: &CopyState) -> Self {
-        let target_vid: i64 = state.tables.iter().map(|table| table.target_vid).sum();
+        let target_vid: i64 = state
+            .tables
+            .iter()
+            .map(|table| table.batch.target_vid)
+            .sum();
         Self {
             logger,
             last_log: Instant::now(),
@@ -547,23 +626,23 @@ impl<'a> CopyProgress<'a> {
         }
     }
 
-    fn update(&mut self, table: &TableState) {
+    fn update(&mut self, batch: &BatchCopy) {
         if self.last_log.elapsed() > LOG_INTERVAL {
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
-                Self::progress_pct(table.next_vid, table.target_vid),
-                table.dst.object,
-                table.next_vid,
-                table.target_vid,
-                Self::progress_pct(self.current_vid + table.next_vid, self.target_vid)
+                Self::progress_pct(batch.next_vid, batch.target_vid),
+                batch.dst.object,
+                batch.next_vid,
+                batch.target_vid,
+                Self::progress_pct(self.current_vid + batch.next_vid, self.target_vid)
             );
             self.last_log = Instant::now();
         }
     }
 
-    fn table_finished(&mut self, table: &TableState) {
-        self.current_vid += table.next_vid;
+    fn table_finished(&mut self, batch: &BatchCopy) {
+        self.current_vid += batch.next_vid;
     }
 
     fn finished(&self) {
@@ -669,9 +748,9 @@ impl Connection {
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
-                progress.update(table);
+                progress.update(&table.batch);
             }
-            progress.table_finished(table);
+            progress.table_finished(&table.batch);
         }
 
         self.copy_private_data_sources(&state)?;

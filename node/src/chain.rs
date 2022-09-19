@@ -187,6 +187,7 @@ pub fn create_substreams_networks(
                     &firehose.url,
                     firehose.token.clone(),
                     firehose.filters_enabled(),
+                    firehose.compression_enabled(),
                     firehose.conn_pool_size,
                 );
 
@@ -228,6 +229,7 @@ pub fn create_firehose_networks(
                     &firehose.url,
                     firehose.token.clone(),
                     firehose.filters_enabled(),
+                    firehose.compression_enabled(),
                     firehose.conn_pool_size,
                 );
 

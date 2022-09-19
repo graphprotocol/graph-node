@@ -209,6 +209,18 @@ pub enum Command {
 
     /// Manage database indexes
     Index(IndexCommand),
+
+    /// Prune deployments
+    Prune {
+        /// The deployment to prune (see `help info`)
+        deployment: DeploymentSearch,
+        /// Prune tables with a ratio of entities to entity versions lower than this
+        #[structopt(long, short, default_value = "0.20")]
+        prune_ratio: f64,
+        /// How much history to keep in blocks
+        #[structopt(long, short, default_value = "10000")]
+        history: usize,
+    },
 }
 
 impl Command {
@@ -399,15 +411,10 @@ pub enum StatsCommand {
     ///
     /// Show how many distinct entities and how many versions the tables of
     /// each subgraph have. The data is based on the statistics that
-    /// Postgres keeps, and only refreshed when a table is analyzed. If a
-    /// table name is passed, perform a full count of entities and versions
-    /// in that table, which can be very slow, but is needed since the
-    /// statistics based data can be off by an order of magnitude.
+    /// Postgres keeps, and only refreshed when a table is analyzed.
     Show {
         /// The deployment (see `help info`).
         deployment: DeploymentSearch,
-        /// The name of a table to fully count
-        table: Option<String>,
     },
     /// Perform a SQL ANALYZE in a Entity table
     Analyze {
@@ -986,10 +993,19 @@ async fn main() -> anyhow::Result<()> {
                     clear,
                     deployment,
                     table,
-                } => commands::stats::account_like(ctx.pools(), clear, &deployment, table),
-                Show { deployment, table } => {
-                    commands::stats::show(ctx.pools(), &deployment, table)
+                } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    let subgraph_store = store.subgraph_store();
+                    commands::stats::account_like(
+                        subgraph_store,
+                        primary_pool,
+                        clear,
+                        &deployment,
+                        table,
+                    )
+                    .await
                 }
+                Show { deployment } => commands::stats::show(ctx.pools(), &deployment),
                 Analyze { deployment, entity } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
@@ -1029,6 +1045,14 @@ async fn main() -> anyhow::Result<()> {
                         .await
                 }
             }
+        }
+        Prune {
+            deployment,
+            history,
+            prune_ratio,
+        } => {
+            let (store, primary_pool) = ctx.store_and_primary();
+            commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
         }
     }
 }

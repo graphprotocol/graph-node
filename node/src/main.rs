@@ -10,7 +10,7 @@ use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
-use graph::prelude::{IndexNodeServer as _, JsonRpcServer as _, *};
+use graph::prelude::{IndexNodeServer as _, *};
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
@@ -133,8 +133,8 @@ async fn main() {
         std::process::exit(0);
     }
 
-    let node_id =
-        NodeId::new(opt.node_id.clone()).expect("Node ID must contain only a-z, A-Z, 0-9, and '_'");
+    let node_id = NodeId::new(opt.node_id.clone())
+        .expect("Node ID must be between 1 and 63 characters in length");
     let query_only = config.query_only(&node_id);
 
     // Obtain subgraph related command-line arguments
@@ -460,6 +460,7 @@ async fn main() {
             node_id.clone(),
             logger.clone(),
         )
+        .await
         .expect("failed to start JSON-RPC admin server");
 
         // Let the server run forever.

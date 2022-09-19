@@ -25,6 +25,7 @@ pub struct FirehoseEndpoint {
     pub provider: String,
     pub token: Option<String>,
     pub filters_enabled: bool,
+    pub compression_enabled: bool,
     channel: Channel,
 }
 
@@ -40,6 +41,7 @@ impl FirehoseEndpoint {
         url: S,
         token: Option<String>,
         filters_enabled: bool,
+        compression_enabled: bool,
         conn_pool_size: u16,
     ) -> Self {
         let uri = url
@@ -81,6 +83,7 @@ impl FirehoseEndpoint {
             channel,
             token,
             filters_enabled,
+            compression_enabled,
         }
     }
 
@@ -119,7 +122,12 @@ impl FirehoseEndpoint {
 
                 Ok(r)
             },
-        );
+        )
+        .accept_gzip();
+
+        if self.compression_enabled {
+            client = client.send_gzip();
+        }
 
         debug!(
             logger,
@@ -208,7 +216,11 @@ impl FirehoseEndpoint {
 
                 Ok(r)
             },
-        );
+        )
+        .accept_gzip();
+        if self.compression_enabled {
+            client = client.send_gzip();
+        }
 
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
