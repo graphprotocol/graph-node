@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
+use std::time::Duration;
 
 use graph::prelude::anyhow::anyhow;
 use graph::{
@@ -615,4 +616,28 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
         .map_err(StoreError::from)?;
 
     Ok(stats.into_iter().map(|s| s.into()).collect())
+}
+
+/// Return by how much the slowest replica connected to the database `conn`
+/// is lagging. The returned value has millisecond precision. If the
+/// database has no replicas, return `0`
+pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct Lag {
+        #[sql_type = "Nullable<Integer>"]
+        ms: Option<i32>,
+    }
+
+    let lag = sql_query(
+        "select extract(milliseconds from max(greatest(write_lag, flush_lag, replay_lag)))::int as ms \
+           from pg_stat_replication",
+    )
+    .get_result::<Lag>(conn)?;
+
+    let lag = lag
+        .ms
+        .map(|ms| if ms <= 0 { 0 } else { ms as u64 })
+        .unwrap_or(0);
+
+    Ok(Duration::from_millis(lag))
 }
