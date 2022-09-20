@@ -791,6 +791,10 @@ impl Queue {
 
         Ok(dds)
     }
+
+    fn poisoned(&self) -> bool {
+        self.poisoned.load(Ordering::SeqCst)
+    }
 }
 
 /// A shim to allow bypassing any pipelined store handling if need be
@@ -908,6 +912,13 @@ impl Writer {
             Writer::Async(queue) => queue.load_dynamic_data_sources(manifest_idx_and_name).await,
         }
     }
+
+    fn poisoned(&self) -> bool {
+        match self {
+            Writer::Sync(_) => false,
+            Writer::Async(queue) => queue.poisoned(),
+        }
+    }
 }
 
 pub struct WritableStore {
@@ -940,6 +951,10 @@ impl WritableStore {
             block_cursor,
             writer,
         })
+    }
+
+    pub(crate) fn poisoned(&self) -> bool {
+        self.writer.poisoned()
     }
 }
 

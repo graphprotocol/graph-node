@@ -130,7 +130,12 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return a `WritableStore` that is used for indexing subgraphs. Only
     /// code that is part of indexing a subgraph should ever use this. The
     /// `logger` will be used to log important messages related to the
-    /// subgraph
+    /// subgraph.
+    ///
+    /// This function should only be called in situations where no
+    /// assumptions about the in-memory state of writing has been made; in
+    /// particular, no assumptions about whether previous writes have
+    /// actually been committed or not.
     async fn writable(
         self: Arc<Self>,
         logger: Logger,

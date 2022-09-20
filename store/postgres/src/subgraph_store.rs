@@ -1232,7 +1232,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         // idempotent and there is ever only one `WritableStore` for any
         // deployment
         if let Some(writable) = self.writables.lock().unwrap().get(&deployment) {
-            return Ok(writable.cheap_clone());
+            // A poisoned writable will not write anything anymore; we
+            // discard it and create a new one that is properly initialized
+            // according to the state in the database.
+            if !writable.poisoned() {
+                return Ok(writable.cheap_clone());
+            }
         }
 
         // Ideally the lower level functions would be asyncified.
