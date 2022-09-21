@@ -12,7 +12,7 @@ use protobuf::UnknownValueRef;
 use std::convert::From;
 use std::path::Path;
 
-const REQUIRED_ID: u32 = 66001;
+const REQUIRED_ID: u32 = 77001;
 
 #[derive(Debug, Clone)]
 pub struct Field {
