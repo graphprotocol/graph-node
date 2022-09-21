@@ -33,6 +33,7 @@ message HeaderOnlyBlock {
 message EventData {
   Event event = 1 [(firehose.required) = true];
   HeaderOnlyBlock block = 2 [(firehose.required) = true];
+  TransactionContext tx = 3;
 }
 
 message TransactionData {
@@ -41,8 +42,17 @@ message TransactionData {
 }
 
 message MessageData {
-  google.protobuf.Any message = 1;
-  HeaderOnlyBlock block = 2;
+  google.protobuf.Any message = 1 [(firehose.required) = true];
+  HeaderOnlyBlock block = 2 [(firehose.required) = true];
+  TransactionContext tx = 3 [(firehose.required) = true];
+}
+
+message TransactionContext {
+  bytes hash = 1;
+  uint32 index = 2;
+  uint32 code = 3;
+  int64 gas_wanted = 4;
+  int64 gas_used = 5;
 }
 
 message Header {
