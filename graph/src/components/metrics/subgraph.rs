@@ -3,16 +3,23 @@ use crate::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::stopwatch::StopwatchMetrics;
+
 pub struct SubgraphInstanceMetrics {
     pub block_trigger_count: Box<Histogram>,
     pub block_processing_duration: Box<Histogram>,
     pub block_ops_transaction_duration: Box<Histogram>,
 
+    pub stopwatch: StopwatchMetrics,
     trigger_processing_duration: Box<Histogram>,
 }
 
 impl SubgraphInstanceMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
+    pub fn new(
+        registry: Arc<dyn MetricsRegistry>,
+        subgraph_hash: &str,
+        stopwatch: StopwatchMetrics,
+    ) -> Self {
         let block_trigger_count = registry
             .new_deployment_histogram(
                 "deployment_block_trigger_count",
@@ -51,6 +58,7 @@ impl SubgraphInstanceMetrics {
             block_processing_duration,
             trigger_processing_duration,
             block_ops_transaction_duration,
+            stopwatch,
         }
     }
 
