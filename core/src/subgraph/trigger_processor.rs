@@ -3,7 +3,7 @@ use graph::blockchain::Blockchain;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::TriggerData;
+use graph::data_source::{MappingTrigger, TriggerData, TriggerWithHandler};
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
     BlockState, RuntimeHost, RuntimeHostBuilder, SubgraphInstanceMetrics, TriggerProcessor,
@@ -33,11 +33,7 @@ where
     ) -> Result<BlockState<C>, MappingError> {
         let error_count = state.deterministic_errors.len();
 
-        if let Some(proof_of_indexing) = proof_of_indexing {
-            proof_of_indexing
-                .borrow_mut()
-                .start_handler(causality_region);
-        }
+        let mut host_mapping: Vec<(&T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];
 
         for host in hosts {
             let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
@@ -48,6 +44,20 @@ where
                 None => continue,
             };
 
+            host_mapping.push((&host, mapping_trigger));
+        }
+
+        if host_mapping.is_empty() {
+            return Ok(state);
+        }
+
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            proof_of_indexing
+                .borrow_mut()
+                .start_handler(causality_region);
+        }
+
+        for (host, mapping_trigger) in host_mapping {
             let start = Instant::now();
             state = host
                 .process_mapping_trigger(
