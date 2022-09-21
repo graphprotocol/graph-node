@@ -1133,6 +1133,7 @@ mod tests {
         let CombinedFilter {
             log_filters: mut actual_log_filters,
             call_filters: mut actual_call_filters,
+            send_all_block_headers: actual_send_all_block_headers,
         } = combined_filter;
 
         actual_call_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
@@ -1146,10 +1147,72 @@ mod tests {
             filter.event_signatures.sort();
         }
         assert_eq!(expected_log_filters, actual_log_filters);
+        assert_eq!(false, actual_send_all_block_headers);
+    }
 
-        filter.block.trigger_every_block = true;
-        let firehose_filter = filter.to_firehose_filter();
-        assert_eq!(firehose_filter.len(), 0);
+    #[test]
+    fn ethereum_trigger_filter_to_firehose_every_block_plus_logfilter() {
+        let address = Address::from_low_u64_be;
+        let sig = H256::from_low_u64_le;
+        let mut filter = TriggerFilter {
+            log: EthereumLogFilter {
+                contracts_and_events_graph: GraphMap::new(),
+                wildcard_events: HashMap::new(),
+            },
+            call: EthereumCallFilter {
+                contract_addresses_function_signatures: HashMap::new(),
+                wildcard_signatures: HashSet::new(),
+            },
+            block: EthereumBlockFilter {
+                contract_addresses: HashSet::new(),
+                trigger_every_block: true,
+            },
+        };
+
+        filter.log.contracts_and_events_graph.add_edge(
+            LogFilterNode::Contract(address(10)),
+            LogFilterNode::Event(sig(101)),
+            false,
+        );
+
+        let expected_log_filters = vec![LogFilter {
+            addresses: vec![address(10).to_fixed_bytes().to_vec()],
+            event_signatures: vec![sig(101).to_fixed_bytes().to_vec()],
+        }];
+
+        let firehose_filter = filter.clone().to_firehose_filter();
+        assert_eq!(1, firehose_filter.len());
+
+        let firehose_filter: HashMap<_, _> = HashMap::from_iter::<Vec<(String, Any)>>(
+            firehose_filter
+                .into_iter()
+                .map(|any| (any.type_url.clone(), any))
+                .collect_vec(),
+        );
+
+        let mut combined_filter = &firehose_filter
+            .get(COMBINED_FILTER_TYPE_URL.into())
+            .expect("a CombinedFilter")
+            .value[..];
+
+        let combined_filter =
+            CombinedFilter::decode(&mut combined_filter).expect("combined filter to decode");
+
+        let CombinedFilter {
+            log_filters: mut actual_log_filters,
+            call_filters: actual_call_filters,
+            send_all_block_headers: actual_send_all_block_headers,
+        } = combined_filter;
+
+        assert_eq!(0, actual_call_filters.len());
+
+        actual_log_filters.sort_by(|a, b| a.addresses.cmp(&b.addresses));
+        for filter in actual_log_filters.iter_mut() {
+            filter.event_signatures.sort();
+        }
+        assert_eq!(expected_log_filters, actual_log_filters);
+
+        assert_eq!(true, actual_send_all_block_headers);
     }
 
     #[test]
