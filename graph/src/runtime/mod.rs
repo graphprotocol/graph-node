@@ -331,10 +331,11 @@ pub enum IndexForAscTypeId {
     CosmosValidatorUpdate = 1560,
     CosmosVersionParams = 1561,
     CosmosMessageData = 1562,
+    CosmosTransactionContext = 1563,
     // Continue to add more Cosmos type IDs here.
     // e.g.:
-    // NextCosmosType = 1563,
-    // AnotherCosmosType = 1564,
+    // NextCosmosType = 1564,
+    // AnotherCosmosType = 1565,
     // ...
     // LastCosmosType = 2499,
 

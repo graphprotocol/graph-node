@@ -1,9 +1,11 @@
+syntax = "proto3";
+
 package firehose;
+
+option go_package = "github.com/streamingfast/pbgo/sf/firehose/v1;pbfirehose";
 
 import "google/protobuf/descriptor.proto";
 
-// 66K range is arbitrary picked number, might be conflict
-
 extend google.protobuf.FieldOptions {
-  optional bool required = 66001;
+  optional bool required = 77001;
 }

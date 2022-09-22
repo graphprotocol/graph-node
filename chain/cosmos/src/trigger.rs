@@ -120,12 +120,14 @@ impl CosmosTrigger {
     pub(crate) fn with_event(
         event: codec::Event,
         block: codec::HeaderOnlyBlock,
+        tx_context: Option<codec::TransactionContext>,
         origin: EventOrigin,
     ) -> CosmosTrigger {
         CosmosTrigger::Event {
             event_data: Arc::new(codec::EventData {
                 event: Some(event),
                 block: Some(block),
+                tx: tx_context,
             }),
             origin,
         }
@@ -144,10 +146,12 @@ impl CosmosTrigger {
     pub(crate) fn with_message(
         message: ::prost_types::Any,
         block: codec::HeaderOnlyBlock,
+        tx_context: codec::TransactionContext,
     ) -> CosmosTrigger {
         CosmosTrigger::Message(Arc::new(codec::MessageData {
             message: Some(message),
             block: Some(block),
+            tx: Some(tx_context),
         }))
     }
 

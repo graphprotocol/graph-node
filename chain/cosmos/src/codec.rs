@@ -15,15 +15,6 @@ impl Block {
             .ok_or_else(|| anyhow!("block data missing header field"))
     }
 
-    pub fn events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
-        let events = self
-            .begin_block_events()?
-            .chain(self.tx_events()?)
-            .chain(self.end_block_events()?);
-
-        Ok(events)
-    }
-
     pub fn begin_block_events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
         let events = self
             .result_begin_block
@@ -31,22 +22,6 @@ impl Block {
             .ok_or_else(|| anyhow!("block data missing result_begin_block field"))?
             .events
             .iter();
-
-        Ok(events)
-    }
-
-    pub fn tx_events(&self) -> Result<impl Iterator<Item = &Event>, Error> {
-        if self.transactions.iter().any(|tx| tx.result.is_none()) {
-            return Err(anyhow!("block data transaction missing result field"));
-        }
-
-        let events = self.transactions.iter().flat_map(|tx| {
-            tx.result
-                .as_ref()
-                .map(|b| b.events.iter())
-                .into_iter()
-                .flatten()
-        });
 
         Ok(events)
     }
