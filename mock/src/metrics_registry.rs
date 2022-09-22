@@ -4,16 +4,11 @@ use graph::prometheus::{CounterVec, GaugeVec, HistogramOpts, HistogramVec};
 
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct MockMetricsRegistry {}
 
 impl MockMetricsRegistry {
     pub fn new() -> Self {
-        Self {}
-    }
-}
-
-impl Clone for MockMetricsRegistry {
-    fn clone(&self) -> Self {
         Self {}
     }
 }

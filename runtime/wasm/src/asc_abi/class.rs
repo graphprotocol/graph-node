@@ -705,7 +705,7 @@ impl AscIndexId for AscResult<AscPtr<AscEnum<JsonValueKind>>, bool> {
 }
 
 #[repr(C)]
-#[derive(AscType)]
+#[derive(AscType, Copy, Clone)]
 pub struct AscWrapped<V: AscValue> {
     pub inner: V,
 }
@@ -720,12 +720,4 @@ impl AscIndexId for AscWrapped<bool> {
 
 impl AscIndexId for AscWrapped<AscPtr<AscEnum<JsonValueKind>>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::WrappedJsonValue;
-}
-
-impl<V: AscValue> Copy for AscWrapped<V> {}
-
-impl<V: AscValue> Clone for AscWrapped<V> {
-    fn clone(&self) -> Self {
-        Self { inner: self.inner }
-    }
 }

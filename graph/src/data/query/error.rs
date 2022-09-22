@@ -12,14 +12,8 @@ use crate::data::subgraph::*;
 use crate::prelude::q;
 use crate::{components::store::StoreError, prelude::CacheWeight};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CloneableAnyhowError(Arc<anyhow::Error>);
-
-impl Clone for CloneableAnyhowError {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
 
 impl From<anyhow::Error> for CloneableAnyhowError {
     fn from(f: anyhow::Error) -> Self {

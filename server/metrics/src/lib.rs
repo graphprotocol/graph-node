@@ -23,18 +23,10 @@ impl From<hyper::Error> for PrometheusMetricsServeError {
     }
 }
 
+#[derive(Clone)]
 pub struct PrometheusMetricsServer {
     logger: Logger,
     registry: Arc<Registry>,
-}
-
-impl Clone for PrometheusMetricsServer {
-    fn clone(&self) -> Self {
-        Self {
-            logger: self.logger.clone(),
-            registry: self.registry.clone(),
-        }
-    }
 }
 
 impl PrometheusMetricsServer {
