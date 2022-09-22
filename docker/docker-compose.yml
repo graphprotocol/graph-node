@@ -12,14 +12,14 @@ services:
       - ipfs
       - postgres
     extra_hosts:
-      - host.docker.internal:host-gateway
+      - 172.18.0.1:host-gateway
     environment:
       postgres_host: postgres
       postgres_user: graph-node
       postgres_pass: let-me-in
       postgres_db: graph-node
       ipfs: 'ipfs:5001'
-      ethereum: 'mainnet:http://host.docker.internal:8545'
+      ethereum: 'mainnet:http://54.165.22.40:8545'
       GRAPH_LOG: info
   ipfs:
     image: ipfs/go-ipfs:v0.10.0
@@ -43,3 +43,20 @@ services:
       PGDATA: "/data/postgres"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
+  nginx:
+    image: nginx:alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx:/etc/nginx/conf.d/
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - graph-node
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
