@@ -4,6 +4,14 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
+FROM golang:buster as envsubst
+
+# v1.2.0
+ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
+
+RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
+    && strip -g /go/bin/envsubst
+
 FROM rust:buster as graph-node-build
 
 ARG COMMIT_SHA=unknown
@@ -88,5 +96,6 @@ RUN apt-get update \
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graphman /usr/local/bin/
 COPY --from=graph-node-build /etc/image-info /etc/image-info
+COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
 CMD start

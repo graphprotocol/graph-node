@@ -11,6 +11,11 @@ The TOML file consists of four sections:
 * `[ingestor]` sets the name of the node responsible for block ingestion.
 * `[deployment]` describes how to place newly deployed subgraphs.
 
+Some of these sections support environment variable expansion out of the box,
+most notably Postgres connection strings. The official `graph-node` Docker image
+includes [`envsubst`](https://github.com/a8m/envsubst) for more complex use
+cases.
+
 ## Configuring Multiple Databases
 
 For most use cases, a single Postgres database is sufficient to support a
