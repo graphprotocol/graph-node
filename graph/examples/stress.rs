@@ -5,12 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use clap::Parser;
 use graph::data::value::{Object, Word};
 use graph::object;
 use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
 use rand::SeedableRng;
 use rand::{rngs::SmallRng, Rng};
-use structopt::StructOpt;
 
 use graph::util::cache_weight::CacheWeight;
 use graph::util::lfu_cache::LfuCache;
@@ -523,32 +523,32 @@ impl<T: Template> From<T> for Entry<T> {
 }
 
 // Command line arguments
-#[derive(StructOpt)]
-#[structopt(name = "stress", about = "Stress test for the LFU Cache")]
+#[derive(Parser)]
+#[clap(name = "stress", about = "Stress test for the LFU Cache")]
 struct Opt {
     /// Number of cache evictions and insertions
-    #[structopt(short, long, default_value = "1000")]
+    #[clap(short, long, default_value = "1000")]
     niter: usize,
     /// Print this many intermediate messages
-    #[structopt(short, long, default_value = "10")]
+    #[clap(short, long, default_value = "10")]
     print_count: usize,
     /// Use objects of size 0 up to this size, chosen unifromly randomly
     /// unless `--fixed` is given
-    #[structopt(short, long, default_value = "1024")]
+    #[clap(short, long, default_value = "1024")]
     obj_size: usize,
-    #[structopt(short, long, default_value = "1000000")]
+    #[clap(short, long, default_value = "1000000")]
     cache_size: usize,
-    #[structopt(short, long, default_value = "vec")]
+    #[clap(short, long, default_value = "vec")]
     template: String,
-    #[structopt(short, long)]
+    #[clap(short, long)]
     samples: bool,
     /// Always use objects of size `--obj-size`
-    #[structopt(short, long)]
+    #[clap(short, long)]
     fixed: bool,
     /// The seed of the random number generator. A seed of 0 means that all
     /// samples are taken from the same template object, and only differ in
     /// size
-    #[structopt(long)]
+    #[clap(long)]
     seed: Option<u64>,
 }
 
