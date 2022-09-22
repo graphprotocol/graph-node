@@ -14,13 +14,7 @@ use graph::prelude::{MetricsServer as MetricsServerTrait, *};
 #[derive(Debug, Error)]
 pub enum PrometheusMetricsServeError {
     #[error("Bind error: {0}")]
-    BindError(hyper::Error),
-}
-
-impl From<hyper::Error> for PrometheusMetricsServeError {
-    fn from(err: hyper::Error) -> Self {
-        PrometheusMetricsServeError::BindError(err)
-    }
+    BindError(#[from] hyper::Error),
 }
 
 #[derive(Clone)]

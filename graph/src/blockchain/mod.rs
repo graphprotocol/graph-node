@@ -157,13 +157,7 @@ pub enum IngestorError {
 
     /// An unexpected error occurred.
     #[error("Ingestor error: {0:#}")]
-    Unknown(Error),
-}
-
-impl From<Error> for IngestorError {
-    fn from(e: Error) -> Self {
-        IngestorError::Unknown(e)
-    }
+    Unknown(#[from] Error),
 }
 
 impl From<web3::Error> for IngestorError {

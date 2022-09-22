@@ -4,7 +4,7 @@ use graph::prelude::{thiserror, Error, StoreError};
 #[derive(thiserror::Error, Debug)]
 pub enum BlockProcessingError {
     #[error("{0:#}")]
-    Unknown(Error),
+    Unknown(#[from] Error),
 
     // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose to
     // halt processing due to the error.
@@ -18,12 +18,6 @@ pub enum BlockProcessingError {
 impl BlockProcessingError {
     pub fn is_deterministic(&self) -> bool {
         matches!(self, BlockProcessingError::Deterministic(_))
-    }
-}
-
-impl From<Error> for BlockProcessingError {
-    fn from(e: Error) -> Self {
-        BlockProcessingError::Unknown(e)
     }
 }
 

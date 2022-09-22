@@ -270,7 +270,7 @@ pub enum SubgraphRegistrarError {
     #[error("deployment assignment unchanged: {0}")]
     DeploymentAssignmentUnchanged(String),
     #[error("subgraph registrar internal query error: {0}")]
-    QueryExecutionError(QueryExecutionError),
+    QueryExecutionError(#[from] QueryExecutionError),
     #[error("subgraph registrar error with store: {0}")]
     StoreError(StoreError),
     #[error("subgraph validation error: {}", display_vector(.0))]
@@ -278,13 +278,7 @@ pub enum SubgraphRegistrarError {
     #[error("subgraph deployment error: {0}")]
     SubgraphDeploymentError(StoreError),
     #[error("subgraph registrar error: {0}")]
-    Unknown(anyhow::Error),
-}
-
-impl From<QueryExecutionError> for SubgraphRegistrarError {
-    fn from(e: QueryExecutionError) -> Self {
-        SubgraphRegistrarError::QueryExecutionError(e)
-    }
+    Unknown(#[from] anyhow::Error),
 }
 
 impl From<StoreError> for SubgraphRegistrarError {
@@ -293,12 +287,6 @@ impl From<StoreError> for SubgraphRegistrarError {
             StoreError::DeploymentNotFound(id) => SubgraphRegistrarError::DeploymentNotFound(id),
             e => SubgraphRegistrarError::StoreError(e),
         }
-    }
-}
-
-impl From<Error> for SubgraphRegistrarError {
-    fn from(e: Error) -> Self {
-        SubgraphRegistrarError::Unknown(e)
     }
 }
 
@@ -318,13 +306,7 @@ pub enum SubgraphAssignmentProviderError {
     #[error("Subgraph with ID {0} is not running")]
     NotRunning(DeploymentLocator),
     #[error("Subgraph provider error: {0}")]
-    Unknown(anyhow::Error),
-}
-
-impl From<Error> for SubgraphAssignmentProviderError {
-    fn from(e: Error) -> Self {
-        SubgraphAssignmentProviderError::Unknown(e)
-    }
+    Unknown(#[from] anyhow::Error),
 }
 
 impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
@@ -357,8 +339,8 @@ pub enum SubgraphManifestValidationError {
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
     GraftBaseInvalid(String),
-    #[error("subgraph must use a single apiVersion across its data sources. Found: {}", format_versions(.0))]
-    DifferentApiVersions(BTreeSet<Version>),
+    #[error("subgraph must use a single apiVersion across its data sources. Found: {}", format_versions(&(.0).0))]
+    DifferentApiVersions(#[from] DifferentMappingApiVersions),
     #[error(transparent)]
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
     #[error("data source {0} is invalid: {1}")]
@@ -368,19 +350,13 @@ pub enum SubgraphManifestValidationError {
 #[derive(Error, Debug)]
 pub enum SubgraphManifestResolveError {
     #[error("parse error: {0}")]
-    ParseError(serde_yaml::Error),
+    ParseError(#[from] serde_yaml::Error),
     #[error("subgraph is not UTF-8")]
     NonUtf8,
     #[error("subgraph is not valid YAML")]
     InvalidFormat,
     #[error("resolve error: {0}")]
     ResolveError(anyhow::Error),
-}
-
-impl From<serde_yaml::Error> for SubgraphManifestResolveError {
-    fn from(e: serde_yaml::Error) -> Self {
-        SubgraphManifestResolveError::ParseError(e)
-    }
 }
 
 /// Data source contexts are conveniently represented as entities.
