@@ -35,16 +35,20 @@ where
 
         let mut host_mapping: Vec<(&T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];
 
-        for host in hosts {
-            let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
-                // Trigger matches and was decoded as a mapping trigger.
-                Some(mapping_trigger) => mapping_trigger,
+        {
+            let _section = subgraph_metrics.stopwatch.start_section("match_and_decode");
 
-                // Trigger does not match, do not process it.
-                None => continue,
-            };
+            for host in hosts {
+                let mapping_trigger = match host.match_and_decode(trigger, block, logger)? {
+                    // Trigger matches and was decoded as a mapping trigger.
+                    Some(mapping_trigger) => mapping_trigger,
 
-            host_mapping.push((&host, mapping_trigger));
+                    // Trigger does not match, do not process it.
+                    None => continue,
+                };
+
+                host_mapping.push((&host, mapping_trigger));
+            }
         }
 
         if host_mapping.is_empty() {

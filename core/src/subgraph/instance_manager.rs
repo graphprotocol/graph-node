@@ -285,6 +285,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
             registry.cheap_clone(),
             deployment.hash.as_str(),
+            stopwatch_metrics.clone(),
         ));
         let subgraph_metrics_unregister = subgraph_metrics.clone();
         let host_metrics = Arc::new(HostMetrics::new(
