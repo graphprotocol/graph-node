@@ -16,7 +16,7 @@ use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::commands;
 use graph_node::{
-    chain::create_ethereum_networks,
+    chain::create_all_ethereum_networks,
     manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
     store_builder::StoreBuilder,
     MetricsContext,
@@ -699,7 +699,7 @@ impl Context {
     async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
-        create_ethereum_networks(logger, registry, &self.config).await
+        create_all_ethereum_networks(logger, registry, &self.config).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
