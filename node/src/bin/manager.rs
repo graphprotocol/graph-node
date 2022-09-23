@@ -114,7 +114,7 @@ pub enum Command {
     ///
     /// Record which deployments are unused with `record`, then remove them
     /// with `remove`
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Unused(UnusedCommand),
     /// Remove a named subgraph
     Remove {
@@ -179,13 +179,13 @@ pub enum Command {
     ///
     /// Print information about a configuration file without
     /// actually connecting to databases or network clients
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Config(ConfigCommand),
     /// Listen for store events and print them
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Listen(ListenCommand),
     /// Manage deployment copies and grafts
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Copy(CopyCommand),
     /// Run a GraphQL query
     Query {
@@ -206,14 +206,14 @@ pub enum Command {
         vars: Vec<String>,
     },
     /// Get information about chains and manipulate them
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Chain(ChainCommand),
     /// Manipulate internal subgraph statistics
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Stats(StatsCommand),
 
     /// Manage database indexes
-    #[clap(flatten)]
+    #[clap(subcommand)]
     Index(IndexCommand),
 
     /// Prune deployments
@@ -726,7 +726,7 @@ impl Context {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let opt = Opt::from_args();
+    let opt = Opt::parse();
 
     let version_label = opt.version_label.clone();
     // Set up logger
