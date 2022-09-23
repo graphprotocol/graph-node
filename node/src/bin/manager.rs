@@ -496,10 +496,10 @@ pub enum IndexCommand {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
-    /// The number of the target block
+    /// The hash of the target block
     ByHash { hash: String },
 
-    /// The hash of the target block
+    /// The number of the target block
     ByNumber {
         number: i32,
         delete_duplicates: bool,
