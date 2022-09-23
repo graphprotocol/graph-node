@@ -3,18 +3,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::chain::{
-    create_ethereum_networks_for_chain, create_firehose_networks, ProviderNetworkStatus,
+    connect_ethereum_networks, create_ethereum_networks_for_chain, create_firehose_networks,
 };
 use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
 use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
-use ethereum::{EthereumNetworks, ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
-use futures::future::join_all;
+use ethereum::{ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use futures::TryFutureExt;
-use graph::anyhow::{bail, format_err, Error};
-use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
+use graph::anyhow::{bail, format_err};
+use graph::blockchain::{BlockchainKind, BlockchainMap};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore as _, DeploymentLocator};
 use graph::env::EnvVars;
@@ -24,9 +23,9 @@ use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
     SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
 };
-use graph::slog::{debug, error, info, o, Logger};
+use graph::slog::{debug, error, info, Logger};
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait};
+use graph_chain_ethereum::{self as ethereum};
 use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -262,11 +261,6 @@ pub async fn run(
     Ok(())
 }
 
-/// How long we will hold up node startup to get the net version and genesis
-/// hash from the client. If we can't get it within that time, we'll try and
-/// continue regardless.
-const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
-
 fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument
     let ipfs_addresses: Vec<_> = ipfs_addresses
@@ -332,81 +326,4 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
             ipfs_client
         })
         .collect()
-}
-
-/// Try to connect to all the providers in `eth_networks` and get their net
-/// version and genesis block. Return the same `eth_networks` and the
-/// retrieved net identifiers grouped by network name. Remove all providers
-/// for which trying to connect resulted in an error from the returned
-/// `EthereumNetworks`, since it's likely pointless to try and connect to
-/// them. If the connection attempt to a provider times out after
-/// `NET_VERSION_WAIT_TIME`, keep the provider, but don't report a
-/// version for it.
-async fn connect_ethereum_networks(
-    logger: &Logger,
-    mut eth_networks: EthereumNetworks,
-) -> (EthereumNetworks, Vec<(String, Vec<ChainIdentifier>)>) {
-    // This has one entry for each provider, and therefore multiple entries
-    // for each network
-    let statuses = join_all(
-        eth_networks
-            .flatten()
-            .into_iter()
-            .map(|(network_name, capabilities, eth_adapter)| {
-                (network_name, capabilities, eth_adapter, logger.clone())
-            })
-            .map(|(network, capabilities, eth_adapter, logger)| async move {
-                let logger = logger.new(o!("provider" => eth_adapter.provider().to_string()));
-                info!(
-                    logger, "Connecting to Ethereum to get network identifier";
-                    "capabilities" => &capabilities
-                );
-                match tokio::time::timeout(NET_VERSION_WAIT_TIME, eth_adapter.net_identifiers())
-                    .await
-                    .map_err(Error::from)
-                {
-                    // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
-                    // on the URL)
-                    Ok(Err(e)) | Err(e) => {
-                        error!(logger, "Connection to provider failed. Not using this provider";
-                                       "error" =>  e.to_string());
-                        ProviderNetworkStatus::Broken {
-                            chain_id: network,
-                            provider: eth_adapter.provider().to_string(),
-                        }
-                    }
-                    Ok(Ok(ident)) => {
-                        info!(
-                            logger,
-                            "Connected to Ethereum";
-                            "network_version" => &ident.net_version,
-                            "capabilities" => &capabilities
-                        );
-                        ProviderNetworkStatus::Version {
-                            chain_id: network,
-                            ident,
-                        }
-                    }
-                }
-            }),
-    )
-    .await;
-
-    // Group identifiers by network name
-    let idents: HashMap<String, Vec<ChainIdentifier>> =
-        statuses
-            .into_iter()
-            .fold(HashMap::new(), |mut networks, status| {
-                match status {
-                    ProviderNetworkStatus::Broken { chain_id, provider } => {
-                        eth_networks.remove(&chain_id, &provider)
-                    }
-                    ProviderNetworkStatus::Version { chain_id, ident } => {
-                        networks.entry(chain_id).or_default().push(ident)
-                    }
-                }
-                networks
-            });
-    let idents: Vec<_> = idents.into_iter().collect();
-    (eth_networks, idents)
 }
