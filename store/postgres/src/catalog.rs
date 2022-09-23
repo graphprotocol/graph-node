@@ -161,7 +161,7 @@ fn get_text_columns(
 
 pub fn table_exists(
     conn: &PgConnection,
-    namespace: &Namespace,
+    namespace: &str,
     table: &SqlName,
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
@@ -186,7 +186,7 @@ pub fn supports_proof_of_indexing(
     lazy_static! {
         static ref POI_TABLE_NAME: SqlName = SqlName::verbatim(POI_TABLE.to_owned());
     }
-    table_exists(conn, namespace, &POI_TABLE_NAME)
+    table_exists(conn, namespace.as_str(), &POI_TABLE_NAME)
 }
 
 /// Whether the given table has an exclusion constraint. When we create
