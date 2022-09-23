@@ -9,7 +9,9 @@ use graph::{
     prelude::{info, CheapClone, Logger},
     util::security::SafeDisplay,
 };
-use graph_store_postgres::connection_pool::{ConnectionPool, ForeignServer, PoolName};
+use graph_store_postgres::connection_pool::{
+    ConnectionPool, ForeignServer, PoolCoordinator, PoolName,
+};
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
     NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
@@ -102,6 +104,7 @@ impl StoreBuilder {
             .collect::<Result<Vec<_>, _>>()
             .expect("connection url's contain enough detail");
         let servers = Arc::new(servers);
+        let coord = Arc::new(PoolCoordinator::new(servers));
 
         let shards: Vec<_> = config
             .stores
@@ -114,7 +117,7 @@ impl StoreBuilder {
                     name,
                     shard,
                     registry.cheap_clone(),
-                    servers.clone(),
+                    coord.clone(),
                 );
 
                 let (read_only_conn_pools, weights) = Self::replica_pools(
@@ -123,7 +126,7 @@ impl StoreBuilder {
                     name,
                     shard,
                     registry.cheap_clone(),
-                    servers.clone(),
+                    coord.clone(),
                 );
 
                 let name =
@@ -191,7 +194,7 @@ impl StoreBuilder {
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
-        servers: Arc<Vec<ForeignServer>>,
+        coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
         let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
@@ -209,15 +212,14 @@ impl StoreBuilder {
             "conn_pool_size" => pool_size,
             "weight" => shard.weight
         );
-        ConnectionPool::create(
+        coord.create_pool(
+            &logger,
             name,
             PoolName::Main,
             shard.connection.to_owned(),
             pool_size,
             Some(fdw_pool_size),
-            &logger,
             registry.cheap_clone(),
-            servers,
         )
     }
 
@@ -228,7 +230,7 @@ impl StoreBuilder {
         name: &str,
         shard: &Shard,
         registry: Arc<dyn MetricsRegistry>,
-        servers: Arc<Vec<ForeignServer>>,
+        coord: Arc<PoolCoordinator>,
     ) -> (Vec<ConnectionPool>, Vec<usize>) {
         let mut weights: Vec<_> = vec![shard.weight];
         (
@@ -250,15 +252,15 @@ impl StoreBuilder {
                         "we can determine the pool size for replica {}",
                         name
                     ));
-                    ConnectionPool::create(
+
+                    coord.clone().create_pool(
+                        &logger,
                         name,
                         PoolName::Replica(pool),
                         replica.connection.clone(),
                         pool_size,
                         None,
-                        &logger,
                         registry.cheap_clone(),
-                        servers.clone(),
                     )
                 })
                 .collect(),

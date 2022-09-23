@@ -21,6 +21,7 @@ use graph_node::{
     store_builder::StoreBuilder,
     MetricsContext,
 };
+use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
@@ -587,13 +588,14 @@ impl Context {
 
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
+        let coord = Arc::new(PoolCoordinator::new(Arc::new(vec![])));
         let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
             PRIMARY_SHARD.as_str(),
             primary,
             self.metrics_registry(),
-            Arc::new(vec![]),
+            coord,
         );
         pool.skip_setup();
         pool
