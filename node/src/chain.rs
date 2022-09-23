@@ -19,7 +19,7 @@ use std::time::Duration;
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]
-enum ProviderNetworkStatus {
+pub enum ProviderNetworkStatus {
     Broken {
         chain_id: String,
         provider: String,

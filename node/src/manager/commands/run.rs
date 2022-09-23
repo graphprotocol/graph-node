@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::chain::{create_ethereum_networks_for_chain, create_firehose_networks};
+use crate::chain::{
+    create_ethereum_networks_for_chain, create_firehose_networks, ProviderNetworkStatus,
+};
 use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
@@ -260,23 +262,6 @@ pub async fn run(
     Ok(())
 }
 
-// Stuff copied directly moslty from `main.rs`
-//
-// FIXME: Share that with `main.rs` stuff
-
-// The status of a provider that we learned from connecting to it
-#[derive(PartialEq)]
-enum ProviderNetworkStatus {
-    Broken {
-        network: String,
-        provider: String,
-    },
-    Version {
-        network: String,
-        ident: ChainIdentifier,
-    },
-}
-
 /// How long we will hold up node startup to get the net version and genesis
 /// hash from the client. If we can't get it within that time, we'll try and
 /// continue regardless.
@@ -386,7 +371,7 @@ async fn connect_ethereum_networks(
                         error!(logger, "Connection to provider failed. Not using this provider";
                                        "error" =>  e.to_string());
                         ProviderNetworkStatus::Broken {
-                            network,
+                            chain_id: network,
                             provider: eth_adapter.provider().to_string(),
                         }
                     }
@@ -397,7 +382,10 @@ async fn connect_ethereum_networks(
                             "network_version" => &ident.net_version,
                             "capabilities" => &capabilities
                         );
-                        ProviderNetworkStatus::Version { network, ident }
+                        ProviderNetworkStatus::Version {
+                            chain_id: network,
+                            ident,
+                        }
                     }
                 }
             }),
@@ -410,11 +398,11 @@ async fn connect_ethereum_networks(
             .into_iter()
             .fold(HashMap::new(), |mut networks, status| {
                 match status {
-                    ProviderNetworkStatus::Broken { network, provider } => {
-                        eth_networks.remove(&network, &provider)
+                    ProviderNetworkStatus::Broken { chain_id, provider } => {
+                        eth_networks.remove(&chain_id, &provider)
                     }
-                    ProviderNetworkStatus::Version { network, ident } => {
-                        networks.entry(network.to_string()).or_default().push(ident)
+                    ProviderNetworkStatus::Version { chain_id, ident } => {
+                        networks.entry(chain_id).or_default().push(ident)
                     }
                 }
                 networks
