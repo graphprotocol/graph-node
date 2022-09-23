@@ -1,11 +1,9 @@
 use anyhow::Error;
 use graph::impl_slog_value;
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
-use std::{
-    cmp::{Ord, Ordering, PartialOrd},
-    collections::BTreeSet,
-};
 
 use crate::DataSource;
 
@@ -15,28 +13,28 @@ pub struct NodeCapabilities {
     pub traces: bool,
 }
 
-// Take all NodeCapabilities fields into account when ordering
-// A NodeCapabilities instance is considered equal or greater than another
-// if all of its fields are equal or greater than the other
-impl Ord for NodeCapabilities {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (
+/// Two [`NodeCapabilities`] can only be compared if one is the subset of the
+/// other. No [`Ord`] (i.e. total order) implementation is applicable.
+impl PartialOrd for NodeCapabilities {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        product_order([
             self.archive.cmp(&other.archive),
             self.traces.cmp(&other.traces),
-        ) {
-            (Ordering::Greater, Ordering::Greater) => Ordering::Greater,
-            (Ordering::Greater, Ordering::Equal) => Ordering::Greater,
-            (Ordering::Equal, Ordering::Greater) => Ordering::Greater,
-            (Ordering::Equal, Ordering::Equal) => Ordering::Equal,
-            (Ordering::Less, _) => Ordering::Less,
-            (_, Ordering::Less) => Ordering::Less,
-        }
+        ])
     }
 }
 
-impl PartialOrd for NodeCapabilities {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+/// Defines a [product order](https://en.wikipedia.org/wiki/Product_order) over
+/// an array of [`Ordering`].
+fn product_order<const N: usize>(cmps: [Ordering; N]) -> Option<Ordering> {
+    if cmps.iter().all(|c| c.is_eq()) {
+        Some(Ordering::Equal)
+    } else if cmps.iter().all(|c| c.is_le()) {
+        Some(Ordering::Less)
+    } else if cmps.iter().all(|c| c.is_ge()) {
+        Some(Ordering::Greater)
+    } else {
+        None
     }
 }
 
