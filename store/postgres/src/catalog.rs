@@ -629,7 +629,7 @@ pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreErro
     }
 
     let lag = sql_query(
-        "select extract(milliseconds from max(greatest(write_lag, flush_lag, replay_lag)))::int as ms \
+        "select (extract(epoch from max(greatest(write_lag, flush_lag, replay_lag)))*1000)::int as ms \
            from pg_stat_replication",
     )
     .get_result::<Lag>(conn)?;
