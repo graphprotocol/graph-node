@@ -159,9 +159,14 @@ pub enum Command {
         /// The deployments to rewind (see `help info`)
         deployments: Vec<DeploymentSearch>,
     },
-    /// Deploy and run an arbitrary subgraph up to a certain block, although it can surpass it by a few blocks, it's not exact (use for dev and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO NOT USE IN PRODUCTION
+    /// Deploy and run an arbitrary subgraph up to a certain block
     ///
-    /// Also worth noting that the deployed subgraph will be removed at the end.
+    /// The run can surpass it by a few blocks, it's not exact (use for dev
+    /// and testing purposes) -- WARNING: WILL RUN MIGRATIONS ON THE DB, DO
+    /// NOT USE IN PRODUCTION
+    ///
+    /// Also worth noting that the deployed subgraph will be removed at the
+    /// end.
     Run {
         /// Network name (must fit one of the chain)
         network_name: String,
