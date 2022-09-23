@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::Error;
 use graph::{
-    blockchain::{self, block_stream::BlockWithTriggers, BlockPtr},
+    blockchain::{self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities},
     components::{
         store::{DeploymentLocator, EntityKey, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
@@ -20,9 +20,7 @@ use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
 use crate::codec;
-use crate::{
-    codec::entity_change::Operation, Block, Chain, NodeCapabilities, NoopDataSourceTemplate,
-};
+use crate::{codec::entity_change::Operation, Block, Chain, NoopDataSourceTemplate};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct TriggerData {}
@@ -84,8 +82,8 @@ impl blockchain::TriggerFilter<Chain> for TriggerFilter {
         }
     }
 
-    fn node_capabilities(&self) -> NodeCapabilities {
-        NodeCapabilities {}
+    fn node_capabilities(&self) -> EmptyNodeCapabilities<Chain> {
+        EmptyNodeCapabilities::default()
     }
 
     fn to_firehose_filter(self) -> Vec<prost_types::Any> {
