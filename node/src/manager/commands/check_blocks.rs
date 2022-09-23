@@ -26,13 +26,17 @@ pub async fn by_number(
     chain_store: Arc<ChainStore>,
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
+    delete_duplicates: bool,
 ) -> anyhow::Result<()> {
     let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
 
     match &block_hashes.as_slice() {
         [] => bail!("Found no block hash with number {}", number),
-        [block_hash] => run(&block_hash, &chain_store, ethereum_adapter, logger).await,
-        multiple => todo!(),
+        [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await,
+        &block_hashes => {
+            handle_multiple_block_hashes(number, block_hashes, &chain_store, delete_duplicates)
+                .await
+        }
     }
 }
 
@@ -42,6 +46,7 @@ pub async fn by_range(
     range_from: Option<i32>,
     range_to: Option<i32>,
     logger: &Logger,
+    delete_duplicates: bool,
 ) -> anyhow::Result<()> {
     // Resolve a range of block numbers into a collection of blocks hashes
     let range = ranges::Range::new(range_from, range_to)?;
@@ -57,8 +62,16 @@ pub async fn by_range(
         let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
         match &block_hashes.as_slice() {
             [] => eprintln!("Found no block hash with number {block_number}"),
-            [block_hash] => run(&block_hash, &chain_store, ethereum_adapter, logger).await?,
-            multiple => todo!(),
+            [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await?,
+            &block_hashes => {
+                handle_multiple_block_hashes(
+                    block_number,
+                    block_hashes,
+                    &chain_store,
+                    delete_duplicates,
+                )
+                .await?
+            }
         }
     }
     Ok(())
@@ -88,6 +101,39 @@ async fn run(
     steps::report_difference(diff.as_deref(), &block_hash);
     if diff.is_some() {
         steps::delete_block(&block_hash, &chain_store)?;
+    }
+    Ok(())
+}
+
+async fn handle_multiple_block_hashes(
+    block_number: i32,
+    block_hashes: &[H256],
+    chain_store: &ChainStore,
+    delete_duplicates: bool,
+) -> anyhow::Result<()> {
+    println!(
+        "Found {} different block hashes for block number {} in the store.",
+        block_hashes.len(),
+        block_number
+    );
+    println!("graphman is unable to tell which block hash to check.");
+
+    if delete_duplicates {
+        println!("Deleting duplicated blocks...");
+        for hash in block_hashes {
+            println!("  {hash}");
+            steps::delete_block(hash, chain_store)?;
+        }
+        println!("Done.");
+    } else {
+        for hash in block_hashes {
+            println!("  {hash}");
+        }
+        eprintln!(
+            "Operation aborted for block number {block_number}.\n\
+             To delete the duplicated blocks and continue this operation, rerun this command with \
+             the `--delete-duplicates` option."
+        )
     }
     Ok(())
 }
