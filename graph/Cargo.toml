@@ -66,8 +66,8 @@ serde_plain = "1.0.0"
 
 [dev-dependencies]
 test-store = { path = "../store/test-store" }
+clap = { version = "3.2.22", features = ["derive", "env"] }
 maplit = "1.0.2"
-structopt = { version = "0.3" }
 
 [build-dependencies]
 tonic-build = { version = "0.7.2", features = ["prost","compression"] }

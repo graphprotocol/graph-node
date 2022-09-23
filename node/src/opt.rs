@@ -1,6 +1,6 @@
+use clap::Parser;
 use git_testament::{git_testament, render_testament};
 use lazy_static::lazy_static;
-use structopt::StructOpt;
 
 use crate::config;
 
@@ -9,15 +9,15 @@ lazy_static! {
     static ref RENDERED_TESTAMENT: String = render_testament!(TESTAMENT);
 }
 
-#[derive(Clone, Debug, StructOpt)]
-#[structopt(
+#[derive(Clone, Debug, Parser)]
+#[clap(
     name = "graph-node",
     about = "Scalable queries for a decentralized future",
     author = "Graph Protocol, Inc.",
     version = RENDERED_TESTAMENT.as_str()
 )]
 pub struct Opt {
-    #[structopt(
+    #[clap(
         long,
         env = "GRAPH_NODE_CONFIG",
         conflicts_with_all = &["postgres-url", "postgres-secondary-hosts", "postgres-host-weights"],
@@ -25,9 +25,9 @@ pub struct Opt {
         help = "the name of the configuration file",
     )]
     pub config: Option<String>,
-    #[structopt(long, help = "validate the configuration and exit")]
+    #[clap(long, help = "validate the configuration and exit")]
     pub check_config: bool,
-    #[structopt(
+    #[clap(
         long,
         value_name = "[NAME:]IPFS_HASH",
         env = "SUBGRAPH",
@@ -35,14 +35,14 @@ pub struct Opt {
     )]
     pub subgraph: Option<String>,
 
-    #[structopt(
+    #[clap(
         long,
         value_name = "BLOCK_HASH:BLOCK_NUMBER",
         help = "block hash and number that the subgraph passed will start indexing at"
     )]
     pub start_block: Option<String>,
 
-    #[structopt(
+    #[clap(
         long,
         value_name = "URL",
         env = "POSTGRES_URL",
@@ -51,7 +51,7 @@ pub struct Opt {
         help = "Location of the Postgres database used for storing entities"
     )]
     pub postgres_url: Option<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "URL,",
         use_delimiter = true,
@@ -62,7 +62,7 @@ pub struct Opt {
     )]
     // FIXME: Make sure delimiter is ','
     pub postgres_secondary_hosts: Vec<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "WEIGHT,",
         use_delimiter = true,
@@ -74,7 +74,7 @@ pub struct Opt {
     Defaults to weight 1 for each host"
     )]
     pub postgres_host_weights: Vec<usize>,
-    #[structopt(
+    #[clap(
         long,
         min_values=0,
         required_unless_one = &["ethereum-ws", "ethereum-ipc", "config"],
@@ -84,7 +84,7 @@ pub struct Opt {
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'",
     )]
     pub ethereum_rpc: Vec<String>,
-    #[structopt(long, min_values=0,
+    #[clap(long, min_values=0,
         required_unless_one = &["ethereum-rpc", "ethereum-ipc", "config"],
         conflicts_with_all = &["ethereum-rpc", "ethereum-ipc", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:URL",
@@ -92,7 +92,7 @@ pub struct Opt {
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive`, and an Ethereum WebSocket URL, separated by a ':'",
     )]
     pub ethereum_ws: Vec<String>,
-    #[structopt(long, min_values=0,
+    #[clap(long, min_values=0,
         required_unless_one = &["ethereum-rpc", "ethereum-ws", "config"],
         conflicts_with_all = &["ethereum-rpc", "ethereum-ws", "config"],
         value_name="NETWORK_NAME:[CAPABILITIES]:FILE",
@@ -100,14 +100,14 @@ pub struct Opt {
         help= "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum IPC pipe, separated by a ':'",
     )]
     pub ethereum_ipc: Vec<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "HOST:PORT",
         env = "IPFS",
         help = "HTTP addresses of IPFS nodes"
     )]
     pub ipfs: Vec<String>,
-    #[structopt(
+    #[clap(
         long,
         default_value = "8000",
         value_name = "PORT",
@@ -115,14 +115,14 @@ pub struct Opt {
         env = "GRAPH_GRAPHQL_HTTP_PORT"
     )]
     pub http_port: u16,
-    #[structopt(
+    #[clap(
         long,
         default_value = "8030",
         value_name = "PORT",
         help = "Port for the index node server"
     )]
     pub index_node_port: u16,
-    #[structopt(
+    #[clap(
         long,
         default_value = "8001",
         value_name = "PORT",
@@ -130,21 +130,21 @@ pub struct Opt {
         env = "GRAPH_GRAPHQL_WS_PORT"
     )]
     pub ws_port: u16,
-    #[structopt(
+    #[clap(
         long,
         default_value = "8020",
         value_name = "PORT",
         help = "Port for the JSON-RPC admin server"
     )]
     pub admin_port: u16,
-    #[structopt(
+    #[clap(
         long,
         default_value = "8040",
         value_name = "PORT",
         help = "Port for the Prometheus metrics server"
     )]
     pub metrics_port: u16,
-    #[structopt(
+    #[clap(
         long,
         default_value = "default",
         value_name = "NODE_ID",
@@ -152,7 +152,7 @@ pub struct Opt {
         help = "a unique identifier for this node. Should have the same value between consecutive node restarts"
     )]
     pub node_id: String,
-    #[structopt(
+    #[clap(
         long,
         value_name = "FILE",
         env = "GRAPH_NODE_EXPENSIVE_QUERIES_FILE",
@@ -160,24 +160,24 @@ pub struct Opt {
         help = "a file with a list of expensive queries, one query per line. Attempts to run these queries will return a QueryExecutionError::TooExpensive to clients"
     )]
     pub expensive_queries_filename: String,
-    #[structopt(long, help = "Enable debug logging")]
+    #[clap(long, help = "Enable debug logging")]
     pub debug: bool,
 
-    #[structopt(
+    #[clap(
         long,
         value_name = "URL",
         env = "ELASTICSEARCH_URL",
         help = "Elasticsearch service to write subgraph logs to"
     )]
     pub elasticsearch_url: Option<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "USER",
         env = "ELASTICSEARCH_USER",
         help = "User to use for Elasticsearch logging"
     )]
     pub elasticsearch_user: Option<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "PASSWORD",
         env = "ELASTICSEARCH_PASSWORD",
@@ -185,7 +185,7 @@ pub struct Opt {
         help = "Password to use for Elasticsearch logging"
     )]
     pub elasticsearch_password: Option<String>,
-    #[structopt(
+    #[clap(
         long,
         value_name = "MILLISECONDS",
         default_value = "1000",
@@ -193,14 +193,14 @@ pub struct Opt {
         help = "How often to poll the Ethereum node for new blocks"
     )]
     pub ethereum_polling_interval: u64,
-    #[structopt(
+    #[clap(
         long,
         value_name = "DISABLE_BLOCK_INGESTOR",
         env = "DISABLE_BLOCK_INGESTOR",
         help = "Ensures that the block ingestor component does not execute"
     )]
     pub disable_block_ingestor: bool,
-    #[structopt(
+    #[clap(
         long,
         value_name = "STORE_CONNECTION_POOL_SIZE",
         default_value = "10",
@@ -208,20 +208,20 @@ pub struct Opt {
         help = "Limits the number of connections in the store's connection pool"
     )]
     pub store_connection_pool_size: u32,
-    #[structopt(
+    #[clap(
         long,
         help = "Allows setting configurations that may result in incorrect Proofs of Indexing."
     )]
     pub unsafe_config: bool,
 
-    #[structopt(
+    #[clap(
         long,
         value_name = "IPFS_HASH",
         help = "IPFS hash of the subgraph manifest that you want to fork"
     )]
     pub debug_fork: Option<String>,
 
-    #[structopt(long, value_name = "URL", help = "Base URL for forking subgraphs")]
+    #[clap(long, value_name = "URL", help = "Base URL for forking subgraphs")]
     pub fork_base: Option<String>,
 }
 

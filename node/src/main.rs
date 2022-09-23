@@ -1,3 +1,4 @@
+use clap::Parser as _;
 use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
@@ -44,7 +45,6 @@ use std::path::Path;
 use std::sync::atomic;
 use std::time::Duration;
 use std::{collections::HashMap, env};
-use structopt::StructOpt;
 use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
@@ -93,7 +93,7 @@ fn read_expensive_queries(
 async fn main() {
     env_logger::init();
 
-    let opt = opt::Opt::from_args();
+    let opt = opt::Opt::parse();
 
     // Set up logger
     let logger = logger(opt.debug);
