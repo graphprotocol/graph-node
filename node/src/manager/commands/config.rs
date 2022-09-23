@@ -13,7 +13,7 @@ use graph::{
 use graph_chain_ethereum::{EthereumAdapterTrait, NodeCapabilities};
 use graph_store_postgres::DeploymentPlacer;
 
-use crate::config::Config;
+use crate::{chain::create_ethereum_networks_for_chain, config::Config};
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {
     match placer.place(name, network).map_err(|s| anyhow!(s))? {
@@ -121,9 +121,7 @@ pub async fn provider(
     }
 
     let caps = caps_from_features(features)?;
-    let networks =
-        crate::manager::commands::run::create_ethereum_networks(logger, registry, config, &network)
-            .await?;
+    let networks = create_ethereum_networks_for_chain(&logger, registry, config, &network).await?;
     let adapters = networks
         .networks
         .get(&network)

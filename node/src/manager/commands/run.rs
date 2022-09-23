@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::chain::create_firehose_networks;
-use crate::config::{Config, ProviderDetails};
+use crate::chain::{create_ethereum_networks_for_chain, create_firehose_networks};
+use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
 use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
-use ethereum::{EthereumNetworks, ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
+use ethereum::{EthereumNetworks, RuntimeAdapter as EthereumRuntimeAdapter};
 use futures::future::join_all;
 use futures::TryFutureExt;
 use graph::anyhow::{bail, format_err, Error};
@@ -19,19 +19,17 @@ use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::{
-    anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory,
-    MetricsRegistry as MetricsRegistryTrait, NodeId, SubgraphAssignmentProvider, SubgraphName,
-    SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
+    anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
+    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, error, info, o, Logger};
 use graph::util::security::SafeDisplay;
-use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
+use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait};
 use graph_core::polling_monitor::ipfs_service::IpfsService;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
-use url::Url;
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(&hash)?;
@@ -78,8 +76,8 @@ pub async fn run(
         Arc::new(EnvVars::default()),
     ));
 
-    let eth_networks = create_ethereum_networks(
-        logger.clone(),
+    let eth_networks = create_ethereum_networks_for_chain(
+        &logger,
         metrics_registry.clone(),
         &config,
         &network_name,
@@ -352,66 +350,6 @@ fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<Ipf
             ipfs_client
         })
         .collect()
-}
-
-/// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
-pub async fn create_ethereum_networks(
-    logger: Logger,
-    registry: Arc<dyn MetricsRegistryTrait>,
-    config: &Config,
-    network_name: &str,
-) -> Result<EthereumNetworks, anyhow::Error> {
-    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
-    let mut parsed_networks = EthereumNetworks::new();
-    let chain = config
-        .chains
-        .chains
-        .get(network_name)
-        .ok_or_else(|| anyhow!("unknown network {}", network_name))?;
-    if chain.protocol == BlockchainKind::Ethereum {
-        for provider in &chain.providers {
-            if let ProviderDetails::Web3(web3) = &provider.details {
-                let capabilities = web3.node_capabilities();
-
-                let logger = logger.new(o!("provider" => provider.label.clone()));
-                info!(
-                    logger,
-                    "Creating transport";
-                    "url" => &web3.url,
-                    "capabilities" => capabilities
-                );
-
-                use crate::config::Transport::*;
-
-                let transport = match web3.transport {
-                    Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
-                    Ipc => Transport::new_ipc(&web3.url).await,
-                    Ws => Transport::new_ws(&web3.url).await,
-                };
-
-                let supports_eip_1898 = !web3.features.contains("no_eip1898");
-
-                parsed_networks.insert(
-                    network_name.to_string(),
-                    capabilities,
-                    Arc::new(
-                        graph_chain_ethereum::EthereumAdapter::new(
-                            logger,
-                            provider.label.clone(),
-                            &web3.url,
-                            transport,
-                            eth_rpc_metrics.clone(),
-                            supports_eip_1898,
-                        )
-                        .await,
-                    ),
-                    web3.limit_for(&config.node),
-                );
-            }
-        }
-    }
-    parsed_networks.sort();
-    Ok(parsed_networks)
 }
 
 /// Try to connect to all the providers in `eth_networks` and get their net
