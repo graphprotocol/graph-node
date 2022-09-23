@@ -1316,6 +1316,15 @@ impl DeploymentStore {
                 dst.catalog.site.namespace
             );
 
+            let src_manifest_idx_and_name = self
+                .load_deployment(&src.site)?
+                .manifest
+                .template_idx_and_name()?;
+            let dst_manifest_idx_and_name = self
+                .load_deployment(&dst.site)?
+                .manifest
+                .template_idx_and_name()?;
+
             // Copy subgraph data
             // We allow both not copying tables at all from the source, as well
             // as adding new tables in `self`; we only need to check that tables
@@ -1327,6 +1336,8 @@ impl DeploymentStore {
                 src.clone(),
                 dst.clone(),
                 block.clone(),
+                src_manifest_idx_and_name,
+                dst_manifest_idx_and_name,
             )?;
             let status = copy_conn.copy_data()?;
             if status == crate::copy::Status::Cancelled {
@@ -1586,6 +1597,17 @@ impl DeploymentStore {
         let id = site.id.clone();
         self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
+    }
+
+    pub(crate) async fn set_manifest_raw_yaml(
+        &self,
+        site: Arc<Site>,
+        raw_yaml: String,
+    ) -> Result<(), StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::set_manifest_raw_yaml(&conn, &site, &raw_yaml).map_err(Into::into)
+        })
+        .await
     }
 }
 
