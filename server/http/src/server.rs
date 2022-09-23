@@ -11,13 +11,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum GraphQLServeError {
     #[error("Bind error: {0}")]
-    BindError(hyper::Error),
-}
-
-impl From<hyper::Error> for GraphQLServeError {
-    fn from(err: hyper::Error) -> Self {
-        GraphQLServeError::BindError(err)
-    }
+    BindError(#[from] hyper::Error),
 }
 
 /// A GraphQL server based on Hyper.

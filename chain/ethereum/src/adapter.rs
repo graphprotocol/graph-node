@@ -44,7 +44,7 @@ pub struct EthereumContractCall {
 #[derive(Error, Debug)]
 pub enum EthereumContractCallError {
     #[error("ABI error: {0}")]
-    ABIError(ABIError),
+    ABIError(#[from] ABIError),
     /// `Token` is not of expected `ParamType`
     #[error("type mismatch, token {0:?} is not of kind {1:?}")]
     TypeError(Token, ParamType),
@@ -56,12 +56,6 @@ pub enum EthereumContractCallError {
     Revert(String),
     #[error("ethereum node took too long to perform call")]
     Timeout,
-}
-
-impl From<ABIError> for EthereumContractCallError {
-    fn from(e: ABIError) -> Self {
-        EthereumContractCallError::ABIError(e)
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash)]

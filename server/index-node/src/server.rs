@@ -16,13 +16,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum IndexNodeServeError {
     #[error("Bind error: {0}")]
-    BindError(hyper::Error),
-}
-
-impl From<hyper::Error> for IndexNodeServeError {
-    fn from(err: hyper::Error) -> Self {
-        IndexNodeServeError::BindError(err)
-    }
+    BindError(#[from] hyper::Error),
 }
 
 /// A GraphQL server based on Hyper.

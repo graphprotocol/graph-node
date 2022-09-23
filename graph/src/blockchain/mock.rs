@@ -37,13 +37,8 @@ impl Block for MockBlock {
     }
 }
 
+#[derive(Clone)]
 pub struct MockDataSource;
-
-impl Clone for MockDataSource {
-    fn clone(&self) -> Self {
-        todo!()
-    }
-}
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
     type Error = Error;

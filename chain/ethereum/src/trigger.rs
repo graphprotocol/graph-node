@@ -410,7 +410,7 @@ impl From<&'_ Transaction> for EthereumTransactionData {
 }
 
 /// An Ethereum event logged from a specific contract address and block.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EthereumEventData {
     pub address: Address,
     pub log_index: U256,
@@ -421,29 +421,8 @@ pub struct EthereumEventData {
     pub params: Vec<LogParam>,
 }
 
-impl Clone for EthereumEventData {
-    fn clone(&self) -> Self {
-        EthereumEventData {
-            address: self.address,
-            log_index: self.log_index,
-            transaction_log_index: self.transaction_log_index,
-            log_type: self.log_type.clone(),
-            block: self.block.clone(),
-            transaction: self.transaction.clone(),
-            params: self
-                .params
-                .iter()
-                .map(|log_param| LogParam {
-                    name: log_param.name.clone(),
-                    value: log_param.value.clone(),
-                })
-                .collect(),
-        }
-    }
-}
-
 /// An Ethereum call executed within a transaction within a block to a contract address.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EthereumCallData {
     pub from: Address,
     pub to: Address,
@@ -451,31 +430,4 @@ pub struct EthereumCallData {
     pub transaction: EthereumTransactionData,
     pub inputs: Vec<LogParam>,
     pub outputs: Vec<LogParam>,
-}
-
-impl Clone for EthereumCallData {
-    fn clone(&self) -> Self {
-        EthereumCallData {
-            to: self.to,
-            from: self.from,
-            block: self.block.clone(),
-            transaction: self.transaction.clone(),
-            inputs: self
-                .inputs
-                .iter()
-                .map(|log_param| LogParam {
-                    name: log_param.name.clone(),
-                    value: log_param.value.clone(),
-                })
-                .collect(),
-            outputs: self
-                .outputs
-                .iter()
-                .map(|log_param| LogParam {
-                    name: log_param.name.clone(),
-                    value: log_param.value.clone(),
-                })
-                .collect(),
-        }
-    }
 }
