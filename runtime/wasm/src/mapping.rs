@@ -99,7 +99,8 @@ where
         host_metrics.cheap_clone(),
         timeout,
         experimental_features,
-    )?;
+    )
+    .context("module instantiation failed")?;
     section.end();
 
     let _section = host_metrics.stopwatch.start_section("run_handler");
