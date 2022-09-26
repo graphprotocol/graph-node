@@ -538,7 +538,7 @@ pub enum EntityChange {
 impl EntityChange {
     pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
         Self::Data {
-            subgraph_id: subgraph_id,
+            subgraph_id,
             entity_type: key.entity_type,
         }
     }

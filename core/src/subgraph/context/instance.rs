@@ -67,7 +67,7 @@ where
             };
 
             if let DataSource::Offchain(ds) = &ds {
-                offchain_monitor.add_source(&ds.source)?;
+                offchain_monitor.add_source(ds.source.clone())?;
             }
 
             let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;

@@ -7,10 +7,10 @@ use crate::{
     },
     data::store::scalar::Bytes,
     data_source,
+    ipfs_client::CidFile,
     prelude::{DataSourceContext, Link},
 };
 use anyhow::{self, Context, Error};
-use cid::Cid;
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{fmt, sync::Arc};
@@ -74,7 +74,7 @@ impl DataSource {
 
     pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         let param = match self.source {
-            Source::Ipfs(link) => Bytes::from(link.to_bytes()),
+            Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
         };
         let context = self
             .context
@@ -95,7 +95,9 @@ impl DataSource {
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         let param = stored.param.context("no param on stored data source")?;
-        let source = Source::Ipfs(Cid::try_from(param.as_slice().to_vec())?);
+        let cid_file = CidFile::try_from(param)?;
+
+        let source = Source::Ipfs(cid_file);
         let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
         Ok(Self {
             kind: template.kind.clone(),
@@ -112,14 +114,14 @@ impl DataSource {
     /// used as the value to be returned to mappings from the `dataSource.address()` host function.
     pub fn address(&self) -> Option<Vec<u8>> {
         match self.source {
-            Source::Ipfs(cid) => Some(cid.to_bytes()),
+            Source::Ipfs(ref cid) => Some(cid.to_bytes()),
         }
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
-    Ipfs(Cid),
+    Ipfs(CidFile),
 }
 
 #[derive(Clone, Debug)]
