@@ -264,7 +264,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
 
                     metrics.observe_failed_connection(&mut connect_start);
 
-                    error!(logger, "Unable to connect to endpoint: {:?}", e);
+                    error!(logger, "Unable to connect to endpoint: {:#}", e);
                 }
             }
 
@@ -287,7 +287,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
 ) -> Result<Option<BlockResponse<C>>, Error> {
     let response = match result {
         Ok(v) => v,
-        Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:?}", e)),
+        Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:#}", e)),
     };
 
     match response.message {

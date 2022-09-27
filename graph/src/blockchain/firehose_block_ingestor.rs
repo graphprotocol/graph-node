@@ -73,7 +73,7 @@ where
                     latest_cursor = self.process_blocks(latest_cursor, stream).await
                 }
                 Err(e) => {
-                    error!(self.logger, "Unable to connect to endpoint: {:?}", e);
+                    error!(self.logger, "Unable to connect to endpoint: {:#}", e);
                 }
             }
 
@@ -89,7 +89,7 @@ where
             match self.chain_store.clone().chain_head_cursor() {
                 Ok(cursor) => return cursor.unwrap_or_else(|| "".to_string()),
                 Err(e) => {
-                    error!(self.logger, "Fetching chain head cursor failed: {:?}", e);
+                    error!(self.logger, "Fetching chain head cursor failed: {:#}", e);
 
                     backoff.sleep_async().await;
                 }
@@ -128,7 +128,7 @@ where
                     };
 
                     if let Err(e) = result {
-                        error!(self.logger, "Process block failed: {:?}", e);
+                        error!(self.logger, "Process block failed: {:#}", e);
                         break;
                     }
 
