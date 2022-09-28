@@ -21,9 +21,6 @@
         by-number    The hash of the target block
         by-range     A block number range, inclusive on both ends
 
-
-<a id="org1502d78"></a>
-
 ### DESCRIPTION
 
 The `check-blocks` command compares cached blocks with blocks from a JSON RPC provider and removes any blocks
@@ -32,30 +29,18 @@ from the cache that differ from the ones retrieved from the provider.
 Sometimes JSON RPC providers send invalid block data to Graph Node. The `graphman chain check-blocks` command
 is useful to diagnose the integrity of cached blocks and eventually fix them.
 
-
-<a id="orga828a21"></a>
-
 ### OPTIONS
 
 Blocks can be selected by different methods. The `check-blocks` command let's you use the block hash, a single
 number or a number range to refer to which blocks it should verify:
 
-
-<a id="orgc39ca48"></a>
-
 #### `by-hash`
 
     graphman --config <config> chain check-blocks <chain-name> by-hash <hash>
 
-
-<a id="orge321cf1"></a>
-
 #### `by-number`
 
     graphman --config <config> chain check-blocks <chain-name> by-number <number> [--delete-duplicates]
-
-
-<a id="org1506dd9"></a>
 
 #### `by-range`
 
@@ -69,9 +54,6 @@ Over time, it can happen that a JSON RPC provider offers different blocks for th
 cases, `graphman` will not decide which block hash is the correct one and will abort the operation. Because of
 this, the `by-number` and `by-range` methods also provide a `--delete-duplicates` flag, which orients
 `graphman` to delete all duplicated blocks for the given number and resume its operation.
-
-
-<a id="org6b71975"></a>
 
 ### EXAMPLES
 
