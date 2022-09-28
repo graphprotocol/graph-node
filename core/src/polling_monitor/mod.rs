@@ -4,8 +4,8 @@ mod metrics;
 use std::fmt::Display;
 use std::sync::Arc;
 
-use futures::stream;
 use futures::stream::StreamExt;
+use futures::{stream, FutureExt};
 use graph::cheap_clone::CheapClone;
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
@@ -66,18 +66,32 @@ where
 {
     let (queue, queue_woken) = Queue::new(metrics.queue_depth.clone(), metrics.requests.clone());
 
+    let cancel_check = response_sender.clone();
     let queue_to_stream = {
         let queue = queue.cheap_clone();
         stream::unfold((), move |()| {
             let queue = queue.cheap_clone();
             let mut queue_woken = queue_woken.clone();
+            let cancel_check = cancel_check.clone();
             async move {
                 loop {
+                    if cancel_check.is_closed() {
+                        break None;
+                    }
+
                     let id = queue.pop_front();
                     match id {
                         Some(id) => break Some((id, ())),
-                        // Unwrap: `queue` holds a sender.
-                        None => queue_woken.changed().await.unwrap(),
+
+                        // Nothing on the queue, wait for a queue wake up or cancellation.
+                        None => {
+                            futures::future::select(
+                                // Unwrap: `queue` holds a sender.
+                                queue_woken.changed().map(|r| r.unwrap()).boxed(),
+                                cancel_check.closed().boxed(),
+                            )
+                            .await;
+                        }
                     }
                 }
             }
@@ -169,16 +183,25 @@ mod tests {
         handle.next_request().await.unwrap().1.send_response(res)
     }
 
-    #[tokio::test]
-    async fn polling_monitor_simple() {
-        let (svc, mut handle) = mock::pair();
-        let (tx, mut rx) = mpsc::channel(10);
+    fn setup() -> (
+        mock::Handle<&'static str, Option<&'static str>>,
+        PollingMonitor<&'static str>,
+        mpsc::Receiver<(&'static str, &'static str)>,
+    ) {
+        let (svc, handle) = mock::pair();
+        let (tx, rx) = mpsc::channel(10);
         let monitor = spawn_monitor(
             MockService(svc),
             tx,
             log::discard(),
             PollingMonitorMetrics::mock(),
         );
+        (handle, monitor, rx)
+    }
+
+    #[tokio::test]
+    async fn polling_monitor_simple() {
+        let (mut handle, monitor, mut rx) = setup();
 
         // Basic test, single file is immediately available.
         monitor.monitor("req-0");
@@ -188,14 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn polling_monitor_unordered() {
-        let (svc, mut handle) = mock::pair();
-        let (tx, mut rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(
-            MockService(svc),
-            tx,
-            log::discard(),
-            PollingMonitorMetrics::mock(),
-        );
+        let (mut handle, monitor, mut rx) = setup();
 
         // Test unorderedness of the response stream, and the LIFO semantics of `monitor`.
         //
@@ -212,14 +228,7 @@ mod tests {
 
     #[tokio::test]
     async fn polling_monitor_failed_push_to_back() {
-        let (svc, mut handle) = mock::pair();
-        let (tx, mut rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(
-            MockService(svc),
-            tx,
-            log::discard(),
-            PollingMonitorMetrics::mock(),
-        );
+        let (mut handle, monitor, mut rx) = setup();
 
         // Test that objects not found go on the back of the queue.
         monitor.monitor("req-0");
@@ -243,19 +252,22 @@ mod tests {
 
     #[tokio::test]
     async fn polling_monitor_cancelation() {
-        let (svc, mut handle) = mock::pair();
-        let (tx, rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(
-            MockService(svc),
-            tx,
-            log::discard(),
-            PollingMonitorMetrics::mock(),
-        );
+        // Cancelation on receiver drop, no pending request.
+        let (mut handle, _monitor, rx) = setup();
+        drop(rx);
+        assert!(handle.next_request().await.is_none());
 
-        // Cancelation on receiver drop.
+        // Cancelation on receiver drop, with pending request.
+        let (mut handle, monitor, rx) = setup();
         monitor.monitor("req-0");
         drop(rx);
-        send_response(&mut handle, Some("res-0")).await;
         assert!(handle.next_request().await.is_none());
+
+        // Cancelation on receiver drop, while queue is waiting.
+        let (mut handle, _monitor, rx) = setup();
+        let handle = tokio::spawn(async move { handle.next_request().await });
+        tokio::task::yield_now().await;
+        drop(rx);
+        assert!(handle.await.unwrap().is_none());
     }
 }
