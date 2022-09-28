@@ -125,7 +125,6 @@ async fn handle_multiple_block_hashes(
         for hash in block_hashes {
             steps::delete_block(hash, chain_store)?;
         }
-        println!("Done.");
     } else {
         eprintln!(
             "Operation aborted for block number {block_number}.\n\
