@@ -31,7 +31,7 @@ pub async fn by_number(
     let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
 
     match &block_hashes.as_slice() {
-        [] => bail!("Found no block hash with number {}", number),
+        [] => bail!("Could not find a block with number {} in store", number),
         [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await,
         &block_hashes => {
             handle_multiple_block_hashes(number, block_hashes, &chain_store, delete_duplicates)
@@ -191,7 +191,7 @@ mod steps {
             .compat()
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
-            .ok_or_else(|| anyhow!("JRPC provider found no block {block_hash}"))?;
+            .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
         ensure!(
             provider_block.hash == Some(*block_hash),
             "Provider responded with a different block hash"
