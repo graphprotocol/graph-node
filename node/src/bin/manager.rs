@@ -506,6 +506,7 @@ pub enum CheckBlockMethod {
         /// The block number to verify
         number: i32,
         /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
         delete_duplicates: bool,
     },
 
@@ -518,6 +519,7 @@ pub enum CheckBlockMethod {
         #[clap(long, short)]
         to: Option<i32>,
         /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
         delete_duplicates: bool,
     },
 }
