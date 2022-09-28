@@ -58,7 +58,7 @@ pub async fn by_range(
     // FIXME: This performs poorly.
     // TODO: This could be turned into async code
     for block_number in range.lower_bound..=max {
-        println!("Fixing block [{block_number}/{max}]");
+        println!("Checking block [{block_number}/{max}]");
         let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
         match &block_hashes.as_slice() {
             [] => eprintln!("Found no block hash with number {block_number}"),
@@ -112,23 +112,21 @@ async fn handle_multiple_block_hashes(
     delete_duplicates: bool,
 ) -> anyhow::Result<()> {
     println!(
-        "Found {} different block hashes for block number {} in the store.",
+        "graphman found {} different block hashes for block number {} in the store \
+         and is unable to tell which one to check:",
         block_hashes.len(),
         block_number
     );
-    println!("graphman is unable to tell which block hash to check.");
-
+    for (num, hash) in block_hashes.iter().enumerate() {
+        println!("{:>4}:  {hash:?}", num + 1);
+    }
     if delete_duplicates {
         println!("Deleting duplicated blocks...");
         for hash in block_hashes {
-            println!("  {hash}");
             steps::delete_block(hash, chain_store)?;
         }
         println!("Done.");
     } else {
-        for hash in block_hashes {
-            println!("  {hash}");
-        }
         eprintln!(
             "Operation aborted for block number {block_number}.\n\
              To delete the duplicated blocks and continue this operation, rerun this command with \
