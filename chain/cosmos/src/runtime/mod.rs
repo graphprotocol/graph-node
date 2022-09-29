@@ -64,11 +64,26 @@ mod test {
         assert_asc_bytes!(AscEventData {
             event: new_asc_ptr(),
             block: new_asc_ptr(),
+            tx: new_asc_ptr(),
         });
 
         assert_asc_bytes!(AscTransactionData {
             tx: new_asc_ptr(),
             block: new_asc_ptr(),
+        });
+
+        assert_asc_bytes!(AscMessageData {
+            message: new_asc_ptr(),
+            block: new_asc_ptr(),
+            tx: new_asc_ptr(),
+        });
+
+        assert_asc_bytes!(AscTransactionContext {
+            hash: new_asc_ptr(),
+            index: 20,
+            code: 20,
+            gas_wanted: 20,
+            gas_used: 20,
         });
 
         assert_asc_bytes!(AscHeader {

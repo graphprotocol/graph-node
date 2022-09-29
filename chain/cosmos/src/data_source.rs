@@ -72,6 +72,13 @@ impl blockchain::DataSource<Chain> for DataSource {
                 Some(handler) => handler.handler,
                 None => return Ok(None),
             },
+
+            CosmosTrigger::Message(message_data) => {
+                match self.handler_for_message(message_data.message()?) {
+                    Some(handler) => handler.handler,
+                    None => return Ok(None),
+                }
+            }
         };
 
         Ok(Some(TriggerWithHandler::<Chain>::new(
@@ -125,6 +132,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && mapping.block_handlers == other.mapping.block_handlers
             && mapping.event_handlers == other.mapping.event_handlers
             && mapping.transaction_handlers == other.mapping.transaction_handlers
+            && mapping.message_handlers == other.mapping.message_handlers
             && context == &other.context
     }
 
@@ -191,6 +199,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             }
         }
 
+        // Ensure each message handlers is unique
+        let mut message_type_urls = HashSet::with_capacity(self.mapping.message_handlers.len());
+        for message_handler in self.mapping.message_handlers.iter() {
+            if !message_type_urls.insert(message_handler.message.clone()) {
+                errors.push(duplicate_url_type(&message_handler.message))
+            }
+        }
+
         errors
     }
 
@@ -232,6 +248,14 @@ impl DataSource {
 
     fn handler_for_transaction(&self) -> Option<MappingTransactionHandler> {
         self.mapping.transaction_handlers.first().cloned()
+    }
+
+    fn handler_for_message(&self, message: &::prost_types::Any) -> Option<MappingMessageHandler> {
+        self.mapping
+            .message_handlers
+            .iter()
+            .find(|handler| handler.message == message.type_url)
+            .cloned()
     }
 
     fn handler_for_event(
@@ -363,6 +387,8 @@ pub struct UnresolvedMapping {
     pub event_handlers: Vec<MappingEventHandler>,
     #[serde(default)]
     pub transaction_handlers: Vec<MappingTransactionHandler>,
+    #[serde(default)]
+    pub message_handlers: Vec<MappingMessageHandler>,
     pub file: Link,
 }
 
@@ -379,6 +405,7 @@ impl UnresolvedMapping {
             block_handlers,
             event_handlers,
             transaction_handlers,
+            message_handlers,
             file: link,
         } = self;
 
@@ -394,6 +421,7 @@ impl UnresolvedMapping {
             block_handlers: block_handlers.clone(),
             event_handlers: event_handlers.clone(),
             transaction_handlers: transaction_handlers.clone(),
+            message_handlers: message_handlers.clone(),
             runtime: Arc::new(module_bytes),
             link,
         })
@@ -408,6 +436,7 @@ pub struct Mapping {
     pub block_handlers: Vec<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
     pub transaction_handlers: Vec<MappingTransactionHandler>,
+    pub message_handlers: Vec<MappingMessageHandler>,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
 }
@@ -426,6 +455,12 @@ pub struct MappingEventHandler {
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
 pub struct MappingTransactionHandler {
+    pub handler: String,
+}
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+pub struct MappingMessageHandler {
+    pub message: String,
     pub handler: String,
 }
 
@@ -459,6 +494,13 @@ fn combined_origins_err(event_type: &str) -> Error {
     anyhow!(
         "data source has combined origin and no-origin {} event handlers",
         event_type
+    )
+}
+
+fn duplicate_url_type(message: &str) -> Error {
+    anyhow!(
+        "data source has more than one message handler for message {} ",
+        message
     )
 }
 
@@ -524,6 +566,54 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_message_handlers_duplicate() {
+        let cases = [
+            (
+                DataSource::with_message_handlers(vec![
+                    MappingMessageHandler {
+                        handler: "handler".to_string(),
+                        message: "message_0".to_string(),
+                    },
+                    MappingMessageHandler {
+                        handler: "handler".to_string(),
+                        message: "message_1".to_string(),
+                    },
+                ]),
+                vec![],
+            ),
+            (
+                DataSource::with_message_handlers(vec![
+                    MappingMessageHandler {
+                        handler: "handler".to_string(),
+                        message: "message_0".to_string(),
+                    },
+                    MappingMessageHandler {
+                        handler: "handler".to_string(),
+                        message: "message_0".to_string(),
+                    },
+                ]),
+                vec![duplicate_url_type("message_0")],
+            ),
+        ];
+
+        for (data_source, errors) in &cases {
+            let validation_errors = data_source.validate();
+
+            assert_eq!(errors.len(), validation_errors.len());
+
+            for error in errors.iter() {
+                assert!(
+                    validation_errors
+                        .iter()
+                        .any(|validation_error| validation_error.to_string() == error.to_string()),
+                    r#"expected "{}" to be in validation errors, but it wasn't"#,
+                    error
+                );
+            }
+        }
+    }
+
     impl DataSource {
         fn with_event_handlers(event_handlers: Vec<MappingEventHandler>) -> DataSource {
             DataSource {
@@ -538,6 +628,29 @@ mod tests {
                     block_handlers: vec![],
                     event_handlers,
                     transaction_handlers: vec![],
+                    message_handlers: vec![],
+                    runtime: Arc::new(vec![]),
+                    link: "test".to_string().into(),
+                },
+                context: Arc::new(None),
+                creation_block: None,
+            }
+        }
+
+        fn with_message_handlers(message_handlers: Vec<MappingMessageHandler>) -> DataSource {
+            DataSource {
+                kind: "cosmos".to_string(),
+                network: None,
+                name: "Test".to_string(),
+                source: Source { start_block: 1 },
+                mapping: Mapping {
+                    api_version: semver::Version::new(0, 0, 0),
+                    language: "".to_string(),
+                    entities: vec![],
+                    block_handlers: vec![],
+                    event_handlers: vec![],
+                    transaction_handlers: vec![],
+                    message_handlers,
                     runtime: Arc::new(vec![]),
                     link: "test".to_string().into(),
                 },
