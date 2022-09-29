@@ -673,7 +673,7 @@ impl HandleEvent for EventHandler {
 #[derive(Clone)]
 pub struct PoolInner {
     logger: Logger,
-    shard: Shard,
+    pub shard: Shard,
     pool: Pool<ConnectionManager<PgConnection>>,
     // A separate pool for connections that will use foreign data wrappers.
     // Once such a connection accesses a foreign table, Postgres keeps a
@@ -1053,7 +1053,7 @@ impl PoolInner {
     // The foreign server `server` had schema changes, and we therefore need
     // to remap anything that we are importing via fdw to make sure we are
     // using this updated schema
-    fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
+    pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let conn = self.get()?;
@@ -1175,5 +1175,18 @@ impl PoolCoordinator {
             pool.remap(server)?;
         }
         Ok(())
+    }
+
+    pub fn pools(&self) -> Vec<Arc<PoolInner>> {
+        self.pools
+            .lock()
+            .unwrap()
+            .values()
+            .map(|pool| pool.clone())
+            .collect()
+    }
+
+    pub fn servers(&self) -> Arc<Vec<ForeignServer>> {
+        self.servers.clone()
     }
 }

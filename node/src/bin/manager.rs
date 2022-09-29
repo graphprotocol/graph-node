@@ -233,6 +233,10 @@ pub enum Command {
         #[clap(long, short, default_value = "10000")]
         history: usize,
     },
+
+    /// General database management
+    #[clap(subcommand)]
+    Database(DatabaseCommand),
 }
 
 impl Command {
@@ -496,6 +500,18 @@ pub enum IndexCommand {
 }
 
 #[derive(Clone, Debug, Subcommand)]
+pub enum DatabaseCommand {
+    /// Apply any pending migrations to the database schema in all shards
+    Migrate,
+    /// Refresh the mapping of tables into different shards
+    ///
+    /// This command rebuilds the mappings of tables from one shard into all
+    /// other shards. It makes it possible to fix these mappings when a
+    /// database migration was interrupted before it could rebuild the
+    /// mappings
+    Remap,
+}
+#[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
     /// The number of the target block
     ByHash { hash: String },
@@ -644,7 +660,7 @@ impl Context {
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
-        let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
+        let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
@@ -1056,6 +1072,20 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     commands::index::drop(subgraph_store, primary_pool, deployment, &index_name)
                         .await
+                }
+            }
+        }
+        Database(cmd) => {
+            match cmd {
+                DatabaseCommand::Migrate => {
+                    /* creating the store builder runs migrations */
+                    let _store_builder = ctx.store_builder().await;
+                    println!("All database migrations have been applied");
+                    Ok(())
+                }
+                DatabaseCommand::Remap => {
+                    let store_builder = ctx.store_builder().await;
+                    commands::database::remap(&store_builder.coord).await
                 }
             }
         }
