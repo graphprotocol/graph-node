@@ -182,7 +182,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // that is done
         store.start_subgraph_deployment(&logger).await?;
 
-        let (manifest, manifest_idx_and_name) = {
+        let (manifest, manifest_idx_and_name, static_data_sources) = {
             info!(logger, "Resolve subgraph files using IPFS");
 
             let mut manifest = SubgraphManifest::resolve_from_raw(
@@ -218,6 +218,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
             info!(logger, "Successfully resolved subgraph files using IPFS");
 
+            let static_data_sources = manifest.data_sources.clone();
+
             // Add dynamic data sources to the subgraph
             manifest.data_sources.extend(data_sources);
 
@@ -227,8 +229,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 manifest.data_sources.len()
             );
 
-            (manifest, manifest_idx_and_name)
+            (manifest, manifest_idx_and_name, static_data_sources)
         };
+
+        let static_filters =
+            self.static_filters || manifest.data_sources.len() >= ENV_VARS.static_filters_threshold;
 
         let onchain_data_sources = manifest
             .data_sources
@@ -244,10 +249,20 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        // Obtain filters from the manifest
-        let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // if not enabled we just stick to the filter based on all the data sources.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+        let filter = if static_filters {
+            if !self.static_filters {
+                info!(logger, "forcing subgraph to use static filters.")
+            }
 
-        if self.static_filters {
+            let onchain_data_sources = static_data_sources.iter().filter_map(|d| d.as_onchain());
+
+            let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources);
+
             filter.extend_with_template(
                 manifest
                     .templates
@@ -255,7 +270,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                     .filter_map(|ds| ds.as_onchain())
                     .cloned(),
             );
-        }
+            filter
+        } else {
+            C::TriggerFilter::from_data_sources(onchain_data_sources.iter())
+        };
 
         let start_blocks = manifest.start_blocks();
 
@@ -346,7 +364,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             chain,
             templates,
             unified_api_version,
-            static_filters: self.static_filters,
+            static_filters,
             manifest_idx_and_name,
             poi_version,
             network,
