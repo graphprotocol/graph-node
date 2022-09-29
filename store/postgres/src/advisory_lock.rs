@@ -11,6 +11,8 @@
 //! We use the following 2x 32-bit locks
 //!   * 1, n: to lock copying of the deployment with id n in the destination
 //!           shard
+//!   * 2, n: to lock the deployment with id n to make sure only one write
+//!           happens to it
 
 use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::prelude::StoreError;
@@ -40,6 +42,13 @@ pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreE
 
 pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_unlock(1, {})", dst.id))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
+}
+
+pub(crate) fn lock_deployment_xact(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+    sql_query(&format!("select pg_advisory_xact_lock(2, {})", site.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
