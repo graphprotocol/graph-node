@@ -140,6 +140,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 
         Ok(host)
     }
+
+    // reset subgraph instance
+    pub fn reset_subgraph_instance(&mut self, logger: &Logger) {
+        self.offchain_monitor.clear();
+        self.instance.reset(&mut self.offchain_monitor, logger);
+    }
 }
 
 pub(crate) struct OffchainMonitor {
@@ -191,5 +197,10 @@ impl OffchainMonitor {
             }
         }
         Ok(triggers)
+    }
+
+    // clear the monitoring ipfs cid.
+    pub fn clear(&mut self) {
+        self.ipfs_monitor.clear()
     }
 }

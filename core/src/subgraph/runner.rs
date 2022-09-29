@@ -838,6 +838,9 @@ where
 
                         self.state.should_try_unfail_non_deterministic = true;
 
+                        // reset the subgraph instance before restarting.
+                        self.ctx.reset_subgraph_instance(&self.logger);
+
                         // And restart the subgraph.
                         return Ok(Action::Restart);
                     }

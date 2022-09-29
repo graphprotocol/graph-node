@@ -24,6 +24,8 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
+
+    manifest: SubgraphManifest<C>,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -40,7 +42,7 @@ where
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
-        let templates = Arc::new(manifest.templates);
+        let templates = Arc::new(manifest.templates.clone());
 
         let mut this = SubgraphInstance {
             host_builder,
@@ -50,12 +52,28 @@ where
             module_cache: HashMap::new(),
             templates,
             host_metrics,
+            manifest,
         };
 
+        this.update_runtime_host(offchain_monitor, logger)?;
+        Ok(this)
+    }
+
+    pub(super) fn reset(&mut self, offchain_monitor: &mut OffchainMonitor, logger: &Logger) {
+        self.hosts.clear();
+        self.module_cache.clear();
+        self.update_runtime_host(offchain_monitor, logger).unwrap();
+    }
+
+    fn update_runtime_host(
+        &mut self,
+        offchain_monitor: &mut OffchainMonitor,
+        logger: &Logger,
+    ) -> Result<(), Error> {
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
-        for ds in manifest.data_sources {
+        for ds in self.manifest.data_sources.clone() {
             // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
             // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
             // `IndexingContext`.
@@ -70,11 +88,10 @@ where
                 offchain_monitor.add_source(&ds.source)?;
             }
 
-            let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;
-            this.hosts.push(Arc::new(host));
+            let host = self.new_host(logger.cheap_clone(), ds, module_bytes)?;
+            self.hosts.push(Arc::new(host));
         }
-
-        Ok(this)
+        Ok(())
     }
 
     // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure that this

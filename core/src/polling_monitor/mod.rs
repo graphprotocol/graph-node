@@ -44,6 +44,10 @@ impl<T> Queue<T> {
     fn pop_front(&self) -> Option<T> {
         self.queue.lock().pop_front()
     }
+
+    fn clear(&self)  {
+        self.queue.lock().clear()
+    }
 }
 
 /// Spawn a monitor that actively polls a service. Whenever the service has capacity, the monitor
@@ -144,6 +148,11 @@ impl<ID> PollingMonitor<ID> {
     /// front of the queue.
     pub fn monitor(&self, id: ID) {
         self.queue.push_front(id);
+    }
+
+    /// clear the monitoring item.
+    pub fn clear(&self) {
+        self.queue.clear();
     }
 }
 

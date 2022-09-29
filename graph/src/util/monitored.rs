@@ -36,4 +36,8 @@ impl<T> MonitoredVecDeque<T> {
     pub fn is_empty(&self) -> bool {
         self.vec_deque.is_empty()
     }
+
+    pub fn clear(&mut self) {
+        self.vec_deque.clear()
+    }
 }
