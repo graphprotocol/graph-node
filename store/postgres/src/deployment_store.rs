@@ -45,6 +45,7 @@ use crate::catalog;
 use crate::deployment;
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
+use crate::relational::index::CreateIndex;
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
 use crate::{connection_pool::ConnectionPool, detail};
@@ -797,7 +798,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         entity_name: &str,
-    ) -> Result<Vec<String>, StoreError> {
+    ) -> Result<Vec<CreateIndex>, StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
         self.with_conn(move |conn, _| {
@@ -805,8 +806,13 @@ impl DeploymentStore {
             let layout = store.layout(conn, site)?;
             let table = resolve_table_name(&layout, &entity_name)?;
             let table_name = &table.name;
-            catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
-                .map_err(Into::into)
+            let indexes =
+                catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
+                    .map_err(StoreError::from)?;
+            Ok(indexes
+                .into_iter()
+                .map(|defn| CreateIndex::parse(defn))
+                .collect())
         })
         .await
     }

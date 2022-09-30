@@ -14,6 +14,7 @@ mod ddl_tests;
 #[cfg(test)]
 mod query_tests;
 
+pub(crate) mod index;
 mod prune;
 
 use diesel::{connection::SimpleConnection, Connection};

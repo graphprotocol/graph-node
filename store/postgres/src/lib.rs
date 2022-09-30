@@ -77,6 +77,9 @@ pub mod command_support {
             subgraph_version, Site,
         };
     }
+    pub mod index {
+        pub use crate::relational::index::CreateIndex;
+    }
     pub use crate::primary::Namespace;
     pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};
 }
