@@ -331,7 +331,7 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, offchain_to_remove) =
+        let (offchain_mods, processed_datasources) =
             self.handle_offchain_triggers(offchain_events).await?;
         mods.extend(offchain_mods);
 
@@ -387,7 +387,7 @@ where
                 data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
-                offchain_to_remove,
+                processed_datasources,
             )
             .await
             .context("Failed to transact block operations")?;

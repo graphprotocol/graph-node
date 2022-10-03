@@ -1081,6 +1081,20 @@ impl<'a> Connection<'a> {
         })
     }
 
+    //  Update the schema version of the deployment.
+    pub fn update_site_version(
+        &self,
+        subgraph: &DeploymentHash,
+        schema_version: &DeploymentSchemaVersion,
+    ) -> Result<(), StoreError> {
+        use deployment_schemas as ds;
+        update(ds::table.filter(ds::subgraph.eq(subgraph.as_str())))
+            .set(ds::version.eq(*schema_version as i32))
+            .execute(self.conn.as_ref())
+            .map_err(|e| e.into())
+            .map(|_| ())
+    }
+
     /// Create a site for a brand new deployment.
     pub fn allocate_site(
         &self,

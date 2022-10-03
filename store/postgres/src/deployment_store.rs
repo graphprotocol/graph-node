@@ -207,6 +207,17 @@ impl DeploymentStore {
         })
     }
 
+    // executes raw statement on postgres. It's mainly used for running
+    // migration on deployments.
+    pub(crate) fn execute_raw(&self, statement: String) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        conn.transaction(|| -> Result<_, StoreError> {
+            conn.batch_execute(&statement)?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     pub(crate) fn load_deployment(
         &self,
         site: &Site,
@@ -1095,7 +1106,7 @@ impl DeploymentStore {
                 manifest_idx_and_name,
             )?;
 
-            dynds::remove_offchain(&conn, &site, offchain_to_remove)?;
+            dynds::update_offchain_status(&conn, &site, offchain_to_remove)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(
