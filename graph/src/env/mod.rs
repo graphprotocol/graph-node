@@ -203,6 +203,9 @@ pub struct EnvVars {
     /// Set by the environment variable `EXTERNAL_WS_BASE_URL`. No default
     /// value is provided.
     pub external_ws_base_url: Option<String>,
+    /// Maximum number of Dynamic Data Sources after which a Subgraph will
+    /// switch to using static filter.
+    pub static_filters_threshold: usize,
 }
 
 impl EnvVars {
@@ -258,6 +261,7 @@ impl EnvVars {
             explorer_query_threshold: Duration::from_millis(inner.explorer_query_threshold_in_msec),
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
+            static_filters_threshold: inner.static_filters_threshold,
         })
     }
 
@@ -371,6 +375,8 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
+    #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "10000")]
+    static_filters_threshold: usize,
 }
 
 #[derive(Clone, Debug)]
