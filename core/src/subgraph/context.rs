@@ -5,7 +5,6 @@ use crate::polling_monitor::{
 };
 use anyhow::{self, Error};
 use bytes::Bytes;
-use cid::Cid;
 use graph::{
     blockchain::Blockchain,
     components::{
@@ -13,6 +12,7 @@ use graph::{
         subgraph::{MappingError, SharedProofOfIndexing},
     },
     data_source::{offchain, DataSource, TriggerData},
+    ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
         SubgraphInstanceMetrics, TriggerProcessor,
@@ -134,7 +134,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 
         if host.is_some() {
             if let Some(source) = source {
-                self.offchain_monitor.add_source(&source)?;
+                self.offchain_monitor.add_source(source)?;
             }
         }
 
@@ -143,8 +143,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 }
 
 pub(crate) struct OffchainMonitor {
-    ipfs_monitor: PollingMonitor<Cid>,
-    ipfs_monitor_rx: mpsc::Receiver<(Cid, Bytes)>,
+    ipfs_monitor: PollingMonitor<CidFile>,
+    ipfs_monitor_rx: mpsc::Receiver<(CidFile, Bytes)>,
 }
 
 impl OffchainMonitor {
@@ -167,9 +167,9 @@ impl OffchainMonitor {
         }
     }
 
-    fn add_source(&mut self, source: &offchain::Source) -> Result<(), Error> {
+    fn add_source(&mut self, source: offchain::Source) -> Result<(), Error> {
         match source {
-            offchain::Source::Ipfs(cid) => self.ipfs_monitor.monitor(cid.clone()),
+            offchain::Source::Ipfs(cid_file) => self.ipfs_monitor.monitor(cid_file),
         };
         Ok(())
     }
@@ -180,8 +180,8 @@ impl OffchainMonitor {
         let mut triggers = vec![];
         loop {
             match self.ipfs_monitor_rx.try_recv() {
-                Ok((cid, data)) => triggers.push(offchain::TriggerData {
-                    source: offchain::Source::Ipfs(cid),
+                Ok((cid_file, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Ipfs(cid_file),
                     data: Arc::new(data),
                 }),
                 Err(TryRecvError::Disconnected) => {

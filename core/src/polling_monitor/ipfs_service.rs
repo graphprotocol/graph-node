@@ -1,10 +1,9 @@
 use anyhow::{anyhow, Error};
 use bytes::Bytes;
-use cid::Cid;
 use futures::{Future, FutureExt};
 use graph::{
     cheap_clone::CheapClone,
-    ipfs_client::{IpfsClient, StatApi},
+    ipfs_client::{CidFile, IpfsClient, StatApi},
     tokio::sync::Semaphore,
 };
 use std::{pin::Pin, sync::Arc, task::Poll, time::Duration};
@@ -48,16 +47,21 @@ impl IpfsService {
         }
     }
 
-    async fn call(&self, cid: Cid) -> Result<Option<Bytes>, Error> {
+    async fn call(&self, req: &CidFile) -> Result<Option<Bytes>, Error> {
+        let CidFile { cid, path } = req;
         let multihash = cid.hash().code();
         if !SAFE_MULTIHASHES.contains(&multihash) {
             return Err(anyhow!("CID multihash {} is not allowed", multihash));
         }
 
-        let cid_str = cid.to_string();
+        let cid_str = match path {
+            Some(path) => format!("{}/{}", cid, path),
+            None => cid.to_string(),
+        };
+
         let size = match self
             .client
-            .stat_size(StatApi::Files, cid_str, self.timeout)
+            .stat_size(StatApi::Files, cid_str.clone(), self.timeout)
             .await
         {
             Ok(size) => size,
@@ -71,7 +75,7 @@ impl IpfsService {
         if size > self.max_file_size {
             return Err(anyhow!(
                 "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-                cid.to_string(),
+                cid_str,
                 self.max_file_size,
                 size
             ));
@@ -79,15 +83,15 @@ impl IpfsService {
 
         Ok(self
             .client
-            .cat_all(&cid.to_string(), self.timeout)
+            .cat_all(&cid_str, self.timeout)
             .await
             .map(Some)?)
     }
 }
 
-impl Service<Cid> for IpfsService {
-    type Response = (Cid, Option<Bytes>);
-    type Error = (Cid, Error);
+impl Service<CidFile> for IpfsService {
+    type Response = (CidFile, Option<Bytes>);
+    type Error = (CidFile, Error);
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
@@ -99,11 +103,14 @@ impl Service<Cid> for IpfsService {
             .map_err(|_| unreachable!("semaphore is never closed"))
     }
 
-    fn call(&mut self, cid: Cid) -> Self::Future {
+    fn call(&mut self, req: CidFile) -> Self::Future {
         let this = self.cheap_clone();
         async move {
             let _permit = this.concurrency_limiter.acquire().await;
-            this.call(cid).await.map(|x| (cid, x)).map_err(|e| (cid, e))
+            this.call(&req)
+                .await
+                .map(|x| (req.clone(), x))
+                .map_err(|e| (req.clone(), e))
         }
         .boxed()
     }
@@ -129,3 +136,45 @@ const SAFE_MULTIHASHES: [u64; 15] = [
     0xb260, // BLAKE2s-256 (32-byte hash size)
     0x1e,   // BLAKE3-256 (32-byte hash size)
 ];
+
+#[cfg(test)]
+mod test {
+    use ipfs::IpfsApi;
+    use ipfs_api as ipfs;
+    use std::{fs, str::FromStr, time::Duration};
+
+    use cid::Cid;
+    use graph::{ipfs_client::IpfsClient, tokio};
+
+    use super::IpfsService;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn cat_file_in_folder() {
+        let path = "./tests/fixtures/ipfs_folder";
+        let uid = Uuid::new_v4().to_string();
+        fs::write(format!("{}/random.txt", path), &uid).unwrap();
+
+        let cl: ipfs::IpfsClient = ipfs::IpfsClient::default();
+
+        let rsp = cl.add_path(&path).await.unwrap();
+
+        let ipfs_folder = rsp.iter().find(|rsp| rsp.name == "ipfs_folder").unwrap();
+
+        let local = IpfsClient::localhost();
+        let cid = Cid::from_str(&ipfs_folder.hash).unwrap();
+        let file = "random.txt".to_string();
+
+        let svc = IpfsService::new(local, 100000, Duration::from_secs(5), 10);
+
+        let content = svc
+            .call(&super::CidFile {
+                cid,
+                path: Some(file),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(content.to_vec(), uid.as_bytes().to_vec());
+    }
+}

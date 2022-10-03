@@ -3,6 +3,7 @@ use std::sync::Arc;
 use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
 use graph::env::EnvVars;
+use graph::ipfs_client::CidFile;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
@@ -147,9 +148,11 @@ async fn file_data_sources() {
     let id = format!(
         "0x{}",
         hex::encode(
-            Cid::try_from("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ")
-                .unwrap()
-                .to_bytes(),
+            CidFile {
+                cid: Cid::try_from("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap(),
+                path: None,
+            }
+            .to_bytes()
         )
     );
 
