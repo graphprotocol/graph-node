@@ -57,7 +57,7 @@ futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
 parking_lot = "0.12.1"
-itertools = "0.10.3"
+itertools = "0.10.5"
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.

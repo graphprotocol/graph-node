@@ -30,7 +30,7 @@ stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 diesel_derives = "1.4.1"
 anyhow = "1.0.65"
 git-testament = "0.2.0"
-itertools = "0.10.3"
+itertools = "0.10.5"
 pin-utils = "0.1"
 hex = "0.4.3"
 
