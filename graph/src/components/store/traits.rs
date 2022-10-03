@@ -152,6 +152,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Find the deployment locators for the subgraph with the given hash
     fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError>;
+
+    /// This migrates subgraphs that existed before the raw_yaml column was added.
+    async fn set_manifest_raw_yaml(
+        &self,
+        hash: &DeploymentHash,
+        raw_yaml: String,
+    ) -> Result<(), StoreError>;
 }
 
 pub trait ReadStore: Send + Sync + 'static {

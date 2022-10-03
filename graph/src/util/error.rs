@@ -17,3 +17,12 @@ macro_rules! ensure {
         }
     };
 }
+
+// `bail!` from `anyhow`, but calling `from`.
+// For context see https://github.com/dtolnay/anyhow/issues/112#issuecomment-704549251.
+#[macro_export]
+macro_rules! bail {
+    ($($err:tt)*) => {
+        return Err(anyhow::anyhow!($($err)*).into());
+    };
+}

@@ -27,8 +27,9 @@ use graph::{
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
-        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError,
+        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -1092,6 +1093,11 @@ impl SubgraphStoreInner {
             .prune(reporter, site, earliest_block, reorg_threshold, prune_ratio)
             .await
     }
+
+    pub fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
+        let src_store = self.for_site(site)?;
+        src_store.load_deployment(site)
+    }
 }
 
 struct EnsLookup {
@@ -1285,5 +1291,14 @@ impl SubgraphStoreTrait for SubgraphStore {
             .iter()
             .map(|site| site.into())
             .collect())
+    }
+
+    async fn set_manifest_raw_yaml(
+        &self,
+        hash: &DeploymentHash,
+        raw_yaml: String,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(hash)?;
+        store.set_manifest_raw_yaml(site, raw_yaml).await
     }
 }
