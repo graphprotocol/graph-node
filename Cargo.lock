@@ -1715,7 +1715,7 @@ dependencies = [
  "test-store",
  "tower 0.4.12 (git+https://github.com/tower-rs/tower.git)",
  "tower-test",
- "uuid 0.8.2",
+ "uuid 1.1.2",
 ]
 
 [[package]]
