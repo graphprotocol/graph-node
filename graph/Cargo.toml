@@ -46,7 +46,7 @@ tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.10", features = ["sync"] }
 tokio-retry = "0.3.0"
-url = "2.3.0"
+url = "2.3.1"
 prometheus = "0.13.2"
 priority-queue = "0.7.0"
 tonic = { version = "0.7.1", features = ["tls-roots","compression"] }
