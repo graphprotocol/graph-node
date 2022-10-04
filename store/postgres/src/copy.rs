@@ -672,8 +672,6 @@ pub struct Connection {
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
-    src_manifest_idx_and_name: Vec<(i32, String)>,
-    dst_manifest_idx_and_name: Vec<(i32, String)>,
 }
 
 impl Connection {
@@ -689,8 +687,6 @@ impl Connection {
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
-        src_manifest_idx_and_name: Vec<(i32, String)>,
-        dst_manifest_idx_and_name: Vec<(i32, String)>,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
 
@@ -716,8 +712,6 @@ impl Connection {
             src,
             dst,
             target_block,
-            src_manifest_idx_and_name,
-            dst_manifest_idx_and_name,
         })
     }
 
@@ -734,8 +728,6 @@ impl Connection {
                 &self.conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
-                &self.src_manifest_idx_and_name,
-                &self.dst_manifest_idx_and_name,
             )?;
         }
         Ok(())

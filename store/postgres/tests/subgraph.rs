@@ -148,7 +148,7 @@ fn create_subgraph() {
             templates: vec![],
             chain: PhantomData,
         };
-        let deployment = DeploymentCreate::new(String::new(), &manifest, None);
+        let deployment = DeploymentCreate::new(&manifest, None);
         let node_id = NodeId::new("left").unwrap();
 
         let (deployment, events) = tap_store_events(|| {

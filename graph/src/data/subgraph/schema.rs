@@ -1,6 +1,6 @@
 //! Entity types that contain the graph-node state.
 
-use anyhow::{anyhow, bail, Error};
+use anyhow::{anyhow, Error};
 use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
@@ -110,12 +110,11 @@ pub struct DeploymentCreate {
 
 impl DeploymentCreate {
     pub fn new(
-        raw_manifest: String,
         source_manifest: &SubgraphManifest<impl Blockchain>,
         earliest_block: Option<BlockPtr>,
     ) -> Self {
         Self {
-            manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest),
+            manifest: SubgraphManifestEntity::from(source_manifest),
             earliest_block: earliest_block.cheap_clone(),
             graft_base: None,
             graft_block: None,
@@ -164,51 +163,17 @@ pub struct SubgraphManifestEntity {
     pub repository: Option<String>,
     pub features: Vec<String>,
     pub schema: String,
-    pub raw_yaml: Option<String>,
 }
 
-impl SubgraphManifestEntity {
-    pub fn new(raw_yaml: String, manifest: &super::SubgraphManifest<impl Blockchain>) -> Self {
+impl<'a, C: Blockchain> From<&'a super::SubgraphManifest<C>> for SubgraphManifestEntity {
+    fn from(manifest: &'a super::SubgraphManifest<C>) -> Self {
         Self {
             spec_version: manifest.spec_version.to_string(),
             description: manifest.description.clone(),
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
-            raw_yaml: Some(raw_yaml),
         }
-    }
-
-    pub fn template_idx_and_name(&self) -> Result<Vec<(i32, String)>, Error> {
-        #[derive(Debug, Deserialize)]
-        struct MinimalDs {
-            name: String,
-        }
-        #[derive(Debug, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct MinimalManifest {
-            data_sources: Vec<MinimalDs>,
-            #[serde(default)]
-            templates: Vec<MinimalDs>,
-        }
-
-        let raw_yaml = match &self.raw_yaml {
-            Some(raw_yaml) => raw_yaml,
-            None => bail!("raw_yaml not present"),
-        };
-
-        let manifest: MinimalManifest = serde_yaml::from_str(raw_yaml)?;
-
-        let ds_len = manifest.data_sources.len() as i32;
-        let template_idx_and_name = manifest
-            .templates
-            .iter()
-            .map(|t| t.name.to_owned())
-            .enumerate()
-            .map(move |(idx, name)| (ds_len + idx as i32, name))
-            .collect();
-
-        Ok(template_idx_and_name)
     }
 }
 

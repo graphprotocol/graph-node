@@ -113,7 +113,6 @@ table! {
         /// Parent of the smallest start block from the manifest
         start_block_number -> Nullable<Integer>,
         start_block_hash -> Nullable<Binary>,
-        raw_yaml -> Nullable<Text>,
     }
 }
 
@@ -274,22 +273,6 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
         .iter()
         .map(|f| SubgraphFeature::from_str(f).map_err(StoreError::from))
         .collect()
-}
-
-/// This migrates subgraphs that existed before the raw_yaml column was added.
-pub fn set_manifest_raw_yaml(
-    conn: &PgConnection,
-    site: &Site,
-    raw_yaml: &str,
-) -> Result<(), StoreError> {
-    use subgraph_manifest as sm;
-
-    update(sm::table.filter(sm::id.eq(site.id)))
-        .filter(sm::raw_yaml.is_null())
-        .set(sm::raw_yaml.eq(raw_yaml))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(|e| e.into())
 }
 
 pub fn transact_block(
@@ -906,7 +889,6 @@ pub fn create_deployment(
                 repository,
                 features,
                 schema,
-                raw_yaml,
             },
         earliest_block,
         graft_base,
@@ -950,7 +932,6 @@ pub fn create_deployment(
         m::use_bytea_prefix.eq(true),
         m::start_block_hash.eq(b(&earliest_block)),
         m::start_block_number.eq(earliest_block_number),
-        m::raw_yaml.eq(raw_yaml),
     );
 
     if exists && replace {

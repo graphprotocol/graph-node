@@ -144,10 +144,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     };
 
     // Create SubgraphDeploymentEntity
-    let mut yaml = serde_yaml::Mapping::new();
-    yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
-    let yaml = serde_yaml::to_string(&yaml).unwrap();
-    let deployment = DeploymentCreate::new(yaml, &manifest, None);
+    let deployment = DeploymentCreate::new(&manifest, None);
     let name = SubgraphName::new("test/graft").unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store

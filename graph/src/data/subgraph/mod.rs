@@ -10,12 +10,13 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
+use anyhow::ensure;
 use anyhow::{anyhow, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use semver::Version;
 use serde::{de, ser};
 use serde_yaml;
-use slog::{info, Logger};
+use slog::{debug, info, Logger};
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
 use std::{collections::BTreeSet, marker::PhantomData};
@@ -24,7 +25,6 @@ use wasmparser;
 use web3::types::Address;
 
 use crate::{
-    bail,
     blockchain::{BlockPtr, Blockchain, DataSource as _},
     components::{
         link_resolver::LinkResolver,
@@ -41,7 +41,6 @@ use crate::{
         offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
         UnresolvedDataSourceTemplate,
     },
-    ensure,
     prelude::{r, CheapClone, ENV_VARS},
 };
 
@@ -357,7 +356,7 @@ pub enum SubgraphManifestResolveError {
     #[error("subgraph is not valid YAML")]
     InvalidFormat,
     #[error("resolve error: {0}")]
-    ResolveError(#[from] anyhow::Error),
+    ResolveError(anyhow::Error),
 }
 
 /// Data source contexts are conveniently represented as entities.
@@ -497,7 +496,7 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 }
 
 /// SubgraphManifest with IPFS links unresolved
-pub type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
+type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
     UnresolvedSchema,
     UnresolvedDataSource<C>,
@@ -615,16 +614,35 @@ impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     pub async fn resolve_from_raw(
         id: DeploymentHash,
-        raw: serde_yaml::Mapping,
+        mut raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
-        let unresolved = UnresolvedSubgraphManifest::parse(id, raw)?;
+        // Inject the IPFS hash as the ID of the subgraph into the definition.
+        raw.insert("id".into(), id.to_string().into());
+
+        // Parse the YAML data into an UnresolvedSubgraphManifest
+        let unresolved: UnresolvedSubgraphManifest<C> = serde_yaml::from_value(raw.into())?;
+
+        debug!(logger, "Features {:?}", unresolved.features);
 
         let resolved = unresolved
             .resolve(resolver, logger, max_spec_version)
-            .await?;
+            .await
+            .map_err(SubgraphManifestResolveError::ResolveError)?;
+
+        if (resolved.spec_version < SPEC_VERSION_0_0_7)
+            && resolved
+                .data_sources
+                .iter()
+                .any(|ds| OFFCHAIN_KINDS.contains(&ds.kind()))
+        {
+            return Err(SubgraphManifestResolveError::ResolveError(anyhow!(
+                "Offchain data sources not supported prior to {}",
+                SPEC_VERSION_0_0_7
+            )));
+        }
 
         Ok(resolved)
     }
@@ -667,37 +685,15 @@ impl<C: Blockchain> SubgraphManifest<C> {
     ) -> Result<UnifiedMappingApiVersion, DifferentMappingApiVersions> {
         UnifiedMappingApiVersion::try_from_versions(self.api_versions())
     }
-
-    pub fn template_idx_and_name(&self) -> impl Iterator<Item = (u32, String)> + '_ {
-        // We cannot include static data sources in the map because a static data source and a
-        // template may have the same name in the manifest. Duplicated with
-        // `UnresolvedSubgraphManifest::template_idx_and_name`.
-        let ds_len = self.data_sources.len() as u32;
-        self.templates
-            .iter()
-            .map(|t| t.name().to_owned())
-            .enumerate()
-            .map(move |(idx, name)| (ds_len + idx as u32, name))
-    }
 }
 
 impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
-    pub fn parse(
-        id: DeploymentHash,
-        mut raw: serde_yaml::Mapping,
-    ) -> Result<Self, SubgraphManifestResolveError> {
-        // Inject the IPFS hash as the ID of the subgraph into the definition.
-        raw.insert("id".into(), id.to_string().into());
-
-        serde_yaml::from_value(raw.into()).map_err(Into::into)
-    }
-
     pub async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         max_spec_version: semver::Version,
-    ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
+    ) -> Result<SubgraphManifest<C>, anyhow::Error> {
         let UnresolvedSubgraphManifest {
             id,
             spec_version,
@@ -718,14 +714,14 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 max_spec_version,
                 id,
                 spec_version
-            ).into());
+            ));
         }
 
         let ds_count = data_sources.len();
         if ds_count as u64 + templates.len() as u64 > u32::MAX as u64 {
-            return Err(
-                anyhow!("Subgraph has too many declared data sources and templates",).into(),
-            );
+            return Err(anyhow!(
+                "Subgraph has too many declared data sources and templates",
+            ));
         }
 
         let (schema, data_sources, templates) = try_join3(
@@ -755,17 +751,6 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 "The maximum supported mapping API version of this indexer is {}, but `{}` was found",
                 ENV_VARS.mappings.max_api_version,
                 ds.api_version()
-            );
-        }
-
-        if spec_version < SPEC_VERSION_0_0_7
-            && data_sources
-                .iter()
-                .any(|ds| OFFCHAIN_KINDS.contains(&ds.kind()))
-        {
-            bail!(
-                "Offchain data sources not supported prior to {}",
-                SPEC_VERSION_0_0_7
             );
         }
 

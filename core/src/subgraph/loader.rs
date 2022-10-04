@@ -9,8 +9,8 @@ pub async fn load_dynamic_data_sources<C: Blockchain>(
     store: Arc<dyn WritableStore>,
     logger: Logger,
     manifest: &SubgraphManifest<C>,
+    manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<Vec<DataSource<C>>, Error> {
-    let manifest_idx_and_name = manifest.template_idx_and_name().collect();
     let start_time = Instant::now();
 
     let mut data_sources: Vec<DataSource<C>> = vec![];
