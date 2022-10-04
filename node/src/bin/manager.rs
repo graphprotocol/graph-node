@@ -869,7 +869,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let sender = ctx.notification_sender();
