@@ -1305,12 +1305,12 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site.cheap_clone())?;
 
         // If `graft_src` is `Some`, then there is a pending graft.
-        if let Some((src, block)) = graft_src {
+        if let Some((src, block, src_deployment)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
@@ -1318,10 +1318,7 @@ impl DeploymentStore {
                 dst.catalog.site.namespace
             );
 
-            let src_manifest_idx_and_name = self
-                .load_deployment(&src.site)?
-                .manifest
-                .template_idx_and_name()?;
+            let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
             let dst_manifest_idx_and_name = self
                 .load_deployment(&dst.site)?
                 .manifest
