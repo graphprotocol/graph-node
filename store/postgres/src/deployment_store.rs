@@ -3,6 +3,7 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
 use graph::components::versions::VERSIONS;
@@ -211,7 +212,8 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let conn = self.get_conn()?;
-        detail::deployment_entity(&conn, site)
+        Ok(detail::deployment_entity(&conn, site)
+            .with_context(|| format!("Deployment details not found for {}", site.deployment))?)
     }
 
     // Remove the data and metadata for the deployment `site`. This operation
