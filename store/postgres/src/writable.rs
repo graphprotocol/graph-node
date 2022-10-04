@@ -9,7 +9,8 @@ use graph::components::store::ReadStore;
 use graph::data::subgraph::schema;
 use graph::env::env_var;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphStore as _, BLOCK_NUMBER_MAX,
+    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
+    BLOCK_NUMBER_MAX,
 };
 use graph::slog::info;
 use graph::util::bounded_queue::BoundedQueue;
@@ -57,6 +58,10 @@ impl WritableSubgraphStore {
 
     fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
         self.0.layout(id)
+    }
+
+    fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
+        self.0.load_deployment(site)
     }
 }
 
@@ -171,7 +176,8 @@ impl SyncStore {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
-                    Some((src, base_ptr))
+                    let deployment_entity = self.store.load_deployment(&src.site)?;
+                    Some((src, base_ptr, deployment_entity))
                 }
                 None => None,
             };
