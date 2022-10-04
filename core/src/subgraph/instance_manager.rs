@@ -184,14 +184,17 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
             .await?;
         if let Some(graft) = &manifest.graft {
-            let file_bytes = self
-                .link_resolver
-                .cat(&logger, &graft.base.to_ipfs_link())
-                .await?;
-            let yaml = String::from_utf8(file_bytes)?;
-            self.subgraph_store
-                .set_manifest_raw_yaml(&graft.base, yaml)
-                .await?;
+            if self.subgraph_store.is_deployed(&graft.base)? {
+                let file_bytes = self
+                    .link_resolver
+                    .cat(&logger, &graft.base.to_ipfs_link())
+                    .await?;
+                let yaml = String::from_utf8(file_bytes)?;
+
+                self.subgraph_store
+                    .set_manifest_raw_yaml(&graft.base, yaml)
+                    .await?;
+            }
         }
 
         info!(logger, "Resolve subgraph files using IPFS");
