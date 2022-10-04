@@ -237,6 +237,26 @@ pub enum Command {
     /// General database management
     #[clap(subcommand)]
     Database(DatabaseCommand),
+
+    /// Delete a deployment and all it's indexed data
+    ///
+    /// The deployment can be specified as either a subgraph name, an IPFS
+    /// hash `Qm..`, or the database namespace `sgdNNN`. Since the same IPFS
+    /// hash can be deployed in multiple shards, it is possible to specify
+    /// the shard by adding `:shard` to the IPFS hash.
+    Drop {
+        /// The deployment identifier
+        deployment: DeploymentSearch,
+        /// List only current version
+        #[clap(long, short)]
+        current: bool,
+        /// List only pending versions
+        #[clap(long, short)]
+        pending: bool,
+        /// List only used (current and pending) versions
+        #[clap(long, short)]
+        used: bool,
+    },
 }
 
 impl Command {
@@ -848,7 +868,7 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let count = count.unwrap_or(1_000_000);
                     let older = older.map(|older| chrono::Duration::minutes(older as i64));
-                    commands::unused_deployments::remove(store, count, deployment, older)
+                    commands::unused_deployments::remove(store, count, deployment.as_deref(), older)
                 }
             }
         }
@@ -1096,6 +1116,29 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
             commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
+        }
+        Drop {
+            deployment,
+            current,
+            pending,
+            used,
+        } => {
+            let sender = ctx.notification_sender();
+            let (store, mut pools) = ctx.store_and_pools();
+            let subgraph_store = store.subgraph_store();
+            let primary_pool = pools
+                .remove(&*PRIMARY_SHARD)
+                .expect("there is a primary pool");
+            commands::drop::run(
+                primary_pool,
+                subgraph_store,
+                sender,
+                deployment,
+                current,
+                pending,
+                used,
+            )
+            .await
         }
     }
 }

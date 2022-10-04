@@ -5,7 +5,7 @@ use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::manager::deployment::{Deployment, DeploymentSearch};
 
-fn find(
+pub fn find(
     pool: ConnectionPool,
     search: DeploymentSearch,
     current: bool,
