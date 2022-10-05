@@ -3,7 +3,7 @@ use std::ops::Bound;
 use diesel::{
     pg::types::sql_types,
     sql_query,
-    sql_types::{Binary, Integer, Jsonb, Nullable, Bool},
+    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
     PgConnection, QueryDsl, RunQueryDsl,
 };
 
@@ -30,7 +30,7 @@ pub(crate) struct DataSourcesTable {
     manifest_idx: DynColumn<Integer>,
     param: DynColumn<Nullable<Binary>>,
     context: DynColumn<Nullable<Jsonb>>,
-    done: DynColumn<Bool>
+    done: DynColumn<Bool>,
 }
 
 impl DataSourcesTable {
@@ -54,7 +54,7 @@ impl DataSourcesTable {
         }
     }
 
-    pub (crate) fn table_name(namespace: &Namespace) -> String {
+    pub(crate) fn table_name(namespace: &Namespace) -> String {
         format!("{nsp}.{table}", nsp = namespace, table = Self::TABLE_NAME)
     }
 
@@ -131,7 +131,7 @@ impl DataSourcesTable {
                         context,
                         creation_block,
                         is_offchain,
-                        done
+                        done,
                     }
                 },
             )
@@ -221,51 +221,51 @@ impl DataSourcesTable {
         src_manifest_idx_and_name: &[(i32, String)],
         dst_manifest_idx_and_name: &[(i32, String)],
     ) -> Result<usize, StoreError> {
-         // Check if there are any data sources for dst which indicates we already copied
-         let count = dst.table.clone().count().get_result::<i64>(conn)?;
-         if count > 0 {
-             return Ok(count as usize);
-         }
- 
-         type Tuple = (
-             (Bound<i32>, Bound<i32>),
-             i32,
-             Option<Vec<u8>>,
-             Option<serde_json::Value>,
-             i32,
-             bool,
-         );
- 
-         let src_tuples = self
-             .table
-             .clone()
-             .filter(diesel::dsl::sql("lower(block_range) <= ").bind::<Integer, _>(target_block))
-             .select((
-                 &self.block_range,
-                 &self.manifest_idx,
-                 &self.param,
-                 &self.context,
-                 &self.causality_region,
-                 &self.done,
-             ))
-             .order_by(&self.vid)
-             .load::<Tuple>(conn)?;
- 
-         let mut count = 0;
-         for (block_range, src_manifest_idx, param, context, causality_region,done) in src_tuples {
-             let name = &src_manifest_idx_and_name
-                 .iter()
-                 .find(|(idx, _)| idx == &src_manifest_idx)
-                 .context("manifest_idx not found in src")?
-                 .1;
-             let dst_manifest_idx = dst_manifest_idx_and_name
-                 .iter()
-                 .find(|(_, n)| n == name)
-                 .context("name not found in dst")?
-                 .0;
- 
-             let query = format!(
-                 "\
+        // Check if there are any data sources for dst which indicates we already copied
+        let count = dst.table.clone().count().get_result::<i64>(conn)?;
+        if count > 0 {
+            return Ok(count as usize);
+        }
+
+        type Tuple = (
+            (Bound<i32>, Bound<i32>),
+            i32,
+            Option<Vec<u8>>,
+            Option<serde_json::Value>,
+            i32,
+            bool,
+        );
+
+        let src_tuples = self
+            .table
+            .clone()
+            .filter(diesel::dsl::sql("lower(block_range) <= ").bind::<Integer, _>(target_block))
+            .select((
+                &self.block_range,
+                &self.manifest_idx,
+                &self.param,
+                &self.context,
+                &self.causality_region,
+                &self.done,
+            ))
+            .order_by(&self.vid)
+            .load::<Tuple>(conn)?;
+
+        let mut count = 0;
+        for (block_range, src_manifest_idx, param, context, causality_region, done) in src_tuples {
+            let name = &src_manifest_idx_and_name
+                .iter()
+                .find(|(idx, _)| idx == &src_manifest_idx)
+                .context("manifest_idx not found in src")?
+                .1;
+            let dst_manifest_idx = dst_manifest_idx_and_name
+                .iter()
+                .find(|(_, n)| n == name)
+                .context("name not found in dst")?
+                .0;
+
+            let query = format!(
+                "\
              insert into {dst}(block_range, manifest_idx, param, context, causality_region, done)
              values(case
                  when upper($2) <= $1 then $2
@@ -273,30 +273,30 @@ impl DataSourcesTable {
              end,
              $3, $4, $5, $6)
              ",
-                 dst = dst.qname
-             );
- 
-             count += sql_query(&query)
-                 .bind::<Integer, _>(target_block)
-                 .bind::<sql_types::Range<Integer>, _>(block_range)
-                 .bind::<Integer, _>(dst_manifest_idx)
-                 .bind::<Nullable<Binary>, _>(param)
-                 .bind::<Nullable<Jsonb>, _>(context)
-                 .bind::<Integer, _>(causality_region)
-                 .bind::<Bool, _>(done)
-                 .execute(conn)?;
-         }
- 
-         // If the manifest idxes remained constant, we can test that both tables have the same
-         // contents.
-         if src_manifest_idx_and_name == dst_manifest_idx_and_name {
-             debug_assert!(
-                 self.load(conn, target_block).map_err(|e| e.to_string())
-                     == dst.load(conn, target_block).map_err(|e| e.to_string())
-             );
-         }
- 
-         Ok(count)
+                dst = dst.qname
+            );
+
+            count += sql_query(&query)
+                .bind::<Integer, _>(target_block)
+                .bind::<sql_types::Range<Integer>, _>(block_range)
+                .bind::<Integer, _>(dst_manifest_idx)
+                .bind::<Nullable<Binary>, _>(param)
+                .bind::<Nullable<Jsonb>, _>(context)
+                .bind::<Integer, _>(causality_region)
+                .bind::<Bool, _>(done)
+                .execute(conn)?;
+        }
+
+        // If the manifest idxes remained constant, we can test that both tables have the same
+        // contents.
+        if src_manifest_idx_and_name == dst_manifest_idx_and_name {
+            debug_assert!(
+                self.load(conn, target_block).map_err(|e| e.to_string())
+                    == dst.load(conn, target_block).map_err(|e| e.to_string())
+            );
+        }
+
+        Ok(count)
     }
 
     // Updates offchain data sources by checking for equality. Their range will be set to the empty range.

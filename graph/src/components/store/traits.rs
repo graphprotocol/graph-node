@@ -163,7 +163,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         hash: &DeploymentHash,
         raw_yaml: String,
     ) -> Result<(), StoreError>;
-    
+
     /// run schema migration for the given hash if any
     fn run_migration(&self, id: &DeploymentHash) -> Result<(), StoreError>;
 }

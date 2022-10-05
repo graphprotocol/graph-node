@@ -132,7 +132,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
             is_offchain: false,
-            done: false
+            done: false,
         }
     }
 

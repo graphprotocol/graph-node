@@ -68,7 +68,9 @@ pub(crate) fn update_offchain_status(
     }
 
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).update_offchain_status(conn, data_sources),
+        true => {
+            DataSourcesTable::new(site.namespace.clone()).update_offchain_status(conn, data_sources)
+        }
         false => Err(constraint_violation!(
             "shared schema does not support data source offchain_found",
         )),

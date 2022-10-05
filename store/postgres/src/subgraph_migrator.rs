@@ -1,5 +1,5 @@
 use graph::components::store::DeploymentSchemaVersion;
-use graph::prelude::{StoreError};
+use graph::prelude::StoreError;
 
 use crate::deployment_store::DeploymentStore;
 use crate::primary;

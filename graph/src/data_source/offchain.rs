@@ -53,7 +53,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
-            done: false
+            done: false,
         })
     }
 }
@@ -110,7 +110,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context,
             creation_block: stored.creation_block,
-            done: stored.done
+            done: stored.done,
         })
     }
 
@@ -197,7 +197,7 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
-            done:false
+            done: false,
         })
     }
 }

@@ -35,10 +35,10 @@ mod relational_queries;
 mod sql_value;
 mod store;
 mod store_events;
+mod subgraph_migrator;
 mod subgraph_store;
 pub mod transaction_receipt;
 mod writable;
-mod subgraph_migrator;
 
 #[cfg(debug_assertions)]
 pub mod layout_for_tests {
