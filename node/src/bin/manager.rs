@@ -256,6 +256,9 @@ pub enum Command {
         /// List only used (current and pending) versions
         #[clap(long, short)]
         used: bool,
+        /// Skips confirmation prompt
+        #[clap(long, short)]
+        force: bool,
     },
 }
 
@@ -1122,6 +1125,7 @@ async fn main() -> anyhow::Result<()> {
             current,
             pending,
             used,
+            force,
         } => {
             let sender = ctx.notification_sender();
             let (store, mut pools) = ctx.store_and_pools();
@@ -1137,6 +1141,7 @@ async fn main() -> anyhow::Result<()> {
                 current,
                 pending,
                 used,
+                force,
             )
             .await
         }

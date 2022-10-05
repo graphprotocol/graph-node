@@ -19,6 +19,7 @@ pub async fn run(
     current: bool,
     pending: bool,
     used: bool,
+    skip_confirmation: bool,
 ) -> anyhow::Result<()> {
     // call `graphman info` to find matching deployments
     let deployments = crate::manager::commands::info::find(
@@ -32,7 +33,7 @@ pub async fn run(
         bail!("Found no deployment for search_term: {search_term}")
     } else {
         print_deployments(&deployments);
-        if !prompt_for_confirmation("\nContinue?")? {
+        if !skip_confirmation && !prompt_for_confirmation("\nContinue?")? {
             bail!("Execution aborted by user")
         }
     }
