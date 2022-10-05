@@ -7,6 +7,10 @@ use graph::anyhow::{self, bail};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;
 
+/// Finds, unassings, record and remove matching deployments.
+///
+/// Asks for confirmation before removing any data.
+/// This is a convenience fuction that to call a series of other graphman commands.
 pub async fn run(
     primary_pool: ConnectionPool,
     subgraph_store: Arc<SubgraphStore>,
@@ -16,7 +20,7 @@ pub async fn run(
     pending: bool,
     used: bool,
 ) -> anyhow::Result<()> {
-    // graphman info -> find subgraph
+    // call `graphman info` to find matching deployments
     let deployments = crate::manager::commands::info::find(
         primary_pool.clone(),
         search_term.clone(),
@@ -32,18 +36,18 @@ pub async fn run(
             bail!("Execution aborted by user")
         }
     }
-    // call graphman unassign -> so it stops syncing if active
+    // call `graphman unassign` to stop any active deployments
     crate::manager::commands::assign::unassign(primary_pool, &sender, &search_term).await?;
 
-    // graphman remove -> to unregister the subgraph's name
+    // call `graphman remove` to unregister the subgraph's name
     for deployment in &deployments {
         crate::manager::commands::remove::run(subgraph_store.clone(), &deployment.name)?;
     }
 
-    // graphman unused record ->  to register the deployment as unused
+    // call `graphman unused record` to register those deployments unused
     crate::manager::commands::unused_deployments::record(subgraph_store.clone())?;
 
-    // graphman unused remove -> to remove the deployment's data
+    // call `graphman unused remove` to remove each deployment's data
     for deployment in &deployments {
         crate::manager::commands::unused_deployments::remove(
             subgraph_store.clone(),
