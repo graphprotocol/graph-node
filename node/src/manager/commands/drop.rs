@@ -1,4 +1,7 @@
-use crate::manager::deployment::DeploymentSearch;
+use crate::manager::{
+    deployment::{Deployment, DeploymentSearch},
+    display::List,
+};
 use graph::anyhow::{self, bail};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;
@@ -7,37 +10,29 @@ pub async fn run(
     primary_pool: ConnectionPool,
     subgraph_store: Arc<SubgraphStore>,
     sender: Arc<NotificationSender>,
-    deployment: DeploymentSearch,
+    search_term: DeploymentSearch,
     current: bool,
     pending: bool,
     used: bool,
 ) -> anyhow::Result<()> {
     // graphman info -> find subgraph
-    let subgraph_names = crate::manager::commands::info::find(
+    let deployments = crate::manager::commands::info::find(
         primary_pool.clone(),
-        deployment.clone(),
+        search_term.clone(),
         current,
         pending,
         used,
     )?;
-    if subgraph_names.is_empty() {
-        bail!("Found no deployment for identifier: {deployment}")
+    if deployments.is_empty() {
+        bail!("Found no deployment for search_term: {search_term}")
     } else {
-        println!("Found {} subgraph(s) to remove:", subgraph_names.len());
-        for (idx, deployment) in subgraph_names.iter().enumerate() {
-            println!(
-                "  {}: name={}, deployment={}",
-                idx + 1,
-                deployment.name,
-                deployment.deployment
-            )
-        }
+        print_deployments(&deployments);
     }
     // graphman unassign -> so it stops syncing if active
-    crate::manager::commands::assign::unassign(primary_pool, &sender, &deployment).await?;
+    crate::manager::commands::assign::unassign(primary_pool, &sender, &search_term).await?;
 
     // graphman remove -> to unregister the subgraph's name
-    for deployment in &subgraph_names {
+    for deployment in &deployments {
         crate::manager::commands::remove::run(subgraph_store.clone(), &deployment.name)?;
     }
 
@@ -45,13 +40,25 @@ pub async fn run(
     crate::manager::commands::unused_deployments::record(subgraph_store.clone())?;
 
     // graphman unused remove -> to remove the deployment's data
-    for deployment in &subgraph_names {
+    for deployment in &deployments {
         crate::manager::commands::unused_deployments::remove(
             subgraph_store.clone(),
             1_000_000,
-            Some(&deployment.name),
+            Some(&deployment.deployment),
             None,
         )?;
     }
     Ok(())
+}
+
+fn print_deployments(deployments: &[Deployment]) {
+    let mut list = List::new(vec!["name", "deployment"]);
+    println!("Found {} deployment(s) to remove:", deployments.len());
+    for deployment in deployments {
+        list.append(vec![
+            deployment.name.to_string(),
+            deployment.deployment.to_string(),
+        ]);
+    }
+    list.render();
 }
