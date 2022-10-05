@@ -1,3 +1,4 @@
+use crate::manager::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
     components::store::ChainStore as ChainStoreTrait,
@@ -56,7 +57,11 @@ pub async fn by_range(
 }
 
 pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
-    if !skip_confirmation && !helpers::prompt_for_confirmation()? {
+    let prompt = format!(
+        "This will delete all cached blocks for {}.\nProceed?",
+        chain_store.chain
+    );
+    if !skip_confirmation && !prompt_for_confirmation(&prompt)? {
         println!("Aborting.");
         return Ok(());
     }
@@ -85,6 +90,7 @@ async fn run(
 
 mod steps {
     use super::*;
+
     use futures::compat::Future01CompatExt;
     use graph::prelude::serde_json::{self, Value};
     use json_structural_diff::{colorize as diff_to_string, JsonDiff};
@@ -187,28 +193,12 @@ mod steps {
 mod helpers {
     use super::*;
     use graph::prelude::hex;
-    use std::io::{self, Write};
 
     /// Tries to parse a [`H256`] from a hex string.
     pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<H256> {
         let hash = hash.trim_start_matches("0x");
         let hash = hex::decode(hash)?;
         Ok(H256::from_slice(&hash))
-    }
-
-    /// Asks users if they are certain about truncating the whole block cache.
-    pub(super) fn prompt_for_confirmation() -> anyhow::Result<bool> {
-        print!("This will delete all cached blocks.\nProceed? [y/N] ");
-        io::stdout().flush()?;
-
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer)?;
-        answer.make_ascii_lowercase();
-
-        match answer.trim() {
-            "y" | "yes" => Ok(true),
-            _ => Ok(false),
-        }
     }
 
     /// Convenience function for extracting values from unary sets.
