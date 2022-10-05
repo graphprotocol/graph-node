@@ -34,7 +34,8 @@ pub async fn run(
     } else {
         print_deployments(&deployments);
         if !skip_confirmation && !prompt_for_confirmation("\nContinue?")? {
-            bail!("Execution aborted by user")
+            println!("Execution aborted by user");
+            return Ok(());
         }
     }
     // call `graphman unassign` to stop any active deployments
