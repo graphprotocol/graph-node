@@ -70,7 +70,7 @@ impl DataSourcesTable {
                 id bytea,
                 param bytea,
                 context jsonb,
-                done boolean not null
+                done boolean not null default false
             );
 
             create index gist_block_range_data_sources$ on {nsp}.data_sources$ using gist (block_range);
@@ -94,6 +94,7 @@ impl DataSourcesTable {
             Option<Vec<u8>>,
             Option<serde_json::Value>,
             i32,
+            bool,
         );
         let tuples = self
             .table
@@ -105,6 +106,7 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
                 &self.causality_region,
+                &self.done,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
@@ -112,7 +114,7 @@ impl DataSourcesTable {
         let mut dses: Vec<_> = tuples
             .into_iter()
             .map(
-                |(block_range, manifest_idx, param, context, causality_region)| {
+                |(block_range, manifest_idx, param, context, causality_region, done)| {
                     let creation_block = match block_range.0 {
                         Bound::Included(block) => Some(block),
 
@@ -129,6 +131,7 @@ impl DataSourcesTable {
                         context,
                         creation_block,
                         is_offchain,
+                        done
                     }
                 },
             )
@@ -155,6 +158,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
+                ..
             } = ds;
 
             if creation_block != &Some(block) {
@@ -229,6 +233,7 @@ impl DataSourcesTable {
              Option<Vec<u8>>,
              Option<serde_json::Value>,
              i32,
+             bool,
          );
  
          let src_tuples = self
@@ -241,12 +246,13 @@ impl DataSourcesTable {
                  &self.param,
                  &self.context,
                  &self.causality_region,
+                 &self.done,
              ))
              .order_by(&self.vid)
              .load::<Tuple>(conn)?;
  
          let mut count = 0;
-         for (block_range, src_manifest_idx, param, context, causality_region) in src_tuples {
+         for (block_range, src_manifest_idx, param, context, causality_region,done) in src_tuples {
              let name = &src_manifest_idx_and_name
                  .iter()
                  .find(|(idx, _)| idx == &src_manifest_idx)
@@ -260,7 +266,7 @@ impl DataSourcesTable {
  
              let query = format!(
                  "\
-             insert into {dst}(block_range, manifest_idx, param, context, causality_region)
+             insert into {dst}(block_range, manifest_idx, param, context, causality_region, done)
              values(case
                  when upper($2) <= $1 then $2
                  else int4range(lower($2), null)
@@ -277,6 +283,7 @@ impl DataSourcesTable {
                  .bind::<Nullable<Binary>, _>(param)
                  .bind::<Nullable<Jsonb>, _>(context)
                  .bind::<Integer, _>(causality_region)
+                 .bind::<Bool, _>(done)
                  .execute(conn)?;
          }
  
@@ -305,6 +312,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
+                ..
             } = ds;
 
             if !is_offchain {
