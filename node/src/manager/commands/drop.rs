@@ -1,6 +1,7 @@
 use crate::manager::{
     deployment::{Deployment, DeploymentSearch},
     display::List,
+    prompt::prompt_for_confirmation,
 };
 use graph::anyhow::{self, bail};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
@@ -27,8 +28,11 @@ pub async fn run(
         bail!("Found no deployment for search_term: {search_term}")
     } else {
         print_deployments(&deployments);
+        if !prompt_for_confirmation("\nContinue?")? {
+            bail!("Execution aborted by user")
+        }
     }
-    // graphman unassign -> so it stops syncing if active
+    // call graphman unassign -> so it stops syncing if active
     crate::manager::commands::assign::unassign(primary_pool, &sender, &search_term).await?;
 
     // graphman remove -> to unregister the subgraph's name
