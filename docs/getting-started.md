@@ -171,7 +171,7 @@ type Token @entity {
 
 This `entity` tracks a single ERC721 token on Ethereum by its ID and the current owner. The **`ID` field is required** and stores values of the ID type, which are strings. The `ID` must be a unique value so that it can be placed into the store. For an ERC721 token, the unique ID could be the token ID because that value is unique to that coin.
 
-The exclamation mark represents the fact that that field must be set when the entity is stored in the database, i.e., it cannot be `null`. See the [Schema API](graphql-api.md#3-schema) for a complete reference on defining the schema for The Graph.
+The exclamation mark represents the fact that that field must be set when the entity is stored in the database, i.e., it cannot be `null`. See the [Schema API](https://github.com/graphprotocol/docs/blob/main/pages/en/querying/graphql-api.mdx#schema) for a complete reference on defining the schema for The Graph.
 
 When you complete the schema, add its path to the top-level `schema` key in the subgraph manifest. See the code below for an example:
 
@@ -417,7 +417,7 @@ Depending on how many events have been emitted by your smart contracts, it could
 ## 3 Query the Local Graph Node
 With the subgraph deployed to the locally running Graph Node, visit http://127.0.0.1:8000/ to open up a [GraphiQL](https://github.com/graphql/graphiql) interface where you can explore the deployed GraphQL API for the subgraph by issuing queries and viewing the schema.
 
-We provide a few simple examples below, but please see the [Query API](graphql-api.md#1-queries) for a complete reference on how to query the subgraph's entities.
+We provide a few simple examples below, but please see the [Query API](https://github.com/graphprotocol/docs/blob/main/pages/en/querying/graphql-api.mdx#queries) for a complete reference on how to query the subgraph's entities.
 
 Query the `Token` entities:
 ```graphql
