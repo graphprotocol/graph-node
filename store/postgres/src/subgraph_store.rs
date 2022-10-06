@@ -1264,6 +1264,16 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(writable)
     }
 
+    async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {
+        // Remove the writable from the cache and stop it
+        let deployment = loc.id.into();
+        let writable = self.writables.lock().unwrap().remove(&deployment);
+        match writable {
+            Some(writable) => writable.stop().await,
+            None => Ok(()),
+        }
+    }
+
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         match self.site(id) {
             Ok(_) => Ok(true),

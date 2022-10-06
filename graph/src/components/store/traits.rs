@@ -142,6 +142,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
+    /// Initiate a graceful shutdown of the writable that a previous call to
+    /// `writable` might have started
+    async fn stop_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+
     /// Return the minimum block pointer of all deployments with this `id`
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
