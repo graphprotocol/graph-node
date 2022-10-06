@@ -16,5 +16,5 @@ pub trait SubgraphInstanceManager: Send + Sync + 'static {
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
     );
-    fn stop_subgraph(&self, deployment: DeploymentLocator);
+    async fn stop_subgraph(&self, deployment: DeploymentLocator);
 }

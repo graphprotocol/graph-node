@@ -81,7 +81,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
             .remove(&deployment.id)
         {
             // Shut down subgraph processing
-            self.instance_manager.stop_subgraph(deployment);
+            self.instance_manager.stop_subgraph(deployment).await;
             Ok(())
         } else {
             Err(SubgraphAssignmentProviderError::NotRunning(deployment))

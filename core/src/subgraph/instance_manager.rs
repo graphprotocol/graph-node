@@ -119,15 +119,23 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
         });
     }
 
-    fn stop_subgraph(&self, loc: DeploymentLocator) {
+    async fn stop_subgraph(&self, loc: DeploymentLocator) {
         let logger = self.logger_factory.subgraph_logger(&loc);
-        info!(logger, "Stop subgraph");
+
+        match self.subgraph_store.stop_subgraph(&loc).await {
+            Ok(()) => debug!(logger, "Stopped subgraph writer"),
+            Err(err) => {
+                error!(logger, "Error stopping subgraph writer"; "error" => format!("{:#}", err))
+            }
+        }
 
         // Drop the cancel guard to shut down the subgraph now
         let mut instances = self.instances.write().unwrap();
         instances.remove(&loc.id);
 
         self.manager_metrics.subgraph_count.dec();
+
+        info!(logger, "Stopped subgraph");
     }
 }
 
