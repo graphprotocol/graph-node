@@ -13,7 +13,7 @@ use graph_tests::fixture::{self, stores, test_ptr};
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     let stores = stores("./integration-tests/config.simple.toml").await;
-
+    
     let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
     let hash = {
         let test_dir = format!("./integration-tests/{}", subgraph_name);

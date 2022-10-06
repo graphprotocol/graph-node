@@ -271,7 +271,7 @@ impl DataSourcesTable {
                  when upper($2) <= $1 then $2
                  else int4range(lower($2), null)
              end,
-             $3, $4, $5, $6)
+             $3, $4, $5, $6, $7)
              ",
                 dst = dst.qname
             );

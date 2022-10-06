@@ -202,10 +202,10 @@ pub(crate) fn copy(
         "\
       insert into subgraphs.dynamic_ethereum_contract_data_source(name,
              address, abi, start_block, ethereum_block_hash,
-             ethereum_block_number, deployment, context)
+             ethereum_block_number, deployment, context, done)
       select e.name, e.address, e.abi, e.start_block,
              e.ethereum_block_hash, e.ethereum_block_number, $2 as deployment,
-             e.context
+             e.context, e.done
         from {src_nsp}.dynamic_ethereum_contract_data_source e
        where e.deployment = $1
          and e.ethereum_block_number <= $3",
