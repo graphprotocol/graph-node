@@ -470,11 +470,15 @@ pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), Stor
 
     let needs_init = d::table
         .filter(d::id.eq(site.id))
-        .filter(d::latest_ethereum_block_hash.is_null())
-        .select(d::id)
-        .first::<i32>(conn)
-        .optional()?
-        .is_some();
+        .select(d::latest_ethereum_block_hash)
+        .first::<Option<Vec<u8>>>(conn)
+        .map_err(|e| {
+            constraint_violation!(
+                "deployment sgd{} must have been created before calling initialize_block_ptr but we got {}",
+                site.id, e
+            )
+        })?
+        .is_none();
 
     if needs_init {
         if let (Some(hash), Some(number)) = m::table
