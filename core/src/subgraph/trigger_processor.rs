@@ -79,7 +79,7 @@ where
             if host.data_source().as_offchain().is_some() {
                 // Remove this offchain data source since it has just been processed.
                 state
-                    .offchain_to_remove
+                    .processed_datasource
                     .push(host.data_source().as_stored_dynamic_data_source());
             }
         }

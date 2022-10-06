@@ -569,7 +569,7 @@ where
         triggers: Vec<offchain::TriggerData>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
-        let mut offchain_to_remove = vec![];
+        let mut processed_datasource = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -611,10 +611,10 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            offchain_to_remove.extend(block_state.offchain_to_remove);
+            processed_datasource.extend(block_state.processed_datasource);
         }
 
-        Ok((mods, offchain_to_remove))
+        Ok((mods, processed_datasource))
     }
 }
 

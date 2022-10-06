@@ -261,7 +261,7 @@ impl SyncStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
-        offchain_to_remove: &[StoredDynamicDataSource],
+        processed_datasource: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         self.retry("transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
@@ -273,7 +273,7 @@ impl SyncStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                offchain_to_remove,
+                processed_datasource,
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
@@ -431,7 +431,7 @@ enum Request {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        offchain_to_remove: Vec<StoredDynamicDataSource>,
+        processed_datasource: Vec<StoredDynamicDataSource>,
     },
     RevertTo {
         store: Arc<SyncStore>,
@@ -459,19 +459,17 @@ impl Request {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                offchain_to_remove,
-            } => store
-                .transact_block_operations(
-                    block_ptr_to,
-                    firehose_cursor,
-                    mods,
-                    stopwatch,
-                    data_sources,
-                    deterministic_errors,
-                    manifest_idx_and_name,
-                    offchain_to_remove,
-                )
-                .map(|()| ExecResult::Continue),
+                processed_datasource,
+            } => store.transact_block_operations(
+                block_ptr_to,
+                firehose_cursor,
+                mods,
+                stopwatch,
+                data_sources,
+                deterministic_errors,
+                manifest_idx_and_name,
+                processed_datasource,
+            ),
             Request::RevertTo {
                 store,
                 block_ptr,
@@ -791,14 +789,14 @@ impl Queue {
                 Request::Write {
                     block_ptr,
                     data_sources,
-                    offchain_to_remove,
+                    processed_datasource,
                     ..
                 } => {
                     if tracker.visible(block_ptr) {
                         dds.extend(data_sources.clone());
                         dds = dds
                             .into_iter()
-                            .filter(|dds| !offchain_to_remove.contains(dds))
+                            .filter(|dds| !processed_datasource.contains(dds))
                             .collect();
                     }
                 }
@@ -856,7 +854,7 @@ impl Writer {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        offchain_to_remove: Vec<StoredDynamicDataSource>,
+        processed_datasource: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         match self {
             Writer::Sync(store) => store.transact_block_operations(
@@ -867,7 +865,7 @@ impl Writer {
                 &data_sources,
                 &deterministic_errors,
                 &manifest_idx_and_name,
-                &offchain_to_remove,
+                &processed_datasource,
             ),
             Writer::Async(queue) => {
                 let req = Request::Write {
@@ -879,7 +877,7 @@ impl Writer {
                     data_sources,
                     deterministic_errors,
                     manifest_idx_and_name,
-                    offchain_to_remove,
+                    processed_datasource,
                 };
                 queue.push(req).await
             }
@@ -1094,7 +1092,7 @@ impl WritableStoreTrait for WritableStore {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        offchain_to_remove: Vec<StoredDynamicDataSource>,
+        processed_datasource: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         self.writer
             .write(
@@ -1105,7 +1103,7 @@ impl WritableStoreTrait for WritableStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                offchain_to_remove,
+                processed_datasource,
             )
             .await?;
 
