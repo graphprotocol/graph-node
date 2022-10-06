@@ -52,7 +52,6 @@ impl<'a> SubgraphMigrator<'a> {
             "
         alter table {table}
         add done bool;
-        update {table} set done = true where block_range = 'empty'::int4range;
         ",
             table = DataSourcesTable::table_name(&self.site.namespace)
         );

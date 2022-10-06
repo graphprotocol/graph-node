@@ -180,7 +180,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let registry = self.metrics_registry.cheap_clone();
 
         // run migration if any before starting the subgraph.
-
+        subgraph_store.run_migration(&deployment.hash)?;
         let store = self
             .subgraph_store
             .cheap_clone()
