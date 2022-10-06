@@ -1,5 +1,9 @@
 use diesel::connection::SimpleConnection as _;
-use diesel::{sql_query, sql_types::{Text, Int4}, QueryableByName, RunQueryDsl};
+use diesel::{
+    sql_query,
+    sql_types::{Int4, Text},
+    QueryableByName, RunQueryDsl,
+};
 use graph::{
     components::{
         server::index_node::VersionInfo,

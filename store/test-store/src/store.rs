@@ -528,7 +528,6 @@ pub fn all_shards() -> Vec<Shard> {
 
 fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
     let mut opt = Opt::default();
-    std::env::set_var("THEGRAPH_STORE_POSTGRES_DIESEL_URL", "postgresql://graph:graph@127.0.0.1:5432/graph-test");
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);
     if let Some(file) = file {
