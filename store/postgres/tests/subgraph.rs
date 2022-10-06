@@ -29,6 +29,7 @@ use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
+use serial_test::serial;
 
 const SUBGRAPH_GQL: &str = "
     type User @entity {
@@ -487,7 +488,9 @@ fn version_info() {
     })
 }
 
+
 #[test]
+#[serial]
 fn subgraph_error() {
     test_store::run_test_sequentially(|store| async move {
         let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
@@ -1067,6 +1070,7 @@ fn fail_unfail_non_deterministic_error_noop() {
 }
 
 #[test]
+#[serial]
 fn test_subgraph_migration_v2() {
     const NAME: &str = "subgraph_manifest_v2";
 
