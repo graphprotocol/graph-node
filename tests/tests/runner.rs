@@ -6,6 +6,7 @@ use graph::env::EnvVars;
 use graph::ipfs_client::CidFile;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::{SubgraphStore, CheapClone};
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
 use graph_tests::fixture::{self, stores, test_ptr};
@@ -13,7 +14,7 @@ use graph_tests::fixture::{self, stores, test_ptr};
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     let stores = stores("./integration-tests/config.simple.toml").await;
-    
+
     let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
     let hash = {
         let test_dir = format!("./integration-tests/{}", subgraph_name);
@@ -166,10 +167,18 @@ async fn file_data_sources() {
         Some(object! { ipfsFile: object!{ id: id , content: "[]" } })
     );
 
-    // Test loading offchain data sources from DB.
+    // assert whether duplicate datasources are created.
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
+
+    let store = ctx.store.cheap_clone();
+    let writable = store
+        .writable(ctx.logger.clone(), ctx.deployment.id)
+        .await
+        .unwrap();
+    let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+    assert!(datasources.len() == 1);
 }
 
 #[tokio::test]
