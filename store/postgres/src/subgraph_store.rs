@@ -373,6 +373,20 @@ impl SubgraphStoreInner {
         Ok(site)
     }
 
+    fn evict(&self, id: &DeploymentHash) -> Result<(), StoreError> {
+        if let Some((site, _)) = self.sites.remove(id) {
+            let store = self.stores.get(&site.shard).ok_or_else(|| {
+                constraint_violation!(
+                    "shard {} for deployment sgd{} not found when evicting",
+                    site.shard,
+                    site.id
+                )
+            })?;
+            store.layout_cache.remove(&site);
+        }
+        Ok(())
+    }
+
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.find(|site| site.id == id) {
             return Ok(site);
@@ -498,6 +512,8 @@ impl SubgraphStoreInner {
     ) -> Result<DeploymentLocator, StoreError> {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
+
+        self.evict(&schema.id)?;
 
         let graft_base = deployment
             .graft_base
@@ -1265,6 +1281,8 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {
+        self.evict(&loc.hash)?;
+
         // Remove the writable from the cache and stop it
         let deployment = loc.id.into();
         let writable = self.writables.lock().unwrap().remove(&deployment);

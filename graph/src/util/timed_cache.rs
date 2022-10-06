@@ -90,6 +90,21 @@ impl<K, V> TimedCache<K, V> {
             .find(move |entry| pred(entry.value.as_ref()))
             .map(|entry| entry.value.clone())
     }
+
+    /// Remove an entry from the cache. If there was an entry for `key`,
+    /// return the value associated with it and whether the entry is still
+    /// live
+    pub fn remove<Q: ?Sized>(&self, key: &Q) -> Option<(Arc<V>, bool)>
+    where
+        K: Borrow<Q> + Eq + Hash,
+        Q: Hash + Eq,
+    {
+        self.entries
+            .write()
+            .unwrap()
+            .remove(key)
+            .map(|CacheEntry { value, expires }| (value, expires >= Instant::now()))
+    }
 }
 
 #[test]

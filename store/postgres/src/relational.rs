@@ -1444,6 +1444,14 @@ impl LayoutCache {
         }
     }
 
+    pub(crate) fn remove(&self, site: &Site) -> Option<Arc<Layout>> {
+        self.entries
+            .lock()
+            .unwrap()
+            .remove(&site.deployment)
+            .map(|CacheEntry { value, expires: _ }| value.clone())
+    }
+
     // Only needed for tests
     #[cfg(debug_assertions)]
     pub(crate) fn clear(&self) {
