@@ -230,7 +230,7 @@ pub enum Command {
         #[clap(long, short, default_value = "0.20")]
         prune_ratio: f64,
         /// How much history to keep in blocks
-        #[clap(long, short, default_value = "10000")]
+        #[clap(long, short = 'y', default_value = "10000")]
         history: usize,
     },
 
