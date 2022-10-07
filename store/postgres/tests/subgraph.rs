@@ -27,9 +27,9 @@ use graph::{
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
+use serial_test::serial;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
-use serial_test::serial;
 
 const SUBGRAPH_GQL: &str = "
     type User @entity {
@@ -487,7 +487,6 @@ fn version_info() {
         assert_eq!(None, vi.total_ethereum_blocks_count);
     })
 }
-
 
 #[test]
 #[serial]

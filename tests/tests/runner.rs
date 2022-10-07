@@ -160,9 +160,7 @@ async fn file_data_sources() {
     );
 
     let query_res = ctx
-        .query(&format!(
-            r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,
-        ))
+        .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
         .await
         .unwrap();
 
