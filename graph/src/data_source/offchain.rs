@@ -13,13 +13,16 @@ use crate::{
 use anyhow::{self, Context, Error};
 use serde::Deserialize;
 use slog::{info, Logger};
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use super::TriggerWithHandler;
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DataSource {
     pub kind: String,
     pub name: String,
@@ -28,7 +31,22 @@ pub struct DataSource {
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
-    pub done: bool,
+    pub done: Mutex<bool>,
+}
+
+impl Clone for DataSource {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            name: self.name.clone(),
+            manifest_idx: self.manifest_idx.clone(),
+            source: self.source.clone(),
+            mapping: self.mapping.clone(),
+            context: self.context.clone(),
+            creation_block: self.creation_block.clone(),
+            done: Mutex::new(*self.done.lock().unwrap()),
+        }
+    }
 }
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
@@ -53,7 +71,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
-            done: false,
+            done: Mutex::new(false),
         })
     }
 }
@@ -63,10 +81,11 @@ impl DataSource {
         &self,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source {
+        if self.source != trigger.source || *self.done.lock().unwrap() {
             return None;
         }
-
+        // mark this datasource as done after it got triggerd.
+        *self.done.lock().unwrap() = true;
         Some(TriggerWithHandler::new(
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),
@@ -89,7 +108,7 @@ impl DataSource {
             context,
             creation_block: self.creation_block,
             is_offchain: true,
-            done: self.done,
+            done: *self.done.lock().unwrap(),
         }
     }
 
@@ -110,7 +129,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context,
             creation_block: stored.creation_block,
-            done: stored.done,
+            done: Mutex::new(stored.done),
         })
     }
 
@@ -197,7 +216,7 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
-            done: false,
+            done: Mutex::new(false),
         })
     }
 }
@@ -275,5 +294,57 @@ impl fmt::Debug for TriggerData {
                 _source: &self.source
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use crate::blockchain::mock::MockBlockchain;
+
+    use super::*;
+
+    fn create_mapping() -> Mapping {
+        Mapping {
+            language: "wasm/assemblyscript".to_string(),
+            api_version: semver::Version::from_str("0.0.7").unwrap(),
+            entities: vec![],
+            handler: "handleFile".to_string(),
+            runtime: Arc::new(vec![]),
+            link: Link::from("/"),
+        }
+    }
+
+    fn create_datasource() -> DataSource {
+        DataSource {
+            kind: "file/ipfs".to_string(),
+            name: "File".to_string(),
+            manifest_idx: 1,
+            source: Source::Ipfs(
+                CidFile::from_str("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap(),
+            ),
+            mapping: create_mapping(),
+            context: Arc::new(None),
+            creation_block: Some(1),
+            done: Mutex::new(false),
+        }
+    }
+
+    #[test]
+    fn test_datasource_trigger() {
+        let datasource = create_datasource();
+        let trigger_data = TriggerData {
+            source: Source::Ipfs(
+                CidFile::from_str("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap(),
+            ),
+            data: Arc::new(bytes::Bytes::new()),
+        };
+
+        // offchain datasource can be triggered only once.
+        let trigger = datasource.match_and_decode::<MockBlockchain>(&trigger_data);
+        assert!(trigger.is_some());
+        let trigger = datasource.match_and_decode::<MockBlockchain>(&trigger_data);
+        assert!(trigger.is_none());
     }
 }
