@@ -7,7 +7,7 @@ use graph::anyhow::{self, bail};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;
 
-/// Finds, unassings, record and remove matching deployments.
+/// Finds, unassigns, record and remove matching deployments.
 ///
 /// Asks for confirmation before removing any data.
 /// This is a convenience fuction that to call a series of other graphman commands.
