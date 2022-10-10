@@ -1128,11 +1128,9 @@ async fn main() -> anyhow::Result<()> {
             force,
         } => {
             let sender = ctx.notification_sender();
-            let (store, mut pools) = ctx.store_and_pools();
+            let (store, primary_pool) = ctx.store_and_primary();
             let subgraph_store = store.subgraph_store();
-            let primary_pool = pools
-                .remove(&*PRIMARY_SHARD)
-                .expect("there is a primary pool");
+
             commands::drop::run(
                 primary_pool,
                 subgraph_store,
