@@ -67,7 +67,7 @@ where
             };
 
             if let DataSource::Offchain(ds) = &ds {
-                // monitor datasource only if it's not done.
+                // monitor data source only if it's not done.
                 if !*ds.done.lock().unwrap() {
                     offchain_monitor.add_source(ds.source.clone())?;
                 }

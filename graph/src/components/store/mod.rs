@@ -1019,7 +1019,7 @@ pub enum DeploymentSchemaVersion {
     /// V1: Dynamic data sources moved to `sgd*.data_sources$`.
     V1 = 1,
 
-    /// V2: offchain datasource status tracked using `done` column.
+    /// V2: offchain data source status tracked using `done` column.
     V2 = 2,
 }
 
