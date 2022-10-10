@@ -22,13 +22,7 @@ pub async fn run(
     skip_confirmation: bool,
 ) -> anyhow::Result<()> {
     // call `graphman info` to find matching deployments
-    let deployments = crate::manager::commands::info::find(
-        primary_pool.clone(),
-        search_term.clone(),
-        current,
-        pending,
-        used,
-    )?;
+    let deployments = search_term.find(primary_pool.clone(), current, pending, used)?;
     if deployments.is_empty() {
         bail!("Found no deployment for search_term: {search_term}")
     } else {
