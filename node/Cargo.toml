@@ -41,7 +41,7 @@ serde = { version = "1.0.126", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
 toml = "0.5.7"
 shellexpand = "2.1.0"
-diesel = "1.4.8"
+diesel = "2.0.1"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
 prometheus = { version ="0.13.2", features = ["push"] }
 json-structural-diff = {version = "0.1", features = ["colorize"] }
