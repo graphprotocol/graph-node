@@ -5,6 +5,7 @@
 - [Unassign](#unassign)
 - [Unused Record](#unused-record)
 - [Unused Remove](#unused-remove)
+- [Drop](#drop)
 
 <a id="info"></a>
 # ⌘ Info
@@ -227,3 +228,62 @@ Remove all unused deployments older than 12 hours (720 minutes)
 Remove a specific unused deployment
 
     graphman --config config.toml unused remove --deployment QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66
+
+<a id="drop"></a>
+# ⌘ Drop
+
+### SYNOPSIS
+
+    Delete a deployment and all it's indexed data
+
+    The deployment can be specified as either a subgraph name, an IPFS hash `Qm..`, or the database
+    namespace `sgdNNN`. Since the same IPFS hash can be deployed in multiple shards, it is possible to
+    specify the shard by adding `:shard` to the IPFS hash.
+
+    USAGE:
+        graphman --config <CONFIG> drop [OPTIONS] <DEPLOYMENT>
+
+    ARGS:
+        <DEPLOYMENT>
+                The deployment identifier
+
+    OPTIONS:
+        -c, --current
+                Search only for current versions
+
+        -f, --force
+                Skip confirmation prompt
+
+        -h, --help
+                Print help information
+
+        -p, --pending
+                Search only for pending versions
+
+        -u, --used
+                Search only for used (current and pending) versions
+
+### DESCRIPTION
+
+Stops, unassigns and remove all data from deployments matching the search term.
+
+This operation is irreversible.
+
+This command is a combination of other graphman commands applied in sequence:
+
+1. `graphman info <search term>`
+2. `graphman unassign <deployment id>`
+3. `graphman remove <deployment name>`
+4. `graphman unused record`
+5. `graphman unused remove <deployment id>`
+
+### EXAMPLES
+
+Stop, unassign and delete all indexed data from a specific deployment by its deployment id
+
+    graphman --config config.toml drop QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66
+
+
+Stop, unassign and delete all indexed data from a specific deployment by its subgraph name
+
+    graphman --config config.toml drop autor/subgraph-name
