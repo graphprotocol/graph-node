@@ -247,13 +247,13 @@ pub enum Command {
     Drop {
         /// The deployment identifier
         deployment: DeploymentSearch,
-        /// List only current version
+        /// Search only for current version
         #[clap(long, short)]
         current: bool,
-        /// List only pending versions
+        /// Search only for pending versions
         #[clap(long, short)]
         pending: bool,
-        /// List only used (current and pending) versions
+        /// Search only for used (current and pending) versions
         #[clap(long, short)]
         used: bool,
         /// Skip confirmation prompt
