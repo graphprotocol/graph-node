@@ -5,6 +5,7 @@ pub mod config;
 pub mod copy;
 pub mod create;
 pub mod database;
+pub mod drop;
 pub mod index;
 pub mod info;
 pub mod listen;
