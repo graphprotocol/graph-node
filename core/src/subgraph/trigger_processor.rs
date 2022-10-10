@@ -76,11 +76,12 @@ where
             let elapsed = start.elapsed().as_secs_f64();
             subgraph_metrics.observe_trigger_processing_duration(elapsed);
 
-            if host.data_source().as_offchain().is_some() {
+            if let Some(ds) = host.data_source().as_offchain() {
+                ds.mark_processed();
                 // Remove this offchain data source since it has just been processed.
                 state
-                    .processed_datasource
-                    .push(host.data_source().as_stored_dynamic_data_source());
+                    .processed_data_source
+                    .push(ds.as_stored_dynamic_data_source());
             }
         }
 

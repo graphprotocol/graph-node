@@ -49,6 +49,13 @@ impl Clone for DataSource {
     }
 }
 
+impl DataSource {
+    // mark this datasource has been process.
+    pub fn mark_processed(&self) {
+        *self.done.lock().unwrap() = true;
+    }
+}
+
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
     type Error = Error;
 
@@ -84,8 +91,6 @@ impl DataSource {
         if self.source != trigger.source || *self.done.lock().unwrap() {
             return None;
         }
-        // mark this datasource as done after it got triggerd.
-        *self.done.lock().unwrap() = true;
         Some(TriggerWithHandler::new(
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),

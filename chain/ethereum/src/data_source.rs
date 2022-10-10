@@ -146,13 +146,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             context,
             creation_block,
             is_offchain,
-            ..
+            done,
         } = stored;
 
         ensure!(
             !is_offchain,
             "attempted to convert offchain data source to ethereum data source"
         );
+        ensure!(!done, "onchain data sources are never done");
 
         let context = context.map(serde_json::from_value).transpose()?;
 

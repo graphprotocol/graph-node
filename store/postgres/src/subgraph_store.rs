@@ -49,7 +49,6 @@ use crate::{
     deployment_store::{DeploymentStore, ReplicaId},
     detail::DeploymentDetail,
     primary::UnusedDeployment,
-    subgraph_migrator::SubgraphMigrator,
 };
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
@@ -343,6 +342,7 @@ impl SubgraphStoreInner {
             store.layout_cache.clear();
         }
         self.sites.clear();
+        self.writables.lock().unwrap().clear();
     }
 
     // Only needed for tests
@@ -1168,14 +1168,6 @@ impl SubgraphStoreTrait for SubgraphStore {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
-    }
-
-    fn run_migration(&self, id: &DeploymentHash) -> Result<(), StoreError> {
-        let site = self.inner.site(id)?.to_owned();
-        let store = self.for_site(site.as_ref())?.cheap_clone();
-        let primary = self.primary_conn()?;
-        let migrator = SubgraphMigrator::new(site, primary, store);
-        migrator.run()
     }
 
     fn reassign_subgraph(

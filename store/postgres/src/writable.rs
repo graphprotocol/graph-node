@@ -28,7 +28,9 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
-use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
+use crate::{
+    primary, primary::Site, relational::Layout, subgraph_migrator::SubgraphMigrator, SubgraphStore,
+};
 
 graph::prelude::lazy_static! {
     /// The size of the write queue; this many blocks can be buffered for
@@ -173,6 +175,13 @@ impl SyncStore {
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
+            // run migration if any before starting the subgraph.
+            let migrator = SubgraphMigrator::new(
+                self.site.clone(),
+                self.store.primary_conn()?,
+                self.writable.clone(),
+            );
+            migrator.run()?;
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
@@ -261,7 +270,7 @@ impl SyncStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
-        processed_datasource: &[StoredDynamicDataSource],
+        processed_data_source: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         self.retry("transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
@@ -273,7 +282,7 @@ impl SyncStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                processed_datasource,
+                processed_data_source,
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
@@ -431,7 +440,7 @@ enum Request {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        processed_datasource: Vec<StoredDynamicDataSource>,
+        processed_data_source: Vec<StoredDynamicDataSource>,
     },
     RevertTo {
         store: Arc<SyncStore>,
@@ -459,7 +468,7 @@ impl Request {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                processed_datasource,
+                processed_data_source,
             } => store.transact_block_operations(
                 block_ptr_to,
                 firehose_cursor,
@@ -468,7 +477,7 @@ impl Request {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                processed_datasource,
+                processed_data_source,
             ),
             Request::RevertTo {
                 store,
@@ -789,14 +798,14 @@ impl Queue {
                 Request::Write {
                     block_ptr,
                     data_sources,
-                    processed_datasource,
+                    processed_data_source,
                     ..
                 } => {
                     if tracker.visible(block_ptr) {
                         dds.extend(data_sources.clone());
                         dds = dds
                             .into_iter()
-                            .filter(|dds| !processed_datasource.contains(dds))
+                            .filter(|dds| !processed_data_source.contains(dds))
                             .collect();
                     }
                 }
@@ -854,7 +863,7 @@ impl Writer {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        processed_datasource: Vec<StoredDynamicDataSource>,
+        processed_data_source: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         match self {
             Writer::Sync(store) => store.transact_block_operations(
@@ -865,7 +874,7 @@ impl Writer {
                 &data_sources,
                 &deterministic_errors,
                 &manifest_idx_and_name,
-                &processed_datasource,
+                &processed_data_source,
             ),
             Writer::Async(queue) => {
                 let req = Request::Write {
@@ -877,7 +886,7 @@ impl Writer {
                     data_sources,
                     deterministic_errors,
                     manifest_idx_and_name,
-                    processed_datasource,
+                    processed_data_source,
                 };
                 queue.push(req).await
             }
@@ -1092,7 +1101,7 @@ impl WritableStoreTrait for WritableStore {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         manifest_idx_and_name: Vec<(u32, String)>,
-        processed_datasource: Vec<StoredDynamicDataSource>,
+        processed_data_source: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         self.writer
             .write(
@@ -1103,7 +1112,7 @@ impl WritableStoreTrait for WritableStore {
                 data_sources,
                 deterministic_errors,
                 manifest_idx_and_name,
-                processed_datasource,
+                processed_data_source,
             )
             .await?;
 

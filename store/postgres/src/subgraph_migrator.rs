@@ -28,30 +28,28 @@ impl<'a> SubgraphMigrator<'a> {
     }
 
     pub fn run(mut self) -> Result<(), StoreError> {
-        // subgraph deployment is already in latest version.
-        if self.current_version == DeploymentSchemaVersion::LATEST {
-            return Ok(());
-        }
-        match self.current_version {
-            DeploymentSchemaVersion::V1 => {
-                self.migrate_to_v2()?;
+        // upgrade the schema till it reaches lastest version.
+        while self.current_version != DeploymentSchemaVersion::LATEST {
+            match self.current_version {
+                DeploymentSchemaVersion::V1 => {
+                    self.migrate_to_v2()?;
+                }
+                _ => {
+                    todo!(
+                        "migration doesn't exist for the schema version: {schema_version}",
+                        schema_version = self.current_version
+                    )
+                }
             }
-            _ => {
-                todo!(
-                    "migration doesn't exist for the schema version: {schema_version}",
-                    schema_version = self.current_version
-                )
-            }
         }
-        // recursively migrate till site reaches latest schema version
-        self.run()
+        Ok(())
     }
 
     fn migrate_to_v2(&mut self) -> Result<(), StoreError> {
         let migration = format!(
             "
         alter table {table}
-        add done bool;
+        add done bool not null default false;
         ",
             table = DataSourcesTable::table_name(&self.site.namespace)
         );

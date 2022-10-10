@@ -331,7 +331,7 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_datasources) =
+        let (offchain_mods, processed_data_sources) =
             self.handle_offchain_triggers(offchain_events).await?;
         mods.extend(offchain_mods);
 
@@ -387,7 +387,7 @@ where
                 data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
-                processed_datasources,
+                processed_data_sources,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -569,7 +569,7 @@ where
         triggers: Vec<offchain::TriggerData>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
-        let mut processed_datasource = vec![];
+        let mut processed_data_source = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -611,10 +611,10 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            processed_datasource.extend(block_state.processed_datasource);
+            processed_data_source.extend(block_state.processed_data_source);
         }
 
-        Ok((mods, processed_datasource))
+        Ok((mods, processed_data_source))
     }
 }
 
