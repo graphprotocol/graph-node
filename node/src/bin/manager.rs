@@ -256,7 +256,7 @@ pub enum Command {
         /// List only used (current and pending) versions
         #[clap(long, short)]
         used: bool,
-        /// Skips confirmation prompt
+        /// Skip confirmation prompt
         #[clap(long, short)]
         force: bool,
     },
