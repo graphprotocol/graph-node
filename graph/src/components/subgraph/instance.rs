@@ -51,7 +51,7 @@ impl<C: Blockchain> BlockState<C> {
             deterministic_errors,
             created_data_sources,
             handler_created_data_sources,
-            processed_data_source: processed_datasource,
+            processed_data_source,
             in_handler,
         } = self;
 
@@ -61,7 +61,7 @@ impl<C: Blockchain> BlockState<C> {
         }
         deterministic_errors.extend(other.deterministic_errors);
         entity_cache.extend(other.entity_cache);
-        processed_datasource.extend(other.processed_data_source);
+        processed_data_source.extend(other.processed_data_source);
     }
 
     pub fn has_errors(&self) -> bool {
