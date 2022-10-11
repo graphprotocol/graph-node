@@ -1980,6 +1980,7 @@ dependencies = [
  "lazy_static",
  "port_check",
  "serde_yaml",
+ "serial_test",
  "slog",
  "tokio",
  "tokio-stream",

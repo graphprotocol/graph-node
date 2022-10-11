@@ -10,6 +10,7 @@ use graph::prelude::{CheapClone, SubgraphStore};
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
 use graph_tests::fixture::{self, stores, test_ptr};
+use serial_test::serial;
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
@@ -124,6 +125,7 @@ async fn typename() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+#[serial]
 async fn file_data_sources() {
     let stores = stores("./integration-tests/config.simple.toml").await;
 
