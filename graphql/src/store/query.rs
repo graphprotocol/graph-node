@@ -119,7 +119,7 @@ fn build_filter(
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     match field.argument_value("where") {
         Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
-            Ok(filter) => Ok(Some(filter)),
+            Ok(filter) => Ok(Some(EntityFilter::And(filter))),
             Err(e) => Err(e),
         },
         Some(r::Value::Null) => Ok(None),
@@ -206,91 +206,76 @@ fn build_filter_from_object(
     entity: ObjectOrInterface,
     object: &Object,
     schema: &ApiSchema,
-) -> Result<EntityFilter, QueryExecutionError> {
-    Ok(EntityFilter::And({
-        object
-            .iter()
-            .map(|(key, value)| {
-                // Special handling for _change_block input filter since its not a
-                // standard entity filter that is based on entity structure/fields
-                if key == "_change_block" {
-                    return match parse_change_block_filter(value) {
-                        Ok(block_number) => Ok(EntityFilter::ChangeBlockGte(block_number)),
-                        Err(e) => Err(e),
+) -> Result<Vec<EntityFilter>, QueryExecutionError> {
+    Ok(object
+        .iter()
+        .map(|(key, value)| {
+            // Special handling for _change_block input filter since its not a
+            // standard entity filter that is based on entity structure/fields
+            if key == "_change_block" {
+                return match parse_change_block_filter(value) {
+                    Ok(block_number) => Ok(EntityFilter::ChangeBlockGte(block_number)),
+                    Err(e) => Err(e),
+                };
+            }
+            use self::sast::FilterOp::*;
+            let (field_name, op) = sast::parse_field_as_filter(key);
+            Ok(match op {
+                And => {
+                    return match value {
+                        r::Value::Object(object) => {
+                            return Ok(EntityFilter::And(build_filter_from_object(
+                                entity, object, schema,
+                            )?));
+                        }
+                        _ => Err(QueryExecutionError::InvalidFilterError),
                     };
                 }
-                use self::sast::FilterOp::*;
-                let (field_name, op) = sast::parse_field_as_filter(key);
-
-                Ok(match op {
-                    And => {
-                        return match value {
-                            r::Value::Object(object) => {
-                                return build_filter_from_object(entity, object, schema);
-                            }
-                            _ => Err(QueryExecutionError::InvalidFilterError),
-                        };
-                    }
-                    Or => {
-                        return match value {
-                            r::Value::Object(object) => {
-                                let filters = object
-                                    .iter()
-                                    .map(|(key, value)| {
-                                        let (field_name, op) = sast::parse_field_as_filter(key);
-                                        let field = sast::get_field(entity, &field_name)
-                                            .ok_or_else(|| {
-                                                // When we have `AND`/`OR` filters we can not get a field back
-                                                // Instead we want to building the entity filter from the object
-                                                // If it works out great otherwise we return an error
-                                                return build_filter_from_object(
-                                                    entity, object, schema,
-                                                );
-                                            });
-                                        return match field {
-                                            Ok(field) => {
-                                                let ty = &field.field_type;
-                                                let store_value =
-                                                    Value::from_query_value(value, ty)?;
-                                                return build_entity_filter(
-                                                    field_name,
-                                                    op,
-                                                    store_value,
-                                                );
-                                            }
-                                            Err(result) => match result {
-                                                Ok(filter) => Ok(filter),
-                                                Err(e) => Err(e),
-                                            },
-                                        };
-                                    })
-                                    .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>();
-                                return match filters {
-                                    Ok(f) => Ok(EntityFilter::Or(f)),
-                                    Err(e) => Err(e),
-                                };
-                            }
-                            _ => Err(QueryExecutionError::InvalidFilterError),
-                        };
-                    }
-                    Child => match value {
-                        DataValue::Object(obj) => {
-                            build_child_filter_from_object(entity, field_name, obj, schema)?
+                Or => {
+                    return match value {
+                        r::Value::Object(object) => {
+                            let filters = object
+                                .iter()
+                                .map(|(key, value)| {
+                                    let (field_name, op) = sast::parse_field_as_filter(key);
+                                    let field =
+                                        sast::get_field(entity, &field_name).ok_or_else(|| {
+                                            // When we have `AND`/`OR` filters we can not get a field back
+                                            // Instead we want to building the entity filter from the object
+                                            // If it works out great otherwise we return an error
+                                            return build_filter_from_object(
+                                                entity, object, schema,
+                                            );
+                                        });
+                                    return match field {
+                                        Ok(field) => {
+                                            let ty = &field.field_type;
+                                            let store_value = Value::from_query_value(value, ty)?;
+                                            return build_entity_filter(
+                                                field_name,
+                                                op,
+                                                store_value,
+                                            );
+                                        }
+                                        Err(result) => match result {
+                                            Ok(filter) => Ok(EntityFilter::Or(filter)),
+                                            Err(e) => Err(e),
+                                        },
+                                    };
+                                })
+                                .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>();
+                            return match filters {
+                                Ok(f) => Ok(EntityFilter::Or(f)),
+                                Err(e) => Err(e),
+                            };
                         }
-                        _ => {
-                            let field = sast::get_field(entity, &field_name).ok_or_else(|| {
-                                QueryExecutionError::EntityFieldError(
-                                    entity.name().to_owned(),
-                                    field_name.clone(),
-                                )
-                            })?;
-                            let ty = &field.field_type;
-                            return Err(QueryExecutionError::AttributeTypeError(
-                                value.to_string(),
-                                ty.to_string(),
-                            ));
-                        }
-                    },
+                        _ => Err(QueryExecutionError::InvalidFilterError),
+                    };
+                }
+                Child => match value {
+                    DataValue::Object(obj) => {
+                        build_child_filter_from_object(entity, field_name, obj, schema)?
+                    }
                     _ => {
                         let field = sast::get_field(entity, &field_name).ok_or_else(|| {
                             QueryExecutionError::EntityFieldError(
@@ -299,13 +284,26 @@ fn build_filter_from_object(
                             )
                         })?;
                         let ty = &field.field_type;
-                        let store_value = Value::from_query_value(value, ty)?;
-                        return build_entity_filter(field_name, op, store_value);
+                        return Err(QueryExecutionError::AttributeTypeError(
+                            value.to_string(),
+                            ty.to_string(),
+                        ));
                     }
-                })
+                },
+                _ => {
+                    let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                        QueryExecutionError::EntityFieldError(
+                            entity.name().to_owned(),
+                            field_name.clone(),
+                        )
+                    })?;
+                    let ty = &field.field_type;
+                    let store_value = Value::from_query_value(value, ty)?;
+                    return build_entity_filter(field_name, op, store_value);
+                }
             })
-            .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?
-    }))
+        })
+        .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?)
 }
 
 fn build_child_filter_from_object(
@@ -321,7 +319,11 @@ fn build_child_filter_from_object(
     let child_entity = schema
         .object_or_interface(type_name)
         .ok_or(QueryExecutionError::InvalidFilterError)?;
-    let filter = Box::new(build_filter_from_object(child_entity, object, schema)?);
+    let filter = Box::new(EntityFilter::And(build_filter_from_object(
+        child_entity,
+        object,
+        schema,
+    )?));
     let derived = field.is_derived();
     let attr = match derived {
         true => sast::get_derived_from_field(child_entity, field)
