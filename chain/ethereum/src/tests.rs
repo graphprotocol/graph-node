@@ -4,8 +4,9 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr},
     prelude::{
         web3::types::{Address, Bytes, Log, H160, H256, U64},
-        EthereumCall,
+        EthereumCall, LightEthereumBlock,
     },
+    slog::{self, o, Logger},
 };
 
 use crate::{
@@ -89,9 +90,22 @@ fn test_trigger_ordering() {
         log1.clone(),
     ];
 
+    let logger = Logger::root(slog::Discard, o!());
+
+    let mut b: LightEthereumBlock = Default::default();
+
+    // This is necessary because inside of BlockWithTriggers::new
+    // there's a log for both fields. So just using Default above
+    // gives None on them.
+    b.number = Some(Default::default());
+    b.hash = Some(Default::default());
+
     // Test that `BlockWithTriggers` sorts the triggers.
-    let block_with_triggers =
-        BlockWithTriggers::<crate::Chain>::new(BlockFinality::Final(Default::default()), triggers);
+    let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
+        BlockFinality::Final(Arc::new(b)),
+        triggers,
+        &logger,
+    );
 
     assert_eq!(
         block_with_triggers.trigger_data,

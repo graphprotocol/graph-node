@@ -180,7 +180,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn triggers_in_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         block: codec::Block,
         filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
@@ -212,7 +212,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             trigger_data.push(ArweaveTrigger::Block(shared_block.cheap_clone()));
         }
 
-        Ok(BlockWithTriggers::new(block, trigger_data))
+        Ok(BlockWithTriggers::new(block, trigger_data, logger))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {

@@ -517,14 +517,14 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
 
     async fn triggers_in_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         block: <C as Blockchain>::Block,
         _filter: &<C as Blockchain>::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error> {
         tokio::time::sleep(self.triggers_in_block_sleep).await;
 
         // Return no triggers on data source reprocessing.
-        Ok(BlockWithTriggers::new(block, Vec::new()))
+        Ok(BlockWithTriggers::new(block, Vec::new(), logger))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
