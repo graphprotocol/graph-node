@@ -80,7 +80,7 @@ where
                 ds.mark_processed();
                 // Remove this offchain data source since it has just been processed.
                 state
-                    .processed_data_source
+                    .processed_data_sources
                     .push(ds.as_stored_dynamic_data_source());
             }
         }

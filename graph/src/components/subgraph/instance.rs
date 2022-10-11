@@ -25,7 +25,7 @@ pub struct BlockState<C: Blockchain> {
     handler_created_data_sources: Vec<DataSourceTemplateInfo<C>>,
 
     // data source that have been processed.
-    pub processed_data_source: Vec<StoredDynamicDataSource>,
+    pub processed_data_sources: Vec<StoredDynamicDataSource>,
 
     // Marks whether a handler is currently executing.
     in_handler: bool,
@@ -38,7 +38,7 @@ impl<C: Blockchain> BlockState<C> {
             deterministic_errors: Vec::new(),
             created_data_sources: Vec::new(),
             handler_created_data_sources: Vec::new(),
-            processed_data_source: Vec::new(),
+            processed_data_sources: Vec::new(),
             in_handler: false,
         }
     }
@@ -51,7 +51,7 @@ impl<C: Blockchain> BlockState<C> {
             deterministic_errors,
             created_data_sources,
             handler_created_data_sources,
-            processed_data_source,
+            processed_data_sources: processed_data_source,
             in_handler,
         } = self;
 
@@ -61,7 +61,7 @@ impl<C: Blockchain> BlockState<C> {
         }
         deterministic_errors.extend(other.deterministic_errors);
         entity_cache.extend(other.entity_cache);
-        processed_data_source.extend(other.processed_data_source);
+        processed_data_source.extend(other.processed_data_sources);
     }
 
     pub fn has_errors(&self) -> bool {

@@ -611,7 +611,7 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            processed_data_sources.extend(block_state.processed_data_source);
+            processed_data_sources.extend(block_state.processed_data_sources);
         }
 
         Ok((mods, processed_data_sources))
