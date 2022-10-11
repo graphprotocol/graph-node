@@ -176,6 +176,9 @@ impl<C: Blockchain> BlockWithTriggers<C> {
     pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>) -> Self {
         // This is where triggers get sorted.
         trigger_data.sort();
+        // This is removing the duplicate triggers in the case of multiple
+        // data sources fetching the same event/call/etc.
+        trigger_data.dedup();
         Self {
             block,
             trigger_data,
