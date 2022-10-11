@@ -2191,3 +2191,33 @@ fn can_query_with_or_and_filter() {
         assert_eq!(data, exp);
     })
 }
+
+#[test]
+fn can_query_with_and_and_filter() {
+    const QUERY: &str = "
+    query {
+        musicians(
+          where: {
+                or: {and: {name: \"John\", id: \"m1\" },
+                or: {and: {name: \"Lisa\", id: \"m2\" }
+                }
+            }
+        }
+        ) {
+          name
+          id
+        }
+      }
+    ";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: vec![
+                object! { name: "John", id: "m1" },
+                object! { name: "Lisa", id: "m2" },
+            ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
