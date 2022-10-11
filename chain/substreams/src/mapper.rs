@@ -16,7 +16,7 @@ pub struct Mapper {}
 impl SubstreamsMapper<Chain> for Mapper {
     async fn to_block_stream_event(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         block_scoped_data: &BlockScopedData,
     ) -> Result<Option<BlockStreamEvent<Chain>>, SubstreamsError> {
         let BlockScopedData {
@@ -81,6 +81,7 @@ impl SubstreamsMapper<Chain> for Mapper {
                                 changes,
                             },
                             vec![TriggerData {}],
+                            logger,
                         ),
                         FirehoseCursor::from(cursor.clone()),
                     ))),

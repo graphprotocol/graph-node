@@ -173,12 +173,29 @@ where
 }
 
 impl<C: Blockchain> BlockWithTriggers<C> {
-    pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>) -> Self {
+    pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
         // This is where triggers get sorted.
         trigger_data.sort();
+
+        let old_len = trigger_data.len();
+
         // This is removing the duplicate triggers in the case of multiple
         // data sources fetching the same event/call/etc.
         trigger_data.dedup();
+
+        let new_len = trigger_data.len();
+
+        if new_len != old_len {
+            debug!(
+                logger,
+                "Trigger data had duplicate triggers";
+                "block_number" => block.number(),
+                "block_hash" => block.hash().hash_hex(),
+                "old_length" => old_len,
+                "new_length" => new_len,
+            );
+        }
+
         Self {
             block,
             trigger_data,
