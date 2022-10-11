@@ -158,7 +158,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
-                ..
+                done,
             } = ds;
 
             if creation_block != &Some(block) {
@@ -180,7 +180,7 @@ impl DataSourcesTable {
 
                 true => format!(
                     "insert into {}(block_range, manifest_idx, param, context, done) \
-                            values (int4range($1, null), $2, $3, $4, false)",
+                            values (int4range($1, null), $2, $3, $4, $5)",
                     self.qname
                 ),
             };
@@ -193,7 +193,7 @@ impl DataSourcesTable {
 
             inserted_total += match is_offchain {
                 false => query.bind::<Integer, _>(0).execute(conn)?,
-                true => query.execute(conn)?,
+                true => query.bind::<Bool, _>(done).execute(conn)?,
             };
         }
 

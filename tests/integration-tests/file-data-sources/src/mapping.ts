@@ -1,5 +1,5 @@
 import { ethereum, dataSource, BigInt, Bytes } from '@graphprotocol/graph-ts'
-import { IpfsFile, IpfsFile1 } from '../generated/schema'
+import { IpfsFile, IpfsFile1} from '../generated/schema'
 
 export function handleBlock(block: ethereum.Block): void {
   // This will create the same data source twice, once at block 0 and another at block 2.

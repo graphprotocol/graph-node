@@ -1068,7 +1068,7 @@ impl DeploymentStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
-        processed_data_source: &[StoredDynamicDataSource],
+        processed_data_sources: &[StoredDynamicDataSource],
     ) -> Result<StoreEvent, StoreError> {
         let conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
@@ -1106,7 +1106,7 @@ impl DeploymentStore {
                 manifest_idx_and_name,
             )?;
 
-            dynds::update_offchain_status(&conn, &site, processed_data_source)?;
+            dynds::update_offchain_status(&conn, &site, processed_data_sources)?;
 
             if !deterministic_errors.is_empty() {
                 deployment::insert_subgraph_errors(

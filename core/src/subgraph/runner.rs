@@ -569,7 +569,7 @@ where
         triggers: Vec<offchain::TriggerData>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
-        let mut processed_data_source = vec![];
+        let mut processed_data_sources = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -611,10 +611,10 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            processed_data_source.extend(block_state.processed_data_source);
+            processed_data_sources.extend(block_state.processed_data_source);
         }
 
-        Ok((mods, processed_data_source))
+        Ok((mods, processed_data_sources))
     }
 }
 

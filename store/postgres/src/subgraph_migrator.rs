@@ -2,13 +2,13 @@ use graph::components::store::DeploymentSchemaVersion;
 use graph::prelude::StoreError;
 
 use crate::deployment_store::DeploymentStore;
-use crate::primary;
+use crate::subgraph_store::SubgraphStore;
 use crate::{dynds::DataSourcesTable, primary::Site};
 use std::sync::Arc;
 
 pub struct SubgraphMigrator<'a> {
     site: Arc<Site>,
-    primary: primary::Connection<'a>,
+    subgraph_store: &'a SubgraphStore,
     store: Arc<DeploymentStore>,
     current_version: DeploymentSchemaVersion,
 }
@@ -16,19 +16,19 @@ pub struct SubgraphMigrator<'a> {
 impl<'a> SubgraphMigrator<'a> {
     pub fn new(
         site: Arc<Site>,
-        primary: primary::Connection<'a>,
+        subgraph_store: &SubgraphStore,
         store: Arc<DeploymentStore>,
-    ) -> SubgraphMigrator<'a> {
+    ) -> SubgraphMigrator {
         return SubgraphMigrator {
-            primary: primary,
-            store: store,
             current_version: site.schema_version,
-            site: site,
+            subgraph_store: &subgraph_store,
+            store,
+            site,
         };
     }
 
     pub fn run(mut self) -> Result<(), StoreError> {
-        // upgrade the schema till it reaches lastest version.
+        // upgrade the schema untill it reaches the lastest version.
         while self.current_version != DeploymentSchemaVersion::LATEST {
             match self.current_version {
                 DeploymentSchemaVersion::V1 => {
@@ -59,8 +59,8 @@ impl<'a> SubgraphMigrator<'a> {
     }
 
     fn update_site_version(&mut self, version: DeploymentSchemaVersion) -> Result<(), StoreError> {
-        self.primary
-            .update_site_version(&self.site.deployment, &version)?;
+        let primary = self.subgraph_store.primary_conn()?;
+        primary.update_site_version(&self.site.deployment, &version)?;
         self.current_version = version;
         Ok(())
     }

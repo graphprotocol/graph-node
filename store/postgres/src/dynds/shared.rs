@@ -122,7 +122,7 @@ pub(super) fn insert(
                 context,
                 creation_block: _,
                 is_offchain,
-                ..
+                done: _,
             } = ds;
 
             if *is_offchain {

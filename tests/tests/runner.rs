@@ -10,7 +10,6 @@ use graph::prelude::{CheapClone, SubgraphStore};
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
 use graph_tests::fixture::{self, stores, test_ptr};
-use serial_test::serial;
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
@@ -125,7 +124,6 @@ async fn typename() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-#[serial]
 async fn file_data_sources() {
     let stores = stores("./integration-tests/config.simple.toml").await;
 
@@ -201,6 +199,16 @@ async fn file_data_sources() {
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
+    let writebable = ctx
+        .store
+        .clone()
+        .writable(ctx.logger.clone(), ctx.deployment.id.clone())
+        .await
+        .unwrap();
+    let data_sources = writebable.load_dynamic_data_sources(vec![]).await.unwrap();
+    for data_source in data_sources {
+        assert!(data_source.done)
+    }
 }
 
 #[tokio::test]

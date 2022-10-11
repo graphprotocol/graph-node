@@ -50,7 +50,7 @@ impl Clone for DataSource {
 }
 
 impl DataSource {
-    // mark this datasource has been process.
+    // mark this datasource as processed.
     pub fn mark_processed(&self) {
         *self.done.lock().unwrap() = true;
     }
