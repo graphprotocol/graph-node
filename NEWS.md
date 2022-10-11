@@ -2,12 +2,15 @@
 
 ## Unreleased
 
+## v0.28.2
+
+**Indexers are advised to migrate to `v0.28.2`** and entirely bypass `v0.28.0` and `v0.28.1`.
+
+Fixed a bug which would cause subgraphs to stop syncing under some `graph-node` deployment configurations. [#4046](https://github.com/graphprotocol/graph-node/pull/4046), [#4051](https://github.com/graphprotocol/graph-node/pull/4051)
+
 ## v0.28.1
 
-
-**Indexers are advised to migrate to `v0.28.1`** and entirely bypass `v0.28.0`.
-
-Fixed a bug which would cause subgraphs to stop syncing under some `graph-node` deployment configurations. [#4046](https://github.com/graphprotocol/graph-node/pull/4046)
+Yanked. Please migrate to `v0.28.2`.
 
 ## v0.28.0
 
