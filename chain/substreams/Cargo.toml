@@ -1,7 +1,7 @@
 [package]
 name = "graph-chain-substreams"
-version = "0.28.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [build-dependencies]
 tonic-build = { version = "0.7.2", features = ["prost"] }
@@ -28,4 +28,4 @@ itertools = "0.10.5"
 
 [dev-dependencies]
 graph-core = { path = "../../core" }
-tokio = { version = "1", features = ["full"]}
+tokio = { version = "1", features = ["full"] }

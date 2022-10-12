@@ -1,7 +1,7 @@
 [package]
 name = "graph-chain-ethereum"
-version = "0.28.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 envconfig = "0.10.0"

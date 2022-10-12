@@ -1,7 +1,7 @@
 [package]
 name = "graph"
-version = "0.28.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 anyhow = "1.0"
@@ -35,7 +35,7 @@ serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_yaml = "0.8"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
-stable-hash = { version = "0.4.2"}
+stable-hash = { version = "0.4.2" }
 strum = "0.21.0"
 strum_macros = "0.21.1"
 slog-async = "2.5.0"
@@ -49,7 +49,7 @@ tokio-retry = "0.3.0"
 url = "2.3.1"
 prometheus = "0.13.2"
 priority-queue = "0.7.0"
-tonic = { version = "0.7.1", features = ["tls-roots","compression"] }
+tonic = { version = "0.7.1", features = ["tls-roots", "compression"] }
 prost = "0.10.4"
 prost-types = "0.10.1"
 
@@ -70,4 +70,4 @@ clap = { version = "3.2.22", features = ["derive", "env"] }
 maplit = "1.0.2"
 
 [build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost","compression"] }
+tonic-build = { version = "0.7.2", features = ["prost", "compression"] }
