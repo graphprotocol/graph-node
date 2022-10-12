@@ -34,11 +34,12 @@ impl<'a> SubgraphMigrator<'a> {
                 DeploymentSchemaVersion::V1 => {
                     self.migrate_to_v2()?;
                 }
-                _ => {
-                    todo!(
-                        "migration doesn't exist for the schema version: {schema_version}",
-                        schema_version = self.current_version
-                    )
+                DeploymentSchemaVersion::V0 => {
+                    // no op for v0
+                    self.current_version = DeploymentSchemaVersion::LATEST
+                }
+                DeploymentSchemaVersion::V2 => {
+                    // already in latest version.
                 }
             }
         }
