@@ -1033,25 +1033,62 @@ mod data {
             conn: &PgConnection,
             from: Option<i32>,
             to: Option<i32>,
-        ) -> Result<(), Error> {
+        ) -> Result<usize, Error> {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
-
-                    let stmt = cache::table.select((cache::id, cache::return_value, cache::contract_address));
-                    if let Some(from) = from{
-                         stmt.filter(cache::block_number.ge(from));
+                    let delete_stmt = diesel::delete(cache::table);
+                    match (from, to) {
+                        (Some(from), None) => delete_stmt
+                            .filter(cache::block_number.ge(from))
+                            .execute(conn)
+                            .map_err(Error::from),
+                        (None, Some(to)) => delete_stmt
+                            .filter(cache::block_number.le(to))
+                            .execute(conn)
+                            .map_err(Error::from),
+                        (Some(from), Some(to)) => delete_stmt
+                            .filter(cache::block_number.ge(from))
+                            .filter(cache::block_number.le(to))
+                            .execute(conn)
+                            .map_err(Error::from),
+                        (None, None) => delete_stmt.execute(conn).map_err(Error::from),
                     }
-                    if let Some(to) = to  {
-                        stmt.filter(cache::block_number.le(to));
-                    }
-
-                },
-                Storage::Private(Schema{call_cache, ..}) => {
-
                 }
+                Storage::Private(Schema { call_cache, .. }) => match (from, to) {
+                    (Some(from), None) => {
+                        let query =
+                            format!("delete from {} where block_number >= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .execute(conn)
+                            .map_err(Error::from)
+                    }
+                    (None, Some(to)) => {
+                        let query =
+                            format!("delete from {} where block_number <= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)
+                    }
+                    (Some(from), Some(to)) => {
+                        let query = format!(
+                            "delete from {} where block_number >= $1 and block_number <= $2",
+                            call_cache.qname
+                        );
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)
+                    }
+                    (None, None) => {
+                        let query = format!("delete from {}", call_cache.qname);
+                        sql_query(query).execute(conn).map_err(Error::from)
+                    }
+                },
             }
-            Ok(())
         }
 
         pub(super) fn update_accessed_at(
@@ -1424,6 +1461,8 @@ impl ChainStore {
         self.storage.truncate_block_cache(&conn)?;
         Ok(())
     }
+
+    pub fn delete_call_cache(&self, from: Option<i32>, to: Option<i32>) {}
 }
 
 #[async_trait]
@@ -1738,6 +1777,13 @@ impl ChainStoreTrait for ChainStore {
                     .map(|opt| opt.map(|(number, timestamp)| (chain.clone(), number, timestamp)))
                     .map_err(|e| StoreError::from(e).into())
             })
+            .await
+    }
+
+    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<usize, StoreError> {
+        let pool = self.pool.clone();
+        let storage = self.storage.clone();
+        pool.with_conn(move |conn, _| storage.clear_call_cache(&conn, from, to))
             .await
     }
 
