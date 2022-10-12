@@ -427,6 +427,29 @@ pub enum ChainCommand {
         #[clap(long, short)]
         force: bool,
     },
+
+    /// Execute operations on call cache.
+    CallCache {
+        #[clap(subcommand)]
+        method: CallCacheCommand,
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(empty_values = false)]
+        chain_name: String,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum CallCacheCommand {
+    /// Remove call cache of a specified chain
+    ///
+    /// If block pointers of from and to is not mentioned, then all the call cache will be
+    /// removed.
+    Remove {
+        /// Starting block pointer
+        from: Option<i32>,
+        /// Ending block pointer
+        to: Option<i32>,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1088,6 +1111,7 @@ async fn main() -> anyhow::Result<()> {
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
+                CallCache { method, chain_name } => {}
             }
         }
         Stats(cmd) => {

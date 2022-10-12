@@ -1028,6 +1028,32 @@ mod data {
                 .collect())
         }
 
+        pub(super) fn clear_call_cache(
+            &self,
+            conn: &PgConnection,
+            from: Option<i32>,
+            to: Option<i32>,
+        ) -> Result<(), Error> {
+            match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+
+                    let stmt = cache::table.select((cache::id, cache::return_value, cache::contract_address));
+                    if let Some(from) = from{
+                         stmt.filter(cache::block_number.ge(from));
+                    }
+                    if let Some(to) = to  {
+                        stmt.filter(cache::block_number.le(to));
+                    }
+
+                },
+                Storage::Private(Schema{call_cache, ..}) => {
+
+                }
+            }
+            Ok(())
+        }
+
         pub(super) fn update_accessed_at(
             &self,
             conn: &PgConnection,

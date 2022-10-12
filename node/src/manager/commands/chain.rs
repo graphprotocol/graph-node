@@ -129,3 +129,6 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
 
     Ok(())
 }
+
+
+pub async fn call_cache_remove(){}
