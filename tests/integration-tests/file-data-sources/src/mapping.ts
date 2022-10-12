@@ -11,7 +11,7 @@ export function handleBlock(block: ethereum.Block): void {
   }
 
   // This will invoke File1 datasource with same CID, which will be used 
-  // to test whether same cid is triggered across different datasource.
+  // to test whether same cid is triggered across different data source.
   if (block.number == BigInt.fromI32(3)) {
     dataSource.create("File1", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
   }

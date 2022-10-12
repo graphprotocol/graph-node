@@ -169,7 +169,7 @@ async fn file_data_sources() {
         Some(object! { ipfsFile: object!{ id: id.clone() , content: "[]" } })
     );
 
-    // assert whether duplicate datasources are created.
+    // assert whether duplicate data sources are created.
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;

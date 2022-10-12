@@ -180,7 +180,8 @@ impl SyncStore {
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
-            // run migration if any before starting the subgraph.
+            // subgraph might have an old schema version, so run migration before starting
+            // the subgraph.
             let migrator =
                 SubgraphMigrator::new(self.site.clone(), self.store.inner(), self.writable.clone());
             migrator.run()?;

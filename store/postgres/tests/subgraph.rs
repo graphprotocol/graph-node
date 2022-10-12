@@ -1090,7 +1090,7 @@ fn test_subgraph_migration_v2() {
         conn.batch_execute(&query)
             .expect("unable to change the schema version");
 
-        // change the datasource table as per v1.
+        // change the data source table as per v1.
         let query = format!(
             "
         ALTER TABLE {}.data_sources$
@@ -1115,7 +1115,7 @@ fn test_subgraph_migration_v2() {
             .unwrap();
     });
 
-    // assert whether done column added to the datasource table.
+    // assert whether the done column added to the data source table.
     run_test_with_conn(|conn| {
         let query = format!(
             "SELECT column_name, is_nullable, column_default, data_type 
