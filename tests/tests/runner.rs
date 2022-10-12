@@ -199,13 +199,14 @@ async fn file_data_sources() {
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
-    let writebable = ctx
+    let writable  = ctx
         .store
         .clone()
         .writable(ctx.logger.clone(), ctx.deployment.id.clone())
         .await
         .unwrap();
-    let data_sources = writebable.load_dynamic_data_sources(vec![]).await.unwrap();
+    let data_sources = writable .load_dynamic_data_sources(vec![]).await.unwrap();
+    assert!(data_sources.len() == 2);
     for data_source in data_sources {
         assert!(data_source.done)
     }

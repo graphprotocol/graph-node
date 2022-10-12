@@ -28,7 +28,7 @@ impl<'a> SubgraphMigrator<'a> {
     }
 
     pub fn run(mut self) -> Result<(), StoreError> {
-        // upgrade the schema untill it reaches the lastest version.
+        // upgrade the schema until it reaches the latest version.
         while self.current_version != DeploymentSchemaVersion::LATEST {
             match self.current_version {
                 DeploymentSchemaVersion::V1 => {
