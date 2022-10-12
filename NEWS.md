@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## v0.28.2
+
+**Indexers are advised to migrate to `v0.28.2`** and entirely bypass `v0.28.0` and `v0.28.1`.
+
+Fixed a bug which would cause subgraphs to stop syncing under some `graph-node` deployment configurations. [#4046](https://github.com/graphprotocol/graph-node/pull/4046), [#4051](https://github.com/graphprotocol/graph-node/pull/4051)
+
+## v0.28.1
+
+Yanked. Please migrate to `v0.28.2`.
+
 ## v0.28.0
 
 #### Upgrade notes
@@ -52,22 +62,22 @@
 
 ### Dependency updates
 
-| Dependency | PR(s) | Old version | Current version |
-|----|----|------|----|
-| `serde_yaml` | [#3746](https://github.com/graphprotocol/graph-node/pull/3746) | `v0.8.24` | `v0.8.26` |
-| `web3` | [#3806](https://github.com/graphprotocol/graph-node/pull/3806) | `2760dbd` | `7f8eb6d` |
-| `clap` | [#3794](https://github.com/graphprotocol/graph-node/pull/3794), [#3848](https://github.com/graphprotocol/graph-node/pull/3848), [#3931](https://github.com/graphprotocol/graph-node/pull/3931) | `v3.2.8` | `3.2.21` |
-| `cid` | [#3824](https://github.com/graphprotocol/graph-node/pull/3824) | `v0.8.5` | `v0.8.6` |
-| `anyhow` | [#3826](https://github.com/graphprotocol/graph-node/pull/3826), [#3841](https://github.com/graphprotocol/graph-node/pull/3841), [#3865](https://github.com/graphprotocol/graph-node/pull/3865), [#3932](https://github.com/graphprotocol/graph-node/pull/3932) | `v1.0.57` | `1.0.65` |
-| `chrono` | [#3827](https://github.com/graphprotocol/graph-node/pull/3827), [#3849](https://github.com/graphprotocol/graph-node/pull/3839), [#3868](https://github.com/graphprotocol/graph-node/pull/3868) | `v0.4.19` | `v0.4.22` |
-| `proc-macro2` | [#3845](https://github.com/graphprotocol/graph-node/pull/3845) | `v1.0.40` | `1.0.43` |
-| `ethabi` | [#3847](https://github.com/graphprotocol/graph-node/pull/3847) | `v17.1.0` | `v17.2.0` |
-| `once_cell` | [#3870](https://github.com/graphprotocol/graph-node/pull/3870) | `v1.13.0` | `v1.13.1` |
-| `either` | [#3869](https://github.com/graphprotocol/graph-node/pull/3869) | `v1.7.0` | `v1.8.0` |
-| `sha2` | [#3904](https://github.com/graphprotocol/graph-node/pull/3904) | `v0.10.2` | `v0.10.5` |
-| `mockall` | [#3776](https://github.com/graphprotocol/graph-node/pull/3776) | `v0.9.1` | removed |
-| `croosbeam` | [#3772](https://github.com/graphprotocol/graph-node/pull/3772) | `v0.8.1` | `v0.8.2` |
-| `async-recursion` | [#3873](https://github.com/graphprotocol/graph-node/pull/3873) | none | `v1.0.0` |
+| Dependency        | PR(s)                                                                                                                                                                                                                                                          | Old version | Current version |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | --------------- |
+| `serde_yaml`      | [#3746](https://github.com/graphprotocol/graph-node/pull/3746)                                                                                                                                                                                                 | `v0.8.24`   | `v0.8.26`       |
+| `web3`            | [#3806](https://github.com/graphprotocol/graph-node/pull/3806)                                                                                                                                                                                                 | `2760dbd`   | `7f8eb6d`       |
+| `clap`            | [#3794](https://github.com/graphprotocol/graph-node/pull/3794), [#3848](https://github.com/graphprotocol/graph-node/pull/3848), [#3931](https://github.com/graphprotocol/graph-node/pull/3931)                                                                 | `v3.2.8`    | `3.2.21`        |
+| `cid`             | [#3824](https://github.com/graphprotocol/graph-node/pull/3824)                                                                                                                                                                                                 | `v0.8.5`    | `v0.8.6`        |
+| `anyhow`          | [#3826](https://github.com/graphprotocol/graph-node/pull/3826), [#3841](https://github.com/graphprotocol/graph-node/pull/3841), [#3865](https://github.com/graphprotocol/graph-node/pull/3865), [#3932](https://github.com/graphprotocol/graph-node/pull/3932) | `v1.0.57`   | `1.0.65`        |
+| `chrono`          | [#3827](https://github.com/graphprotocol/graph-node/pull/3827), [#3849](https://github.com/graphprotocol/graph-node/pull/3839), [#3868](https://github.com/graphprotocol/graph-node/pull/3868)                                                                 | `v0.4.19`   | `v0.4.22`       |
+| `proc-macro2`     | [#3845](https://github.com/graphprotocol/graph-node/pull/3845)                                                                                                                                                                                                 | `v1.0.40`   | `1.0.43`        |
+| `ethabi`          | [#3847](https://github.com/graphprotocol/graph-node/pull/3847)                                                                                                                                                                                                 | `v17.1.0`   | `v17.2.0`       |
+| `once_cell`       | [#3870](https://github.com/graphprotocol/graph-node/pull/3870)                                                                                                                                                                                                 | `v1.13.0`   | `v1.13.1`       |
+| `either`          | [#3869](https://github.com/graphprotocol/graph-node/pull/3869)                                                                                                                                                                                                 | `v1.7.0`    | `v1.8.0`        |
+| `sha2`            | [#3904](https://github.com/graphprotocol/graph-node/pull/3904)                                                                                                                                                                                                 | `v0.10.2`   | `v0.10.5`       |
+| `mockall`         | [#3776](https://github.com/graphprotocol/graph-node/pull/3776)                                                                                                                                                                                                 | `v0.9.1`    | removed         |
+| `croosbeam`       | [#3772](https://github.com/graphprotocol/graph-node/pull/3772)                                                                                                                                                                                                 | `v0.8.1`    | `v0.8.2`        |
+| `async-recursion` | [#3873](https://github.com/graphprotocol/graph-node/pull/3873)                                                                                                                                                                                                 | none        | `v1.0.0`        |
 
 <!--
 ### Leftover PRs from GitHub's auto-generated release notes. We don't care about these.
