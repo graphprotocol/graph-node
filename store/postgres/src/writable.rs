@@ -29,7 +29,7 @@ use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
 use crate::{
-    primary, primary::Site, relational::Layout, subgraph_migrator::SubgraphMigrator, SubgraphStore,
+    primary, primary::Site, relational::Layout, SubgraphStore,
 };
 
 graph::prelude::lazy_static! {
@@ -64,11 +64,6 @@ impl WritableSubgraphStore {
 
     fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
         self.0.load_deployment(site)
-    }
-
-    // returns ref of SubgraphStore
-    fn inner(&self) -> &SubgraphStore {
-        &self.0
     }
 }
 
@@ -180,11 +175,6 @@ impl SyncStore {
 
     fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         self.retry("start_subgraph_deployment", || {
-            // subgraph might have an old schema version, so run migration before starting
-            // the subgraph.
-            let migrator =
-                SubgraphMigrator::new(self.site.clone(), self.store.inner(), self.writable.clone());
-            migrator.run()?;
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;

@@ -207,17 +207,6 @@ impl DeploymentStore {
         })
     }
 
-    // executes raw statement on postgres. It's mainly used for running
-    // migration on deployments.
-    pub(crate) fn execute_raw(&self, statement: String) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        conn.transaction(|| -> Result<_, StoreError> {
-            conn.batch_execute(&statement)?;
-            Ok(())
-        })?;
-        Ok(())
-    }
-
     pub(crate) fn load_deployment(
         &self,
         site: &Site,

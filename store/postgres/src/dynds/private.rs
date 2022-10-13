@@ -54,10 +54,6 @@ impl DataSourcesTable {
         }
     }
 
-    pub(crate) fn table_name(namespace: &Namespace) -> String {
-        format!("{nsp}.{table}", nsp = namespace, table = Self::TABLE_NAME)
-    }
-
     pub(crate) fn as_ddl(&self) -> String {
         format!(
             "
