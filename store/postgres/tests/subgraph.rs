@@ -27,7 +27,6 @@ use graph::{
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
-use serial_test::serial;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 
@@ -489,7 +488,6 @@ fn version_info() {
 }
 
 #[test]
-#[serial]
 fn subgraph_error() {
     test_store::run_test_sequentially(|store| async move {
         let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
@@ -1066,100 +1064,4 @@ fn fail_unfail_non_deterministic_error_noop() {
 
         test_store::remove_subgraphs();
     })
-}
-
-#[test]
-#[serial]
-fn test_subgraph_migration_v2() {
-    const NAME: &str = "subgraph_manifest_v2";
-
-    async fn setup() -> DeploymentLocator {
-        let id = DeploymentHash::new(NAME).unwrap();
-        remove_subgraphs();
-        create_test_subgraph(&id, SUBGRAPH_GQL).await
-    }
-
-    let deployment = STORE_RUNTIME.handle().block_on(async { setup().await });
-    let deployment_schema = format!("sgd{}", &deployment.id);
-    run_test_with_conn(|conn| {
-        // change the schema version to v1 again.
-        let query = format!(
-            "UPDATE deployment_schemas SET version = 1 WHERE subgraph = '{}'",
-            NAME
-        );
-        conn.batch_execute(&query)
-            .expect("unable to change the schema version");
-
-        // change the data source table as per v1.
-        let query = format!(
-            "
-        ALTER TABLE {}.data_sources$
-        DROP COLUMN done;
-        ",
-            deployment_schema
-        );
-        conn.batch_execute(&query)
-            .expect("Failed to drop test schema");
-    });
-
-    // run the migration by restarting the subgraph.
-    STORE_RUNTIME.handle().block_on(async {
-        SUBGRAPH_STORE.clear_caches();
-        SUBGRAPH_STORE
-            .cheap_clone()
-            .writable(LOGGER.clone(), deployment.id)
-            .await
-            .unwrap()
-            .start_subgraph_deployment(&*LOGGER)
-            .await
-            .unwrap();
-    });
-
-    // assert whether the done column added to the data source table.
-    run_test_with_conn(|conn| {
-        let query = format!(
-            "SELECT column_name, is_nullable, column_default, data_type 
-             FROM information_schema.columns
-             WHERE table_schema = '{}'
-             AND table_name   = 'data_sources$'",
-            deployment_schema
-        );
-        #[derive(QueryableByName)]
-        struct ColumnMeta {
-            #[sql_type = "Text"]
-            column_name: String,
-            #[sql_type = "Text"]
-            is_nullable: String,
-            #[sql_type = "Nullable<Text>"]
-            column_default: Option<String>,
-            #[sql_type = "Text"]
-            data_type: String,
-        }
-
-        let metas = sql_query(&query).get_results::<ColumnMeta>(conn).unwrap();
-        let meta = metas
-            .into_iter()
-            .find(|meta| meta.column_name == "done")
-            .expect("unable to find done column");
-
-        assert!(meta.is_nullable == "NO");
-        assert!(meta.column_default.unwrap() == "false");
-        assert!(meta.data_type == "boolean");
-
-        // check whether the version updated.
-        let query = format!(
-            "SELECT version FROM deployment_schemas WHERE subgraph = '{}'",
-            NAME
-        );
-        #[derive(QueryableByName)]
-        struct Version {
-            #[sql_type = "Int4"]
-            version: i32,
-        }
-
-        let version: Version = sql_query(&query)
-            .get_result::<Version>(conn)
-            .expect("unable to get columns names");
-        assert!(version.version == 2);
-    });
 }
