@@ -701,8 +701,12 @@ impl EthereumAdapter {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
         let eth = self.clone();
 
-        let mut addresses: Vec<H160> = call_filter
-            .contract_addresses_function_signatures
+        let EthereumCallFilter {
+            contract_addresses_function_signatures,
+            wildcard_signatures,
+        } = call_filter;
+
+        let mut addresses: Vec<H160> = contract_addresses_function_signatures
             .iter()
             .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
             .map(|(addr, (_start_block, _fsigs))| *addr)
@@ -710,13 +714,14 @@ impl EthereumAdapter {
             .into_iter()
             .collect::<Vec<H160>>();
 
-        if addresses.is_empty() {
+        if addresses.is_empty() && wildcard_signatures.is_empty() {
             // The filter has no started data sources in the requested range, nothing to do.
             // This prevents an expensive call to `trace_filter` with empty `addresses`.
             return Box::new(stream::empty());
         }
 
-        if addresses.len() > 100 {
+        // if wildcard_signatures is on, we can't filter by topic so we need to get all the traces.
+        if addresses.len() > 100 || !wildcard_signatures.is_empty() {
             // If the address list is large, request all traces, this avoids generating huge
             // requests and potentially getting 413 errors.
             addresses = vec![];
