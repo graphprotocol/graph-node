@@ -3,7 +3,7 @@ use std::ops::Bound;
 use diesel::{
     pg::types::sql_types,
     sql_query,
-    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
+    sql_types::{Binary, Integer, Jsonb, Nullable},
     PgConnection, QueryDsl, RunQueryDsl,
 };
 
@@ -30,7 +30,7 @@ pub(crate) struct DataSourcesTable {
     manifest_idx: DynColumn<Integer>,
     param: DynColumn<Nullable<Binary>>,
     context: DynColumn<Nullable<Jsonb>>,
-    done: DynColumn<Bool>,
+    done_at: DynColumn<Nullable<Integer>>,
 }
 
 impl DataSourcesTable {
@@ -49,7 +49,7 @@ impl DataSourcesTable {
             manifest_idx: table.column("manifest_idx"),
             param: table.column("param"),
             context: table.column("context"),
-            done: table.column("done"),
+            done_at: table.column("done_at"),
             table,
         }
     }
@@ -94,7 +94,7 @@ impl DataSourcesTable {
             Option<Vec<u8>>,
             Option<serde_json::Value>,
             i32,
-            bool,
+            Option<i32>,
         );
         let tuples = self
             .table
@@ -106,7 +106,7 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
                 &self.causality_region,
-                &self.done,
+                &self.done_at,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
@@ -114,7 +114,7 @@ impl DataSourcesTable {
         let mut dses: Vec<_> = tuples
             .into_iter()
             .map(
-                |(block_range, manifest_idx, param, context, causality_region, done)| {
+                |(block_range, manifest_idx, param, context, causality_region, done_at)| {
                     let creation_block = match block_range.0 {
                         Bound::Included(block) => Some(block),
 
@@ -131,7 +131,7 @@ impl DataSourcesTable {
                         context,
                         creation_block,
                         is_offchain,
-                        done,
+                        done_at,
                     }
                 },
             )
@@ -158,7 +158,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
-                done,
+                done_at,
             } = ds;
 
             if creation_block != &Some(block) {
@@ -179,7 +179,7 @@ impl DataSourcesTable {
                 ),
 
                 true => format!(
-                    "insert into {}(block_range, manifest_idx, param, context, done) \
+                    "insert into {}(block_range, manifest_idx, param, context, done_at) \
                             values (int4range($1, null), $2, $3, $4, $5)",
                     self.qname
                 ),
@@ -193,7 +193,7 @@ impl DataSourcesTable {
 
             inserted_total += match is_offchain {
                 false => query.bind::<Integer, _>(0).execute(conn)?,
-                true => query.bind::<Bool, _>(done).execute(conn)?,
+                true => query.bind::<Nullable<Integer>, _>(done_at).execute(conn)?,
             };
         }
 
@@ -233,7 +233,7 @@ impl DataSourcesTable {
             Option<Vec<u8>>,
             Option<serde_json::Value>,
             i32,
-            bool,
+            Option<i32>,
         );
 
         let src_tuples = self
@@ -246,13 +246,13 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
                 &self.causality_region,
-                &self.done,
+                &self.done_at,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
 
         let mut count = 0;
-        for (block_range, src_manifest_idx, param, context, causality_region, done) in src_tuples {
+        for (block_range, src_manifest_idx, param, context, causality_region, done_at) in src_tuples {
             let name = &src_manifest_idx_and_name
                 .iter()
                 .find(|(idx, _)| idx == &src_manifest_idx)
@@ -266,7 +266,7 @@ impl DataSourcesTable {
 
             let query = format!(
                 "\
-             insert into {dst}(block_range, manifest_idx, param, context, causality_region, done)
+             insert into {dst}(block_range, manifest_idx, param, context, causality_region, done_at)
              values(case
                  when upper($2) <= $1 then $2
                  else int4range(lower($2), null)
@@ -283,7 +283,7 @@ impl DataSourcesTable {
                 .bind::<Nullable<Binary>, _>(param)
                 .bind::<Nullable<Jsonb>, _>(context)
                 .bind::<Integer, _>(causality_region)
-                .bind::<Bool, _>(done)
+                .bind::<Nullable<Integer>, _>(done_at)
                 .execute(conn)?;
         }
 
@@ -312,7 +312,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
-                ..
+                done_at
             } = ds;
 
             if !is_offchain {
@@ -322,7 +322,7 @@ impl DataSourcesTable {
             }
 
             let query = format!(
-                "update {} set done = true \
+                "update {} set done_at = $5 \
                  where manifest_idx = $1
                     and param is not distinct from $2
                     and context is not distinct from $3
@@ -335,6 +335,7 @@ impl DataSourcesTable {
                 .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
                 .bind::<Nullable<Jsonb>, _>(context)
                 .bind::<Nullable<Integer>, _>(creation_block)
+                .bind::<Nullable<Integer>, _>(done_at)
                 .execute(conn)?;
 
             if count > 1 {

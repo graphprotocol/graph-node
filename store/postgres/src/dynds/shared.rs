@@ -85,7 +85,7 @@ pub(super) fn load(
             // The shared schema is only used for legacy deployments, and therefore not used for
             // subgraphs that use file data sources.
             is_offchain: false,
-            done: false,
+            done_at: None,
         };
 
         if data_sources.last().and_then(|d| d.creation_block) > data_source.creation_block {
@@ -122,7 +122,7 @@ pub(super) fn insert(
                 context,
                 creation_block: _,
                 is_offchain,
-                done: _,
+                done_at: _,
             } = ds;
 
             if *is_offchain {

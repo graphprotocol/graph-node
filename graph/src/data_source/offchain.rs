@@ -31,7 +31,7 @@ pub struct DataSource {
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
-    pub done: Mutex<bool>,
+    pub done_at: Mutex<Option<i32>>,
 }
 
 impl Clone for DataSource {
@@ -44,15 +44,15 @@ impl Clone for DataSource {
             mapping: self.mapping.clone(),
             context: self.context.clone(),
             creation_block: self.creation_block.clone(),
-            done: Mutex::new(*self.done.lock().unwrap()),
+            done_at: Mutex::new(*self.done_at.lock().unwrap()),
         }
     }
 }
 
 impl DataSource {
-    // mark this datasource as processed.
-    pub fn mark_processed(&self) {
-        *self.done.lock().unwrap() = true;
+    // mark this data source as processed.
+    pub fn mark_processed_at(&self, block_no: i32) {
+        *self.done_at.lock().unwrap() = Some(block_no);
     }
 }
 
@@ -78,7 +78,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
-            done: Mutex::new(false),
+            done_at: Mutex::new(None),
         })
     }
 }
@@ -88,7 +88,7 @@ impl DataSource {
         &self,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source || *self.done.lock().unwrap() {
+        if self.source != trigger.source || self.done_at.lock().unwrap().is_some() {
             return None;
         }
         Some(TriggerWithHandler::new(
@@ -113,7 +113,7 @@ impl DataSource {
             context,
             creation_block: self.creation_block,
             is_offchain: true,
-            done: *self.done.lock().unwrap(),
+            done_at: *self.done_at.lock().unwrap(),
         }
     }
 
@@ -134,7 +134,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context,
             creation_block: stored.creation_block,
-            done: Mutex::new(stored.done),
+            done_at: Mutex::new(stored.done_at),
         })
     }
 
@@ -221,7 +221,7 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
-            done: Mutex::new(false),
+            done_at: Mutex::new(None),
         })
     }
 }

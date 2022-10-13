@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use graph::blockchain::Blockchain;
+use graph::blockchain::{Blockchain, Block};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -77,7 +77,7 @@ where
             subgraph_metrics.observe_trigger_processing_duration(elapsed);
 
             if let Some(ds) = host.data_source().as_offchain() {
-                ds.mark_processed();
+                ds.mark_processed_at(block.number());
                 // Remove this offchain data source since it has just been processed.
                 state
                     .processed_data_sources

@@ -208,7 +208,7 @@ async fn file_data_sources() {
     let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
     assert!(data_sources.len() == 2);
     for data_source in data_sources {
-        assert!(data_source.done)
+        assert!(data_source.done_at.is_some())
     }
 }
 
