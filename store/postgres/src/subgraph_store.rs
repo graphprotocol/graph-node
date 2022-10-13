@@ -337,12 +337,11 @@ impl SubgraphStoreInner {
 
     // Only needed for tests
     #[cfg(debug_assertions)]
-    pub fn clear_caches(&self) {
+    pub(crate) fn clear_caches(&self) {
         for store in self.stores.values() {
             store.layout_cache.clear();
         }
         self.sites.clear();
-        self.writables.lock().unwrap().clear();
     }
 
     // Only needed for tests
