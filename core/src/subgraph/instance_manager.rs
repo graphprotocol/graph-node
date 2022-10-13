@@ -8,7 +8,7 @@ use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::components::subgraph::ProofOfIndexingVersion;
-use graph::data::subgraph::SPEC_VERSION_0_0_6;
+use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -176,47 +176,54 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .writable(logger.clone(), deployment.id)
             .await?;
 
+        let raw_yaml = serde_yaml::to_string(&manifest).unwrap();
+        let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
+
+        // Make sure the `raw_yaml` is present on both this subgraph and the graft base.
+        self.subgraph_store
+            .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
+            .await?;
+        if let Some(graft) = &manifest.graft {
+            if self.subgraph_store.is_deployed(&graft.base)? {
+                let file_bytes = self
+                    .link_resolver
+                    .cat(&logger, &graft.base.to_ipfs_link())
+                    .await?;
+                let yaml = String::from_utf8(file_bytes)?;
+
+                self.subgraph_store
+                    .set_manifest_raw_yaml(&graft.base, yaml)
+                    .await?;
+            }
+        }
+
+        info!(logger, "Resolve subgraph files using IPFS");
+
+        // Allow for infinite retries for subgraph definition files.
+        let link_resolver = Arc::from(self.link_resolver.with_retries());
+        let mut manifest = manifest
+            .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
+            .await?;
+
+        info!(logger, "Successfully resolved subgraph files using IPFS");
+
+        let manifest_idx_and_name: Vec<(u32, String)> = manifest.template_idx_and_name().collect();
+
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will
         // do the copying and dynamic data sources won't show up until after
         // that is done
         store.start_subgraph_deployment(&logger).await?;
 
-        let (manifest, manifest_idx_and_name) = {
-            info!(logger, "Resolve subgraph files using IPFS");
+        // Dynamic data sources are loaded by appending them to the manifest.
+        //
+        // Refactor: Preferrably we'd avoid any mutation of the manifest.
+        let (manifest, static_data_sources) = {
+            let data_sources = load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
+                .await
+                .context("Failed to load dynamic data sources")?;
 
-            let mut manifest = SubgraphManifest::resolve_from_raw(
-                deployment.hash.cheap_clone(),
-                manifest,
-                // Allow for infinite retries for subgraph definition files.
-                &Arc::from(self.link_resolver.with_retries()),
-                &logger,
-                ENV_VARS.max_spec_version.clone(),
-            )
-            .await
-            .context("Failed to resolve subgraph from IPFS")?;
-
-            // We cannot include static data sources in the map because a static data source and a
-            // template may have the same name in the manifest.
-            let ds_len = manifest.data_sources.len() as u32;
-            let manifest_idx_and_name: Vec<(u32, String)> = manifest
-                .templates
-                .iter()
-                .map(|t| t.name().to_owned())
-                .enumerate()
-                .map(|(idx, name)| (ds_len + idx as u32, name))
-                .collect();
-
-            let data_sources = load_dynamic_data_sources(
-                store.clone(),
-                logger.clone(),
-                &manifest,
-                manifest_idx_and_name.clone(),
-            )
-            .await
-            .context("Failed to load dynamic data sources")?;
-
-            info!(logger, "Successfully resolved subgraph files using IPFS");
+            let static_data_sources = manifest.data_sources.clone();
 
             // Add dynamic data sources to the subgraph
             manifest.data_sources.extend(data_sources);
@@ -227,8 +234,11 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                 manifest.data_sources.len()
             );
 
-            (manifest, manifest_idx_and_name)
+            (manifest, static_data_sources)
         };
+
+        let static_filters =
+            self.static_filters || manifest.data_sources.len() >= ENV_VARS.static_filters_threshold;
 
         let onchain_data_sources = manifest
             .data_sources
@@ -244,10 +254,20 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        // Obtain filters from the manifest
-        let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources.iter());
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // if not enabled we just stick to the filter based on all the data sources.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+        let filter = if static_filters {
+            if !self.static_filters {
+                info!(logger, "forcing subgraph to use static filters.")
+            }
 
-        if self.static_filters {
+            let onchain_data_sources = static_data_sources.iter().filter_map(|d| d.as_onchain());
+
+            let mut filter = C::TriggerFilter::from_data_sources(onchain_data_sources);
+
             filter.extend_with_template(
                 manifest
                     .templates
@@ -255,7 +275,10 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
                     .filter_map(|ds| ds.as_onchain())
                     .cloned(),
             );
-        }
+            filter
+        } else {
+            C::TriggerFilter::from_data_sources(onchain_data_sources.iter())
+        };
 
         let start_blocks = manifest.start_blocks();
 
@@ -346,7 +369,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             chain,
             templates,
             unified_api_version,
-            static_filters: self.static_filters,
+            static_filters,
             manifest_idx_and_name,
             poi_version,
             network,

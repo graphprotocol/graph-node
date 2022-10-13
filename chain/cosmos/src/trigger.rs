@@ -20,6 +20,7 @@ impl std::fmt::Debug for CosmosTrigger {
                 origin: EventOrigin,
             },
             Transaction,
+            Message,
         }
 
         let trigger_without_block = match self {
@@ -29,6 +30,7 @@ impl std::fmt::Debug for CosmosTrigger {
                 origin: *origin,
             },
             CosmosTrigger::Transaction(_) => MappingTriggerWithoutBlock::Transaction,
+            CosmosTrigger::Message(_) => MappingTriggerWithoutBlock::Message,
         };
 
         write!(f, "{:?}", trigger_without_block)
@@ -49,6 +51,9 @@ impl ToAscPtr for CosmosTrigger {
             CosmosTrigger::Transaction(transaction_data) => {
                 asc_new(heap, transaction_data.as_ref(), gas)?.erase()
             }
+            CosmosTrigger::Message(message_data) => {
+                asc_new(heap, message_data.as_ref(), gas)?.erase()
+            }
         })
     }
 }
@@ -61,6 +66,7 @@ pub enum CosmosTrigger {
         origin: EventOrigin,
     },
     Transaction(Arc<codec::TransactionData>),
+    Message(Arc<codec::MessageData>),
 }
 
 impl CheapClone for CosmosTrigger {
@@ -73,6 +79,9 @@ impl CheapClone for CosmosTrigger {
             },
             CosmosTrigger::Transaction(transaction_data) => {
                 CosmosTrigger::Transaction(transaction_data.cheap_clone())
+            }
+            CosmosTrigger::Message(message_data) => {
+                CosmosTrigger::Message(message_data.cheap_clone())
             }
         }
     }
@@ -99,6 +108,7 @@ impl PartialEq for CosmosTrigger {
                 }
             }
             (Self::Transaction(a_ptr), Self::Transaction(b_ptr)) => a_ptr == b_ptr,
+            (Self::Message(a_ptr), Self::Message(b_ptr)) => a_ptr == b_ptr,
             _ => false,
         }
     }
@@ -110,12 +120,14 @@ impl CosmosTrigger {
     pub(crate) fn with_event(
         event: codec::Event,
         block: codec::HeaderOnlyBlock,
+        tx_context: Option<codec::TransactionContext>,
         origin: EventOrigin,
     ) -> CosmosTrigger {
         CosmosTrigger::Event {
             event_data: Arc::new(codec::EventData {
                 event: Some(event),
                 block: Some(block),
+                tx: tx_context,
             }),
             origin,
         }
@@ -131,6 +143,18 @@ impl CosmosTrigger {
         }))
     }
 
+    pub(crate) fn with_message(
+        message: ::prost_types::Any,
+        block: codec::HeaderOnlyBlock,
+        tx_context: codec::TransactionContext,
+    ) -> CosmosTrigger {
+        CosmosTrigger::Message(Arc::new(codec::MessageData {
+            message: Some(message),
+            block: Some(block),
+            tx: Some(tx_context),
+        }))
+    }
+
     pub fn block_number(&self) -> Result<BlockNumber, Error> {
         match self {
             CosmosTrigger::Block(block) => Ok(block.number()),
@@ -138,6 +162,7 @@ impl CosmosTrigger {
             CosmosTrigger::Transaction(transaction_data) => {
                 transaction_data.block().map(|b| b.number())
             }
+            CosmosTrigger::Message(message_data) => message_data.block().map(|b| b.number()),
         }
     }
 
@@ -148,6 +173,7 @@ impl CosmosTrigger {
             CosmosTrigger::Transaction(transaction_data) => {
                 transaction_data.block().map(|b| b.hash())
             }
+            CosmosTrigger::Message(message_data) => message_data.block().map(|b| b.hash()),
         }
     }
 }
@@ -155,16 +181,12 @@ impl CosmosTrigger {
 impl Ord for CosmosTrigger {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            // Keep the order when comparing two block triggers
-            (Self::Block(..), Self::Block(..)) => Ordering::Equal,
-
-            // Block triggers always come last
-            (Self::Block(..), _) => Ordering::Greater,
-            (_, Self::Block(..)) => Ordering::Less,
-
             // Events have no intrinsic ordering information, so we keep the order in
             // which they are included in the `events` field
             (Self::Event { .. }, Self::Event { .. }) => Ordering::Equal,
+
+            // Keep the order when comparing two message triggers
+            (Self::Message(..), Self::Message(..)) => Ordering::Equal,
 
             // Transactions are ordered by their index inside the block
             (Self::Transaction(a), Self::Transaction(b)) => {
@@ -175,9 +197,20 @@ impl Ord for CosmosTrigger {
                 }
             }
 
-            // When comparing events and transactions, transactions go first
-            (Self::Transaction(..), Self::Event { .. }) => Ordering::Less,
-            (Self::Event { .. }, Self::Transaction(..)) => Ordering::Greater,
+            // Keep the order when comparing two block triggers
+            (Self::Block(..), Self::Block(..)) => Ordering::Equal,
+
+            // Event triggers always come first
+            (Self::Event { .. }, _) => Ordering::Greater,
+            (_, Self::Event { .. }) => Ordering::Less,
+
+            // Block triggers always come last
+            (Self::Block(..), _) => Ordering::Less,
+            (_, Self::Block(..)) => Ordering::Greater,
+
+            // Message triggers before Transaction triggers
+            (Self::Message(..), Self::Transaction(..)) => Ordering::Greater,
+            (Self::Transaction(..), Self::Message(..)) => Ordering::Less,
         }
     }
 }
@@ -208,7 +241,7 @@ impl TriggerData for CosmosTrigger {
                         event.event_type, origin,
                     )
                 } else {
-                    "event in block".to_string()
+                    "event".to_string()
                 }
             }
             CosmosTrigger::Transaction(transaction_data) => {
@@ -222,9 +255,105 @@ impl TriggerData for CosmosTrigger {
                         response_deliver_tx.log
                     )
                 } else {
-                    "transaction block".to_string()
+                    "transaction".to_string()
+                }
+            }
+            CosmosTrigger::Message(message_data) => {
+                if let (Ok(message), Ok(block_number), Ok(block_hash)) = (
+                    message_data.message(),
+                    self.block_number(),
+                    self.block_hash(),
+                ) {
+                    format!(
+                        "message type {}, block #{block_number}, hash {block_hash}",
+                        message.type_url,
+                    )
+                } else {
+                    "message".to_string()
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::codec::TxResult;
+
+    use super::*;
+
+    #[test]
+    fn test_cosmos_trigger_ordering() {
+        let event_trigger = CosmosTrigger::Event {
+            event_data: Arc::<codec::EventData>::new(codec::EventData {
+                ..Default::default()
+            }),
+            origin: EventOrigin::BeginBlock,
+        };
+        let other_event_trigger = CosmosTrigger::Event {
+            event_data: Arc::<codec::EventData>::new(codec::EventData {
+                ..Default::default()
+            }),
+            origin: EventOrigin::BeginBlock,
+        };
+        let message_trigger =
+            CosmosTrigger::Message(Arc::<codec::MessageData>::new(codec::MessageData {
+                ..Default::default()
+            }));
+        let other_message_trigger =
+            CosmosTrigger::Message(Arc::<codec::MessageData>::new(codec::MessageData {
+                ..Default::default()
+            }));
+        let transaction_trigger = CosmosTrigger::Transaction(Arc::<codec::TransactionData>::new(
+            codec::TransactionData {
+                block: None,
+                tx: Some(TxResult {
+                    index: 1,
+                    ..Default::default()
+                }),
+            },
+        ));
+        let other_transaction_trigger = CosmosTrigger::Transaction(
+            Arc::<codec::TransactionData>::new(codec::TransactionData {
+                block: None,
+                tx: Some(TxResult {
+                    index: 2,
+                    ..Default::default()
+                }),
+            }),
+        );
+        let block_trigger = CosmosTrigger::Block(Arc::<codec::Block>::new(codec::Block {
+            ..Default::default()
+        }));
+        let other_block_trigger = CosmosTrigger::Block(Arc::<codec::Block>::new(codec::Block {
+            ..Default::default()
+        }));
+
+        assert_eq!(event_trigger.cmp(&block_trigger), Ordering::Greater);
+        assert_eq!(event_trigger.cmp(&transaction_trigger), Ordering::Greater);
+        assert_eq!(event_trigger.cmp(&message_trigger), Ordering::Greater);
+        assert_eq!(event_trigger.cmp(&other_event_trigger), Ordering::Equal);
+
+        assert_eq!(message_trigger.cmp(&block_trigger), Ordering::Greater);
+        assert_eq!(message_trigger.cmp(&transaction_trigger), Ordering::Greater);
+        assert_eq!(message_trigger.cmp(&other_message_trigger), Ordering::Equal);
+        assert_eq!(message_trigger.cmp(&event_trigger), Ordering::Less);
+
+        assert_eq!(transaction_trigger.cmp(&block_trigger), Ordering::Greater);
+        assert_eq!(
+            transaction_trigger.cmp(&other_transaction_trigger),
+            Ordering::Less
+        );
+        assert_eq!(
+            other_transaction_trigger.cmp(&transaction_trigger),
+            Ordering::Greater
+        );
+        assert_eq!(transaction_trigger.cmp(&message_trigger), Ordering::Less);
+        assert_eq!(transaction_trigger.cmp(&event_trigger), Ordering::Less);
+
+        assert_eq!(block_trigger.cmp(&other_block_trigger), Ordering::Equal);
+        assert_eq!(block_trigger.cmp(&transaction_trigger), Ordering::Less);
+        assert_eq!(block_trigger.cmp(&message_trigger), Ordering::Less);
+        assert_eq!(block_trigger.cmp(&event_trigger), Ordering::Less);
     }
 }

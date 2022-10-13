@@ -123,6 +123,32 @@ impl DeploymentSearch {
         Ok(deployments)
     }
 
+    /// Finds all [`Deployment`]s for this [`DeploymentSearch`].
+    pub fn find(
+        &self,
+        pool: ConnectionPool,
+        current: bool,
+        pending: bool,
+        used: bool,
+    ) -> Result<Vec<Deployment>, anyhow::Error> {
+        let current = current || used;
+        let pending = pending || used;
+
+        let deployments = self.lookup(&pool)?;
+        // Filter by status; if neither `current` or `pending` are set, list
+        // all deployments
+        let deployments: Vec<_> = deployments
+            .into_iter()
+            .filter(|deployment| match (current, pending) {
+                (true, false) => deployment.status == "current",
+                (false, true) => deployment.status == "pending",
+                (true, true) => deployment.status == "current" || deployment.status == "pending",
+                (false, false) => true,
+            })
+            .collect();
+        Ok(deployments)
+    }
+
     /// Finds a single deployment locator for the given deployment identifier.
     pub fn locate_unique(&self, pool: &ConnectionPool) -> anyhow::Result<DeploymentLocator> {
         let mut locators: Vec<DeploymentLocator> = HashSet::<DeploymentLocator>::from_iter(

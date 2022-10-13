@@ -1847,7 +1847,12 @@ fn resolve_transaction_receipt(
             // Check if the receipt has a block hash and is for the right block. Parity nodes seem
             // to return receipts with no block hash when a transaction is no longer in the main
             // chain, so treat that case the same as a receipt being absent entirely.
-            if receipt.block_hash != Some(block_hash) {
+            //
+            // Also as a sanity check against provider nonsense, check that the receipt transaction
+            // hash and the requested transaction hash match.
+            if receipt.block_hash != Some(block_hash)
+                || transaction_hash != receipt.transaction_hash
+            {
                 info!(
                     logger, "receipt block mismatch";
                     "receipt_block_hash" =>
@@ -1855,6 +1860,7 @@ fn resolve_transaction_receipt(
                     "block_hash" =>
                         block_hash.to_string(),
                     "tx_hash" => transaction_hash.to_string(),
+                    "receipt_tx_hash" => receipt.transaction_hash.to_string(),
                 );
 
                 // If the receipt came from a different block, then the Ethereum node no longer

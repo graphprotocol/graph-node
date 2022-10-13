@@ -207,11 +207,15 @@ impl<C: Blockchain> WasmInstance<C> {
             .get_func(handler)
             .with_context(|| format!("function {} not found", handler))?;
 
+        let func = func
+            .typed()
+            .context("wasm function has incorrect signature")?;
+
         // Caution: Make sure all exit paths from this function call `exit_handler`.
         self.instance_ctx_mut().ctx.state.enter_handler();
 
         // This `match` will return early if there was a non-deterministic trap.
-        let deterministic_error: Option<Error> = match func.typed()?.call(arg.wasm_ptr()) {
+        let deterministic_error: Option<Error> = match func.call(arg.wasm_ptr()) {
             Ok(()) => None,
             Err(trap) if self.instance_ctx().possible_reorg => {
                 self.instance_ctx_mut().ctx.state.exit_handler();

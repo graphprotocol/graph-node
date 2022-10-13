@@ -41,7 +41,7 @@ impl TablePair {
         let dst = src.new_like(&layout.site.namespace, &new_name);
 
         let mut query = String::new();
-        if catalog::table_exists(conn, &layout.site.namespace, &dst.name)? {
+        if catalog::table_exists(conn, layout.site.namespace.as_str(), &dst.name)? {
             writeln!(query, "truncate table {nsp}.{new_name};")?;
         } else {
             dst.create_table(&mut query, layout)?;

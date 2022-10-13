@@ -254,8 +254,7 @@ where
             (Method::GET, path @ ["subgraphs", "id", _])
             | (Method::GET, path @ ["subgraphs", "name", _])
             | (Method::GET, path @ ["subgraphs", "name", _, _])
-            | (Method::GET, path @ ["subgraphs", "network", _, _])
-            | (Method::GET, path @ ["subgraphs"]) => {
+            | (Method::GET, path @ ["subgraphs", "network", _, _]) => {
                 let dest = format!("/{}/graphql", path.join("/"));
                 self.handle_temp_redirect(dest).boxed()
             }

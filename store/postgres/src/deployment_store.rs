@@ -3,6 +3,7 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
 use graph::components::versions::VERSIONS;
@@ -211,7 +212,8 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let conn = self.get_conn()?;
-        detail::deployment_entity(&conn, site)
+        Ok(detail::deployment_entity(&conn, site)
+            .with_context(|| format!("Deployment details not found for {}", site.deployment))?)
     }
 
     // Remove the data and metadata for the deployment `site`. This operation
@@ -1303,18 +1305,24 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site.cheap_clone())?;
 
-        // Do any cleanup to bring the subgraph into a known good state
-        if let Some((src, block)) = graft_src {
+        // If `graft_src` is `Some`, then there is a pending graft.
+        if let Some((src, block, src_deployment)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
                 src.catalog.site.namespace,
                 dst.catalog.site.namespace
             );
+
+            let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
+            let dst_manifest_idx_and_name = self
+                .load_deployment(&dst.site)?
+                .manifest
+                .template_idx_and_name()?;
 
             // Copy subgraph data
             // We allow both not copying tables at all from the source, as well
@@ -1327,6 +1335,8 @@ impl DeploymentStore {
                 src.clone(),
                 dst.clone(),
                 block.clone(),
+                src_manifest_idx_and_name,
+                dst_manifest_idx_and_name,
             )?;
             let status = copy_conn.copy_data()?;
             if status == crate::copy::Status::Cancelled {
@@ -1586,6 +1596,17 @@ impl DeploymentStore {
         let id = site.id.clone();
         self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
+    }
+
+    pub(crate) async fn set_manifest_raw_yaml(
+        &self,
+        site: Arc<Site>,
+        raw_yaml: String,
+    ) -> Result<(), StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::set_manifest_raw_yaml(&conn, &site, &raw_yaml).map_err(Into::into)
+        })
+        .await
     }
 }
 

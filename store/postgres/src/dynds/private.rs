@@ -8,6 +8,7 @@ use diesel::{
 };
 
 use graph::{
+    anyhow::Context,
     components::store::StoredDynamicDataSource,
     constraint_violation,
     prelude::{serde_json, BlockNumber, StoreError},
@@ -206,6 +207,8 @@ impl DataSourcesTable {
         conn: &PgConnection,
         dst: &DataSourcesTable,
         target_block: BlockNumber,
+        src_manifest_idx_and_name: &[(i32, String)],
+        dst_manifest_idx_and_name: &[(i32, String)],
     ) -> Result<usize, StoreError> {
         // Check if there are any data sources for dst which indicates we already copied
         let count = dst.table.clone().count().get_result::<i64>(conn)?;
@@ -213,30 +216,71 @@ impl DataSourcesTable {
             return Ok(count as usize);
         }
 
-        let query = format!(
-            "\
-            insert into {dst}(block_range, causality_region, manifest_idx, parent, id, param, context)
-            select case
-                when upper(e.block_range) <= $1 then e.block_range
-                else int4range(lower(e.block_range), null)
+        type Tuple = (
+            (Bound<i32>, Bound<i32>),
+            i32,
+            Option<Vec<u8>>,
+            Option<serde_json::Value>,
+            i32,
+        );
+
+        let src_tuples = self
+            .table
+            .clone()
+            .filter(diesel::dsl::sql("lower(block_range) <= ").bind::<Integer, _>(target_block))
+            .select((
+                &self.block_range,
+                &self.manifest_idx,
+                &self.param,
+                &self.context,
+                &self.causality_region,
+            ))
+            .order_by(&self.vid)
+            .load::<Tuple>(conn)?;
+
+        let mut count = 0;
+        for (block_range, src_manifest_idx, param, context, causality_region) in src_tuples {
+            let name = &src_manifest_idx_and_name
+                .iter()
+                .find(|(idx, _)| idx == &src_manifest_idx)
+                .context("manifest_idx not found in src")?
+                .1;
+            let dst_manifest_idx = dst_manifest_idx_and_name
+                .iter()
+                .find(|(_, n)| n == name)
+                .context("name not found in dst")?
+                .0;
+
+            let query = format!(
+                "\
+            insert into {dst}(block_range, manifest_idx, param, context, causality_region)
+            values(case
+                when upper($2) <= $1 then $2
+                else int4range(lower($2), null)
             end,
-            e.causality_region, e.manifest_idx, e.parent, e.id, e.param, e.context
-            from {src} e
-            where lower(e.block_range) <= $1
+            $3, $4, $5, $6)
             ",
-            src = self.qname,
-            dst = dst.qname
-        );
+                dst = dst.qname
+            );
 
-        let count = sql_query(&query)
-            .bind::<Integer, _>(target_block)
-            .execute(conn)?;
+            count += sql_query(&query)
+                .bind::<Integer, _>(target_block)
+                .bind::<sql_types::Range<Integer>, _>(block_range)
+                .bind::<Integer, _>(dst_manifest_idx)
+                .bind::<Nullable<Binary>, _>(param)
+                .bind::<Nullable<Jsonb>, _>(context)
+                .bind::<Integer, _>(causality_region)
+                .execute(conn)?;
+        }
 
-        // Test that both tables have the same contents.
-        debug_assert!(
-            self.load(conn, target_block).map_err(|e| e.to_string())
-                == dst.load(conn, target_block).map_err(|e| e.to_string())
-        );
+        // If the manifest idxes remained constant, we can test that both tables have the same
+        // contents.
+        if src_manifest_idx_and_name == dst_manifest_idx_and_name {
+            debug_assert!(
+                self.load(conn, target_block).map_err(|e| e.to_string())
+                    == dst.load(conn, target_block).map_err(|e| e.to_string())
+            );
+        }
 
         Ok(count)
     }

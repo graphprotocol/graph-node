@@ -1,3 +1,4 @@
+use crate::manager::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
     components::store::ChainStore as ChainStoreTrait,
@@ -78,7 +79,11 @@ pub async fn by_range(
 }
 
 pub fn truncate(chain_store: Arc<ChainStore>, skip_confirmation: bool) -> anyhow::Result<()> {
-    if !skip_confirmation && !helpers::prompt_for_confirmation()? {
+    let prompt = format!(
+        "This will delete all cached blocks for {}.\nProceed?",
+        chain_store.chain
+    );
+    if !skip_confirmation && !prompt_for_confirmation(&prompt)? {
         println!("Aborting.");
         return Ok(());
     }
@@ -137,6 +142,7 @@ async fn handle_multiple_block_hashes(
 
 mod steps {
     use super::*;
+
     use futures::compat::Future01CompatExt;
     use graph::{
         anyhow::bail,
@@ -248,7 +254,6 @@ mod steps {
 mod helpers {
     use super::*;
     use graph::prelude::hex;
-    use std::io::{self, Write};
 
     /// Tries to parse a [`H256`] from a hex string.
     pub(super) fn parse_block_hash(hash: &str) -> anyhow::Result<H256> {

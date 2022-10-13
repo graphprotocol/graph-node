@@ -340,6 +340,7 @@ struct StoredSubgraphManifest {
     use_bytea_prefix: bool,
     start_block_number: Option<i32>,
     start_block_hash: Option<Bytes>,
+    raw_yaml: Option<String>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
@@ -350,6 +351,7 @@ impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
             repository: value.repository,
             features: value.features,
             schema: value.schema,
+            raw_yaml: value.raw_yaml,
         }
     }
 }

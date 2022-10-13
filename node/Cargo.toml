@@ -1,6 +1,6 @@
 [package]
 name = "graph-node"
-version = "0.27.0"
+version = "0.28.2"
 edition = "2021"
 default-run = "graph-node"
 
@@ -14,12 +14,12 @@ path = "src/bin/manager.rs"
 
 [dependencies]
 clap = { version = "3.2.22", features = ["derive", "env"] }
-env_logger = "0.9.0"
+env_logger = "0.9.1"
 git-testament = "0.2"
 graphql-parser = "0.4.0"
 futures = { version = "0.3.1", features = ["compat"] }
 lazy_static = "1.2.0"
-url = "2.2.1"
+url = "2.3.1"
 crossbeam-channel = "0.5.5"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }

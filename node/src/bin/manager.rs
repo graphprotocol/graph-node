@@ -21,6 +21,7 @@ use graph_node::{
     store_builder::StoreBuilder,
     MetricsContext,
 };
+use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
@@ -229,8 +230,35 @@ pub enum Command {
         #[clap(long, short, default_value = "0.20")]
         prune_ratio: f64,
         /// How much history to keep in blocks
-        #[clap(long, short, default_value = "10000")]
+        #[clap(long, short = 'y', default_value = "10000")]
         history: usize,
+    },
+
+    /// General database management
+    #[clap(subcommand)]
+    Database(DatabaseCommand),
+
+    /// Delete a deployment and all it's indexed data
+    ///
+    /// The deployment can be specified as either a subgraph name, an IPFS
+    /// hash `Qm..`, or the database namespace `sgdNNN`. Since the same IPFS
+    /// hash can be deployed in multiple shards, it is possible to specify
+    /// the shard by adding `:shard` to the IPFS hash.
+    Drop {
+        /// The deployment identifier
+        deployment: DeploymentSearch,
+        /// Search only for current version
+        #[clap(long, short)]
+        current: bool,
+        /// Search only for pending versions
+        #[clap(long, short)]
+        pending: bool,
+        /// Search only for used (current and pending) versions
+        #[clap(long, short)]
+        used: bool,
+        /// Skip confirmation prompt
+        #[clap(long, short)]
+        force: bool,
     },
 }
 
@@ -494,6 +522,18 @@ pub enum IndexCommand {
 }
 
 #[derive(Clone, Debug, Subcommand)]
+pub enum DatabaseCommand {
+    /// Apply any pending migrations to the database schema in all shards
+    Migrate,
+    /// Refresh the mapping of tables into different shards
+    ///
+    /// This command rebuilds the mappings of tables from one shard into all
+    /// other shards. It makes it possible to fix these mappings when a
+    /// database migration was interrupted before it could rebuild the
+    /// mappings
+    Remap,
+}
+#[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
     /// The hash of the target block
     ByHash {
@@ -600,13 +640,14 @@ impl Context {
 
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
+        let coord = Arc::new(PoolCoordinator::new(Arc::new(vec![])));
         let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
             PRIMARY_SHARD.as_str(),
             primary,
             self.metrics_registry(),
-            Arc::new(vec![]),
+            coord,
         );
         pool.skip_setup();
         pool
@@ -655,7 +696,7 @@ impl Context {
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
-        let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
+        let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
@@ -843,7 +884,7 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let count = count.unwrap_or(1_000_000);
                     let older = older.map(|older| chrono::Duration::minutes(older as i64));
-                    commands::unused_deployments::remove(store, count, deployment, older)
+                    commands::unused_deployments::remove(store, count, deployment.as_deref(), older)
                 }
             }
         }
@@ -864,7 +905,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let sender = ctx.notification_sender();
@@ -1092,6 +1133,20 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Database(cmd) => {
+            match cmd {
+                DatabaseCommand::Migrate => {
+                    /* creating the store builder runs migrations */
+                    let _store_builder = ctx.store_builder().await;
+                    println!("All database migrations have been applied");
+                    Ok(())
+                }
+                DatabaseCommand::Remap => {
+                    let store_builder = ctx.store_builder().await;
+                    commands::database::remap(&store_builder.coord).await
+                }
+            }
+        }
         Prune {
             deployment,
             history,
@@ -1099,6 +1154,29 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
             commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
+        }
+        Drop {
+            deployment,
+            current,
+            pending,
+            used,
+            force,
+        } => {
+            let sender = ctx.notification_sender();
+            let (store, primary_pool) = ctx.store_and_primary();
+            let subgraph_store = store.subgraph_store();
+
+            commands::drop::run(
+                primary_pool,
+                subgraph_store,
+                sender,
+                deployment,
+                current,
+                pending,
+                used,
+                force,
+            )
+            .await
         }
     }
 }
