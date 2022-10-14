@@ -173,6 +173,8 @@ where
 }
 
 impl<C: Blockchain> BlockWithTriggers<C> {
+    /// Creates a BlockWithTriggers structure, which holds
+    /// the trigger data ordered and without any duplicates.
     pub fn new(block: C::Block, mut trigger_data: Vec<C::TriggerData>, logger: &Logger) -> Self {
         // This is where triggers get sorted.
         trigger_data.sort();
