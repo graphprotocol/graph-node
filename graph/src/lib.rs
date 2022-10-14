@@ -78,6 +78,7 @@ pub mod prelude {
     pub use lazy_static::lazy_static;
     pub use prost;
     pub use rand;
+    pub use regex;
     pub use reqwest;
     pub use serde;
     pub use serde_derive::{Deserialize, Serialize};

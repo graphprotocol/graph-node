@@ -4,6 +4,7 @@ use graph::{
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info,
+        regex::Regex,
         serde::{
             de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer, Serialize,
@@ -15,7 +16,6 @@ use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use http::{HeaderMap, Uri};
-use regex::Regex;
 use std::fs::read_to_string;
 use std::{
     collections::{BTreeMap, BTreeSet},

@@ -4,16 +4,12 @@ use std::str::FromStr;
 
 use diesel::{dsl::sql, prelude::*};
 use diesel::{sql_types::Text, PgConnection};
-use regex::Regex;
 
 use graph::components::store::DeploymentId;
 use graph::{
     components::store::DeploymentLocator,
     data::subgraph::status,
-    prelude::{
-        anyhow::{self},
-        lazy_static, DeploymentHash,
-    },
+    prelude::{anyhow, lazy_static, regex::Regex, DeploymentHash},
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
