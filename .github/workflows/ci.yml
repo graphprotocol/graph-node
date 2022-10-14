@@ -285,17 +285,3 @@ jobs:
         with:
           command: check
           args: --release
-
-  version-check:
-    name: Check that all graph-node crates have the same version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Checks through all Cargo.toml files, making sure their version is unique
-        run: |
-          source 'scripts/toml-utils.sh'
-
-          ALL_TOML_FILE_NAMES=$(get_all_toml_files)
-          ALL_TOML_VERSIONS=$(get_all_toml_versions $ALL_TOML_FILE_NAMES)
-
-          ./scripts/lines-unique.sh $ALL_TOML_VERSIONS
