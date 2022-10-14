@@ -2,7 +2,7 @@ use anyhow::Error;
 use graph::{
     env::env_var,
     prelude::{prost, tokio, tonic},
-    {firehose, firehose::FirehoseEndpoint, firehose::ForkStep},
+    {firehose, firehose::FirehoseEndpoint},
 };
 use graph_chain_ethereum::codec;
 use hex::ToHex;
@@ -34,11 +34,11 @@ async fn main() -> Result<(), Error> {
             .stream_blocks(firehose::Request {
                 start_block_num: 12369739,
                 stop_block_num: 12369739,
-                start_cursor: match &cursor {
+                cursor: match &cursor {
                     Some(c) => c.clone(),
                     None => String::from(""),
                 },
-                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
+                final_blocks_only: false,
                 ..Default::default()
             })
             .await

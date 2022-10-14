@@ -84,6 +84,20 @@ pub trait BlockStream<C: Blockchain>:
 {
 }
 
+/// BlockRefetcher abstraction allows a chain to decide if a block must be refetched after a dynamic data source was added
+#[async_trait]
+pub trait BlockRefetcher<C: Blockchain>: Send + Sync {
+    //    type Block: Block + Clone + Debug + Default;
+    fn required(&self, chain: &C) -> bool;
+
+    async fn get_block(
+        &self,
+        chain: &C,
+        logger: &Logger,
+        cursor: FirehoseCursor,
+    ) -> Result<C::Block, Error>;
+}
+
 /// BlockStreamBuilder is an abstraction that would separate the logic for building streams from the blockchain trait
 #[async_trait]
 pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {

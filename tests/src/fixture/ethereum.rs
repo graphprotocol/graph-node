@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::{
-    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticStreamBuilder, Stores, NODE_ID,
+    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticBlockRefetcher, StaticStreamBuilder,
+    Stores, NODE_ID,
 };
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
@@ -65,6 +66,7 @@ pub async fn chain_with_adapter_selector(
         EthereumNetworkAdapters { adapters: vec![] },
         stores.chain_head_listener.cheap_clone(),
         Arc::new(StaticStreamBuilder { chain: blocks }),
+        Arc::new(StaticBlockRefetcher { x: PhantomData }),
         Arc::new(adapter_selector),
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,

@@ -2,7 +2,6 @@ use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::{Blockchain, TriggersAdapter};
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
-use crate::firehose::ForkStep::*;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
@@ -231,8 +230,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
             let mut request = firehose::Request {
                 start_block_num: start_block_num as i64,
-                start_cursor: latest_cursor.to_string(),
-                fork_steps: vec![StepNew as i32, StepUndo as i32],
+                cursor: latest_cursor.to_string(),
+                final_blocks_only: false,
                 ..Default::default()
             };
 
