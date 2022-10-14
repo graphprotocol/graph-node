@@ -1232,9 +1232,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                             // Don't block handler execution on writing to the cache.
                             let for_cache = result.0.clone();
                             // Only cache when the result is not empty
-                            // TODO: add env variable to make this behavior optional
                             // ALLOW_ETH_CALL_EMPTY_RESPONSE_CACHE - default is true
-                            if !for_cache.is_empty() {
+                            if !for_cache.is_empty() || ENV_VARS.allow_eth_call_empty_response_cache{
                                 let _ = graph::spawn_blocking_allow_panic(move || {
                                     cache
                                         .set_call(call.address, &call_data, call.block_ptr, &for_cache)
