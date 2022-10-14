@@ -50,6 +50,8 @@ pub async fn list(
     pool: ConnectionPool,
     search: DeploymentSearch,
     entity_name: &str,
+    no_attribute_indexes: bool,
+    no_default_indexes: bool,
 ) -> Result<(), anyhow::Error> {
     fn header(indexes: &[CreateIndex], loc: &DeploymentLocator, entity: &str) {
         use CreateIndex::*;
@@ -107,9 +109,24 @@ pub async fn list(
     }
 
     let deployment_locator = search.locate_unique(&pool)?;
-    let indexes: Vec<_> = store
-        .indexes_for_entity(&deployment_locator, entity_name)
-        .await?;
+    let indexes: Vec<_> = {
+        let mut indexes = store
+            .indexes_for_entity(&deployment_locator, entity_name)
+            .await?;
+        if no_attribute_indexes {
+            indexes = indexes
+                .into_iter()
+                .filter(|idx| !idx.is_attribute_index())
+                .collect();
+        }
+        if no_default_indexes {
+            indexes = indexes
+                .into_iter()
+                .filter(|idx| !idx.is_default_index())
+                .collect();
+        }
+        indexes
+    };
 
     let mut first = true;
     header(&indexes, &deployment_locator, entity_name);

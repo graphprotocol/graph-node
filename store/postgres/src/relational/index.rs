@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use graph::itertools::Itertools;
 use graph::prelude::{
+    lazy_static,
     regex::{Captures, Regex},
     BlockNumber,
 };
@@ -45,7 +46,7 @@ impl Method {
 }
 
 /// An index expression, i.e., a 'column' in an index
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// A named column; only user-defined columns appear here
     Column(String),
@@ -321,6 +322,28 @@ impl CreateIndex {
         new_parsed(&defn).unwrap_or_else(|| CreateIndex::Unknown { defn })
     }
 
+    pub fn create<C: Into<Vec<Expr>>>(
+        name: &str,
+        nsp: &str,
+        table: &str,
+        unique: bool,
+        method: Method,
+        columns: C,
+        cond: Option<Cond>,
+        with: Option<String>,
+    ) -> Self {
+        CreateIndex::Parsed {
+            unique,
+            name: name.to_string(),
+            nsp: nsp.to_string(),
+            table: table.to_string(),
+            method,
+            columns: columns.into(),
+            cond,
+            with,
+        }
+    }
+
     pub fn is_attribute_index(&self) -> bool {
         use CreateIndex::*;
         match self {
@@ -351,6 +374,85 @@ impl CreateIndex {
                     }
                     Method::Unknown(_) => false,
                 }
+            }
+        }
+    }
+
+    /// Return `true` if `self` is one of the indexes we create by default
+    pub fn is_default_index(&self) -> bool {
+        lazy_static! {
+            static ref DEFAULT_INDEXES: Vec<CreateIndex> = {
+                fn dummy(
+                    unique: bool,
+                    method: Method,
+                    columns: &[Expr],
+                    cond: Option<Cond>,
+                ) -> CreateIndex {
+                    CreateIndex::create(
+                        "dummy_index",
+                        "dummy_nsp",
+                        "dummy_table",
+                        unique,
+                        method,
+                        columns,
+                        cond,
+                        None,
+                    )
+                }
+                use Method::*;
+
+                vec![
+                    dummy(
+                        false,
+                        Brin,
+                        &[Expr::BlockRangeLower, Expr::BlockRangeUpper, Expr::Vid],
+                        None,
+                    ),
+                    dummy(true, BTree, &[Expr::Vid], None),
+                    dummy(
+                        false,
+                        Gist,
+                        &[Expr::Column("id".to_string()), Expr::BlockRange],
+                        None,
+                    ),
+                    dummy(false, BTree, &[Expr::BlockRangeUpper], Some(Cond::Closed)),
+                ]
+            };
+        }
+
+        self.is_attribute_index() || DEFAULT_INDEXES.iter().any(|idx| self.is_same_index(idx))
+    }
+
+    fn is_same_index(&self, other: &CreateIndex) -> bool {
+        match (self, other) {
+            (CreateIndex::Unknown { .. }, _) | (_, CreateIndex::Unknown { .. }) => false,
+            (
+                CreateIndex::Parsed {
+                    unique,
+                    name: _,
+                    nsp: _,
+                    table: _,
+                    method,
+                    columns,
+                    cond,
+                    with,
+                },
+                CreateIndex::Parsed {
+                    unique: o_unique,
+                    name: _,
+                    nsp: _,
+                    table: _,
+                    method: o_method,
+                    columns: o_columns,
+                    cond: o_cond,
+                    with: o_with,
+                },
+            ) => {
+                unique == o_unique
+                    && method == o_method
+                    && columns == o_columns
+                    && cond == o_cond
+                    && with == o_with
             }
         }
     }
