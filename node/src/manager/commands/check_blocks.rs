@@ -261,21 +261,6 @@ mod helpers {
         let hash = hex::decode(hash)?;
         Ok(H256::from_slice(&hash))
     }
-
-    /// Asks users if they are certain about truncating the whole block cache.
-    pub(super) fn prompt_for_confirmation() -> anyhow::Result<bool> {
-        print!("This will delete all cached blocks.\nProceed? [y/N] ");
-        io::stdout().flush()?;
-
-        let mut answer = String::new();
-        io::stdin().read_line(&mut answer)?;
-        answer.make_ascii_lowercase();
-
-        match answer.trim() {
-            "y" | "yes" => Ok(true),
-            _ => Ok(false),
-        }
-    }
 }
 
 /// Custom range type
