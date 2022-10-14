@@ -24,6 +24,8 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
+
+    causality_region_next_value: i32,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -37,6 +39,7 @@ where
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
+        causality_region_next_value: i32,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -50,6 +53,7 @@ where
             module_cache: HashMap::new(),
             templates,
             host_metrics,
+            causality_region_next_value,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
@@ -119,13 +123,11 @@ where
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
-        if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
-            if self.hosts.len() >= max_data_sources {
-                anyhow::bail!(
-                    "Limit of {} data sources per subgraph exceeded",
-                    max_data_sources,
-                );
-            }
+        if self.hosts.len() >= ENV_VARS.subgraph_max_data_sources {
+            anyhow::bail!(
+                "Limit of {} data sources per subgraph exceeded",
+                ENV_VARS.subgraph_max_data_sources,
+            );
         }
 
         // `hosts` will remain ordered by the creation block.
@@ -165,5 +167,11 @@ where
 
     pub(super) fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts
+    }
+
+    pub(super) fn causality_region_next_value(&mut self) -> i32 {
+        let next = self.causality_region_next_value;
+        self.causality_region_next_value += 1;
+        next
     }
 }

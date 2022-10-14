@@ -30,7 +30,7 @@ pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGua
 // The context keeps track of mutable in-memory state that is retained across blocks.
 //
 // Currently most of the changes are applied in `runner.rs`, but ideally more of that would be
-// refactored into the context so it wouldn't need `pub` fields. The entity cache should probaby
+// refactored into the context so it wouldn't need `pub` fields. The entity cache should probably
 // also be moved here.
 pub(crate) struct IndexingContext<C, T>
 where
@@ -139,6 +139,10 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         }
 
         Ok(host)
+    }
+
+    pub fn causality_region_next_value(&mut self) -> i32 {
+        self.instance.causality_region_next_value()
     }
 }
 

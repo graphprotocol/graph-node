@@ -158,6 +158,10 @@ impl WritableStore for MockStore {
     async fn flush(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
+
+    async fn causality_region_next_value(&self) -> Result<i32, StoreError> {
+        unimplemented!()
+    }
 }
 
 fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {

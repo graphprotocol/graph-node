@@ -1275,6 +1275,16 @@ impl DeploymentStore {
         .await
     }
 
+    pub(crate) async fn causality_region_next_value(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<i32, StoreError> {
+        self.with_conn(move |conn, _| {
+            Ok(conn.transaction(|| crate::dynds::causality_region_next_value(conn, &site))?)
+        })
+        .await
+    }
+
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
         self.with_conn(move |conn, _| {
             conn.transaction(|| deployment::exists_and_synced(conn, &id))

@@ -33,6 +33,7 @@ pub struct DataSource {
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
     pub done_at: Mutex<Option<i32>>,
+    pub causality_region: i32,
 }
 
 impl Clone for DataSource {
@@ -46,6 +47,7 @@ impl Clone for DataSource {
             context: self.context.clone(),
             creation_block: self.creation_block.clone(),
             done_at: Mutex::new(*self.done_at.lock().unwrap()),
+            causality_region: self.causality_region.clone(),
         }
     }
 }
@@ -63,8 +65,9 @@ impl DataSource {
 }
 
 impl DataSource {
-    pub fn from_template_info<C: Blockchain>(
-        info: DataSourceTemplateInfo<C>,
+    pub fn from_template_info(
+        info: DataSourceTemplateInfo<impl Blockchain>,
+        causality_region: i32,
     ) -> Result<Self, DataSourceCreationError> {
         let template = match info.template {
             data_source::DataSourceTemplate::Offchain(template) => template,
@@ -93,6 +96,7 @@ impl DataSource {
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
             done_at: Mutex::new(None),
+            causality_region,
         })
     }
 
@@ -124,8 +128,8 @@ impl DataSource {
             param: Some(param),
             context,
             creation_block: self.creation_block,
-            is_offchain: true,
             done_at: *self.done_at.lock().unwrap(),
+            causality_region: self.causality_region,
         }
     }
 
@@ -133,20 +137,31 @@ impl DataSource {
         template: &DataSourceTemplate,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        let param = stored.param.context("no param on stored data source")?;
+        let StoredDynamicDataSource {
+            manifest_idx,
+            param,
+            context,
+            creation_block,
+            done_at,
+            causality_region,
+        } = stored;
+
+        let param = param.context("no param on stored data source")?;
         let cid_file = CidFile::try_from(param)?;
 
         let source = Source::Ipfs(cid_file);
-        let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
+        let context = Arc::new(context.map(serde_json::from_value).transpose()?);
+
         Ok(Self {
             kind: template.kind.clone(),
             name: template.name.clone(),
-            manifest_idx: stored.manifest_idx,
+            manifest_idx,
             source,
             mapping: template.mapping.clone(),
             context,
-            creation_block: stored.creation_block,
-            done_at: Mutex::new(stored.done_at),
+            creation_block,
+            done_at: Mutex::new(done_at),
+            causality_region,
         })
     }
 
@@ -198,19 +213,14 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedDataSource {
-    #[allow(unreachable_code)]
-    #[allow(unused_variables)]
-    pub async fn resolve(
+    #[allow(dead_code)]
+    pub(super) async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        causality_region: i32,
     ) -> Result<DataSource, Error> {
-        anyhow::bail!(
-            "static file data sources are not yet supported, \\
-             for details see https://github.com/graphprotocol/graph-node/issues/3864"
-        );
-
         info!(logger, "Resolve offchain data source";
             "name" => &self.name,
             "kind" => &self.kind,
@@ -234,6 +244,7 @@ impl UnresolvedDataSource {
             context: Arc::new(None),
             creation_block: None,
             done_at: Mutex::new(None),
+            causality_region,
         })
     }
 }

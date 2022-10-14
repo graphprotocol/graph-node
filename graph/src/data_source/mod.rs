@@ -8,7 +8,6 @@ use crate::{
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
-        subgraph::DataSourceTemplateInfo,
     },
     data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
@@ -19,6 +18,9 @@ use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
 use std::{collections::BTreeMap, fmt, sync::Arc};
 use thiserror::Error;
+
+/// The causality region of all onchain data sources.
+pub const ROOT_CAUSALITY_REGION: i32 = 0;
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
@@ -38,21 +40,6 @@ pub enum DataSourceCreationError {
 }
 
 impl<C: Blockchain> DataSource<C> {
-    /// Instantiate from the parameters given by the mapping. `Ok(None)` means the parameter is
-    /// invalid and the instantiation should be ignored.
-    pub fn from_template_info(
-        info: DataSourceTemplateInfo<C>,
-    ) -> Result<Self, DataSourceCreationError> {
-        match &info.template {
-            DataSourceTemplate::Onchain(_) => {
-                Ok(DataSource::Onchain(C::DataSource::try_from(info)?))
-            }
-            DataSourceTemplate::Offchain(_) => Ok(DataSource::Offchain(
-                offchain::DataSource::from_template_info(info)?,
-            )),
-        }
-    }
-
     pub fn as_onchain(&self) -> Option<&C::DataSource> {
         match self {
             Self::Onchain(ds) => Some(&ds),
@@ -138,8 +125,32 @@ impl<C: Blockchain> DataSource<C> {
         match (self, other) {
             (Self::Onchain(a), Self::Onchain(b)) => a.is_duplicate_of(b),
             (Self::Offchain(a), Self::Offchain(b)) => {
+                let offchain::DataSource {
+                    // Inferred from the manifest_idx
+                    kind: _,
+                    name: _,
+                    mapping: _,
+
+                    manifest_idx,
+                    source,
+                    context,
+
+                    // We want to deduplicate across done status or creation block.
+                    done_at: _,
+                    creation_block: _,
+
+                    // The causality region is also ignored, to be able to detect duplicated file data
+                    // sources.
+                    //
+                    // Note to future: This will become more complicated if we allow for example file data
+                    // sources to create other file data sources, because which one is created first (the
+                    // original) and which is created later (the duplicate) is no longer deterministic. One
+                    // fix would be to check the equality of the parent causality region.
+                    causality_region: _,
+                } = a;
+
                 // See also: data-source-is-duplicate-of
-                a.manifest_idx == b.manifest_idx && a.source == b.source && a.context == b.context
+                manifest_idx == &b.manifest_idx && source == &b.source && context == &b.context
             }
             _ => false,
         }
@@ -194,10 +205,12 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .resolve(resolver, logger, manifest_idx)
                 .await
                 .map(DataSource::Onchain),
-            Self::Offchain(unresolved) => unresolved
-                .resolve(resolver, logger, manifest_idx)
-                .await
-                .map(DataSource::Offchain),
+            Self::Offchain(_unresolved) => {
+                anyhow::bail!(
+                    "static file data sources are not yet supported, \\
+                     for details see https://github.com/graphprotocol/graph-node/issues/3864"
+                );
+            }
         }
     }
 }

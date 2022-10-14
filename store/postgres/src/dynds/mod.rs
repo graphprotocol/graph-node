@@ -76,3 +76,17 @@ pub(crate) fn update_offchain_status(
         )),
     }
 }
+
+/// The next causality region free to be assigned. Any higher number is also free to be assigned.
+pub(crate) fn causality_region_next_value(
+    conn: &PgConnection,
+    site: &Site,
+) -> Result<i32, StoreError> {
+    match site.schema_version.private_data_sources() {
+        true => DataSourcesTable::new(site.namespace.clone()).causality_region_next_value(conn),
+
+        // Subgraphs on the legacy shared table do not use offchain data sources, so this value will
+        // never be used.
+        false => Ok(0),
+    }
+}

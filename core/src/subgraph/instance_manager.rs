@@ -359,12 +359,14 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ProofOfIndexingVersion::Legacy
         };
 
+        let causality_region_next_value = store.causality_region_next_value().await?;
         let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
             host_builder,
             host_metrics.clone(),
             &mut offchain_monitor,
+            causality_region_next_value,
         )?;
 
         let inputs = IndexingInputs {

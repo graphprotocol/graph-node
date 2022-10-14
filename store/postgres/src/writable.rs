@@ -329,6 +329,15 @@ impl SyncStore {
         .await
     }
 
+    pub(crate) async fn causality_region_next_value(&self) -> Result<i32, StoreError> {
+        self.retry_async("causality_region_next_value", || async {
+            self.writable
+                .causality_region_next_value(self.site.cheap_clone())
+                .await
+        })
+        .await
+    }
+
     fn deployment_synced(&self) -> Result<(), StoreError> {
         self.retry("deployment_synced", || {
             let event = {
@@ -1134,6 +1143,12 @@ impl WritableStoreTrait for WritableStore {
         self.writer
             .load_dynamic_data_sources(manifest_idx_and_name)
             .await
+    }
+
+    async fn causality_region_next_value(&self) -> Result<i32, StoreError> {
+        // It should be empty when we call this, but just in case.
+        self.writer.flush().await?;
+        self.store.causality_region_next_value().await
     }
 
     fn shard(&self) -> &str {

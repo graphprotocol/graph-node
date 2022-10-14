@@ -5,7 +5,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
+use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
@@ -16,7 +16,9 @@ use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
-use graph::data_source::{offchain, DataSource, DataSourceCreationError, TriggerData};
+use graph::data_source::{
+    offchain, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
+};
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
@@ -475,13 +477,26 @@ where
 
         for info in created_data_sources {
             // Try to instantiate a data source from the template
-            let data_source = match DataSource::from_template_info(info) {
-                Ok(ds) => ds,
-                Err(e @ DataSourceCreationError::Ignore(..)) => {
-                    warn!(self.logger, "{}", e.to_string());
-                    continue;
+
+            let data_source = {
+                let res = match info.template {
+                    DataSourceTemplate::Onchain(_) => C::DataSource::from_template_info(info)
+                        .map(DataSource::Onchain)
+                        .map_err(DataSourceCreationError::from),
+                    DataSourceTemplate::Offchain(_) => offchain::DataSource::from_template_info(
+                        info,
+                        self.ctx.causality_region_next_value(),
+                    )
+                    .map(DataSource::Offchain),
+                };
+                match res {
+                    Ok(ds) => ds,
+                    Err(e @ DataSourceCreationError::Ignore(..)) => {
+                        warn!(self.logger, "{}", e.to_string());
+                        continue;
+                    }
+                    Err(DataSourceCreationError::Unknown(e)) => return Err(e),
                 }
-                Err(DataSourceCreationError::Unknown(e)) => return Err(e),
             };
 
             // Try to create a runtime host for the data source

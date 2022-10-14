@@ -34,15 +34,11 @@ pub struct DataSource {
     pub initial_block: Option<BlockNumber>,
 }
 
-impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = anyhow::Error;
-
-    fn try_from(_value: DataSourceTemplateInfo<Chain>) -> Result<Self, Self::Error> {
+impl blockchain::DataSource<Chain> for DataSource {
+    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
         Err(anyhow!("Substreams does not support templates"))
     }
-}
 
-impl blockchain::DataSource<Chain> for DataSource {
     fn address(&self) -> Option<&[u8]> {
         None
     }
