@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use graph::blockchain::{Blockchain, Block};
+use graph::blockchain::{Block, Blockchain};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};

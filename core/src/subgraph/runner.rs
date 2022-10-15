@@ -332,7 +332,7 @@ where
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
         let (offchain_mods, processed_data_sources) =
-            self.handle_offchain_triggers(offchain_events).await?;
+            self.handle_offchain_triggers(offchain_events, &block).await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -567,6 +567,7 @@ where
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
+        block: &Arc<C::Block>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
         let mut processed_data_sources = vec![];
@@ -581,13 +582,11 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            // We'll eventually need to do better here, but using an empty block works for now.
-            let block = Arc::default();
             block_state = self
                 .ctx
                 .process_trigger(
                     &self.logger,
-                    &block,
+                    block,
                     &TriggerData::Offchain(trigger),
                     block_state,
                     &proof_of_indexing,

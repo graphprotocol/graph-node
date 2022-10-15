@@ -66,7 +66,7 @@ impl DataSourcesTable {
                 id bytea,
                 param bytea,
                 context jsonb,
-                done boolean not null default false
+                done_at int
             );
 
             create index gist_block_range_data_sources$ on {nsp}.data_sources$ using gist (block_range);
