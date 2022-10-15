@@ -89,6 +89,10 @@ pub struct EnvVars {
     /// Set by the flag `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`. The default value
     /// is 0.
     pub genesis_block_number: u64,
+    // Default behavior is to save all the eth_call response to cache in DB
+    // but the eth_call response sometimes inconsistent that it can return empty
+    // set this env var to false to make it ignore the empty response,
+    // then subgraph can retry to call rpc if it needs
     pub allow_eth_call_empty_response_cache: bool,
 }
 
