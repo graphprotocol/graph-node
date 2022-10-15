@@ -75,6 +75,7 @@ pub mod prelude {
     pub use futures03::sink::SinkExt as _;
     pub use futures03::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
+    pub use isatty;
     pub use lazy_static::lazy_static;
     pub use prost;
     pub use rand;

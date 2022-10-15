@@ -14,6 +14,7 @@ use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
 use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
+use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
 use graph_node::{
     chain::create_all_ethereum_networks,
@@ -47,6 +48,12 @@ lazy_static! {
 pub struct Opt {
     #[clap(
         long,
+        default_value = "auto",
+        help = "whether to colorize the output. Set to 'auto' to colorize only on\nterminals (the default), 'always' to always colorize, or 'never'\nto not colorize at all"
+    )]
+    pub color: String,
+    #[clap(
+        long,
         short,
         env = "GRAPH_NODE_CONFIG",
         help = "the name of the configuration file\n"
@@ -57,7 +64,7 @@ pub struct Opt {
         default_value = "default",
         value_name = "NODE_ID",
         env = "GRAPH_NODE_ID",
-        help = "a unique identifier for this node.\nShould have the same value between consecutive node restarts\n"
+        help = "a unique identifier for this node. Should have the same value\nbetween consecutive node restarts\n"
     )]
     pub node_id: String,
     #[clap(
@@ -65,13 +72,13 @@ pub struct Opt {
         value_name = "{HOST:PORT|URL}",
         default_value = "https://api.thegraph.com/ipfs/",
         env = "IPFS",
-        help = "HTTP addresses of IPFS nodes"
+        help = "HTTP addresses of IPFS nodes\n"
     )]
     pub ipfs: Vec<String>,
     #[clap(
         long,
         default_value = "3",
-        help = "the size for connection pools. Set to 0\n to use pool size from configuration file\n corresponding to NODE_ID"
+        help = "the size for connection pools. Set to 0 to use pool size from\nconfiguration file corresponding to NODE_ID\n"
     )]
     pub pool_size: u32,
     #[clap(long, value_name = "URL", help = "Base URL for forking subgraphs")]
@@ -873,6 +880,8 @@ impl Context {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
+
+    Terminal::set_color_preference(&opt.color);
 
     let version_label = opt.version_label.clone();
     // Set up logger

@@ -1793,6 +1793,7 @@ dependencies = [
  "serde",
  "serde_regex",
  "shellexpand",
+ "termcolor",
  "toml",
  "url",
 ]

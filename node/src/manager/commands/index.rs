@@ -1,4 +1,4 @@
-use crate::manager::deployment::DeploymentSearch;
+use crate::manager::{color::Terminal, deployment::DeploymentSearch, CmdResult};
 use graph::{
     components::store::DeploymentLocator,
     itertools::Itertools,
@@ -7,6 +7,7 @@ use graph::{
 use graph_store_postgres::{
     command_support::index::CreateIndex, connection_pool::ConnectionPool, SubgraphStore,
 };
+use std::io::Write as _;
 use std::{collections::HashSet, sync::Arc};
 
 fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
@@ -53,31 +54,46 @@ pub async fn list(
     no_attribute_indexes: bool,
     no_default_indexes: bool,
 ) -> Result<(), anyhow::Error> {
-    fn header(indexes: &[CreateIndex], loc: &DeploymentLocator, entity: &str) {
+    fn header(
+        term: &mut Terminal,
+        indexes: &[CreateIndex],
+        loc: &DeploymentLocator,
+        entity: &str,
+    ) -> Result<(), anyhow::Error> {
         use CreateIndex::*;
 
         let index = indexes.iter().find(|index| matches!(index, Parsed { .. }));
         match index {
             Some(Parsed { nsp, table, .. }) => {
-                println!("{:^76}", format!("Indexes for {nsp}.{table}"))
+                term.bold()?;
+                writeln!(term, "{:^76}", format!("Indexes for {nsp}.{table}"))?;
+                term.reset()?;
             }
-            _ => println!("{:^76}", format!("Indexes for sgd{}.{entity}", loc.id)),
+            _ => {
+                writeln!(
+                    term,
+                    "{:^76}",
+                    format!("Indexes for sgd{}.{entity}", loc.id)
+                )?;
+            }
         }
-        println!("{: ^12} IPFS hash: {}", "", loc.hash);
-        println!("{:-^76}", "");
+        writeln!(term, "{: ^12} IPFS hash: {}", "", loc.hash)?;
+        writeln!(term, "{:-^76}", "")?;
+        Ok(())
     }
 
-    fn footer() {
-        println!("  (a): account-like flag set");
+    fn footer(term: &mut Terminal) -> Result<(), anyhow::Error> {
+        writeln!(term, "  (a): account-like flag set")?;
+        Ok(())
     }
 
-    fn print_index(index: &CreateIndex) {
+    fn print_index(term: &mut Terminal, index: &CreateIndex) -> CmdResult {
         use CreateIndex::*;
 
         match index {
             Unknown { defn } => {
-                println!("*unknown*");
-                println!("  {defn}");
+                writeln!(term, "*unknown*")?;
+                writeln!(term, "  {defn}")?;
             }
             Parsed {
                 unique,
@@ -90,22 +106,34 @@ pub async fn list(
                 with,
             } => {
                 let unique = if *unique { " unique" } else { "" };
-                let start = format!("{name}{unique} using {method}");
+                let start = format!("{unique} using {method}");
                 let columns = columns.into_iter().map(|c| c.to_string()).join(", ");
-                if start.len() + columns.len() <= 76 {
-                    println!("{start}({columns})");
+
+                term.green()?;
+                if index.is_default_index() {
+                    term.dim()?;
                 } else {
-                    println!("{start}");
-                    println!("  on ({})", columns);
+                    term.bold()?;
                 }
+                write!(term, "{name}")?;
+                term.reset()?;
+                write!(term, "{start}")?;
+                term.blue()?;
+                if name.len() + start.len() + columns.len() <= 76 {
+                    writeln!(term, "({columns})")?;
+                } else {
+                    writeln!(term, "\n  on ({})", columns)?;
+                }
+                term.reset()?;
                 if let Some(cond) = cond {
-                    println!("  where {cond}");
+                    writeln!(term, "  where {cond}")?;
                 }
                 if let Some(with) = with {
-                    println!("  with {with}");
+                    writeln!(term, "  with {with}")?;
                 }
             }
         }
+        Ok(())
     }
 
     let deployment_locator = search.locate_unique(&pool)?;
@@ -128,14 +156,16 @@ pub async fn list(
         indexes
     };
 
+    let mut term = Terminal::new();
+
     let mut first = true;
-    header(&indexes, &deployment_locator, entity_name);
+    header(&mut term, &indexes, &deployment_locator, entity_name)?;
     for index in &indexes {
         if !first {
-            println!("{:-^76}", "");
+            writeln!(term, "{:-^76}", "")?;
             first = false;
         }
-        print_index(index);
+        print_index(&mut term, index)?;
     }
     Ok(())
 }
