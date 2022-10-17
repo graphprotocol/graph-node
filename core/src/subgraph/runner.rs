@@ -331,8 +331,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_data_sources) =
-            self.handle_offchain_triggers(offchain_events, &block).await?;
+        let (offchain_mods, processed_data_sources) = self
+            .handle_offchain_triggers(offchain_events, &block)
+            .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.

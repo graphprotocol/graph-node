@@ -248,7 +248,8 @@ impl DataSourcesTable {
             .load::<Tuple>(conn)?;
 
         let mut count = 0;
-        for (block_range, src_manifest_idx, param, context, causality_region, done_at) in src_tuples {
+        for (block_range, src_manifest_idx, param, context, causality_region, done_at) in src_tuples
+        {
             let name = &src_manifest_idx_and_name
                 .iter()
                 .find(|(idx, _)| idx == &src_manifest_idx)
@@ -308,7 +309,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
-                done_at
+                done_at,
             } = ds;
 
             if !is_offchain {

@@ -28,9 +28,7 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
-use crate::{
-    primary, primary::Site, relational::Layout, SubgraphStore,
-};
+use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
 
 graph::prelude::lazy_static! {
     /// The size of the write queue; this many blocks can be buffered for
