@@ -1111,7 +1111,12 @@ async fn main() -> anyhow::Result<()> {
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
-                CallCache { method, chain_name } => {}
+                CallCache { method, chain_name } => match method {
+                    CallCacheCommand::Remove { from, to } => {
+                        let chain_store = ctx.chain_store(&chain_name)?;
+                        commands::chain::clear_call_cache(chain_store, from, to).await
+                    }
+                },
             }
         }
         Stats(cmd) => {

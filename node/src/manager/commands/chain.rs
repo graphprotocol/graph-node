@@ -11,6 +11,7 @@ use graph::{
     components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
 };
 use graph_store_postgres::BlockStore;
+use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
     command_support::catalog::block_store, connection_pool::ConnectionPool,
 };
@@ -46,6 +47,16 @@ pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(),
             chain.name, chain.shard, chain.storage, chain.net_version, head_block
         );
     }
+    Ok(())
+}
+
+pub async fn clear_call_cache(
+    chain_store: Arc<ChainStore>,
+    from: Option<i32>,
+    to: Option<i32>,
+) -> Result<(), Error> {
+    let n = chain_store.clear_call_cache(from, to).await?;
+    println!("cleared {} call cache", n);
     Ok(())
 }
 
@@ -129,6 +140,3 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
 
     Ok(())
 }
-
-
-pub async fn call_cache_remove(){}

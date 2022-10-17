@@ -1461,8 +1461,6 @@ impl ChainStore {
         self.storage.truncate_block_cache(&conn)?;
         Ok(())
     }
-
-    pub fn delete_call_cache(&self, from: Option<i32>, to: Option<i32>) {}
 }
 
 #[async_trait]
@@ -1780,11 +1778,10 @@ impl ChainStoreTrait for ChainStore {
             .await
     }
 
-    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<usize, StoreError> {
-        let pool = self.pool.clone();
+    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<usize, Error> {
         let storage = self.storage.clone();
-        pool.with_conn(move |conn, _| storage.clear_call_cache(&conn, from, to))
-            .await
+        let conn = self.get_conn()?;
+        storage.clear_call_cache(&conn, from, to)
     }
 
     async fn transaction_receipts_in_block(

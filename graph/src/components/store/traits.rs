@@ -412,6 +412,9 @@ pub trait ChainStore: Send + Sync + 'static {
         &self,
         block_ptr: &H256,
     ) -> Result<Vec<transaction_receipt::LightTransactionReceipt>, StoreError>;
+
+    /// Clears call cache of the chain for the given `from` and `to` block number. 
+    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<usize, Error>; 
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {
