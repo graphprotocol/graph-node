@@ -460,16 +460,18 @@ impl Request {
                 deterministic_errors,
                 manifest_idx_and_name,
                 processed_data_sources,
-            } => store.transact_block_operations(
-                block_ptr_to,
-                firehose_cursor,
-                mods,
-                stopwatch,
-                data_sources,
-                deterministic_errors,
-                manifest_idx_and_name,
-                processed_data_sources,
-            ),
+            } => store
+                .transact_block_operations(
+                    block_ptr_to,
+                    firehose_cursor,
+                    mods,
+                    stopwatch,
+                    data_sources,
+                    deterministic_errors,
+                    manifest_idx_and_name,
+                    processed_data_sources,
+                )
+                .map(|()| ExecResult::Continue),
             Request::RevertTo {
                 store,
                 block_ptr,
