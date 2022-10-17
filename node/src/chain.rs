@@ -1,6 +1,6 @@
 use crate::config::{Config, ProviderDetails};
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
-use futures::future::join_all;
+use futures::future::{join_all, try_join_all};
 use futures::TryFutureExt;
 use graph::anyhow::Error;
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
@@ -19,7 +19,7 @@ use std::time::Duration;
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]
-enum ProviderNetworkStatus {
+pub enum ProviderNetworkStatus {
     Broken {
         chain_id: String,
         provider: String,
@@ -100,64 +100,6 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
             ipfs_client
         })
         .collect()
-}
-
-/// Parses an Ethereum connection string and returns the network name and Ethereum adapter.
-pub async fn create_ethereum_networks(
-    logger: Logger,
-    registry: Arc<dyn MetricsRegistryTrait>,
-    config: &Config,
-) -> Result<EthereumNetworks, anyhow::Error> {
-    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
-    let mut parsed_networks = EthereumNetworks::new();
-    for (name, chain) in &config.chains.chains {
-        if chain.protocol != BlockchainKind::Ethereum {
-            continue;
-        }
-
-        for provider in &chain.providers {
-            if let ProviderDetails::Web3(web3) = &provider.details {
-                let capabilities = web3.node_capabilities();
-
-                let logger = logger.new(o!("provider" => provider.label.clone()));
-                info!(
-                    logger,
-                    "Creating transport";
-                    "url" => &web3.url,
-                    "capabilities" => capabilities
-                );
-
-                use crate::config::Transport::*;
-
-                let transport = match web3.transport {
-                    Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
-                    Ipc => Transport::new_ipc(&web3.url).await,
-                    Ws => Transport::new_ws(&web3.url).await,
-                };
-
-                let supports_eip_1898 = !web3.features.contains("no_eip1898");
-
-                parsed_networks.insert(
-                    name.to_string(),
-                    capabilities,
-                    Arc::new(
-                        graph_chain_ethereum::EthereumAdapter::new(
-                            logger,
-                            provider.label.clone(),
-                            &web3.url,
-                            transport,
-                            eth_rpc_metrics.clone(),
-                            supports_eip_1898,
-                        )
-                        .await,
-                    ),
-                    web3.limit_for(&config.node),
-                );
-            }
-        }
-    }
-    parsed_networks.sort();
-    Ok(parsed_networks)
 }
 
 pub fn create_substreams_networks(
@@ -421,9 +363,95 @@ where
     (firehose_networks, idents)
 }
 
+/// Parses all Ethereum connection strings and returns their network names and
+/// `EthereumAdapter`.
+pub async fn create_all_ethereum_networks(
+    logger: Logger,
+    registry: Arc<dyn MetricsRegistryTrait>,
+    config: &Config,
+) -> anyhow::Result<EthereumNetworks> {
+    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
+    let eth_networks_futures = config
+        .chains
+        .chains
+        .iter()
+        .filter(|(_, chain)| chain.protocol == BlockchainKind::Ethereum)
+        .map(|(name, _)| {
+            create_ethereum_networks_for_chain(&logger, eth_rpc_metrics.clone(), config, name)
+        });
+
+    Ok(try_join_all(eth_networks_futures)
+        .await?
+        .into_iter()
+        .reduce(|mut a, b| {
+            a.extend(b);
+            a
+        })
+        .unwrap_or_else(|| EthereumNetworks::new()))
+}
+
+/// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
+pub async fn create_ethereum_networks_for_chain(
+    logger: &Logger,
+    eth_rpc_metrics: Arc<ProviderEthRpcMetrics>,
+    config: &Config,
+    network_name: &str,
+) -> anyhow::Result<EthereumNetworks> {
+    let mut parsed_networks = EthereumNetworks::new();
+    let chain = config
+        .chains
+        .chains
+        .get(network_name)
+        .ok_or_else(|| anyhow!("unknown network {}", network_name))?;
+
+    for provider in &chain.providers {
+        if let ProviderDetails::Web3(web3) = &provider.details {
+            let capabilities = web3.node_capabilities();
+
+            let logger = logger.new(o!("provider" => provider.label.clone()));
+            info!(
+                logger,
+                "Creating transport";
+                "url" => &web3.url,
+                "capabilities" => capabilities
+            );
+
+            use crate::config::Transport::*;
+
+            let transport = match web3.transport {
+                Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
+                Ipc => Transport::new_ipc(&web3.url).await,
+                Ws => Transport::new_ws(&web3.url).await,
+            };
+
+            let supports_eip_1898 = !web3.features.contains("no_eip1898");
+
+            parsed_networks.insert(
+                network_name.to_string(),
+                capabilities,
+                Arc::new(
+                    graph_chain_ethereum::EthereumAdapter::new(
+                        logger,
+                        provider.label.clone(),
+                        &web3.url,
+                        transport,
+                        eth_rpc_metrics.clone(),
+                        supports_eip_1898,
+                    )
+                    .await,
+                ),
+                web3.limit_for(&config.node),
+            );
+        }
+    }
+
+    parsed_networks.sort();
+    Ok(parsed_networks)
+}
+
 #[cfg(test)]
 mod test {
-    use crate::chain::create_ethereum_networks;
+    use crate::chain::create_all_ethereum_networks;
     use crate::config::{Config, Opt};
     use graph::log::logger;
     use graph::prelude::tokio;
@@ -462,7 +490,7 @@ mod test {
             prometheus_registry.clone(),
         ));
 
-        let ethereum_networks = create_ethereum_networks(logger, metrics_registry, &config)
+        let ethereum_networks = create_all_ethereum_networks(logger, metrics_registry, &config)
             .await
             .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();

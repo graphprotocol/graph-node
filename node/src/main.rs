@@ -26,7 +26,7 @@ use graph_core::{
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
-    connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
+    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
     create_firehose_networks, create_ipfs_clients, create_substreams_networks,
 };
 use graph_node::config::Config;
@@ -223,7 +223,7 @@ async fn main() {
     let eth_networks = if query_only {
         EthereumNetworks::new()
     } else {
-        create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
+        create_all_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
             .await
             .expect("Failed to parse Ethereum networks")
     };
