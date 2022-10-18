@@ -1179,7 +1179,10 @@ impl PoolCoordinator {
             .ok_or_else(|| constraint_violation!("unknown shard {shard}"))?;
 
         for pool in self.pools.lock().unwrap().values() {
-            pool.remap(server)?;
+            if let Err(e) = pool.remap(server) {
+                error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
+                return Err(e);
+            }
         }
         Ok(())
     }
