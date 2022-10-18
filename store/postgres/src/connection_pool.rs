@@ -1135,6 +1135,8 @@ impl PoolCoordinator {
         fdw_pool_size: Option<u32>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
+        let is_writable = !pool_name.is_replica();
+
         let pool = ConnectionPool::create(
             name,
             pool_name,
@@ -1145,18 +1147,23 @@ impl PoolCoordinator {
             registry,
             self.cheap_clone(),
         );
-        // It is safe to take this lock here since nobody has seen the pool
-        // yet. We remember the `PoolInner` so that later, when we have to
-        // call `remap()`, we do not have to take this lock as that will be
-        // already held in `get_ready()`
-        match &*pool.inner.lock(logger) {
-            PoolState::Created(inner, _) | PoolState::Ready(inner) => {
-                self.pools
-                    .lock()
-                    .unwrap()
-                    .insert(pool.shard.clone(), inner.clone());
+
+        // Ignore non-writable pools (replicas), there is no need (and no
+        // way) to coordinate schema changes with them
+        if is_writable {
+            // It is safe to take this lock here since nobody has seen the pool
+            // yet. We remember the `PoolInner` so that later, when we have to
+            // call `remap()`, we do not have to take this lock as that will be
+            // already held in `get_ready()`
+            match &*pool.inner.lock(logger) {
+                PoolState::Created(inner, _) | PoolState::Ready(inner) => {
+                    self.pools
+                        .lock()
+                        .unwrap()
+                        .insert(pool.shard.clone(), inner.clone());
+                }
+                PoolState::Disabled => { /* nothing to do */ }
             }
-            PoolState::Disabled => { /* nothing to do */ }
         }
         pool
     }
