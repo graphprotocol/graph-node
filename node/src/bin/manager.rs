@@ -440,9 +440,9 @@ pub enum ChainCommand {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum CallCacheCommand {
-    /// Remove call cache of a specified chain
+    /// Remove call cache of the specified chain
     ///
-    /// If block pointers of from and to is not mentioned, then all the call cache will be
+    /// If block pointers of `from` and `to` is not mentioned, then all the call cache will be
     /// removed.
     Remove {
         /// Starting block pointer
