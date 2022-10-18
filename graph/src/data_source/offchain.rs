@@ -55,7 +55,7 @@ impl DataSource {
         *self.done_at.lock().unwrap() = Some(block_no);
     }
 
-    // returns `true` if the data source is processed. 
+    // returns `true` if the data source is processed.
     pub fn is_processed(&self) -> bool {
         self.done_at.lock().unwrap().is_some()
     }
