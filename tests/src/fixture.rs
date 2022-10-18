@@ -472,8 +472,9 @@ impl<C: Blockchain> RuntimeAdapter<C> for NoopRuntimeAdapter<C> {
     }
 }
 
-struct NoopAdapterSelector<C> {
-    x: PhantomData<C>,
+pub struct NoopAdapterSelector<C> {
+    pub x: PhantomData<C>,
+    pub triggers_in_block_sleep: Duration,
 }
 
 impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
@@ -483,12 +484,16 @@ impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
         _capabilities: &<C as Blockchain>::NodeCapabilities,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<C>>, Error> {
-        Ok(Arc::new(NoopTriggersAdapter { x: PhantomData }))
+        Ok(Arc::new(NoopTriggersAdapter {
+            x: PhantomData,
+            triggers_in_block_sleep: self.triggers_in_block_sleep,
+        }))
     }
 }
 
 struct NoopTriggersAdapter<C> {
     x: PhantomData<C>,
+    triggers_in_block_sleep: Duration,
 }
 
 #[async_trait]
@@ -516,6 +521,8 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
         block: <C as Blockchain>::Block,
         _filter: &<C as Blockchain>::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error> {
+        tokio::time::sleep(self.triggers_in_block_sleep).await;
+
         // Return no triggers on data source reprocessing.
         Ok(BlockWithTriggers::new(block, Vec::new()))
     }

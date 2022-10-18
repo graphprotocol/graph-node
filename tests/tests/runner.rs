@@ -1,4 +1,6 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
 use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
@@ -9,7 +11,7 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{CheapClone, SubgraphStore};
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
-use graph_tests::fixture::{self, stores, test_ptr};
+use graph_tests::fixture::{self, stores, test_ptr, NoopAdapterSelector};
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
@@ -142,7 +144,19 @@ async fn file_data_sources() {
         vec![block_0, block_1, block_2, block_3, block_4]
     };
     let stop_block = test_ptr(1);
-    let chain = Arc::new(chain(blocks, &stores).await);
+
+    // This test assumes the file data sources will be processed in the same block in which they are
+    // created. But the test might fail due to a race condition if for some reason it takes longer
+    // than expectd to fetch the file from IPFS. The sleep here will conveniently happen after the
+    // data source is added to the offchain monitor but before the monitor is checked, in an an
+    // attempt to ensure the monitor has enough time to fetch the file.
+    let adapter_selector = NoopAdapterSelector {
+        x: PhantomData,
+        triggers_in_block_sleep: Duration::from_millis(100),
+    };
+    let chain = Arc::new(
+        fixture::ethereum::chain_with_adapter_selector(blocks, &stores, adapter_selector).await,
+    );
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
     ctx.start_and_sync_to(stop_block).await;
 
