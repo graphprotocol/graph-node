@@ -89,6 +89,11 @@ pub struct EnvVars {
     /// Set by the flag `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`. The default value
     /// is 0.
     pub genesis_block_number: u64,
+    // Default behavior is to save all the eth_call response to cache in DB
+    // but the eth_call response sometimes inconsistent that it can return empty
+    // set this env var to false to make it ignore the empty response,
+    // then subgraph can retry to call rpc if it needs
+    pub allow_eth_call_empty_response_cache: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -131,6 +136,7 @@ impl From<Inner> for EnvVars {
             cleanup_blocks: x.cleanup_blocks.0,
             target_triggers_per_block_range: x.target_triggers_per_block_range,
             genesis_block_number: x.genesis_block_number,
+            allow_eth_call_empty_response_cache: x.allow_eth_call_empty_response_cache,
         }
     }
 }
@@ -181,4 +187,6 @@ struct Inner {
     target_triggers_per_block_range: u64,
     #[envconfig(from = "GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER", default = "0")]
     genesis_block_number: u64,
+    #[envconfig(from = "ALLOW_ETH_CALL_EMPTY_RESPONSE_CACHE", default = "true")]
+    allow_eth_call_empty_response_cache: bool,
 }
