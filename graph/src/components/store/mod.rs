@@ -1018,14 +1018,11 @@ pub enum DeploymentSchemaVersion {
 
     /// V1: Dynamic data sources moved to `sgd*.data_sources$`.
     V1 = 1,
-
-    /// V2: offchain data source status tracked using `done` column.
-    V2 = 2,
 }
 
 impl DeploymentSchemaVersion {
     // Latest schema version supported by this version of graph node.
-    pub const LATEST: Self = Self::V2;
+    pub const LATEST: Self = Self::V1;
 
     pub fn private_data_sources(self) -> bool {
         use DeploymentSchemaVersion::*;
@@ -1043,7 +1040,6 @@ impl TryFrom<i32> for DeploymentSchemaVersion {
         match value {
             0 => Ok(Self::V0),
             1 => Ok(Self::V1),
-            2 => Ok(Self::V2),
             _ => Err(StoreError::UnsupportedDeploymentSchemaVersion(value)),
         }
     }

@@ -1,9 +1,3 @@
-use diesel::connection::SimpleConnection as _;
-use diesel::{
-    sql_query,
-    sql_types::{Int4, Nullable, Text},
-    QueryableByName, RunQueryDsl,
-};
 use graph::{
     components::{
         server::index_node::VersionInfo,

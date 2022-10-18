@@ -16,8 +16,3 @@ begin
   end loop;
 end;
 $$;
-
--- update deployment_schema version from 2 to 1
-update deployment_schemas
-   set version = 2
- where version = 1;

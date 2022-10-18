@@ -54,6 +54,11 @@ impl DataSource {
     pub fn mark_processed_at(&self, block_no: i32) {
         *self.done_at.lock().unwrap() = Some(block_no);
     }
+
+    // returns `true` if the data source is processed. 
+    pub fn is_processed(&self) -> bool {
+        self.done_at.lock().unwrap().is_some()
+    }
 }
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
