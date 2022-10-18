@@ -2,7 +2,9 @@
 //! blockchain into Graph Node. A blockchain is represented by an implementation of the `Blockchain`
 //! trait which is the centerpiece of this module.
 
+mod aliases;
 pub mod block_stream;
+mod blockchain_map;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
@@ -10,40 +12,33 @@ pub mod polling_block_stream;
 pub mod substreams_block_stream;
 mod types;
 
-// Try to reexport most of the necessary types
-use crate::{
-    cheap_clone::CheapClone,
-    components::store::{DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::UnifiedMappingApiVersion,
-    data_source,
-    prelude::DataSourceContext,
-    runtime::{gas::GasCounter, AscHeap, HostExportError},
-};
-use crate::{
-    components::{
-        store::{BlockNumber, ChainStore},
-        subgraph::DataSourceTemplateInfo,
-    },
-    prelude::{thiserror::Error, LinkResolver},
-};
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error};
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
-use std::{
-    any::Any,
-    collections::HashMap,
-    fmt::{self, Debug},
-    str::FromStr,
-    sync::Arc,
-};
+use std::{fmt::Debug, str::FromStr, sync::Arc};
 use web3::types::H256;
 
-pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
-pub use types::{BlockHash, BlockPtr, ChainIdentifier};
-
 use self::block_stream::{BlockStream, FirehoseCursor};
+use crate::{
+    cheap_clone::CheapClone,
+    components::{
+        metrics::MetricsRegistry,
+        store::{BlockNumber, ChainStore, DeploymentLocator, StoredDynamicDataSource},
+        subgraph::DataSourceTemplateInfo,
+    },
+    data::subgraph::UnifiedMappingApiVersion,
+    data_source,
+    firehose::FirehoseEndpoints,
+    prelude::{thiserror::Error, DataSourceContext, LinkResolver, LoggerFactory},
+    runtime::{gas::GasCounter, AscHeap, HostExportError},
+};
+
+pub use aliases::{AliasingError, NetworkAliases};
+pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
+pub use blockchain_map::BlockchainMap;
+pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -140,6 +135,18 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
 
     fn is_firehose_supported(&self) -> bool;
+}
+
+pub trait BlockchainCommonBuilder {
+    type Ret;
+
+    fn build(
+        logger_factory: LoggerFactory,
+        name: String,
+        chain_store: Arc<dyn ChainStore>,
+        firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<dyn MetricsRegistry>,
+    ) -> Self::Ret;
 }
 
 #[derive(Error, Debug)]
@@ -279,14 +286,7 @@ pub struct HostFn {
     pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
 }
 
-impl CheapClone for HostFn {
-    fn cheap_clone(&self) -> Self {
-        HostFn {
-            name: self.name,
-            func: self.func.cheap_clone(),
-        }
-    }
-}
+impl CheapClone for HostFn {}
 
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
     fn host_fns(&self, ds: &C::DataSource) -> Result<Vec<HostFn>, Error>;
@@ -297,8 +297,22 @@ pub trait NodeCapabilities<C: Blockchain> {
 }
 
 /// Blockchain technologies supported by Graph Node.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Deserialize,
+    Serialize,
+    strum_macros::Display,
+    strum_macros::EnumString,
+)]
 #[serde(rename_all = "lowercase")]
+#[strum(ascii_case_insensitive)]
 pub enum BlockchainKind {
     /// Arweave chains that are compatible.
     Arweave,
@@ -307,40 +321,13 @@ pub enum BlockchainKind {
     Ethereum,
 
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
+    #[strum(serialize = "NEAR")]
     Near,
 
     /// Cosmos chains
     Cosmos,
 
     Substreams,
-}
-
-impl fmt::Display for BlockchainKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let value = match self {
-            BlockchainKind::Arweave => "arweave",
-            BlockchainKind::Ethereum => "ethereum",
-            BlockchainKind::Near => "near",
-            BlockchainKind::Cosmos => "cosmos",
-            BlockchainKind::Substreams => "substreams",
-        };
-        write!(f, "{}", value)
-    }
-}
-
-impl FromStr for BlockchainKind {
-    type Err = Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "arweave" => Ok(BlockchainKind::Arweave),
-            "ethereum" => Ok(BlockchainKind::Ethereum),
-            "near" => Ok(BlockchainKind::Near),
-            "cosmos" => Ok(BlockchainKind::Cosmos),
-            "substreams" => Ok(BlockchainKind::Substreams),
-            _ => Err(anyhow!("unknown blockchain kind {}", s)),
-        }
-    }
 }
 
 impl BlockchainKind {
@@ -359,30 +346,10 @@ impl BlockchainKind {
             .and_then(|kind| kind.as_str())
             .and_then(|kind| kind.split('/').next())
             .context("invalid manifest")
-            .and_then(BlockchainKind::from_str)
-    }
-}
-
-/// A collection of blockchains, keyed by `BlockchainKind` and network.
-#[derive(Default, Debug, Clone)]
-pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
-
-impl BlockchainMap {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn insert<C: Blockchain>(&mut self, network: String, chain: Arc<C>) {
-        self.0.insert((C::KIND, network), chain);
-    }
-
-    pub fn get<C: Blockchain>(&self, network: String) -> Result<Arc<C>, Error> {
-        self.0
-            .get(&(C::KIND, network.clone()))
-            .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?
-            .cheap_clone()
-            .downcast()
-            .map_err(|_| anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND))
+            .and_then(|s| {
+                BlockchainKind::from_str(s)
+                    .map_err(|_| anyhow::anyhow!("Unknown blockchain kind {}", s))
+            })
     }
 }
 

@@ -11,8 +11,8 @@ use graph::{
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainKind, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait,
+        Block as _, BlockHash, BlockPtr, Blockchain, BlockchainCommonBuilder, BlockchainKind,
+        IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
@@ -42,8 +42,10 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-impl Chain {
-    pub fn new(
+impl BlockchainCommonBuilder for Chain {
+    type Ret = Self;
+
+    fn build(
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,

@@ -1,4 +1,4 @@
-use graph::blockchain::BlockchainKind;
+use graph::blockchain::{BlockchainCommonBuilder, BlockchainKind};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
@@ -97,6 +97,27 @@ pub struct Chain {
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "chain: near")
+    }
+}
+
+impl BlockchainCommonBuilder for Chain {
+    type Ret = Self;
+
+    fn build(
+        logger_factory: LoggerFactory,
+        name: String,
+        chain_store: Arc<dyn ChainStore>,
+        firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
+        Chain::new(
+            logger_factory,
+            name,
+            chain_store,
+            firehose_endpoints,
+            metrics_registry,
+            Arc::new(NearStreamBuilder {}),
+        )
     }
 }
 

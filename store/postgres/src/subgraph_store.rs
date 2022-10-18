@@ -64,13 +64,15 @@ lazy_static! {
 const SITES_CACHE_TTL: Duration = Duration::from_secs(120);
 
 impl Shard {
+    const MAX_LENGTH: usize = 30;
+
     pub fn new(name: String) -> Result<Self, StoreError> {
         if name.is_empty() {
             return Err(StoreError::InvalidIdentifier(format!(
                 "shard names must not be empty"
             )));
         }
-        if name.len() > 30 {
+        if name.len() > Self::MAX_LENGTH {
             return Err(StoreError::InvalidIdentifier(format!(
                 "shard names can be at most 30 characters, but `{}` has {} characters",
                 name,

@@ -215,7 +215,7 @@ impl<S: Store> IndexNodeResolver<S> {
 
         macro_rules! try_resolve_for_chain {
             ( $typ:path ) => {
-                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
+                let blockchain = self.blockchain_map.get::<$typ>(&network).ok();
 
                 if let Some(blockchain) = blockchain {
                     debug!(
@@ -256,7 +256,7 @@ impl<S: Store> IndexNodeResolver<S> {
 
         // If you're adding support for a new chain and this `match` clause just
         // gave you a compiler error, then this message is for you! You need to
-        // add a new `try_resolve!` macro invocation above for your new chain
+        // add a new `try_resolve_for_chain!` macro invocation above for your new chain
         // type.
         match BlockchainKind::Ethereum {
             // Note: we don't actually care about substreams here.
@@ -285,7 +285,7 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let chain = if let Ok(c) = self
             .blockchain_map
-            .get::<graph_chain_ethereum::Chain>(network.clone())
+            .get::<graph_chain_ethereum::Chain>(&network)
         {
             c
         } else {

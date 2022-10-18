@@ -276,7 +276,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         let chain = self
             .chains
-            .get::<C>(network.clone())
+            .get::<C>(&network)
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 

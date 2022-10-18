@@ -1,6 +1,6 @@
 use graph::{
     anyhow::Error,
-    blockchain::BlockchainKind,
+    blockchain::{AliasingError, BlockchainKind, NetworkAliases},
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info,
@@ -171,6 +171,16 @@ impl Config {
             NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
+    }
+
+    pub fn network_aliases(&self) -> Result<NetworkAliases, AliasingError> {
+        let mut aliases = NetworkAliases::built_ins();
+        for (network_name, network) in self.chains.chains.iter() {
+            for alias in &network.aliases {
+                aliases.insert(network_name, Some(&alias))?;
+            }
+        }
+        Ok(aliases)
     }
 
     fn from_opt(opt: &Opt) -> Result<Config> {
@@ -482,6 +492,7 @@ impl ChainSection {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
                     providers: vec![],
+                    aliases: vec![],
                 });
                 entry.providers.push(provider);
             }
@@ -497,6 +508,7 @@ pub struct Chain {
     pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+    pub aliases: Vec<String>,
 }
 
 fn default_blockchain_kind() -> BlockchainKind {
@@ -1138,6 +1150,7 @@ mod tests {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
                 providers: vec![],
+                aliases: vec![],
             },
             actual
         );
@@ -1159,6 +1172,7 @@ mod tests {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
                 providers: vec![],
+                aliases: vec![],
             },
             actual
         );

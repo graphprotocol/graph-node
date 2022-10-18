@@ -5,7 +5,9 @@ use ethereum::{
 };
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
-use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
+use graph::blockchain::{
+    Block as BlockchainBlock, Blockchain, BlockchainCommonBuilder, BlockchainKind, BlockchainMap,
+};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
@@ -38,7 +40,6 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
-use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -110,13 +111,6 @@ async fn main() {
         graph::env::UNSAFE_CONFIG.store(true, atomic::Ordering::SeqCst);
     }
 
-    if !graph_server_index_node::PoiProtection::from_env(&ENV_VARS).is_active() {
-        warn!(
-            logger,
-            "GRAPH_POI_ACCESS_TOKEN not set; might leak POIs to the public via GraphQL"
-        );
-    }
-
     let config = match Config::load(&logger, &opt.clone().into()) {
         Err(e) => {
             eprintln!("configuration error: {}", e);
@@ -131,6 +125,13 @@ async fn main() {
         }
         eprintln!("Successfully validated configuration");
         std::process::exit(0);
+    }
+
+    if !graph_server_index_node::PoiProtection::from_env(&ENV_VARS).is_active() {
+        warn!(
+            logger,
+            "GRAPH_POI_ACCESS_TOKEN not set; might leak POIs to the public via GraphQL"
+        );
     }
 
     let node_id = NodeId::new(opt.node_id.clone())
@@ -242,8 +243,6 @@ async fn main() {
 
     let graphql_metrics_registry = metrics_registry.clone();
 
-    let contention_logger = logger.clone();
-
     // TODO: make option loadable from configuration TOML and environment:
     let expensive_queries =
         read_expensive_queries(&logger, opt.expensive_queries_filename).unwrap();
@@ -257,6 +256,8 @@ async fn main() {
     )
     .await;
 
+    spawn_contention_checker(logger.clone(), ENV_VARS.kill_if_unresponsive);
+
     let launch_services = |logger: Logger| async move {
         let subscription_manager = store_builder.subscription_manager();
         let chain_head_update_listener = store_builder.chain_head_update_listener();
@@ -265,7 +266,8 @@ async fn main() {
         // To support the ethereum block ingestor, ethereum networks are referenced both by the
         // `blockchain_map` and `ethereum_chains`. Future chains should be referred to only in
         // `blockchain_map`.
-        let mut blockchain_map = BlockchainMap::new();
+        let network_aliases = config.network_aliases().expect("Invalid network aliases");
+        let mut blockchain_map = BlockchainMap::new(network_aliases);
 
         let (arweave_networks, arweave_idents) = connect_firehose_networks::<ArweaveBlock>(
             &logger,
@@ -304,7 +306,7 @@ async fn main() {
 
         let network_store = store_builder.network_store(network_identifiers);
 
-        let arweave_chains = arweave_networks_as_chains(
+        let arweave_chains = networks_as_chains::<arweave::Chain>(
             &mut blockchain_map,
             &logger,
             &arweave_networks,
@@ -327,7 +329,7 @@ async fn main() {
             metrics_registry.clone(),
         );
 
-        let near_chains = near_networks_as_chains(
+        let near_chains = networks_as_chains::<near::Chain>(
             &mut blockchain_map,
             &logger,
             &near_networks,
@@ -336,7 +338,7 @@ async fn main() {
             metrics_registry.clone(),
         );
 
-        let cosmos_chains = cosmos_networks_as_chains(
+        let cosmos_chains = networks_as_chains::<cosmos::Chain>(
             &mut blockchain_map,
             &logger,
             &cosmos_networks,
@@ -544,52 +546,61 @@ async fn main() {
 
     graph::spawn(launch_services(logger.clone()));
 
-    // Periodically check for contention in the tokio threadpool. First spawn a
-    // task that simply responds to "ping" requests. Then spawn a separate
-    // thread to periodically ping it and check responsiveness.
-    let (ping_send, mut ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
-    graph::spawn(async move {
-        while let Some(pong_send) = ping_receive.recv().await {
-            let _ = pong_send.clone().send(());
-        }
-        panic!("ping sender dropped");
-    });
+    futures::future::pending::<()>().await;
+}
+
+/// Periodically check for contention in the tokio threadpool. First spawn a
+/// task that simply responds to "ping" requests. Then spawn a separate
+/// thread to periodically ping it and check responsiveness.
+fn spawn_contention_checker(logger: Logger, kill_if_unresponsive: bool) {
+    let (ping_sender, mut ping_receiver) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
+    let interval_between_pings = Duration::from_secs(1);
+    let initial_timeout = Duration::from_millis(10);
+    let max_timeout = Duration::from_secs(10);
+
     std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
+        std::thread::sleep(interval_between_pings);
         let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
-        if futures::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
-            debug!(contention_logger, "Shutting down contention checker thread");
+        let mut timeout = initial_timeout;
+        if futures::executor::block_on(ping_sender.clone().send(pong_send)).is_err() {
+            debug!(logger, "Shutting down contention checker thread");
             break;
         }
-        let mut timeout = Duration::from_millis(10);
         while pong_receive.recv_timeout(timeout)
             == Err(crossbeam_channel::RecvTimeoutError::Timeout)
         {
-            debug!(contention_logger, "Possible contention in tokio threadpool";
+            debug!(logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
-            if timeout < Duration::from_secs(10) {
+            if timeout < max_timeout {
                 timeout *= 10;
-            } else if ENV_VARS.kill_if_unresponsive {
+            } else if kill_if_unresponsive {
                 // The node is unresponsive, kill it in hopes it will be restarted.
-                crit!(contention_logger, "Node is unresponsive, killing process");
+                crit!(logger, "Node is unresponsive, killing process");
                 std::process::abort()
             }
         }
     });
 
-    futures::future::pending::<()>().await;
+    graph::spawn(async move {
+        while let Some(pong_send) = ping_receiver.recv().await {
+            let _ = pong_send.clone().send(());
+        }
+        panic!("ping sender dropped");
+    });
 }
 
-/// Return the hashmap of Arweave chains and also add them to `blockchain_map`.
-fn arweave_networks_as_chains(
+fn networks_as_chains<C>(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<arweave::Chain>> {
+) -> HashMap<String, FirehoseChain<C>>
+where
+    C: Blockchain + BlockchainCommonBuilder<Ret = C>,
+{
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
@@ -601,7 +612,9 @@ fn arweave_networks_as_chains(
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for Arweave chain {}; ignoring this chain", chain_id
+                        "No store configured for {} chain {}; ignoring this chain",
+                        C::KIND.to_string(),
+                        chain_id
                     );
                     None
                 })
@@ -610,7 +623,7 @@ fn arweave_networks_as_chains(
             (
                 chain_id.clone(),
                 FirehoseChain {
-                    chain: Arc::new(arweave::Chain::new(
+                    chain: Arc::new(C::build(
                         logger_factory.clone(),
                         chain_id.clone(),
                         chain_store,
@@ -624,7 +637,7 @@ fn arweave_networks_as_chains(
         .collect();
 
     for (chain_id, firehose_chain) in chains.iter() {
-        blockchain_map.insert::<arweave::Chain>(chain_id.clone(), firehose_chain.chain.clone())
+        blockchain_map.insert::<C>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
@@ -731,106 +744,6 @@ fn ethereum_networks_as_chains(
     HashMap::from_iter(chains)
 }
 
-fn cosmos_networks_as_chains(
-    blockchain_map: &mut BlockchainMap,
-    logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
-    store: &Store,
-    logger_factory: &LoggerFactory,
-    metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<cosmos::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(network_name, firehose_endpoints)| {
-            store
-                .block_store()
-                .chain_store(network_name)
-                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for Cosmos chain {}; ignoring this chain",
-                        network_name
-                    );
-                    None
-                })
-        })
-        .map(|(network_name, chain_store, firehose_endpoints)| {
-            (
-                network_name.clone(),
-                FirehoseChain {
-                    chain: Arc::new(cosmos::Chain::new(
-                        logger_factory.clone(),
-                        network_name.clone(),
-                        chain_store,
-                        firehose_endpoints.clone(),
-                        metrics_registry.clone(),
-                    )),
-                    firehose_endpoints: firehose_endpoints.clone(),
-                },
-            )
-        })
-        .collect();
-
-    for (network_name, firehose_chain) in chains.iter() {
-        blockchain_map.insert::<cosmos::Chain>(network_name.clone(), firehose_chain.chain.clone())
-    }
-
-    HashMap::from_iter(chains)
-}
-
-/// Return the hashmap of NEAR chains and also add them to `blockchain_map`.
-fn near_networks_as_chains(
-    blockchain_map: &mut BlockchainMap,
-    logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
-    store: &Store,
-    logger_factory: &LoggerFactory,
-    metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<near::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(chain_id, endpoints)| {
-            store
-                .block_store()
-                .chain_store(chain_id)
-                .map(|chain_store| (chain_id, chain_store, endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for NEAR chain {}; ignoring this chain", chain_id
-                    );
-                    None
-                })
-        })
-        .map(|(chain_id, chain_store, endpoints)| {
-            (
-                chain_id.clone(),
-                FirehoseChain {
-                    chain: Arc::new(near::Chain::new(
-                        logger_factory.clone(),
-                        chain_id.clone(),
-                        chain_store,
-                        endpoints.clone(),
-                        metrics_registry.clone(),
-                        Arc::new(NearStreamBuilder {}),
-                    )),
-                    firehose_endpoints: endpoints.clone(),
-                },
-            )
-        })
-        .collect();
-
-    for (chain_id, firehose_chain) in chains.iter() {
-        blockchain_map
-            .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
-    }
-
-    HashMap::from_iter(chains)
-}
-
 fn start_block_ingestor(
     logger: &Logger,
     logger_factory: &LoggerFactory,
@@ -897,6 +810,14 @@ fn start_block_ingestor(
 struct FirehoseChain<C: Blockchain> {
     chain: Arc<C>,
     firehose_endpoints: FirehoseEndpoints,
+}
+
+trait RunWithAnyBlockchain<I> {
+    type Output;
+
+    fn run<C>(args: I) -> Self::Output
+    where
+        C: Blockchain;
 }
 
 fn start_firehose_block_ingestor<C, M>(

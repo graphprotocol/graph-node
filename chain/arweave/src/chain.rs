@@ -1,4 +1,4 @@
-use graph::blockchain::{Block, BlockchainKind};
+use graph::blockchain::{Block, BlockchainCommonBuilder, BlockchainKind};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
@@ -44,8 +44,10 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-impl Chain {
-    pub fn new(
+impl BlockchainCommonBuilder for Chain {
+    type Ret = Self;
+
+    fn build(
         logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,

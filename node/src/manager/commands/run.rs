@@ -143,8 +143,9 @@ pub async fn run(
         true,
     );
 
-    let mut blockchain_map = BlockchainMap::new();
-    blockchain_map.insert(network_name.clone(), Arc::new(chain));
+    let network_aliases = config.network_aliases()?;
+    let mut blockchain_map = BlockchainMap::new(network_aliases);
+    blockchain_map.insert(&network_name, Arc::new(chain));
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
