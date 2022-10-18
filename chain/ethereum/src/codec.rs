@@ -244,7 +244,12 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
                     gas_used: U256::from(header.gas_used),
                     gas_limit: U256::from(header.gas_limit),
-                    base_fee_per_gas: None,
+                    base_fee_per_gas: Some(
+                        header
+                            .base_fee_per_gas
+                            .as_ref()
+                            .map_or_else(|| U256::default(), |v| v.into()),
+                    ),
                     extra_data: Bytes::from(header.extra_data.clone()),
                     logs_bloom: match &header.logs_bloom.len() {
                         0 => None,
