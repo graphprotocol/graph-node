@@ -6,7 +6,11 @@
 - [Unused Record](#unused-record)
 - [Unused Remove](#unused-remove)
 - [Drop](#drop)
+<<<<<<< HEAD
 - [Chain Check Blocks](#check-blocks)
+=======
+- [Chain Call Cache](#call-cache)
+>>>>>>> d0434b2b5 (add docs)
 
 <a id="info"></a>
 # ⌘ Info
@@ -289,6 +293,7 @@ Stop, unassign and delete all indexed data from a specific deployment by its sub
 
     graphman --config config.toml drop autor/subgraph-name
 
+<<<<<<< HEAD
 <a id="check-blocks"></a>
 # ⌘ Check Blocks
 
@@ -362,3 +367,34 @@ Inspect a block range, deleting any duplicated blocks:
 Inspect all blocks after block `13000000`:
 
     graphman --config config.toml chain check-blocks mainnet by-range --from 13000000
+=======
+<a id="call-cache"></a>
+# ⌘ Call Cache
+
+### SYNOPSIS
+
+Execute operations on call cache
+
+USAGE:
+    graphman chain call-cache <CHAIN_NAME> <SUBCOMMAND>
+
+ARGS:
+    <CHAIN_NAME>    Chain name (must be an existing chain, see 'chain list')
+
+OPTIONS:
+    -h, --help    Print help information
+
+SUBCOMMANDS:
+    help      Print this message or the help of the given subcommand(s)
+    remove    Remove call cache of a specified chain
+
+### DESCRIPTION
+
+Remove call cache of a specified chain
+
+### EXAMPLES
+
+Remove call cache by specifying its `from` and `to` block pointer.
+
+    graphman --config config.toml chain call-cache ethereum remove --from 10 --to 20
+>>>>>>> d0434b2b5 (add docs)
