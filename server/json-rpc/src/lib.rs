@@ -83,11 +83,6 @@ struct ServerState<R> {
 }
 
 impl<R: SubgraphRegistrar> ServerState<R> {
-    const DEPLOY_ERROR: i64 = 0;
-    const REMOVE_ERROR: i64 = 1;
-    const CREATE_ERROR: i64 = 2;
-    const REASSIGN_ERROR: i64 = 3;
-
     /// Handler for the `subgraph_create` endpoint.
     async fn create_handler(&self, params: SubgraphCreateParams) -> JsonRpcResult<JsonValue> {
         info!(&self.logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
@@ -100,7 +95,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 &self.logger,
                 "subgraph_create",
                 e,
-                Self::CREATE_ERROR,
+                ErrorCode::Create,
                 params,
             )),
         }
@@ -131,7 +126,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 &self.logger,
                 "subgraph_deploy",
                 e,
-                Self::DEPLOY_ERROR,
+                ErrorCode::Deploy,
                 params,
             )),
         }
@@ -147,7 +142,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 &self.logger,
                 "subgraph_remove",
                 e,
-                Self::REMOVE_ERROR,
+                ErrorCode::Remove,
                 params,
             )),
         }
@@ -167,18 +162,26 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 &self.logger,
                 "subgraph_reassign",
                 e,
-                Self::REASSIGN_ERROR,
+                ErrorCode::Reassign,
                 params,
             )),
         }
     }
 }
 
+#[repr(i32)]
+enum ErrorCode {
+    Deploy = 0,
+    Remove = 1,
+    Create = 2,
+    Reassign = 3,
+}
+
 fn json_rpc_error(
     logger: &Logger,
     operation: &str,
     e: SubgraphRegistrarError,
-    code: i64,
+    code: ErrorCode,
     params: impl std::fmt::Debug,
 ) -> JsonRpcError {
     error!(logger, "{} failed", operation;
