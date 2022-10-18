@@ -570,7 +570,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
 
     let network_name = manifest.network_name();
 
-    // TODO: aliasing here.
     let chain = chains
         .get::<C>(&network_name)
         .map_err(SubgraphRegistrarError::NetworkNotSupported)?

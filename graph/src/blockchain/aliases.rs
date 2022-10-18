@@ -40,18 +40,20 @@ impl NetworkAliases {
         alias_of: Option<&str>,
     ) -> Result<(), AliasingError> {
         if let Some(alias_of) = alias_of {
-            let chain_id = self
+            let network_id = *self
                 .network_ids
                 .get(alias_of)
                 .ok_or_else(|| AliasingError::AliasDoesNotExist(alias_of.to_string()))?;
+            self.network_ids.insert(network.to_string(), network_id);
             self.aliases
-                .entry(*chain_id)
+                .entry(network_id)
                 .or_default()
                 .push(network.to_string());
         } else {
             self.network_ids
                 .insert(network.to_string(), self.next_network_id);
-            self.aliases.insert(self.next_network_id, vec![]);
+            self.aliases
+                .insert(self.next_network_id, vec![network.to_string()]);
             self.next_network_id += 1;
         }
 
@@ -60,11 +62,11 @@ impl NetworkAliases {
 
     /// Returns the first ever registered alias of `chain`.
     pub fn original_alias_of(&self, chain: &str) -> Result<&str, AliasingError> {
-        let chain_id = self
+        let network_id = self
             .network_ids
             .get(chain)
             .ok_or_else(|| AliasingError::AliasDoesNotExist(chain.to_string()))?;
-        Ok(self.aliases[chain_id][0].as_str())
+        Ok(self.aliases[network_id][0].as_str())
     }
 
     /// Checks whether `network1` and `network2` refer to the same chain.
@@ -78,13 +80,6 @@ impl NetworkAliases {
             .get(network2)
             .ok_or_else(|| AliasingError::AliasDoesNotExist(network2.to_owned()))?;
         Ok(network1_id == network2_id)
-    }
-
-    /// Idempotent removal.
-    pub fn remove(&mut self, network: &str) {
-        let network_id = *self.network_ids.get(network).unwrap_or(&0);
-        self.aliases.remove(&network_id);
-        self.network_ids.remove(network);
     }
 }
 

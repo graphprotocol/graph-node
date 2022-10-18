@@ -106,7 +106,8 @@ pub struct TestContext {
             SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
         >,
     >,
-    pub store: Arc<SubgraphStore>,
+    pub store: Arc<Store>,
+    pub sg_store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
     graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
@@ -119,9 +120,14 @@ impl TestContext {
             .await
             .expect("unable to start subgraph");
 
-        wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
-            .await
-            .unwrap();
+        wait_for_sync(
+            &self.logger,
+            &self.sg_store,
+            &self.deployment.hash,
+            stop_block,
+        )
+        .await
+        .unwrap();
     }
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
@@ -146,7 +152,7 @@ impl TestContext {
 
 impl Drop for TestContext {
     fn drop(&mut self) {
-        if let Err(e) = cleanup(&self.store, &self.subgraph_name, &self.deployment.hash) {
+        if let Err(e) = cleanup(&self.sg_store, &self.subgraph_name, &self.deployment.hash) {
             crit!(self.logger, "error cleaning up test subgraph"; "error" => e.to_string());
         }
     }
@@ -312,7 +318,8 @@ pub async fn setup<C: Blockchain>(
     TestContext {
         logger: logger_factory.subgraph_logger(&deployment),
         provider: subgraph_provider,
-        store: subgraph_store,
+        store: stores.network_store.clone(),
+        sg_store: subgraph_store,
         deployment,
         subgraph_name,
         graphql_runner,
