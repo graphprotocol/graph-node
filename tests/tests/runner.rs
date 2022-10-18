@@ -46,6 +46,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
         chain.clone(),
         None,
         None,
+        None,
     )
     .await;
 
@@ -71,6 +72,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
         &stores,
         chain,
         graft_block,
+        None,
         None,
     )
     .await;
@@ -119,7 +121,16 @@ async fn typename() -> anyhow::Result<()> {
 
     let stores = stores("./integration-tests/config.simple.toml").await;
     let chain = Arc::new(chain(blocks, &stores).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        None,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -251,6 +262,7 @@ async fn template_static_filters_false_positives() {
         chain,
         None,
         Some(env_vars),
+        None,
     )
     .await;
     ctx.start_and_sync_to(stop_block).await;
@@ -277,7 +289,8 @@ async fn template_static_filters_false_positives() {
 
 #[tokio::test]
 async fn deploy_on_aliased_network() {
-    let stores = stores("./integration-tests/config.aliased-network.toml").await;
+    let config_path = "./integration-tests/config.aliased-network.toml";
+    let stores = stores(config_path).await;
 
     let subgraph_name = SubgraphName::new("deploy-on-aliased-network").unwrap();
     let hash = {
@@ -294,7 +307,16 @@ async fn deploy_on_aliased_network() {
     let stop_block = test_ptr(1);
     let chain = Arc::new(chain(blocks, &stores).await);
 
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        None,
+        None,
+        Some(config_path),
+    )
+    .await;
     ctx.start_and_sync_to(stop_block).await;
 
     let status_filter = status::Filter::SubgraphName(subgraph_name.to_string());

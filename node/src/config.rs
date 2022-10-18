@@ -113,6 +113,7 @@ impl Config {
             shard.validate(&key)?;
         }
         self.deployment.validate()?;
+        self.network_aliases()?;
 
         // Check that deployment rules only reference existing stores and chains
         for (i, rule) in self.deployment.rules.iter().enumerate() {
@@ -508,6 +509,7 @@ pub struct Chain {
     pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+    #[serde(default)]
     pub aliases: Vec<String>,
 }
 

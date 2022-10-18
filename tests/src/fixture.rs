@@ -224,10 +224,17 @@ pub async fn setup<C: Blockchain>(
     chain: Arc<C>,
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
+    config_path: Option<&str>,
 ) -> TestContext {
-    let env_vars = match env_vars {
-        Some(ev) => ev,
-        None => EnvVars::from_env().unwrap(),
+    let env_vars = env_vars.unwrap_or_else(|| EnvVars::from_env().unwrap());
+
+    let network_aliases = if let Some(config_path) = config_path {
+        let config_raw = read_to_string(config_path).await.unwrap();
+        let config =
+            Config::from_str(&config_raw, NODE_ID).expect("failed to create configuration");
+        config.network_aliases().unwrap()
+    } else {
+        NetworkAliases::built_ins()
     };
 
     let logger = graph::log::logger(true);
@@ -239,8 +246,7 @@ pub async fn setup<C: Blockchain>(
     let subgraph_store = stores.network_store.subgraph_store();
     cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
-    let chain_aliases = NetworkAliases::built_ins();
-    let mut blockchain_map = BlockchainMap::new(chain_aliases);
+    let mut blockchain_map = BlockchainMap::new(network_aliases);
     blockchain_map.insert(stores.network_name.clone(), chain);
 
     let static_filters = env_vars.experimental_static_filters;

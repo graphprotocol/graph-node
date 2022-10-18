@@ -9,7 +9,7 @@ use std::{
 use super::{aliases::NetworkAliases, Blockchain};
 use crate::prelude::CheapClone;
 
-/// A collection of blockchains, keyed by [`BlockchainKind`] and chain name.
+/// A collection of blockchains, with aliasing support.
 #[derive(Default, Debug, Clone)]
 pub struct BlockchainMap {
     // Using `Cow` instead of `String` allows for retrievals using `&str`.
