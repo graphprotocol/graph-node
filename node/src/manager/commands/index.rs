@@ -5,7 +5,9 @@ use graph::{
     prelude::{anyhow, StoreError},
 };
 use graph_store_postgres::{
-    command_support::index::CreateIndex, connection_pool::ConnectionPool, SubgraphStore,
+    command_support::index::{CreateIndex, Method},
+    connection_pool::ConnectionPool,
+    SubgraphStore,
 };
 use std::io::Write as _;
 use std::{collections::HashSet, sync::Arc};
@@ -33,6 +35,8 @@ pub async fn create(
     validate_fields(&field_names)?;
     let deployment_locator = search.locate_unique(&pool)?;
     println!("Index creation started. Please wait.");
+    let index_method = Method::try_from(index_method.as_str())
+        .map_err(|_| anyhow!("unknown index method `{}`", index_method))?;
     match store
         .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
         .await

@@ -40,7 +40,7 @@ use crate::{
     deployment::SubgraphHealth,
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
-    relational::Layout,
+    relational::{index::Method, Layout},
     writable::WritableStore,
     NotificationSender,
 };
@@ -1067,7 +1067,7 @@ impl SubgraphStoreInner {
         deployment: &DeploymentLocator,
         entity_name: &str,
         field_names: Vec<String>,
-        index_method: String,
+        index_method: Method,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store

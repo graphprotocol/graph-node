@@ -33,14 +33,25 @@ impl Display for Method {
 
 impl Method {
     fn parse(method: String) -> Self {
+        match Self::try_from(method.as_str()) {
+            Ok(m) => m,
+            Err(_) => Method::Unknown(method),
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a str> for Method {
+    type Error = &'a str;
+
+    fn try_from(method: &'a str) -> Result<Self, Self::Error> {
         use Method::*;
 
-        match method.as_str() {
-            "brin" => Brin,
-            "btree" => BTree,
-            "gin" => Gin,
-            "gist" => Gist,
-            _ => Unknown(method),
+        match method {
+            "brin" => Ok(Brin),
+            "btree" => Ok(BTree),
+            "gin" => Ok(Gin),
+            "gist" => Ok(Gist),
+            _ => Err(method),
         }
     }
 }

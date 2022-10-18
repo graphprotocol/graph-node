@@ -78,7 +78,7 @@ pub mod command_support {
         };
     }
     pub mod index {
-        pub use crate::relational::index::CreateIndex;
+        pub use crate::relational::index::{CreateIndex, Method};
     }
     pub use crate::primary::Namespace;
     pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};
