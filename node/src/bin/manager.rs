@@ -446,8 +446,10 @@ pub enum CallCacheCommand {
     /// removed.
     Remove {
         /// Starting block pointer
+        #[clap(long, short)]
         from: Option<i32>,
         /// Ending block pointer
+        #[clap(long, short)]
         to: Option<i32>,
     },
 }
