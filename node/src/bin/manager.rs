@@ -531,7 +531,24 @@ pub enum DatabaseCommand {
     /// other shards. It makes it possible to fix these mappings when a
     /// database migration was interrupted before it could rebuild the
     /// mappings
-    Remap,
+    ///
+    /// Each shard imports certain tables from all other shards. To recreate
+    /// the mappings in a given shard, use `--dest SHARD`, to recreate the
+    /// mappings in other shards that depend on a shard, use `--source
+    /// SHARD`. Without `--dest` and `--source` options, recreate all
+    /// possible mappings. Recreating mappings needlessly is harmless, but
+    /// might take quite a bit of time with a lot of shards.
+    Remap {
+        /// Only refresh mappings from SOURCE
+        #[clap(long, short)]
+        source: Option<String>,
+        /// Only refresh mappings inside DEST
+        #[clap(long, short)]
+        dest: Option<String>,
+        /// Continue remapping even when one operation fails
+        #[clap(long, short)]
+        force: bool,
+    },
 }
 #[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
@@ -1141,9 +1158,13 @@ async fn main() -> anyhow::Result<()> {
                     println!("All database migrations have been applied");
                     Ok(())
                 }
-                DatabaseCommand::Remap => {
+                DatabaseCommand::Remap {
+                    source,
+                    dest,
+                    force,
+                } => {
                     let store_builder = ctx.store_builder().await;
-                    commands::database::remap(&store_builder.coord).await
+                    commands::database::remap(&store_builder.coord, source, dest, force).await
                 }
             }
         }
