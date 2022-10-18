@@ -29,7 +29,7 @@ async fn main() -> Result<(), Error> {
         .init();
 
     let cursor: Option<String> = None;
-    let token_env = env_var("SF_API_TOKEN", "".to_string());
+    let token_env = env_var("SUBSTREAMS_API_TOKEN", "".to_string());
 
     // With n = 100 it reliably works in my testing.
     // With n = 101, a connection would often hang in a debug build, but not in a release build.
@@ -45,6 +45,7 @@ async fn main() -> Result<(), Error> {
         "firehose",
         "https://mainnet.near.streamingfast.io",
         token.clone(),
+        false,
         false,
         // Adding more conns here does not help, it seems only one is ever used.
         1,
