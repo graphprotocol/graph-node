@@ -1,0 +1,279 @@
+name: Kyber CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: full
+  THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
+  IMAGE_REPOSITORY: asia.gcr.io/kyber-operation/foundation/graph-node
+
+jobs:
+  unit-tests:
+    name: Run unit tests
+    if: github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        rust: ["stable"]
+    runs-on: ["ubuntu-latest"]
+    services:
+      ipfs:
+        image: ipfs/go-ipfs:v0.10.0
+        ports:
+          - 5001:5001
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: graph_node_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache cargo registry
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Install rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+
+      - name: Install lld
+        run: sudo apt-get install -y lld
+
+      - name: Run unit tests
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+        with:
+          command: test
+          args: --verbose --workspace --exclude graph-tests -- --nocapture
+
+  # runner-tests:
+  #   name: Subgraph Runner integration tests
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       rust: ["stable"]
+  #   runs-on: ["self-hosted"]
+  #   services:
+  #     ipfs:
+  #       image: ipfs/go-ipfs:v0.10.0
+  #       ports:
+  #         - 5001:5001
+  #     postgres:
+  #       image: postgres
+  #       env:
+  #         POSTGRES_PASSWORD: postgres
+  #         POSTGRES_DB: graph_node_test
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
+
+  #     - name: Cache cargo registry
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #         key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+  #     - name: Install rust toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         profile: minimal
+  #         toolchain: ${{ matrix.rust }}
+  #         override: true
+
+  #     - name: Install lld
+  #       run: sudo apt-get install -y lld
+
+  #     - name: Run runner tests
+  #       id: runner-tests-1
+  #       uses: actions-rs/cargo@v1
+  #       env:
+  #         RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests -- --skip parallel_integration_tests
+
+  # integration-tests:
+  #   name: Run integration tests
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       rust: ["stable"]
+  #   runs-on: ["self-hosted"]
+
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
+
+  #     - name: Cache cargo registry
+  #       uses: actions/cache@v2
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #         key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+  #     - name: Install Node 14
+  #       uses: actions/setup-node@v2
+  #       with:
+  #         node-version: "14"
+
+  #     - name: Install rust toolchain
+  #       uses: actions-rs/toolchain@v1
+  #       with:
+  #         profile: minimal
+  #         toolchain: ${{ matrix.rust }}
+  #         override: true
+
+  #     - name: Install lld and jq
+  #       run: sudo apt-get install -y lld jq
+
+  #     - name: Build graph-node
+  #       env:
+  #         RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: build
+
+  #     # Integration tests are a bit flaky, running them twice increases the
+  #     # chances of one run succeeding
+  #     - name: Run integration tests (round 1)
+  #       id: integration-tests-1
+  #       uses: actions-rs/cargo@v1
+  #       env:
+  #         RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #         N_CONCURRENT_TESTS: "1"
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
+  #       continue-on-error: true
+  #     - name: Run integration tests (round 2)
+  #       id: integration-tests-2
+  #       uses: actions-rs/cargo@v1
+  #       if: ${{ steps.integration-tests-1.outcome == 'failure' }}
+  #       env:
+  #         RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #         N_CONCURRENT_TESTS: "1"
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
+
+  rustfmt:
+    name: Check rustfmt style
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        rust: ["stable"]
+    runs-on: ["ubuntu-latest"]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          components: rustfmt
+          override: true
+
+      - name: Check formatting
+        uses: actions-rs/cargo@v1
+        env:
+          RUSTFLAGS: "-D warnings"
+        with:
+          command: fmt
+          args: --all -- --check
+
+  docker:
+    runs-on: ["ubuntu-latest"]
+    needs: ["unit-tests", "rustfmt"]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/release')
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: prepare
+        id: before_script
+        run: |
+          #!/bin/bash
+          if [[ "$IMAGE_REPOSITORY" == "" ]]; then
+            echo "IMAGE_REPOSITORY must be define."
+            exit 1
+          fi
+          BRANCH_NAME=$(echo ${GITHUB_REF#refs/heads/})
+          IMAGE_TAG=""
+          if [[ "${BRANCH_NAME}" == "main" || "${BRANCH_NAME}" == "master" ]]; then
+            IMAGE_TAG=${BRANCH_NAME}-$(echo ${GITHUB_SHA::7})
+          elif [[ "${BRANCH_NAME}" == release-* ]]; then
+            IMAGE_TAG=${BRANCH_NAME}.${GITHUB_RUN_NUMBER}
+          else
+            echo "Docker build only happens in branch 'main' or 'release-*'"
+            exit 0
+          fi
+          echo "::set-output name=BRANCH_NAME::${BRANCH_NAME}"
+          echo "::set-output name=IMAGE_URL::${IMAGE_REPOSITORY}:${IMAGE_TAG}"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Gcloud Auth
+        uses: google-github-actions/auth@v0
+        with:
+          credentials_json: '${{ secrets.GCR_CREDENTIALS }}'
+
+      - name: Setup Gcloud SDK
+        uses: google-github-actions/setup-gcloud@v0
+
+      - name: Configure docker
+        run: gcloud auth configure-docker
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-${{ env.SERVICE }}-buildx
+
+      - name: Docker build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: ${{ env.DOCKER_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.before_script.outputs.IMAGE_URL }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+
+      - name: Move Docker cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
