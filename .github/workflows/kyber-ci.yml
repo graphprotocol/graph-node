@@ -264,8 +264,8 @@ jobs:
       - name: Docker build and push
         uses: docker/build-push-action@v2
         with:
-          context: ${{ env.DOCKER_CONTEXT }}
-          file: ${{ env.DOCKERFILE_PATH }}
+          context: .
+          file: docker/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ${{ steps.before_script.outputs.IMAGE_URL }}
