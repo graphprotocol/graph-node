@@ -93,7 +93,7 @@ impl DataSource {
         &self,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source || self.done_at.lock().unwrap().is_some() {
+        if self.source != trigger.source || self.is_processed() {
             return None;
         }
         Some(TriggerWithHandler::new(

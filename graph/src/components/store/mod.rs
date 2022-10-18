@@ -1028,7 +1028,7 @@ impl DeploymentSchemaVersion {
         use DeploymentSchemaVersion::*;
         match self {
             V0 => false,
-            _ => true,
+            V1 => true,
         }
     }
 }
