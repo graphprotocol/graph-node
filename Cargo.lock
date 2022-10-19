@@ -1660,6 +1660,7 @@ version = "0.28.2"
 dependencies = [
  "anyhow",
  "async-stream",
+ "base64",
  "dirs-next",
  "envconfig",
  "futures 0.1.31",
