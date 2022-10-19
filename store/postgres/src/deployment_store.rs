@@ -1130,19 +1130,9 @@ impl DeploymentStore {
             )?;
 
             Ok(event)
-        });
+        })?;
 
-        match event {
-            Ok(e) => Ok(e),
-            Err(err) => match err {
-                StoreError::DuplicateBlockProcessing(_deployment_hash, block_number) => {
-                    let default_event = StoreEvent::from_mods(&site.deployment, mods);
-                    warn!(&self.logger, "Duplicated block found, Ignore"; "block_number" => block_number);
-                    Ok(default_event)
-                }
-                _ => Err(err),
-            },
-        }
+        Ok(event)
     }
 
     fn rewind_with_conn(

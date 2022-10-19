@@ -390,7 +390,7 @@ where
                 offchain_to_remove,
             )
             .await
-            .context("Failed to transact block operations")?;
+            .map_err(BlockProcessingError::from)?;
 
         // For subgraphs with `nonFatalErrors` feature disabled, we consider
         // any error as fatal.
@@ -759,6 +759,12 @@ where
 
                 return Ok(Action::Continue);
             }
+
+            Err(BlockProcessingError::DuplicateBlock(block_num)) => {
+                warn!(self.logger, "Duplicate block found, ignoring..."; "block" => block_num);
+                return Ok(Action::Continue);
+            }
+
             Err(BlockProcessingError::Canceled) => {
                 debug!(self.logger, "Subgraph block stream shut down cleanly");
                 return Ok(Action::Stop);
