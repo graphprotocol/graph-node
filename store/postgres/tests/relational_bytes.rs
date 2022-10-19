@@ -94,6 +94,7 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
         .insert(
+            &*LOGGER,
             &conn,
             &entity_type,
             entities.as_mut_slice(),
@@ -288,7 +289,14 @@ fn update() {
         let entity_type = key.entity_type.clone();
         let mut entities = vec![(&key, Cow::from(&entity))];
         layout
-            .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
+            .update(
+                &*LOGGER,
+                &conn,
+                &entity_type,
+                &mut entities,
+                1,
+                &MOCK_STOPWATCH,
+            )
             .expect("Failed to update");
 
         let actual = layout

@@ -382,7 +382,14 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout.insert(conn, entity_type, data, block_number(ptr), stopwatch)
+        layout.insert(
+            &self.logger,
+            conn,
+            entity_type,
+            data,
+            block_number(ptr),
+            stopwatch,
+        )
     }
 
     fn overwrite_entities<'a>(
@@ -402,7 +409,14 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, entity_type, data, block_number(ptr), stopwatch)
+        layout.update(
+            &self.logger,
+            conn,
+            entity_type,
+            data,
+            block_number(ptr),
+            stopwatch,
+        )
     }
 
     fn remove_entities(

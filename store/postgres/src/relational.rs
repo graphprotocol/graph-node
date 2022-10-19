@@ -24,7 +24,7 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
-use graph::slog::warn;
+use graph::slog::{debug, warn};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
@@ -586,6 +586,7 @@ impl Layout {
 
     pub fn insert<'a>(
         &'a self,
+        logger: &Logger,
         conn: &PgConnection,
         entity_type: &'a EntityType,
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
@@ -601,9 +602,9 @@ impl Layout {
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
-            count += InsertQuery::new(table, chunk, block)?
-                .get_results(conn)
-                .map(|ids| ids.len())?
+            let query = InsertQuery::new(table, chunk, block)?;
+            debug!(logger, "Insert Query"; "query" => format!("{}", debug_query(&query)));
+            count += query.get_results(conn).map(|ids| ids.len())?
         }
         Ok(count)
     }
@@ -726,6 +727,7 @@ impl Layout {
 
     pub fn update<'a>(
         &'a self,
+        logger: &Logger,
         conn: &PgConnection,
         entity_type: &'a EntityType,
         entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
@@ -752,7 +754,13 @@ impl Layout {
             .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
+        let clamp_range_query = ClampRangeQuery::new(table, &entity_keys, block)?;
+        debug!(
+            logger, "Clamp_Range_Query";
+            "table" => table.name.as_str(),
+            "query" => format!("{}", debug_query(&clamp_range_query)),
+        );
+        clamp_range_query.execute(conn)?;
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
@@ -764,7 +772,9 @@ impl Layout {
         // We add 1 to account for the `block_range` bind parameter
         let chunk_size = POSTGRES_MAX_PARAMETERS / (table.columns.len() + 1);
         for chunk in entities.chunks_mut(chunk_size) {
-            count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
+            let query = InsertQuery::new(table, chunk, block)?;
+            debug!(logger, "Update Query"; "query" => format!("{}", debug_query(&query)));
+            count += query.execute(conn)?;
         }
         Ok(count)
     }
