@@ -673,6 +673,7 @@ impl Layout {
             range,
             block,
             query_id,
+            &self.site,
         )?;
         let query_clone = query.clone();
 
