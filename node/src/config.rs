@@ -177,8 +177,9 @@ impl Config {
     pub fn network_aliases(&self) -> Result<NetworkAliases, AliasingError> {
         let mut aliases = NetworkAliases::built_ins();
         for (network_name, network) in self.chains.chains.iter() {
+            aliases.insert(network_name, None)?;
             for alias in &network.aliases {
-                aliases.insert(network_name, Some(&alias))?;
+                aliases.insert(alias, Some(&network_name))?;
             }
         }
         Ok(aliases)
@@ -1124,7 +1125,7 @@ mod tests {
     #[test]
     fn it_works_on_standard_config() {
         let content = read_resource_as_string("full_config.toml");
-        let actual: Config = toml::from_str(&content).unwrap();
+        let actual = Config::from_str(&content, "default").unwrap();
 
         // We do basic checks because writing the full equality method is really too long
 

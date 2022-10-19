@@ -568,15 +568,18 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         .await
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
-    let network_name = manifest.network_name();
-
+    let possibly_aliased_network_name = manifest.network_name();
     let chain = chains
-        .get::<C>(&network_name)
+        .get::<C>(&possibly_aliased_network_name)
         .map_err(SubgraphRegistrarError::NetworkNotSupported)?
         .cheap_clone();
+    let network_name = chains
+        .aliases()
+        .original_alias_of(&possibly_aliased_network_name)
+        .unwrap()
+        .to_string();
 
     let logger = logger.clone();
-    let store = store.clone();
     let deployment_store = store.clone();
 
     if !store.subgraph_exists(&name)? {

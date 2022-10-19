@@ -25,6 +25,10 @@ impl BlockchainMap {
         }
     }
 
+    pub fn aliases(&self) -> &NetworkAliases {
+        &self.aliases
+    }
+
     pub fn insert<C>(&mut self, chain_name: impl ToString, chain: Arc<C>)
     where
         C: Send + Sync + 'static,

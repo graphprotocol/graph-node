@@ -9,7 +9,7 @@ pool_size = [
   { node = "index_node_2_.*", size = 10 },
   { node = "index_node_3_.*", size = 10 },
   { node = "index_node_4_.*", size = 2 },
-  { node = "query_node_.*", size = 10 }
+  { node = "query_node_.*", size = 10 },
 ]
 
 [store.shard_a]
@@ -19,7 +19,7 @@ pool_size = [
   { node = "index_node_2_.*", size = 10 },
   { node = "index_node_3_.*", size = 10 },
   { node = "index_node_4_.*", size = 2 },
-  { node = "query_node_.*", size = 10 }
+  { node = "query_node_.*", size = 10 },
 ]
 
 [deployment]
@@ -27,44 +27,41 @@ pool_size = [
 [[deployment.rule]]
 match = { name = "^prefix/" }
 shard = "shard_a"
-indexers = [ "index_prefix_0",
-             "index_prefix_1" ]
+indexers = ["index_prefix_0", "index_prefix_1"]
 
 [[deployment.rule]]
 match = { name = "^custom/.*" }
-indexers = [ "index_custom_0" ]
+indexers = ["index_custom_0"]
 
 [[deployment.rule]]
-shards = [ "primary", "shard_a" ]
-indexers = [ "index_node_1_a",
-             "index_node_2_a",
-             "index_node_3_a" ]
+shards = ["primary", "shard_a"]
+indexers = ["index_node_1_a", "index_node_2_a", "index_node_3_a"]
 
 [chains]
 ingestor = "index_0"
 
 [chains.mainnet]
 shard = "primary"
+aliases = ["mainnet-alias"]
 provider = [
-  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"] },
-  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }},
-  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }},
+  { label = "mainnet-0", url = "http://rpc.mainnet.io", features = [
+    "archive",
+    "traces",
+  ] },
+  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [
+  ] } },
+  { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [
+  ] } },
 ]
 
 [chains.ropsten]
 shard = "primary"
-provider = [
-  { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"] }
-]
+provider = [{ label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"] }]
 
 [chains.goerli]
 shard = "primary"
-provider = [
-  { label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"] }
-]
+provider = [{ label = "goerli-0", url = "http://rpc.goerli.io", transport = "ipc", features = ["archive"] }]
 
 [chains.kovan]
 shard = "primary"
-provider = [
-  { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [] }
-]
+provider = [{ label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [] }]
