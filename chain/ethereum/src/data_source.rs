@@ -132,6 +132,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
             is_offchain: false,
+            done_at: None,
         }
     }
 
@@ -145,12 +146,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             context,
             creation_block,
             is_offchain,
+            done_at,
         } = stored;
 
         ensure!(
             !is_offchain,
             "attempted to convert offchain data source to ethereum data source"
         );
+        ensure!(done_at.is_none(), "onchain data sources are never done");
 
         let context = context.map(serde_json::from_value).transpose()?;
 

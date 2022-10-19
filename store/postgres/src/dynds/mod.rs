@@ -58,7 +58,7 @@ pub(crate) fn revert(
     }
 }
 
-pub(crate) fn remove_offchain(
+pub(crate) fn update_offchain_status(
     conn: &PgConnection,
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
@@ -68,7 +68,9 @@ pub(crate) fn remove_offchain(
     }
 
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).remove_offchain(conn, data_sources),
+        true => {
+            DataSourcesTable::new(site.namespace.clone()).update_offchain_status(conn, data_sources)
+        }
         false => Err(constraint_violation!(
             "shared schema does not support data source offchain_found",
         )),

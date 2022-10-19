@@ -30,6 +30,7 @@ pub(crate) struct DataSourcesTable {
     manifest_idx: DynColumn<Integer>,
     param: DynColumn<Nullable<Binary>>,
     context: DynColumn<Nullable<Jsonb>>,
+    done_at: DynColumn<Nullable<Integer>>,
 }
 
 impl DataSourcesTable {
@@ -48,6 +49,7 @@ impl DataSourcesTable {
             manifest_idx: table.column("manifest_idx"),
             param: table.column("param"),
             context: table.column("context"),
+            done_at: table.column("done_at"),
             table,
         }
     }
@@ -63,7 +65,8 @@ impl DataSourcesTable {
                 parent integer references {nsp}.{table},
                 id bytea,
                 param bytea,
-                context jsonb
+                context jsonb,
+                done_at int
             );
 
             create index gist_block_range_data_sources$ on {nsp}.data_sources$ using gist (block_range);
@@ -87,6 +90,7 @@ impl DataSourcesTable {
             Option<Vec<u8>>,
             Option<serde_json::Value>,
             i32,
+            Option<i32>,
         );
         let tuples = self
             .table
@@ -98,6 +102,7 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
                 &self.causality_region,
+                &self.done_at,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
@@ -105,7 +110,7 @@ impl DataSourcesTable {
         let mut dses: Vec<_> = tuples
             .into_iter()
             .map(
-                |(block_range, manifest_idx, param, context, causality_region)| {
+                |(block_range, manifest_idx, param, context, causality_region, done_at)| {
                     let creation_block = match block_range.0 {
                         Bound::Included(block) => Some(block),
 
@@ -122,6 +127,7 @@ impl DataSourcesTable {
                         context,
                         creation_block,
                         is_offchain,
+                        done_at,
                     }
                 },
             )
@@ -148,6 +154,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
+                done_at,
             } = ds;
 
             if creation_block != &Some(block) {
@@ -168,8 +175,8 @@ impl DataSourcesTable {
                 ),
 
                 true => format!(
-                    "insert into {}(block_range, manifest_idx, param, context) \
-                            values (int4range($1, null), $2, $3, $4)",
+                    "insert into {}(block_range, manifest_idx, param, context, done_at) \
+                            values (int4range($1, null), $2, $3, $4, $5)",
                     self.qname
                 ),
             };
@@ -182,7 +189,7 @@ impl DataSourcesTable {
 
             inserted_total += match is_offchain {
                 false => query.bind::<Integer, _>(0).execute(conn)?,
-                true => query.execute(conn)?,
+                true => query.bind::<Nullable<Integer>, _>(done_at).execute(conn)?,
             };
         }
 
@@ -222,6 +229,7 @@ impl DataSourcesTable {
             Option<Vec<u8>>,
             Option<serde_json::Value>,
             i32,
+            Option<i32>,
         );
 
         let src_tuples = self
@@ -234,12 +242,14 @@ impl DataSourcesTable {
                 &self.param,
                 &self.context,
                 &self.causality_region,
+                &self.done_at,
             ))
             .order_by(&self.vid)
             .load::<Tuple>(conn)?;
 
         let mut count = 0;
-        for (block_range, src_manifest_idx, param, context, causality_region) in src_tuples {
+        for (block_range, src_manifest_idx, param, context, causality_region, done_at) in src_tuples
+        {
             let name = &src_manifest_idx_and_name
                 .iter()
                 .find(|(idx, _)| idx == &src_manifest_idx)
@@ -253,13 +263,13 @@ impl DataSourcesTable {
 
             let query = format!(
                 "\
-            insert into {dst}(block_range, manifest_idx, param, context, causality_region)
-            values(case
-                when upper($2) <= $1 then $2
-                else int4range(lower($2), null)
-            end,
-            $3, $4, $5, $6)
-            ",
+             insert into {dst}(block_range, manifest_idx, param, context, causality_region, done_at)
+             values(case
+                 when upper($2) <= $1 then $2
+                 else int4range(lower($2), null)
+             end,
+             $3, $4, $5, $6, $7)
+             ",
                 dst = dst.qname
             );
 
@@ -270,6 +280,7 @@ impl DataSourcesTable {
                 .bind::<Nullable<Binary>, _>(param)
                 .bind::<Nullable<Jsonb>, _>(context)
                 .bind::<Integer, _>(causality_region)
+                .bind::<Nullable<Integer>, _>(done_at)
                 .execute(conn)?;
         }
 
@@ -285,8 +296,8 @@ impl DataSourcesTable {
         Ok(count)
     }
 
-    // Remove offchain data sources by checking for equality. Their range will be set to the empty range.
-    pub(super) fn remove_offchain(
+    // Updates offchain data sources by checking for equality. Their range will be set to the empty range.
+    pub(super) fn update_offchain_status(
         &self,
         conn: &PgConnection,
         data_sources: &[StoredDynamicDataSource],
@@ -298,6 +309,7 @@ impl DataSourcesTable {
                 context,
                 creation_block,
                 is_offchain,
+                done_at,
             } = ds;
 
             if !is_offchain {
@@ -307,7 +319,7 @@ impl DataSourcesTable {
             }
 
             let query = format!(
-                "update {} set block_range = 'empty'::int4range \
+                "update {} set done_at = $5 \
                  where manifest_idx = $1
                     and param is not distinct from $2
                     and context is not distinct from $3
@@ -320,6 +332,7 @@ impl DataSourcesTable {
                 .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
                 .bind::<Nullable<Jsonb>, _>(context)
                 .bind::<Nullable<Integer>, _>(creation_block)
+                .bind::<Nullable<Integer>, _>(done_at)
                 .execute(conn)?;
 
             if count > 1 {

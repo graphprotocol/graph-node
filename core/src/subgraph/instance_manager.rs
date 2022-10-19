@@ -178,6 +178,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
     {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
+
         let store = self
             .subgraph_store
             .cheap_clone()

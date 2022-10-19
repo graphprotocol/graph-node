@@ -331,8 +331,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, offchain_to_remove) =
-            self.handle_offchain_triggers(offchain_events).await?;
+        let (offchain_mods, processed_data_sources) = self
+            .handle_offchain_triggers(offchain_events, &block)
+            .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -387,7 +388,7 @@ where
                 data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
-                offchain_to_remove,
+                processed_data_sources,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -567,9 +568,10 @@ where
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
+        block: &Arc<C::Block>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
-        let mut offchain_to_remove = vec![];
+        let mut processed_data_sources = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -581,13 +583,11 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            // We'll eventually need to do better here, but using an empty block works for now.
-            let block = Arc::default();
             block_state = self
                 .ctx
                 .process_trigger(
                     &self.logger,
-                    &block,
+                    block,
                     &TriggerData::Offchain(trigger),
                     block_state,
                     &proof_of_indexing,
@@ -611,10 +611,10 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            offchain_to_remove.extend(block_state.offchain_to_remove);
+            processed_data_sources.extend(block_state.processed_data_sources);
         }
 
-        Ok((mods, offchain_to_remove))
+        Ok((mods, processed_data_sources))
     }
 }
 

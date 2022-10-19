@@ -13,13 +13,16 @@ use crate::{
 use anyhow::{self, Context, Error};
 use serde::Deserialize;
 use slog::{info, Logger};
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use super::TriggerWithHandler;
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DataSource {
     pub kind: String,
     pub name: String,
@@ -28,6 +31,34 @@ pub struct DataSource {
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
+    pub done_at: Mutex<Option<i32>>,
+}
+
+impl Clone for DataSource {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            name: self.name.clone(),
+            manifest_idx: self.manifest_idx.clone(),
+            source: self.source.clone(),
+            mapping: self.mapping.clone(),
+            context: self.context.clone(),
+            creation_block: self.creation_block.clone(),
+            done_at: Mutex::new(*self.done_at.lock().unwrap()),
+        }
+    }
+}
+
+impl DataSource {
+    // mark this data source as processed.
+    pub fn mark_processed_at(&self, block_no: i32) {
+        *self.done_at.lock().unwrap() = Some(block_no);
+    }
+
+    // returns `true` if the data source is processed.
+    pub fn is_processed(&self) -> bool {
+        self.done_at.lock().unwrap().is_some()
+    }
 }
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
@@ -52,6 +83,7 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
+            done_at: Mutex::new(None),
         })
     }
 }
@@ -61,10 +93,9 @@ impl DataSource {
         &self,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source {
+        if self.source != trigger.source || self.is_processed() {
             return None;
         }
-
         Some(TriggerWithHandler::new(
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),
@@ -87,6 +118,7 @@ impl DataSource {
             context,
             creation_block: self.creation_block,
             is_offchain: true,
+            done_at: *self.done_at.lock().unwrap(),
         }
     }
 
@@ -107,6 +139,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context,
             creation_block: stored.creation_block,
+            done_at: Mutex::new(stored.done_at),
         })
     }
 
@@ -193,6 +226,7 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
+            done_at: Mutex::new(None),
         })
     }
 }

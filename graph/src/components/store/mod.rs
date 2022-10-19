@@ -3,6 +3,7 @@ mod err;
 mod traits;
 
 pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
+
 pub use err::StoreError;
 use itertools::Itertools;
 pub use traits::*;
@@ -800,6 +801,7 @@ pub struct StoredDynamicDataSource {
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
     pub is_offchain: bool,
+    pub done_at: Option<i32>,
 }
 
 /// An internal identifer for the specific instance of a deployment. The

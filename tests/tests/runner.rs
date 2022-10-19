@@ -6,6 +6,7 @@ use graph::env::EnvVars;
 use graph::ipfs_client::CidFile;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::{CheapClone, SubgraphStore};
 use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
 use graph_tests::fixture::{self, stores, test_ptr};
@@ -136,7 +137,9 @@ async fn file_data_sources() {
         let block_0 = genesis();
         let block_1 = empty_block(block_0.ptr(), test_ptr(1));
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));
-        vec![block_0, block_1, block_2]
+        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        let block_4 = empty_block(block_3.ptr(), test_ptr(4));
+        vec![block_0, block_1, block_2, block_3, block_4]
     };
     let stop_block = test_ptr(1);
     let chain = Arc::new(chain(blocks, &stores).await);
@@ -163,13 +166,50 @@ async fn file_data_sources() {
 
     assert_eq!(
         query_res,
-        Some(object! { ipfsFile: object!{ id: id , content: "[]" } })
+        Some(object! { ipfsFile: object!{ id: id.clone() , content: "[]" } })
     );
 
-    // Test loading offchain data sources from DB.
+    // assert whether duplicate data sources are created.
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
+
+    let store = ctx.store.cheap_clone();
+    let writable = store
+        .writable(ctx.logger.clone(), ctx.deployment.id)
+        .await
+        .unwrap();
+    let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+    assert!(datasources.len() == 1);
+
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    let stop_block = test_ptr(3);
+    ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(&format!(r#"{{ ipfsFile1(id: "{id}") {{ id, content }} }}"#,))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! { ipfsFile1: object!{ id: id , content: "[]" } })
+    );
+
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    let stop_block = test_ptr(4);
+    ctx.start_and_sync_to(stop_block).await;
+    let writable = ctx
+        .store
+        .clone()
+        .writable(ctx.logger.clone(), ctx.deployment.id.clone())
+        .await
+        .unwrap();
+    let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+    assert!(data_sources.len() == 2);
+    for data_source in data_sources {
+        assert!(data_source.done_at.is_some())
+    }
 }
 
 #[tokio::test]
