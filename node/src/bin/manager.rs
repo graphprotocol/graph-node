@@ -577,6 +577,15 @@ pub enum IndexCommand {
         /// including attribute indexes
         #[clap(short = 'D', long)]
         no_default_indexes: bool,
+        /// Print SQL statements instead of a more human readable overview
+        #[clap(long)]
+        sql: bool,
+        /// When `--sql` is used, make statements run concurrently
+        #[clap(long, requires = "sql")]
+        concurrent: bool,
+        /// When `--sql` is used, add `if not exists` clause
+        #[clap(long, requires = "sql")]
+        if_not_exists: bool,
         ///  The deployment (see `help info`).
         #[clap(empty_values = false)]
         deployment: DeploymentSearch,
@@ -1259,6 +1268,9 @@ async fn main() -> anyhow::Result<()> {
                     entity,
                     no_attribute_indexes,
                     no_default_indexes,
+                    sql,
+                    concurrent,
+                    if_not_exists,
                 } => {
                     commands::index::list(
                         subgraph_store,
@@ -1267,6 +1279,9 @@ async fn main() -> anyhow::Result<()> {
                         &entity,
                         no_attribute_indexes,
                         no_default_indexes,
+                        sql,
+                        concurrent,
+                        if_not_exists,
                     )
                     .await
                 }

@@ -1,5 +1,5 @@
 //! Parse Postgres index definition into a form that is meaningful for us.
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -7,6 +7,11 @@ use graph::prelude::{
     regex::{Captures, Regex},
     BlockNumber,
 };
+
+use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
+
+use super::VID_COLUMN;
 
 #[derive(Debug, PartialEq)]
 pub enum Method {
@@ -56,13 +61,40 @@ impl<'a> TryFrom<&'a str> for Method {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum PrefixKind {
+    Left,
+    Substring,
+}
+
+impl PrefixKind {
+    fn parse(kind: &str) -> Option<Self> {
+        use PrefixKind::*;
+
+        match kind {
+            "substring" => Some(Substring),
+            "left" => Some(Left),
+            _ => None,
+        }
+    }
+
+    fn to_sql(&self, name: &str) -> String {
+        use PrefixKind::*;
+
+        match self {
+            Left => format!("left({name}, {})", STRING_PREFIX_SIZE),
+            Substring => format!("substring({name}, 1, {})", BYTE_ARRAY_PREFIX_SIZE),
+        }
+    }
+}
+
 /// An index expression, i.e., a 'column' in an index
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     /// A named column; only user-defined columns appear here
     Column(String),
     /// A prefix of a named column, used for indexes on `text` and `bytea`
-    Prefix(String),
+    Prefix(String, PrefixKind),
     /// The `vid` column
     Vid,
     /// The `block$` column
@@ -82,7 +114,7 @@ impl Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expr::Column(s) => write!(f, "{s}")?,
-            Expr::Prefix(s) => write!(f, "{s}")?,
+            Expr::Prefix(s, _) => write!(f, "{s}")?,
             Expr::Vid => write!(f, "vid")?,
             Expr::Block => write!(f, "block")?,
             Expr::BlockRange => write!(f, "block_range")?,
@@ -100,9 +132,9 @@ impl Expr {
 
         let expr = expr.trim().to_string();
 
-        let prefix_rx = Regex::new("^(substring|left)\\((?P<name>[a-z0-9$_]+)").unwrap();
+        let prefix_rx = Regex::new("^(?P<kind>substring|left)\\((?P<name>[a-z0-9$_]+)").unwrap();
 
-        if expr == "vid" {
+        if expr == VID_COLUMN {
             Vid
         } else if expr == "lower(block_range)" {
             BlockRangeLower
@@ -119,7 +151,13 @@ impl Expr {
             Column(expr)
         } else if let Some(caps) = prefix_rx.captures(&expr) {
             if let Some(name) = caps.name("name") {
-                Prefix(name.as_str().to_string())
+                let kind = caps
+                    .name("kind")
+                    .and_then(|op| PrefixKind::parse(op.as_str()));
+                match kind {
+                    Some(kind) => Prefix(name.as_str().to_string(), kind),
+                    None => Unknown(expr),
+                }
             } else {
                 Unknown(expr)
             }
@@ -132,7 +170,7 @@ impl Expr {
         use Expr::*;
 
         match self {
-            Column(_) | Prefix(_) => true,
+            Column(_) | Prefix(_, _) => true,
             Vid | Block | BlockRange | BlockRangeLower | BlockRangeUpper | Unknown(_) => false,
         }
     }
@@ -142,6 +180,19 @@ impl Expr {
         match self {
             Column(s) => s == "id",
             _ => false,
+        }
+    }
+
+    fn to_sql(&self) -> String {
+        match self {
+            Expr::Column(name) => name.to_string(),
+            Expr::Prefix(name, kind) => kind.to_sql(name),
+            Expr::Vid => VID_COLUMN.to_string(),
+            Expr::Block => BLOCK_COLUMN.to_string(),
+            Expr::BlockRange => BLOCK_RANGE_COLUMN.to_string(),
+            Expr::BlockRangeLower => "lower(block_range)".to_string(),
+            Expr::BlockRangeUpper => "coalesce(upper(block_range), 2147483647)".to_string(),
+            Expr::Unknown(expr) => expr.to_string(),
         }
     }
 }
@@ -188,6 +239,14 @@ impl Cond {
             Cond::Closed
         } else {
             parse_partial(&cond).unwrap_or_else(|| Cond::Unknown(cond))
+        }
+    }
+
+    fn to_sql(&self) -> String {
+        match self {
+            Cond::Partial(number) => format!("coalesce(upper(block_range), 2147483647) > {number}"),
+            Cond::Closed => "coalesce(upper(block_range), 2147483647) < 2147483647".to_string(),
+            Cond::Unknown(cond) => cond.to_string(),
         }
     }
 }
@@ -467,6 +526,39 @@ impl CreateIndex {
             }
         }
     }
+
+    /// Generate a SQL statement that creates this index. If `concurrent` is
+    /// `true`, make it a concurrent index creation. If `if_not_exists` is
+    /// `true` add a `if not exists` clause to the index creation.
+    pub fn to_sql(&self, concurrent: bool, if_not_exists: bool) -> Result<String, std::fmt::Error> {
+        match self {
+            CreateIndex::Unknown { defn } => Ok(defn.to_string()),
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            } => {
+                let unique = if *unique { "unique " } else { "" };
+                let concurrent = if concurrent { "concurrently " } else { "" };
+                let if_not_exists = if if_not_exists { "if not exists " } else { "" };
+                let columns = columns.into_iter().map(|c| c.to_sql()).join(", ");
+
+                let mut sql = format!("create {unique}index {concurrent}{if_not_exists}{name} on {nsp}.{table} using {method} ({columns})");
+                if let Some(with) = with {
+                    write!(sql, " with ({with})")?;
+                }
+                if let Some(cond) = cond {
+                    write!(sql, " where ({})", cond.to_sql())?;
+                }
+                Ok(sql)
+            }
+        }
+    }
 }
 
 #[test]
@@ -476,7 +568,7 @@ fn parse() {
     #[derive(Debug)]
     enum TestExpr {
         Name(&'static str),
-        Prefix(&'static str),
+        Prefix(&'static str, &'static str),
         Vid,
         Block,
         BlockRange,
@@ -490,7 +582,9 @@ fn parse() {
         fn from(expr: &'a TestExpr) -> Self {
             match expr {
                 TestExpr::Name(name) => Expr::Column(name.to_string()),
-                TestExpr::Prefix(name) => Expr::Prefix(name.to_string()),
+                TestExpr::Prefix(name, kind) => {
+                    Expr::Prefix(name.to_string(), PrefixKind::parse(kind).unwrap())
+                }
                 TestExpr::Vid => Expr::Vid,
                 TestExpr::Block => Expr::Block,
                 TestExpr::BlockRange => Expr::BlockRange,
@@ -560,6 +654,9 @@ fn parse() {
         let act = CreateIndex::parse(defn.to_string());
         let exp = CreateIndex::from(exp);
         assert_eq!(exp, act);
+
+        let defn = defn.replace("\"", "").to_ascii_lowercase();
+        assert_eq!(defn, act.to_sql(false, false).unwrap());
     }
 
     use TestCond::*;
@@ -585,7 +682,7 @@ fn parse() {
         nsp: "sgd44",
         table: "token",
         method: BTree,
-        columns: &[Prefix("symbol")],
+        columns: &[Prefix("symbol", "left")],
         cond: None,
     };
     parse_one(sql, exp);
@@ -657,7 +754,7 @@ fn parse() {
         nsp: "sgd411585",
         table: "pool",
         method: BTree,
-        columns: &[Prefix("owner")],
+        columns: &[Prefix("owner", "substring")],
         cond: None,
     };
     parse_one(sql, exp);

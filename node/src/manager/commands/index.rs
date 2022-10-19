@@ -57,6 +57,9 @@ pub async fn list(
     entity_name: &str,
     no_attribute_indexes: bool,
     no_default_indexes: bool,
+    to_sql: bool,
+    concurrent: bool,
+    if_not_exists: bool,
 ) -> Result<(), anyhow::Error> {
     fn header(
         term: &mut Terminal,
@@ -162,14 +165,20 @@ pub async fn list(
 
     let mut term = Terminal::new();
 
-    let mut first = true;
-    header(&mut term, &indexes, &deployment_locator, entity_name)?;
-    for index in &indexes {
-        if !first {
-            writeln!(term, "{:-^76}", "")?;
-            first = false;
+    if to_sql {
+        for index in indexes {
+            writeln!(term, "{};", index.to_sql(concurrent, if_not_exists)?)?;
         }
-        print_index(&mut term, index)?;
+    } else {
+        let mut first = true;
+        header(&mut term, &indexes, &deployment_locator, entity_name)?;
+        for index in &indexes {
+            if !first {
+                writeln!(term, "{:-^76}", "")?;
+                first = false;
+            }
+            print_index(&mut term, index)?;
+        }
     }
     Ok(())
 }
