@@ -1060,7 +1060,11 @@ impl PoolInner {
             conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
-            info!(&self.logger, "Mapping metadata");
+            info!(
+                &self.logger,
+                "Mapping metadata from {}",
+                server.shard.as_str()
+            );
             let conn = self.get()?;
             conn.transaction(|| server.map_metadata(&conn))?;
         }
