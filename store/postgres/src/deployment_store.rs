@@ -1130,16 +1130,9 @@ impl DeploymentStore {
             )?;
 
             Ok(event)
-        });
+        })?;
 
-        match event {
-            Ok(e) => Ok(e),
-            Err(StoreError::DuplicateBlockProcessing(db, bn)) => {
-                let event = StoreEvent::from_mods(&site.deployment, mods);
-                return Ok(event);
-            }
-            Err(e) => Err(e),
-        }
+        Ok(event)
     }
 
     fn rewind_with_conn(

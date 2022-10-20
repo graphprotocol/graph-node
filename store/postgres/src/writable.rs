@@ -571,6 +571,11 @@ impl Queue {
                         // from the queue
                         queue.queue.pop().await;
                     }
+                    Ok(Err(StoreError::DuplicateBlockProcessing(_dh, _bn))) => {
+                        // NOTE: rpc produce duplicate block,
+                        // We expect this already, so just ignore it
+                        queue.queue.pop().await;
+                    }
                     Ok(Err(e)) => {
                         error!(logger, "Subgraph writer failed"; "error" => e.to_string());
                         queue.record_err(e);
