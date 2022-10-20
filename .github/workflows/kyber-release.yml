@@ -1,0 +1,118 @@
+name: 'Release'
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version'
+        type: string
+        required: true
+
+jobs:
+  prepare:
+    runs-on: self-hosted
+    outputs:
+      version_tag: ${{ steps.version_tag.outputs.value }}
+      build_date: ${{ steps.build_date.outputs.value }}
+    steps:
+      - name: Format version tag
+        shell: bash
+        id: version_tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.version }}
+        run: |
+          TAG=${INPUT_TAG#v}
+          echo "::set-output name=value::v$TAG"
+      - name: Build date
+        shell: bash
+        id: build_date
+        run: echo "::set-output name=value::$(date +%FT%T%z)"
+
+  docker:
+    needs:
+      - prepare
+    env:
+      SERVICE: graph-node
+      VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
+      BUILD_DATE: ${{ needs.prepare.outputs.build_date }}
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@master
+
+      - name: Gcloud Auth
+        uses: google-github-actions/auth@v0
+        with:
+          credentials_json: '${{ secrets.GCR_CREDENTIALS }}'
+
+      - name: Setup Gcloud SDK
+        uses: google-github-actions/setup-gcloud@v0
+
+      - name: Configure docker
+        run: gcloud auth configure-docker
+
+      - name: Cache Docker layers
+        uses: actions/cache@v2
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-${{ env.SERVICE }}-buildx
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          build-args: |
+            VERSION=${{ env.VERSION_TAG }}
+            GIT_HASH=${{ github.sha }}
+            BUILD_DATE=${{ env.BUILD_DATE }}
+          labels: |
+            kyber.network.schema-version=1.0
+            kyber.network.vcs-ref=${{ github.sha }}
+            kyber.network.version=${{ env.VERSION_TAG }}
+            kyber.network.name=${{ env.SERVICE }}
+          tags: |
+            asia.gcr.io/kyber-operation/foundation/${{ env.SERVICE }}:latest
+            asia.gcr.io/kyber-operation/foundation/${{ env.SERVICE }}:${{ env.VERSION_TAG }}
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new
+
+      - name: Move Docker cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  release:
+    needs:
+      - prepare
+      - docker
+    runs-on: self-hosted
+    env:
+      VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Create tag
+        run: |
+          git tag -d "$VERSION_TAG" 2> /dev/null || echo "Release tag '$VERSION_TAG' does NOT exist"
+          git tag --annotate --message "kyberswap-graph-node $VERSION_TAG" "$VERSION_TAG"
+          git push origin "refs/tags/$VERSION_TAG"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ env.VERSION_TAG }}
+          prerelease: false
+          name: "KyberSwap Graph-Node ${{ env.VERSION_TAG }}"
