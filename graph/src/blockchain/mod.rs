@@ -93,7 +93,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     type UnresolvedDataSourceTemplate: UnresolvedDataSourceTemplate<Self> + Clone;
 
     /// Trigger data as parsed from the triggers adapter.
-    type TriggerData: TriggerData + Ord + Send + Sync + Debug;
+    type TriggerData: TriggerData + Ord + Send + Sync + Debug + Clone;
 
     /// Decoded trigger ready to be processed by the mapping.
     /// New implementations should have this be the same as `TriggerData`.
