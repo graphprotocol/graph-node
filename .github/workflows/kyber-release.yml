@@ -64,6 +64,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           context: .
+          file: docker/Dockerfile
           push: true
           build-args: |
             VERSION=${{ env.VERSION_TAG }}
