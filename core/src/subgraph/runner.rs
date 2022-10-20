@@ -759,7 +759,6 @@ where
 
                 return Ok(Action::Continue);
             }
-
             Err(BlockProcessingError::Canceled) => {
                 debug!(self.logger, "Subgraph block stream shut down cleanly");
                 return Ok(Action::Stop);
