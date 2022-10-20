@@ -46,7 +46,6 @@ async fn main() -> Result<(), Error> {
         token,
         false,
         false,
-        1,
     ));
 
     let mut stream: SubstreamsBlockStream<graph_chain_substreams::Chain> =

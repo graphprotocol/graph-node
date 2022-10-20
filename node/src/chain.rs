@@ -124,19 +124,22 @@ pub fn create_substreams_networks(
                     "provider" => &provider.label,
                 );
 
-                let endpoint = FirehoseEndpoint::new(
-                    &provider.label,
-                    &firehose.url,
-                    firehose.token.clone(),
-                    firehose.filters_enabled(),
-                    firehose.compression_enabled(),
-                    firehose.conn_pool_size,
-                );
-
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
                     .or_insert_with(|| FirehoseNetworks::new());
-                parsed_networks.insert(name.to_string(), Arc::new(endpoint));
+
+                for i in 0..firehose.conn_pool_size {
+                    parsed_networks.insert(
+                        name.to_string(),
+                        Arc::new(FirehoseEndpoint::new(
+                            &format!("{}-{}", provider.label, i),
+                            &firehose.url,
+                            firehose.token.clone(),
+                            firehose.filters_enabled(),
+                            firehose.compression_enabled(),
+                        )),
+                    );
+                }
             }
         }
     }
@@ -166,19 +169,21 @@ pub fn create_firehose_networks(
                     "provider" => &provider.label,
                 );
 
-                let endpoint = FirehoseEndpoint::new(
-                    &provider.label,
-                    &firehose.url,
-                    firehose.token.clone(),
-                    firehose.filters_enabled(),
-                    firehose.compression_enabled(),
-                    firehose.conn_pool_size,
-                );
-
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
                     .or_insert_with(|| FirehoseNetworks::new());
-                parsed_networks.insert(name.to_string(), Arc::new(endpoint));
+                for i in 0..firehose.conn_pool_size {
+                    parsed_networks.insert(
+                        name.to_string(),
+                        Arc::new(FirehoseEndpoint::new(
+                            &format!("{}-{}", provider.label, i),
+                            &firehose.url,
+                            firehose.token.clone(),
+                            firehose.filters_enabled(),
+                            firehose.compression_enabled(),
+                        )),
+                    );
+                }
             }
         }
     }

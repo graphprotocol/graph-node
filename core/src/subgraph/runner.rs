@@ -98,10 +98,11 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let mut block_stream = new_block_stream(&self.inputs, &self.ctx.filter)
-                .await?
-                .map_err(CancelableError::Error)
-                .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream =
+                new_block_stream(&self.inputs, &self.ctx.filter, &self.metrics.subgraph)
+                    .await?
+                    .map_err(CancelableError::Error)
+                    .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned
