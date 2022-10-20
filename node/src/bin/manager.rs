@@ -414,7 +414,6 @@ pub enum ChainCommand {
     CheckBlocks {
         #[clap(subcommand)] // Note that we mark a field as a subcommand
         method: CheckBlockMethod,
-
         /// Chain name (must be an existing chain, see 'chain list')
         #[clap(empty_values = false)]
         chain_name: String,
@@ -536,18 +535,32 @@ pub enum DatabaseCommand {
 }
 #[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
-    /// The number of the target block
-    ByHash { hash: String },
-
     /// The hash of the target block
-    ByNumber { number: i32 },
+    ByHash {
+        /// The block hash to verify
+        hash: String,
+    },
+
+    /// The number of the target block
+    ByNumber {
+        /// The block number to verify
+        number: i32,
+        /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
+        delete_duplicates: bool,
+    },
 
     /// A block number range, inclusive on both ends.
     ByRange {
+        /// The first block number to verify
         #[clap(long, short)]
         from: Option<i32>,
+        /// The last block number to verify
         #[clap(long, short)]
         to: Option<i32>,
+        /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
+        delete_duplicates: bool,
     },
 }
 
@@ -1023,11 +1036,33 @@ async fn main() -> anyhow::Result<()> {
                         ByHash { hash } => {
                             by_hash(&hash, chain_store, &ethereum_adapter, &logger).await
                         }
-                        ByNumber { number } => {
-                            by_number(number, chain_store, &ethereum_adapter, &logger).await
+                        ByNumber {
+                            number,
+                            delete_duplicates,
+                        } => {
+                            by_number(
+                                number,
+                                chain_store,
+                                &ethereum_adapter,
+                                &logger,
+                                delete_duplicates,
+                            )
+                            .await
                         }
-                        ByRange { from, to } => {
-                            by_range(chain_store, &ethereum_adapter, from, to, &logger).await
+                        ByRange {
+                            from,
+                            to,
+                            delete_duplicates,
+                        } => {
+                            by_range(
+                                chain_store,
+                                &ethereum_adapter,
+                                from,
+                                to,
+                                &logger,
+                                delete_duplicates,
+                            )
+                            .await
                         }
                     }
                 }
