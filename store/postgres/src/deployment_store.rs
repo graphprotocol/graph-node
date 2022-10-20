@@ -1083,7 +1083,7 @@ impl DeploymentStore {
             // wait with sending it until we have done all our other work
             // so that we do not hold a lock on the notification queue
             // for longer than we have to
-            let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
+            let event = StoreEvent::from_mods(&site.deployment, mods);
 
             // Make the changes
             let layout = self.layout(&conn, site.clone())?;
@@ -1130,9 +1130,16 @@ impl DeploymentStore {
             )?;
 
             Ok(event)
-        })?;
+        });
 
-        Ok(event)
+        match event {
+            Ok(e) => Ok(e),
+            Err(StoreError::DuplicateBlockProcessing(db, bn)) => {
+                let event = StoreEvent::from_mods(&site.deployment, mods);
+                return Ok(event);
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn rewind_with_conn(
