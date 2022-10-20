@@ -11,9 +11,6 @@ pub enum BlockProcessingError {
     #[error("{0}")]
     Deterministic(SubgraphError),
 
-    #[error("duplicate block found")]
-    DuplicateBlock(i32),
-
     #[error("subgraph stopped while processing triggers")]
     Canceled,
 }
@@ -26,11 +23,6 @@ impl BlockProcessingError {
 
 impl From<StoreError> for BlockProcessingError {
     fn from(e: StoreError) -> Self {
-        match e {
-            StoreError::DuplicateBlockProcessing(_, block_number) => {
-                BlockProcessingError::DuplicateBlock(block_number)
-            }
-            _ => BlockProcessingError::Unknown(e.into()),
-        }
+        BlockProcessingError::Unknown(e.into())
     }
 }
