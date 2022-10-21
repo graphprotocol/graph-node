@@ -4711,7 +4711,7 @@ dependencies = [
 [[package]]
 name = "tower"
 version = "0.4.12"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c049ded33f6267de3c09b336d7a9bb9b09d842d1"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -4751,7 +4751,7 @@ checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
 [[package]]
 name = "tower-layer"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c049ded33f6267de3c09b336d7a9bb9b09d842d1"
 
 [[package]]
 name = "tower-service"
@@ -4762,12 +4762,12 @@ checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
 [[package]]
 name = "tower-service"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c049ded33f6267de3c09b336d7a9bb9b09d842d1"
 
 [[package]]
 name = "tower-test"
 version = "0.4.0"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c049ded33f6267de3c09b336d7a9bb9b09d842d1"
 dependencies = [
  "futures-util",
  "pin-project-lite",
