@@ -1658,7 +1658,7 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
 fn resolve_column_names<'a, T: AsRef<str>>(
     table: &'a Table,
     field_names: &[T],
-) -> Result<Vec<&'a str>, StoreError> {
+) -> Result<Vec<&'a SqlName>, StoreError> {
     field_names
         .iter()
         .map(|f| {
@@ -1670,7 +1670,7 @@ fn resolve_column_names<'a, T: AsRef<str>>(
                         .column(&sql_name)
                         .ok_or_else(|| StoreError::UnknownField(f.as_ref().to_string()))
                 })
-                .map(|column| column.name.as_str())
+                .map(|column| &column.name)
         })
         .collect()
 }

@@ -27,7 +27,7 @@ use graph::prelude::{q, s, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::fmt::{self, Write};
@@ -159,6 +159,12 @@ impl From<String> for SqlName {
 impl fmt::Display for SqlName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl Borrow<str> for &SqlName {
+    fn borrow(&self) -> &str {
+        self.as_str()
     }
 }
 
