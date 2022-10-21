@@ -7,7 +7,7 @@ use diesel::{
     ExpressionMethods, QueryDsl,
 };
 use graph::components::store::VersionStats;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -36,12 +36,53 @@ table! {
     }
 }
 
-// Readonly; we only access the name
+// Readonly;  not all columns are mapped
 table! {
-    pg_namespace(nspname) {
-        nspname -> Text,
+    pg_namespace(oid) {
+        oid -> Oid,
+        #[sql_name = "nspname"]
+        name -> Text,
     }
 }
+
+// Readonly; not all columns are mapped
+table! {
+    pg_class(oid) {
+        oid -> Oid,
+        #[sql_name = "relname"]
+        name -> Text,
+        #[sql_name = "relnamespace"]
+        namespace -> Oid,
+        #[sql_name = "relpages"]
+        pages -> Integer,
+        #[sql_name = "reltuples"]
+        tuples -> Integer,
+        #[sql_name = "relkind"]
+        kind -> Char,
+        #[sql_name = "relnatts"]
+        natts -> Smallint,
+    }
+}
+
+// Readonly; not all columns are mapped
+table! {
+    pg_attribute(oid) {
+        #[sql_name = "attrelid"]
+        oid -> Oid,
+        #[sql_name = "attrelid"]
+        relid -> Oid,
+        #[sql_name = "attname"]
+        name -> Text,
+        #[sql_name = "attnum"]
+        num -> Smallint,
+        #[sql_name = "attstattarget"]
+        stats_target -> Integer,
+    }
+}
+
+joinable!(pg_class -> pg_namespace(namespace));
+joinable!(pg_attribute -> pg_class(relid));
+allow_tables_to_appear_in_same_query!(pg_class, pg_namespace, pg_attribute);
 
 table! {
     subgraphs.table_stats {
@@ -245,7 +286,7 @@ pub fn has_namespace(conn: &PgConnection, namespace: &Namespace) -> Result<bool,
     use pg_namespace as nsp;
 
     Ok(select(diesel::dsl::exists(
-        nsp::table.filter(nsp::nspname.eq(namespace.as_str())),
+        nsp::table.filter(nsp::name.eq(namespace.as_str())),
     ))
     .get_result::<bool>(conn)?)
 }
@@ -641,4 +682,46 @@ pub(crate) fn cancel_vacuum(conn: &PgConnection, namespace: &Namespace) -> Resul
     .bind::<Text, _>(namespace)
     .execute(conn)?;
     Ok(())
+}
+
+pub(crate) fn default_stats_target(conn: &PgConnection) -> Result<i32, StoreError> {
+    #[derive(Queryable, QueryableByName)]
+    struct Target {
+        #[sql_type = "Integer"]
+        setting: i32,
+    }
+
+    let target =
+        sql_query("select setting::int from pg_settings where name = 'default_statistics_target'")
+            .get_result::<Target>(conn)?;
+    Ok(target.setting)
+}
+
+pub(crate) fn stats_targets(
+    conn: &PgConnection,
+    namespace: &Namespace,
+) -> Result<BTreeMap<SqlName, BTreeMap<SqlName, i32>>, StoreError> {
+    use pg_attribute as a;
+    use pg_class as c;
+    use pg_namespace as n;
+
+    let targets = c::table
+        .inner_join(n::table)
+        .inner_join(a::table)
+        .filter(c::kind.eq("r"))
+        .filter(n::name.eq(namespace.as_str()))
+        .filter(a::num.ge(1))
+        .select((c::name, a::name, a::stats_target))
+        .load::<(String, String, i32)>(conn)?
+        .into_iter()
+        .map(|(table, column, target)| (SqlName::from(table), SqlName::from(column), target));
+
+    let map = targets.into_iter().fold(
+        BTreeMap::<SqlName, BTreeMap<SqlName, i32>>::new(),
+        |mut map, (table, column, target)| {
+            map.entry(table).or_default().insert(column, target);
+            map
+        },
+    );
+    Ok(map)
 }

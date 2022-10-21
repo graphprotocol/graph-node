@@ -486,6 +486,14 @@ pub enum StatsCommand {
         /// The name of the Entity to ANALYZE, in camel case
         entity: String,
     },
+    /// Show statistics targets for the statistics collector
+    ///
+    /// For all tables in the given deployment, show the target for each
+    /// column. A value of `-1` means that the global default is used
+    Target {
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1144,6 +1152,11 @@ async fn main() -> anyhow::Result<()> {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
                     commands::stats::analyze(subgraph_store, primary_pool, deployment, &entity)
+                }
+                Target { deployment } => {
+                    let (store, primary_pool) = ctx.store_and_primary();
+                    let subgraph_store = store.subgraph_store();
+                    commands::stats::target(subgraph_store, primary_pool, &deployment)
                 }
             }
         }

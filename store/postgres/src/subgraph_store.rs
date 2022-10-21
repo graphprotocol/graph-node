@@ -5,7 +5,7 @@ use diesel::{
     types::{FromSql, ToSql},
 };
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, Mutex},
 };
 use std::{fmt, io::Write};
@@ -35,7 +35,6 @@ use graph::{
     util::timed_cache::TimedCache,
 };
 
-use crate::fork;
 use crate::{
     connection_pool::ConnectionPool,
     deployment::SubgraphHealth,
@@ -50,6 +49,7 @@ use crate::{
     detail::DeploymentDetail,
     primary::UnusedDeployment,
 };
+use crate::{fork, relational::SqlName};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
@@ -1034,6 +1034,18 @@ impl SubgraphStoreInner {
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store.analyze(site, entity_name)
+    }
+
+    /// Return the statistics targets for all tables of `deployment`. The
+    /// first return value is the default target, and the second value maps
+    /// the name of each table to a map of column name to its statistics
+    /// target. A value of `-1` means that the global default will be used.
+    pub fn stats_targets(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
+        let (store, site) = self.store(&deployment.hash)?;
+        store.stats_targets(site)
     }
 
     pub async fn create_manual_index(

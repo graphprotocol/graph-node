@@ -124,3 +124,41 @@ pub fn analyze(
     println!("Analyzing table sgd{}.{entity_name}", locator.id);
     store.analyze(&locator, entity_name).map_err(|e| anyhow!(e))
 }
+
+pub fn target(
+    store: Arc<SubgraphStore>,
+    primary: ConnectionPool,
+    search: &DeploymentSearch,
+) -> Result<(), anyhow::Error> {
+    let locator = search.locate_unique(&primary)?;
+    let (default, targets) = store.stats_targets(&locator)?;
+
+    let has_targets = targets
+        .values()
+        .any(|cols| cols.values().any(|target| *target > 0));
+
+    if has_targets {
+        println!(
+            "{:^74}",
+            format!(
+                "Statistics targets for sgd{} (default: {default})",
+                locator.id
+            )
+        );
+        println!("{:^30} | {:^30} | {:^8}", "table", "column", "target");
+        println!("{:-^30}-+-{:-^30}-+-{:-^8}", "", "", "");
+        for (table, columns) in targets {
+            for (column, target) in columns {
+                if target > 0 {
+                    println!("{:<30} | {:<30} | {:>8}", table, column, target);
+                }
+            }
+        }
+    } else {
+        println!(
+            "no statistics targets set for sgd{}, global default is {default}",
+            locator.id
+        );
+    }
+    Ok(())
+}

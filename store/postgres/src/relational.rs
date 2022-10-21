@@ -90,7 +90,7 @@ lazy_static! {
 /// Postgres, we would create the same table twice. We consider this case
 /// to be pathological and so unlikely in practice that we do not try to work
 /// around it in the application.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Hash, Ord)]
 pub struct SqlName(String);
 
 impl SqlName {

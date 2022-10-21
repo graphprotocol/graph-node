@@ -688,6 +688,17 @@ impl DeploymentStore {
         self.analyze_with_conn(site, entity_name, &conn)
     }
 
+    pub(crate) fn stats_targets(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
+        let conn = self.get_conn()?;
+        let default = catalog::default_stats_target(&conn)?;
+        let targets = catalog::stats_targets(&conn, &site.namespace)?;
+
+        Ok((default, targets))
+    }
+
     /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
     pub(crate) fn analyze_with_conn(
         &self,
