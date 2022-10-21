@@ -554,15 +554,15 @@ const FIREHOSE_COMPRESSION_FEATURE: &str = "compression";
 const FIREHOSE_PROVIDER_FEATURES: [&str; 2] =
     [FIREHOSE_FILTER_FEATURE, FIREHOSE_COMPRESSION_FEATURE];
 
-fn ten() -> u16 {
-    10
+fn twenty() -> u16 {
+    20
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct FirehoseProvider {
     pub url: String,
     pub token: Option<String>,
-    #[serde(default = "ten")]
+    #[serde(default = "twenty")]
     pub conn_pool_size: u16,
     #[serde(default)]
     pub features: BTreeSet<String>,
@@ -1338,7 +1338,7 @@ mod tests {
                     url: "http://localhost:9000".to_owned(),
                     token: None,
                     features: BTreeSet::new(),
-                    conn_pool_size: 10,
+                    conn_pool_size: 20,
                 }),
             },
             actual
@@ -1362,7 +1362,7 @@ mod tests {
                     url: "http://localhost:9000".to_owned(),
                     token: None,
                     features: BTreeSet::new(),
-                    conn_pool_size: 10,
+                    conn_pool_size: 20,
                 }),
             },
             actual
@@ -1385,7 +1385,7 @@ mod tests {
                     url: "http://localhost:9000".to_owned(),
                     token: None,
                     features: BTreeSet::new(),
-                    conn_pool_size: 10,
+                    conn_pool_size: 20,
                 }),
             },
             actual

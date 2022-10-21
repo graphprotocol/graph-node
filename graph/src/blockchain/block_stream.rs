@@ -10,7 +10,7 @@ use super::{Block, BlockPtr, Blockchain};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
-use crate::firehose;
+use crate::firehose::{self, FirehoseEndpoint};
 use crate::substreams::BlockScopedData;
 use crate::{prelude::*, prometheus::labels};
 
@@ -254,6 +254,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     async fn block_ptr_for_number(
         &self,
         logger: &Logger,
+        endpoint: &Arc<FirehoseEndpoint>,
         number: BlockNumber,
     ) -> Result<BlockPtr, Error>;
 
@@ -271,6 +272,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     async fn final_block_ptr_for(
         &self,
         logger: &Logger,
+        endpoint: &Arc<FirehoseEndpoint>,
         block: &C::Block,
     ) -> Result<BlockPtr, Error>;
 }

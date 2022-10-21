@@ -51,7 +51,6 @@ pub async fn chain_with_adapter_selector(
         None,
         true,
         false,
-        0,
     ))]
     .into();
 
