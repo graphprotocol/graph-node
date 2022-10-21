@@ -3,17 +3,17 @@
 macro_rules! ensure {
     ($cond:expr, $msg:literal $(,)?) => {
         if !$cond {
-            return Err(From::from($crate::prelude::anyhow::anyhow!($msg)));
+            return Err(From::from($crate::prelude::anyhow::anyhow!($msg)))
         }
     };
     ($cond:expr, $err:expr $(,)?) => {
         if !$cond {
-            return Err(From::from($crate::prelude::anyhow::anyhow!($err)));
+            return Err(From::from($crate::prelude::anyhow::anyhow!($err)))
         }
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return Err(From::from($crate::prelude::anyhow::anyhow!($fmt, $($arg)*)));
+            return Err(From::from($crate::prelude::anyhow::anyhow!($fmt, $($arg)*)))
         }
     };
 }
@@ -23,6 +23,6 @@ macro_rules! ensure {
 #[macro_export]
 macro_rules! bail {
     ($($err:tt)*) => {
-        return Err(anyhow::anyhow!($($err)*).into());
+        return Err(anyhow::anyhow!($($err)*).into())
     };
 }

@@ -18,6 +18,7 @@ use semver::Version;
 use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
 use std::{collections::BTreeMap, fmt, sync::Arc};
+use thiserror::Error;
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
@@ -25,22 +26,33 @@ pub enum DataSource<C: Blockchain> {
     Offchain(offchain::DataSource),
 }
 
-impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource<C> {
-    type Error = Error;
+#[derive(Error, Debug)]
+pub enum DataSourceCreationError {
+    /// The creation of the data source should be ignored.
+    #[error("ignoring data source creation due to invalid parameter: '{0}', error: {1:#}")]
+    Ignore(String, Error),
 
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
-        match &info.template {
-            DataSourceTemplate::Onchain(_) => {
-                C::DataSource::try_from(info).map(DataSource::Onchain)
-            }
-            DataSourceTemplate::Offchain(_) => {
-                offchain::DataSource::try_from(info).map(DataSource::Offchain)
-            }
-        }
-    }
+    /// Other errors.
+    #[error("error creating data source: {0:#}")]
+    Unknown(#[from] Error),
 }
 
 impl<C: Blockchain> DataSource<C> {
+    /// Instantiate from the parameters given by the mapping. `Ok(None)` means the parameter is
+    /// invalid and the instantiation should be ignored.
+    pub fn from_template_info(
+        info: DataSourceTemplateInfo<C>,
+    ) -> Result<Self, DataSourceCreationError> {
+        match &info.template {
+            DataSourceTemplate::Onchain(_) => {
+                Ok(DataSource::Onchain(C::DataSource::try_from(info)?))
+            }
+            DataSourceTemplate::Offchain(_) => Ok(DataSource::Offchain(
+                offchain::DataSource::from_template_info(info)?,
+            )),
+        }
+    }
+
     pub fn as_onchain(&self) -> Option<&C::DataSource> {
         match self {
             Self::Onchain(ds) => Some(&ds),

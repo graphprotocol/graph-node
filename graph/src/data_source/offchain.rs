@@ -1,4 +1,5 @@
 use crate::{
+    bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
@@ -18,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::TriggerWithHandler;
+use super::{DataSourceCreationError, TriggerWithHandler};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
@@ -61,34 +62,40 @@ impl DataSource {
     }
 }
 
-impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
-    type Error = Error;
-
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
+impl DataSource {
+    pub fn from_template_info<C: Blockchain>(
+        info: DataSourceTemplateInfo<C>,
+    ) -> Result<Self, DataSourceCreationError> {
         let template = match info.template {
             data_source::DataSourceTemplate::Offchain(template) => template,
             data_source::DataSourceTemplate::Onchain(_) => {
-                anyhow::bail!("Cannot create offchain data source from onchain template")
+                bail!("Cannot create offchain data source from onchain template")
             }
         };
-        let source = info.params.get(0).ok_or(anyhow::anyhow!(
+        let source = info.params.into_iter().next().ok_or(anyhow::anyhow!(
             "Failed to create data source from template `{}`: source parameter is missing",
             template.name
         ))?;
+
+        let source = match source.parse() {
+            Ok(source) => Source::Ipfs(source),
+
+            // Ignore data sources created with an invalid CID.
+            Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
+        };
+
         Ok(Self {
             kind: template.kind.clone(),
             name: template.name.clone(),
             manifest_idx: template.manifest_idx,
-            source: Source::Ipfs(source.parse()?),
+            source,
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
             done_at: Mutex::new(None),
         })
     }
-}
 
-impl DataSource {
     pub fn match_and_decode<C: Blockchain>(
         &self,
         trigger: &TriggerData,
