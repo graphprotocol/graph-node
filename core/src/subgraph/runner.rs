@@ -16,10 +16,9 @@ use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
-use graph::data_source::{offchain, DataSource, TriggerData};
+use graph::data_source::{offchain, DataSource, DataSourceCreationError, TriggerData};
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
-use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -475,7 +474,14 @@ where
 
         for info in created_data_sources {
             // Try to instantiate a data source from the template
-            let data_source = DataSource::try_from(info)?;
+            let data_source = match DataSource::from_template_info(info) {
+                Ok(ds) => ds,
+                Err(e @ DataSourceCreationError::Ignore(..)) => {
+                    warn!(self.logger, "{}", e.to_string());
+                    continue;
+                }
+                Err(DataSourceCreationError::Unknown(e)) => return Err(e),
+            };
 
             // Try to create a runtime host for the data source
             let host = self
@@ -490,7 +496,7 @@ where
                 None => {
                     warn!(
                         self.logger,
-                        "no runtime hosted created, there is already a runtime host instantiated for \
+                        "no runtime host created, there is already a runtime host instantiated for \
                         this data source";
                         "name" => &data_source.name(),
                         "address" => &data_source.address()
