@@ -7,6 +7,7 @@ use diesel::{
     ExpressionMethods, QueryDsl,
 };
 use graph::components::store::VersionStats;
+use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
@@ -724,4 +725,20 @@ pub(crate) fn stats_targets(
         },
     );
     Ok(map)
+}
+
+pub(crate) fn set_stats_target(
+    conn: &PgConnection,
+    namespace: &Namespace,
+    table: &SqlName,
+    columns: &[&SqlName],
+    target: i32,
+) -> Result<(), StoreError> {
+    let columns = columns
+        .iter()
+        .map(|column| format!("alter column {} set statistics {}", column.quoted(), target))
+        .join(", ");
+    let query = format!("alter table {}.{} {}", namespace, table.quoted(), columns);
+    conn.batch_execute(&query)?;
+    Ok(())
 }

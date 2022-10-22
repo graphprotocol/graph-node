@@ -1322,6 +1322,14 @@ impl Table {
         conn.execute(&sql)?;
         Ok(())
     }
+
+    pub(crate) fn block_column(&self) -> &SqlName {
+        if self.immutable {
+            &*crate::block_range::BLOCK_COLUMN_SQL
+        } else {
+            &*crate::block_range::BLOCK_RANGE_COLUMN_SQL
+        }
+    }
 }
 
 /// Return the enclosed named type for a field type, i.e., the type after

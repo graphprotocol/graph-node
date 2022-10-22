@@ -40,7 +40,7 @@ use graph::prelude::{
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
-use crate::block_range::block_number;
+use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::catalog;
 use crate::deployment;
 use crate::detail::ErrorDetail;
@@ -706,6 +706,31 @@ impl DeploymentStore {
         let targets = catalog::stats_targets(&conn, &site.namespace)?;
 
         Ok((default, targets))
+    }
+
+    pub(crate) fn set_stats_target(
+        &self,
+        site: Arc<Site>,
+        entity: Option<&str>,
+        columns: Vec<String>,
+        target: i32,
+    ) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        let layout = self.layout(&conn, site.clone())?;
+
+        let tables = entity
+            .map(|entity| resolve_table_name(&layout, &entity))
+            .transpose()?
+            .map(|table| vec![table])
+            .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
+
+        conn.transaction(|| {
+            for table in tables {
+                let columns = resolve_column_names(table, &columns)?;
+                catalog::set_stats_target(&conn, &site.namespace, &table.name, &columns, target)?;
+            }
+            Ok(())
+        })
     }
 
     /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
@@ -1660,26 +1685,34 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
         })
 }
 
-// Resolves column names.
-//
-// Since we allow our input to be either camel-case or snake-case, we must retry the
-// search using the latter if the search for the former fails.
+/// Resolves column names against the `table`. The `field_names` can be
+/// either GraphQL attributes or the SQL names of columns. We also accept
+/// the names `block_range` and `block$` and map that to the correct name
+/// for the block range column for that table.
 fn resolve_column_names<'a, T: AsRef<str>>(
     table: &'a Table,
     field_names: &[T],
 ) -> Result<Vec<&'a SqlName>, StoreError> {
+    fn lookup<'a>(table: &'a Table, field: &str) -> Result<&'a SqlName, StoreError> {
+        table
+            .column_for_field(field)
+            .or_else(|_error| {
+                let sql_name = SqlName::from(field);
+                table
+                    .column(&sql_name)
+                    .ok_or_else(|| StoreError::UnknownField(field.to_string()))
+            })
+            .map(|column| &column.name)
+    }
+
     field_names
         .iter()
         .map(|f| {
-            table
-                .column_for_field(f.as_ref())
-                .or_else(|_error| {
-                    let sql_name = SqlName::from(f.as_ref());
-                    table
-                        .column(&sql_name)
-                        .ok_or_else(|| StoreError::UnknownField(f.as_ref().to_string()))
-                })
-                .map(|column| &column.name)
+            if f.as_ref() == BLOCK_RANGE_COLUMN || f.as_ref() == BLOCK_COLUMN {
+                Ok(table.block_column())
+            } else {
+                lookup(table, f.as_ref())
+            }
         })
         .collect()
 }

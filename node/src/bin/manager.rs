@@ -495,6 +495,36 @@ pub enum StatsCommand {
         /// The deployment (see `help info`).
         deployment: DeploymentSearch,
     },
+    /// Set the statistics targets for the statistics collector
+    ///
+    /// Set (or reset) the target for a deployment. The statistics target
+    /// determines how much of a table Postgres will sample when it analyzes
+    /// a table. This can be particularly beneficial when Postgres chooses
+    /// suboptimal query plans for some queries. Increasing the target will
+    /// make analyzing tables take longer and will require more space in
+    /// Postgres' internal statistics storage.
+    ///
+    /// If no `columns` are provided, change the statistics target for the
+    /// `id` and `block_range` columns which will usually be enough to
+    /// improve query performance, but it might be necessary to increase the
+    /// target for other columns, too.
+    SetTarget {
+        /// The value of the statistics target
+        #[clap(short, long, default_value = "200", conflicts_with = "reset")]
+        target: u32,
+        /// Reset the target so the default is used
+        #[clap(long, conflicts_with = "target")]
+        reset: bool,
+        /// Do not analyze changed tables
+        #[clap(long)]
+        no_analyze: bool,
+        /// The deployment (see `help info`).
+        deployment: DeploymentSearch,
+        /// The table for which to set the target, all if omitted
+        entity: Option<String>,
+        /// The columns to which to apply the target. Defaults to `id, block_range`
+        columns: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1163,6 +1193,27 @@ async fn main() -> anyhow::Result<()> {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
                     commands::stats::target(subgraph_store, primary_pool, &deployment)
+                }
+                SetTarget {
+                    target,
+                    reset,
+                    no_analyze,
+                    deployment,
+                    entity,
+                    columns,
+                } => {
+                    let (store, primary) = ctx.store_and_primary();
+                    let store = store.subgraph_store();
+                    let target = if reset { -1 } else { target as i32 };
+                    commands::stats::set_target(
+                        store,
+                        primary,
+                        &deployment,
+                        entity.as_deref(),
+                        columns,
+                        target,
+                        no_analyze,
+                    )
                 }
             }
         }

@@ -1048,6 +1048,20 @@ impl SubgraphStoreInner {
         store.stats_targets(site)
     }
 
+    /// Set the statistics target for columns `columns` in `deployment`. If
+    /// `entity` is `Some`, only set it for the table for that entity, if it
+    /// is `None`, set it for all tables in the deployment.
+    pub fn set_stats_target(
+        &self,
+        deployment: &DeploymentLocator,
+        entity: Option<&str>,
+        columns: Vec<String>,
+        target: i32,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(&deployment.hash)?;
+        store.set_stats_target(site, entity, columns, target)
+    }
+
     pub async fn create_manual_index(
         &self,
         deployment: &DeploymentLocator,
