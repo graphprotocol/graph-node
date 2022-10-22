@@ -683,9 +683,18 @@ impl DeploymentStore {
     }
 
     /// Runs the SQL `ANALYZE` command in a table.
-    pub(crate) fn analyze(&self, site: Arc<Site>, entity_name: &str) -> Result<(), StoreError> {
+    pub(crate) fn analyze(&self, site: Arc<Site>, entity: Option<&str>) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
-        self.analyze_with_conn(site, entity_name, &conn)
+        let layout = self.layout(&conn, site)?;
+        let tables = entity
+            .map(|entity| resolve_table_name(&layout, &entity))
+            .transpose()?
+            .map(|table| vec![table])
+            .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
+        for table in tables {
+            table.analyze(&conn)?;
+        }
+        Ok(())
     }
 
     pub(crate) fn stats_targets(

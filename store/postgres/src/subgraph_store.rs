@@ -1030,7 +1030,7 @@ impl SubgraphStoreInner {
     pub fn analyze(
         &self,
         deployment: &DeploymentLocator,
-        entity_name: &str,
+        entity_name: Option<&str>,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store.analyze(site, entity_name)

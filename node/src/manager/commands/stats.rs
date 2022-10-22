@@ -118,10 +118,13 @@ pub fn analyze(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
     search: DeploymentSearch,
-    entity_name: &str,
+    entity_name: Option<&str>,
 ) -> Result<(), anyhow::Error> {
     let locator = search.locate_unique(&pool)?;
-    println!("Analyzing table sgd{}.{entity_name}", locator.id);
+    match entity_name {
+        Some(entity_name) => println!("Analyzing table sgd{}.{entity_name}", locator.id),
+        None => println!("Analyzing all tables for sgd{}", locator.id),
+    }
     store.analyze(&locator, entity_name).map_err(|e| anyhow!(e))
 }
 

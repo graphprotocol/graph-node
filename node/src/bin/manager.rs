@@ -483,8 +483,9 @@ pub enum StatsCommand {
     Analyze {
         /// The deployment (see `help info`).
         deployment: DeploymentSearch,
-        /// The name of the Entity to ANALYZE, in camel case
-        entity: String,
+        /// The name of the Entity to ANALYZE, in camel case. Analyze all
+        /// tables if omitted
+        entity: Option<String>,
     },
     /// Show statistics targets for the statistics collector
     ///
@@ -1151,7 +1152,12 @@ async fn main() -> anyhow::Result<()> {
                 Analyze { deployment, entity } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    commands::stats::analyze(subgraph_store, primary_pool, deployment, &entity)
+                    commands::stats::analyze(
+                        subgraph_store,
+                        primary_pool,
+                        deployment,
+                        entity.as_deref(),
+                    )
                 }
                 Target { deployment } => {
                     let (store, primary_pool) = ctx.store_and_primary();
