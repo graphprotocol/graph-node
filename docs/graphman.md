@@ -388,7 +388,7 @@ OPTIONS:
 
 ### DESCRIPTION
 
-Remove call cache of a specified chain
+Remove the call cache of a specified chain.
 
 ### OPTIONS
 
