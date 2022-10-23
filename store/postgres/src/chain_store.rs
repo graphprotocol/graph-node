@@ -1063,47 +1063,41 @@ mod data {
                     delete_stmt.execute(conn).map_err(Error::from)?;
                     Ok(())
                 }
-                Storage::Private(Schema { call_cache, .. }) => {
-                    match (from, to) {
-                        (Some(from), None) => {
-                            let query = format!(
-                                "delete from {} where block_number >= $1",
-                                call_cache.qname
-                            );
-                            sql_query(query)
-                                .bind::<Integer, _>(from)
-                                .execute(conn)
-                                .map_err(Error::from)?;
-                            Ok(())
-                        }
-                        (None, Some(to)) => {
-                            let query = format!(
-                                "delete from {} where block_number <= $1",
-                                call_cache.qname
-                            );
-                            sql_query(query)
-                                .bind::<Integer, _>(to)
-                                .execute(conn)
-                                .map_err(Error::from)?;
-                            Ok(())
-                        }
-                        (Some(from), Some(to)) => {
-                            let query = format!(
-                                "delete from {} where block_number >= $1 and block_number <= $2",
-                                call_cache.qname
-                            );
-                            sql_query(query)
-                                .bind::<Integer, _>(from)
-                                .bind::<Integer, _>(to)
-                                .execute(conn)
-                                .map_err(Error::from)?;
-                            Ok(())
-                        }
-                        _ => {
-                            unreachable!("truncate should have been executed");
-                        }
+                Storage::Private(Schema { call_cache, .. }) => match (from, to) {
+                    (Some(from), None) => {
+                        let query =
+                            format!("delete from {} where block_number >= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
                     }
-                }
+                    (None, Some(to)) => {
+                        let query =
+                            format!("delete from {} where block_number <= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
+                    }
+                    (Some(from), Some(to)) => {
+                        let query = format!(
+                            "delete from {} where block_number >= $1 and block_number <= $2",
+                            call_cache.qname
+                        );
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
+                    }
+                    _ => {
+                        unreachable!("truncate should have been executed");
+                    }
+                },
             }
         }
 
