@@ -55,8 +55,8 @@ pub async fn clear_call_cache(
     from: Option<i32>,
     to: Option<i32>,
 ) -> Result<(), Error> {
-    let n = chain_store.clear_call_cache(from, to).await?;
-    println!("cleared {} call cache", n);
+    chain_store.clear_call_cache(from, to).await?;
+    println!("The call cache has cleared");
     Ok(())
 }
 

@@ -15,6 +15,7 @@ use graph_tests::fixture::{self, stores, test_ptr, NoopAdapterSelector};
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
+    std::env::set_var("THEGRAPH_STORE_POSTGRES_DIESEL_URL", "postgresql://graph:graph@127.0.0.1:5432/graph-test");
     let stores = stores("./integration-tests/config.simple.toml").await;
 
     let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
