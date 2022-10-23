@@ -369,32 +369,50 @@ Inspect all blocks after block `13000000`:
 
 ### SYNOPSIS
 
-Execute operations on call cache
+Remove the call cache of the specified chain.
+
+If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be removed.
 
 USAGE:
-    graphman chain call-cache <CHAIN_NAME> <SUBCOMMAND>
-
-ARGS:
-    <CHAIN_NAME>    Chain name (must be an existing chain, see 'chain list')
+    graphman chain call-cache <CHAIN_NAME> remove [OPTIONS]
 
 OPTIONS:
-    -h, --help    Print help information
+    -f, --from <FROM>
+            Starting block number
 
-SUBCOMMANDS:
-    help      Print this message or the help of the given subcommand(s)
-    remove    Remove call cache of a specified chain
+    -h, --help
+            Print help information
+
+    -t, --to <TO>
+            Ending block number
 
 ### DESCRIPTION
 
 Remove call cache of a specified chain
 
+### OPTIONS
+
+The `from` and `to` options can be used to decide the block range of the call cache that needs to be removed.
+
+#### `from`
+   
+    graphman --config config.toml chain call-cache ethereum remove --from 10
+
+#### `to`
+
+    graphman --config config.toml chain call-cache ethereum remove --to 10
+
+#### `from` and `to`
+
+    graphman --config config.toml chain call-cache ethereum remove --from 10 --to 50
+
 ### EXAMPLES
 
-Remove call cache by specifying its `from` and `to` block number
+Remove call cache by specifying its `from` and `to` block number:
 
     graphman --config config.toml chain call-cache ethereum remove --from 10 --to 20
 
-Remove all the call cache of the specified chain
+Remove all the call cache of the specified chain:
 
     graphman --config config.toml chain call-cache ethereum remove
 

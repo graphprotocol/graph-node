@@ -440,7 +440,7 @@ pub enum ChainCommand {
 
 #[derive(Clone, Debug, Subcommand)]
 pub enum CallCacheCommand {
-    /// Remove the call cache of the specified chain
+    /// Remove the call cache of the specified chain.
     ///
     /// If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be
     /// removed.
