@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM golang:buster as envsubst
+FROM golang:bullseye as envsubst
 
 # v1.2.0
 ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
@@ -12,7 +12,7 @@ ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
     && strip -g /go/bin/envsubst
 
-FROM rust:buster as graph-node-build
+FROM rust:slim-bullseye as graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -47,7 +47,7 @@ COPY docker/Dockerfile /Dockerfile
 COPY docker/bin/* /usr/local/bin/
 
 # The graph-node runtime image with only the executable
-FROM debian:buster-slim as graph-node
+FROM debian:bullseye-slim as graph-node
 ENV RUST_LOG ""
 ENV GRAPH_LOG ""
 ENV EARLY_LOG_CHUNK_SIZE ""
