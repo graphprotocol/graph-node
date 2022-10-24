@@ -8,28 +8,51 @@ FROM golang:bullseye as envsubst
 
 # v1.2.0
 ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
-
+# We ship `envsubst` with the final image to facilitate env. var. templating in
+# the configuration file.
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
     && strip -g /go/bin/envsubst
 
-FROM rust:slim-bullseye as graph-node-build
+FROM rust:bullseye AS cargo-chef
+
+WORKDIR /app
+# Best thing in life after sliced bread.
+# <https://github.com/LukeMathWalker/cargo-chef>
+# We're not using cargo-chef's prebuilt image for security reasons (not that
+# there's anything wrong with it per se). The version is pinned to minimize the
+# risk of supply chain attacks.
+RUN cargo install cargo-chef --version 0.1.45
+
+FROM cargo-chef AS cargo-chef-plan
+
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM cargo-chef AS graph-node-build
+
+WORKDIR /graph-node
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
 ARG BRANCH_NAME=unknown
 ARG TAG_NAME=unknown
 
-ADD . /graph-node
+COPY --from=cargo-chef-plan /app/recipe.json cargo-chef-recipe.json
 
-RUN cd /graph-node \
-    && apt-get update && apt-get install -y cmake \
-    && rustup component add rustfmt \
-    && RUSTFLAGS="-g" cargo install --locked --path node \
+RUN apt-get update \
+    && apt-get install -y cmake
+RUN RUSTFLAGS="-g" cargo chef cook --release --recipe-path cargo-chef-recipe.json
+
+ADD . .
+
+RUN RUSTFLAGS="-g" cargo build --release \
+    && cp target/release/graph-node /usr/local/bin/graph-node \
+    && cp target/release/graphman /usr/local/bin/graphman \
     && cargo clean \
-    && objcopy --only-keep-debug /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graph-node.debug \
-    && strip -g /usr/local/cargo/bin/graph-node \
-    && strip -g /usr/local/cargo/bin/graphman \
-    && cd /usr/local/cargo/bin \
+    && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
+    && strip -g /usr/local/bin/graph-node \
+    && strip -g /usr/local/bin/graphman \
+    && cd /usr/local/bin \
     && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
     && echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
     && echo "TAG_NAME='$TAG_NAME'" >> /etc/image-info \
@@ -94,7 +117,7 @@ RUN apt-get update \
     && apt-get install -y libpq-dev ca-certificates netcat
 
 ADD docker/wait_for docker/start /usr/local/bin/
-COPY --from=graph-node-build /usr/local/cargo/bin/graph-node /usr/local/cargo/bin/graphman /usr/local/bin/
+COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
