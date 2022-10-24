@@ -5,7 +5,7 @@ schema:
   file: ./schema.graphql
 graft:
   # Must match the id from building `subgraph.yaml`
-  base: QmW6kCVyaV3d37Pm9ZZKZAWU9G6oSooJiarjBKrqLE9FJy
+  base: QmVKnNESJgM5wN33q6fSnhmjPBkinc5QQud9zmuUEB5NH4
   block: 3
 dataSources:
   - kind: ethereum/contract

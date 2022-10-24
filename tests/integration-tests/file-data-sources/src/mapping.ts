@@ -24,13 +24,13 @@ export function handleBlock(block: ethereum.Block): void {
 }
 
 export function handleFile(data: Bytes): void {
-  let entity = new IpfsFile(dataSource.address().toHexString())
+  let entity = new IpfsFile(dataSource.stringParam())
   entity.content = data.toString()
   entity.save()
 }
 
 export function handleFile1(data: Bytes): void {
-  let entity = new IpfsFile1(dataSource.address().toHexString())
+  let entity = new IpfsFile1(dataSource.stringParam())
   entity.content = data.toString()
   entity.save()
 }
