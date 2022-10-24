@@ -195,7 +195,19 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
                     .from
                     .try_decode_proto("transaction from address")?,
             ),
-            to: Some(self.trace.to.try_decode_proto("transaction to address")?),
+            to: match self.trace.calls.len() {
+                0 => Some(self.trace.to.try_decode_proto("transaction to address")?),
+                _ => {
+                    match CallType::from_i32(self.trace.calls[0].call_type).ok_or_else(|| {
+                        format_err!("invalid call type: {}", self.trace.calls[0].call_type,)
+                    })? {
+                        CallType::Create => {
+                            None // we don't want the 'to' address on a transaction that creates the contract, to align with RPC behavior
+                        }
+                        _ => Some(self.trace.to.try_decode_proto("transaction to")?),
+                    }
+                }
+            },
             value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
             gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
             gas: U256::from(self.trace.gas_limit),
