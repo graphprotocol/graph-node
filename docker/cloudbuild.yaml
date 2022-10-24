@@ -10,6 +10,8 @@ steps:
          '--build-arg', 'TAG_NAME=$TAG_NAME',
          '-t', 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
+  env:
+    - 'DOCKER_BUILDKIT=1'
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -18,6 +20,8 @@ steps:
          '--build-arg', 'TAG_NAME=$TAG_NAME',
          '-t', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
+  env:
+    - 'DOCKER_BUILDKIT=1'
 - name: 'gcr.io/cloud-builders/docker'
   args: ['build', '--target', 'graph-node-debug',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
@@ -26,6 +30,8 @@ steps:
          '--build-arg', 'TAG_NAME=$TAG_NAME',
          '-t', 'gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
          '-f', 'docker/Dockerfile', '.']
+  env:
+    - 'DOCKER_BUILDKIT=1'
 - name: 'gcr.io/cloud-builders/docker'
   args: ['tag',
          'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
