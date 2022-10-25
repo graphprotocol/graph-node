@@ -11,7 +11,7 @@ use graph::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{MappingError, SharedProofOfIndexing},
     },
-    data_source::{offchain, DataSource, TriggerData},
+    data_source::{offchain, CausalityRegion, DataSource, TriggerData},
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
@@ -141,7 +141,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         Ok(host)
     }
 
-    pub fn causality_region_next_value(&mut self) -> i32 {
+    pub fn causality_region_next_value(&mut self) -> CausalityRegion {
         self.instance.causality_region_next_value()
     }
 }

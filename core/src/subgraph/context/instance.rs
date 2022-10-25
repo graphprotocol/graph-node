@@ -1,7 +1,7 @@
 use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::Blockchain,
-    data_source::{DataSource, DataSourceTemplate},
+    data_source::{CausalityRegion, DataSource, DataSourceTemplate},
     prelude::*,
 };
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 
-    causality_region_next_value: i32,
+    causality_region_next_value: CausalityRegion,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -39,7 +39,7 @@ where
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
-        causality_region_next_value: i32,
+        causality_region_next_value: CausalityRegion,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -169,9 +169,9 @@ where
         &self.hosts
     }
 
-    pub(super) fn causality_region_next_value(&mut self) -> i32 {
+    pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
         let next = self.causality_region_next_value;
-        self.causality_region_next_value += 1;
+        self.causality_region_next_value = self.causality_region_next_value.next();
         next
     }
 }

@@ -9,6 +9,7 @@ use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynam
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
+use graph::data_source::CausalityRegion;
 use graph::prelude::{
     tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
@@ -1278,7 +1279,7 @@ impl DeploymentStore {
     pub(crate) async fn causality_region_next_value(
         &self,
         site: Arc<Site>,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<CausalityRegion, StoreError> {
         self.with_conn(move |conn, _| {
             Ok(conn.transaction(|| crate::dynds::causality_region_next_value(conn, &site))?)
         })

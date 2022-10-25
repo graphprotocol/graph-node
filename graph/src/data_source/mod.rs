@@ -1,4 +1,7 @@
+pub mod causality_region;
 pub mod offchain;
+
+pub use causality_region::CausalityRegion;
 
 use crate::{
     blockchain::{
@@ -18,9 +21,6 @@ use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
 use std::{collections::BTreeMap, fmt, sync::Arc};
 use thiserror::Error;
-
-/// The causality region of all onchain data sources.
-pub const ROOT_CAUSALITY_REGION: i32 = 0;
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {

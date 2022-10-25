@@ -9,7 +9,7 @@ use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
-    subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
+    subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{
@@ -179,7 +179,7 @@ where
         };
 
         // Causality region for onchain triggers.
-        let causality_region = CausalityRegion::from_network(&self.inputs.network);
+        let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed

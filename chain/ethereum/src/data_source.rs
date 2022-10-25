@@ -2,7 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
-use graph::data_source::ROOT_CAUSALITY_REGION;
+use graph::data_source::CausalityRegion;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
@@ -181,7 +181,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
             done_at: None,
-            causality_region: ROOT_CAUSALITY_REGION,
+            causality_region: CausalityRegion::ONCHAIN,
         }
     }
 
@@ -199,7 +199,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         } = stored;
 
         ensure!(
-            causality_region == ROOT_CAUSALITY_REGION,
+            causality_region == CausalityRegion::ONCHAIN,
             "stored ethereum data source has causality region {}, expected root",
             causality_region
         );

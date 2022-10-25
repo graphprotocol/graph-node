@@ -12,7 +12,7 @@ use diesel::{insert_into, pg::PgConnection};
 use graph::{
     components::store::StoredDynamicDataSource,
     constraint_violation,
-    data_source::ROOT_CAUSALITY_REGION,
+    data_source::CausalityRegion,
     prelude::{
         bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, BlockPtr, DeploymentHash,
         StoreError,
@@ -86,7 +86,7 @@ pub(super) fn load(
             // The shared schema is only used for legacy deployments, and therefore not used for
             // subgraphs that use file data sources.
             done_at: None,
-            causality_region: ROOT_CAUSALITY_REGION,
+            causality_region: CausalityRegion::ONCHAIN,
         };
 
         if data_sources.last().and_then(|d| d.creation_block) > data_source.creation_block {
@@ -126,7 +126,7 @@ pub(super) fn insert(
                 causality_region,
             } = ds;
 
-            if causality_region != &ROOT_CAUSALITY_REGION {
+            if causality_region != &CausalityRegion::ONCHAIN {
                 return Err(constraint_violation!(
                     "using shared data source schema with file data sources"
                 ));

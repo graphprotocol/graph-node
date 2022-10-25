@@ -19,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{DataSourceCreationError, TriggerWithHandler};
+use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
@@ -33,7 +33,7 @@ pub struct DataSource {
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
     pub done_at: Mutex<Option<i32>>,
-    pub causality_region: i32,
+    pub causality_region: CausalityRegion,
 }
 
 impl Clone for DataSource {
@@ -67,7 +67,7 @@ impl DataSource {
 impl DataSource {
     pub fn from_template_info(
         info: DataSourceTemplateInfo<impl Blockchain>,
-        causality_region: i32,
+        causality_region: CausalityRegion,
     ) -> Result<Self, DataSourceCreationError> {
         let template = match info.template {
             data_source::DataSourceTemplate::Offchain(template) => template,
@@ -219,7 +219,7 @@ impl UnresolvedDataSource {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
-        causality_region: i32,
+        causality_region: CausalityRegion,
     ) -> Result<DataSource, Error> {
         info!(logger, "Resolve offchain data source";
             "name" => &self.name,

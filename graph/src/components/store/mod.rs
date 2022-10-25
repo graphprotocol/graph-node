@@ -24,6 +24,7 @@ use crate::blockchain::{Block, Blockchain};
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
+use crate::data_source::CausalityRegion;
 use crate::prelude::*;
 
 /// The type name of an entity. This is the string that is used in the
@@ -801,7 +802,7 @@ pub struct StoredDynamicDataSource {
     pub context: Option<serde_json::Value>,
     pub creation_block: Option<BlockNumber>,
     pub done_at: Option<i32>,
-    pub causality_region: i32,
+    pub causality_region: CausalityRegion,
 }
 
 /// An internal identifer for the specific instance of a deployment. The

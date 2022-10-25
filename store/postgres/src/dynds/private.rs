@@ -12,7 +12,7 @@ use graph::{
     anyhow::Context,
     components::store::StoredDynamicDataSource,
     constraint_violation,
-    data_source::ROOT_CAUSALITY_REGION,
+    data_source::CausalityRegion,
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
@@ -92,7 +92,7 @@ impl DataSourcesTable {
             i32,
             Option<Vec<u8>>,
             Option<serde_json::Value>,
-            i32,
+            CausalityRegion,
             Option<i32>,
         );
         let tuples = self
@@ -322,17 +322,20 @@ impl DataSourcesTable {
     pub(super) fn causality_region_next_value(
         &self,
         conn: &PgConnection,
-    ) -> Result<i32, StoreError> {
+    ) -> Result<CausalityRegion, StoreError> {
         // Get the maximum `causality_region` leveraging the btree index.
+        //
+        // If the table is empty, assume that static onchain data sources exist on the manifest, and
+        // therefore start from CausalityRegion::ONCHAIN + 1, which is 1.
         let causality_region_max_value = self
             .table
             .clone()
             .select(&self.causality_region)
             .order_by((&self.causality_region).desc())
-            .first::<i32>(conn)
+            .first::<CausalityRegion>(conn)
             .optional()?
-            .unwrap_or(ROOT_CAUSALITY_REGION);
+            .unwrap_or(CausalityRegion::ONCHAIN);
 
-        Ok(causality_region_max_value + 1)
+        Ok(causality_region_max_value.next())
     }
 }
