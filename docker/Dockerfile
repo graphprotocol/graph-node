@@ -41,7 +41,7 @@ ARG REPO_NAME=unknown
 ARG BRANCH_NAME=unknown
 ARG TAG_NAME=unknown
 
-COPY --from=cargo-chef-plan /app/recipe.json cargo-chef-recipe.json
+COPY --from=cargo-chef-plan /recipe.json cargo-chef-recipe.json
 
 RUN apt-get update \
     && apt-get install -y cmake
