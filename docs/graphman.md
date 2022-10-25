@@ -392,19 +392,17 @@ Remove the call cache of a specified chain.
 
 ### OPTIONS
 
-The `from` and `to` options can be used to decide the block range of the call cache that needs to be removed.
+The `from` and `to` options are used to decide the block range of the call cache that needs to be removed.
 
 #### `from`
-   
-    graphman --config config.toml chain call-cache ethereum remove --from 10
+
+The `from` option is used to specify the starting block number of the block range. In the absence of `from` option, the first block 
+number will be used as the starting block number.
 
 #### `to`
 
-    graphman --config config.toml chain call-cache ethereum remove --to 10
-
-#### `from` and `to`
-
-    graphman --config config.toml chain call-cache ethereum remove --from 10 --to 50
+The `to` option is used to specify the ending block number of the block range. In the absence of `to` option, the last block 
+number will be used as the ending block number.
 
 ### EXAMPLES
 
