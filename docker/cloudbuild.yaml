@@ -32,10 +32,10 @@ steps:
     '--destination=gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
     '--dockerfile=docker/Dockerfile',
   ]
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['tag',
-         'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
-         'lutter/graph-node:$SHORT_SHA']
+#- name: 'gcr.io/cloud-builders/docker'
+#  args: ['tag',
+#         'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
+#         'lutter/graph-node:$SHORT_SHA']
 - name: 'gcr.io/cloud-builders/docker'
   entrypoint: 'bash'
   args: ['docker/tag.sh']
