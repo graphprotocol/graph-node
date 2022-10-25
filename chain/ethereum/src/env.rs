@@ -136,7 +136,7 @@ impl From<Inner> for EnvVars {
             cleanup_blocks: x.cleanup_blocks.0,
             target_triggers_per_block_range: x.target_triggers_per_block_range,
             genesis_block_number: x.genesis_block_number,
-            allow_eth_call_empty_response_cache: x.allow_eth_call_empty_response_cache,
+            allow_eth_call_empty_response_cache: x.allow_eth_call_empty_response_cache.0,
         }
     }
 }
@@ -188,5 +188,5 @@ struct Inner {
     #[envconfig(from = "GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER", default = "0")]
     genesis_block_number: u64,
     #[envconfig(from = "ALLOW_ETH_CALL_EMPTY_RESPONSE_CACHE", default = "true")]
-    allow_eth_call_empty_response_cache: bool,
+    allow_eth_call_empty_response_cache: EnvVarBoolean,
 }
