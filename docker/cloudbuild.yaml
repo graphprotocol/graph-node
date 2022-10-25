@@ -9,21 +9,9 @@ steps:
     '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
     '--build-arg', 'TAG_NAME=$TAG_NAME',
     '--cache=true',
+    '--cache-ttl=96h',
     '--cache-run-layers=true',
-    '--cache-ttl=48h',
-    '--target=graph-node-build',
-    '--destination=gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA',
-    '--dockerfile=docker/Dockerfile',
-  ]
-- name: 'gcr.io/kaniko-project/executor:latest'
-  args: [
-    '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
-    '--build-arg', 'REPO_NAME=$REPO_NAME',
-    '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
-    '--build-arg', 'TAG_NAME=$TAG_NAME',
-    '--cache=true',
-    '--cache-run-layers=true',
-    '--cache-ttl=48h',
+    '--cache-repo=gcr.io/$PROJECT_ID/graph-node/cache',
     '--target=graph-node',
     '--destination=gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
     '--dockerfile=docker/Dockerfile',
@@ -35,8 +23,11 @@ steps:
     '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
     '--build-arg', 'TAG_NAME=$TAG_NAME',
     '--cache=true',
+    '--cache-ttl=96h',
     '--cache-run-layers=true',
-    '--cache-ttl=48h',
+    # Cache is shared between `graph-node` and `graph-node-debug`, because the
+    # build stages are identical.
+    '--cache-repo=gcr.io/$PROJECT_ID/graph-node/cache',
     '--target=graph-node-debug',
     '--destination=gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
     '--dockerfile=docker/Dockerfile',
@@ -56,7 +47,6 @@ steps:
     - 'DOCKER_HUB_USER=$_DOCKER_HUB_USER'
     - 'BRANCH_NAME=$BRANCH_NAME'
 images:
-  - 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA'
   - 'gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA'
 substitutions:
