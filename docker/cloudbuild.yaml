@@ -2,36 +2,45 @@ options:
   machineType: "N1_HIGHCPU_32"
 timeout: 1800s
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node-build',
-         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
-         '--build-arg', 'REPO_NAME=$REPO_NAME',
-         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
-         '--build-arg', 'TAG_NAME=$TAG_NAME',
-         '-t', 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA',
-         '-f', 'docker/Dockerfile', '.']
-  env:
-    - 'DOCKER_BUILDKIT=1'
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node',
-         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
-         '--build-arg', 'REPO_NAME=$REPO_NAME',
-         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
-         '--build-arg', 'TAG_NAME=$TAG_NAME',
-         '-t', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
-         '-f', 'docker/Dockerfile', '.']
-  env:
-    - 'DOCKER_BUILDKIT=1'
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '--target', 'graph-node-debug',
-         '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
-         '--build-arg', 'REPO_NAME=$REPO_NAME',
-         '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
-         '--build-arg', 'TAG_NAME=$TAG_NAME',
-         '-t', 'gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
-         '-f', 'docker/Dockerfile', '.']
-  env:
-    - 'DOCKER_BUILDKIT=1'
+- name: 'gcr.io/kaniko-project/executor:latest'
+  args: [
+    '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+    '--build-arg', 'REPO_NAME=$REPO_NAME',
+    '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+    '--build-arg', 'TAG_NAME=$TAG_NAME',
+    '--cache', 'true',
+    '--cache-run-layers', 'true',
+    '--cache-ttl', '48h',
+    '--target', 'graph-node-build',
+    '--destination', 'gcr.io/$PROJECT_ID/graph-node-build:$SHORT_SHA',
+    '--dockerfile', 'docker/Dockerfile',
+  ]
+- name: 'gcr.io/kaniko-project/executor:latest'
+  args: [
+    '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+    '--build-arg', 'REPO_NAME=$REPO_NAME',
+    '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+    '--build-arg', 'TAG_NAME=$TAG_NAME',
+    '--cache', 'true',
+    '--cache-run-layers', 'true',
+    '--cache-ttl', '48h',
+    '--target', 'graph-node',
+    '--destination', 'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
+    '--dockerfile', 'docker/Dockerfile',
+  ]
+- name: 'gcr.io/kaniko-project/executor:latest'
+  args: [
+    '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
+    '--build-arg', 'REPO_NAME=$REPO_NAME',
+    '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
+    '--build-arg', 'TAG_NAME=$TAG_NAME',
+    '--cache', 'true',
+    '--cache-run-layers', 'true',
+    '--cache-ttl', '48h',
+    '--target', 'graph-node-debug',
+    '--destination', 'gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
+    '--dockerfile', 'docker/Dockerfile',
+  ]
 - name: 'gcr.io/cloud-builders/docker'
   args: ['tag',
          'gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
