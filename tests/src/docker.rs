@@ -1,7 +1,7 @@
+use crate::helpers::{contains_subslice, postgres_test_database_name, MappedPorts};
 use bollard::image::CreateImageOptions;
 use bollard::models::HostConfig;
 use bollard::{container, Docker};
-use graph_tests::helpers::{contains_subslice, postgres_test_database_name, MappedPorts};
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
 use tokio_stream::StreamExt;
