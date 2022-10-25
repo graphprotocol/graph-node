@@ -13,7 +13,7 @@ steps:
     '--cache-run-layers=true',
     '--cache-repo=gcr.io/$PROJECT_ID/graph-node/cache',
     '--skip-unused-stages',
-    '--snapshotMode=redo',
+    '--snapshot-mode=redo',
     '--target=graph-node',
     '--destination=gcr.io/$PROJECT_ID/graph-node:$SHORT_SHA',
     '--dockerfile=docker/Dockerfile',
@@ -30,7 +30,7 @@ steps:
     # Cache is shared between `graph-node` and `graph-node-debug`, because the
     # build stages are identical.
     '--cache-repo=gcr.io/$PROJECT_ID/graph-node/cache',
-    '--snapshotMode=redo',
+    '--snapshot-mode=redo',
     '--target=graph-node-debug',
     '--destination=gcr.io/$PROJECT_ID/graph-node-debug:$SHORT_SHA',
     '--dockerfile=docker/Dockerfile',
