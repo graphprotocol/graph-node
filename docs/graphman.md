@@ -7,7 +7,7 @@
 - [Unused Remove](#unused-remove)
 - [Drop](#drop)
 - [Chain Check Blocks](#check-blocks)
-- [Chain Call Cache](#chain-call-cache-remove)
+- [Chain Call Cache Remove](#chain-call-cache-remove)
 
 <a id="info"></a>
 # ⌘ Info
@@ -365,7 +365,7 @@ Inspect all blocks after block `13000000`:
     graphman --config config.toml chain check-blocks mainnet by-range --from 13000000
 
 <a id="chain-call-cache-remove"></a>
-# ⌘ Call Cache
+# ⌘ Chain Call Cache Remove
 
 ### SYNOPSIS
 
@@ -408,7 +408,7 @@ The `from` and `to` options can be used to decide the block range of the call ca
 
 ### EXAMPLES
 
-Remove call cache by specifying its `from` and `to` block number:
+Remove the call cache for all blocks numbered from 10 to 20:
 
     graphman --config config.toml chain call-cache ethereum remove --from 10 --to 20
 

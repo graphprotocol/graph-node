@@ -1046,7 +1046,8 @@ mod data {
             to: Option<i32>,
         ) -> Result<(), Error> {
             if from.is_none() && to.is_none() {
-                // fast path to clear the call cache table.
+                // If both `from` and `to` arguments are equal to `None`, then truncation should be
+                // preferred over deletion as it is a faster operation.
                 self.truncate_call_cache(conn)?;
                 return Ok(());
             }
@@ -1064,6 +1065,9 @@ mod data {
                     Ok(())
                 }
                 Storage::Private(Schema { call_cache, .. }) => match (from, to) {
+                    // Because they are dynamically defined, our private call cache tables can't
+                    // implement all the required traits for deletion. This means we can't use Diesel
+                    // DSL with them and must rely on the `sql_query` function instead.
                     (Some(from), None) => {
                         let query =
                             format!("delete from {} where block_number >= $1", call_cache.qname);
@@ -1094,8 +1098,8 @@ mod data {
                             .map_err(Error::from)?;
                         Ok(())
                     }
-                    _ => {
-                        unreachable!("truncate should have been executed");
+                    (None, None) => {
+                        unreachable!("truncation was handled at the beginning of this function");
                     }
                 },
             }
