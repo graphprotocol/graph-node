@@ -1,0 +1,14 @@
+[package]
+name = "performance-tests"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "performance-tests"
+path = "src/main.rs"
+
+[dependencies]
+graph-tests = { path = "../tests"}
+tokio = {version = "1.16.1", features = ["full"]}
+tokio-stream = "0.1"
+anyhow = "1.0.65"

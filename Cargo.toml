@@ -10,6 +10,7 @@ members = [
     "store/*",
     "graph",
     "tests",
+    "performance-tests"
 ]
 
 [workspace.package]
