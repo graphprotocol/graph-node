@@ -25,8 +25,12 @@ RUN cargo install cargo-chef --version 0.1.45
 
 FROM cargo-chef AS cargo-chef-plan
 
+WORKDIR /app
+
 COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
+RUN cargo chef prepare --recipe-path /recipe.json \
+    && cd .. \
+    && rm -rf /app
 
 FROM cargo-chef AS graph-node-build
 
