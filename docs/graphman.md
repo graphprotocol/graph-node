@@ -396,13 +396,13 @@ The `from` and `to` options are used to decide the block range of the call cache
 
 #### `from`
 
-The `from` option is used to specify the starting block number of the block range. In the absence of `from` option, the first block 
-number will be used as the starting block number.
+The `from` option is used to specify the starting block number of the block range. In the absence of `from` option,
+the first block number will be used as the starting block number.
 
 #### `to`
 
-The `to` option is used to specify the ending block number of the block range. In the absence of `to` option, the last block 
-number will be used as the ending block number.
+The `to` option is used to specify the ending block number of the block range. In the absence of `to` option,
+the last block number will be used as the ending block number.
 
 ### EXAMPLES
 
