@@ -37,6 +37,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
       - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
@@ -73,6 +76,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
       - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
@@ -95,6 +101,9 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Node 14
