@@ -114,11 +114,12 @@ jobs:
           args: --bin graph-node
 
       # Integration tests are a bit flaky, running them twice increases the
-      # chances of one run succeeding
+      # chances of one run succeeding.
       - name: Run integration tests (round 1)
         id: integration-tests-1
         uses: actions-rs/cargo@v1
         env:
+          N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
@@ -129,6 +130,7 @@ jobs:
         uses: actions-rs/cargo@v1
         if: ${{ steps.integration-tests-1.outcome == 'failure' }}
         env:
+          N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
