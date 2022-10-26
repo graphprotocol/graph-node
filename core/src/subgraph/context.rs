@@ -1,8 +1,6 @@
 pub mod instance;
 
-use crate::polling_monitor::{
-    ipfs_service::IpfsService, spawn_monitor, PollingMonitor, PollingMonitorMetrics,
-};
+use crate::polling_monitor::{spawn_monitor, IpfsService, PollingMonitor, PollingMonitorMetrics};
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{

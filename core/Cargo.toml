@@ -25,7 +25,7 @@ serde = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.8"
 # Switch to crates.io once tower 0.5 is released
-tower = { git = "https://github.com/tower-rs/tower.git", features = ["util", "limit"] }
+tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 cid = "0.8.6"
 anyhow = "1.0"

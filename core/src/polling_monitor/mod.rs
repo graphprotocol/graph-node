@@ -1,11 +1,13 @@
-pub mod ipfs_service;
+mod ipfs_service;
 mod metrics;
 
 use std::fmt::Display;
 use std::sync::Arc;
+use std::task::Poll;
 
+use futures::future::BoxFuture;
 use futures::stream::StreamExt;
-use futures::{stream, FutureExt};
+use futures::{stream, FutureExt, TryFutureExt};
 use graph::cheap_clone::CheapClone;
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
@@ -16,6 +18,7 @@ use tokio::sync::{mpsc, watch};
 use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
+pub use ipfs_service::{ipfs_service, IpfsService};
 
 // A queue that notifies `waker` whenever an element is pushed.
 struct Queue<T> {
@@ -52,18 +55,19 @@ impl<T> Queue<T> {
 ///
 /// The service returns the request ID along with errors or responses. The response is an
 /// `Option`, to represent the object not being found.
-pub fn spawn_monitor<ID, S, E, Response: Send + 'static>(
+pub fn spawn_monitor<ID, S, E, Res: Send + 'static>(
     service: S,
-    response_sender: mpsc::Sender<(ID, Response)>,
+    response_sender: mpsc::Sender<(ID, Res)>,
     logger: Logger,
     metrics: PollingMonitorMetrics,
 ) -> PollingMonitor<ID>
 where
-    ID: Display + Send + 'static,
-    S: Service<ID, Response = (ID, Option<Response>), Error = (ID, E)> + Send + 'static,
+    S: Service<ID, Response = Option<Res>, Error = E> + Send + 'static,
+    ID: Display + Clone + Default + Send + Sync + 'static,
     E: Display + Send + 'static,
     S::Future: Send,
 {
+    let service = ReturnRequest { service };
     let (queue, queue_woken) = Queue::new(metrics.queue_depth.clone(), metrics.requests.clone());
 
     let cancel_check = response_sender.clone();
@@ -147,37 +151,43 @@ impl<ID> PollingMonitor<ID> {
     }
 }
 
+struct ReturnRequest<S> {
+    service: S,
+}
+
+impl<S, Req> Service<Req> for ReturnRequest<S>
+where
+    S: Service<Req>,
+    Req: Clone + Default + Send + Sync + 'static,
+    S::Error: Send,
+    S::Future: Send + 'static,
+{
+    type Response = (Req, S::Response);
+    type Error = (Req, S::Error);
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // `Req::default` is a value that won't be used since if `poll_ready` errors, the service is shot anyways.
+        self.service.poll_ready(cx).map_err(|e| (Req::default(), e))
+    }
+
+    fn call(&mut self, req: Req) -> Self::Future {
+        let req1 = req.clone();
+        self.service
+            .call(req.clone())
+            .map_ok(move |x| (req.clone(), x))
+            .map_err(move |e| (req1.clone(), e))
+            .boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
-    use futures::{Future, FutureExt, TryFutureExt};
     use graph::log;
-    use std::{pin::Pin, task::Poll};
     use tower_test::mock;
 
     use super::*;
-
-    struct MockService(mock::Mock<&'static str, Option<&'static str>>);
-
-    impl Service<&'static str> for MockService {
-        type Response = (&'static str, Option<&'static str>);
-
-        type Error = (&'static str, anyhow::Error);
-
-        type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-        fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.0.poll_ready(cx).map_err(|_| unreachable!())
-        }
-
-        fn call(&mut self, req: &'static str) -> Self::Future {
-            self.0
-                .call(req)
-                .map_ok(move |x| (req, x))
-                .map_err(move |e| (req, anyhow!(e.to_string())))
-                .boxed()
-        }
-    }
 
     async fn send_response<T, U>(handle: &mut mock::Handle<T, U>, res: U) {
         handle.next_request().await.unwrap().1.send_response(res)
@@ -190,12 +200,7 @@ mod tests {
     ) {
         let (svc, handle) = mock::pair();
         let (tx, rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(
-            MockService(svc),
-            tx,
-            log::discard(),
-            PollingMonitorMetrics::mock(),
-        );
+        let monitor = spawn_monitor(svc, tx, log::discard(), PollingMonitorMetrics::mock());
         (handle, monitor, rx)
     }
 
