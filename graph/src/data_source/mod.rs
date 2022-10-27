@@ -3,6 +3,9 @@ pub mod offchain;
 
 pub use causality_region::CausalityRegion;
 
+#[cfg(test)]
+mod tests;
+
 use crate::{
     blockchain::{
         BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
@@ -124,34 +127,7 @@ impl<C: Blockchain> DataSource<C> {
     pub fn is_duplicate_of(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Onchain(a), Self::Onchain(b)) => a.is_duplicate_of(b),
-            (Self::Offchain(a), Self::Offchain(b)) => {
-                let offchain::DataSource {
-                    // Inferred from the manifest_idx
-                    kind: _,
-                    name: _,
-                    mapping: _,
-
-                    manifest_idx,
-                    source,
-                    context,
-
-                    // We want to deduplicate across done status or creation block.
-                    done_at: _,
-                    creation_block: _,
-
-                    // The causality region is also ignored, to be able to detect duplicated file data
-                    // sources.
-                    //
-                    // Note to future: This will become more complicated if we allow for example file data
-                    // sources to create other file data sources, because which one is created first (the
-                    // original) and which is created later (the duplicate) is no longer deterministic. One
-                    // fix would be to check the equality of the parent causality region.
-                    causality_region: _,
-                } = a;
-
-                // See also: data-source-is-duplicate-of
-                manifest_idx == &b.manifest_idx && source == &b.source && context == &b.context
-            }
+            (Self::Offchain(a), Self::Offchain(b)) => a.is_duplicate_of(b),
             _ => false,
         }
     }

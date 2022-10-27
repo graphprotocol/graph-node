@@ -172,6 +172,35 @@ impl DataSource {
             Source::Ipfs(ref cid) => Some(cid.to_bytes()),
         }
     }
+
+    pub(super) fn is_duplicate_of(&self, b: &DataSource) -> bool {
+        let DataSource {
+            // Inferred from the manifest_idx
+            kind: _,
+            name: _,
+            mapping: _,
+
+            manifest_idx,
+            source,
+            context,
+
+            // We want to deduplicate across done status or creation block.
+            done_at: _,
+            creation_block: _,
+
+            // The causality region is also ignored, to be able to detect duplicated file data
+            // sources.
+            //
+            // Note to future: This will become more complicated if we allow for example file data
+            // sources to create other file data sources, because which one is created first (the
+            // original) and which is created later (the duplicate) is no longer deterministic. One
+            // fix would be to check the equality of the parent causality region.
+            causality_region: _,
+        } = self;
+
+        // See also: data-source-is-duplicate-of
+        manifest_idx == &b.manifest_idx && source == &b.source && context == &b.context
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
