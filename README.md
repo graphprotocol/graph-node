@@ -11,6 +11,20 @@ For detailed instructions and more context, check out the [Getting Started Guide
 
 ## Quick Start
 
+### Enable faster subgraph syncing
+
+There is a set of environment variables, described at [environment
+variables](https://github.com/bwarelabs/graph-node/blob/master/docs/environment-variables.md), which can be tweaked in order to improve the performance of fetching and processing of triggers sourcing from a subgraph. The most essential ones are the following:
+- `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: expected number of triggers to be found when scanning the block range of the current indexing iteration, directly impacting how large the adaptive block interval can get.
+- `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: maximum value the adaptive block interval can get to when scanning for new subgraph triggers to be processed after.
+- `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: maximum value the adaptive block interval can get to when scanning for new subgraph triggers which happen to be event logs exclusively.
+- `GRAPH_ENTITY_CACHE_SIZE`: size (kilobytes) of the in-memory store keeping frequently accessed entities for faster `load`/`store` operations from the subgraph's handlers.
+- `GRAPH_STORE_WRITE_QUEUE`: number of buffered modifications (writes) on the store's entities before committing them to Postgres to update the state indexed so far.
+
+There are additional environment variables supported on release [v0.27.1](https://github.com/bwarelabs/graph-node/releases/tag/v0.27.1):
+- `GRAPH_SCAN_LOGS_RANGE_SIZE`: the fixed blocks interval an individual RPC request queries for the provider node.
+- `GRAPH_SCAN_LOGS_MAX_CONCURRENT_RPC`: maximum number of `GRAPH_SCAN_LOGS_RANGE_SIZE` block intervals the indexer will request in parallel from the provider node.
+
 ### Prerequisites
 
 To build and run this project you need to have the following installed on your system:
