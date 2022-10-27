@@ -276,8 +276,8 @@ pub trait WritableStore: ReadStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
 
-    /// The next causality region free to be assigned. Any higher number is also free to be assigned.
-    async fn causality_region_next_value(&self) -> Result<CausalityRegion, StoreError>;
+    /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring

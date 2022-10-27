@@ -160,7 +160,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn causality_region_next_value(&self) -> Result<CausalityRegion, StoreError> {
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
         unimplemented!()
     }
 }

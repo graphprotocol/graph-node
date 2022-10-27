@@ -48,3 +48,26 @@ impl CausalityRegion {
         CausalityRegion(self.0 + 1)
     }
 }
+
+/// A subgraph will assign causality regions to offchain data sources from a sequence.
+pub struct CausalityRegionSeq(CausalityRegion);
+
+impl CausalityRegionSeq {
+    /// Create a new sequence with the current value set to `ONCHAIN`, which is 0, therefore the
+    /// first produced value will be `ONCHAIN + 1`, which is 1.
+    const fn new() -> Self {
+        CausalityRegionSeq(CausalityRegion::ONCHAIN)
+    }
+
+    /// A sequence with the current value set to `cr`. If `cr` is `None`, then the current value is
+    /// set to `ONCHAIN`, which is 0. The next produced value will be `cr + 1`.
+    pub fn resume_from(cr: Option<CausalityRegion>) -> CausalityRegionSeq {
+        cr.map(CausalityRegionSeq)
+            .unwrap_or(CausalityRegionSeq::new())
+    }
+
+    pub fn next_val(&mut self) -> CausalityRegion {
+        self.0 = self.0.next();
+        self.0
+    }
+}

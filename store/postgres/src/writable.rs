@@ -330,10 +330,12 @@ impl SyncStore {
         .await
     }
 
-    pub(crate) async fn causality_region_next_value(&self) -> Result<CausalityRegion, StoreError> {
-        self.retry_async("causality_region_next_value", || async {
+    pub(crate) async fn causality_region_curr_val(
+        &self,
+    ) -> Result<Option<CausalityRegion>, StoreError> {
+        self.retry_async("causality_region_curr_val", || async {
             self.writable
-                .causality_region_next_value(self.site.cheap_clone())
+                .causality_region_curr_val(self.site.cheap_clone())
                 .await
         })
         .await
@@ -1146,10 +1148,10 @@ impl WritableStoreTrait for WritableStore {
             .await
     }
 
-    async fn causality_region_next_value(&self) -> Result<CausalityRegion, StoreError> {
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
         // It should be empty when we call this, but just in case.
         self.writer.flush().await?;
-        self.store.causality_region_next_value().await
+        self.store.causality_region_curr_val().await
     }
 
     fn shard(&self) -> &str {

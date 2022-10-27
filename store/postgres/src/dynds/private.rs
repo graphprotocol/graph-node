@@ -319,23 +319,19 @@ impl DataSourcesTable {
         Ok(())
     }
 
-    pub(super) fn causality_region_next_value(
+    /// The current causality sequence according to the store, which is infered to be the maximum
+    /// value existing in the table.
+    pub(super) fn causality_region_curr_val(
         &self,
         conn: &PgConnection,
-    ) -> Result<CausalityRegion, StoreError> {
+    ) -> Result<Option<CausalityRegion>, StoreError> {
         // Get the maximum `causality_region` leveraging the btree index.
-        //
-        // If the table is empty, assume that static onchain data sources exist on the manifest, and
-        // therefore start from CausalityRegion::ONCHAIN + 1, which is 1.
-        let causality_region_max_value = self
+        Ok(self
             .table
             .clone()
             .select(&self.causality_region)
             .order_by((&self.causality_region).desc())
             .first::<CausalityRegion>(conn)
-            .optional()?
-            .unwrap_or(CausalityRegion::ONCHAIN);
-
-        Ok(causality_region_max_value.next())
+            .optional()?)
     }
 }

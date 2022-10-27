@@ -1,7 +1,9 @@
 use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::Blockchain,
-    data_source::{CausalityRegion, DataSource, DataSourceTemplate},
+    data_source::{
+        causality_region::CausalityRegionSeq, CausalityRegion, DataSource, DataSourceTemplate,
+    },
     prelude::*,
 };
 use std::collections::HashMap;
@@ -25,7 +27,8 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
 
-    causality_region_next_value: CausalityRegion,
+    /// This manages the sequence of causality regions for the subgraph.
+    causality_region_seq: CausalityRegionSeq,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -39,7 +42,7 @@ where
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
-        causality_region_next_value: CausalityRegion,
+        causality_region_seq: CausalityRegionSeq,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -53,7 +56,7 @@ where
             module_cache: HashMap::new(),
             templates,
             host_metrics,
-            causality_region_next_value,
+            causality_region_seq,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
@@ -170,8 +173,6 @@ where
     }
 
     pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
-        let next = self.causality_region_next_value;
-        self.causality_region_next_value = self.causality_region_next_value.next();
-        next
+        self.causality_region_seq.next_val()
     }
 }

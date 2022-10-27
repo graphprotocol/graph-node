@@ -1276,12 +1276,12 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) async fn causality_region_next_value(
+    pub(crate) async fn causality_region_curr_val(
         &self,
         site: Arc<Site>,
-    ) -> Result<CausalityRegion, StoreError> {
+    ) -> Result<Option<CausalityRegion>, StoreError> {
         self.with_conn(move |conn, _| {
-            Ok(conn.transaction(|| crate::dynds::causality_region_next_value(conn, &site))?)
+            Ok(conn.transaction(|| crate::dynds::causality_region_curr_val(conn, &site))?)
         })
         .await
     }
