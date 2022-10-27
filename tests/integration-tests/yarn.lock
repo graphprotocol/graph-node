@@ -917,8 +917,8 @@
     yaml "^1.5.1"
 
 "@graphprotocol/graph-ts@https://github.com/graphprotocol/graph-ts#main":
-  version "0.27.0"
-  resolved "https://github.com/graphprotocol/graph-ts#55545f3d39b1c6b78e7d96aa83cc2692b8e2ae33"
+  version "0.28.1"
+  resolved "https://github.com/graphprotocol/graph-ts#4e91d2c0b695c7689aba205516d3e80fb5588454"
   dependencies:
     assemblyscript "0.19.10"
 

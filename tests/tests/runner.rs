@@ -2,11 +2,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
-use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
-use graph::ipfs_client::CidFile;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{CheapClone, SubgraphStore};
@@ -163,16 +161,7 @@ async fn file_data_sources() {
 
     // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
     // `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
-    let id = format!(
-        "0x{}",
-        hex::encode(
-            CidFile {
-                cid: Cid::try_from("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap(),
-                path: None,
-            }
-            .to_bytes()
-        )
-    );
+    let id = "QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ";
 
     let query_res = ctx
         .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
@@ -274,12 +263,12 @@ async fn template_static_filters_false_positives() {
     // when false positives go through the block stream, they should be discarded by
     // `DataSource::match_and_decode`. The POI below is generated consistently from the empty
     // POI table. If this fails it's likely that either the bug was re-introduced or there is
-    // a change in the POI infrastructure.
+    // a change in the POI infrastructure. Or the subgraph id changed.
     assert_eq!(
         poi.unwrap(),
         [
-            196, 173, 167, 52, 226, 19, 154, 61, 189, 94, 19, 229, 18, 7, 0, 252, 234, 49, 110,
-            179, 105, 64, 16, 46, 25, 194, 83, 94, 195, 225, 56, 252
+            172, 174, 50, 50, 108, 187, 89, 216, 16, 123, 40, 207, 250, 97, 247, 138, 180, 67, 20,
+            5, 114, 187, 237, 104, 187, 122, 220, 9, 131, 67, 50, 237
         ],
     );
 }
