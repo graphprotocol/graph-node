@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use graph::blockchain::TriggerWithHandler;
 use graph::components::store::StoredDynamicDataSource;
+use graph::data_source::CausalityRegion;
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
@@ -9,7 +10,7 @@ use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
 use std::str::FromStr;
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
@@ -50,6 +51,54 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    fn from_template_info(info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        let DataSourceTemplateInfo {
+            template,
+            params,
+            context,
+            creation_block,
+        } = info;
+        let template = template.into_onchain().ok_or(anyhow!(
+            "Cannot create onchain data source from offchain template"
+        ))?;
+
+        // Obtain the address from the parameters
+        let string = params
+            .get(0)
+            .with_context(|| {
+                format!(
+                    "Failed to create data source from template `{}`: address parameter is missing",
+                    template.name
+                )
+            })?
+            .trim_start_matches("0x");
+
+        let address = Address::from_str(string).with_context(|| {
+            format!(
+                "Failed to create data source from template `{}`, invalid address provided",
+                template.name
+            )
+        })?;
+
+        let contract_abi = template
+            .mapping
+            .find_abi(&template.source.abi)
+            .with_context(|| format!("template `{}`", template.name))?;
+
+        Ok(DataSource {
+            kind: template.kind,
+            network: template.network,
+            name: template.name,
+            manifest_idx: template.manifest_idx,
+            address: Some(address),
+            start_block: 0,
+            mapping: template.mapping,
+            context: Arc::new(context),
+            creation_block: Some(creation_block),
+            contract_abi,
+        })
+    }
+
     fn address(&self) -> Option<&[u8]> {
         self.address.as_ref().map(|x| x.as_bytes())
     }
@@ -131,8 +180,8 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .as_ref()
                 .map(|ctx| serde_json::to_value(&ctx).unwrap()),
             creation_block: self.creation_block,
-            is_offchain: false,
             done_at: None,
+            causality_region: CausalityRegion::ONCHAIN,
         }
     }
 
@@ -145,13 +194,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             param,
             context,
             creation_block,
-            is_offchain,
             done_at,
+            causality_region,
         } = stored;
 
         ensure!(
-            !is_offchain,
-            "attempted to convert offchain data source to ethereum data source"
+            causality_region == CausalityRegion::ONCHAIN,
+            "stored ethereum data source has causality region {}, expected root",
+            causality_region
         );
         ensure!(done_at.is_none(), "onchain data sources are never done");
 
@@ -757,58 +807,6 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let mapping = mapping.resolve(&*resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context, manifest_idx)
-    }
-}
-
-impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = anyhow::Error;
-
-    fn try_from(info: DataSourceTemplateInfo<Chain>) -> Result<Self, anyhow::Error> {
-        let DataSourceTemplateInfo {
-            template,
-            params,
-            context,
-            creation_block,
-        } = info;
-        let template = template.into_onchain().ok_or(anyhow!(
-            "Cannot create onchain data source from offchain template"
-        ))?;
-
-        // Obtain the address from the parameters
-        let string = params
-            .get(0)
-            .with_context(|| {
-                format!(
-                    "Failed to create data source from template `{}`: address parameter is missing",
-                    template.name
-                )
-            })?
-            .trim_start_matches("0x");
-
-        let address = Address::from_str(string).with_context(|| {
-            format!(
-                "Failed to create data source from template `{}`, invalid address provided",
-                template.name
-            )
-        })?;
-
-        let contract_abi = template
-            .mapping
-            .find_abi(&template.source.abi)
-            .with_context(|| format!("template `{}`", template.name))?;
-
-        Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
-            manifest_idx: template.manifest_idx,
-            address: Some(address),
-            start_block: 0,
-            mapping: template.mapping,
-            context: Arc::new(context),
-            creation_block: Some(creation_block),
-            contract_abi,
-        })
     }
 }
 

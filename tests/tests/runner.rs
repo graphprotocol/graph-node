@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use cid::Cid;
 use graph::blockchain::{Block, BlockPtr};
+use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::ipfs_client::CidFile;
 use graph::object;
@@ -221,8 +222,12 @@ async fn file_data_sources() {
         .unwrap();
     let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
     assert!(data_sources.len() == 2);
+
+    let mut causality_region = CausalityRegion::ONCHAIN;
     for data_source in data_sources {
-        assert!(data_source.done_at.is_some())
+        assert!(data_source.done_at.is_some());
+        assert!(data_source.causality_region == causality_region.next());
+        causality_region = causality_region.next();
     }
 }
 

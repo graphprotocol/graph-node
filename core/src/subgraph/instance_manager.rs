@@ -9,6 +9,7 @@ use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
+use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -359,12 +360,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ProofOfIndexingVersion::Legacy
         };
 
+        let causality_region_seq =
+            CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
+
         let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
             host_builder,
             host_metrics.clone(),
             &mut offchain_monitor,
+            causality_region_seq,
         )?;
 
         let inputs = IndexingInputs {

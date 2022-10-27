@@ -7,6 +7,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::EntityKey;
 use graph::components::store::ReadStore;
 use graph::data::subgraph::schema;
+use graph::data_source::CausalityRegion;
 use graph::env::env_var;
 use graph::prelude::{
     BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
@@ -324,6 +325,17 @@ impl SyncStore {
                     block,
                     manifest_idx_and_name.clone(),
                 )
+                .await
+        })
+        .await
+    }
+
+    pub(crate) async fn causality_region_curr_val(
+        &self,
+    ) -> Result<Option<CausalityRegion>, StoreError> {
+        self.retry_async("causality_region_curr_val", || async {
+            self.writable
+                .causality_region_curr_val(self.site.cheap_clone())
                 .await
         })
         .await
@@ -1134,6 +1146,12 @@ impl WritableStoreTrait for WritableStore {
         self.writer
             .load_dynamic_data_sources(manifest_idx_and_name)
             .await
+    }
+
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
+        // It should be empty when we call this, but just in case.
+        self.writer.flush().await?;
+        self.store.causality_region_curr_val().await
     }
 
     fn shard(&self) -> &str {

@@ -11,7 +11,9 @@ use web3::types::H160;
 use graph::blockchain::Blockchain;
 use graph::components::store::EnsLookup;
 use graph::components::store::{EntityKey, EntityType};
-use graph::components::subgraph::{CausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing};
+use graph::components::subgraph::{
+    PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
+};
 use graph::data::store;
 use graph::data_source::{DataSource, DataSourceTemplate};
 use graph::ensure;
@@ -86,7 +88,7 @@ impl<C: Blockchain> HostExports<C> {
             data_source_name: data_source.name().to_owned(),
             data_source_address: data_source.address().unwrap_or_default(),
             data_source_context: data_source.context().cheap_clone(),
-            causality_region: CausalityRegion::from_network(&data_source_network),
+            causality_region: PoICausalityRegion::from_network(&data_source_network),
             data_source_network,
             templates,
             link_resolver,

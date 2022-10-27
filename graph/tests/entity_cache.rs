@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockPtr;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::data_source::CausalityRegion;
 use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
 use lazy_static::lazy_static;
 use slog::Logger;
@@ -156,6 +157,10 @@ impl WritableStore for MockStore {
     }
 
     async fn flush(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
         unimplemented!()
     }
 }

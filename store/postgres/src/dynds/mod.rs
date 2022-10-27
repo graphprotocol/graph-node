@@ -9,6 +9,7 @@ use graph::{
     blockchain::BlockPtr,
     components::store::StoredDynamicDataSource,
     constraint_violation,
+    data_source::CausalityRegion,
     prelude::{BlockNumber, StoreError},
 };
 
@@ -74,5 +75,18 @@ pub(crate) fn update_offchain_status(
         false => Err(constraint_violation!(
             "shared schema does not support data source offchain_found",
         )),
+    }
+}
+
+/// The maximum assigned causality region. Any higher number is therefore free to be assigned.
+pub(crate) fn causality_region_curr_val(
+    conn: &PgConnection,
+    site: &Site,
+) -> Result<Option<CausalityRegion>, StoreError> {
+    match site.schema_version.private_data_sources() {
+        true => DataSourcesTable::new(site.namespace.clone()).causality_region_curr_val(conn),
+
+        // Subgraphs on the legacy shared table do not use offchain data sources.
+        false => Ok(None),
     }
 }
