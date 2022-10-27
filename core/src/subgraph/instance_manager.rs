@@ -361,7 +361,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         };
 
         let causality_region_seq =
-            CausalityRegionSeq::resume_from(store.causality_region_curr_val().await?);
+            CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
         let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,

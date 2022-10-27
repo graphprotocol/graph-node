@@ -61,7 +61,7 @@ impl CausalityRegionSeq {
 
     /// A sequence with the current value set to `cr`. If `cr` is `None`, then the current value is
     /// set to `ONCHAIN`, which is 0. The next produced value will be `cr + 1`.
-    pub fn resume_from(cr: Option<CausalityRegion>) -> CausalityRegionSeq {
+    pub fn from_current(cr: Option<CausalityRegion>) -> CausalityRegionSeq {
         cr.map(CausalityRegionSeq)
             .unwrap_or(CausalityRegionSeq::new())
     }
