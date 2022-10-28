@@ -1,13 +1,16 @@
 mod ipfs_service;
 mod metrics;
 
+use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::sync::Arc;
 use std::task::Poll;
+use std::time::Duration;
 
 use futures::future::BoxFuture;
 use futures::stream::StreamExt;
-use futures::{stream, FutureExt, TryFutureExt};
+use futures::{stream, Future, FutureExt, TryFutureExt};
 use graph::cheap_clone::CheapClone;
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
@@ -15,10 +18,48 @@ use graph::prometheus::{Counter, Gauge};
 use graph::slog::{debug, Logger};
 use graph::util::monitored::MonitoredVecDeque as VecDeque;
 use tokio::sync::{mpsc, watch};
+use tower::retry::backoff::{Backoff, ExponentialBackoff, ExponentialBackoffMaker, MakeBackoff};
+use tower::util::rng::HasherRng;
 use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
 pub use ipfs_service::{ipfs_service, IpfsService};
+
+const MIN_BACKOFF: Duration = Duration::from_secs(5);
+
+const MAX_BACKOFF: Duration = Duration::from_secs(600);
+
+struct Backoffs<ID> {
+    backoff_maker: ExponentialBackoffMaker,
+    backoffs: HashMap<ID, ExponentialBackoff>,
+}
+
+impl<ID: Eq + Hash> Backoffs<ID> {
+    fn new() -> Self {
+        // Unwrap: Config is constant and valid.
+        Self {
+            backoff_maker: ExponentialBackoffMaker::new(
+                MIN_BACKOFF,
+                MAX_BACKOFF,
+                1.0,
+                HasherRng::new(),
+            )
+            .unwrap(),
+            backoffs: HashMap::new(),
+        }
+    }
+
+    fn next_backoff(&mut self, id: ID) -> impl Future<Output = ()> {
+        self.backoffs
+            .entry(id)
+            .or_insert_with(|| self.backoff_maker.make_backoff())
+            .next_backoff()
+    }
+
+    fn remove(&mut self, id: &ID) {
+        self.backoffs.remove(id);
+    }
+}
 
 // A queue that notifies `waker` whenever an element is pushed.
 struct Queue<T> {
@@ -63,7 +104,7 @@ pub fn spawn_monitor<ID, S, E, Res: Send + 'static>(
 ) -> PollingMonitor<ID>
 where
     S: Service<ID, Response = Option<Res>, Error = E> + Send + 'static,
-    ID: Display + Clone + Default + Send + Sync + 'static,
+    ID: Display + Clone + Default + Eq + Send + Sync + Hash + 'static,
     E: Display + Send + 'static,
     S::Future: Send,
 {
@@ -105,10 +146,12 @@ where
     {
         let queue = queue.cheap_clone();
         graph::spawn(async move {
+            let mut backoffs = Backoffs::new();
             let mut responses = service.call_all(queue_to_stream).unordered().boxed();
             while let Some(response) = responses.next().await {
                 match response {
                     Ok((id, Some(response))) => {
+                        backoffs.remove(&id);
                         let send_result = response_sender.send((id, response)).await;
                         if send_result.is_err() {
                             // The receiver has been dropped, cancel this task.
@@ -128,7 +171,16 @@ where
                                     "error" => format!("{:#}", e),
                                     "object_id" => id.to_string());
                         metrics.errors.inc();
-                        queue.push_back(id);
+
+                        // Requests that return errors could mean there is a permanent issue with
+                        // fetching the given item, or could signal the endpoint is overloaded.
+                        // Either way a backoff makes sense.
+                        let queue = queue.cheap_clone();
+                        let backoff = backoffs.next_backoff(id.clone());
+                        graph::spawn(async move {
+                            backoff.await;
+                            queue.push_back(id);
+                        });
                     }
                 }
             }

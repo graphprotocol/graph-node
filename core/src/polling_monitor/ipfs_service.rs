@@ -121,7 +121,7 @@ mod test {
     use ipfs::IpfsApi;
     use ipfs_api as ipfs;
     use std::{fs, str::FromStr, time::Duration};
-    use tower::{Service, ServiceExt};
+    use tower::ServiceExt;
 
     use cid::Cid;
     use graph::{ipfs_client::IpfsClient, tokio};

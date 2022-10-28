@@ -14,7 +14,7 @@ use std::{str::FromStr, sync::Arc};
 
 /// Represents a file on Ipfs. This file can be the CID or a path within a folder CID.
 /// The path cannot have a prefix (ie CID/hello.json would be cid: CID path: "hello.json")
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Hash)]
 pub struct CidFile {
     pub cid: Cid,
     pub path: Option<String>,
