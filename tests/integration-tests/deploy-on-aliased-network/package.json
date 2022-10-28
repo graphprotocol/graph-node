@@ -2,7 +2,7 @@
   "name": "typename",
   "version": "0.1.0",
   "scripts": {
-    "codegen": "graph codegen",
+    "codegen": "graph codegen --skip-migrations",
     "create:test": "graph create deploy-on-aliased-network --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy deploy-on-aliased-network --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
