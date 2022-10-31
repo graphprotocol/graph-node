@@ -10,7 +10,7 @@ use web3::types::H160;
 
 use graph::blockchain::Blockchain;
 use graph::components::store::EnsLookup;
-use graph::components::store::{EntityKey, EntityType};
+use graph::components::store::{EntityKey, EntityType, DerivedKey};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
@@ -210,6 +210,23 @@ impl<C: Blockchain> HostExports<C> {
         let result = state.entity_cache.get(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
+        Ok(result)
+    }
+
+    pub(crate) fn store_get_derived(
+        &self,
+        state: &mut BlockState<C>,
+        entity_type: String,
+        mapping_id: String,
+        mapping: String,
+        gas: &GasCounter,
+    ) -> Result<Option<Vec<Entity>>, anyhow::Error> {
+        let mapping_key = DerivedKey {
+            entity_type: EntityType::new(entity_type),
+            reference_id: mapping_id.into(),
+            reference: mapping.into(),
+        };
+        let result = state.entity_cache.get_dervied_entities(&mapping_key)?;
         Ok(result)
     }
 

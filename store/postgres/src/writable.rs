@@ -4,14 +4,14 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::EntityKey;
 use graph::components::store::ReadStore;
+use graph::components::store::{DerivedKey, EntityKey};
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::env::env_var;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
-    BLOCK_NUMBER_MAX,
+    BlockNumber, DerviedEntityIds, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity,
+    SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
 use graph::slog::info;
 use graph::util::bounded_queue::BoundedQueue;
@@ -250,6 +250,16 @@ impl SyncStore {
     fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
         self.retry("get", || {
             self.writable.get(self.site.cheap_clone(), key, block)
+        })
+    }
+
+    fn get_dervied_ids(
+        &self,
+        key: &DerivedKey,
+        block: BlockNumber,
+    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+        self.retry("get_dervied_ids", || {
+            self.writable.get_dervied_ids(self.site.clone(), key, block)
         })
     }
 
@@ -716,6 +726,10 @@ impl Queue {
         }
     }
 
+    fn get_derived_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+        self.store.get_dervied_ids(&key, BLOCK_NUMBER_MAX)
+    }
+
     /// Get many entities at once by looking at both the queue and the store
     fn get_many(
         &self,
@@ -940,6 +954,13 @@ impl Writer {
         }
     }
 
+    fn get_mapping_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+        match self {
+            Writer::Async(queue) => queue.get_derived_ids(key),
+            Writer::Sync(store) => store.get_dervied_ids(key, BLOCK_NUMBER_MAX),
+        }
+    }
+
     async fn load_dynamic_data_sources(
         &self,
         manifest_idx_and_name: Vec<(u32, String)>,
@@ -1024,6 +1045,13 @@ impl ReadStore for WritableStore {
 
     fn input_schema(&self) -> Arc<Schema> {
         self.store.input_schema()
+    }
+
+    fn get_dervied_ids(
+        &self,
+        key: &store::DerivedKey,
+    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+        self.writer.get_mapping_ids(key)
     }
 }
 

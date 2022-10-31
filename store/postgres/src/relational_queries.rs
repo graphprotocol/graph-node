@@ -457,6 +457,12 @@ impl EntityDeletion {
     }
 }
 
+#[derive(QueryableByName)]
+pub struct DerviedData {
+    #[sql_type = "Text"]
+    pub id: String,
+}
+
 /// Helper struct for retrieving entities from the database. With diesel, we
 /// can only run queries that return columns whose number and type are known
 /// at compile time. Because of that, we retrieve the actual data for an
@@ -1451,6 +1457,49 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
         Ok(())
     }
 }
+
+#[derive(Debug, Clone, Constructor)]
+pub struct FindDerviedQuery<'a> {
+    table: &'a Table,
+    mapping_id: &'a str,
+    mapping_name: &'a str,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindDerviedQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        out.push_sql("select id from");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" e\n where ");
+        match self.table.column(&SqlName::from(self.mapping_name)) {
+            Some(col) => {
+                col.eq(self.mapping_id, &mut out)?;
+            }
+            None => {
+                return Err(DieselError::QueryBuilderError(
+                    anyhow!("unable to find mapping name").into(),
+                ));
+            }
+        }
+        out.push_sql(" and ");
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+    }
+}
+
+impl<'a> QueryId for FindDerviedQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, DerviedData> for FindDerviedQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<DerviedData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindDerviedQuery<'a> {}
 
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {

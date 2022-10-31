@@ -7,3 +7,14 @@ type IpfsFile1 @entity {
   id: ID!
   content: String!
 }
+
+type Holder @entity {
+  id: ID!
+  tokens: Token! @derivedFrom(field: "holder")
+}
+
+type Token @entity {
+  id: ID!
+  holder: Holder!
+  color: String
+}

@@ -126,6 +126,10 @@ async fn typename() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_data_sources() {
+    std::env::set_var(
+        "THEGRAPH_STORE_POSTGRES_DIESEL_URL",
+        "postgresql://graph:graph@127.0.0.1:5432/graph-test",
+    );
     let stores = stores("./integration-tests/config.simple.toml").await;
 
     let subgraph_name = SubgraphName::new("file-data-sources").unwrap();

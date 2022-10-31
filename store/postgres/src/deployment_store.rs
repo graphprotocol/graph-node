@@ -5,7 +5,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
+use graph::components::store::{
+    EntityKey, EntityType, DerivedKey, PruneReporter, StoredDynamicDataSource,
+};
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
@@ -34,8 +36,8 @@ use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT}
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
     CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome,
-    Value, ENV_VARS,
+    Logger, DerviedEntityIds, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
+    UnfailOutcome, Value, ENV_VARS,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -1005,6 +1007,23 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
         layout.find(&conn, &key.entity_type, &key.entity_id, block)
+    }
+
+    pub(crate) fn get_dervied_ids(
+        &self,
+        site: Arc<Site>,
+        key: &DerivedKey,
+        block: BlockNumber,
+    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+        let conn = self.get_conn()?;
+        let layout = self.layout(&conn, site)?;
+        layout.find_dervied_ids(
+            &conn,
+            &key.reference,
+            &key.reference_id,
+            &key.entity_type,
+            block,
+        )
     }
 
     /// Retrieve all the entities matching `ids_for_type` from the

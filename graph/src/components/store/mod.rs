@@ -106,6 +106,14 @@ pub struct EntityKey {
     pub entity_id: Word,
 }
 
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DerivedKey {
+    pub entity_type: EntityType,
+    pub reference: Word,
+    pub reference_id: Word,
+}
+
 impl EntityKey {
     pub fn data(entity_type: String, entity_id: String) -> Self {
         Self {
@@ -1077,6 +1085,10 @@ impl ReadStore for EmptyStore {
 
     fn input_schema(&self) -> Arc<Schema> {
         self.schema.cheap_clone()
+    }
+
+    fn get_dervied_ids(&self, _: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+        todo!()
     }
 }
 

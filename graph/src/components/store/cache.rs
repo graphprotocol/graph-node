@@ -1,15 +1,16 @@
 use anyhow::anyhow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::blockchain::BlockPtr;
 use crate::components::store::{
-    self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
+    self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType, DerivedKey, Value,
 };
 use crate::data_source::DataSource;
 use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
+use std::cell::RefCell;
 
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
@@ -116,6 +117,94 @@ impl EntityCache {
             entity = op.apply_to(entity)
         }
         Ok(entity)
+    }
+
+    // Retriving derived entities:
+    // 
+    // Derived entities are retrived by filtering the source entity ids in the derived entities.
+    // The entity filtering is done in two places in the entity cache:
+    // 1) Store level
+    // 2) Cache level
+    pub fn get_dervied_entities(
+        &mut self,
+        mref: &DerivedKey,
+    ) -> Result<Option<Vec<Entity>>, s::QueryExecutionError> {
+        let mut derived_entities: Vec<Entity> = vec![];
+        let filtered_ids: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+        let source_entity_id = Value::String(mref.reference_id.clone().into());
+
+        // accumulate entity as result if it is matching the following condition:
+        // - entity has source enity id as a reference
+        let mut accum_entity = |entity: Entity| {
+            let id = entity.id().unwrap();
+            if filtered_ids.borrow().contains(&id) {
+                return;
+            }
+            if let Some(mapping_value) = entity.get(&mref.reference) {
+                if mapping_value == &source_entity_id {
+                    filtered_ids.borrow_mut().insert(id);
+                    derived_entities.push(entity);
+                }
+            }
+        };
+
+        // Store level dervied entity retrival.
+        if let Some(mapping_ids) = self.store.get_dervied_ids(mref)? {
+            for id_val in mapping_ids.ids() {
+                let entity = match &id_val {
+                    Value::String(val) => {
+                        let key = EntityKey {
+                            entity_type: mref.entity_type.clone(),
+                            entity_id: val.clone().into(),
+                        };
+                        let entity = self.get(&key)?;
+                        entity
+                    }
+                    _ => panic!("branch should not execute"),
+                };
+
+                if let Some(entity) = entity {
+                    accum_entity(entity)
+                }
+            }
+        }
+
+        // Cache Level dervied entity retrival.
+        // We have to check all the entities for dervied field, since all the new or updated
+        // updated entities are not yet persisted. 
+        for (key, update) in &self.updates {
+            let id: String = key.entity_id.clone().into();
+
+            if key.entity_type == mref.entity_type && !filtered_ids.borrow().contains(&id) {
+                let mut entity = update.clone().apply_to(None);
+                if let Some(op) = self.handler_updates.get(key).cloned() {
+                    entity = op.apply_to(entity)
+                }
+                if let Some(entity) = entity {
+                    accum_entity(entity)
+                }
+            }
+        }
+
+        for (key, update) in &self.handler_updates {
+            let id: String = key.entity_id.clone().into();
+
+            if key.entity_type == mref.entity_type && !filtered_ids.borrow().contains(&id) {
+                let mut entity = update.clone().apply_to(None);
+                if let Some(op) = self.updates.get(key).cloned() {
+                    entity = op.apply_to(entity)
+                }
+                if let Some(entity) = entity {
+                    accum_entity(entity)
+                }
+            }
+        }
+
+        if derived_entities.len() == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(derived_entities))
     }
 
     pub fn remove(&mut self, key: EntityKey) {

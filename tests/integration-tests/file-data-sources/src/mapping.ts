@@ -1,5 +1,5 @@
 import { ethereum, dataSource, BigInt, Bytes } from '@graphprotocol/graph-ts'
-import { IpfsFile, IpfsFile1 } from '../generated/schema'
+import { IpfsFile, IpfsFile1, Holder, Token } from '../generated/schema'
 
 export function handleBlock(block: ethereum.Block): void {
   // This will create the same data source twice, once at block 0 and another at block 2.
@@ -13,6 +13,12 @@ export function handleBlock(block: ethereum.Block): void {
   if (block.number == BigInt.fromI32(1)) {
     // Test that using an invalid CID will be ignored
     dataSource.create("File", ["hi, I'm not valid"])
+    let holder = new Holder("1");
+    holder.save();
+    let token = new Token("1");
+    token.holder = "1";
+    token.color = "bliss";
+    token.save();
   }
 
 
@@ -20,6 +26,15 @@ export function handleBlock(block: ethereum.Block): void {
   // to test whether same cid is triggered across different data source.
   if (block.number == BigInt.fromI32(3)) {
     dataSource.create("File1", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
+    let holder = Holder.load("1");
+    if (holder != null) {
+      let token = holder.tokens.load();
+      if (token != null) {
+        token.color = "joy";
+        token.save();
+      }
+    }
+
   }
 }
 

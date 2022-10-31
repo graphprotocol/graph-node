@@ -508,6 +508,15 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
+            "store.get_derived_entity",
+            store_get_dervied,
+            "host_export_store_get_dervied",
+            entity,
+            reference,
+            reference_id
+        );
+
+        link!(
             "store.set",
             store_set,
             "host_export_store_set",
@@ -956,6 +965,33 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             id,
             gas,
         )
+    }
+
+    /// store.get_derived_entity(entity_name: string, mapping_name: string, mapping_id: string): Entity | null
+    pub fn store_get_dervied(
+        &mut self,
+        gas: &GasCounter,
+        entity_ptr: AscPtr<AscString>,
+        reference_ptr: AscPtr<AscString>,
+        reference_id_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let entity_type = asc_get(self, entity_ptr, gas)?;
+        let mapping = asc_get(self, reference_ptr, gas)?;
+        let mapping_id = asc_get(self, reference_id_ptr, gas)?;
+        let result = self.ctx.host_exports.store_get_derived(
+            &mut self.ctx.state,
+            entity_type,
+            mapping_id,
+            mapping,
+            gas,
+        )?;
+        match result {
+            Some(mut entities) => {
+                let entity = entities.pop().unwrap();
+                Ok(asc_new(self, &entity.sorted(), gas)?)
+            }
+            None => Ok(AscPtr::null()),
+        }
     }
 
     /// function store.get(entity: string, id: string): Entity | null

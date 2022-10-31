@@ -583,6 +583,14 @@ where
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 
+pub struct DerviedEntityIds(pub Vec<Value>);
+
+impl DerviedEntityIds {
+    pub fn ids(&self) -> &Vec<Value> {
+        &self.0
+    }
+}
+
 impl stable_hash_legacy::StableHash for Entity {
     #[inline]
     fn stable_hash<H: stable_hash_legacy::StableHasher>(

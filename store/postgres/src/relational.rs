@@ -40,7 +40,8 @@ use crate::{
     primary::{Namespace, Site},
     relational_queries::{
         ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
-        FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
+        FilterQuery, FindManyQuery, FindDerviedQuery, FindQuery, InsertQuery, DerviedData,
+        RevertClampQuery, RevertRemoveQuery,
     },
 };
 use graph::components::store::{EntityKey, EntityType};
@@ -50,8 +51,8 @@ use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, QueryExecutionError,
-    StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
+    EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, DerviedEntityIds,
+    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,Value
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -489,6 +490,28 @@ impl Layout {
             .optional()?
             .map(|entity_data| entity_data.deserialize_with_layout(self, None, true))
             .transpose()
+    }
+
+    pub fn find_dervied_ids(
+        &self,
+        conn: &PgConnection,
+        mapping_name: &str,
+        mapping_id: &str,
+        entity: &EntityType,
+        block: BlockNumber,
+    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+        let table = self.table_for_entity(entity).unwrap();
+        FindDerviedQuery::new(table, mapping_id, mapping_name, block)
+            .get_results::<DerviedData>(conn)
+            .map(|data| {
+                let mut ids = vec![];
+                for datum in data {
+                    ids.push(Value::String(datum.id));
+                }
+                DerviedEntityIds(ids)
+            })
+            .optional()
+            .map_err(|e| StoreError::from(e))
     }
 
     pub fn find_many(
