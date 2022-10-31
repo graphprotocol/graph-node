@@ -427,6 +427,31 @@ pub enum ChainCommand {
         #[clap(long, short)]
         force: bool,
     },
+
+    /// Execute operations on call cache.
+    CallCache {
+        #[clap(subcommand)]
+        method: CallCacheCommand,
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(empty_values = false)]
+        chain_name: String,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum CallCacheCommand {
+    /// Remove the call cache of the specified chain.
+    ///
+    /// If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be
+    /// removed.
+    Remove {
+        /// Starting block number
+        #[clap(long, short)]
+        from: Option<i32>,
+        /// Ending block number
+        #[clap(long, short)]
+        to: Option<i32>,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1088,6 +1113,12 @@ async fn main() -> anyhow::Result<()> {
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
+                CallCache { method, chain_name } => match method {
+                    CallCacheCommand::Remove { from, to } => {
+                        let chain_store = ctx.chain_store(&chain_name)?;
+                        commands::chain::clear_call_cache(chain_store, from, to).await
+                    }
+                },
             }
         }
         Stats(cmd) => {
