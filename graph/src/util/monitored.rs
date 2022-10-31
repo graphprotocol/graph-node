@@ -29,7 +29,9 @@ impl<T> MonitoredVecDeque<T> {
     pub fn pop_front(&mut self) -> Option<T> {
         let item = self.vec_deque.pop_front();
         self.depth.set(self.vec_deque.len() as f64);
-        self.popped.inc();
+        if item.is_some() {
+            self.popped.inc();
+        }
         item
     }
 

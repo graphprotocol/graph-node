@@ -1,4 +1,4 @@
-use crate::polling_monitor::ipfs_service::IpfsService;
+use crate::polling_monitor::IpfsService;
 use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
@@ -338,7 +338,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
-            self.ipfs_service.cheap_clone(),
+            self.ipfs_service.clone(),
         );
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in

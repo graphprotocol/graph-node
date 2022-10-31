@@ -1,11 +1,16 @@
-pub mod ipfs_service;
+mod ipfs_service;
 mod metrics;
 
+use std::collections::HashMap;
 use std::fmt::Display;
+use std::hash::Hash;
 use std::sync::Arc;
+use std::task::Poll;
+use std::time::Duration;
 
+use futures::future::BoxFuture;
 use futures::stream::StreamExt;
-use futures::{stream, FutureExt};
+use futures::{stream, Future, FutureExt, TryFutureExt};
 use graph::cheap_clone::CheapClone;
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
@@ -13,9 +18,48 @@ use graph::prometheus::{Counter, Gauge};
 use graph::slog::{debug, Logger};
 use graph::util::monitored::MonitoredVecDeque as VecDeque;
 use tokio::sync::{mpsc, watch};
+use tower::retry::backoff::{Backoff, ExponentialBackoff, ExponentialBackoffMaker, MakeBackoff};
+use tower::util::rng::HasherRng;
 use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
+pub use ipfs_service::{ipfs_service, IpfsService};
+
+const MIN_BACKOFF: Duration = Duration::from_secs(5);
+
+const MAX_BACKOFF: Duration = Duration::from_secs(600);
+
+struct Backoffs<ID> {
+    backoff_maker: ExponentialBackoffMaker,
+    backoffs: HashMap<ID, ExponentialBackoff>,
+}
+
+impl<ID: Eq + Hash> Backoffs<ID> {
+    fn new() -> Self {
+        // Unwrap: Config is constant and valid.
+        Self {
+            backoff_maker: ExponentialBackoffMaker::new(
+                MIN_BACKOFF,
+                MAX_BACKOFF,
+                1.0,
+                HasherRng::new(),
+            )
+            .unwrap(),
+            backoffs: HashMap::new(),
+        }
+    }
+
+    fn next_backoff(&mut self, id: ID) -> impl Future<Output = ()> {
+        self.backoffs
+            .entry(id)
+            .or_insert_with(|| self.backoff_maker.make_backoff())
+            .next_backoff()
+    }
+
+    fn remove(&mut self, id: &ID) {
+        self.backoffs.remove(id);
+    }
+}
 
 // A queue that notifies `waker` whenever an element is pushed.
 struct Queue<T> {
@@ -52,18 +96,19 @@ impl<T> Queue<T> {
 ///
 /// The service returns the request ID along with errors or responses. The response is an
 /// `Option`, to represent the object not being found.
-pub fn spawn_monitor<ID, S, E, Response: Send + 'static>(
+pub fn spawn_monitor<ID, S, E, Res: Send + 'static>(
     service: S,
-    response_sender: mpsc::Sender<(ID, Response)>,
+    response_sender: mpsc::Sender<(ID, Res)>,
     logger: Logger,
     metrics: PollingMonitorMetrics,
 ) -> PollingMonitor<ID>
 where
-    ID: Display + Send + 'static,
-    S: Service<ID, Response = (ID, Option<Response>), Error = (ID, E)> + Send + 'static,
+    S: Service<ID, Response = Option<Res>, Error = E> + Send + 'static,
+    ID: Display + Clone + Default + Eq + Send + Sync + Hash + 'static,
     E: Display + Send + 'static,
     S::Future: Send,
 {
+    let service = ReturnRequest { service };
     let (queue, queue_woken) = Queue::new(metrics.queue_depth.clone(), metrics.requests.clone());
 
     let cancel_check = response_sender.clone();
@@ -101,10 +146,12 @@ where
     {
         let queue = queue.cheap_clone();
         graph::spawn(async move {
+            let mut backoffs = Backoffs::new();
             let mut responses = service.call_all(queue_to_stream).unordered().boxed();
             while let Some(response) = responses.next().await {
                 match response {
                     Ok((id, Some(response))) => {
+                        backoffs.remove(&id);
                         let send_result = response_sender.send((id, response)).await;
                         if send_result.is_err() {
                             // The receiver has been dropped, cancel this task.
@@ -124,7 +171,16 @@ where
                                     "error" => format!("{:#}", e),
                                     "object_id" => id.to_string());
                         metrics.errors.inc();
-                        queue.push_back(id);
+
+                        // Requests that return errors could mean there is a permanent issue with
+                        // fetching the given item, or could signal the endpoint is overloaded.
+                        // Either way a backoff makes sense.
+                        let queue = queue.cheap_clone();
+                        let backoff = backoffs.next_backoff(id.clone());
+                        graph::spawn(async move {
+                            backoff.await;
+                            queue.push_back(id);
+                        });
                     }
                 }
             }
@@ -147,37 +203,43 @@ impl<ID> PollingMonitor<ID> {
     }
 }
 
+struct ReturnRequest<S> {
+    service: S,
+}
+
+impl<S, Req> Service<Req> for ReturnRequest<S>
+where
+    S: Service<Req>,
+    Req: Clone + Default + Send + Sync + 'static,
+    S::Error: Send,
+    S::Future: Send + 'static,
+{
+    type Response = (Req, S::Response);
+    type Error = (Req, S::Error);
+    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
+        // `Req::default` is a value that won't be used since if `poll_ready` errors, the service is shot anyways.
+        self.service.poll_ready(cx).map_err(|e| (Req::default(), e))
+    }
+
+    fn call(&mut self, req: Req) -> Self::Future {
+        let req1 = req.clone();
+        self.service
+            .call(req.clone())
+            .map_ok(move |x| (req.clone(), x))
+            .map_err(move |e| (req1.clone(), e))
+            .boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
-    use futures::{Future, FutureExt, TryFutureExt};
     use graph::log;
-    use std::{pin::Pin, task::Poll};
     use tower_test::mock;
 
     use super::*;
-
-    struct MockService(mock::Mock<&'static str, Option<&'static str>>);
-
-    impl Service<&'static str> for MockService {
-        type Response = (&'static str, Option<&'static str>);
-
-        type Error = (&'static str, anyhow::Error);
-
-        type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-        fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-            self.0.poll_ready(cx).map_err(|_| unreachable!())
-        }
-
-        fn call(&mut self, req: &'static str) -> Self::Future {
-            self.0
-                .call(req)
-                .map_ok(move |x| (req, x))
-                .map_err(move |e| (req, anyhow!(e.to_string())))
-                .boxed()
-        }
-    }
 
     async fn send_response<T, U>(handle: &mut mock::Handle<T, U>, res: U) {
         handle.next_request().await.unwrap().1.send_response(res)
@@ -190,12 +252,7 @@ mod tests {
     ) {
         let (svc, handle) = mock::pair();
         let (tx, rx) = mpsc::channel(10);
-        let monitor = spawn_monitor(
-            MockService(svc),
-            tx,
-            log::discard(),
-            PollingMonitorMetrics::mock(),
-        );
+        let monitor = spawn_monitor(svc, tx, log::discard(), PollingMonitorMetrics::mock());
         (handle, monitor, rx)
     }
 

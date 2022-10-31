@@ -29,7 +29,7 @@ use graph::prelude::{
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
 use graph::slog::crit;
-use graph_core::polling_monitor::ipfs_service::IpfsService;
+use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -243,11 +243,11 @@ pub async fn setup<C: Blockchain>(
         vec![ipfs.cheap_clone()],
         Default::default(),
     ));
-    let ipfs_service = IpfsService::new(
+    let ipfs_service = ipfs_service(
         ipfs,
         env_vars.mappings.max_ipfs_file_bytes as u64,
         env_vars.mappings.ipfs_timeout,
-        env_vars.mappings.max_ipfs_concurrent_requests,
+        env_vars.mappings.ipfs_request_limit,
     );
 
     let blockchain_map = Arc::new(blockchain_map);
