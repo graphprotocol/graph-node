@@ -202,49 +202,6 @@ pub fn supports_proof_of_indexing(
     table_exists(conn, namespace.as_str(), &POI_TABLE_NAME)
 }
 
-/// Whether the given table has an exclusion constraint. When we create
-/// tables, they either have an exclusion constraint on `(id, block_range)`,
-/// or just a GIST index on those columns. If this returns `true`, there is
-/// an exclusion constraint on the table, if it returns `false` we only have
-/// an index.
-///
-/// This function only checks whether there is some exclusion constraint on
-/// the table since checking fully if that is exactly the constraint we
-/// think it is is a bit more complex. But if the table is part of a
-/// deployment that we created, the conclusions in hte previous paragraph
-/// are true.
-pub fn has_exclusion_constraint(
-    conn: &PgConnection,
-    namespace: &Namespace,
-    table: &SqlName,
-) -> Result<bool, StoreError> {
-    #[derive(Debug, QueryableByName)]
-    struct Row {
-        #[sql_type = "Bool"]
-        #[allow(dead_code)]
-        uses_excl: bool,
-    }
-
-    let query = "
-        select count(*) > 0 as uses_excl
-          from pg_catalog.pg_constraint con,
-               pg_catalog.pg_class rel,
-               pg_catalog.pg_namespace nsp
-         where rel.oid = con.conrelid
-           and nsp.oid = con.connamespace
-           and con.contype = 'x'
-           and nsp.nspname = $1
-           and rel.relname = $2;
-    ";
-
-    sql_query(query)
-        .bind::<Text, _>(namespace)
-        .bind::<Text, _>(table.as_str())
-        .get_result::<Row>(conn)
-        .map_err(StoreError::from)
-        .map(|row| row.uses_excl)
-}
-
 pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
@@ -320,6 +277,12 @@ pub fn recreate_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError>
          create schema {nsp};",
         nsp = nsp
     );
+    Ok(conn.batch_execute(&query)?)
+}
+
+/// Drop the schema `nsp` and all its contents if it exists
+pub fn drop_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
+    let query = format!("drop schema if exists {nsp} cascade;", nsp = nsp);
     Ok(conn.batch_execute(&query)?)
 }
 

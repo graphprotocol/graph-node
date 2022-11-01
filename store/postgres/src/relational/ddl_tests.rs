@@ -179,37 +179,6 @@ fn can_copy_from() {
     );
 }
 
-#[test]
-fn replace_sql() {
-    const REPLACE_BAND: &str = r#"
-    alter table "sgd0815"."band_r$" rename to "band";
-    alter table "sgd0815"."band" rename constraint "band_r$_pkey" to "band_pkey";
-    alter table "sgd0815"."band" rename constraint "band_r$_id_block_range_excl" to "band_id_block_range_excl";"#;
-
-    const REPLACE_SONG: &str = r#"
-    alter table "sgd0815"."song_r$" rename to "song";
-    alter table "sgd0815"."song" rename constraint "song_r$_pkey" to "song_pkey";
-    alter table "sgd0815"."song" rename constraint "song_r$_id_key" to "song_id_key";"#;
-
-    fn check(exp: &str, object: &str) {
-        let layout = test_layout(MUSIC_GQL);
-        let src = layout
-            .table_for_entity(&EntityType::new(object.to_string()))
-            .unwrap();
-        let dst = src.new_like(&layout.site.namespace, &SqlName(format!("{}_r$", src.name)));
-
-        let mut out = String::new();
-        Table::rename_sql(&mut out, &layout, &dst, &src, true)
-            .expect("generating rename_sql works");
-        check_eqv(exp, &out);
-        src.create_table(&mut out).unwrap();
-        dst.create_table(&mut out).unwrap();
-    }
-
-    check(REPLACE_BAND, "Band");
-    check(REPLACE_SONG, "Song");
-}
-
 const THING_GQL: &str = r#"
         type Thing @entity {
             id: ID!
