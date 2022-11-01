@@ -121,7 +121,7 @@ impl EntityCache {
 
     // Retriving derived entities:
     //
-    // Derived entities are retrived by filtering the source entity id in the derived entities.
+    // Derived entities are retrived by checking whether the derived entity has source entity reference.
     // The entity filtering are done in two places:
     // 1) Store level
     // 2) Cache level
@@ -134,7 +134,7 @@ impl EntityCache {
         let source_entity_id = Value::String(mref.reference_id.clone().into());
 
         // accumulate entity if it is matching the following condition:
-        // - entity has source enity id as a reference
+        // - entity has source entity id as a reference
         let mut accum_entity = |entity: Entity| {
             let id = entity.id().unwrap();
             if filtered_ids.borrow().contains(&id) {
@@ -149,8 +149,9 @@ impl EntityCache {
         };
 
         // Store level derived entity retrival.
-        if let Some(mapping_ids) = self.store.get_derived_ids(mref)? {
-            for id_val in mapping_ids.ids() {
+        if let Some(dervied_ids) = self.store.get_derived_ids(mref)? {
+            for id_val in dervied_ids.ids() {
+                // Retrive entity for all the given derived ids.
                 let entity = match &id_val {
                     Value::String(val) => {
                         let key = EntityKey {
@@ -170,7 +171,7 @@ impl EntityCache {
         }
 
         // Cache level derived entity retrival.
-        // We have to check all the entities for derived entity, since all the new or updated
+        // We have to check all the entities to see, whether the given entity is derived entity or not. since all the new or updated
         // entities are not yet persisted.
         for (key, update) in &self.updates {
             let id: String = key.entity_id.clone().into();
