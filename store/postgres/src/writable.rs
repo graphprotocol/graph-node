@@ -10,7 +10,7 @@ use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::env::env_var;
 use graph::prelude::{
-    BlockNumber, DerviedEntityIds, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity,
+    BlockNumber, DerivedEntityIds, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity,
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
 use graph::slog::info;
@@ -257,7 +257,7 @@ impl SyncStore {
         &self,
         key: &DerivedKey,
         block: BlockNumber,
-    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+    ) -> Result<Option<DerivedEntityIds>, StoreError> {
         self.retry("get_dervied_ids", || {
             self.writable.get_dervied_ids(self.site.clone(), key, block)
         })
@@ -726,7 +726,7 @@ impl Queue {
         }
     }
 
-    fn get_derived_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+    fn get_derived_ids(&self, key: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError> {
         self.store.get_dervied_ids(&key, BLOCK_NUMBER_MAX)
     }
 
@@ -954,7 +954,7 @@ impl Writer {
         }
     }
 
-    fn get_mapping_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+    fn get_mapping_ids(&self, key: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError> {
         match self {
             Writer::Async(queue) => queue.get_derived_ids(key),
             Writer::Sync(store) => store.get_dervied_ids(key, BLOCK_NUMBER_MAX),
@@ -1047,10 +1047,10 @@ impl ReadStore for WritableStore {
         self.store.input_schema()
     }
 
-    fn get_dervied_ids(
+    fn get_derived_ids(
         &self,
         key: &store::DerivedKey,
-    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+    ) -> Result<Option<DerivedEntityIds>, StoreError> {
         self.writer.get_mapping_ids(key)
     }
 }

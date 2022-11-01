@@ -39,8 +39,8 @@ use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
-        ClampRangeQuery, ConflictingEntityQuery, EntityData, EntityDeletion, FilterCollection,
-        FilterQuery, FindManyQuery, FindDerviedQuery, FindQuery, InsertQuery, DerviedData,
+        ClampRangeQuery, ConflictingEntityQuery, DerviedData, EntityData, EntityDeletion,
+        FilterCollection, FilterQuery, FindDerviedQuery, FindManyQuery, FindQuery, InsertQuery,
         RevertClampQuery, RevertRemoveQuery,
     },
 };
@@ -50,9 +50,9 @@ use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYP
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityCollection,
-    EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger, DerviedEntityIds,
-    QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,Value
+    anyhow, info, BlockNumber, DeploymentHash, DerivedEntityIds, Entity, EntityChange,
+    EntityCollection, EntityFilter, EntityOperation, EntityOrder, EntityRange, Logger,
+    QueryExecutionError, StoreError, StoreEvent, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -499,7 +499,7 @@ impl Layout {
         mapping_id: &str,
         entity: &EntityType,
         block: BlockNumber,
-    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+    ) -> Result<Option<DerivedEntityIds>, StoreError> {
         let table = self.table_for_entity(entity).unwrap();
         FindDerviedQuery::new(table, mapping_id, mapping_name, block)
             .get_results::<DerviedData>(conn)
@@ -508,7 +508,7 @@ impl Layout {
                 for datum in data {
                     ids.push(Value::String(datum.id));
                 }
-                DerviedEntityIds(ids)
+                DerivedEntityIds(ids)
             })
             .optional()
             .map_err(|e| StoreError::from(e))

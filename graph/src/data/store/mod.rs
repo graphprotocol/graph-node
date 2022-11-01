@@ -583,9 +583,9 @@ where
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 
-pub struct DerviedEntityIds(pub Vec<Value>);
+pub struct DerivedEntityIds(pub Vec<Value>);
 
-impl DerviedEntityIds {
+impl DerivedEntityIds {
     pub fn ids(&self) -> &Vec<Value> {
         &self.0
     }

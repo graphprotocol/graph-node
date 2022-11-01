@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::blockchain::BlockPtr;
 use crate::components::store::{
-    self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType, DerivedKey, Value,
+    self as s, DerivedKey, Entity, EntityKey, EntityOp, EntityOperation, EntityType, Value,
 };
 use crate::data_source::DataSource;
 use crate::prelude::{Schema, ENV_VARS};
@@ -120,12 +120,12 @@ impl EntityCache {
     }
 
     // Retriving derived entities:
-    // 
-    // Derived entities are retrived by filtering the source entity ids in the derived entities.
-    // The entity filtering is done in two places in the entity cache:
+    //
+    // Derived entities are retrived by filtering the source entity id in the derived entities.
+    // The entity filtering are done in two places:
     // 1) Store level
     // 2) Cache level
-    pub fn get_dervied_entities(
+    pub fn get_derived_entities(
         &mut self,
         mref: &DerivedKey,
     ) -> Result<Option<Vec<Entity>>, s::QueryExecutionError> {
@@ -133,7 +133,7 @@ impl EntityCache {
         let filtered_ids: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
         let source_entity_id = Value::String(mref.reference_id.clone().into());
 
-        // accumulate entity as result if it is matching the following condition:
+        // accumulate entity if it is matching the following condition:
         // - entity has source enity id as a reference
         let mut accum_entity = |entity: Entity| {
             let id = entity.id().unwrap();
@@ -148,8 +148,8 @@ impl EntityCache {
             }
         };
 
-        // Store level dervied entity retrival.
-        if let Some(mapping_ids) = self.store.get_dervied_ids(mref)? {
+        // Store level derived entity retrival.
+        if let Some(mapping_ids) = self.store.get_derived_ids(mref)? {
             for id_val in mapping_ids.ids() {
                 let entity = match &id_val {
                     Value::String(val) => {
@@ -169,9 +169,9 @@ impl EntityCache {
             }
         }
 
-        // Cache Level dervied entity retrival.
-        // We have to check all the entities for dervied field, since all the new or updated
-        // updated entities are not yet persisted. 
+        // Cache level derived entity retrival.
+        // We have to check all the entities for derived entity, since all the new or updated
+        // entities are not yet persisted.
         for (key, update) in &self.updates {
             let id: String = key.entity_id.clone().into();
 

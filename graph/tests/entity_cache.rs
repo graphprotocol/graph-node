@@ -10,11 +10,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use graph::components::store::{
-    EntityKey, EntityType, ReadStore, StoredDynamicDataSource, WritableStore, DerivedKey,
+    DerivedKey, EntityKey, EntityType, ReadStore, StoredDynamicDataSource, WritableStore,
 };
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, DerviedEntityIds, Value},
+    prelude::{
+        anyhow, DeploymentHash, DerivedEntityIds, Entity, EntityCache, EntityModification, Value,
+    },
 };
 
 lazy_static! {
@@ -72,10 +74,7 @@ impl ReadStore for MockStore {
         SCHEMA.clone()
     }
 
-    fn get_dervied_ids(
-        &self,
-        _: &DerivedKey,
-    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+    fn get_derived_ids(&self, _: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError> {
         todo!()
     }
 }

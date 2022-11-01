@@ -509,8 +509,8 @@ impl<C: Blockchain> WasmInstance<C> {
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
             "store.get_derived_entity",
-            store_get_dervied,
-            "host_export_store_get_dervied",
+            store_get_derived,
+            "host_export_store_get_derived",
             entity,
             reference,
             reference_id
@@ -967,8 +967,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         )
     }
 
-    /// store.get_derived_entity(entity_name: string, mapping_name: string, mapping_id: string): Entity | null
-    pub fn store_get_dervied(
+    /// store.get_derived_entity(entity_name: string, reference: string, reference_id: string): Entity | null
+    pub fn store_get_derived(
         &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
@@ -976,13 +976,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         reference_id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
         let entity_type = asc_get(self, entity_ptr, gas)?;
-        let mapping = asc_get(self, reference_ptr, gas)?;
-        let mapping_id = asc_get(self, reference_id_ptr, gas)?;
+        let reference = asc_get(self, reference_ptr, gas)?;
+        let reference_id = asc_get(self, reference_id_ptr, gas)?;
         let result = self.ctx.host_exports.store_get_derived(
             &mut self.ctx.state,
             entity_type,
-            mapping_id,
-            mapping,
+            reference_id,
+            reference,
             gas,
         )?;
         match result {

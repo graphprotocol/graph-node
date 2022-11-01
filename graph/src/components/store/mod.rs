@@ -106,7 +106,6 @@ pub struct EntityKey {
     pub entity_id: Word,
 }
 
-
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DerivedKey {
     pub entity_type: EntityType,
@@ -1087,7 +1086,7 @@ impl ReadStore for EmptyStore {
         self.schema.cheap_clone()
     }
 
-    fn get_dervied_ids(&self, _: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
+    fn get_derived_ids(&self, _: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError> {
         todo!()
     }
 }

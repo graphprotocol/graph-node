@@ -178,7 +178,7 @@ pub trait ReadStore: Send + Sync + 'static {
 
     fn input_schema(&self) -> Arc<Schema>;
 
-    fn get_dervied_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError>;
+    fn get_derived_ids(&self, key: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError>;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
@@ -198,8 +198,8 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).input_schema()
     }
 
-    fn get_dervied_ids(&self, key: &DerivedKey) -> Result<Option<DerviedEntityIds>, StoreError> {
-        (**self).get_dervied_ids(key)
+    fn get_derived_ids(&self, key: &DerivedKey) -> Result<Option<DerivedEntityIds>, StoreError> {
+        (**self).get_derived_ids(key)
     }
 }
 

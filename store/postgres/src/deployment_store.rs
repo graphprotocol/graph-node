@@ -6,7 +6,7 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    EntityKey, EntityType, DerivedKey, PruneReporter, StoredDynamicDataSource,
+    DerivedKey, EntityKey, EntityType, PruneReporter, StoredDynamicDataSource,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -35,9 +35,9 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
-    CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
-    Logger, DerviedEntityIds, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent,
-    UnfailOutcome, Value, ENV_VARS,
+    CheapClone, DeploymentHash, DeploymentState, DerivedEntityIds, Entity, EntityModification,
+    EntityQuery, Error, Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError,
+    StoreEvent, UnfailOutcome, Value, ENV_VARS,
 };
 use graph_graphql::prelude::api_schema;
 use web3::types::Address;
@@ -1014,7 +1014,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         key: &DerivedKey,
         block: BlockNumber,
-    ) -> Result<Option<DerviedEntityIds>, StoreError> {
+    ) -> Result<Option<DerivedEntityIds>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
         layout.find_dervied_ids(

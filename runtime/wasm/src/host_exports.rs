@@ -10,7 +10,7 @@ use web3::types::H160;
 
 use graph::blockchain::Blockchain;
 use graph::components::store::EnsLookup;
-use graph::components::store::{EntityKey, EntityType, DerivedKey};
+use graph::components::store::{DerivedKey, EntityKey, EntityType};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
@@ -217,16 +217,16 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         state: &mut BlockState<C>,
         entity_type: String,
-        mapping_id: String,
-        mapping: String,
+        reference_id: String,
+        reference: String,
         gas: &GasCounter,
     ) -> Result<Option<Vec<Entity>>, anyhow::Error> {
         let mapping_key = DerivedKey {
             entity_type: EntityType::new(entity_type),
-            reference_id: mapping_id.into(),
-            reference: mapping.into(),
+            reference_id: reference_id.into(),
+            reference: reference.into(),
         };
-        let result = state.entity_cache.get_dervied_entities(&mapping_key)?;
+        let result = state.entity_cache.get_derived_entities(&mapping_key)?;
         Ok(result)
     }
 
