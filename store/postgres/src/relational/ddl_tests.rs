@@ -86,20 +86,20 @@ fn exlusion_ddl() {
     // When `as_constraint` is false, just create an index
     let mut out = String::new();
     table
-        .exclusion_ddl(&mut out, "sgd0815", false)
+        .exclusion_ddl(&mut out, false)
         .expect("can write exclusion DDL");
     check_eqv(
-        r#"create index thing_id_block_range_excl on sgd0815."thing" using gist (id, block_range);"#,
+        r#"create index thing_id_block_range_excl on "sgd0815"."thing" using gist (id, block_range);"#,
         out.trim(),
     );
 
     // When `as_constraint` is true, add an exclusion constraint
     let mut out = String::new();
     table
-        .exclusion_ddl(&mut out, "sgd0815", true)
+        .exclusion_ddl(&mut out, true)
         .expect("can write exclusion DDL");
     check_eqv(
-        r#"alter table sgd0815."thing" add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);"#,
+        r#"alter table "sgd0815"."thing" add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);"#,
         out.trim(),
     );
 }
@@ -202,8 +202,8 @@ fn replace_sql() {
         Table::rename_sql(&mut out, &layout, &dst, &src, true)
             .expect("generating rename_sql works");
         check_eqv(exp, &out);
-        src.create_table(&mut out, &layout).unwrap();
-        dst.create_table(&mut out, &layout).unwrap();
+        src.create_table(&mut out).unwrap();
+        dst.create_table(&mut out).unwrap();
     }
 
     check(REPLACE_BAND, "Band");
@@ -235,26 +235,26 @@ const THING_DDL: &str = r#"create type sgd0815."color"
     as enum ('BLUE', 'red', 'yellow');
 create type sgd0815."size"
     as enum ('large', 'medium', 'small');
-create table sgd0815."thing" (
+create table "sgd0815"."thing" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "big_thing"          text not null
 );
-alter table sgd0815."thing"
+alter table "sgd0815"."thing"
   add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_thing
-    on sgd0815.thing
+    on "sgd0815"."thing"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on sgd0815."thing" using btree("id");
+    on "sgd0815"."thing" using btree("id");
 create index attr_0_1_thing_big_thing
-    on sgd0815."thing" using gist("big_thing", block_range);
+    on "sgd0815"."thing" using gist("big_thing", block_range);
 
-create table sgd0815."scalar" (
+create table "sgd0815"."scalar" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
@@ -266,30 +266,30 @@ create table sgd0815."scalar" (
         "big_int"            numeric,
         "color"              "sgd0815"."color"
 );
-alter table sgd0815."scalar"
+alter table "sgd0815"."scalar"
   add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_scalar
-    on sgd0815.scalar
+    on "sgd0815"."scalar"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index scalar_block_range_closed
-    on sgd0815.scalar(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."scalar"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_scalar_id
-    on sgd0815."scalar" using btree("id");
+    on "sgd0815"."scalar" using btree("id");
 create index attr_1_1_scalar_bool
-    on sgd0815."scalar" using btree("bool");
+    on "sgd0815"."scalar" using btree("bool");
 create index attr_1_2_scalar_int
-    on sgd0815."scalar" using btree("int");
+    on "sgd0815"."scalar" using btree("int");
 create index attr_1_3_scalar_big_decimal
-    on sgd0815."scalar" using btree("big_decimal");
+    on "sgd0815"."scalar" using btree("big_decimal");
 create index attr_1_4_scalar_string
-    on sgd0815."scalar" using btree(left("string", 256));
+    on "sgd0815"."scalar" using btree(left("string", 256));
 create index attr_1_5_scalar_bytes
-    on sgd0815."scalar" using btree(substring("bytes", 1, 64));
+    on "sgd0815"."scalar" using btree(substring("bytes", 1, 64));
 create index attr_1_6_scalar_big_int
-    on sgd0815."scalar" using btree("big_int");
+    on "sgd0815"."scalar" using btree("big_int");
 create index attr_1_7_scalar_color
-    on sgd0815."scalar" using btree("color");
+    on "sgd0815"."scalar" using btree("color");
 
 "#;
 
@@ -320,7 +320,7 @@ type SongStat @entity {
     song: Song @derivedFrom(field: "id")
     played: Int!
 }"#;
-const MUSIC_DDL: &str = r#"create table sgd0815."musician" (
+const MUSIC_DDL: &str = r#"create table "sgd0815"."musician" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
@@ -328,46 +328,46 @@ const MUSIC_DDL: &str = r#"create table sgd0815."musician" (
         "main_band"          text,
         "bands"              text[] not null
 );
-alter table sgd0815."musician"
+alter table "sgd0815"."musician"
   add constraint musician_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_musician
-    on sgd0815.musician
+    on "sgd0815"."musician"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index musician_block_range_closed
-    on sgd0815.musician(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."musician"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_musician_id
-    on sgd0815."musician" using btree("id");
+    on "sgd0815"."musician" using btree("id");
 create index attr_0_1_musician_name
-    on sgd0815."musician" using btree(left("name", 256));
+    on "sgd0815"."musician" using btree(left("name", 256));
 create index attr_0_2_musician_main_band
-    on sgd0815."musician" using gist("main_band", block_range);
+    on "sgd0815"."musician" using gist("main_band", block_range);
 create index attr_0_3_musician_bands
-    on sgd0815."musician" using gin("bands");
+    on "sgd0815"."musician" using gin("bands");
 
-create table sgd0815."band" (
+create table "sgd0815"."band" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "name"               text not null,
         "original_songs"     text[] not null
 );
-alter table sgd0815."band"
+alter table "sgd0815"."band"
   add constraint band_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_band
-    on sgd0815.band
+    on "sgd0815"."band"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index band_block_range_closed
-    on sgd0815.band(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."band"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_band_id
-    on sgd0815."band" using btree("id");
+    on "sgd0815"."band" using btree("id");
 create index attr_1_1_band_name
-    on sgd0815."band" using btree(left("name", 256));
+    on "sgd0815"."band" using btree(left("name", 256));
 create index attr_1_2_band_original_songs
-    on sgd0815."band" using gin("original_songs");
+    on "sgd0815"."band" using gin("original_songs");
 
-create table sgd0815."song" (
+create table "sgd0815"."song" (
         vid                    bigserial primary key,
         block$                 int not null,
         "id"                 text not null,
@@ -377,31 +377,31 @@ create table sgd0815."song" (
         unique(id)
 );
 create index brin_song
-    on sgd0815.song
+    on "sgd0815"."song"
  using brin(block$, vid);
 create index attr_2_1_song_title
-    on sgd0815."song" using btree(left("title", 256));
+    on "sgd0815"."song" using btree(left("title", 256));
 create index attr_2_2_song_written_by
-    on sgd0815."song" using btree("written_by", block$);
+    on "sgd0815"."song" using btree("written_by", block$);
 
-create table sgd0815."song_stat" (
+create table "sgd0815"."song_stat" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "played"             integer not null
 );
-alter table sgd0815."song_stat"
+alter table "sgd0815"."song_stat"
   add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_song_stat
-    on sgd0815.song_stat
+    on "sgd0815"."song_stat"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index song_stat_block_range_closed
-    on sgd0815.song_stat(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."song_stat"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_3_0_song_stat_id
-    on sgd0815."song_stat" using btree("id");
+    on "sgd0815"."song_stat" using btree("id");
 create index attr_3_1_song_stat_played
-    on sgd0815."song_stat" using btree("played");
+    on "sgd0815"."song_stat" using btree("played");
 
 "#;
 
@@ -426,62 +426,62 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }"#;
 
-const FOREST_DDL: &str = r#"create table sgd0815."animal" (
+const FOREST_DDL: &str = r#"create table "sgd0815"."animal" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "forest"             text
 );
-alter table sgd0815."animal"
+alter table "sgd0815"."animal"
   add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_animal
-    on sgd0815.animal
+    on "sgd0815"."animal"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."animal"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on sgd0815."animal" using btree("id");
+    on "sgd0815"."animal" using btree("id");
 create index attr_0_1_animal_forest
-    on sgd0815."animal" using gist("forest", block_range);
+    on "sgd0815"."animal" using gist("forest", block_range);
 
-create table sgd0815."forest" (
+create table "sgd0815"."forest" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"               text not null
 );
-alter table sgd0815."forest"
+alter table "sgd0815"."forest"
   add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_forest
-    on sgd0815.forest
+    on "sgd0815"."forest"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."forest"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on sgd0815."forest" using btree("id");
+    on "sgd0815"."forest" using btree("id");
 
-create table sgd0815."habitat" (
+create table "sgd0815"."habitat" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "most_common"        text not null,
         "dwellers"           text[] not null
 );
-alter table sgd0815."habitat"
+alter table "sgd0815"."habitat"
   add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_habitat
-    on sgd0815.habitat
+    on "sgd0815"."habitat"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."habitat"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on sgd0815."habitat" using btree("id");
+    on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
-    on sgd0815."habitat" using gist("most_common", block_range);
+    on "sgd0815"."habitat" using gist("most_common", block_range);
 create index attr_2_2_habitat_dwellers
-    on sgd0815."habitat" using gin("dwellers");
+    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 const FULLTEXT_GQL: &str = r#"
@@ -515,7 +515,7 @@ type Habitat @entity {
     dwellers: [Animal!]!
 }"#;
 
-const FULLTEXT_DDL: &str = r#"create table sgd0815."animal" (
+const FULLTEXT_DDL: &str = r#"create table "sgd0815"."animal" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
@@ -524,63 +524,63 @@ const FULLTEXT_DDL: &str = r#"create table sgd0815."animal" (
         "forest"             text,
         "search"             tsvector
 );
-alter table sgd0815."animal"
+alter table "sgd0815"."animal"
   add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_animal
-    on sgd0815.animal
+    on "sgd0815"."animal"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index animal_block_range_closed
-    on sgd0815.animal(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."animal"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_animal_id
-    on sgd0815."animal" using btree("id");
+    on "sgd0815"."animal" using btree("id");
 create index attr_0_1_animal_name
-    on sgd0815."animal" using btree(left("name", 256));
+    on "sgd0815"."animal" using btree(left("name", 256));
 create index attr_0_2_animal_species
-    on sgd0815."animal" using btree(left("species", 256));
+    on "sgd0815"."animal" using btree(left("species", 256));
 create index attr_0_3_animal_forest
-    on sgd0815."animal" using gist("forest", block_range);
+    on "sgd0815"."animal" using gist("forest", block_range);
 create index attr_0_4_animal_search
-    on sgd0815."animal" using gin("search");
+    on "sgd0815"."animal" using gin("search");
 
-create table sgd0815."forest" (
+create table "sgd0815"."forest" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null
 );
-alter table sgd0815."forest"
+alter table "sgd0815"."forest"
   add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
 
 create index brin_forest
-    on sgd0815.forest
+    on "sgd0815"."forest"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index forest_block_range_closed
-    on sgd0815.forest(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."forest"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_1_0_forest_id
-    on sgd0815."forest" using btree("id");
+    on "sgd0815"."forest" using btree("id");
 
-create table sgd0815."habitat" (
+create table "sgd0815"."habitat" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "most_common"        text not null,
         "dwellers"           text[] not null
 );
-alter table sgd0815."habitat"
+alter table "sgd0815"."habitat"
   add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_habitat
-    on sgd0815.habitat
+    on "sgd0815"."habitat"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index habitat_block_range_closed
-    on sgd0815.habitat(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."habitat"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_2_0_habitat_id
-    on sgd0815."habitat" using btree("id");
+    on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
-    on sgd0815."habitat" using gist("most_common", block_range);
+    on "sgd0815"."habitat" using gist("most_common", block_range);
 create index attr_2_2_habitat_dwellers
-    on sgd0815."habitat" using gin("dwellers");
+    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 
@@ -597,23 +597,23 @@ enum Orientation {
 
 const FORWARD_ENUM_SQL: &str = r#"create type sgd0815."orientation"
     as enum ('DOWN', 'UP');
-create table sgd0815."thing" (
+create table "sgd0815"."thing" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "orientation"        "sgd0815"."orientation" not null
 );
-alter table sgd0815."thing"
+alter table "sgd0815"."thing"
   add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_thing
-    on sgd0815.thing
+    on "sgd0815"."thing"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
 create index thing_block_range_closed
-    on sgd0815.thing(coalesce(upper(block_range), 2147483647))
+    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
  where coalesce(upper(block_range), 2147483647) < 2147483647;
 create index attr_0_0_thing_id
-    on sgd0815."thing" using btree("id");
+    on "sgd0815"."thing" using btree("id");
 create index attr_0_1_thing_orientation
-    on sgd0815."thing" using btree("orientation");
+    on "sgd0815"."thing" using btree("orientation");
 
 "#;

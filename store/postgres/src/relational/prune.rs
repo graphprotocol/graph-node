@@ -44,7 +44,7 @@ impl TablePair {
         if catalog::table_exists(conn, layout.site.namespace.as_str(), &dst.name)? {
             writeln!(query, "truncate table {nsp}.{new_name};")?;
         } else {
-            dst.create_table(&mut query, layout)?;
+            dst.create_table(&mut query)?;
 
             // Have the new table use the same vid sequence as the source
             // table
@@ -241,8 +241,8 @@ impl TablePair {
             catalog::has_exclusion_constraint(conn, &layout.site.namespace, &self.dst.name)?;
         let mut query = String::new();
         Table::rename_sql(&mut query, &layout, &self.dst, &self.src, uses_excl)?;
-        self.src.create_time_travel_indexes(&mut query, layout)?;
-        self.src.create_attribute_indexes(&mut query, layout)?;
+        self.src.create_time_travel_indexes(&mut query)?;
+        self.src.create_attribute_indexes(&mut query)?;
 
         conn.transaction(|| conn.batch_execute(&query))?;
 
