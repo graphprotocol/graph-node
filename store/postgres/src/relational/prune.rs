@@ -68,6 +68,8 @@ impl TablePair {
         Ok(TablePair { src, dst })
     }
 
+    /// Copy all entity versions visible between `earliest_block` and
+    /// `final_block` in batches, where each batch is a separate transaction
     fn copy_final_entities(
         &self,
         conn: &PgConnection,
@@ -135,7 +137,7 @@ impl TablePair {
                           order by vid \
                           limit $5 \
                           returning vid) \
-                         select max(cp.vid) as last_vid, count(*) as rows from cp",
+                         select coalesce(max(cp.vid), 0) as last_vid, count(*) as rows from cp",
                     src = self.src.qualified_name,
                     dst = self.dst.qualified_name
                 ))
@@ -167,25 +169,64 @@ impl TablePair {
         Ok(total_rows)
     }
 
+    /// Copy all entity versions visible after `final_block` in batches,
+    /// where each batch is a separate transaction
     fn copy_nonfinal_entities(
         &self,
         conn: &PgConnection,
+        reporter: &mut dyn PruneReporter,
         final_block: BlockNumber,
     ) -> Result<usize, StoreError> {
         let column_list = self.column_list();
 
-        sql_query(&format!(
-            "insert into {dst}({column_list}) \
-             select {column_list} from {src} \
-              where coalesce(upper(block_range), 2147483647) > $1 \
-                and block_range && int4range($1, null) \
-              order by vid",
-            dst = self.dst.qualified_name,
-            src = self.src.qualified_name,
-        ))
-        .bind::<Integer, _>(final_block)
-        .execute(conn)
-        .map_err(StoreError::from)
+        #[derive(QueryableByName)]
+        struct LastVid {
+            #[sql_type = "BigInt"]
+            rows: i64,
+            #[sql_type = "BigInt"]
+            last_vid: i64,
+        }
+
+        let mut batch_size = AdaptiveBatchSize::new(&self.src);
+        // The first vid we still need to copy. When we start, we start with
+        // 0 so that we don't constrain the set of rows based on their vid
+        let mut next_vid = 0;
+        let mut total_rows = 0;
+        loop {
+            let start = Instant::now();
+            let LastVid { rows, last_vid } = conn.transaction(|| {
+                sql_query(&format!(
+                    "with cp as (insert into {dst}({column_list}) \
+                         select {column_list} from {src} \
+                          where coalesce(upper(block_range), 2147483647) > $1 \
+                            and block_range && int4range($1, null) \
+                            and vid >= $2 \
+                          order by vid \
+                          limit $3
+                          returning vid) \
+                         select coalesce(max(cp.vid), 0) as last_vid, count(*) as rows from cp",
+                    dst = self.dst.qualified_name,
+                    src = self.src.qualified_name,
+                ))
+                .bind::<Integer, _>(final_block)
+                .bind::<BigInt, _>(next_vid)
+                .bind::<BigInt, _>(&batch_size)
+                .get_result::<LastVid>(conn)
+                .map_err(StoreError::from)
+            })?;
+            total_rows += rows as usize;
+            reporter.copy_nonfinal_batch(
+                self.src.name.as_str(),
+                rows as usize,
+                total_rows,
+                rows == 0,
+            );
+            if rows == 0 {
+                return Ok(total_rows);
+            }
+            batch_size.adapt(start.elapsed());
+            next_vid = last_vid + 1;
+        }
     }
 
     /// Replace the `src` table with the `dst` table. This makes sure (as
@@ -203,7 +244,7 @@ impl TablePair {
         self.src.create_time_travel_indexes(&mut query, layout)?;
         self.src.create_attribute_indexes(&mut query, layout)?;
 
-        conn.batch_execute(&query)?;
+        conn.transaction(|| conn.batch_execute(&query))?;
 
         Ok(())
     }
@@ -311,20 +352,17 @@ impl Layout {
         // Copy nonfinal entities, and replace the original `src` table with
         // the smaller `dst` table
         reporter.start_switch();
-        conn.transaction(|| -> Result<(), CancelableError<StoreError>> {
-            //  see also: deployment-lock-for-update
-            deployment::lock(conn, &self.site)?;
-
+        //  see also: deployment-lock-for-update
+        deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
             for table in &prunable_tables {
                 reporter.copy_nonfinal_start(table.src.name.as_str());
-                let rows = table.copy_nonfinal_entities(conn, final_block)?;
-                reporter.copy_nonfinal_finish(table.src.name.as_str(), rows);
-                cancel.check_cancel()?;
+                table.copy_nonfinal_entities(conn, reporter, final_block)?;
+                cancel.check_cancel().map_err(CancelableError::from)?;
             }
 
             for table in prunable_tables {
-                table.switch(conn, self)?;
-                cancel.check_cancel()?;
+                conn.transaction(|| table.switch(conn, self))?;
+                cancel.check_cancel().map_err(CancelableError::from)?;
             }
 
             Ok(())

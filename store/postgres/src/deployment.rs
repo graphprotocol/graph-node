@@ -1055,3 +1055,17 @@ pub fn set_earliest_block(
 pub fn lock(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
     advisory_lock::lock_deployment_xact(conn, site)
 }
+
+/// Lock the deployment `site` for writes while `f` is running. The lock can
+/// cross transactions, and `f` can therefore execute multiple transactions
+/// while other write activity for that deployment is locked out.
+//  see also: deployment-lock-for-update
+pub fn with_lock<F, R>(conn: &PgConnection, site: &Site, f: F) -> Result<R, StoreError>
+where
+    F: FnOnce() -> Result<R, StoreError>,
+{
+    advisory_lock::lock_deployment_session(conn, site)?;
+    let res = f();
+    advisory_lock::unlock_deployment_session(conn, site)?;
+    res
+}

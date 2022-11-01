@@ -53,3 +53,20 @@ pub(crate) fn lock_deployment_xact(conn: &PgConnection, site: &Site) -> Result<(
         .map(|_| ())
         .map_err(StoreError::from)
 }
+
+pub(crate) fn lock_deployment_session(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+    sql_query(&format!("select pg_advisory_lock(2, {})", site.id))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
+}
+
+pub(crate) fn unlock_deployment_session(
+    conn: &PgConnection,
+    site: &Site,
+) -> Result<(), StoreError> {
+    sql_query(&format!("select pg_advisory_unlock(2, {})", site.id))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
+}

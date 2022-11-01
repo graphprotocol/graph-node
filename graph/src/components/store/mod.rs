@@ -1106,7 +1106,8 @@ pub trait PruneReporter: Send + 'static {
 
     fn start_switch(&mut self) {}
     fn copy_nonfinal_start(&mut self, table: &str) {}
-    fn copy_nonfinal_finish(&mut self, table: &str, rows: usize) {}
+    fn copy_nonfinal_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {
+    }
     fn finish_switch(&mut self) {}
 
     fn finish_prune(&mut self) {}
