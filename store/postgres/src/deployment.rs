@@ -13,17 +13,20 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::data::subgraph::{
-    schema::{DeploymentCreate, SubgraphManifestEntity},
-    SubgraphFeature,
-};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
 use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
+use graph::{
+    data::subgraph::{
+        schema::{DeploymentCreate, SubgraphManifestEntity},
+        SubgraphFeature,
+    },
+    util::backoff::ExponentialBackoff,
+};
 use stable_hash_legacy::crypto::SetHasher;
-use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
+use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
 use std::{str::FromStr, sync::Arc};
 
 use crate::connection_pool::ForeignServer;
@@ -1047,24 +1050,19 @@ pub fn set_earliest_block(
     Ok(())
 }
 
-/// Lock the deployment `site` for writes for the remainder of the current
-/// transaction. This lock is used to coordinate the changes that the
-/// subgraph writer makes with changes that other parts of the system, in
-/// particular, pruning make
-//  see also: deployment-lock-for-update
-pub fn lock(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
-    advisory_lock::lock_deployment_xact(conn, site)
-}
-
 /// Lock the deployment `site` for writes while `f` is running. The lock can
 /// cross transactions, and `f` can therefore execute multiple transactions
-/// while other write activity for that deployment is locked out.
+/// while other write activity for that deployment is locked out. Block the
+/// current thread until we can acquire the lock.
 //  see also: deployment-lock-for-update
 pub fn with_lock<F, R>(conn: &PgConnection, site: &Site, f: F) -> Result<R, StoreError>
 where
     F: FnOnce() -> Result<R, StoreError>,
 {
-    advisory_lock::lock_deployment_session(conn, site)?;
+    let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
+    while !advisory_lock::lock_deployment_session(conn, site)? {
+        backoff.sleep();
+    }
     let res = f();
     advisory_lock::unlock_deployment_session(conn, site)?;
     res
