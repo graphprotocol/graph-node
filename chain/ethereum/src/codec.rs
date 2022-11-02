@@ -18,8 +18,6 @@ use graph::{
 use std::sync::Arc;
 use std::{convert::TryFrom, fmt::Debug};
 
-use crate::chain::BlockFinality;
-
 pub use pbcodec::*;
 
 trait TryDecodeProto<U, V>: Sized
