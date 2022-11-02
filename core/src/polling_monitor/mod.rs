@@ -257,6 +257,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn polling_monitor_shared_svc() {
+        let (svc, mut handle) = mock::pair();
+        let shared_svc = tower::buffer::Buffer::new(tower::limit::ConcurrencyLimit::new(svc, 1), 1);
+        let make_monitor = |svc| {
+            let (tx, rx) = mpsc::channel(10);
+            let metrics = PollingMonitorMetrics::mock();
+            let monitor = spawn_monitor(svc, tx, log::discard(), metrics);
+            (monitor, rx)
+        };
+
+        // Spawn a monitor and yield to ensure it is polled and waiting on the tx.
+        let (_monitor0, mut _rx0) = make_monitor(shared_svc.clone());
+        tokio::task::yield_now().await;
+
+        // Test that the waiting monitor above is not occupying a concurrency slot on the service.
+        let (monitor1, mut rx1) = make_monitor(shared_svc);
+        monitor1.monitor("req-0");
+        send_response(&mut handle, Some("res-0")).await;
+        assert_eq!(rx1.recv().await, Some(("req-0", "res-0")));
+    }
+
+    #[tokio::test]
     async fn polling_monitor_simple() {
         let (mut handle, monitor, mut rx) = setup();
 

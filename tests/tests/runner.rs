@@ -146,7 +146,7 @@ async fn file_data_sources() {
 
     // This test assumes the file data sources will be processed in the same block in which they are
     // created. But the test might fail due to a race condition if for some reason it takes longer
-    // than expectd to fetch the file from IPFS. The sleep here will conveniently happen after the
+    // than expected to fetch the file from IPFS. The sleep here will conveniently happen after the
     // data source is added to the offchain monitor but before the monitor is checked, in an an
     // attempt to ensure the monitor has enough time to fetch the file.
     let adapter_selector = NoopAdapterSelector {
