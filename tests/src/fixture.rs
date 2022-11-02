@@ -20,6 +20,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
+use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
@@ -539,5 +540,9 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
                 number: n - 1,
             })),
         }
+    }
+
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion {
+        unimplemented!("noop triggers does not implement unified_api_version")
     }
 }

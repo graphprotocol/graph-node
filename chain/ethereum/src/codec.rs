@@ -3,8 +3,11 @@
 mod pbcodec;
 
 use anyhow::format_err;
+use graph::data::subgraph::API_VERSION_0_0_5;
+
 use graph::{
     blockchain::{Block as BlockchainBlock, BlockPtr},
+    data::subgraph::UnifiedMappingApiVersion,
     prelude::{
         web3,
         web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
@@ -224,18 +227,21 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
     }
 }
 
-impl TryInto<BlockFinality> for &Block {
-    type Error = Error;
-
-    fn try_into(self) -> Result<BlockFinality, Self::Error> {
-        Ok(BlockFinality::NonFinal(self.try_into()?))
-    }
+pub trait ToEthereumBlockWithCalls {
+    type Error;
+    fn to_ethereum_block_with_calls(
+        self,
+        _: UnifiedMappingApiVersion,
+    ) -> Result<EthereumBlockWithCalls, Self::Error>;
 }
 
-impl TryInto<EthereumBlockWithCalls> for &Block {
+impl ToEthereumBlockWithCalls for &Block {
     type Error = Error;
 
-    fn try_into(self) -> Result<EthereumBlockWithCalls, Self::Error> {
+    fn to_ethereum_block_with_calls(
+        self,
+        unified_mapping_api_version: UnifiedMappingApiVersion,
+    ) -> Result<EthereumBlockWithCalls, Self::Error> {
         let header = self
             .header
             .as_ref()
@@ -381,7 +387,12 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         trace
                             .calls
                             .iter()
-                            .filter(|call| !call.status_reverted && !call.status_failed)
+                            .filter(|call| {
+                                (!unified_mapping_api_version
+                                    .equal_or_greater_than(&API_VERSION_0_0_5)
+                                    || !call.status_reverted)
+                                    && !call.status_failed
+                            })
                             .map(|call| CallAt::new(call, self, trace).try_into())
                             .collect::<Vec<Result<EthereumCall, Error>>>()
                     })

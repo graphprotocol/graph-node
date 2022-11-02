@@ -29,6 +29,7 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
 
+use crate::codec::ToEthereumBlockWithCalls;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::{
@@ -577,6 +578,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
         Ok(blocks[0].parent_ptr())
     }
+
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion {
+        self.unified_api_version.clone()
+    }
 }
 
 pub struct FirehoseMapper {}
@@ -615,7 +620,8 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             StepNew => {
                 // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
                 // is empty
-                let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
+                let ethereum_block =
+                    (&block).to_ethereum_block_with_calls(adapter.unified_api_version())?;
 
                 // triggers in block never actually calls the ethereum traces api.
                 // TODO: Split the trigger parsing from call retrieving.

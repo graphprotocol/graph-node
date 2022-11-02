@@ -19,6 +19,8 @@ use super::{
     TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 
+use crate::blockchain::UnifiedMappingApiVersion;
+
 #[derive(Debug)]
 pub struct MockBlockchain;
 
@@ -204,6 +206,10 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter {
     }
 
     async fn parent_ptr(&self, _block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        todo!()
+    }
+
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion {
         todo!()
     }
 }

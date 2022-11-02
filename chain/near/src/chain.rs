@@ -146,9 +146,11 @@ impl Blockchain for Chain {
         &self,
         _loc: &DeploymentLocator,
         _capabilities: &Self::NodeCapabilities,
-        _unified_api_version: UnifiedMappingApiVersion,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
-        let adapter = TriggersAdapter {};
+        let adapter = TriggersAdapter {
+            unified_api_version,
+        };
         Ok(Arc::new(adapter))
     }
 
@@ -211,7 +213,9 @@ impl Blockchain for Chain {
     }
 }
 
-pub struct TriggersAdapter {}
+pub struct TriggersAdapter {
+    unified_api_version: UnifiedMappingApiVersion,
+}
 
 #[async_trait]
 impl TriggersAdapterTrait<Chain> for TriggersAdapter {
@@ -306,6 +310,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
         }))
+    }
+
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion {
+        self.unified_api_version.clone()
     }
 }
 

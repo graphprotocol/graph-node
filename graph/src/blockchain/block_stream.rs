@@ -234,6 +234,9 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;
+
+    /// Get unified api version
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion;
 }
 
 #[async_trait]

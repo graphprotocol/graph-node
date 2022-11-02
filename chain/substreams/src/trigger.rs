@@ -8,6 +8,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
     data::store::scalar::Bytes,
+    data::subgraph::UnifiedMappingApiVersion,
     data_source,
     prelude::{
         anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
@@ -133,6 +134,10 @@ impl blockchain::TriggersAdapter<Chain> for TriggersAdapter {
             hash: BlockHash::from(vec![0xff; 32]),
             number: block.number.saturating_sub(1),
         }))
+    }
+
+    fn unified_api_version(&self) -> UnifiedMappingApiVersion {
+        unimplemented!()
     }
 }
 
