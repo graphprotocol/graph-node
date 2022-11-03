@@ -245,6 +245,9 @@ impl ToEthereumBlockWithCalls for &Block {
             .as_ref()
             .expect("block header should always be present from gRPC Firehose");
 
+        let include_failed_calls =
+            !unified_mapping_api_version.equal_or_greater_than(&API_VERSION_0_0_5);
+
         let block = EthereumBlockWithCalls {
             ethereum_block: EthereumBlock {
                 block: Arc::new(LightEthereumBlock {
@@ -386,10 +389,8 @@ impl ToEthereumBlockWithCalls for &Block {
                             .calls
                             .iter()
                             .filter(|call| {
-                                (!unified_mapping_api_version
-                                    .equal_or_greater_than(&API_VERSION_0_0_5)
-                                    || !call.status_reverted)
-                                    && !call.status_failed
+                                (!call.status_reverted && !call.status_failed)
+                                    || include_failed_calls
                             })
                             .map(|call| CallAt::new(call, self, trace).try_into())
                             .collect::<Vec<Result<EthereumCall, Error>>>()
