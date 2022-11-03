@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+#### Upgrade notes
+
+- This release includes a **determinism fix** that should affect very few subgraphs on the network (currently only two). There was an issue that if a subgraph manifest had one data source with no contract address, listening to the same events or calls of another data source that has a specified address, the handlers for those would be called twice. With the fix, this will happen no more, the handler will be called just once like it should.
+  - The two affected deployments are: `Qmccst5mbV5a6vT6VvJMLPKMAA1VRgT6NGbxkLL8eDRsE7` and `Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg`;
+  - Here's an example [manifest](https://ipfs.io/ipfs/Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg), taking a look at the data sources of name `ERC721` and `CryptoKitties`, both listen to the `Transfer(...)` event. Considering a block where there's only one occurence of this event, `graph-node` would duplicate it and call `handleTransfer` twice. Now this is fixed and it will be called only once per event/call that happened on chain.
+  - In the case you're indexing one of those, you should first upgrade the `graph-node` version, then rewind the affected subgraphs to the smallest `startBlock` of their subgraph manifest. To achieve that the `graphman rewind` CLI command can be used.
+
 ## v0.28.2
 
 **Indexers are advised to migrate to `v0.28.2`** and entirely bypass `v0.28.0` and `v0.28.1`.
