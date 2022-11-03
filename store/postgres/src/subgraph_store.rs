@@ -623,7 +623,7 @@ impl SubgraphStoreInner {
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
-            earliest_block: deployment.earliest_block.clone(),
+            start_block: deployment.start_block.clone(),
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,

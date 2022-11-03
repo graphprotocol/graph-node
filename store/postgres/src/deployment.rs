@@ -915,12 +915,12 @@ pub fn create_deployment(
                 schema,
                 raw_yaml,
             },
-        earliest_block,
+        start_block,
         graft_base,
         graft_block,
         debug_fork,
     } = deployment;
-    let earliest_block_number = earliest_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
+    let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
 
     let deployment_values = (
         d::id.eq(site.id),
@@ -930,8 +930,8 @@ pub fn create_deployment(
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
-        d::earliest_ethereum_block_hash.eq(b(&earliest_block)),
-        d::earliest_ethereum_block_number.eq(n(&earliest_block)),
+        d::earliest_ethereum_block_hash.eq(b(&start_block)),
+        d::earliest_ethereum_block_number.eq(n(&start_block)),
         d::earliest_block_number.eq(earliest_block_number),
         d::latest_ethereum_block_hash.eq(sql("null")),
         d::latest_ethereum_block_number.eq(sql("null")),
@@ -955,8 +955,8 @@ pub fn create_deployment(
         // New subgraphs index only a prefix of bytea columns
         // see: attr-bytea-prefix
         m::use_bytea_prefix.eq(true),
-        m::start_block_hash.eq(b(&earliest_block)),
-        m::start_block_number.eq(earliest_block_number),
+        m::start_block_hash.eq(b(&start_block)),
+        m::start_block_number.eq(start_block.as_ref().map(|ptr| ptr.number)),
         m::raw_yaml.eq(raw_yaml),
     );
 
