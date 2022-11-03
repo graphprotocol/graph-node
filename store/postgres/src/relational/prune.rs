@@ -3,7 +3,7 @@ use std::{fmt::Write, sync::Arc, time::Instant};
 use diesel::{
     connection::SimpleConnection,
     sql_query,
-    sql_types::{BigInt, Integer, Nullable},
+    sql_types::{BigInt, Integer},
     Connection, PgConnection, RunQueryDsl,
 };
 use graph::{
@@ -74,14 +74,6 @@ impl TablePair {
         cancel: &CancelHandle,
     ) -> Result<usize, CancelableError<StoreError>> {
         #[derive(QueryableByName)]
-        struct VidRange {
-            #[sql_type = "Nullable<BigInt>"]
-            min_vid: Option<i64>,
-            #[sql_type = "Nullable<BigInt>"]
-            max_vid: Option<i64>,
-        }
-
-        #[derive(QueryableByName)]
         struct LastVid {
             #[sql_type = "BigInt"]
             rows: i64,
@@ -89,34 +81,12 @@ impl TablePair {
             last_vid: i64,
         }
 
-        let (min_vid, max_vid) = match sql_query(&format!(
-            "select min(vid) as min_vid, max(vid) as max_vid from {src} \
-              where coalesce(upper(block_range), 2147483647) > $1 \
-                and coalesce(upper(block_range), 2147483647) <= $2",
-            src = self.src.qualified_name
-        ))
-        .bind::<Integer, _>(earliest_block)
-        .bind::<Integer, _>(final_block)
-        .get_result::<VidRange>(conn)?
-        {
-            VidRange {
-                min_vid: None,
-                max_vid: None,
-            } => {
-                return Ok(0);
-            }
-            VidRange {
-                min_vid: Some(min),
-                max_vid: Some(max),
-            } => (min, max),
-            _ => unreachable!("min and max are Some or None at the same time"),
-        };
-        cancel.check_cancel()?;
-
         let column_list = self.column_list();
 
         let mut batch_size = AdaptiveBatchSize::new(&self.src);
-        let mut next_vid = min_vid;
+        // The first vid we still need to copy. When we start, we start with
+        // 0 so that we don't constrain the set of rows based on their vid
+        let mut next_vid = 0;
         let mut total_rows: usize = 0;
         loop {
             let start = Instant::now();
@@ -128,9 +98,8 @@ impl TablePair {
                             and coalesce(upper(block_range), 2147483647) > $1 \
                             and coalesce(upper(block_range), 2147483647) <= $2 \
                             and vid >= $3 \
-                            and vid <= $4 \
                           order by vid \
-                          limit $5 \
+                          limit $4 \
                           returning vid) \
                          select coalesce(max(cp.vid), 0) as last_vid, count(*) as rows from cp",
                     src = self.src.qualified_name,
@@ -139,29 +108,22 @@ impl TablePair {
                 .bind::<Integer, _>(earliest_block)
                 .bind::<Integer, _>(final_block)
                 .bind::<BigInt, _>(next_vid)
-                .bind::<BigInt, _>(max_vid)
                 .bind::<BigInt, _>(&batch_size)
                 .get_result::<LastVid>(conn)
             })?;
             cancel.check_cancel()?;
 
             total_rows += rows as usize;
-            reporter.copy_final_batch(
-                self.src.name.as_str(),
-                rows as usize,
-                total_rows,
-                last_vid >= max_vid,
-            );
+            let done = rows == 0;
+            reporter.copy_final_batch(self.src.name.as_str(), rows as usize, total_rows, done);
 
-            if last_vid >= max_vid {
-                break;
+            if done {
+                return Ok(total_rows);
             }
 
             batch_size.adapt(start.elapsed());
             next_vid = last_vid + 1;
         }
-
-        Ok(total_rows)
     }
 
     /// Copy all entity versions visible after `final_block` in batches,
