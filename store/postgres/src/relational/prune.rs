@@ -97,6 +97,7 @@ impl TablePair {
                           where lower(block_range) <= $2 \
                             and coalesce(upper(block_range), 2147483647) > $1 \
                             and coalesce(upper(block_range), 2147483647) <= $2 \
+                            and block_range && int4range($1, $2, '[]') \
                             and vid >= $3 \
                           order by vid \
                           limit $4 \
