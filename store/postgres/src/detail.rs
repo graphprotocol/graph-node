@@ -49,10 +49,7 @@ pub struct DeploymentDetail {
     pub synced: bool,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
-    // Not used anymore; only written to keep backwards compatible
-    earliest_ethereum_block_hash: Option<Bytes>,
-    earliest_ethereum_block_number: Option<BigDecimal>,
-    // New tracker for earliest block number
+    /// The earliest block for which we have history
     earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,

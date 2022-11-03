@@ -70,9 +70,6 @@ table! {
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
-        // Not used anymore; only written to keep backwards compatible
-        earliest_ethereum_block_hash -> Nullable<Binary>,
-        earliest_ethereum_block_number -> Nullable<Numeric>,
         earliest_block_number -> Integer,
         latest_ethereum_block_hash -> Nullable<Binary>,
         latest_ethereum_block_number -> Nullable<Numeric>,
@@ -930,8 +927,6 @@ pub fn create_deployment(
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
-        d::earliest_ethereum_block_hash.eq(b(&start_block)),
-        d::earliest_ethereum_block_number.eq(n(&start_block)),
         d::earliest_block_number.eq(earliest_block_number),
         d::latest_ethereum_block_hash.eq(sql("null")),
         d::latest_ethereum_block_number.eq(sql("null")),
