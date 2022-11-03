@@ -1396,6 +1396,12 @@ impl DeploymentStore {
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
 
+                deployment::set_earliest_block(
+                    &conn,
+                    &dst.site,
+                    src_deployment.earliest_block_number,
+                )?;
+
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
                     self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;
