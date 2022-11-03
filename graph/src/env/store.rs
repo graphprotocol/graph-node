@@ -86,11 +86,6 @@ pub struct EnvVarsStore {
     /// Setting this to `0` disables pipelined writes, and writes will be
     /// done synchronously.
     pub write_queue_size: usize,
-
-    /// This is just in case new behavior causes issues. This can be removed
-    /// once the new behavior has run in the hosted service for a few days
-    /// without issues.
-    pub disable_error_for_toplevel_parents: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -127,7 +122,6 @@ impl From<InnerStore> for EnvVarsStore {
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
-            disable_error_for_toplevel_parents: x.disable_error_for_toplevel_parents.0,
         }
     }
 }
@@ -171,6 +165,4 @@ pub struct InnerStore {
     connection_idle_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_QUEUE", default = "5")]
     write_queue_size: usize,
-    #[envconfig(from = "GRAPH_DISABLE_ERROR_FOR_TOPLEVEL_PARENTS", default = "false")]
-    disable_error_for_toplevel_parents: EnvVarBoolean,
 }

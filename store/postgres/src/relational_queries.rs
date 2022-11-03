@@ -500,22 +500,12 @@ impl EntityData {
                     if key == "g$parent_id" {
                         match &parent_type {
                             None => {
-                                if ENV_VARS.store.disable_error_for_toplevel_parents {
-                                    // Only temporarily in case reporting an
-                                    // error causes unexpected trouble. Can
-                                    // be removed once it's been working for
-                                    // a few days
-                                    let value =
-                                        T::Value::from_column_value(&ColumnType::String, json)?;
-                                    out.insert_entity_data("g$parent_id".to_owned(), value);
-                                } else {
-                                    // A query that does not have parents
-                                    // somehow returned parent ids. We have no
-                                    // idea how to deserialize that
-                                    return Err(graph::constraint_violation!(
-                                        "query unexpectedly produces parent ids"
-                                    ));
-                                }
+                                // A query that does not have parents
+                                // somehow returned parent ids. We have no
+                                // idea how to deserialize that
+                                return Err(graph::constraint_violation!(
+                                    "query unexpectedly produces parent ids"
+                                ));
                             }
                             Some(parent_type) => {
                                 let value = T::Value::from_column_value(parent_type, json)?;
