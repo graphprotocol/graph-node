@@ -200,3 +200,7 @@ those.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
+- `GRAPH_STORE_BATCH_TARGET_DURATION`: How long batch operations during
+  copying or grafting should take. This limits how long transactions for
+  such long running operations will be, and therefore helps control bloat
+  in other tables. Value is in seconds and defaults to 180s.

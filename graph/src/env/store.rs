@@ -86,6 +86,11 @@ pub struct EnvVarsStore {
     /// Setting this to `0` disables pipelined writes, and writes will be
     /// done synchronously.
     pub write_queue_size: usize,
+
+    /// How long batch operations during copying or grafting should take.
+    /// Set by `GRAPH_STORE_BATCH_TARGET_DURATION` (expressed in seconds).
+    /// The default is 180s.
+    pub batch_target_duration: Duration,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -122,6 +127,7 @@ impl From<InnerStore> for EnvVarsStore {
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
+            batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
         }
     }
 }
@@ -165,4 +171,6 @@ pub struct InnerStore {
     connection_idle_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_QUEUE", default = "5")]
     write_queue_size: usize,
+    #[envconfig(from = "GRAPH_STORE_BATCH_TARGET_DURATION", default = "180")]
+    batch_target_duration_in_secs: u64,
 }
