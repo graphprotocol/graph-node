@@ -3,6 +3,7 @@ name = "graph-node"
 version.workspace = true
 edition.workspace = true
 default-run = "graph-node"
+rust-version = "1.64"
 
 [[bin]]
 name = "graph-node"
