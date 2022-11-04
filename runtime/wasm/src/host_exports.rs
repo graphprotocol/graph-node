@@ -61,8 +61,9 @@ pub struct HostExports<C: Blockchain> {
     pub api_version: Version,
     data_source_name: String,
     data_source_address: Vec<u8>,
-    data_source_network: String,
+    subgraph_network: String,
     data_source_context: Arc<Option<DataSourceContext>>,
+
     /// Some data sources have indeterminism or different notions of time. These
     /// need to be each be stored separately to separate causality between them,
     /// and merge the results later. Right now, this is just the ethereum
@@ -77,7 +78,7 @@ impl<C: Blockchain> HostExports<C> {
     pub fn new(
         subgraph_id: DeploymentHash,
         data_source: &DataSource<C>,
-        data_source_network: String,
+        subgraph_network: String,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
         link_resolver: Arc<dyn LinkResolver>,
         ens_lookup: Arc<dyn EnsLookup>,
@@ -88,8 +89,8 @@ impl<C: Blockchain> HostExports<C> {
             data_source_name: data_source.name().to_owned(),
             data_source_address: data_source.address().unwrap_or_default(),
             data_source_context: data_source.context().cheap_clone(),
-            causality_region: PoICausalityRegion::from_network(&data_source_network),
-            data_source_network,
+            causality_region: PoICausalityRegion::from_network(&subgraph_network),
+            subgraph_network,
             templates,
             link_resolver,
             ens_lookup,
@@ -693,7 +694,7 @@ impl<C: Blockchain> HostExports<C> {
         gas: &GasCounter,
     ) -> Result<String, DeterministicHostError> {
         gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
-        Ok(self.data_source_network.clone())
+        Ok(self.subgraph_network.clone())
     }
 
     pub(crate) fn data_source_context(
