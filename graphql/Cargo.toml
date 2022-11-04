@@ -12,7 +12,7 @@ indexmap = "1.9"
 Inflector = "0.11.3"
 lazy_static = "1.2.0"
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
-stable-hash = { version = "0.4.2" }
+stable-hash = { version = "0.4.3" }
 defer = "0.1"
 parking_lot = "0.12"
 anyhow = "1.0"

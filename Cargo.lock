@@ -1197,7 +1197,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "thiserror",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -1224,7 +1224,7 @@ dependencies = [
  "impl-rlp",
  "impl-serde",
  "primitive-types",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -1555,7 +1555,7 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "stable-hash 0.3.3",
- "stable-hash 0.4.2",
+ "stable-hash 0.4.3",
  "strum",
  "strum_macros",
  "test-store",
@@ -1736,7 +1736,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "pretty_assertions",
  "stable-hash 0.3.3",
- "stable-hash 0.4.2",
+ "stable-hash 0.4.3",
  "test-store",
 ]
 
@@ -3292,7 +3292,7 @@ dependencies = [
  "impl-codec",
  "impl-rlp",
  "impl-serde",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -4217,9 +4217,9 @@ dependencies = [
 
 [[package]]
 name = "stable-hash"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af75bd21beb162eab69de76abbb803d4111735ead00d5086dcc6f4ddb3b53cc9"
+checksum = "70d5bed15cacd88510402b9c5ecac713d3dd3d677c66c2015f44c9b7d75c125d"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.5.0",
@@ -4227,6 +4227,7 @@ dependencies = [
  "lazy_static",
  "leb128",
  "num-traits",
+ "uint 0.8.5",
  "xxhash-rust",
 ]
 
@@ -4875,6 +4876,18 @@ name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
+
+[[package]]
+name = "uint"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9db035e67dfaf7edd9aebfe8676afcd63eed53c8a4044fed514c8cccf1835177"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "rustc-hex",
+ "static_assertions",
+]
 
 [[package]]
 name = "uint"
