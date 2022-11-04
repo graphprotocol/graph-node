@@ -37,7 +37,7 @@ where
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
-    metrics: RunnerMetrics,
+    pub metrics: RunnerMetrics,
 }
 
 impl<C, T> SubgraphRunner<C, T>
