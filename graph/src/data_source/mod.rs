@@ -13,7 +13,7 @@ use crate::{
     },
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, StoredDynamicDataSource},
+        store::{BlockNumber, EntityType, StoredDynamicDataSource},
     },
     data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
@@ -40,6 +40,33 @@ pub enum DataSourceCreationError {
     /// Other errors.
     #[error("error creating data source: {0:#}")]
     Unknown(#[from] Error),
+}
+
+/// Which entity types a data source can read and write to.
+pub enum EntityTypeAccess {
+    Any,
+    Restriced(Vec<EntityType>),
+}
+
+impl fmt::Display for EntityTypeAccess {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::Any => write!(f, "Any"),
+            Self::Restriced(entities) => {
+                let strings = entities.iter().map(|e| e.as_str()).collect::<Vec<_>>();
+                write!(f, "{}", strings.join(", "))
+            }
+        }
+    }
+}
+
+impl EntityTypeAccess {
+    pub fn allows(&self, entity_type: &EntityType) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Restriced(types) => types.contains(entity_type),
+        }
+    }
 }
 
 impl<C: Blockchain> DataSource<C> {
@@ -103,6 +130,15 @@ impl<C: Blockchain> DataSource<C> {
         match self {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.cheap_clone()),
+        }
+    }
+
+    pub fn entities(&self) -> EntityTypeAccess {
+        match self {
+            // Note: Onchain data sources have an `entities` field in the manifest, but it has never
+            // been enforced.
+            Self::Onchain(_) => EntityTypeAccess::Any,
+            Self::Offchain(ds) => EntityTypeAccess::Restriced(ds.mapping.entities.clone()),
         }
     }
 

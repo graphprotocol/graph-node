@@ -3,7 +3,7 @@ use crate::{
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, StoredDynamicDataSource},
+        store::{BlockNumber, EntityType, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
     data::store::scalar::Bytes,
@@ -245,7 +245,7 @@ pub enum Source {
 pub struct Mapping {
     pub language: String,
     pub api_version: semver::Version,
-    pub entities: Vec<String>,
+    pub entities: Vec<EntityType>,
     pub handler: String,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
@@ -271,7 +271,7 @@ pub struct UnresolvedMapping {
     pub language: String,
     pub file: Link,
     pub handler: String,
-    pub entities: Vec<String>,
+    pub entities: Vec<EntityType>,
 }
 
 impl UnresolvedDataSource {

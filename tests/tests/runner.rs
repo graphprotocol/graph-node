@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::object;
@@ -142,7 +143,8 @@ async fn file_data_sources() {
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));
         let block_3 = empty_block(block_2.ptr(), test_ptr(3));
         let block_4 = empty_block(block_3.ptr(), test_ptr(4));
-        vec![block_0, block_1, block_2, block_3, block_4]
+        let block_5 = empty_block(block_4.ptr(), test_ptr(5));
+        vec![block_0, block_1, block_2, block_3, block_4, block_5]
     };
     let stop_block = test_ptr(1);
 
@@ -204,6 +206,7 @@ async fn file_data_sources() {
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(4);
     ctx.start_and_sync_to(stop_block).await;
+    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let writable = ctx
         .store
         .clone()
@@ -219,6 +222,19 @@ async fn file_data_sources() {
         assert!(data_source.causality_region == causality_region.next());
         causality_region = causality_region.next();
     }
+
+    let stop_block = test_ptr(5);
+    let err = ctx.start_and_sync_to_error(stop_block).await;
+    let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x33bf - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+    let expected_err = SubgraphError {
+        subgraph_id: ctx.deployment.hash.clone(),
+        message,
+        block_ptr: Some(test_ptr(5)),
+        handler: None,
+        deterministic: false,
+    };
+    assert_eq!(err, expected_err);
 }
 
 #[tokio::test]
