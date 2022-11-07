@@ -86,7 +86,12 @@ impl ForeignServer {
         let password = String::from_utf8(
             config
                 .get_password()
-                .ok_or_else(|| anyhow!("could not find user in `{}`", SafeDisplay(postgres_url)))?
+                .ok_or_else(|| {
+                    anyhow!(
+                        "could not find password in `{}`; you must provide one.",
+                        SafeDisplay(postgres_url)
+                    )
+                })?
                 .into(),
         )?;
         let port = config.get_ports().get(0).cloned().unwrap_or(5432u16);
