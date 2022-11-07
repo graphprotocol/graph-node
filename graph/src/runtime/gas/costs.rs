@@ -74,3 +74,5 @@ pub const STORE_GET: GasOp = GasOp {
 };
 
 pub const STORE_REMOVE: GasOp = STORE_SET;
+
+pub const STORE_GET_DERIVED: GasOp = STORE_GET;

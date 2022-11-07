@@ -975,6 +975,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         reference_ptr: AscPtr<AscString>,
         reference_id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntityArray>, HostExportError> {
+        let _timer = self
+            .host_metrics
+            .cheap_clone()
+            .time_host_fn_execution_region("store_get_derived");
         let entity_type = asc_get(self, entity_ptr, gas)?;
         let reference = asc_get(self, reference_ptr, gas)?;
         let reference_id = asc_get(self, reference_id_ptr, gas)?;
@@ -985,15 +989,24 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             reference,
             gas,
         )?;
-        match result {
-            Some(mut entities) => {
-                let entities: Vec<AscPtr<AscEntity>> = entities
-                    .iter()
-                    .map(|entity| asc_new(self, &entity.sorted(), gas))
-                    .collect()?;
-                Ok(asc_new(self, &entities, gas)?)
-            }
-            None => Ok(AscPtr::null()),
+        if let Some(entities) = result {
+            let _section = self
+                .host_metrics
+                .stopwatch
+                .start_section("store_get_derived_asc_new");
+            let entities: Vec<AscPtr<AscEntity>> = entities.into_iter().try_fold::<_, _, Result<
+                Vec<_>,
+                HostExportError,
+            >>(
+                vec![],
+                |mut accum, entity| {
+                    accum.push(asc_new(self, &entity.sorted(), gas)?);
+                    Ok(accum)
+                },
+            )?;
+            Ok(asc_new(self, &entities, gas)?)
+        } else {
+            Ok(AscPtr::null())
         }
     }
 

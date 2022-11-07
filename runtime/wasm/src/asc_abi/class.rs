@@ -630,6 +630,10 @@ impl ToAscObj<AscEntityArray> for Vec<AscPtr<AscEntity>> {
     }
 }
 
+impl AscIndexId for AscEntityArray {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayTypedMap;
+}
+
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(u32)]
