@@ -227,8 +227,10 @@ impl<C: Blockchain> HostExports<C> {
             reference: reference.into(),
         };
         let result = state.entity_cache.get_derived_entities(&mapping_key)?;
-        gas.consume_host_fn(gas::STORE_GET_DERIVED.with_args(complexity::Linear, (&mapping_key, &result)))?;
-        
+        gas.consume_host_fn(
+            gas::STORE_GET_DERIVED.with_args(complexity::Linear, (&mapping_key, &result)),
+        )?;
+
         Ok(result)
     }
 

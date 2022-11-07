@@ -353,7 +353,6 @@ pub enum IndexForAscTypeId {
     // AnotherArweaveType = 2508,
     // ...
     // LastArweaveType = 3499,
-
     ArrayTypedMap = 3500,
 
     // Reserved discriminant space for a future blockchain type IDs: [3,500, 4,499]
