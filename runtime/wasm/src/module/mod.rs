@@ -974,7 +974,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         entity_ptr: AscPtr<AscString>,
         reference_ptr: AscPtr<AscString>,
         reference_id_ptr: AscPtr<AscString>,
-    ) -> Result<AscPtr<AscEntity>, HostExportError> {
+    ) -> Result<AscPtr<AscEntityArray>, HostExportError> {
         let entity_type = asc_get(self, entity_ptr, gas)?;
         let reference = asc_get(self, reference_ptr, gas)?;
         let reference_id = asc_get(self, reference_id_ptr, gas)?;
@@ -987,8 +987,11 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         )?;
         match result {
             Some(mut entities) => {
-                let entity = entities.pop().unwrap();
-                Ok(asc_new(self, &entity.sorted(), gas)?)
+                let entities: Vec<AscPtr<AscEntity>> = entities
+                    .iter()
+                    .map(|entity| asc_new(self, &entity.sorted(), gas))
+                    .collect()?;
+                Ok(asc_new(self, &entities, gas)?)
             }
             None => Ok(AscPtr::null()),
         }

@@ -618,6 +618,18 @@ impl AscIndexId for AscTypedMap<AscString, AscTypedMap<AscString, AscEnum<JsonVa
 }
 
 pub type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
+pub type AscEntityArray = Array<AscPtr<AscEntity>>;
+
+impl ToAscObj<AscEntityArray> for Vec<AscPtr<AscEntity>> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEntityArray, DeterministicHostError> {
+        Ok(Array::new(&self, heap, gas)?)
+    }
+}
+
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(u32)]
