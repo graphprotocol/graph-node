@@ -127,11 +127,11 @@ impl EntityCache {
     // 2) Cache level
     pub fn get_derived_entities(
         &mut self,
-        mref: &DerivedKey,
+        dref: &DerivedKey,
     ) -> Result<Option<Vec<Entity>>, s::QueryExecutionError> {
         let mut derived_entities: Vec<Entity> = vec![];
         let filtered_ids: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
-        let source_entity_id = Value::String(mref.reference_id.clone().into());
+        let source_entity_id = Value::String(dref.reference_id.clone().into());
 
         // accumulate entity if it is matching the following condition:
         // - entity has source entity id as a reference
@@ -140,7 +140,7 @@ impl EntityCache {
             if filtered_ids.borrow().contains(&id) {
                 return;
             }
-            if let Some(mapping_value) = entity.get(&mref.reference) {
+            if let Some(mapping_value) = entity.get(&dref.reference) {
                 if mapping_value == &source_entity_id {
                     filtered_ids.borrow_mut().insert(id);
                     derived_entities.push(entity);
@@ -149,13 +149,13 @@ impl EntityCache {
         };
 
         // Store level derived entity retrival.
-        if let Some(dervied_ids) = self.store.get_derived_ids(mref)? {
+        if let Some(dervied_ids) = self.store.get_derived_ids(dref)? {
             for id_val in dervied_ids.ids() {
                 // Retrive entity for all the given derived ids.
                 let entity = match &id_val {
                     Value::String(val) => {
                         let key = EntityKey {
-                            entity_type: mref.entity_type.clone(),
+                            entity_type: dref.entity_type.clone(),
                             entity_id: val.clone().into(),
                         };
                         let entity = self.get(&key)?;
@@ -176,7 +176,7 @@ impl EntityCache {
         for (key, update) in &self.updates {
             let id: String = key.entity_id.clone().into();
 
-            if key.entity_type == mref.entity_type && !filtered_ids.borrow().contains(&id) {
+            if key.entity_type == dref.entity_type && !filtered_ids.borrow().contains(&id) {
                 let mut entity = update.clone().apply_to(None);
                 if let Some(op) = self.handler_updates.get(key).cloned() {
                     entity = op.apply_to(entity)
@@ -190,7 +190,7 @@ impl EntityCache {
         for (key, update) in &self.handler_updates {
             let id: String = key.entity_id.clone().into();
 
-            if key.entity_type == mref.entity_type && !filtered_ids.borrow().contains(&id) {
+            if key.entity_type == dref.entity_type && !filtered_ids.borrow().contains(&id) {
                 let mut entity = update.clone().apply_to(None);
                 if let Some(op) = self.updates.get(key).cloned() {
                     entity = op.apply_to(entity)

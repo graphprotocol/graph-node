@@ -1461,8 +1461,8 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 #[derive(Debug, Clone, Constructor)]
 pub struct FindDerviedQuery<'a> {
     table: &'a Table,
-    mapping_id: &'a str,
-    mapping_name: &'a str,
+    reference: &'a str,
+    reference_id: &'a str,
     block: BlockNumber,
 }
 
@@ -1472,9 +1472,9 @@ impl<'a> QueryFragment<Pg> for FindDerviedQuery<'a> {
         out.push_sql("select id from");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        match self.table.column(&SqlName::from(self.mapping_name)) {
+        match self.table.column(&SqlName::from(self.reference_id)) {
             Some(col) => {
-                col.eq(self.mapping_id, &mut out)?;
+                col.eq(self.reference, &mut out)?;
             }
             None => {
                 return Err(DieselError::QueryBuilderError(

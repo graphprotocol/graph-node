@@ -221,14 +221,14 @@ impl<C: Blockchain> HostExports<C> {
         reference: String,
         gas: &GasCounter,
     ) -> Result<Option<Vec<Entity>>, anyhow::Error> {
-        let mapping_key = DerivedKey {
+        let derived_key = DerivedKey {
             entity_type: EntityType::new(entity_type),
             reference_id: reference_id.into(),
             reference: reference.into(),
         };
-        let result = state.entity_cache.get_derived_entities(&mapping_key)?;
+        let result = state.entity_cache.get_derived_entities(&derived_key)?;
         gas.consume_host_fn(
-            gas::STORE_GET_DERIVED.with_args(complexity::Linear, (&mapping_key, &result)),
+            gas::STORE_GET_DERIVED.with_args(complexity::Linear, (&derived_key, &result)),
         )?;
 
         Ok(result)
