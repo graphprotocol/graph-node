@@ -200,6 +200,9 @@ those.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
+- `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`: enables indexing of subgraphs which 
+  use `ipfs.cat` as part of subgraph mappings. **This is an experimental
+  feature which is not deterministic, and will be removed in future**.
 - `GRAPH_STORE_BATCH_TARGET_DURATION`: How long batch operations during
   copying or grafting should take. This limits how long transactions for
   such long running operations will be, and therefore helps control bloat
