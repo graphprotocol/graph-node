@@ -34,6 +34,8 @@ pub(crate) enum FilterOp {
     NotEndsWithNoCase,
     Equal,
     Child,
+    And,
+    Or,
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
@@ -67,11 +69,17 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
         k if k.ends_with("_ends_with_nocase") => ("_ends_with_nocase", FilterOp::EndsWithNoCase),
         k if k.ends_with("_") => ("_", FilterOp::Child),
+        k if k.eq("and") => ("and", FilterOp::And),
+        k if k.eq("or") => ("or", FilterOp::Or),
         _ => ("", FilterOp::Equal),
     };
 
-    // Strip the operator suffix to get the attribute.
-    (key.trim_end_matches(suffix).to_owned(), op)
+    return match op {
+        FilterOp::And => (key.to_owned(), op),
+        FilterOp::Or => (key.to_owned(), op),
+        // Strip the operator suffix to get the attribute.
+        _ => (key.trim_end_matches(suffix).to_owned(), op),
+    };
 }
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
