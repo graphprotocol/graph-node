@@ -200,6 +200,50 @@ fn build_entity_filter(
     };
 }
 
+/// Iterate over the list and generate an EntityFilter from it
+fn build_list_filter_from_value(
+    entity: ObjectOrInterface,
+    schema: &ApiSchema,
+    value: &r::Value,
+) -> Result<Vec<EntityFilter>, QueryExecutionError> {
+    return match value {
+        r::Value::List(list) => Ok(list
+            .iter()
+            .map(|item| {
+                return match item {
+                    r::Value::Object(object) => {
+                        Ok(build_filter_from_object(entity, object, schema)?)
+                    }
+                    _ => Err(QueryExecutionError::InvalidFilterError),
+                };
+            })
+            .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
+            // Flatten all different EntityFilters into one list
+            .into_iter()
+            .flatten()
+            .collect::<Vec<EntityFilter>>()),
+        _ => Err(QueryExecutionError::InvalidFilterError),
+    };
+}
+
+/// build a filter which has list of nested filters
+fn build_list_filter_from_object(
+    entity: ObjectOrInterface,
+    object: &Object,
+    schema: &ApiSchema,
+) -> Result<Vec<EntityFilter>, QueryExecutionError> {
+    Ok(object
+        .iter()
+        .map(|(_, value)| {
+            return build_list_filter_from_value(entity, schema, value);
+        })
+        .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
+        .into_iter()
+        // We iterate an object so all entity filters are flattened into one list
+        .flatten()
+        .collect::<Vec<EntityFilter>>())
+}
+
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: ObjectOrInterface,
@@ -221,72 +265,8 @@ fn build_filter_from_object(
             let (field_name, op) = sast::parse_field_as_filter(key);
 
             Ok(match op {
-                And => {
-                    // AND input has a List of Objects
-                    let filters = object
-                        .iter()
-                        .map(|(_, value)| {
-                            return match value {
-                                // Iterate over the list and generate an EntityFilter from it
-                                r::Value::List(list) => Ok(list
-                                    .iter()
-                                    .map(|item| {
-                                        return match item {
-                                            r::Value::Object(object) => Ok(
-                                                build_filter_from_object(entity, object, schema)?,
-                                            ),
-                                            _ => Err(QueryExecutionError::InvalidFilterError),
-                                        };
-                                    })
-                                    .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>(
-                                    )?
-                                    // Flatten all different EntityFilters into one list
-                                    .into_iter()
-                                    .flatten()
-                                    .collect::<Vec<EntityFilter>>()),
-                                _ => Err(QueryExecutionError::InvalidFilterError),
-                            };
-                        })
-                        .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
-                        .into_iter()
-                        // We iterate an object so all entity filters are flattened into one list
-                        .flatten()
-                        .collect::<Vec<EntityFilter>>();
-                    return Ok(EntityFilter::And(filters));
-                }
-                Or => {
-                    // OR input has a List of Objects
-                    let filters = object
-                        .iter()
-                        .map(|(_, value)| {
-                            return match value {
-                                // Iterate over the list and generate an EntityFilter from it
-                                r::Value::List(list) => Ok(list
-                                    .iter()
-                                    .map(|item| {
-                                        return match item {
-                                            r::Value::Object(object) => Ok(
-                                                build_filter_from_object(entity, object, schema)?,
-                                            ),
-                                            _ => Err(QueryExecutionError::InvalidFilterError),
-                                        };
-                                    })
-                                    .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>(
-                                    )?
-                                    // Flatten all different EntityFilters into one list
-                                    .into_iter()
-                                    .flatten()
-                                    .collect::<Vec<EntityFilter>>()),
-                                _ => Err(QueryExecutionError::InvalidFilterError),
-                            };
-                        })
-                        .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
-                        .into_iter()
-                        // We iterate an object so all entity filters are flattened into one list
-                        .flatten()
-                        .collect::<Vec<EntityFilter>>();
-                    return Ok(EntityFilter::Or(filters));
-                }
+                And => EntityFilter::And(build_list_filter_from_object(entity, object, schema)?),
+                Or => EntityFilter::Or(build_list_filter_from_object(entity, object, schema)?),
                 Child => match value {
                     DataValue::Object(obj) => {
                         build_child_filter_from_object(entity, field_name, obj, schema)?
