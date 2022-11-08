@@ -1,8 +1,8 @@
-mod cache;
+mod entity_cache;
 mod err;
 mod traits;
 
-pub use cache::{CachedEthereumCall, EntityCache, ModificationsAndCache};
+pub use entity_cache::{EntityCache, ModificationsAndCache};
 
 pub use err::StoreError;
 use itertools::Itertools;
@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::blockchain::{Block, Blockchain};
+use crate::blockchain::Block;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
@@ -1111,4 +1111,21 @@ pub trait PruneReporter: Send + 'static {
     fn finish_switch(&mut self) {}
 
     fn finish_prune(&mut self) {}
+}
+
+/// Represents an item retrieved from an
+/// [`EthereumCallCache`](super::EthereumCallCache) implementor.
+pub struct CachedEthereumCall {
+    /// The BLAKE3 hash that uniquely represents this cache item. The way this
+    /// hash is constructed is an implementation detail.
+    pub blake3_id: Vec<u8>,
+
+    /// Block details related to this Ethereum call.
+    pub block_ptr: BlockPtr,
+
+    /// The address to the called contract.
+    pub contract_address: ethabi::Address,
+
+    /// The encoded return value of this call.
+    pub return_value: Vec<u8>,
 }
