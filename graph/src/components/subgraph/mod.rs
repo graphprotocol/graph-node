@@ -11,7 +11,7 @@ pub use self::host::{HostMetrics, MappingError, RuntimeHost, RuntimeHostBuilder}
 pub use self::instance::{BlockState, DataSourceTemplateInfo};
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::proof_of_indexing::{
-    CausalityRegion, ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher,
+    PoICausalityRegion, ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher,
     ProofOfIndexingVersion, SharedProofOfIndexing,
 };
 pub use self::provider::SubgraphAssignmentProvider;

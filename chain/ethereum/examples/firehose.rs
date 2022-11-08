@@ -25,7 +25,6 @@ async fn main() -> Result<(), Error> {
         token,
         false,
         false,
-        1,
     ));
 
     loop {

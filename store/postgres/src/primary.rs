@@ -239,6 +239,10 @@ impl Namespace {
         Ok(Namespace(s))
     }
 
+    pub fn prune(id: DeploymentId) -> Self {
+        Namespace(format!("prune{id}"))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

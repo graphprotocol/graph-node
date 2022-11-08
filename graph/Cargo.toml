@@ -1,7 +1,7 @@
 [package]
 name = "graph"
-version = "0.28.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 anyhow = "1.0"
@@ -25,7 +25,7 @@ futures = "0.1.21"
 graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
-num_cpus = "1.13.1"
+num_cpus = "1.14.0"
 num-traits = "0.2.15"
 rand = "0.8.4"
 semver = { version = "1.0.14", features = ["serde"] }
@@ -35,7 +35,7 @@ serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 serde_yaml = "0.8"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
-stable-hash = { version = "0.4.2"}
+stable-hash = { version = "0.4.2" }
 strum = "0.21.0"
 strum_macros = "0.21.1"
 slog-async = "2.5.0"
@@ -44,12 +44,12 @@ slog-term = "2.7.0"
 petgraph = "0.6.2"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
-tokio-stream = { version = "0.1.10", features = ["sync"] }
+tokio-stream = { version = "0.1.11", features = ["sync"] }
 tokio-retry = "0.3.0"
 url = "2.3.1"
-prometheus = "0.13.2"
+prometheus = "0.13.3"
 priority-queue = "0.7.0"
-tonic = { version = "0.7.1", features = ["tls-roots","compression"] }
+tonic = { version = "0.7.1", features = ["tls-roots", "compression"] }
 prost = "0.10.4"
 prost-types = "0.10.1"
 
@@ -62,12 +62,12 @@ itertools = "0.10.5"
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.
 web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = ["arbitrary_precision"] }
-serde_plain = "1.0.0"
+serde_plain = "1.0.1"
 
 [dev-dependencies]
 test-store = { path = "../store/test-store" }
-clap = { version = "3.2.22", features = ["derive", "env"] }
+clap = { version = "3.2.23", features = ["derive", "env"] }
 maplit = "1.0.2"
 
 [build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost","compression"] }
+tonic-build = { version = "0.7.2", features = ["prost", "compression"] }

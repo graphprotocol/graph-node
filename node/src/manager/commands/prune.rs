@@ -22,8 +22,8 @@ struct Progress {
     start: Instant,
     analyze_start: Instant,
     switch_start: Instant,
+    table_start: Instant,
     final_start: Instant,
-    final_table_start: Instant,
     nonfinal_start: Instant,
 }
 
@@ -34,7 +34,7 @@ impl Progress {
             analyze_start: Instant::now(),
             switch_start: Instant::now(),
             final_start: Instant::now(),
-            final_table_start: Instant::now(),
+            table_start: Instant::now(),
             nonfinal_start: Instant::now(),
         }
     }
@@ -82,14 +82,14 @@ impl PruneReporter for Progress {
         print_copy_header();
 
         self.final_start = Instant::now();
-        self.final_table_start = self.final_start;
+        self.table_start = self.final_start;
     }
 
     fn copy_final_batch(&mut self, table: &str, _rows: usize, total_rows: usize, finished: bool) {
-        print_copy_row(table, total_rows, self.final_table_start.elapsed());
+        print_copy_row(table, total_rows, self.table_start.elapsed());
         if finished {
             println!("");
-            self.final_table_start = Instant::now();
+            self.table_start = Instant::now();
         }
         std::io::stdout().flush().ok();
     }
@@ -119,9 +119,18 @@ impl PruneReporter for Progress {
         self.nonfinal_start = Instant::now();
     }
 
-    fn copy_nonfinal_finish(&mut self, table: &str, rows: usize) {
-        print_copy_row(table, rows, self.nonfinal_start.elapsed());
-        println!("");
+    fn copy_nonfinal_batch(
+        &mut self,
+        table: &str,
+        _rows: usize,
+        total_rows: usize,
+        finished: bool,
+    ) {
+        print_copy_row(table, total_rows, self.table_start.elapsed());
+        if finished {
+            println!("");
+            self.table_start = Instant::now();
+        }
         std::io::stdout().flush().ok();
     }
 

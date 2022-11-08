@@ -49,10 +49,7 @@ pub struct DeploymentDetail {
     pub synced: bool,
     fatal_error: Option<String>,
     non_fatal_errors: Vec<String>,
-    // Not used anymore; only written to keep backwards compatible
-    earliest_ethereum_block_hash: Option<Bytes>,
-    earliest_ethereum_block_number: Option<BigDecimal>,
-    // New tracker for earliest block number
+    /// The earliest block for which we have history
     earliest_block_number: i32,
     pub latest_ethereum_block_hash: Option<Bytes>,
     pub latest_ethereum_block_number: Option<BigDecimal>,
@@ -362,13 +359,13 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
     type Error = StoreError;
 
     fn try_from(ent: StoredDeploymentEntity) -> Result<Self, Self::Error> {
-        let (detail, manifest) = (ent.0, ent.1.into());
+        let (detail, manifest) = (ent.0, ent.1);
 
-        let earliest_block = block(
+        let start_block = block(
             &detail.deployment,
-            "earliest_block",
-            detail.earliest_ethereum_block_hash,
-            detail.earliest_ethereum_block_number,
+            "start_block",
+            manifest.start_block_hash.clone(),
+            manifest.start_block_number.map(|n| n.into()),
         )?
         .map(|block| block.to_ptr());
 
@@ -401,13 +398,14 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
-            manifest,
+            manifest: manifest.into(),
             failed: detail.failed,
             health: detail.health.into(),
             synced: detail.synced,
             fatal_error: None,
             non_fatal_errors: vec![],
-            earliest_block,
+            earliest_block_number: detail.earliest_block_number,
+            start_block,
             latest_block,
             graft_base,
             graft_block,

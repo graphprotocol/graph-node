@@ -1,7 +1,9 @@
 use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::Blockchain,
-    data_source::{DataSource, DataSourceTemplate},
+    data_source::{
+        causality_region::CausalityRegionSeq, CausalityRegion, DataSource, DataSourceTemplate,
+    },
     prelude::*,
 };
 use std::collections::HashMap;
@@ -24,6 +26,9 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
+
+    /// This manages the sequence of causality regions for the subgraph.
+    causality_region_seq: CausalityRegionSeq,
 }
 
 impl<T, C> SubgraphInstance<C, T>
@@ -37,6 +42,7 @@ where
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
+        causality_region_seq: CausalityRegionSeq,
     ) -> Result<Self, Error> {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
@@ -50,6 +56,7 @@ where
             module_cache: HashMap::new(),
             templates,
             host_metrics,
+            causality_region_seq,
         };
 
         // Create a new runtime host for each data source in the subgraph manifest;
@@ -67,7 +74,10 @@ where
             };
 
             if let DataSource::Offchain(ds) = &ds {
-                offchain_monitor.add_source(ds.source.clone())?;
+                // monitor data source only if it's not processed.
+                if !ds.is_processed() {
+                    offchain_monitor.add_source(ds.source.clone())?;
+                }
             }
 
             let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;
@@ -116,13 +126,11 @@ where
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
-        if let Some(max_data_sources) = ENV_VARS.subgraph_max_data_sources {
-            if self.hosts.len() >= max_data_sources {
-                anyhow::bail!(
-                    "Limit of {} data sources per subgraph exceeded",
-                    max_data_sources,
-                );
-            }
+        if self.hosts.len() >= ENV_VARS.subgraph_max_data_sources {
+            anyhow::bail!(
+                "Limit of {} data sources per subgraph exceeded",
+                ENV_VARS.subgraph_max_data_sources,
+            );
         }
 
         // `hosts` will remain ordered by the creation block.
@@ -162,5 +170,9 @@ where
 
     pub(super) fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts
+    }
+
+    pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
+        self.causality_region_seq.next_val()
     }
 }

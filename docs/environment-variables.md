@@ -78,7 +78,8 @@ those.
   may use (in bytes, defaults to 256MB).
 - `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
-- `GRAPH_MAX_IPFS_CONCURRENT_REQUESTS`: maximum concurrent requests to IPFS from file data sources (defaults to 100).
+- `GRAPH_IPFS_REQUEST_LIMIT`: Limits both concurrent and per second requests to IPFS for file data
+   sources. Defaults to 100.
 
 ## GraphQL
 
@@ -199,3 +200,7 @@ those.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
+- `GRAPH_STORE_BATCH_TARGET_DURATION`: How long batch operations during
+  copying or grafting should take. This limits how long transactions for
+  such long running operations will be, and therefore helps control bloat
+  in other tables. Value is in seconds and defaults to 180s.

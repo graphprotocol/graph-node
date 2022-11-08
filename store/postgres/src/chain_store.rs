@@ -77,6 +77,8 @@ mod data {
 
     pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
 
+    pub(crate) const ETHEREUM_CALL_CACHE_TABLE_NAME: &'static str = "public.eth_call_cache";
+
     mod public {
         pub(super) use super::super::public::ethereum_networks;
 
@@ -399,6 +401,15 @@ mod data {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            };
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            Ok(())
+        }
+
+        fn truncate_call_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+            let table_name = match &self {
+                Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
+                Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
             };
             conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
             Ok(())
@@ -1026,6 +1037,72 @@ mod data {
                     return_value: row.1,
                 })
                 .collect())
+        }
+
+        pub(super) fn clear_call_cache(
+            &self,
+            conn: &PgConnection,
+            from: Option<i32>,
+            to: Option<i32>,
+        ) -> Result<(), Error> {
+            if from.is_none() && to.is_none() {
+                // If both `from` and `to` arguments are equal to `None`, then truncation should be
+                // preferred over deletion as it is a faster operation.
+                self.truncate_call_cache(conn)?;
+                return Ok(());
+            }
+            match self {
+                Storage::Shared => {
+                    use public::eth_call_cache as cache;
+                    let mut delete_stmt = diesel::delete(cache::table).into_boxed();
+                    if let Some(from) = from {
+                        delete_stmt = delete_stmt.filter(cache::block_number.ge(from));
+                    }
+                    if let Some(to) = to {
+                        delete_stmt = delete_stmt.filter(cache::block_number.le(to))
+                    }
+                    delete_stmt.execute(conn).map_err(Error::from)?;
+                    Ok(())
+                }
+                Storage::Private(Schema { call_cache, .. }) => match (from, to) {
+                    // Because they are dynamically defined, our private call cache tables can't
+                    // implement all the required traits for deletion. This means we can't use Diesel
+                    // DSL with them and must rely on the `sql_query` function instead.
+                    (Some(from), None) => {
+                        let query =
+                            format!("delete from {} where block_number >= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
+                    }
+                    (None, Some(to)) => {
+                        let query =
+                            format!("delete from {} where block_number <= $1", call_cache.qname);
+                        sql_query(query)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
+                    }
+                    (Some(from), Some(to)) => {
+                        let query = format!(
+                            "delete from {} where block_number >= $1 and block_number <= $2",
+                            call_cache.qname
+                        );
+                        sql_query(query)
+                            .bind::<Integer, _>(from)
+                            .bind::<Integer, _>(to)
+                            .execute(conn)
+                            .map_err(Error::from)?;
+                        Ok(())
+                    }
+                    (None, None) => {
+                        unreachable!("truncation was handled at the beginning of this function");
+                    }
+                },
+            }
         }
 
         pub(super) fn update_accessed_at(
@@ -1713,6 +1790,11 @@ impl ChainStoreTrait for ChainStore {
                     .map_err(|e| StoreError::from(e).into())
             })
             .await
+    }
+
+    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<(), Error> {
+        let conn = self.get_conn()?;
+        self.storage.clear_call_cache(&conn, from, to)
     }
 
     async fn transaction_receipts_in_block(

@@ -514,14 +514,14 @@ fn check_result_size<'a>(
     ctx: &'a ExecutionContext<impl Resolver>,
     size: usize,
 ) -> Result<(), QueryExecutionError> {
+    if size > ENV_VARS.graphql.warn_result_size {
+        warn!(ctx.logger, "Large query result"; "size" => size, "query_id" => &ctx.query.query_id);
+    }
     if size > ENV_VARS.graphql.error_result_size {
         return Err(QueryExecutionError::ResultTooBig(
             size,
             ENV_VARS.graphql.error_result_size,
         ));
-    }
-    if size > ENV_VARS.graphql.warn_result_size {
-        warn!(ctx.logger, "Large query result"; "size" => size, "query_id" => &ctx.query.query_id);
     }
     Ok(())
 }

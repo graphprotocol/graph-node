@@ -195,7 +195,19 @@ impl<'a> TryInto<web3::types::Transaction> for TransactionTraceAt<'a> {
                     .from
                     .try_decode_proto("transaction from address")?,
             ),
-            to: Some(self.trace.to.try_decode_proto("transaction to address")?),
+            to: match self.trace.calls.len() {
+                0 => Some(self.trace.to.try_decode_proto("transaction to address")?),
+                _ => {
+                    match CallType::from_i32(self.trace.calls[0].call_type).ok_or_else(|| {
+                        format_err!("invalid call type: {}", self.trace.calls[0].call_type,)
+                    })? {
+                        CallType::Create => {
+                            None // we don't want the 'to' address on a transaction that creates the contract, to align with RPC behavior
+                        }
+                        _ => Some(self.trace.to.try_decode_proto("transaction to")?),
+                    }
+                }
+            },
             value: self.trace.value.as_ref().map_or(U256::zero(), |x| x.into()),
             gas_price: self.trace.gas_price.as_ref().map(|x| x.into()),
             gas: U256::from(self.trace.gas_limit),
@@ -244,7 +256,12 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     receipts_root: header.receipt_root.try_decode_proto("receipt root")?,
                     gas_used: U256::from(header.gas_used),
                     gas_limit: U256::from(header.gas_limit),
-                    base_fee_per_gas: None,
+                    base_fee_per_gas: Some(
+                        header
+                            .base_fee_per_gas
+                            .as_ref()
+                            .map_or_else(|| U256::default(), |v| v.into()),
+                    ),
                     extra_data: Bytes::from(header.extra_data.clone()),
                     logs_bloom: match &header.logs_bloom.len() {
                         0 => None,

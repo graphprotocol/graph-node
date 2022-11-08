@@ -86,7 +86,12 @@ impl ForeignServer {
         let password = String::from_utf8(
             config
                 .get_password()
-                .ok_or_else(|| anyhow!("could not find user in `{}`", SafeDisplay(postgres_url)))?
+                .ok_or_else(|| {
+                    anyhow!(
+                        "could not find password in `{}`; you must provide one.",
+                        SafeDisplay(postgres_url)
+                    )
+                })?
                 .into(),
         )?;
         let port = config.get_ports().get(0).cloned().unwrap_or(5432u16);
@@ -1060,7 +1065,11 @@ impl PoolInner {
             conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
-            info!(&self.logger, "Mapping metadata");
+            info!(
+                &self.logger,
+                "Mapping metadata from {}",
+                server.shard.as_str()
+            );
             let conn = self.get()?;
             conn.transaction(|| server.map_metadata(&conn))?;
         }
@@ -1135,6 +1144,8 @@ impl PoolCoordinator {
         fdw_pool_size: Option<u32>,
         registry: Arc<dyn MetricsRegistry>,
     ) -> ConnectionPool {
+        let is_writable = !pool_name.is_replica();
+
         let pool = ConnectionPool::create(
             name,
             pool_name,
@@ -1145,18 +1156,23 @@ impl PoolCoordinator {
             registry,
             self.cheap_clone(),
         );
-        // It is safe to take this lock here since nobody has seen the pool
-        // yet. We remember the `PoolInner` so that later, when we have to
-        // call `remap()`, we do not have to take this lock as that will be
-        // already held in `get_ready()`
-        match &*pool.inner.lock(logger) {
-            PoolState::Created(inner, _) | PoolState::Ready(inner) => {
-                self.pools
-                    .lock()
-                    .unwrap()
-                    .insert(pool.shard.clone(), inner.clone());
+
+        // Ignore non-writable pools (replicas), there is no need (and no
+        // way) to coordinate schema changes with them
+        if is_writable {
+            // It is safe to take this lock here since nobody has seen the pool
+            // yet. We remember the `PoolInner` so that later, when we have to
+            // call `remap()`, we do not have to take this lock as that will be
+            // already held in `get_ready()`
+            match &*pool.inner.lock(logger) {
+                PoolState::Created(inner, _) | PoolState::Ready(inner) => {
+                    self.pools
+                        .lock()
+                        .unwrap()
+                        .insert(pool.shard.clone(), inner.clone());
+                }
+                PoolState::Disabled => { /* nothing to do */ }
             }
-            PoolState::Disabled => { /* nothing to do */ }
         }
         pool
     }
@@ -1172,7 +1188,10 @@ impl PoolCoordinator {
             .ok_or_else(|| constraint_violation!("unknown shard {shard}"))?;
 
         for pool in self.pools.lock().unwrap().values() {
-            pool.remap(server)?;
+            if let Err(e) = pool.remap(server) {
+                error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
+                return Err(e);
+            }
         }
         Ok(())
     }

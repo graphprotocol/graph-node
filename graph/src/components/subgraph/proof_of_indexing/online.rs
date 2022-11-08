@@ -145,7 +145,7 @@ impl BlockEventStream {
     fn write(&mut self, event: &ProofOfIndexingEvent<'_>) {
         let children = &[
             1,                // kvp -> v
-            0,                // CausalityRegion.blocks: Vec<Block>
+            0,                // PoICausalityRegion.blocks: Vec<Block>
             self.block_index, // Vec<Block> -> [i]
             0,                // Block.events -> Vec<ProofOfIndexingEvent>
             self.vec_length,
@@ -276,7 +276,7 @@ impl ProofOfIndexingFinisher {
     pub fn add_causality_region(&mut self, name: &str, region: &[u8]) {
         let mut state = Hashers::from_bytes(region);
 
-        // Finish the blocks vec by writing kvp[v], CausalityRegion.blocks.len()
+        // Finish the blocks vec by writing kvp[v], PoICausalityRegion.blocks.len()
         // + 1 is to account that the length of the blocks array for the genesis block is 1, not 0.
         state.write(&(self.block_number + 1), &[1, 0]);
 

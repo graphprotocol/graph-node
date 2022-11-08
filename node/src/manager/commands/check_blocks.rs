@@ -27,9 +27,18 @@ pub async fn by_number(
     chain_store: Arc<ChainStore>,
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
+    delete_duplicates: bool,
 ) -> anyhow::Result<()> {
-    let block_hash = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
-    run(&block_hash, &chain_store, ethereum_adapter, logger).await
+    let block_hashes = steps::resolve_block_hash_from_block_number(number, &chain_store)?;
+
+    match &block_hashes.as_slice() {
+        [] => bail!("Could not find a block with number {} in store", number),
+        [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await,
+        &block_hashes => {
+            handle_multiple_block_hashes(number, block_hashes, &chain_store, delete_duplicates)
+                .await
+        }
+    }
 }
 
 pub async fn by_range(
@@ -38,6 +47,7 @@ pub async fn by_range(
     range_from: Option<i32>,
     range_to: Option<i32>,
     logger: &Logger,
+    delete_duplicates: bool,
 ) -> anyhow::Result<()> {
     // Resolve a range of block numbers into a collection of blocks hashes
     let range = ranges::Range::new(range_from, range_to)?;
@@ -49,9 +59,21 @@ pub async fn by_range(
     // FIXME: This performs poorly.
     // TODO: This could be turned into async code
     for block_number in range.lower_bound..=max {
-        println!("Fixing block [{block_number}/{max}]");
-        let block_hash = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
-        run(&block_hash, &chain_store, ethereum_adapter, logger).await?
+        println!("Checking block [{block_number}/{max}]");
+        let block_hashes = steps::resolve_block_hash_from_block_number(block_number, &chain_store)?;
+        match &block_hashes.as_slice() {
+            [] => eprintln!("Found no block hash with number {block_number}"),
+            [block_hash] => run(block_hash, &chain_store, ethereum_adapter, logger).await?,
+            &block_hashes => {
+                handle_multiple_block_hashes(
+                    block_number,
+                    block_hashes,
+                    &chain_store,
+                    delete_duplicates,
+                )
+                .await?
+            }
+        }
     }
     Ok(())
 }
@@ -88,24 +110,60 @@ async fn run(
     Ok(())
 }
 
+async fn handle_multiple_block_hashes(
+    block_number: i32,
+    block_hashes: &[H256],
+    chain_store: &ChainStore,
+    delete_duplicates: bool,
+) -> anyhow::Result<()> {
+    println!(
+        "graphman found {} different block hashes for block number {} in the store \
+         and is unable to tell which one to check:",
+        block_hashes.len(),
+        block_number
+    );
+    for (num, hash) in block_hashes.iter().enumerate() {
+        println!("{:>4}:  {hash:?}", num + 1);
+    }
+    if delete_duplicates {
+        println!("Deleting duplicated blocks...");
+        for hash in block_hashes {
+            steps::delete_block(hash, chain_store)?;
+        }
+    } else {
+        eprintln!(
+            "Operation aborted for block number {block_number}.\n\
+             To delete the duplicated blocks and continue this operation, rerun this command with \
+             the `--delete-duplicates` option."
+        )
+    }
+    Ok(())
+}
+
 mod steps {
     use super::*;
 
     use futures::compat::Future01CompatExt;
-    use graph::prelude::serde_json::{self, Value};
+    use graph::{
+        anyhow::bail,
+        prelude::serde_json::{self, Value},
+    };
     use json_structural_diff::{colorize as diff_to_string, JsonDiff};
 
     /// Queries the [`ChainStore`] about the block hash for the given block number.
     ///
-    /// Errors on a non-unary result.
+    /// Multiple block hashes can be returned as the store does not enforce uniqueness based on
+    /// block numbers.
+    /// Returns an empty vector if no block hash is found.
     pub(super) fn resolve_block_hash_from_block_number(
         number: i32,
         chain_store: &ChainStore,
-    ) -> anyhow::Result<H256> {
+    ) -> anyhow::Result<Vec<H256>> {
         let block_hashes = chain_store.block_hashes_by_block_number(number)?;
-        let hash = helpers::get_single_item("block hash", block_hashes)
-            .with_context(|| format!("Failed to locate block number {} in store", number))?;
-        Ok(H256(hash.as_slice().try_into()?))
+        Ok(block_hashes
+            .into_iter()
+            .map(|x| H256::from_slice(&x.as_slice()[..32]))
+            .collect())
     }
 
     /// Queries the [`ChainStore`] for a cached block given a block hash.
@@ -116,16 +174,19 @@ mod steps {
         chain_store: &ChainStore,
     ) -> anyhow::Result<Value> {
         let blocks = chain_store.blocks(&[block_hash.into()])?;
-        if blocks.is_empty() {
-            bail!("Could not find a block with hash={block_hash:?} in cache")
-        }
-        helpers::get_single_item("block", blocks)
-            .with_context(|| format!("Failed to locate block {} in store.", block_hash))
+        match blocks.len() {
+            0 => bail!("Failed to locate block with hash {} in store", block_hash),
+            1 => {}
+            _ => bail!("Found multiple blocks with hash {} in store", block_hash),
+        };
+        // Unwrap: We just checked that the vector has a single element
+        Ok(blocks.into_iter().next().unwrap())
     }
 
     /// Fetches a block from a JRPC endpoint.
     ///
-    /// Errors on a non-unary result.
+    /// Errors on provider failure or if the returned block has a different hash than the one
+    /// requested.
     pub(super) async fn fetch_single_provider_block(
         block_hash: &H256,
         ethereum_adapter: &EthereumAdapter,
@@ -136,7 +197,7 @@ mod steps {
             .compat()
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
-            .ok_or_else(|| anyhow!("JRPC provider found no block {block_hash}"))?;
+            .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
         ensure!(
             provider_block.hash == Some(*block_hash),
             "Provider responded with a different block hash"
@@ -199,19 +260,6 @@ mod helpers {
         let hash = hash.trim_start_matches("0x");
         let hash = hex::decode(hash)?;
         Ok(H256::from_slice(&hash))
-    }
-
-    /// Convenience function for extracting values from unary sets.
-    pub(super) fn get_single_item<I, T>(name: &'static str, collection: I) -> anyhow::Result<T>
-    where
-        I: IntoIterator<Item = T>,
-    {
-        let mut iterator = collection.into_iter();
-        match (iterator.next(), iterator.next()) {
-            (Some(a), None) => Ok(a),
-            (None, None) => bail!("Expected a single {name} but found none."),
-            _ => bail!("Expected a single {name} but found multiple occurrences."),
-        }
     }
 }
 

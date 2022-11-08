@@ -674,6 +674,7 @@ impl Layout {
             range,
             block,
             query_id,
+            &self.site,
         )?;
         let query_clone = query.clone();
 
@@ -1452,6 +1453,14 @@ impl LayoutCache {
                 Ok(layout)
             }
         }
+    }
+
+    pub(crate) fn remove(&self, site: &Site) -> Option<Arc<Layout>> {
+        self.entries
+            .lock()
+            .unwrap()
+            .remove(&site.deployment)
+            .map(|CacheEntry { value, expires: _ }| value.clone())
     }
 
     // Only needed for tests

@@ -49,6 +49,10 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
 }
 
 impl<C: Blockchain> DataSource<C> for MockDataSource {
+    fn from_template_info(_template_info: DataSourceTemplateInfo<C>) -> Result<Self, Error> {
+        todo!()
+    }
+
     fn address(&self) -> Option<&[u8]> {
         todo!()
     }

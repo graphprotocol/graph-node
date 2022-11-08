@@ -1,4 +1,4 @@
-use crate::{data_source::*, Block, TriggerData, TriggerFilter, TriggersAdapter};
+use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use core::fmt;
 use graph::firehose::FirehoseEndpoints;
@@ -17,19 +17,23 @@ use graph::{
 };
 use std::{str::FromStr, sync::Arc};
 
+#[derive(Default, Debug, Clone)]
+pub struct Block {
+    pub hash: BlockHash,
+    pub number: BlockNumber,
+    pub changes: EntityChanges,
+}
+
 impl blockchain::Block for Block {
     fn ptr(&self) -> BlockPtr {
-        return BlockPtr {
-            hash: BlockHash(Box::from(self.block_id.clone())),
-            number: self.block_number as i32,
-        };
+        BlockPtr {
+            hash: self.hash.clone(),
+            number: self.number,
+        }
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        Some(BlockPtr {
-            hash: BlockHash(Box::from(self.prev_block_id.clone())),
-            number: self.prev_block_number as i32,
-        })
+        None
     }
 }
 

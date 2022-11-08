@@ -29,7 +29,7 @@ use graph::prelude::{
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
 };
 use graph::slog::crit;
-use graph_core::polling_monitor::ipfs_service::IpfsService;
+use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -243,11 +243,11 @@ pub async fn setup<C: Blockchain>(
         vec![ipfs.cheap_clone()],
         Default::default(),
     ));
-    let ipfs_service = IpfsService::new(
+    let ipfs_service = ipfs_service(
         ipfs,
         env_vars.mappings.max_ipfs_file_bytes as u64,
         env_vars.mappings.ipfs_timeout,
-        env_vars.mappings.max_ipfs_concurrent_requests,
+        env_vars.mappings.ipfs_request_limit,
     );
 
     let blockchain_map = Arc::new(blockchain_map);
@@ -472,8 +472,9 @@ impl<C: Blockchain> RuntimeAdapter<C> for NoopRuntimeAdapter<C> {
     }
 }
 
-struct NoopAdapterSelector<C> {
-    x: PhantomData<C>,
+pub struct NoopAdapterSelector<C> {
+    pub x: PhantomData<C>,
+    pub triggers_in_block_sleep: Duration,
 }
 
 impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
@@ -483,12 +484,16 @@ impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
         _capabilities: &<C as Blockchain>::NodeCapabilities,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<C>>, Error> {
-        Ok(Arc::new(NoopTriggersAdapter { x: PhantomData }))
+        Ok(Arc::new(NoopTriggersAdapter {
+            x: PhantomData,
+            triggers_in_block_sleep: self.triggers_in_block_sleep,
+        }))
     }
 }
 
 struct NoopTriggersAdapter<C> {
     x: PhantomData<C>,
+    triggers_in_block_sleep: Duration,
 }
 
 #[async_trait]
@@ -512,12 +517,14 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
 
     async fn triggers_in_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         block: <C as Blockchain>::Block,
         _filter: &<C as Blockchain>::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error> {
+        tokio::time::sleep(self.triggers_in_block_sleep).await;
+
         // Return no triggers on data source reprocessing.
-        Ok(BlockWithTriggers::new(block, Vec::new()))
+        Ok(BlockWithTriggers::new(block, Vec::new(), logger))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
