@@ -169,7 +169,16 @@ async fn file_data_sources() {
     let chain = Arc::new(
         fixture::ethereum::chain_with_adapter_selector(blocks, &stores, adapter_selector).await,
     );
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        None,
+        None,
+        None,
+    )
+    .await;
     ctx.start_and_sync_to(stop_block).await;
 
     // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
@@ -193,6 +202,7 @@ async fn file_data_sources() {
 
     let store = ctx.store.cheap_clone();
     let writable = store
+        .subgraph_store()
         .writable(ctx.logger.clone(), ctx.deployment.id)
         .await
         .unwrap();
@@ -218,7 +228,7 @@ async fn file_data_sources() {
     ctx.start_and_sync_to(stop_block).await;
     let writable = ctx
         .store
-        .clone()
+        .subgraph_store()
         .writable(ctx.logger.clone(), ctx.deployment.id.clone())
         .await
         .unwrap();
