@@ -19,6 +19,7 @@ use graph::data::subgraph::{
 use graph::data_source::{
     offchain, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
 };
+use graph::env::EnvVars;
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
@@ -28,7 +29,7 @@ const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 
-pub(crate) struct SubgraphRunner<C, T>
+pub struct SubgraphRunner<C, T>
 where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
@@ -50,6 +51,7 @@ where
         ctx: IndexingContext<C, T>,
         logger: Logger,
         metrics: RunnerMetrics,
+        env_vars: Arc<EnvVars>,
     ) -> Self {
         Self {
             inputs: Arc::new(inputs),
@@ -59,8 +61,8 @@ where
                 synced: false,
                 skip_ptr_updates_timer: Instant::now(),
                 backoff: ExponentialBackoff::new(
-                    (MINUTE * 2).min(ENV_VARS.subgraph_error_retry_ceil),
-                    ENV_VARS.subgraph_error_retry_ceil,
+                    (MINUTE * 2).min(env_vars.subgraph_error_retry_ceil),
+                    env_vars.subgraph_error_retry_ceil,
                 ),
                 entity_lfu_cache: LfuCache::new(),
             },
@@ -69,7 +71,40 @@ where
         }
     }
 
-    pub async fn run(mut self) -> Result<(), Error> {
+    /// Revert the state to a previous block. When handling revert operations
+    /// or failed block processing, it is necessary to remove part of the existing
+    /// in-memory state to keep it constent with DB changes.
+    /// During block processing new dynamic data sources are added directly to the
+    /// SubgraphInstance of the runner. This means that if, for whatever reason,
+    /// the changes don;t complete then the remnants of that block processing must
+    /// be removed. The same thing also applies to the block cache.
+    /// This function must be called before continuing to process in order to avoid
+    /// duplicated host insertion and POI issues with dirty entity changes.
+    fn revert_state(&mut self, block_number: BlockNumber) -> Result<(), Error> {
+        self.state.entity_lfu_cache = LfuCache::new();
+
+        // 1. Revert all hosts(created by DDS) up to block_number inclusively.
+        // 2. Unmark any offchain data sources that were marked done on the blocks being removed.
+        // When no offchain datasources are present, 2. should be a noop.
+        self.ctx.revert_data_sources(block_number)?;
+        Ok(())
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn context(&self) -> &IndexingContext<C, T> {
+        &self.ctx
+    }
+
+    #[cfg(debug_assertions)]
+    pub async fn run_for_test(self, break_on_restart: bool) -> Result<Self, Error> {
+        self.run_inner(break_on_restart).await
+    }
+
+    pub async fn run(self) -> Result<Self, Error> {
+        self.run_inner(false).await
+    }
+
+    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -134,7 +169,12 @@ where
                     Action::Stop => {
                         info!(self.logger, "Stopping subgraph");
                         self.inputs.store.flush().await?;
-                        return Ok(());
+                        return Ok(self);
+                    }
+                    Action::Restart if break_on_restart => {
+                        info!(self.logger, "Stopping subgraph on break");
+                        self.inputs.store.flush().await?;
+                        return Ok(self);
                     }
                     Action::Restart => break,
                 };
@@ -799,16 +839,8 @@ where
 
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
-                // Clear entity cache when a subgraph fails.
-                //
-                // This is done to be safe and sure that there's no state that's
-                // out of sync from the database.
-                //
-                // Without it, POI changes on failure would be kept in the entity cache
-                // and be transacted incorrectly in the next run.
-                self.state.entity_lfu_cache = LfuCache::new();
-
                 self.metrics.stream.deployment_failed.set(1.0);
+                self.revert_state(block_ptr.block_number())?;
 
                 let message = format!("{:#}", e).replace("\n", "\t");
                 let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
@@ -920,11 +952,7 @@ where
             .deployment_head
             .set(subgraph_ptr.number as f64);
 
-        // Revert the in-memory state:
-        // - Revert any dynamic data sources.
-        // - Clear the entity cache.
-        self.ctx.revert_data_sources(subgraph_ptr.number);
-        self.state.entity_lfu_cache = LfuCache::new();
+        self.revert_state(subgraph_ptr.number)?;
 
         Ok(Action::Continue)
     }

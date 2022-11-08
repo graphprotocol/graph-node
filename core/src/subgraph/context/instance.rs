@@ -2,7 +2,8 @@ use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::Blockchain,
     data_source::{
-        causality_region::CausalityRegionSeq, CausalityRegion, DataSource, DataSourceTemplate,
+        causality_region::CausalityRegionSeq, offchain, CausalityRegion, DataSource,
+        DataSourceTemplate,
     },
     prelude::*,
 };
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 
 use super::OffchainMonitor;
 
-pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
@@ -155,7 +156,42 @@ where
         })
     }
 
-    pub(super) fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
+    /// Reverts any DataSources that have been added from the block forwards (inclusively)
+    /// This function also reverts the done_at status if it was 'done' on this block or later.
+    /// It only returns the offchain::Source because we don't currently need to know which
+    /// DataSources were removed, the source is used so that the offchain DDS can be found again.
+    pub(super) fn revert_data_sources(
+        &mut self,
+        reverted_block: BlockNumber,
+    ) -> Vec<offchain::Source> {
+        self.revert_hosts_cheap(reverted_block);
+
+        // The following code handles resetting offchain datasources so in most
+        // cases this is enough processing.
+        // At some point we prolly need to improve the linear search but for now this
+        // should be fine. *IT'S FINE*
+        //
+        // Any File DataSources (Dynamic Data Sources), will have their own causality region
+        // which currently is the next number of the sequence but that should be an internal detail.
+        // Regardless of the sequence logic, if the current causality region is ONCHAIN then there are
+        // no others and therefore the remaining code is a noop and we can just stop here.
+        if self.causality_region_seq.0 == CausalityRegion::ONCHAIN {
+            return vec![];
+        }
+
+        self.hosts
+            .iter()
+            .filter(|host| matches!(host.done_at(), Some(done_at) if done_at >= reverted_block))
+            .map(|host| {
+                host.set_done_at(None);
+                // Safe to call unwrap() because only offchain DataSources have done_at = Some
+                host.data_source().as_offchain().unwrap().source.clone()
+            })
+            .collect()
+    }
+
+    /// Because hosts are ordered, removing them based on creation block is cheap and simple.
+    fn revert_hosts_cheap(&mut self, reverted_block: BlockNumber) {
         // `hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self
@@ -168,7 +204,7 @@ where
         }
     }
 
-    pub(super) fn hosts(&self) -> &[Arc<T::Host>] {
+    pub fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts
     }
 

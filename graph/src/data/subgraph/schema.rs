@@ -215,7 +215,7 @@ impl SubgraphManifestEntity {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct SubgraphError {
     pub subgraph_id: DeploymentHash,
     pub message: String,

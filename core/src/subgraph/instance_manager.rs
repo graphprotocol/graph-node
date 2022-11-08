@@ -11,6 +11,7 @@ use graph::blockchain::{BlockchainKind, TriggerFilter};
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data_source::causality_region::CausalityRegionSeq;
+use graph::env::EnvVars;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -20,6 +21,7 @@ use tokio::task;
 use super::context::OffchainMonitor;
 use super::SubgraphTriggerProcessor;
 
+#[derive(Clone)]
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
@@ -30,6 +32,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
     static_filters: bool,
+    env_vars: Arc<EnvVars>,
 }
 
 #[async_trait]
@@ -51,6 +54,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     let runner = instance_manager
                         .build_subgraph_runner::<graph_chain_arweave::Chain>(
                             logger.clone(),
+                            self.env_vars.cheap_clone(),
                             loc.clone(),
                             manifest,
                             stop_block,
@@ -64,6 +68,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     let runner = instance_manager
                         .build_subgraph_runner::<graph_chain_ethereum::Chain>(
                             logger.clone(),
+                            self.env_vars.cheap_clone(),
                             loc.clone(),
                             manifest,
                             stop_block,
@@ -77,6 +82,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     let runner = instance_manager
                         .build_subgraph_runner::<graph_chain_near::Chain>(
                             logger.clone(),
+                            self.env_vars.cheap_clone(),
                             loc.clone(),
                             manifest,
                             stop_block,
@@ -90,6 +96,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     let runner = instance_manager
                         .build_subgraph_runner::<graph_chain_cosmos::Chain>(
                             logger.clone(),
+                            self.env_vars.cheap_clone(),
                             loc.clone(),
                             manifest,
                             stop_block,
@@ -103,6 +110,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
                     let runner = instance_manager
                         .build_subgraph_runner::<graph_chain_substreams::Chain>(
                             logger.clone(),
+                            self.env_vars.cheap_clone(),
                             loc.cheap_clone(),
                             manifest,
                             stop_block,
@@ -156,6 +164,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
 impl<S: SubgraphStore> SubgraphInstanceManager<S> {
     pub fn new(
         logger_factory: &LoggerFactory,
+        env_vars: Arc<EnvVars>,
         subgraph_store: Arc<S>,
         chains: Arc<BlockchainMap>,
         metrics_registry: Arc<dyn MetricsRegistry>,
@@ -178,12 +187,14 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             link_resolver,
             ipfs_service,
             static_filters,
+            env_vars,
         }
     }
 
-    async fn build_subgraph_runner<C>(
+    pub async fn build_subgraph_runner<C>(
         &self,
         logger: Logger,
+        env_vars: Arc<EnvVars>,
         deployment: DeploymentLocator,
         manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
@@ -426,6 +437,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ctx,
             logger.cheap_clone(),
             metrics,
+            env_vars,
         ))
     }
 
