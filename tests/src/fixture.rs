@@ -10,7 +10,8 @@ use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+    BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+    FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
@@ -360,6 +361,26 @@ pub async fn wait_for_sync(
     }
 
     Ok(())
+}
+
+struct StaticBlockRefetcher<C: Blockchain> {
+    x: PhantomData<C>,
+}
+
+#[async_trait]
+impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
+    fn required(&self, _chain: &C) -> bool {
+        false
+    }
+
+    async fn get_block(
+        &self,
+        _chain: &C,
+        _logger: &Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<C::Block, Error> {
+        unimplemented!("this block refetcher always returns false, get_block shouldn't be called")
+    }
 }
 
 /// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the

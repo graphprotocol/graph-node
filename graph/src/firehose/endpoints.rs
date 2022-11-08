@@ -1,12 +1,14 @@
 use crate::{
+    blockchain::block_stream::FirehoseCursor,
     blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
-    firehose::{decode_firehose_block, ForkStep},
+    firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
 };
+
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use slog::Logger;
@@ -84,6 +86,58 @@ impl FirehoseEndpoint {
         }
     }
 
+    pub async fn get_block<M>(
+        &self,
+        cursor: FirehoseCursor,
+        logger: &Logger,
+    ) -> Result<M, anyhow::Error>
+    where
+        M: prost::Message + BlockchainBlock + Default + 'static,
+    {
+        let token_metadata = match self.token.clone() {
+            Some(token) => Some(MetadataValue::from_str(token.as_str())?),
+            None => None,
+        };
+
+        let mut client = firehose::fetch_client::FetchClient::with_interceptor(
+            self.channel.cheap_clone(),
+            move |mut r: Request<()>| {
+                if let Some(ref t) = token_metadata {
+                    r.metadata_mut().insert("authorization", t.clone());
+                }
+
+                Ok(r)
+            },
+        )
+        .accept_gzip();
+
+        if self.compression_enabled {
+            client = client.send_gzip();
+        }
+
+        debug!(
+            logger,
+            "Connecting to firehose to retrieve block for cursor {}", cursor
+        );
+
+        let req = firehose::SingleBlockRequest {
+            transforms: [].to_vec(),
+            reference: Some(firehose::single_block_request::Reference::Cursor(
+                firehose::single_block_request::Cursor {
+                    cursor: cursor.to_string(),
+                },
+            )),
+        };
+        let resp = client.block(req);
+
+        match resp.await {
+            Ok(v) => Ok(M::decode(
+                v.get_ref().block.as_ref().unwrap().value.as_ref(),
+            )?),
+            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+        }
+    }
+
     pub async fn genesis_block_ptr<M>(&self, logger: &Logger) -> Result<BlockPtr, anyhow::Error>
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
@@ -147,7 +201,7 @@ impl FirehoseEndpoint {
             .blocks(firehose::Request {
                 start_block_num: number as i64,
                 stop_block_num: number as u64,
-                fork_steps: vec![ForkStep::StepNew as i32, ForkStep::StepUndo as i32],
+                final_blocks_only: false,
                 ..Default::default()
             })
             .await?;

@@ -1,5 +1,5 @@
 use clap::Parser as _;
-use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
 };
@@ -695,6 +695,7 @@ fn ethereum_networks_as_chains(
                 eth_adapters.clone(),
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
+                Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
                 runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,

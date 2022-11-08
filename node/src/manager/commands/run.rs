@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
-use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
 use ethereum::{ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use graph::anyhow::{bail, format_err};
 use graph::blockchain::{BlockchainKind, BlockchainMap};
@@ -127,6 +127,7 @@ pub async fn run(
         eth_adapters.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
+        Arc::new(EthereumBlockRefetcher {}),
         Arc::new(EthereumAdapterSelector::new(
             logger_factory.clone(),
             Arc::new(eth_adapters),

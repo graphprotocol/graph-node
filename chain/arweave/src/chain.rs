@@ -94,6 +94,18 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
+    fn is_refetch_block_required(&self) -> bool {
+        false
+    }
+
+    async fn refetch_firehose_block(
+        &self,
+        _logger: &Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<codec::Block, Error> {
+        unimplemented!("This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called.")
+    }
+
     async fn new_firehose_block_stream(
         &self,
         deployment: DeploymentLocator,
@@ -288,11 +300,11 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
                 ))
             }
 
-            StepIrreversible => {
+            StepFinal => {
                 panic!("irreversible step is not handled and should not be requested in the Firehose request")
             }
 
-            StepUnknown => {
+            StepUnset => {
                 panic!("unknown step should not happen in the Firehose response")
             }
         }

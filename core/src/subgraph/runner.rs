@@ -235,6 +235,17 @@ where
                 data_sources.iter().filter_map(DataSource::as_onchain),
             );
 
+            let block: Arc<C::Block> = if self.inputs.chain.is_refetch_block_required() {
+                Arc::new(
+                    self.inputs
+                        .chain
+                        .refetch_firehose_block(&logger, firehose_cursor.clone())
+                        .await?,
+                )
+            } else {
+                block.cheap_clone()
+            };
+
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
                 .inputs
