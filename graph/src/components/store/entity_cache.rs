@@ -6,7 +6,6 @@ use std::sync::Arc;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
-use crate::data_source::DataSource;
 use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
@@ -31,8 +30,6 @@ pub struct EntityCache {
     // Marks whether updates should go in `handler_updates`.
     in_handler: bool,
 
-    data_sources: Vec<s::StoredDynamicDataSource>,
-
     /// The store is only used to read entities.
     pub store: Arc<dyn s::ReadStore>,
 
@@ -50,7 +47,6 @@ impl Debug for EntityCache {
 
 pub struct ModificationsAndCache {
     pub modifications: Vec<s::EntityModification>,
-    pub data_sources: Vec<s::StoredDynamicDataSource>,
     pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
 }
 
@@ -61,7 +57,6 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
-            data_sources: vec![],
             schema: store.input_schema(),
             store,
         }
@@ -76,7 +71,6 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
-            data_sources: vec![],
             schema: store.input_schema(),
             store,
         }
@@ -189,12 +183,6 @@ impl EntityCache {
                 }
             }
         }
-    }
-
-    /// Add a dynamic data source
-    pub fn add_data_source<C: s::Blockchain>(&mut self, data_source: &DataSource<C>) {
-        self.data_sources
-            .push(data_source.as_stored_dynamic_data_source());
     }
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
@@ -313,7 +301,6 @@ impl EntityCache {
 
         Ok(ModificationsAndCache {
             modifications: mods,
-            data_sources: self.data_sources,
             entity_lfu_cache: self.current,
         })
     }
