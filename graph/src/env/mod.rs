@@ -165,9 +165,8 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_POI_ACCESS_TOKEN`. No default
     /// value is provided.
     pub poi_access_token: Option<String>,
-    /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. No
-    /// default value is provided.
-    pub subgraph_max_data_sources: Option<usize>,
+    /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. Defaults to 1 billion.
+    pub subgraph_max_data_sources: usize,
     /// Keep deterministic errors non-fatal even if the subgraph is pending.
     /// Used for testing Graph Node itself.
     ///
@@ -251,7 +250,7 @@ impl EnvVars {
             subgraph_version_switching_mode: inner.subgraph_version_switching_mode,
             kill_if_unresponsive: inner.kill_if_unresponsive.0,
             poi_access_token: inner.poi_access_token,
-            subgraph_max_data_sources: inner.subgraph_max_data_sources,
+            subgraph_max_data_sources: inner.subgraph_max_data_sources.0,
             disable_fail_fast: inner.disable_fail_fast.0,
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
@@ -355,8 +354,8 @@ struct Inner {
     kill_if_unresponsive: EnvVarBoolean,
     #[envconfig(from = "GRAPH_POI_ACCESS_TOKEN")]
     poi_access_token: Option<String>,
-    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES")]
-    subgraph_max_data_sources: Option<usize>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES", default = "1_000_000_000")]
+    subgraph_max_data_sources: NoUnderscores<usize>,
     #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
     disable_fail_fast: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]

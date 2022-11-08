@@ -4,7 +4,7 @@ mod reference;
 
 pub use event::ProofOfIndexingEvent;
 pub use online::{ProofOfIndexing, ProofOfIndexingFinisher};
-pub use reference::CausalityRegion;
+pub use reference::PoICausalityRegion;
 
 use atomic_refcell::AtomicRefCell;
 use std::sync::Arc;
@@ -161,7 +161,7 @@ mod tests {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
                     block_hash: H256::repeat_byte(1),
                     causality_regions: hashmap! {
-                        "eth".to_owned() => CausalityRegion {
+                        "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
                                 Block::default(),
                                 Block {
@@ -188,7 +188,7 @@ mod tests {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
                     block_hash: H256::repeat_byte(3),
                     causality_regions: hashmap! {
-                        "eth".to_owned() => CausalityRegion {
+                        "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
                                 Block::default(),
                                 Block {
@@ -226,7 +226,7 @@ mod tests {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
                     block_hash: H256::repeat_byte(3),
                     causality_regions: hashmap! {
-                        "eth".to_owned() => CausalityRegion {
+                        "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
                                 Block::default(),
                                 Block {
@@ -250,7 +250,7 @@ mod tests {
                                 Block::default(),
                             ],
                         },
-                        "ipfs".to_owned() => CausalityRegion {
+                        "ipfs".to_owned() => PoICausalityRegion {
                             blocks: vec! [
                                 Block::default(),
                                 Block {
@@ -288,7 +288,7 @@ mod tests {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
                     block_hash: H256::repeat_byte(1),
                     causality_regions: hashmap! {
-                        "eth".to_owned() => CausalityRegion {
+                        "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
                                 Block::default(),
                                 Block {

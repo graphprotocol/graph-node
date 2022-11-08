@@ -56,9 +56,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.65"
+version = "1.0.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98161a4e3e2184da77bb14f02184cdd111e83bbbcc9979dfee3c44b9a85f5602"
+checksum = "216261ddc8289130e551ddcd5ce8a064710c0d064a4d2895c67151c92b5443f6"
 
 [[package]]
 name = "arc-swap"
@@ -222,9 +222,9 @@ checksum = "4cbbc9d0964165b47557570cce6c952866c2678457aca742aafc9fb771d30270"
 
 [[package]]
 name = "base64"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
+checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
 
 [[package]]
 name = "base64-url"
@@ -485,9 +485,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.22"
+version = "3.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86447ad904c7fb335a790c9d7fe3d0d971dc523b8ccd1561a520de9a85302750"
+checksum = "71655c45cb9845d3270c9d6df84ebe72b4dad3c2ba3f7023ad47c144e4e473a5"
 dependencies = [
  "atty",
  "bitflags",
@@ -1660,6 +1660,7 @@ version = "0.28.2"
 dependencies = [
  "anyhow",
  "async-stream",
+ "base64",
  "dirs-next",
  "envconfig",
  "futures 0.1.31",
@@ -2021,6 +2022,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
 
 [[package]]
+name = "hdrhistogram"
+version = "7.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f19b9f54f7c7f55e31401bb647626ce0cf0f67b0004982ce815b3ee72a02aa8"
+dependencies = [
+ "byteorder",
+ "num-traits",
+]
+
+[[package]]
 name = "headers"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2033,7 +2044,7 @@ dependencies = [
  "http",
  "httpdate",
  "mime",
- "sha-1",
+ "sha-1 0.9.7",
 ]
 
 [[package]]
@@ -2337,15 +2348,6 @@ dependencies = [
  "autocfg",
  "hashbrown",
  "serde",
-]
-
-[[package]]
-name = "input_buffer"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f97967975f448f1a7ddb12b0bc41069d09ed6a1c161a92687e057325db35d413"
-dependencies = [
- "bytes",
 ]
 
 [[package]]
@@ -2906,9 +2908,9 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.13.1"
+version = "1.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
+checksum = "f6058e64324c71e02bc2b150e4f3bc8286db6c83092132ffa3f6b1eab0f9def5"
 dependencies = [
  "hermit-abi",
  "libc",
@@ -3351,18 +3353,18 @@ checksum = "bc881b2c22681370c6a780e47af9840ef841837bc98118431d4e1868bd0c1086"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.46"
+version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94e2ef8dbfc347b10c094890f778ee2e36ca9bb4262e86dc99cd217e35f3470b"
+checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
 dependencies = [
  "unicode-ident",
 ]
 
 [[package]]
 name = "prometheus"
-version = "0.13.2"
+version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45c8babc29389186697fe5a2a4859d697825496b83db5d0b65271cdc0488e88c"
+checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
 dependencies = [
  "cfg-if 1.0.0",
  "fnv",
@@ -3942,9 +3944,9 @@ dependencies = [
 
 [[package]]
 name = "serde_plain"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95455e7e29fada2052e72170af226fbe368a4ca33dee847875325d9fdb133858"
+checksum = "d6018081315db179d0ce57b1fe4b62a12a0028c9cf9bbef868c9cf477b3c34ae"
 dependencies = [
  "serde",
 ]
@@ -4017,6 +4019,17 @@ dependencies = [
  "cpufeatures 0.1.5",
  "digest 0.9.0",
  "opaque-debug",
+]
+
+[[package]]
+name = "sha-1"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "028f48d513f9678cda28f6e4064755b3fbb2af6acd672f2c209b62323f7aea0f"
+dependencies = [
+ "cfg-if 1.0.0",
+ "cpufeatures 0.2.2",
+ "digest 0.10.5",
 ]
 
 [[package]]
@@ -4179,7 +4192,7 @@ dependencies = [
  "httparse",
  "log",
  "rand",
- "sha-1",
+ "sha-1 0.9.7",
 ]
 
 [[package]]
@@ -4378,9 +4391,9 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
-version = "0.15.1"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949517c0cf1bf4ee812e2e07e08ab448e3ae0d23472aee8a06c985f0c8815b16"
+checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
 
 [[package]]
 name = "thiserror"
@@ -4564,9 +4577,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6edf2d6bc038a43d31353570e27270603f4648d18f5ed10c0e179abe43255af"
+checksum = "d660770404473ccd7bc9f8b28494a811bc18542b915c0855c51e8f419d5223ce"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -4589,13 +4602,12 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.14.0"
+version = "0.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e96bb520beab540ab664bd5a9cfeaa1fcd846fa68c830b42e2c8963071251d2"
+checksum = "f714dd15bead90401d77e04243611caec13726c2408afd5b31901dfcdcb3b181"
 dependencies = [
  "futures-util",
  "log",
- "pin-project",
  "tokio",
  "tungstenite",
 ]
@@ -4710,11 +4722,14 @@ dependencies = [
 [[package]]
 name = "tower"
 version = "0.4.12"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c9d84cde0c9a23e1d2d5b5ae7ae432629712658b"
 dependencies = [
  "futures-core",
  "futures-util",
+ "hdrhistogram",
+ "indexmap",
  "pin-project-lite",
+ "slab",
  "tokio",
  "tokio-util 0.7.1",
  "tower-layer 0.3.1 (git+https://github.com/tower-rs/tower.git)",
@@ -4750,7 +4765,7 @@ checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
 [[package]]
 name = "tower-layer"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c9d84cde0c9a23e1d2d5b5ae7ae432629712658b"
 
 [[package]]
 name = "tower-service"
@@ -4761,12 +4776,12 @@ checksum = "360dfd1d6d30e05fda32ace2c8c70e9c0a9da713275777f5a4dbb8a1893930c6"
 [[package]]
 name = "tower-service"
 version = "0.3.1"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c9d84cde0c9a23e1d2d5b5ae7ae432629712658b"
 
 [[package]]
 name = "tower-test"
 version = "0.4.0"
-source = "git+https://github.com/tower-rs/tower.git#3f31ffd2cf15f1e905142e5f43ab39ac995c22ed"
+source = "git+https://github.com/tower-rs/tower.git#c9d84cde0c9a23e1d2d5b5ae7ae432629712658b"
 dependencies = [
  "futures-util",
  "pin-project-lite",
@@ -4827,19 +4842,18 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "tungstenite"
-version = "0.13.0"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fe8dada8c1a3aeca77d6b51a4f1314e0f4b8e438b7b1b71e3ddaca8080e4093"
+checksum = "e27992fd6a8c29ee7eef28fc78349aa244134e10ad447ce3b9f0ac0ed0fa4ce0"
 dependencies = [
  "base64",
  "byteorder",
  "bytes",
  "http",
  "httparse",
- "input_buffer",
  "log",
  "rand",
- "sha-1",
+ "sha-1 0.10.0",
  "thiserror",
  "url",
  "utf-8",

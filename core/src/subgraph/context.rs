@@ -1,8 +1,6 @@
 pub mod instance;
 
-use crate::polling_monitor::{
-    ipfs_service::IpfsService, spawn_monitor, PollingMonitor, PollingMonitorMetrics,
-};
+use crate::polling_monitor::{spawn_monitor, IpfsService, PollingMonitor, PollingMonitorMetrics};
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
@@ -11,7 +9,7 @@ use graph::{
         store::{DeploymentId, SubgraphFork},
         subgraph::{MappingError, SharedProofOfIndexing},
     },
-    data_source::{offchain, DataSource, TriggerData},
+    data_source::{offchain, CausalityRegion, DataSource, TriggerData},
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
@@ -30,7 +28,7 @@ pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGua
 // The context keeps track of mutable in-memory state that is retained across blocks.
 //
 // Currently most of the changes are applied in `runner.rs`, but ideally more of that would be
-// refactored into the context so it wouldn't need `pub` fields. The entity cache should probaby
+// refactored into the context so it wouldn't need `pub` fields. The entity cache should probably
 // also be moved here.
 pub(crate) struct IndexingContext<C, T>
 where
@@ -139,6 +137,10 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         }
 
         Ok(host)
+    }
+
+    pub fn causality_region_next_value(&mut self) -> CausalityRegion {
+        self.instance.causality_region_next_value()
     }
 }
 

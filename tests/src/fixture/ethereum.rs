@@ -1,10 +1,11 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::{
     test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticStreamBuilder, Stores, NODE_ID,
 };
-use graph::blockchain::BlockPtr;
+use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::prelude::ethabi::ethereum_types::H256;
@@ -19,6 +20,22 @@ use graph_chain_ethereum::{Chain, ENV_VARS};
 use graph_mock::MockMetricsRegistry;
 
 pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Chain {
+    chain_with_adapter_selector(
+        blocks,
+        stores,
+        NoopAdapterSelector {
+            x: PhantomData,
+            triggers_in_block_sleep: Duration::ZERO,
+        },
+    )
+    .await
+}
+
+pub async fn chain_with_adapter_selector(
+    blocks: Vec<BlockWithTriggers<Chain>>,
+    stores: &Stores,
+    adapter_selector: impl TriggersAdapterSelector<Chain> + 'static,
+) -> Chain {
     let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None);
     let node_id = NodeId::new(NODE_ID).unwrap();
@@ -34,7 +51,6 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
         None,
         true,
         false,
-        0,
     ))]
     .into();
 
@@ -49,7 +65,7 @@ pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Ch
         EthereumNetworkAdapters { adapters: vec![] },
         stores.chain_head_listener.cheap_clone(),
         Arc::new(StaticStreamBuilder { chain: blocks }),
-        Arc::new(NoopAdapterSelector { x: PhantomData }),
+        Arc::new(adapter_selector),
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now

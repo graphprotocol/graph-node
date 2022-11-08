@@ -1,8 +1,9 @@
 [package]
 name = "graph-node"
-version = "0.28.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 default-run = "graph-node"
+rust-version = "1.64"
 
 [[bin]]
 name = "graph-node"
@@ -13,7 +14,7 @@ name = "graphman"
 path = "src/bin/manager.rs"
 
 [dependencies]
-clap = { version = "3.2.22", features = ["derive", "env"] }
+clap = { version = "3.2.23", features = ["derive", "env"] }
 env_logger = "0.9.1"
 git-testament = "0.2"
 graphql-parser = "0.4.0"
@@ -43,5 +44,5 @@ toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
-prometheus = { version ="0.13.2", features = ["push"] }
+prometheus = { version ="0.13.3", features = ["push"] }
 json-structural-diff = {version = "0.1", features = ["colorize"] }

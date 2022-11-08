@@ -34,7 +34,6 @@ use slog::Logger;
 use std::{
     any::Any,
     collections::HashMap,
-    convert::TryFrom,
     fmt::{self, Debug},
     str::FromStr,
     sync::Arc,
@@ -184,9 +183,14 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
     fn to_firehose_filter(self) -> Vec<prost_types::Any>;
 }
 
-pub trait DataSource<C: Blockchain>:
-    'static + Sized + Send + Sync + Clone + TryFrom<DataSourceTemplateInfo<C>, Error = anyhow::Error>
-{
+pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
+    fn from_template_info(info: DataSourceTemplateInfo<C>) -> Result<Self, Error>;
+
+    fn from_stored_dynamic_data_source(
+        template: &C::DataSourceTemplate,
+        stored: StoredDynamicDataSource,
+    ) -> Result<Self, Error>;
+
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
     fn name(&self) -> &str;
@@ -218,11 +222,6 @@ pub trait DataSource<C: Blockchain>:
     fn is_duplicate_of(&self, other: &Self) -> bool;
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource;
-
-    fn from_stored_dynamic_data_source(
-        template: &C::DataSourceTemplate,
-        stored: StoredDynamicDataSource,
-    ) -> Result<Self, Error>;
 
     /// Used as part of manifest validation. If there are no errors, return an empty vector.
     fn validate(&self) -> Vec<Error>;

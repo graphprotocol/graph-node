@@ -4,7 +4,6 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::prelude::{MetricsRegistry, TryFutureExt};
 use graph::{
-    anyhow,
     blockchain::{
         block_stream::{
             BlockStreamEvent, BlockWithTriggers, FirehoseError,
@@ -108,19 +107,13 @@ impl Blockchain for Chain {
             .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
             .expect(&format!("no adapter for network {}", self.name,));
 
-        let firehose_endpoint = match self.firehose_endpoints.random() {
-            Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available")),
-        };
-
+        let firehose_endpoint = self.firehose_endpoints.random()?;
         let logger = self
             .logger_factory
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {
-            endpoint: firehose_endpoint.cheap_clone(),
-        });
+        let firehose_mapper = Arc::new(FirehoseMapper {});
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -156,12 +149,8 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        let firehose_endpoint = match self.firehose_endpoints.random() {
-            Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available").into()),
-        };
-
-        firehose_endpoint
+        self.firehose_endpoints
+            .random()?
             .block_ptr_for_number::<codec::Block>(logger, number)
             .map_err(Into::into)
             .await
@@ -191,7 +180,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
 
     async fn triggers_in_block(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         block: codec::Block,
         filter: &TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
@@ -223,7 +212,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             trigger_data.push(ArweaveTrigger::Block(shared_block.cheap_clone()));
         }
 
-        Ok(BlockWithTriggers::new(block, trigger_data))
+        Ok(BlockWithTriggers::new(block, trigger_data, logger))
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
@@ -249,9 +238,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {
-    endpoint: Arc<FirehoseEndpoint>,
-}
+pub struct FirehoseMapper {}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
@@ -314,9 +301,10 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn block_ptr_for_number(
         &self,
         logger: &Logger,
+        endpoint: &Arc<FirehoseEndpoint>,
         number: BlockNumber,
     ) -> Result<BlockPtr, Error> {
-        self.endpoint
+        endpoint
             .block_ptr_for_number::<codec::Block>(logger, number)
             .await
     }
@@ -327,6 +315,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
     async fn final_block_ptr_for(
         &self,
         _logger: &Logger,
+        _endpoint: &Arc<FirehoseEndpoint>,
         block: &codec::Block,
     ) -> Result<BlockPtr, Error> {
         Ok(block.ptr())

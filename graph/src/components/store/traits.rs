@@ -142,6 +142,10 @@ pub trait SubgraphStore: Send + Sync + 'static {
         deployment: DeploymentId,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
+    /// Initiate a graceful shutdown of the writable that a previous call to
+    /// `writable` might have started
+    async fn stop_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError>;
+
     /// Return the minimum block pointer of all deployments with this `id`
     /// that we would use to query or copy from; in particular, this will
     /// ignore any instances of this deployment that are in the process of
@@ -271,6 +275,9 @@ pub trait WritableStore: ReadStore {
         &self,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError>;
+
+    /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
+    async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
@@ -408,6 +415,9 @@ pub trait ChainStore: Send + Sync + 'static {
         &self,
         block_ptr: &H256,
     ) -> Result<Vec<transaction_receipt::LightTransactionReceipt>, StoreError>;
+
+    /// Clears call cache of the chain for the given `from` and `to` block number.
+    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<(), Error>;
 }
 
 pub trait EthereumCallCache: Send + Sync + 'static {

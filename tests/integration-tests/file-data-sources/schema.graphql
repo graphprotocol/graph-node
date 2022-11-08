@@ -2,3 +2,8 @@ type IpfsFile @entity {
   id: ID!
   content: String!
 }
+
+type IpfsFile1 @entity {
+  id: ID!
+  content: String!
+}

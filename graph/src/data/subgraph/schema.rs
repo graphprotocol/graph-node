@@ -102,7 +102,7 @@ impl TryFromValue for SubgraphHealth {
 /// The deployment data that is needed to create a deployment
 pub struct DeploymentCreate {
     pub manifest: SubgraphManifestEntity,
-    pub earliest_block: Option<BlockPtr>,
+    pub start_block: Option<BlockPtr>,
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
@@ -112,11 +112,11 @@ impl DeploymentCreate {
     pub fn new(
         raw_manifest: String,
         source_manifest: &SubgraphManifest<impl Blockchain>,
-        earliest_block: Option<BlockPtr>,
+        start_block: Option<BlockPtr>,
     ) -> Self {
         Self {
             manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest),
-            earliest_block: earliest_block.cheap_clone(),
+            start_block: start_block.cheap_clone(),
             graft_base: None,
             graft_block: None,
             debug_fork: None,
@@ -147,7 +147,10 @@ pub struct SubgraphDeploymentEntity {
     pub synced: bool,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
-    pub earliest_block: Option<BlockPtr>,
+    /// The earliest block for which we have data
+    pub earliest_block_number: BlockNumber,
+    /// The block at which indexing initially started
+    pub start_block: Option<BlockPtr>,
     pub latest_block: Option<BlockPtr>,
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,

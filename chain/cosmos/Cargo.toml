@@ -1,6 +1,6 @@
 [package]
 name = "graph-chain-cosmos"
-version = "0.28.2"
+version.workspace = true
 edition = "2018"
 
 [build-dependencies]
