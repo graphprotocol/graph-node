@@ -5,7 +5,6 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::data::subgraph::API_VERSION_0_0_5;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
@@ -1460,14 +1459,10 @@ pub(crate) async fn blocks_with_triggers(
         .await?;
 
     // Filter out call triggers that come from unsuccessful transactions
-    let mut blocks = if unified_api_version.equal_or_greater_than(&API_VERSION_0_0_5) {
-        let futures = blocks.into_iter().map(|block| {
-            filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
-        });
-        futures03::future::try_join_all(futures).await?
-    } else {
-        blocks
-    };
+    let futures = blocks.into_iter().map(|block| {
+        filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
+    });
+    let mut blocks = futures03::future::try_join_all(futures).await?;
 
     blocks.sort_by_key(|block| block.ptr().number);
 
