@@ -5,7 +5,6 @@ use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::data::subgraph::API_VERSION_0_0_5;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
@@ -701,8 +700,12 @@ impl EthereumAdapter {
     ) -> Box<dyn Stream<Item = EthereumCall, Error = Error> + Send + 'a> {
         let eth = self.clone();
 
-        let mut addresses: Vec<H160> = call_filter
-            .contract_addresses_function_signatures
+        let EthereumCallFilter {
+            contract_addresses_function_signatures,
+            wildcard_signatures,
+        } = call_filter;
+
+        let mut addresses: Vec<H160> = contract_addresses_function_signatures
             .iter()
             .filter(|(_addr, (start_block, _fsigs))| start_block <= &to)
             .map(|(addr, (_start_block, _fsigs))| *addr)
@@ -710,13 +713,14 @@ impl EthereumAdapter {
             .into_iter()
             .collect::<Vec<H160>>();
 
-        if addresses.is_empty() {
+        if addresses.is_empty() && wildcard_signatures.is_empty() {
             // The filter has no started data sources in the requested range, nothing to do.
             // This prevents an expensive call to `trace_filter` with empty `addresses`.
             return Box::new(stream::empty());
         }
 
-        if addresses.len() > 100 {
+        // if wildcard_signatures is on, we can't filter by topic so we need to get all the traces.
+        if addresses.len() > 100 || !wildcard_signatures.is_empty() {
             // If the address list is large, request all traces, this avoids generating huge
             // requests and potentially getting 413 errors.
             addresses = vec![];
@@ -1433,6 +1437,8 @@ pub(crate) async fn blocks_with_triggers(
     block_hashes.insert(to_hash);
     triggers_by_block.entry(to).or_insert(Vec::new());
 
+    let logger2 = logger.cheap_clone();
+
     let blocks = adapter
         .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
         .and_then(
@@ -1440,6 +1446,7 @@ pub(crate) async fn blocks_with_triggers(
                 Some(triggers) => Ok(BlockWithTriggers::new(
                     BlockFinality::Final(block),
                     triggers,
+                    &logger2,
                 )),
                 None => Err(anyhow!(
                     "block {} not found in `triggers_by_block`",
@@ -1452,14 +1459,10 @@ pub(crate) async fn blocks_with_triggers(
         .await?;
 
     // Filter out call triggers that come from unsuccessful transactions
-    let mut blocks = if unified_api_version.equal_or_greater_than(&API_VERSION_0_0_5) {
-        let futures = blocks.into_iter().map(|block| {
-            filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
-        });
-        futures03::future::try_join_all(futures).await?
-    } else {
-        blocks
-    };
+    let futures = blocks.into_iter().map(|block| {
+        filter_call_triggers_from_unsuccessful_transactions(block, &eth, &chain_store, &logger)
+    });
+    let mut blocks = futures03::future::try_join_all(futures).await?;
 
     blocks.sort_by_key(|block| block.ptr().number);
 
@@ -1847,7 +1850,12 @@ fn resolve_transaction_receipt(
             // Check if the receipt has a block hash and is for the right block. Parity nodes seem
             // to return receipts with no block hash when a transaction is no longer in the main
             // chain, so treat that case the same as a receipt being absent entirely.
-            if receipt.block_hash != Some(block_hash) {
+            //
+            // Also as a sanity check against provider nonsense, check that the receipt transaction
+            // hash and the requested transaction hash match.
+            if receipt.block_hash != Some(block_hash)
+                || transaction_hash != receipt.transaction_hash
+            {
                 info!(
                     logger, "receipt block mismatch";
                     "receipt_block_hash" =>
@@ -1855,6 +1863,7 @@ fn resolve_transaction_receipt(
                     "block_hash" =>
                         block_hash.to_string(),
                     "tx_hash" => transaction_hash.to_string(),
+                    "receipt_tx_hash" => receipt.transaction_hash.to_string(),
                 );
 
                 // If the receipt came from a different block, then the Ethereum node no longer

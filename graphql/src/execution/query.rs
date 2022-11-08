@@ -183,8 +183,20 @@ impl Query {
         max_depth: u8,
         metrics: Arc<dyn GraphQLMetrics>,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
+        let query_hash = {
+            let mut hasher = DefaultHasher::new();
+            query.query_text.hash(&mut hasher);
+            query.variables_text.hash(&mut hasher);
+            hasher.finish()
+        };
+        let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
+        let logger = logger.new(o!(
+            "subgraph_id" => schema.id().clone(),
+            "query_id" => query_id.clone()
+        ));
+
         let validation_phase_start = Instant::now();
-        validate_query(logger, &query, &schema.document())?;
+        validate_query(&logger, &query, &schema.document())?;
         metrics.observe_query_validation(validation_phase_start.elapsed(), schema.id());
 
         let mut operation = None;
@@ -218,18 +230,6 @@ impl Query {
                 )])
             }
         };
-
-        let query_hash = {
-            let mut hasher = DefaultHasher::new();
-            query.query_text.hash(&mut hasher);
-            query.variables_text.hash(&mut hasher);
-            hasher.finish()
-        };
-        let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
-        let logger = logger.new(o!(
-            "subgraph_id" => schema.id().clone(),
-            "query_id" => query_id.clone()
-        ));
 
         let start = Instant::now();
         let root_type = match kind {

@@ -1,2 +1,6 @@
-.git
 target
+docker/data
+node_modules
+.dockerignore
+.git
+.gitignore

@@ -10,10 +10,10 @@ use graph::{
     },
     slog::Logger,
 };
-use graph_chain_ethereum::{EthereumAdapterTrait, NodeCapabilities};
+use graph_chain_ethereum::{EthereumAdapterTrait, NodeCapabilities, ProviderEthRpcMetrics};
 use graph_store_postgres::DeploymentPlacer;
 
-use crate::config::Config;
+use crate::{chain::create_ethereum_networks_for_chain, config::Config};
 
 pub fn place(placer: &dyn DeploymentPlacer, name: &str, network: &str) -> Result<(), Error> {
     match placer.place(name, network).map_err(|s| anyhow!(s))? {
@@ -121,9 +121,9 @@ pub async fn provider(
     }
 
     let caps = caps_from_features(features)?;
+    let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let networks =
-        crate::manager::commands::run::create_ethereum_networks(logger, registry, config, &network)
-            .await?;
+        create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, config, &network).await?;
     let adapters = networks
         .networks
         .get(&network)

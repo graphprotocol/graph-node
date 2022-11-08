@@ -63,7 +63,7 @@ lazy_static! {
     static ref CONFIG: Config = STORE_POOL_CONFIG.2.clone();
     pub static ref SUBSCRIPTION_MANAGER: Arc<SubscriptionManager> = STORE_POOL_CONFIG.3.clone();
     pub static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
-    static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
+    pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
     static ref BLOCK_STORE: Arc<DieselBlockStore> = STORE.block_store();
     pub static ref GENESIS_PTR: BlockPtr = (
         H256::from(hex!(
@@ -167,7 +167,10 @@ pub async fn create_subgraph(
         chain: PhantomData,
     };
 
-    let deployment = DeploymentCreate::new(&manifest, None).graft(base);
+    let mut yaml = serde_yaml::Mapping::new();
+    yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
+    let yaml = serde_yaml::to_string(&yaml).unwrap();
+    let deployment = DeploymentCreate::new(yaml, &manifest, None).graft(base);
     let name = {
         let mut name = subgraph_id.to_string();
         name.truncate(32);

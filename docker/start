@@ -90,6 +90,8 @@ start_index_node() {
 }
 
 start_combined_node() {
+    # No valid reason to disable the block ingestor in this case.
+    unset DISABLE_BLOCK_INGESTOR
     run_graph_node
 }
 

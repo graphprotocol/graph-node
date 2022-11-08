@@ -1,10 +1,10 @@
 [package]
 name = "graph-chain-arweave"
-version = "0.28.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"]}
+tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
 base64-url = "1.4.13"

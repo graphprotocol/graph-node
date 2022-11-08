@@ -78,7 +78,8 @@ those.
   may use (in bytes, defaults to 256MB).
 - `GRAPH_MAX_IPFS_CACHE_SIZE`: maximum number of files cached (defaults to 50).
 - `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`: maximum size of each cached file (in bytes, defaults to 1MiB).
-- `GRAPH_MAX_IPFS_CONCURRENT_REQUESTS`: maximum concurrent requests to IPFS from file data sources (defaults to 100).
+- `GRAPH_IPFS_REQUEST_LIMIT`: Limits both concurrent and per second requests to IPFS for file data
+   sources. Defaults to 100.
 
 ## GraphQL
 
@@ -202,3 +203,7 @@ those.
 - `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`: enables indexing of subgraphs which 
   use `ipfs.cat` as part of subgraph mappings. **This is an experimental
   feature which is not deterministic, and will be removed in future**.
+- `GRAPH_STORE_BATCH_TARGET_DURATION`: How long batch operations during
+  copying or grafting should take. This limits how long transactions for
+  such long running operations will be, and therefore helps control bloat
+  in other tables. Value is in seconds and defaults to 180s.

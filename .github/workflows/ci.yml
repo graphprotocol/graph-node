@@ -14,10 +14,6 @@ env:
 jobs:
   unit-tests:
     name: Run unit tests
-    strategy:
-      fail-fast: false
-      matrix:
-        rust: ["stable"]
     runs-on: ubuntu-latest
     services:
       ipfs:
@@ -36,42 +32,24 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+    env:
+      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
-
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
         run: sudo apt-get install -y lld
 
       - name: Run unit tests
         uses: actions-rs/cargo@v1
-        env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
         with:
           command: test
           args: --verbose --workspace --exclude graph-tests -- --nocapture
 
   runner-tests:
     name: Subgraph Runner integration tests
-    strategy:
-      fail-fast: false
-      matrix:
-        rust: ["stable"]
     runs-on: ubuntu-latest
     services:
       ipfs:
@@ -90,24 +68,12 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+    env:
+      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
-
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
         run: sudo apt-get install -y lld
@@ -116,7 +82,6 @@ jobs:
         id: runner-tests-1
         uses: actions-rs/cargo@v1
         env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
@@ -124,54 +89,37 @@ jobs:
 
   integration-tests:
     name: Run integration tests
-    strategy:
-      fail-fast: false
-      matrix:
-        rust: ["stable"]
     runs-on: ubuntu-latest
-
+    env:
+      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: test-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - uses: Swatinem/rust-cache@v2
 
       - name: Install Node 14
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
           node-version: "14"
-
-      - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
+          cache: yarn
+          cache-dependency-path: "tests/integration-tests/yarn.lock"
 
       - name: Install lld and jq
         run: sudo apt-get install -y lld jq
 
       - name: Build graph-node
-        env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
         uses: actions-rs/cargo@v1
         with:
           command: build
+          args: --bin graph-node
 
       # Integration tests are a bit flaky, running them twice increases the
-      # chances of one run succeeding
+      # chances of one run succeeding.
       - name: Run integration tests (round 1)
         id: integration-tests-1
         uses: actions-rs/cargo@v1
         env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
-          N_CONCURRENT_TESTS: "1"
+          N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
@@ -182,8 +130,7 @@ jobs:
         uses: actions-rs/cargo@v1
         if: ${{ steps.integration-tests-1.outcome == 'failure' }}
         env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
-          N_CONCURRENT_TESTS: "1"
+          N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
         with:
           command: test
@@ -191,50 +138,26 @@ jobs:
 
   rustfmt:
     name: Check rustfmt style
-    strategy:
-      matrix:
-        rust: ["stable"]
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          components: rustfmt
-          override: true
 
       - name: Check formatting
         uses: actions-rs/cargo@v1
-        env:
-          RUSTFLAGS: "-D warnings"
         with:
           command: fmt
           args: --all -- --check
 
   clippy:
     name: Report Clippy warnings
-    strategy:
-      matrix:
-        rust: ["stable"]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          components: clippy
-          override: true
       # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
       # caching.
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: check-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - uses: Swatinem/rust-cache@v2
 
       - name: Run Clippy
         uses: actions-rs/cargo@v1
@@ -243,59 +166,4 @@ jobs:
         continue-on-error: true
         with:
           command: clippy
-
-  release-check:
-    name: Build in release mode
-    strategy:
-      matrix:
-        rust: ["stable"]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
-      - name: Cache cargo registry
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: check-cargo-${{ hashFiles('**/Cargo.toml') }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libpq-dev
-
-      - name: Cargo check (debug)
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTFLAGS: "-D warnings"
-        with:
-          command: check
-          args: --tests
-
-      - name: Cargo check (release)
-        env:
-          RUSTFLAGS: "-D warnings"
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release
-
-  version-check:
-    name: Check that all graph-node crates have the same version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Checks through all Cargo.toml files, making sure their version is unique
-        run: |
-          source 'scripts/toml-utils.sh'
-
-          ALL_TOML_FILE_NAMES=$(get_all_toml_files)
-          ALL_TOML_VERSIONS=$(get_all_toml_versions $ALL_TOML_FILE_NAMES)
-
-          ./scripts/lines-unique.sh $ALL_TOML_VERSIONS
+          args: --no-deps

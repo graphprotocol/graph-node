@@ -1,4 +1,10 @@
+pub mod causality_region;
 pub mod offchain;
+
+pub use causality_region::CausalityRegion;
+
+#[cfg(test)]
+mod tests;
 
 use crate::{
     blockchain::{
@@ -8,7 +14,6 @@ use crate::{
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
-        subgraph::DataSourceTemplateInfo,
     },
     data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
@@ -18,6 +23,7 @@ use semver::Version;
 use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
 use std::{collections::BTreeMap, fmt, sync::Arc};
+use thiserror::Error;
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
@@ -25,19 +31,15 @@ pub enum DataSource<C: Blockchain> {
     Offchain(offchain::DataSource),
 }
 
-impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource<C> {
-    type Error = Error;
+#[derive(Error, Debug)]
+pub enum DataSourceCreationError {
+    /// The creation of the data source should be ignored.
+    #[error("ignoring data source creation due to invalid parameter: '{0}', error: {1:#}")]
+    Ignore(String, Error),
 
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
-        match &info.template {
-            DataSourceTemplate::Onchain(_) => {
-                C::DataSource::try_from(info).map(DataSource::Onchain)
-            }
-            DataSourceTemplate::Offchain(_) => {
-                offchain::DataSource::try_from(info).map(DataSource::Offchain)
-            }
-        }
-    }
+    /// Other errors.
+    #[error("error creating data source: {0:#}")]
+    Unknown(#[from] Error),
 }
 
 impl<C: Blockchain> DataSource<C> {
@@ -125,10 +127,7 @@ impl<C: Blockchain> DataSource<C> {
     pub fn is_duplicate_of(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Onchain(a), Self::Onchain(b)) => a.is_duplicate_of(b),
-            (Self::Offchain(a), Self::Offchain(b)) => {
-                // See also: data-source-is-duplicate-of
-                a.manifest_idx == b.manifest_idx && a.source == b.source && a.context == b.context
-            }
+            (Self::Offchain(a), Self::Offchain(b)) => a.is_duplicate_of(b),
             _ => false,
         }
     }
@@ -182,10 +181,12 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .resolve(resolver, logger, manifest_idx)
                 .await
                 .map(DataSource::Onchain),
-            Self::Offchain(unresolved) => unresolved
-                .resolve(resolver, logger, manifest_idx)
-                .await
-                .map(DataSource::Offchain),
+            Self::Offchain(_unresolved) => {
+                anyhow::bail!(
+                    "static file data sources are not yet supported, \\
+                     for details see https://github.com/graphprotocol/graph-node/issues/3864"
+                );
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 [package]
 name = "graph-chain-ethereum"
-version = "0.28.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 envconfig = "0.10.0"
@@ -17,16 +17,16 @@ dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
 hex = "0.4.3"
-semver = "1.0.12"
+semver = "1.0.14"
 
-itertools = "0.10.3"
+itertools = "0.10.5"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }
-base64 = "0.13.0"
+base64 = "0.13.1"
 
 [build-dependencies]
 tonic-build = { version = "0.7.2", features = ["prost"] }

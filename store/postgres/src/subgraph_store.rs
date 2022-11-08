@@ -27,8 +27,9 @@ use graph::{
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
-        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError,
+        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -372,6 +373,20 @@ impl SubgraphStoreInner {
         Ok(site)
     }
 
+    fn evict(&self, id: &DeploymentHash) -> Result<(), StoreError> {
+        if let Some((site, _)) = self.sites.remove(id) {
+            let store = self.stores.get(&site.shard).ok_or_else(|| {
+                constraint_violation!(
+                    "shard {} for deployment sgd{} not found when evicting",
+                    site.shard,
+                    site.id
+                )
+            })?;
+            store.layout_cache.remove(&site);
+        }
+        Ok(())
+    }
+
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.find(|site| site.id == id) {
             return Ok(site);
@@ -498,6 +513,8 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
+        self.evict(&schema.id)?;
+
         let graft_base = deployment
             .graft_base
             .as_ref()
@@ -606,7 +623,7 @@ impl SubgraphStoreInner {
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
-            earliest_block: deployment.earliest_block.clone(),
+            start_block: deployment.start_block.clone(),
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
@@ -1092,6 +1109,11 @@ impl SubgraphStoreInner {
             .prune(reporter, site, earliest_block, reorg_threshold, prune_ratio)
             .await
     }
+
+    pub fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
+        let src_store = self.for_site(site)?;
+        src_store.load_deployment(site)
+    }
 }
 
 struct EnsLookup {
@@ -1258,6 +1280,18 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(writable)
     }
 
+    async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {
+        self.evict(&loc.hash)?;
+
+        // Remove the writable from the cache and stop it
+        let deployment = loc.id.into();
+        let writable = self.writables.lock().unwrap().remove(&deployment);
+        match writable {
+            Some(writable) => writable.stop().await,
+            None => Ok(()),
+        }
+    }
+
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         match self.site(id) {
             Ok(_) => Ok(true),
@@ -1285,5 +1319,14 @@ impl SubgraphStoreTrait for SubgraphStore {
             .iter()
             .map(|site| site.into())
             .collect())
+    }
+
+    async fn set_manifest_raw_yaml(
+        &self,
+        hash: &DeploymentHash,
+        raw_yaml: String,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(hash)?;
+        store.set_manifest_raw_yaml(site, raw_yaml).await
     }
 }

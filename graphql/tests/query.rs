@@ -267,7 +267,7 @@ async fn insert_test_entities(
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
     id_type: IdType,
 ) -> DeploymentLocator {
-    let deployment = DeploymentCreate::new(&manifest, None);
+    let deployment = DeploymentCreate::new(String::new(), &manifest, None);
     let name = SubgraphName::new(manifest.id.as_str()).unwrap();
     let node_id = NodeId::new("test").unwrap();
     let deployment = store

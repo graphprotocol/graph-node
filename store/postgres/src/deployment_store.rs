@@ -3,11 +3,13 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
+use graph::data_source::CausalityRegion;
 use graph::prelude::{
     tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
@@ -211,7 +213,8 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let conn = self.get_conn()?;
-        detail::deployment_entity(&conn, site)
+        Ok(detail::deployment_entity(&conn, site)
+            .with_context(|| format!("Deployment details not found for {}", site.deployment))?)
     }
 
     // Remove the data and metadata for the deployment `site`. This operation
@@ -1055,65 +1058,64 @@ impl DeploymentStore {
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
-        offchain_to_remove: &[StoredDynamicDataSource],
+        processed_data_sources: &[StoredDynamicDataSource],
     ) -> Result<StoreEvent, StoreError> {
         let conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
             self.get_conn()?
         };
 
-        let event = conn.transaction(|| -> Result<_, StoreError> {
-            // Emit a store event for the changes we are about to make. We
-            // wait with sending it until we have done all our other work
-            // so that we do not hold a lock on the notification queue
-            // for longer than we have to
-            let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
+        let event = deployment::with_lock(&conn, &site, || {
+            conn.transaction(|| -> Result<_, StoreError> {
+                // Emit a store event for the changes we are about to make. We
+                // wait with sending it until we have done all our other work
+                // so that we do not hold a lock on the notification queue
+                // for longer than we have to
+                let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
 
-            // Make the changes
-            let layout = self.layout(&conn, site.clone())?;
+                // Make the changes
+                let layout = self.layout(&conn, site.clone())?;
 
-            //  see also: deployment-lock-for-update
-            deployment::lock(&conn, &site)?;
-
-            let section = stopwatch.start_section("apply_entity_modifications");
-            let count = self.apply_entity_modifications(
-                &conn,
-                layout.as_ref(),
-                mods,
-                block_ptr_to,
-                stopwatch,
-            )?;
-            section.end();
-
-            dynds::insert(
-                &conn,
-                &site,
-                data_sources,
-                block_ptr_to,
-                manifest_idx_and_name,
-            )?;
-
-            dynds::remove_offchain(&conn, &site, offchain_to_remove)?;
-
-            if !deterministic_errors.is_empty() {
-                deployment::insert_subgraph_errors(
+                let section = stopwatch.start_section("apply_entity_modifications");
+                let count = self.apply_entity_modifications(
                     &conn,
-                    &site.deployment,
-                    deterministic_errors,
-                    block_ptr_to.block_number(),
+                    layout.as_ref(),
+                    mods,
+                    block_ptr_to,
+                    stopwatch,
                 )?;
-            }
+                section.end();
 
-            deployment::transact_block(
-                &conn,
-                &site,
-                block_ptr_to,
-                firehose_cursor,
-                layout.count_query.as_str(),
-                count,
-            )?;
+                dynds::insert(
+                    &conn,
+                    &site,
+                    data_sources,
+                    block_ptr_to,
+                    manifest_idx_and_name,
+                )?;
 
-            Ok(event)
+                dynds::update_offchain_status(&conn, &site, processed_data_sources)?;
+
+                if !deterministic_errors.is_empty() {
+                    deployment::insert_subgraph_errors(
+                        &conn,
+                        &site.deployment,
+                        deterministic_errors,
+                        block_ptr_to.block_number(),
+                    )?;
+                }
+
+                deployment::transact_block(
+                    &conn,
+                    &site,
+                    block_ptr_to,
+                    firehose_cursor,
+                    layout.count_query.as_str(),
+                    count,
+                )?;
+
+                Ok(event)
+            })
         })?;
 
         Ok(event)
@@ -1126,50 +1128,54 @@ impl DeploymentStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
-        let event = conn.transaction(|| -> Result<_, StoreError> {
-            //  see also: deployment-lock-for-update
-            deployment::lock(conn, &site)?;
-
-            // Don't revert past a graft point
-            let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
-            if let Some(graft_block) = info.graft_block {
-                if graft_block > block_ptr_to.number {
-                    return Err(anyhow!(
-                        "Can not revert subgraph `{}` to block {} as it was \
+        let event = deployment::with_lock(conn, &site, || {
+            conn.transaction(|| -> Result<_, StoreError> {
+                // Don't revert past a graft point
+                let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
+                if let Some(graft_block) = info.graft_block {
+                    if graft_block > block_ptr_to.number {
+                        return Err(anyhow!(
+                            "Can not revert subgraph `{}` to block {} as it was \
                         grafted at block {} and reverting past a graft point \
                         is not possible",
-                        site.deployment.clone(),
-                        block_ptr_to.number,
-                        graft_block
-                    )
-                    .into());
+                            site.deployment.clone(),
+                            block_ptr_to.number,
+                            graft_block
+                        )
+                        .into());
+                    }
                 }
-            }
 
-            // The revert functions want the number of the first block that we need to get rid of
-            let block = block_ptr_to.number + 1;
+                // The revert functions want the number of the first block that we need to get rid of
+                let block = block_ptr_to.number + 1;
 
-            deployment::revert_block_ptr(conn, &site.deployment, block_ptr_to, firehose_cursor)?;
+                deployment::revert_block_ptr(
+                    conn,
+                    &site.deployment,
+                    block_ptr_to,
+                    firehose_cursor,
+                )?;
 
-            // Revert the data
-            let layout = self.layout(conn, site.clone())?;
+                // Revert the data
+                let layout = self.layout(conn, site.clone())?;
 
-            let (event, count) = layout.revert_block(conn, block)?;
+                let (event, count) = layout.revert_block(conn, block)?;
 
-            // Revert the meta data changes that correspond to this subgraph.
-            // Only certain meta data changes need to be reverted, most
-            // importantly creation of dynamic data sources. We ensure in the
-            // rest of the code that we only record history for those meta data
-            // changes that might need to be reverted
-            Layout::revert_metadata(&conn, &site, block)?;
+                // Revert the meta data changes that correspond to this subgraph.
+                // Only certain meta data changes need to be reverted, most
+                // importantly creation of dynamic data sources. We ensure in the
+                // rest of the code that we only record history for those meta data
+                // changes that might need to be reverted
+                Layout::revert_metadata(&conn, &site, block)?;
 
-            deployment::update_entity_count(
-                conn,
-                site.as_ref(),
-                layout.count_query.as_str(),
-                count,
-            )?;
-            Ok(event)
+                deployment::update_entity_count(
+                    conn,
+                    site.as_ref(),
+                    layout.count_query.as_str(),
+                    count,
+                )?;
+                Ok(event)
+            })
         })?;
 
         Ok(event)
@@ -1273,6 +1279,16 @@ impl DeploymentStore {
         .await
     }
 
+    pub(crate) async fn causality_region_curr_val(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<Option<CausalityRegion>, StoreError> {
+        self.with_conn(move |conn, _| {
+            Ok(conn.transaction(|| crate::dynds::causality_region_curr_val(conn, &site))?)
+        })
+        .await
+    }
+
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
         self.with_conn(move |conn, _| {
             conn.transaction(|| deployment::exists_and_synced(conn, &id))
@@ -1303,18 +1319,24 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site.cheap_clone())?;
 
-        // Do any cleanup to bring the subgraph into a known good state
-        if let Some((src, block)) = graft_src {
+        // If `graft_src` is `Some`, then there is a pending graft.
+        if let Some((src, block, src_deployment)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
                 src.catalog.site.namespace,
                 dst.catalog.site.namespace
             );
+
+            let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
+            let dst_manifest_idx_and_name = self
+                .load_deployment(&dst.site)?
+                .manifest
+                .template_idx_and_name()?;
 
             // Copy subgraph data
             // We allow both not copying tables at all from the source, as well
@@ -1327,6 +1349,8 @@ impl DeploymentStore {
                 src.clone(),
                 dst.clone(),
                 block.clone(),
+                src_manifest_idx_and_name,
+                dst_manifest_idx_and_name,
             )?;
             let status = copy_conn.copy_data()?;
             if status == crate::copy::Status::Cancelled {
@@ -1371,6 +1395,12 @@ impl DeploymentStore {
                 deployment::set_entity_count(&conn, &dst.site, &dst.count_query)?;
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
+
+                deployment::set_earliest_block(
+                    &conn,
+                    &dst.site,
+                    src_deployment.earliest_block_number,
+                )?;
 
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
@@ -1586,6 +1616,17 @@ impl DeploymentStore {
         let id = site.id.clone();
         self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
+    }
+
+    pub(crate) async fn set_manifest_raw_yaml(
+        &self,
+        site: Arc<Site>,
+        raw_yaml: String,
+    ) -> Result<(), StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::set_manifest_raw_yaml(&conn, &site, &raw_yaml).map_err(Into::into)
+        })
+        .await
     }
 }
 

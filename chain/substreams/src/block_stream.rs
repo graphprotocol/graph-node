@@ -39,10 +39,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let firehose_endpoint = match chain.endpoints.random() {
-            Some(e) => e.clone(),
-            None => return Err(anyhow::format_err!("no firehose endpoint available")),
-        };
+        let firehose_endpoint = chain.endpoints.random()?;
 
         let mapper = Arc::new(Mapper {});
 

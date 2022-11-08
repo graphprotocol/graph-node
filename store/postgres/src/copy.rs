@@ -34,7 +34,7 @@ use diesel::{
 use graph::{
     components::store::EntityType,
     constraint_violation,
-    prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError},
+    prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
 };
 
 use crate::{
@@ -51,7 +51,7 @@ const INITIAL_BATCH_SIZE: i64 = 10_000;
 /// arrays can be large and large arrays will slow down copying a lot. We
 /// therefore tread lightly in that case
 const INITIAL_BATCH_SIZE_LIST: i64 = 100;
-const TARGET_DURATION: Duration = Duration::from_secs(5 * 60);
+
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
 
 /// If replicas are lagging by more than this, the copying code will pause
@@ -308,8 +308,9 @@ impl AdaptiveBatchSize {
     pub fn adapt(&mut self, duration: Duration) {
         // Avoid division by zero
         let duration = duration.as_millis().max(1);
-        let new_batch_size =
-            self.size as f64 * TARGET_DURATION.as_millis() as f64 / duration as f64;
+        let new_batch_size = self.size as f64
+            * ENV_VARS.store.batch_target_duration.as_millis() as f64
+            / duration as f64;
         self.size = (2 * self.size).min(new_batch_size.round() as i64);
     }
 }
@@ -672,6 +673,8 @@ pub struct Connection {
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
+    src_manifest_idx_and_name: Vec<(i32, String)>,
+    dst_manifest_idx_and_name: Vec<(i32, String)>,
 }
 
 impl Connection {
@@ -687,6 +690,8 @@ impl Connection {
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
+        src_manifest_idx_and_name: Vec<(i32, String)>,
+        dst_manifest_idx_and_name: Vec<(i32, String)>,
     ) -> Result<Self, StoreError> {
         let logger = logger.new(o!("dst" => dst.site.namespace.to_string()));
 
@@ -712,6 +717,8 @@ impl Connection {
             src,
             dst,
             target_block,
+            src_manifest_idx_and_name,
+            dst_manifest_idx_and_name,
         })
     }
 
@@ -728,6 +735,8 @@ impl Connection {
                 &self.conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
+                &self.src_manifest_idx_and_name,
+                &self.dst_manifest_idx_and_name,
             )?;
         }
         Ok(())

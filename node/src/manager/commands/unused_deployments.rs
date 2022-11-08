@@ -76,7 +76,7 @@ pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
 pub fn remove(
     store: Arc<SubgraphStore>,
     count: usize,
-    deployment: Option<String>,
+    deployment: Option<&str>,
     older: Option<chrono::Duration>,
 ) -> Result<(), Error> {
     let filter = match older {
@@ -88,7 +88,7 @@ pub fn remove(
         None => unused,
         Some(deployment) => unused
             .into_iter()
-            .filter(|u| u.deployment.as_str() == deployment)
+            .filter(|u| &u.deployment == deployment)
             .collect::<Vec<_>>(),
     };
 

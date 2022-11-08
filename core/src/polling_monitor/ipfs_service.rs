@@ -1,63 +1,73 @@
 use anyhow::{anyhow, Error};
 use bytes::Bytes;
-use cid::Cid;
-use futures::{Future, FutureExt};
+use futures::future::BoxFuture;
 use graph::{
-    cheap_clone::CheapClone,
-    ipfs_client::{IpfsClient, StatApi},
-    tokio::sync::Semaphore,
+    ipfs_client::{CidFile, IpfsClient, StatApi},
+    prelude::CheapClone,
 };
-use std::{pin::Pin, sync::Arc, task::Poll, time::Duration};
-use tower::Service;
+use std::time::Duration;
+use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
 
-/// Reference type, clones will refer to the same service.
-#[derive(Clone)]
-pub struct IpfsService {
+pub type IpfsService = Buffer<CidFile, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
+
+pub fn ipfs_service(
     client: IpfsClient,
     max_file_size: u64,
     timeout: Duration,
-    concurrency_limiter: Arc<Semaphore>,
+    concurrency_and_rate_limit: u16,
+) -> IpfsService {
+    let ipfs = IpfsServiceInner {
+        client,
+        max_file_size,
+        timeout,
+    };
+
+    let svc = ServiceBuilder::new()
+        .rate_limit(concurrency_and_rate_limit.into(), Duration::from_secs(1))
+        .concurrency_limit(concurrency_and_rate_limit as usize)
+        .service_fn(move |req| ipfs.cheap_clone().call_inner(req))
+        .boxed();
+
+    // The `Buffer` makes it so the rate and concurrency limit are shared among clones.
+    Buffer::new(svc, 1)
 }
 
-impl CheapClone for IpfsService {
+#[derive(Clone)]
+struct IpfsServiceInner {
+    client: IpfsClient,
+    max_file_size: u64,
+    timeout: Duration,
+}
+
+impl CheapClone for IpfsServiceInner {
     fn cheap_clone(&self) -> Self {
         Self {
             client: self.client.cheap_clone(),
             max_file_size: self.max_file_size,
             timeout: self.timeout,
-            concurrency_limiter: self.concurrency_limiter.cheap_clone(),
         }
     }
 }
 
-impl IpfsService {
-    pub fn new(
-        client: IpfsClient,
-        max_file_size: u64,
-        timeout: Duration,
-        concurrency_limit: u16,
-    ) -> Self {
-        Self {
-            client,
-            max_file_size,
-            timeout,
-            concurrency_limiter: Arc::new(Semaphore::new(concurrency_limit as usize)),
-        }
-    }
-
-    async fn call(&self, cid: Cid) -> Result<Option<Bytes>, Error> {
+impl IpfsServiceInner {
+    async fn call_inner(self, req: CidFile) -> Result<Option<Bytes>, Error> {
+        let CidFile { cid, path } = req;
         let multihash = cid.hash().code();
         if !SAFE_MULTIHASHES.contains(&multihash) {
             return Err(anyhow!("CID multihash {} is not allowed", multihash));
         }
 
-        let cid_str = cid.to_string();
+        let cid_str = match path {
+            Some(path) => format!("{}/{}", cid, path),
+            None => cid.to_string(),
+        };
+
         let size = match self
             .client
-            .stat_size(StatApi::Files, cid_str, self.timeout)
+            .stat_size(StatApi::Files, cid_str.clone(), self.timeout)
             .await
         {
             Ok(size) => size,
@@ -71,7 +81,7 @@ impl IpfsService {
         if size > self.max_file_size {
             return Err(anyhow!(
                 "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-                cid.to_string(),
+                cid_str,
                 self.max_file_size,
                 size
             ));
@@ -79,33 +89,9 @@ impl IpfsService {
 
         Ok(self
             .client
-            .cat_all(&cid.to_string(), self.timeout)
+            .cat_all(&cid_str, self.timeout)
             .await
             .map(Some)?)
-    }
-}
-
-impl Service<Cid> for IpfsService {
-    type Response = (Cid, Option<Bytes>);
-    type Error = (Cid, Error);
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
-
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // The permit is acquired and immediately dropped, as tower does not yet allow returning it.
-        // So this is only indicative of capacity being available.
-        Pin::new(&mut self.concurrency_limiter.acquire().boxed())
-            .poll(cx)
-            .map_ok(|_| ())
-            .map_err(|_| unreachable!("semaphore is never closed"))
-    }
-
-    fn call(&mut self, cid: Cid) -> Self::Future {
-        let this = self.cheap_clone();
-        async move {
-            let _permit = this.concurrency_limiter.acquire().await;
-            this.call(cid).await.map(|x| (cid, x)).map_err(|e| (cid, e))
-        }
-        .boxed()
     }
 }
 
@@ -129,3 +115,45 @@ const SAFE_MULTIHASHES: [u64; 15] = [
     0xb260, // BLAKE2s-256 (32-byte hash size)
     0x1e,   // BLAKE3-256 (32-byte hash size)
 ];
+
+#[cfg(test)]
+mod test {
+    use ipfs::IpfsApi;
+    use ipfs_api as ipfs;
+    use std::{fs, str::FromStr, time::Duration};
+    use tower::ServiceExt;
+
+    use cid::Cid;
+    use graph::{ipfs_client::IpfsClient, tokio};
+
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn cat_file_in_folder() {
+        let path = "./tests/fixtures/ipfs_folder";
+        let uid = Uuid::new_v4().to_string();
+        fs::write(format!("{}/random.txt", path), &uid).unwrap();
+
+        let cl: ipfs::IpfsClient = ipfs::IpfsClient::default();
+
+        let rsp = cl.add_path(&path).await.unwrap();
+
+        let ipfs_folder = rsp.iter().find(|rsp| rsp.name == "ipfs_folder").unwrap();
+
+        let local = IpfsClient::localhost();
+        let cid = Cid::from_str(&ipfs_folder.hash).unwrap();
+        let file = "random.txt".to_string();
+
+        let svc = super::ipfs_service(local, 100000, Duration::from_secs(5), 10);
+
+        let content = svc
+            .oneshot(super::CidFile {
+                cid,
+                path: Some(file),
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(content.to_vec(), uid.as_bytes().to_vec());
+    }
+}

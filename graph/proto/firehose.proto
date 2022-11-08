@@ -1,17 +1,52 @@
 syntax = "proto3";
 
-package sf.firehose.v1;
+package sf.firehose.v2;
 
 import "google/protobuf/any.proto";
 
-option go_package = "github.com/streamingfast/pbgo/sf/firehose/v1;pbfirehose";
+option go_package = "github.com/streamingfast/pbgo/sf/firehose/v2;pbfirehose";
 
 service Stream {
   rpc Blocks(Request) returns (stream Response);
 }
 
-// For historical segments, forks are not passed
+service Fetch {
+  rpc Block(SingleBlockRequest) returns (SingleBlockResponse);
+}
+
+message SingleBlockRequest {
+
+  // Get the current known canonical version of a block at with this number
+  message BlockNumber{
+    uint64 num=1;
+  }
+
+  // Get the current block with specific hash and number
+  message BlockHashAndNumber{
+    uint64 num=1;
+    string hash=2;
+  }
+
+  // Get the block that generated a specific cursor
+  message Cursor{
+    string cursor=1;
+  }
+
+  oneof reference{
+    BlockNumber block_number=3;
+    BlockHashAndNumber block_hash_and_number=4;
+    Cursor cursor=5;
+  }
+
+  repeated google.protobuf.Any transforms = 6;
+}
+
+message SingleBlockResponse {
+  google.protobuf.Any block = 1;
+}
+
 message Request {
+
   // Controls where the stream of blocks will start.
   //
   // The stream will start **inclusively** at the requested block num.
@@ -25,86 +60,51 @@ message Request {
   // #50. If it resolves before first streamable block of chain, we assume start
   // of chain.
   //
-  // If `start_cursor` is passed, this value is ignored and the stream instead starts
+  // If `start_cursor` is given, this value is ignored and the stream instead starts
   // immediately after the Block pointed by the opaque `start_cursor` value.
   int64 start_block_num = 1;
 
   // Controls where the stream of blocks will start which will be immediately after
   // the Block pointed by this opaque cursor.
   //
-  // Obtain this value from a previously received from `Response.cursor`.
+  // Obtain this value from a previously received `Response.cursor`.
   //
   // This value takes precedence over `start_block_num`.
-  string start_cursor = 13;
+  string cursor = 2;
 
   // When non-zero, controls where the stream of blocks will stop.
   //
   // The stream will close **after** that block has passed so the boundary is
   // **inclusive**.
-  uint64 stop_block_num = 5;
+  uint64 stop_block_num = 3;
 
-  // Filter the steps you want to see. If not specified, defaults to all steps.
-  //
-  // Most common steps will be [STEP_IRREVERSIBLE], or [STEP_NEW, STEP_UNDO, STEP_IRREVERSIBLE].
-  repeated ForkStep fork_steps = 8;
+  // With final_block_only, you only receive blocks with STEP_FINAL
+  // Default behavior will send blocks as STEP_NEW, with occasional STEP_UNDO
+  bool final_blocks_only = 4;
 
-  // The CEL filter expression used to include transactions, specific to the target protocol,
-  // works in combination with `exclude_filter_expr` value.
-  string include_filter_expr = 10;
-
-  // The CEL filter expression used to exclude transactions, specific to the target protocol, works
-  // in combination with `include_filter_expr` value.
-  string exclude_filter_expr = 11;
-
-  // **Warning** Experimental API, controls how blocks are trimmed for extraneous information before
-  // being sent back. The actual trimming is chain dependent.
-  //BlockDetails details = 15;
-  reserved 15;
-
-  // controls how many confirmations will consider a given block as final (STEP_IRREVERSIBLE). Warning, if any reorg goes beyond that number of confirmations, the request will stall forever
-  //uint64 confirmations = 16;
-  reserved 16;
-
-
-  //- EOS "handoffs:3"
-  //- EOS "lib"
-  //- EOS "confirms:3"
-  //- ETH "confirms:200"
-  //- ETH "confirms:7"
-  //- SOL "commmitement:finalized"
-  //- SOL "confirms:200"
-  string irreversibility_condition = 17;
-
-  repeated google.protobuf.Any transforms = 18;
+  repeated google.protobuf.Any transforms = 10;
 }
 
 message Response {
-  // Chain specific block payload, one of:
-  // - sf.eosio.codec.v1.Block
-  // - sf.ethereum.codec.v1.Block
-  // - sf.near.codec.v1.Block
-  // - sf.solana.codec.v1.Block
+  // Chain specific block payload, ex:
+  //   - sf.eosio.type.v1.Block
+  //   - sf.ethereum.type.v1.Block
+  //   - sf.near.type.v1.Block
   google.protobuf.Any block = 1;
   ForkStep step = 6;
   string cursor = 10;
 }
 
 enum ForkStep {
-  STEP_UNKNOWN = 0;
-  // Block is new head block of the chain, that is linear with the previous block
-  STEP_NEW = 1;
-  // Block is now forked and should be undone, it's not the head block of the chain anymore
-  STEP_UNDO = 2;
-  // Removed, was STEP_REDO
-  reserved 3;
-  // Block is now irreversible and can be committed to (finality is chain specific, see chain documentation for more details)
-  STEP_IRREVERSIBLE = 4;
-  // Removed, was STEP_STALLED
-  reserved 5 ;
-}
+  STEP_UNSET = 0;
 
-// TODO: move to ethereum specific transforms
-enum BlockDetails {
-  BLOCK_DETAILS_FULL = 0;
-  BLOCK_DETAILS_LIGHT = 1;
+  // Incoming block
+  STEP_NEW = 1;
+
+  // A reorg caused this specific block to be excluded from the chain
+  STEP_UNDO = 2;
+
+  // Block is now final and can be committed (finality is chain specific,
+  // see chain documentation for more details)
+  STEP_FINAL = 3;
 }

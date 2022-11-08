@@ -10,7 +10,7 @@ use web3::types::{Address, H256};
 /// It's just way easier to check that this works, and serves as a kind of
 /// documentation as a side-benefit.
 pub struct PoI<'a> {
-    pub causality_regions: HashMap<String, CausalityRegion<'a>>,
+    pub causality_regions: HashMap<String, PoICausalityRegion<'a>>,
     pub subgraph_id: DeploymentHash,
     pub block_hash: H256,
     pub indexer: Option<Address>,
@@ -31,13 +31,13 @@ impl_stable_hash!(PoI<'_> {
     indexer: indexer_opt_as_bytes
 });
 
-pub struct CausalityRegion<'a> {
+pub struct PoICausalityRegion<'a> {
     pub blocks: Vec<Block<'a>>,
 }
 
-impl_stable_hash!(CausalityRegion<'_> {blocks});
+impl_stable_hash!(PoICausalityRegion<'_> {blocks});
 
-impl CausalityRegion<'_> {
+impl PoICausalityRegion<'_> {
     pub fn from_network(network: &str) -> String {
         format!("ethereum/{}", network)
     }

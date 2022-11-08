@@ -2,7 +2,6 @@ use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
 use super::{Blockchain, TriggersAdapter};
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
-use crate::firehose::ForkStep::*;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
@@ -231,8 +230,8 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
             let mut request = firehose::Request {
                 start_block_num: start_block_num as i64,
-                start_cursor: latest_cursor.to_string(),
-                fork_steps: vec![StepNew as i32, StepUndo as i32],
+                cursor: latest_cursor.to_string(),
+                final_blocks_only: false,
                 ..Default::default()
             };
 
@@ -256,6 +255,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
 
                     for await response in stream {
                         match process_firehose_response(
+                            &endpoint,
                             response,
                             &mut check_subgraph_continuity,
                             manifest_start_block_num,
@@ -344,6 +344,7 @@ enum BlockResponse<C: Blockchain> {
 }
 
 async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
+    endpoint: &Arc<FirehoseEndpoint>,
     result: Result<firehose::Response, Status>,
     check_subgraph_continuity: &mut bool,
     manifest_start_block_num: BlockNumber,
@@ -374,7 +375,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
                 );
 
                 let mut revert_to = mapper
-                    .final_block_ptr_for(logger, &block.block)
+                    .final_block_ptr_for(logger, endpoint, &block.block)
                     .await
                     .context("Could not fetch final block to revert to")?;
 
@@ -389,7 +390,7 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
                     }
 
                     revert_to = mapper
-                        .block_ptr_for_number(logger, block_num)
+                        .block_ptr_for_number(logger, endpoint, block_num)
                         .await
                         .context("Could not fetch manifest start block to revert to")?;
                 }

@@ -21,7 +21,6 @@ use graph::{
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
-
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 
@@ -148,7 +147,7 @@ fn create_subgraph() {
             templates: vec![],
             chain: PhantomData,
         };
-        let deployment = DeploymentCreate::new(&manifest, None);
+        let deployment = DeploymentCreate::new(String::new(), &manifest, None);
         let node_id = NodeId::new("left").unwrap();
 
         let (deployment, events) = tap_store_events(|| {

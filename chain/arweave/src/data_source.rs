@@ -11,7 +11,7 @@ use graph::{
     },
     semver,
 };
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 use crate::chain::Chain;
 use crate::trigger::ArweaveTrigger;
@@ -31,6 +31,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    fn from_template_info(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        Err(anyhow!("Arweave subgraphs do not support templates"))
+    }
+
     // FIXME
     //
     // need to decode the base64url encoding?
@@ -232,17 +236,6 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let mapping = mapping.resolve(resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
-    }
-}
-
-/// # TODO
-///
-/// add templates for arweave subgraphs
-impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = Error;
-
-    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        Err(anyhow!("Arweave subgraphs do not support templates"))
     }
 }
 

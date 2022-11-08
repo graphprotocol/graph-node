@@ -1,7 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{detail::GraphNodeVersion, primary::DeploymentId};
+use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
@@ -13,17 +13,20 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::data::subgraph::{
-    schema::{DeploymentCreate, SubgraphManifestEntity},
-    SubgraphFeature,
-};
 use graph::prelude::{
     anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
     DeploymentHash, DeploymentState, Schema, StoreError,
 };
 use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
+use graph::{
+    data::subgraph::{
+        schema::{DeploymentCreate, SubgraphManifestEntity},
+        SubgraphFeature,
+    },
+    util::backoff::ExponentialBackoff,
+};
 use stable_hash_legacy::crypto::SetHasher;
-use std::{collections::BTreeSet, convert::TryFrom, ops::Bound};
+use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
 use std::{str::FromStr, sync::Arc};
 
 use crate::connection_pool::ForeignServer;
@@ -67,9 +70,6 @@ table! {
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
-        // Not used anymore; only written to keep backwards compatible
-        earliest_ethereum_block_hash -> Nullable<Binary>,
-        earliest_ethereum_block_number -> Nullable<Numeric>,
         earliest_block_number -> Integer,
         latest_ethereum_block_hash -> Nullable<Binary>,
         latest_ethereum_block_number -> Nullable<Numeric>,
@@ -113,6 +113,7 @@ table! {
         /// Parent of the smallest start block from the manifest
         start_block_number -> Nullable<Integer>,
         start_block_hash -> Nullable<Binary>,
+        raw_yaml -> Nullable<Text>,
     }
 }
 
@@ -273,6 +274,22 @@ pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFea
         .iter()
         .map(|f| SubgraphFeature::from_str(f).map_err(StoreError::from))
         .collect()
+}
+
+/// This migrates subgraphs that existed before the raw_yaml column was added.
+pub fn set_manifest_raw_yaml(
+    conn: &PgConnection,
+    site: &Site,
+    raw_yaml: &str,
+) -> Result<(), StoreError> {
+    use subgraph_manifest as sm;
+
+    update(sm::table.filter(sm::id.eq(site.id)))
+        .filter(sm::raw_yaml.is_null())
+        .set(sm::raw_yaml.eq(raw_yaml))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(|e| e.into())
 }
 
 pub fn transact_block(
@@ -453,11 +470,15 @@ pub fn initialize_block_ptr(conn: &PgConnection, site: &Site) -> Result<(), Stor
 
     let needs_init = d::table
         .filter(d::id.eq(site.id))
-        .filter(d::latest_ethereum_block_hash.is_null())
-        .select(d::id)
-        .first::<i32>(conn)
-        .optional()?
-        .is_some();
+        .select(d::latest_ethereum_block_hash)
+        .first::<Option<Vec<u8>>>(conn)
+        .map_err(|e| {
+            constraint_violation!(
+                "deployment sgd{} must have been created before calling initialize_block_ptr but we got {}",
+                site.id, e
+            )
+        })?
+        .is_none();
 
     if needs_init {
         if let (Some(hash), Some(number)) = m::table
@@ -889,13 +910,14 @@ pub fn create_deployment(
                 repository,
                 features,
                 schema,
+                raw_yaml,
             },
-        earliest_block,
+        start_block,
         graft_base,
         graft_block,
         debug_fork,
     } = deployment;
-    let earliest_block_number = earliest_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
+    let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
 
     let deployment_values = (
         d::id.eq(site.id),
@@ -905,8 +927,6 @@ pub fn create_deployment(
         d::health.eq(SubgraphHealth::Healthy),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
-        d::earliest_ethereum_block_hash.eq(b(&earliest_block)),
-        d::earliest_ethereum_block_number.eq(n(&earliest_block)),
         d::earliest_block_number.eq(earliest_block_number),
         d::latest_ethereum_block_hash.eq(sql("null")),
         d::latest_ethereum_block_number.eq(sql("null")),
@@ -930,8 +950,9 @@ pub fn create_deployment(
         // New subgraphs index only a prefix of bytea columns
         // see: attr-bytea-prefix
         m::use_bytea_prefix.eq(true),
-        m::start_block_hash.eq(b(&earliest_block)),
-        m::start_block_number.eq(earliest_block_number),
+        m::start_block_hash.eq(b(&start_block)),
+        m::start_block_number.eq(start_block.as_ref().map(|ptr| ptr.number)),
+        m::raw_yaml.eq(raw_yaml),
     );
 
     if exists && replace {
@@ -1024,18 +1045,20 @@ pub fn set_earliest_block(
     Ok(())
 }
 
-/// Lock the row for `site` in `subgraph_deployment` for update for the
-/// remainder of the current transaction. This lock is used to coordinate
-/// the changes that the subgraph writer makes with changes that other parts
-/// of the system, in particular, pruning make
+/// Lock the deployment `site` for writes while `f` is running. The lock can
+/// cross transactions, and `f` can therefore execute multiple transactions
+/// while other write activity for that deployment is locked out. Block the
+/// current thread until we can acquire the lock.
 //  see also: deployment-lock-for-update
-pub fn lock(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
-    use subgraph_deployment as d;
-
-    d::table
-        .select(d::id)
-        .filter(d::id.eq(site.id))
-        .for_update()
-        .get_result::<DeploymentId>(conn)?;
-    Ok(())
+pub fn with_lock<F, R>(conn: &PgConnection, site: &Site, f: F) -> Result<R, StoreError>
+where
+    F: FnOnce() -> Result<R, StoreError>,
+{
+    let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
+    while !advisory_lock::lock_deployment_session(conn, site)? {
+        backoff.sleep();
+    }
+    let res = f();
+    advisory_lock::unlock_deployment_session(conn, site)?;
+    res
 }

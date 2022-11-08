@@ -49,6 +49,10 @@ impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
 }
 
 impl<C: Blockchain> DataSource<C> for MockDataSource {
+    fn from_template_info(_template_info: DataSourceTemplateInfo<C>) -> Result<Self, Error> {
+        todo!()
+    }
+
     fn address(&self) -> Option<&[u8]> {
         todo!()
     }
@@ -314,6 +318,18 @@ impl Blockchain for MockBlockchain {
         _filter: std::sync::Arc<Self::TriggerFilter>,
         _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
+        todo!()
+    }
+
+    fn is_refetch_block_required(&self) -> bool {
+        false
+    }
+
+    async fn refetch_firehose_block(
+        &self,
+        _logger: &slog::Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<MockBlock, Error> {
         todo!()
     }
 

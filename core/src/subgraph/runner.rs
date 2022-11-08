@@ -5,21 +5,22 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, TriggerFilter as _};
+use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
-    subgraph::{CausalityRegion, MappingError, ProofOfIndexing, SharedProofOfIndexing},
+    subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
-use graph::data_source::{offchain, DataSource, TriggerData};
+use graph::data_source::{
+    offchain, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
+};
 use graph::prelude::*;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
-use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -36,7 +37,7 @@ where
     state: IndexingState,
     inputs: Arc<IndexingInputs<C>>,
     logger: Logger,
-    metrics: RunnerMetrics,
+    pub metrics: RunnerMetrics,
 }
 
 impl<C, T> SubgraphRunner<C, T>
@@ -57,7 +58,10 @@ where
                 should_try_unfail_non_deterministic: true,
                 synced: false,
                 skip_ptr_updates_timer: Instant::now(),
-                backoff: ExponentialBackoff::new(MINUTE * 2, ENV_VARS.subgraph_error_retry_ceil),
+                backoff: ExponentialBackoff::new(
+                    (MINUTE * 2).min(ENV_VARS.subgraph_error_retry_ceil),
+                    ENV_VARS.subgraph_error_retry_ceil,
+                ),
                 entity_lfu_cache: LfuCache::new(),
             },
             logger,
@@ -96,10 +100,11 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let mut block_stream = new_block_stream(&self.inputs, &self.ctx.filter)
-                .await?
-                .map_err(CancelableError::Error)
-                .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream =
+                new_block_stream(&self.inputs, &self.ctx.filter, &self.metrics.subgraph)
+                    .await?
+                    .map_err(CancelableError::Error)
+                    .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned
@@ -174,7 +179,7 @@ where
         };
 
         // Causality region for onchain triggers.
-        let causality_region = CausalityRegion::from_network(&self.inputs.network);
+        let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
@@ -229,6 +234,17 @@ where
             let filter = C::TriggerFilter::from_data_sources(
                 data_sources.iter().filter_map(DataSource::as_onchain),
             );
+
+            let block: Arc<C::Block> = if self.inputs.chain.is_refetch_block_required() {
+                Arc::new(
+                    self.inputs
+                        .chain
+                        .refetch_firehose_block(&logger, firehose_cursor.clone())
+                        .await?,
+                )
+            } else {
+                block.cheap_clone()
+            };
 
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
@@ -328,8 +344,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, offchain_to_remove) =
-            self.handle_offchain_triggers(offchain_events).await?;
+        let (offchain_mods, processed_data_sources) = self
+            .handle_offchain_triggers(offchain_events, &block)
+            .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -384,7 +401,7 @@ where
                 data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
-                offchain_to_remove,
+                processed_data_sources,
             )
             .await
             .context("Failed to transact block operations")?;
@@ -471,7 +488,27 @@ where
 
         for info in created_data_sources {
             // Try to instantiate a data source from the template
-            let data_source = DataSource::try_from(info)?;
+
+            let data_source = {
+                let res = match info.template {
+                    DataSourceTemplate::Onchain(_) => C::DataSource::from_template_info(info)
+                        .map(DataSource::Onchain)
+                        .map_err(DataSourceCreationError::from),
+                    DataSourceTemplate::Offchain(_) => offchain::DataSource::from_template_info(
+                        info,
+                        self.ctx.causality_region_next_value(),
+                    )
+                    .map(DataSource::Offchain),
+                };
+                match res {
+                    Ok(ds) => ds,
+                    Err(e @ DataSourceCreationError::Ignore(..)) => {
+                        warn!(self.logger, "{}", e.to_string());
+                        continue;
+                    }
+                    Err(DataSourceCreationError::Unknown(e)) => return Err(e),
+                }
+            };
 
             // Try to create a runtime host for the data source
             let host = self
@@ -486,7 +523,7 @@ where
                 None => {
                     warn!(
                         self.logger,
-                        "no runtime hosted created, there is already a runtime host instantiated for \
+                        "no runtime host created, there is already a runtime host instantiated for \
                         this data source";
                         "name" => &data_source.name(),
                         "address" => &data_source.address()
@@ -564,9 +601,10 @@ where
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
+        block: &Arc<C::Block>,
     ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
         let mut mods = vec![];
-        let mut offchain_to_remove = vec![];
+        let mut processed_data_sources = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -578,13 +616,11 @@ where
             let proof_of_indexing = None;
             let causality_region = "";
 
-            // We'll eventually need to do better here, but using an empty block works for now.
-            let block = Arc::default();
             block_state = self
                 .ctx
                 .process_trigger(
                     &self.logger,
-                    &block,
+                    block,
                     &TriggerData::Offchain(trigger),
                     block_state,
                     &proof_of_indexing,
@@ -608,10 +644,10 @@ where
             );
 
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
-            offchain_to_remove.extend(block_state.offchain_to_remove);
+            processed_data_sources.extend(block_state.processed_data_sources);
         }
 
-        Ok((mods, offchain_to_remove))
+        Ok((mods, processed_data_sources))
     }
 }
 

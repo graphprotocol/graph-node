@@ -165,9 +165,8 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_POI_ACCESS_TOKEN`. No default
     /// value is provided.
     pub poi_access_token: Option<String>,
-    /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. No
-    /// default value is provided.
-    pub subgraph_max_data_sources: Option<usize>,
+    /// Set by the environment variable `GRAPH_SUBGRAPH_MAX_DATA_SOURCES`. Defaults to 1 billion.
+    pub subgraph_max_data_sources: usize,
     /// Keep deterministic errors non-fatal even if the subgraph is pending.
     /// Used for testing Graph Node itself.
     ///
@@ -203,6 +202,9 @@ pub struct EnvVars {
     /// Set by the environment variable `EXTERNAL_WS_BASE_URL`. No default
     /// value is provided.
     pub external_ws_base_url: Option<String>,
+    /// Maximum number of Dynamic Data Sources after which a Subgraph will
+    /// switch to using static filter.
+    pub static_filters_threshold: usize,
 }
 
 impl EnvVars {
@@ -248,7 +250,7 @@ impl EnvVars {
             subgraph_version_switching_mode: inner.subgraph_version_switching_mode,
             kill_if_unresponsive: inner.kill_if_unresponsive.0,
             poi_access_token: inner.poi_access_token,
-            subgraph_max_data_sources: inner.subgraph_max_data_sources,
+            subgraph_max_data_sources: inner.subgraph_max_data_sources.0,
             disable_fail_fast: inner.disable_fail_fast.0,
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
@@ -258,6 +260,7 @@ impl EnvVars {
             explorer_query_threshold: Duration::from_millis(inner.explorer_query_threshold_in_msec),
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
+            static_filters_threshold: inner.static_filters_threshold,
         })
     }
 
@@ -351,8 +354,8 @@ struct Inner {
     kill_if_unresponsive: EnvVarBoolean,
     #[envconfig(from = "GRAPH_POI_ACCESS_TOKEN")]
     poi_access_token: Option<String>,
-    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES")]
-    subgraph_max_data_sources: Option<usize>,
+    #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES", default = "1_000_000_000")]
+    subgraph_max_data_sources: NoUnderscores<usize>,
     #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
     disable_fail_fast: EnvVarBoolean,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
@@ -371,6 +374,9 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
+    // Setting this to be unrealistically high so it doesn't get triggered.
+    #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "100000000")]
+    static_filters_threshold: usize,
 }
 
 #[derive(Clone, Debug)]

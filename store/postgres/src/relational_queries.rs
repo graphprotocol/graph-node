@@ -41,7 +41,7 @@ use crate::{
         BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
         BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT,
     },
-    primary::Namespace,
+    primary::{Namespace, Site},
 };
 
 /// Those are columns that we always want to fetch from the database.
@@ -500,22 +500,12 @@ impl EntityData {
                     if key == "g$parent_id" {
                         match &parent_type {
                             None => {
-                                if ENV_VARS.store.disable_error_for_toplevel_parents {
-                                    // Only temporarily in case reporting an
-                                    // error causes unexpected trouble. Can
-                                    // be removed once it's been working for
-                                    // a few days
-                                    let value =
-                                        T::Value::from_column_value(&ColumnType::String, json)?;
-                                    out.insert_entity_data("g$parent_id".to_owned(), value);
-                                } else {
-                                    // A query that does not have parents
-                                    // somehow returned parent ids. We have no
-                                    // idea how to deserialize that
-                                    return Err(graph::constraint_violation!(
-                                        "query unexpectedly produces parent ids"
-                                    ));
-                                }
+                                // A query that does not have parents
+                                // somehow returned parent ids. We have no
+                                // idea how to deserialize that
+                                return Err(graph::constraint_violation!(
+                                    "query unexpectedly produces parent ids"
+                                ));
                             }
                             Some(parent_type) => {
                                 let value = T::Value::from_column_value(parent_type, json)?;
@@ -2826,6 +2816,7 @@ pub struct FilterQuery<'a> {
     range: FilterRange,
     block: BlockNumber,
     query_id: Option<String>,
+    site: &'a Site,
 }
 
 /// String representation that is useful for debugging when `walk_ast` fails
@@ -2851,6 +2842,7 @@ impl<'a> FilterQuery<'a> {
         range: EntityRange,
         block: BlockNumber,
         query_id: Option<String>,
+        site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, block)?;
 
@@ -2860,6 +2852,7 @@ impl<'a> FilterQuery<'a> {
             range: FilterRange(range),
             block,
             query_id,
+            site,
         })
     }
 
@@ -3120,10 +3113,17 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
             return Ok(());
         }
 
+        // Tag the query with various information to make connecting it to
+        // the GraphQL query it came from easier. The names of the tags are
+        // chosen so that GCP's Query Insights will recognize them
         if let Some(qid) = &self.query_id {
-            out.push_sql("/* qid: ");
+            out.push_sql("/* controller='filter',application='");
+            out.push_sql(self.site.namespace.as_str());
+            out.push_sql("',route='");
             out.push_sql(qid);
-            out.push_sql(" */\n");
+            out.push_sql("',action='");
+            out.push_sql(&self.block.to_string());
+            out.push_sql("' */\n");
         }
         // We generate four different kinds of queries, depending on whether
         // we need to window and whether we query just one or multiple entity

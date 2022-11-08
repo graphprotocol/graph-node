@@ -16,11 +16,12 @@ use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::commands;
 use graph_node::{
-    chain::create_ethereum_networks,
+    chain::create_all_ethereum_networks,
     manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
     store_builder::StoreBuilder,
     MetricsContext,
 };
+use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
     connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
@@ -229,8 +230,35 @@ pub enum Command {
         #[clap(long, short, default_value = "0.20")]
         prune_ratio: f64,
         /// How much history to keep in blocks
-        #[clap(long, short, default_value = "10000")]
+        #[clap(long, short = 'y', default_value = "10000")]
         history: usize,
+    },
+
+    /// General database management
+    #[clap(subcommand)]
+    Database(DatabaseCommand),
+
+    /// Delete a deployment and all it's indexed data
+    ///
+    /// The deployment can be specified as either a subgraph name, an IPFS
+    /// hash `Qm..`, or the database namespace `sgdNNN`. Since the same IPFS
+    /// hash can be deployed in multiple shards, it is possible to specify
+    /// the shard by adding `:shard` to the IPFS hash.
+    Drop {
+        /// The deployment identifier
+        deployment: DeploymentSearch,
+        /// Search only for current version
+        #[clap(long, short)]
+        current: bool,
+        /// Search only for pending versions
+        #[clap(long, short)]
+        pending: bool,
+        /// Search only for used (current and pending) versions
+        #[clap(long, short)]
+        used: bool,
+        /// Skip confirmation prompt
+        #[clap(long, short)]
+        force: bool,
     },
 }
 
@@ -386,7 +414,6 @@ pub enum ChainCommand {
     CheckBlocks {
         #[clap(subcommand)] // Note that we mark a field as a subcommand
         method: CheckBlockMethod,
-
         /// Chain name (must be an existing chain, see 'chain list')
         #[clap(empty_values = false)]
         chain_name: String,
@@ -399,6 +426,31 @@ pub enum ChainCommand {
         /// Skips confirmation prompt
         #[clap(long, short)]
         force: bool,
+    },
+
+    /// Execute operations on call cache.
+    CallCache {
+        #[clap(subcommand)]
+        method: CallCacheCommand,
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(empty_values = false)]
+        chain_name: String,
+    },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+pub enum CallCacheCommand {
+    /// Remove the call cache of the specified chain.
+    ///
+    /// If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be
+    /// removed.
+    Remove {
+        /// Starting block number
+        #[clap(long, short)]
+        from: Option<i32>,
+        /// Ending block number
+        #[clap(long, short)]
+        to: Option<i32>,
     },
 }
 
@@ -495,19 +547,62 @@ pub enum IndexCommand {
 }
 
 #[derive(Clone, Debug, Subcommand)]
+pub enum DatabaseCommand {
+    /// Apply any pending migrations to the database schema in all shards
+    Migrate,
+    /// Refresh the mapping of tables into different shards
+    ///
+    /// This command rebuilds the mappings of tables from one shard into all
+    /// other shards. It makes it possible to fix these mappings when a
+    /// database migration was interrupted before it could rebuild the
+    /// mappings
+    ///
+    /// Each shard imports certain tables from all other shards. To recreate
+    /// the mappings in a given shard, use `--dest SHARD`, to recreate the
+    /// mappings in other shards that depend on a shard, use `--source
+    /// SHARD`. Without `--dest` and `--source` options, recreate all
+    /// possible mappings. Recreating mappings needlessly is harmless, but
+    /// might take quite a bit of time with a lot of shards.
+    Remap {
+        /// Only refresh mappings from SOURCE
+        #[clap(long, short)]
+        source: Option<String>,
+        /// Only refresh mappings inside DEST
+        #[clap(long, short)]
+        dest: Option<String>,
+        /// Continue remapping even when one operation fails
+        #[clap(long, short)]
+        force: bool,
+    },
+}
+#[derive(Clone, Debug, Subcommand)]
 pub enum CheckBlockMethod {
-    /// The number of the target block
-    ByHash { hash: String },
-
     /// The hash of the target block
-    ByNumber { number: i32 },
+    ByHash {
+        /// The block hash to verify
+        hash: String,
+    },
+
+    /// The number of the target block
+    ByNumber {
+        /// The block number to verify
+        number: i32,
+        /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
+        delete_duplicates: bool,
+    },
 
     /// A block number range, inclusive on both ends.
     ByRange {
+        /// The first block number to verify
         #[clap(long, short)]
         from: Option<i32>,
+        /// The last block number to verify
         #[clap(long, short)]
         to: Option<i32>,
+        /// Delete duplicated blocks (by number) if found
+        #[clap(long, short, action)]
+        delete_duplicates: bool,
     },
 }
 
@@ -587,13 +682,14 @@ impl Context {
 
     fn primary_pool(self) -> ConnectionPool {
         let primary = self.config.primary_store();
+        let coord = Arc::new(PoolCoordinator::new(Arc::new(vec![])));
         let pool = StoreBuilder::main_pool(
             &self.logger,
             &self.node_id,
             PRIMARY_SHARD.as_str(),
             primary,
             self.metrics_registry(),
-            Arc::new(vec![]),
+            coord,
         );
         pool.skip_setup();
         pool
@@ -642,7 +738,7 @@ impl Context {
     }
 
     fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
-        let (subgraph_store, pools) = StoreBuilder::make_subgraph_store_and_pools(
+        let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
             &self.logger,
             &self.node_id,
             &self.config,
@@ -699,7 +795,7 @@ impl Context {
     async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
-        create_ethereum_networks(logger, registry, &self.config).await
+        create_all_ethereum_networks(logger, registry, &self.config).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
@@ -830,7 +926,7 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let count = count.unwrap_or(1_000_000);
                     let older = older.map(|older| chrono::Duration::minutes(older as i64));
-                    commands::unused_deployments::remove(store, count, deployment, older)
+                    commands::unused_deployments::remove(store, count, deployment.as_deref(), older)
                 }
             }
         }
@@ -851,7 +947,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Remove { name } => commands::remove::run(ctx.subgraph_store(), name),
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let sender = ctx.notification_sender();
@@ -982,11 +1078,33 @@ async fn main() -> anyhow::Result<()> {
                         ByHash { hash } => {
                             by_hash(&hash, chain_store, &ethereum_adapter, &logger).await
                         }
-                        ByNumber { number } => {
-                            by_number(number, chain_store, &ethereum_adapter, &logger).await
+                        ByNumber {
+                            number,
+                            delete_duplicates,
+                        } => {
+                            by_number(
+                                number,
+                                chain_store,
+                                &ethereum_adapter,
+                                &logger,
+                                delete_duplicates,
+                            )
+                            .await
                         }
-                        ByRange { from, to } => {
-                            by_range(chain_store, &ethereum_adapter, from, to, &logger).await
+                        ByRange {
+                            from,
+                            to,
+                            delete_duplicates,
+                        } => {
+                            by_range(
+                                chain_store,
+                                &ethereum_adapter,
+                                from,
+                                to,
+                                &logger,
+                                delete_duplicates,
+                            )
+                            .await
                         }
                     }
                 }
@@ -995,6 +1113,12 @@ async fn main() -> anyhow::Result<()> {
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
+                CallCache { method, chain_name } => match method {
+                    CallCacheCommand::Remove { from, to } => {
+                        let chain_store = ctx.chain_store(&chain_name)?;
+                        commands::chain::clear_call_cache(chain_store, from, to).await
+                    }
+                },
             }
         }
         Stats(cmd) => {
@@ -1057,6 +1181,24 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Database(cmd) => {
+            match cmd {
+                DatabaseCommand::Migrate => {
+                    /* creating the store builder runs migrations */
+                    let _store_builder = ctx.store_builder().await;
+                    println!("All database migrations have been applied");
+                    Ok(())
+                }
+                DatabaseCommand::Remap {
+                    source,
+                    dest,
+                    force,
+                } => {
+                    let store_builder = ctx.store_builder().await;
+                    commands::database::remap(&store_builder.coord, source, dest, force).await
+                }
+            }
+        }
         Prune {
             deployment,
             history,
@@ -1064,6 +1206,29 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
             commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
+        }
+        Drop {
+            deployment,
+            current,
+            pending,
+            used,
+            force,
+        } => {
+            let sender = ctx.notification_sender();
+            let (store, primary_pool) = ctx.store_and_primary();
+            let subgraph_store = store.subgraph_store();
+
+            commands::drop::run(
+                primary_pool,
+                subgraph_store,
+                sender,
+                deployment,
+                current,
+                pending,
+                used,
+                force,
+            )
+            .await
         }
     }
 }

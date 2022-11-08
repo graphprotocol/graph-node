@@ -552,6 +552,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
+    let raw_string = serde_yaml::to_string(&raw).unwrap();
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment,
         raw,
@@ -618,7 +619,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let deployment = DeploymentCreate::new(&manifest, start_block)
+    let deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
         .graft(base_block)
         .debug(debug_fork);
     deployment_store

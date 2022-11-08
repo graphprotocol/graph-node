@@ -1,8 +1,8 @@
 [package]
 name = "test-store"
-version = "0.28.0"
+version.workspace = true
+edition.workspace = true
 authors = ["Leonardo Yvens <leoyvens@gmail.com>"]
-edition = "2021"
 description = "Provides static store instance for tests."
 
 [dependencies]
