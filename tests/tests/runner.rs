@@ -1,16 +1,18 @@
 use std::marker::PhantomData;
+use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::time::Duration;
 
-use graph::blockchain::{Block, BlockPtr};
+use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::{CheapClone, SubgraphStore};
-use graph::prelude::{SubgraphAssignmentProvider, SubgraphName};
+use graph::prelude::{CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
-use graph_tests::fixture::{self, stores, test_ptr, NoopAdapterSelector};
+use graph_tests::fixture::{self, stores, test_ptr, MockAdapterSelector, NoopAdapterSelector};
+use slog::{o, Discard, Logger};
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
@@ -36,7 +38,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
         vec![block0, block1, block1_reorged, block2, block3, block4]
     };
 
-    let chain = Arc::new(chain(blocks.clone(), &stores).await);
+    let chain = Arc::new(chain(blocks.clone(), &stores, None).await);
     let ctx = fixture::setup(
         subgraph_name.clone(),
         &hash,
@@ -116,7 +118,7 @@ async fn typename() -> anyhow::Result<()> {
     let stop_block = blocks.last().unwrap().block.ptr();
 
     let stores = stores("./integration-tests/config.simple.toml").await;
-    let chain = Arc::new(chain(blocks, &stores).await);
+    let chain = Arc::new(chain(blocks, &stores, None).await);
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
@@ -153,9 +155,7 @@ async fn file_data_sources() {
         x: PhantomData,
         triggers_in_block_sleep: Duration::from_millis(100),
     };
-    let chain = Arc::new(
-        fixture::ethereum::chain_with_adapter_selector(blocks, &stores, adapter_selector).await,
-    );
+    let chain = Arc::new(chain(blocks, &stores, Some(Arc::new(adapter_selector))).await);
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
     ctx.start_and_sync_to(stop_block).await;
 
@@ -176,6 +176,7 @@ async fn file_data_sources() {
     // assert whether duplicate data sources are created.
     ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
     let stop_block = test_ptr(2);
+
     ctx.start_and_sync_to(stop_block).await;
 
     let store = ctx.store.cheap_clone();
@@ -237,7 +238,7 @@ async fn template_static_filters_false_positives() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = test_ptr(1);
-    let chain = Arc::new(chain(blocks, &stores).await);
+    let chain = Arc::new(chain(blocks, &stores, None).await);
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
@@ -271,4 +272,67 @@ async fn template_static_filters_false_positives() {
             5, 114, 187, 237, 104, 187, 122, 220, 9, 131, 67, 50, 237
         ],
     );
+}
+
+#[tokio::test]
+async fn retry_create_ds() {
+    let stores = stores("./integration-tests/config.simple.toml").await;
+    let subgraph_name = SubgraphName::new("data-source-revert2").unwrap();
+    let hash = {
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir).await
+    };
+
+    let blocks = {
+        let block0 = genesis();
+        let block1 = empty_block(block0.ptr(), test_ptr(1));
+        let block1_reorged_ptr = BlockPtr {
+            number: 1,
+            hash: H256::from_low_u64_be(12).into(),
+        };
+        let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr.clone());
+        let block2 = empty_block(block1_reorged.ptr(), test_ptr(2));
+        vec![block0, block1, block1_reorged, block2]
+    };
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let called = AtomicBool::new(false);
+    let triggers_in_block = Arc::new(
+        move |block: <graph_chain_ethereum::Chain as Blockchain>::Block| {
+            let logger = Logger::root(Discard, o!());
+            // Comment this out and the test will pass.
+            if block.number() > 0 && !called.load(atomic::Ordering::SeqCst) {
+                called.store(true, atomic::Ordering::SeqCst);
+                return Err(anyhow::anyhow!("This error happens once"));
+            }
+            Ok(BlockWithTriggers::new(block, Vec::new(), &logger))
+        },
+    );
+    let triggers_adapter = Arc::new(MockAdapterSelector {
+        x: PhantomData,
+        triggers_in_block_sleep: Duration::ZERO,
+        triggers_in_block,
+    });
+    let chain = Arc::new(chain(blocks, &stores, Some(triggers_adapter)).await);
+
+    let mut env_vars = EnvVars::default();
+    env_vars.subgraph_error_retry_ceil = Duration::from_secs(1);
+
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        chain,
+        None,
+        Some(env_vars),
+    )
+    .await;
+
+    let runner = ctx
+        .runner(stop_block)
+        .await
+        .run_for_test(true)
+        .await
+        .unwrap();
+    assert_eq!(runner.context().instance().hosts().len(), 2);
 }

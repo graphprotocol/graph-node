@@ -50,7 +50,7 @@ impl CausalityRegion {
 }
 
 /// A subgraph will assign causality regions to offchain data sources from a sequence.
-pub struct CausalityRegionSeq(CausalityRegion);
+pub struct CausalityRegionSeq(pub CausalityRegion);
 
 impl CausalityRegionSeq {
     /// Create a new sequence with the current value set to `ONCHAIN`, which is 0, therefore the

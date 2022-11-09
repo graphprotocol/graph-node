@@ -1963,6 +1963,7 @@ dependencies = [
  "graph-graphql",
  "graph-mock",
  "graph-node",
+ "graph-runtime-wasm",
  "graph-store-postgres",
  "graphql-parser",
  "hex",
