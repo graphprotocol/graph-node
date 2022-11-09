@@ -91,9 +91,22 @@ impl TablePair {
         loop {
             let start = Instant::now();
             let LastVid { last_vid, rows } = conn.transaction(|| {
+                // The query limits the number of rows we look at in each
+                // batch, rather than the number of matching rows to make
+                // the timing for each batch independent of how many rows we
+                // actually need to copy. This has the downside that it will
+                // force a sequential scan, but limiting by the number of
+                // matching rows runs the risk of a batch taking
+                // unpredictably long if there are only very few matches.
+                // Strictly speaking, the `vid >= $3` and `limit` clauses on
+                // the outer query are redundant.
                 sql_query(&format!(
                     "with cp as (insert into {dst}({column_list}) \
-                         select {column_list} from {src} \
+                         select {column_list} from ( \
+                            select {column_list} from {src} \
+                             where vid >= $3 \
+                             order by vid \
+                             limit $4) a \
                           where lower(block_range) <= $2 \
                             and coalesce(upper(block_range), 2147483647) > $1 \
                             and coalesce(upper(block_range), 2147483647) <= $2 \
@@ -153,9 +166,15 @@ impl TablePair {
         loop {
             let start = Instant::now();
             let LastVid { rows, last_vid } = conn.transaction(|| {
+                // See the comment on the query in `copy_final_entities` for
+                // why this query is written this way
                 sql_query(&format!(
                     "with cp as (insert into {dst}({column_list}) \
-                         select {column_list} from {src} \
+                         select {column_list} from ( \
+                            select {column_list} from {src} \
+                             where vid >= $2 \
+                             order by vid \
+                             limit $3) a
                           where coalesce(upper(block_range), 2147483647) > $1 \
                             and block_range && int4range($1, null) \
                             and vid >= $2 \
