@@ -44,5 +44,6 @@ services:
       # <https://github.com/graphprotocol/graph-node/pull/3511>, maybe as a
       # workaround for https://github.com/docker/for-mac/issues/6270?
       PGDATA: "/var/lib/postgresql/data"
+      POSTGRES_INITDB_ARGS: "--locale=C"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
