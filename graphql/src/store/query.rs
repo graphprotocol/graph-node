@@ -265,8 +265,28 @@ fn build_filter_from_object(
             let (field_name, op) = sast::parse_field_as_filter(key);
 
             Ok(match op {
-                And => EntityFilter::And(build_list_filter_from_object(entity, object, schema)?),
-                Or => EntityFilter::Or(build_list_filter_from_object(entity, object, schema)?),
+                And => {
+                    if ENV_VARS.graphql.disable_bool_filters {
+                        return Err(QueryExecutionError::NotSupported(
+                            "Boolean filters are not supported".to_string(),
+                        ));
+                    }
+
+                    return Ok(EntityFilter::And(build_list_filter_from_object(
+                        entity, object, schema,
+                    )?));
+                }
+                Or => {
+                    if ENV_VARS.graphql.disable_bool_filters {
+                        return Err(QueryExecutionError::NotSupported(
+                            "Boolean filters are not supported".to_string(),
+                        ));
+                    }
+
+                    return Ok(EntityFilter::Or(build_list_filter_from_object(
+                        entity, object, schema,
+                    )?));
+                }
                 Child => match value {
                     DataValue::Object(obj) => {
                         build_child_filter_from_object(entity, field_name, obj, schema)?

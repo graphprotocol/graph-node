@@ -188,23 +188,29 @@ fn add_filter_type(
             let mut generated_filter_fields = field_input_values(schema, fields)?;
             generated_filter_fields.push(block_changed_filter_argument());
 
-            generated_filter_fields.push(InputValue {
-                position: Pos::default(),
-                description: None,
-                name: "and".to_string(),
-                value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.to_owned()))),
-                default_value: None,
-                directives: vec![],
-            });
+            if !ENV_VARS.graphql.disable_bool_filters {
+                generated_filter_fields.push(InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: "and".to_string(),
+                    value_type: Type::ListType(Box::new(Type::NamedType(
+                        filter_type_name.to_owned(),
+                    ))),
+                    default_value: None,
+                    directives: vec![],
+                });
 
-            generated_filter_fields.push(InputValue {
-                position: Pos::default(),
-                description: None,
-                name: "or".to_string(),
-                value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.to_owned()))),
-                default_value: None,
-                directives: vec![],
-            });
+                generated_filter_fields.push(InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: "or".to_string(),
+                    value_type: Type::ListType(Box::new(Type::NamedType(
+                        filter_type_name.to_owned(),
+                    ))),
+                    default_value: None,
+                    directives: vec![],
+                });
+            }
 
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
