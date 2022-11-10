@@ -20,10 +20,10 @@ jobs:
         with:
           # PRs
           days-before-pr-stale: 90
-          days-before-pr-close: 7
+          days-before-pr-close: 14
           stale-pr-message: >
             This pull request hasn't had any activity for the last 90 days. If
-            there's no more activity over the course of the next 7 days, it will
+            there's no more activity over the course of the next 14 days, it will
             automatically be closed.
           # Issues
           days-before-issue-stale: 180
