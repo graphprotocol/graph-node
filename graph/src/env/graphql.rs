@@ -84,6 +84,9 @@ pub struct EnvVarsGraphQl {
     /// Set by the flag `GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION`.
     /// Defaults to 1000.
     pub max_operations_per_connection: usize,
+    /// Set by the flag `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`. Off by default.
+    /// Disables AND/OR filters
+    pub disable_bool_filters: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -128,6 +131,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             warn_result_size: x.warn_result_size.0 .0,
             error_result_size: x.error_result_size.0 .0,
             max_operations_per_connection: x.max_operations_per_connection,
+            disable_bool_filters: x.disable_bool_filters.0,
         }
     }
 }
@@ -173,4 +177,6 @@ pub struct InnerGraphQl {
     error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION", default = "1000")]
     max_operations_per_connection: usize,
+    #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS", default = "false")]
+    pub disable_bool_filters: EnvVarBoolean,
 }

@@ -123,6 +123,7 @@ those.
 - `SILENT_GRAPHQL_VALIDATIONS`: If `ENABLE_GRAPHQL_VALIDATIONS` is enabled, you are also able to just
   silently print the GraphQL validation errors, without failing the actual query. Note: queries
   might still fail as part of the later stage validations running, during GraphQL engine execution.
+- `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`: disables the ability to use AND/OR filters. This is useful if we want to disable filters because of performance reasons.
 
 ### GraphQL caching
 

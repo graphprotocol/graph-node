@@ -188,6 +188,30 @@ fn add_filter_type(
             let mut generated_filter_fields = field_input_values(schema, fields)?;
             generated_filter_fields.push(block_changed_filter_argument());
 
+            if !ENV_VARS.graphql.disable_bool_filters {
+                generated_filter_fields.push(InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: "and".to_string(),
+                    value_type: Type::ListType(Box::new(Type::NamedType(
+                        filter_type_name.to_owned(),
+                    ))),
+                    default_value: None,
+                    directives: vec![],
+                });
+
+                generated_filter_fields.push(InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: "or".to_string(),
+                    value_type: Type::ListType(Box::new(Type::NamedType(
+                        filter_type_name.to_owned(),
+                    ))),
+                    default_value: None,
+                    directives: vec![],
+                });
+            }
+
             let typedef = TypeDefinition::InputObject(InputObjectType {
                 position: Pos::default(),
                 description: None,
@@ -969,7 +993,9 @@ mod tests {
                 "favoritePet_",
                 "leastFavoritePet_",
                 "mostFavoritePets_",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)
@@ -1046,7 +1072,9 @@ mod tests {
                 "mostLovedBy_not_contains",
                 "mostLovedBy_not_contains_nocase",
                 "mostLovedBy_",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)
@@ -1170,7 +1198,9 @@ mod tests {
                 "favoritePet_not_ends_with",
                 "favoritePet_not_ends_with_nocase",
                 "favoritePet_",
-                "_change_block"
+                "_change_block",
+                "and",
+                "or"
             ]
             .iter()
             .map(ToString::to_string)
