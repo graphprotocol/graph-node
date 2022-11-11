@@ -5,6 +5,7 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
@@ -107,6 +108,7 @@ pub struct DeploymentCreate {
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
+    pub has_causality_region: BTreeSet<EntityType>,
 }
 
 impl DeploymentCreate {
@@ -121,6 +123,7 @@ impl DeploymentCreate {
             graft_base: None,
             graft_block: None,
             debug_fork: None,
+            has_causality_region: BTreeSet::new(),
         }
     }
 
@@ -134,6 +137,11 @@ impl DeploymentCreate {
 
     pub fn debug(mut self, fork: Option<DeploymentHash>) -> Self {
         self.debug_fork = fork;
+        self
+    }
+
+    pub fn has_causality_region(mut self, has_causality_region: BTreeSet<EntityType>) -> Self {
+        self.has_causality_region = has_causality_region;
         self
     }
 }
@@ -159,6 +167,7 @@ pub struct SubgraphDeploymentEntity {
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
     pub max_reorg_depth: i32,
+    pub has_causality_region: Vec<EntityType>,
 }
 
 #[derive(Debug)]

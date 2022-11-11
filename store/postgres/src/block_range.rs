@@ -15,6 +15,9 @@ use crate::relational::{SqlName, Table};
 /// entities
 pub(crate) const BLOCK_RANGE_COLUMN: &str = "block_range";
 
+/// The name of the column that stores the causality region of an entity.
+pub(crate) const CAUSALITY_REGION_COLUMN: &str = "causality_region";
+
 /// The SQL clause we use to check that an entity version is current;
 /// that version has an unbounded block range, but checking for
 /// `upper_inf(block_range)` is slow and can't use the exclusion

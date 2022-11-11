@@ -250,6 +250,13 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         }
     }
 
+    pub fn as_offchain(&self) -> Option<&offchain::DataSourceTemplate> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(t) => Some(&t),
+        }
+    }
+
     pub fn into_onchain(self) -> Option<C::DataSourceTemplate> {
         match self {
             Self::Onchain(ds) => Some(ds),

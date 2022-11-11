@@ -13,11 +13,14 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-    DeploymentHash, DeploymentState, Schema, StoreError,
-};
 use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
+use graph::{
+    components::store::EntityType,
+    prelude::{
+        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
+        DeploymentHash, DeploymentState, Schema, StoreError,
+    },
+};
 use graph::{
     data::subgraph::{
         schema::{DeploymentCreate, SubgraphManifestEntity},
@@ -84,6 +87,10 @@ table! {
         current_reorg_depth -> Integer,
         max_reorg_depth -> Integer,
         firehose_cursor -> Nullable<Text>,
+
+        // Entity types that have a `causality_region` column.
+        // Names stored as present in the schema, not in snake case.
+        has_causality_region -> Array<Text>,
     }
 }
 
@@ -769,6 +776,19 @@ pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHe
         .map_err(|e| e.into())
 }
 
+pub(crate) fn has_causality_region(
+    conn: &PgConnection,
+    id: DeploymentId,
+) -> Result<Vec<EntityType>, StoreError> {
+    use subgraph_deployment as d;
+
+    d::table
+        .filter(d::id.eq(id))
+        .select(d::has_causality_region)
+        .get_result(conn)
+        .map_err(|e| e.into())
+}
+
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
@@ -931,8 +951,10 @@ pub fn create_deployment(
         graft_base,
         graft_block,
         debug_fork,
+        has_causality_region,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
+    let has_causality_region = Vec::from_iter(has_causality_region.into_iter());
 
     let deployment_values = (
         d::id.eq(site.id),
@@ -950,6 +972,7 @@ pub fn create_deployment(
         d::graft_block_hash.eq(b(&graft_block)),
         d::graft_block_number.eq(n(&graft_block)),
         d::debug_fork.eq(debug_fork.as_ref().map(|s| s.as_str())),
+        d::has_causality_region.eq(has_causality_region),
     );
 
     let graph_node_version_id = GraphNodeVersion::create_or_get(conn)?;

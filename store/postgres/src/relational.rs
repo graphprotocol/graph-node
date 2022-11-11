@@ -313,6 +313,9 @@ impl Layout {
                     &enums,
                     &id_types,
                     i as u32,
+                    catalog
+                        .has_causality_region
+                        .contains(&EntityType::from(obj_type.clone())),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -393,6 +396,7 @@ impl Layout {
             position: position as u32,
             is_account_like: false,
             immutable: false,
+            has_causality_region: false,
         }
     }
 
@@ -404,8 +408,9 @@ impl Layout {
         conn: &PgConnection,
         site: Arc<Site>,
         schema: &Schema,
+        has_causality_region: BTreeSet<EntityType>,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::for_creation(site.cheap_clone());
+        let catalog = Catalog::for_creation(site.cheap_clone(), has_causality_region);
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl()
@@ -1215,6 +1220,10 @@ pub struct Table {
     /// Entities in this table are immutable, i.e., will never be updated or
     /// deleted
     pub(crate) immutable: bool,
+
+    /// Whether this table has an explicit `causality_region` column. If `false`, then the column is
+    /// not present and the causality region for all rows is implicitly `0`.
+    pub(crate) has_causality_region: bool,
 }
 
 impl Table {
@@ -1225,6 +1234,7 @@ impl Table {
         enums: &EnumMap,
         id_types: &IdTypeMap,
         position: u32,
+        has_causality_region: bool,
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
 
@@ -1250,6 +1260,7 @@ impl Table {
             columns,
             position,
             immutable,
+            has_causality_region,
         };
         Ok(table)
     }
@@ -1265,6 +1276,7 @@ impl Table {
             is_account_like: self.is_account_like,
             position: self.position,
             immutable: self.immutable,
+            has_causality_region: self.has_causality_region,
         };
 
         Arc::new(other)
@@ -1379,7 +1391,8 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
-        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix)?;
+        let has_causality_region = deployment::has_causality_region(conn, site.id)?;
+        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)
     }

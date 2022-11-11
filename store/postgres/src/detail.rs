@@ -10,6 +10,7 @@ use diesel::prelude::{
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
+use graph::components::store::EntityType;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
 use graph::prelude::{
     bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
@@ -64,6 +65,7 @@ pub struct DeploymentDetail {
     current_reorg_depth: i32,
     max_reorg_depth: i32,
     firehose_cursor: Option<String>,
+    has_causality_region: Vec<EntityType>,
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -413,6 +415,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             reorg_count: detail.reorg_count,
             current_reorg_depth: detail.current_reorg_depth,
             max_reorg_depth: detail.max_reorg_depth,
+            has_causality_region: detail.has_causality_region,
         })
     }
 }

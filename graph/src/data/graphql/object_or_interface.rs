@@ -117,7 +117,7 @@ impl<'a> ObjectOrInterface<'a> {
             ObjectOrInterface::Object(object) => Some(vec![object]),
             ObjectOrInterface::Interface(interface) => schema
                 .types_for_interface()
-                .get(&interface.into())
+                .get(interface.name.as_str())
                 .map(|object_types| object_types.iter().collect()),
         }
     }
@@ -131,7 +131,7 @@ impl<'a> ObjectOrInterface<'a> {
     ) -> bool {
         match self {
             ObjectOrInterface::Object(o) => o.name == typename,
-            ObjectOrInterface::Interface(i) => types_for_interface[&i.into()]
+            ObjectOrInterface::Interface(i) => types_for_interface[i.name.as_str()]
                 .iter()
                 .any(|o| o.name == typename),
         }

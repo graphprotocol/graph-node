@@ -175,6 +175,7 @@ impl DeploymentStore {
             let exists = deployment::exists(&conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
+            let has_causality_region = deployment.has_causality_region.clone();
             if replace || !exists {
                 deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };
@@ -184,7 +185,12 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query)?;
 
-                let layout = Layout::create_relational_schema(&conn, site.clone(), schema)?;
+                let layout = Layout::create_relational_schema(
+                    &conn,
+                    site.clone(),
+                    schema,
+                    has_causality_region,
+                )?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
                     let errors = layout.can_copy_from(&base);
@@ -274,7 +280,7 @@ impl DeploymentStore {
                 .interfaces_for_type(&key.entity_type)
                 .into_iter()
                 .flatten()
-                .flat_map(|interface| &types_for_interface[&interface.into()])
+                .flat_map(|interface| &types_for_interface[&EntityType::from(interface)])
                 .map(EntityType::from)
                 .filter(|type_name| type_name != &key.entity_type),
         );

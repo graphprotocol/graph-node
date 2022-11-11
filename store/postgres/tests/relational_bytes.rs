@@ -8,6 +8,7 @@ use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -127,7 +128,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(conn, Arc::new(site), &schema)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
 }
 

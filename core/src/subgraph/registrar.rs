@@ -620,11 +620,30 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         "block" => format!("{:?}", base_block.as_ref().map(|(_,ptr)| ptr.number))
     );
 
+    // Entity types that may be touched by offchain data sources need a causality region column.
+    let needs_causality_region = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_offchain())
+        .map(|ds| ds.mapping.entities.iter())
+        .chain(
+            manifest
+                .templates
+                .iter()
+                .filter_map(|ds| ds.as_offchain())
+                .map(|ds| ds.mapping.entities.iter()),
+        )
+        .flatten()
+        .cloned()
+        .collect();
+
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
     let deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
         .graft(base_block)
-        .debug(debug_fork);
+        .debug(debug_fork)
+        .has_causality_region(needs_causality_region);
+
     deployment_store
         .create_subgraph_deployment(
             name,

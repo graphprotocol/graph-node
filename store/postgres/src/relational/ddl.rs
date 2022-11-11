@@ -5,9 +5,12 @@ use std::{
 
 use graph::prelude::BLOCK_NUMBER_MAX;
 
-use crate::relational::{
-    Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+use crate::{
+    layout_for_tests::CAUSALITY_REGION_COLUMN,
+    relational::{
+        Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
+        STRING_PREFIX_SIZE, VID_COLUMN,
+    },
 };
 
 use super::{Column, Layout, SqlName, Table};
@@ -77,30 +80,38 @@ impl Table {
         fn columns_ddl(table: &Table) -> Result<String, fmt::Error> {
             let mut cols = String::new();
             let mut first = true;
+
+            if table.has_causality_region {
+                first = false;
+                write!(
+                    cols,
+                    "{causality_region}     int not null",
+                    causality_region = CAUSALITY_REGION_COLUMN
+                )?;
+            }
+
             for column in &table.columns {
                 if !first {
                     writeln!(cols, ",")?;
-                } else {
-                    writeln!(cols)?;
+                    write!(cols, "        ")?;
                 }
-                write!(cols, "    ")?;
                 column.as_ddl(&mut cols)?;
                 first = false;
             }
+
             Ok(cols)
         }
 
         if self.immutable {
             writeln!(
                 out,
-                r#"
-            create table {qname} (
-                {vid}                  bigserial primary key,
-                {block}                int not null,
-                {cols},
-                unique({id})
-            );
-            "#,
+                "
+    create table {qname} (
+        {vid}                  bigserial primary key,
+        {block}                int not null,\n\
+        {cols},
+        unique({id})
+    );",
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
@@ -111,12 +122,11 @@ impl Table {
             writeln!(
                 out,
                 r#"
-            create table {qname} (
-                {vid}                  bigserial primary key,
-                {block_range}          int4range not null,
-                {cols}
-            );
-            "#,
+    create table {qname} (
+        {vid}                  bigserial primary key,
+        {block_range}          int4range not null,
+        {cols}
+    );"#,
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
@@ -270,10 +280,9 @@ impl Table {
         if as_constraint {
             writeln!(
                 out,
-                r#"
-        alter table {qname}
-          add constraint {bare_name}_{id}_{block_range}_excl exclude using gist ({id} with =, {block_range} with &&);
-               "#,
+                "
+    alter table {qname}
+        add constraint {bare_name}_{id}_{block_range}_excl exclude using gist ({id} with =, {block_range} with &&);",
                 qname = self.qualified_name,
                 bare_name = self.name,
                 id = self.primary_key().name,
@@ -282,10 +291,10 @@ impl Table {
         } else {
             writeln!(
                 out,
-                r#"
+                "
         create index {bare_name}_{id}_{block_range}_excl on {qname}
          using gist ({id}, {block_range});
-               "#,
+               ",
                 qname = self.qualified_name,
                 bare_name = self.name,
                 id = self.primary_key().name,
@@ -303,7 +312,6 @@ impl Column {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String) -> fmt::Result {
-        write!(out, "    ")?;
         write!(out, "{:20} {}", self.name.quoted(), self.sql_type())?;
         if self.is_list() {
             write!(out, "[]")?;
