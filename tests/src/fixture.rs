@@ -21,6 +21,7 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
@@ -157,9 +158,30 @@ impl TestContext {
             .await
             .expect("unable to start subgraph");
 
-        wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
+        wait_for_sync(
+            &self.logger,
+            &self.store,
+            &self.deployment.clone(),
+            stop_block,
+        )
+        .await
+        .unwrap();
+    }
+
+    pub async fn start_and_sync_to_error(&self, stop_block: BlockPtr) -> SubgraphError {
+        self.provider
+            .start(self.deployment.clone(), Some(stop_block.number))
             .await
-            .unwrap();
+            .expect("unable to start subgraph");
+
+        wait_for_sync(
+            &self.logger,
+            &self.store,
+            &self.deployment.clone(),
+            stop_block,
+        )
+        .await
+        .unwrap_err()
     }
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
@@ -376,14 +398,14 @@ pub fn cleanup(
 pub async fn wait_for_sync(
     logger: &Logger,
     store: &SubgraphStore,
-    hash: &DeploymentHash,
+    deployment: &DeploymentLocator,
     stop_block: BlockPtr,
-) -> Result<(), Error> {
+) -> Result<(), SubgraphError> {
     let mut err_count = 0;
     while err_count < 10 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
-        let block_ptr = match store.least_block_ptr(&hash).await {
+        let block_ptr = match store.least_block_ptr(&deployment.hash).await {
             Ok(Some(ptr)) => ptr,
             res => {
                 info!(&logger, "{:?}", res);
@@ -397,13 +419,10 @@ pub async fn wait_for_sync(
             break;
         }
 
-        if !store.is_healthy(&hash).await.unwrap() {
-            return Err(anyhow::anyhow!("subgraph failed unexpectedly"));
+        let status = store.status_for_id(deployment.id);
+        if let Some(fatal_error) = status.fatal_error {
+            return Err(fatal_error);
         }
-    }
-
-    if !store.is_healthy(&hash).await.unwrap() {
-        return Err(anyhow::anyhow!("subgraph failed unexpectedly"));
     }
 
     Ok(())

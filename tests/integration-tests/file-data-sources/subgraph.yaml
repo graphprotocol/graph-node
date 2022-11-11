@@ -28,7 +28,7 @@ templates:
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
-        - Gravatar
+        - IpfsFile
       abis:
         - name: Contract
           file: ./abis/Contract.abi
@@ -42,6 +42,19 @@ templates:
       language: wasm/assemblyscript
       entities:
         - IpfsFile1
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: handleFile1
+      file: ./src/mapping.ts
+  - kind: file/ipfs
+    name: File2
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - IpfsFile # will trigger an error, should be IpfsFile1
       abis:
         - name: Contract
           file: ./abis/Contract.abi

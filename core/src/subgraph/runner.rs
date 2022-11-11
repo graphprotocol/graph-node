@@ -683,6 +683,12 @@ where
                 "Attempted to create data source in offchain data source handler. This is not yet supported.",
             );
 
+            // This propagates any deterministic error as a non-deterministic one. Which might make
+            // sense considering offchain data sources are non-deterministic.
+            if let Some(err) = block_state.deterministic_errors.into_iter().next() {
+                return Err(anyhow!("{}", err.to_string()));
+            }
+
             mods.extend(block_state.entity_cache.as_modifications()?.modifications);
             processed_data_sources.extend(block_state.processed_data_sources);
         }
