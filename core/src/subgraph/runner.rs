@@ -310,7 +310,7 @@ where
 
             // Add entity operations for the new data sources to the block state
             // and add runtimes for the data sources to the subgraph instance.
-            self.persist_dynamic_data_sources(&mut block_state.entity_cache, data_sources);
+            self.persist_dynamic_data_sources(&mut block_state, data_sources);
 
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
@@ -373,7 +373,6 @@ where
             .start_section("as_modifications");
         let ModificationsAndCache {
             modifications: mut mods,
-            data_sources,
             entity_lfu_cache: cache,
         } = block_state
             .entity_cache
@@ -427,6 +426,7 @@ where
 
         let BlockState {
             deterministic_errors,
+            persisted_data_sources,
             ..
         } = block_state;
 
@@ -438,7 +438,7 @@ where
                 firehose_cursor,
                 mods,
                 &self.metrics.host.stopwatch,
-                data_sources,
+                persisted_data_sources,
                 deterministic_errors,
                 self.inputs.manifest_idx_and_name.clone(),
                 processed_data_sources,
@@ -579,7 +579,7 @@ where
 
     fn persist_dynamic_data_sources(
         &mut self,
-        entity_cache: &mut EntityCache,
+        block_state: &mut BlockState<C>,
         data_sources: Vec<DataSource<C>>,
     ) {
         if !data_sources.is_empty() {
@@ -599,7 +599,7 @@ where
                 "name" => &data_source.name(),
                 "address" => &data_source.address().map(|address| hex::encode(address)).unwrap_or("none".to_string()),
             );
-            entity_cache.add_data_source(data_source);
+            block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }
 
         // Merge filters from data sources into the block stream builder
