@@ -43,6 +43,15 @@ pub enum DataSourceCreationError {
 }
 
 /// Which entity types a data source can read and write to.
+///
+/// Currently this is only enforced on offchain data sources and templates, based on the `entities`
+/// key in the manifest. This informs which entity tables need an explicit `causality_region` column
+/// and which will always have `causality_region == 0`.
+///
+/// Note that this is just an optimization and not sufficient for causality region isolation, since
+/// generally the causality region is a property of the entity, not of the entity type.
+///
+/// See also: entity-type-access
 pub enum EntityTypeAccess {
     Any,
     Restriced(Vec<EntityType>),

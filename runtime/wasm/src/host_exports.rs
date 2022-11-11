@@ -99,6 +99,7 @@ impl<C: Blockchain> HostExports<C> {
         }
     }
 
+    /// Enfore the entity type access restrictions. See also: entity-type-access
     fn check_entity_type_access(&self, entity_type: &EntityType) -> Result<(), HostExportError> {
         match self.entity_type_access.allows(entity_type) {
             true => Ok(()),
