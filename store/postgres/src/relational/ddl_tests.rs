@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use pretty_assertions::assert_eq;
 
 use super::*;
 
@@ -11,7 +12,8 @@ fn test_layout(gql: &str) -> Layout {
     let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
-    let catalog = Catalog::for_tests(site.clone()).expect("Can not create catalog");
+    let catalog = Catalog::for_tests(site.clone(), BTreeSet::from_iter(["FileThing".into()]))
+        .expect("Can not create catalog");
     Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
 }
 
@@ -57,7 +59,7 @@ fn check_eqv(left: &str, right: &str) {
 fn generate_ddl() {
     let layout = test_layout(THING_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
-    check_eqv(THING_DDL, &sql);
+    assert_eq!(THING_DDL, &sql); // Use `assert_eq!` to also test the formatting.
 
     let layout = test_layout(MUSIC_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
@@ -198,20 +200,27 @@ const THING_GQL: &str = r#"
             bytes: Bytes,
             bigInt: BigInt,
             color: Color,
-        }"#;
+        }
+        
+        type FileThing @entity {
+            id: ID!
+        }
+        "#;
 
 const THING_DDL: &str = r#"create type sgd0815."color"
     as enum ('BLUE', 'red', 'yellow');
 create type sgd0815."size"
     as enum ('large', 'medium', 'small');
-create table "sgd0815"."thing" (
+
+    create table "sgd0815"."thing" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "big_thing"          text not null
-);
-alter table "sgd0815"."thing"
-  add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
+    );
+
+    alter table "sgd0815"."thing"
+        add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_thing
     on "sgd0815"."thing"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -223,7 +232,8 @@ create index attr_0_0_thing_id
 create index attr_0_1_thing_big_thing
     on "sgd0815"."thing" using gist("big_thing", block_range);
 
-create table "sgd0815"."scalar" (
+
+    create table "sgd0815"."scalar" (
         vid                  bigserial primary key,
         block_range          int4range not null,
         "id"                 text not null,
@@ -234,9 +244,10 @@ create table "sgd0815"."scalar" (
         "bytes"              bytea,
         "big_int"            numeric,
         "color"              "sgd0815"."color"
-);
-alter table "sgd0815"."scalar"
-  add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
+    );
+
+    alter table "sgd0815"."scalar"
+        add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
 create index brin_scalar
     on "sgd0815"."scalar"
  using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
@@ -259,6 +270,25 @@ create index attr_1_6_scalar_big_int
     on "sgd0815"."scalar" using btree("big_int");
 create index attr_1_7_scalar_color
     on "sgd0815"."scalar" using btree("color");
+
+
+    create table "sgd0815"."file_thing" (
+        vid                  bigserial primary key,
+        block_range          int4range not null,
+        causality_region     int not null,
+        "id"                 text not null
+    );
+
+    alter table "sgd0815"."file_thing"
+        add constraint file_thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_file_thing
+    on "sgd0815"."file_thing"
+ using brin(lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index file_thing_block_range_closed
+    on "sgd0815"."file_thing"(coalesce(upper(block_range), 2147483647))
+ where coalesce(upper(block_range), 2147483647) < 2147483647;
+create index attr_2_0_file_thing_id
+    on "sgd0815"."file_thing" using btree("id");
 
 "#;
 

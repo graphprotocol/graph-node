@@ -17,6 +17,7 @@ use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::panic;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -427,7 +428,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, Arc::new(site), &schema)
+    Layout::create_relational_schema(&conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
 }
 

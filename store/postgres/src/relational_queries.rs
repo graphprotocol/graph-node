@@ -31,6 +31,7 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+use crate::layout_for_tests::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
@@ -1722,6 +1723,10 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_sql(", ");
         }
         self.br_column.name(&mut out);
+        if self.table.has_causality_region {
+            out.push_sql(", ");
+            out.push_sql(CAUSALITY_REGION_COLUMN);
+        };
 
         out.push_sql(") values\n");
 
@@ -1740,6 +1745,10 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(", ");
             }
             self.br_column.literal_range_current(&mut out)?;
+            if self.table.has_causality_region {
+                // FIXME(#3770) Set correct causality region.
+                out.push_sql(", 0");
+            };
             out.push_sql(")");
 
             // finalize line according to remaining entities to insert
@@ -3465,6 +3474,8 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         } else {
             out.push_sql(BLOCK_RANGE_COLUMN);
         }
+        // FIXME(#3770) Copy causality region if `src` has the column.
+
         out.push_sql(")\nselect ");
         for column in &self.columns {
             out.push_identifier(column.name.as_str())?;

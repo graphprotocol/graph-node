@@ -4,6 +4,7 @@ mod traits;
 
 pub use entity_cache::{EntityCache, ModificationsAndCache};
 
+use diesel::types::{FromSql, ToSql};
 pub use err::StoreError;
 use itertools::Itertools;
 pub use traits::*;
@@ -12,13 +13,14 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::fmt;
 use std::fmt::Display;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use std::{fmt, io};
 
 use crate::blockchain::Block;
 use crate::data::store::scalar::Bytes;
@@ -71,6 +73,12 @@ impl<'a> From<&s::InterfaceType<'a, String>> for EntityType {
     }
 }
 
+impl Borrow<str> for EntityType {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
 // This conversion should only be used in tests since it makes it too
 // easy to convert random strings into entity types
 #[cfg(debug_assertions)]
@@ -81,6 +89,22 @@ impl From<&str> for EntityType {
 }
 
 impl CheapClone for EntityType {}
+
+impl FromSql<diesel::sql_types::Text, diesel::pg::Pg> for EntityType {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<_, diesel::pg::Pg>>::from_sql(bytes)?;
+        Ok(EntityType::new(s))
+    }
+}
+
+impl ToSql<diesel::sql_types::Text, diesel::pg::Pg> for EntityType {
+    fn to_sql<W: io::Write>(
+        &self,
+        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
+        <str as ToSql<diesel::sql_types::Text, diesel::pg::Pg>>::to_sql(self.0.as_str(), out)
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityFilterDerivative(bool);

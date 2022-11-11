@@ -2,6 +2,7 @@ extern crate clap;
 extern crate graph_store_postgres;
 
 use clap::{arg, Command};
+use std::collections::BTreeSet;
 use std::process::exit;
 use std::{fs, sync::Arc};
 
@@ -145,7 +146,7 @@ pub fn main() {
     );
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let catalog = ensure(
-        Catalog::for_tests(site.clone()),
+        Catalog::for_tests(site.clone(), BTreeSet::new()),
         "Failed to construct catalog",
     );
     let layout = ensure(
