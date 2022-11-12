@@ -831,7 +831,6 @@ impl SubgraphStoreInner {
         Ok(())
     }
 
-    #[cfg(debug_assertions)]
     pub fn status_for_id(&self, id: graph::components::store::DeploymentId) -> status::Info {
         let filter = status::Filter::DeploymentIds(vec![id]);
         self.status(filter).unwrap().into_iter().next().unwrap()
