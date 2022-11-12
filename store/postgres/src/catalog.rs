@@ -627,3 +627,18 @@ pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreErro
 
     Ok(Duration::from_millis(lag))
 }
+
+pub(crate) fn cancel_vacuum(conn: &PgConnection, namespace: &Namespace) -> Result<(), StoreError> {
+    sql_query(
+        "select pg_cancel_backend(v.pid) \
+           from pg_stat_progress_vacuum v, \
+                pg_class c, \
+                pg_namespace n \
+          where v.relid = c.oid \
+            and c.relnamespace = n.oid \
+            and n.nspname = $1",
+    )
+    .bind::<Text, _>(namespace)
+    .execute(conn)?;
+    Ok(())
+}

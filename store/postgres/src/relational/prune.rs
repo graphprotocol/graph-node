@@ -9,7 +9,7 @@ use diesel::{
 use graph::{
     components::store::PruneReporter,
     prelude::{BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError},
-    slog::Logger,
+    slog::{warn, Logger},
 };
 use itertools::Itertools;
 
@@ -207,7 +207,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn switch(self, logger: &Logger, conn: &PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -217,7 +217,15 @@ impl TablePair {
 
         let mut query = String::new();
 
-        // Make sure the vid sequence continues from where it was
+        // What we are about to do would get blocked by autovacuum on our
+        // tables, so just kill the autovacuum
+        if let Err(e) = catalog::cancel_vacuum(conn, src_nsp) {
+            warn!(logger, "Failed to cancel vacuum during pruning; trying to carry on regardless";
+                  "src" => src_nsp.as_str(), "error" => e.to_string());
+        }
+
+        // Make sure the vid sequence
+        // continues from where it was
         writeln!(
             query,
             "select setval('{dst_nsp}.{vid_seq}', nextval('{src_nsp}.{vid_seq}'));"
@@ -276,7 +284,7 @@ impl Layout {
     /// ever blocks writes.
     pub fn prune_by_copying(
         &self,
-        _logger: &Logger,
+        logger: &Logger,
         reporter: &mut dyn PruneReporter,
         conn: &PgConnection,
         earliest_block: BlockNumber,
@@ -352,7 +360,7 @@ impl Layout {
             }
 
             for table in prunable_tables {
-                conn.transaction(|| table.switch(conn))?;
+                conn.transaction(|| table.switch(logger, conn))?;
                 cancel.check_cancel().map_err(CancelableError::from)?;
             }
 
