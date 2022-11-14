@@ -206,22 +206,23 @@ fn build_list_filter_from_value(
     schema: &ApiSchema,
     value: &r::Value,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
+    // We have object like this
+    // { or: [{ name: \"John\", id: \"m1\" }, { mainBand: \"b2\" }] }
     return match value {
         r::Value::List(list) => Ok(list
             .iter()
             .map(|item| {
+                // It is each filter in the object
+                // { name: \"John\", id: \"m1\" }
+                // the fields within the object are ANDed together
                 return match item {
-                    r::Value::Object(object) => {
-                        Ok(build_filter_from_object(entity, object, schema)?)
-                    }
+                    r::Value::Object(object) => Ok(EntityFilter::And(build_filter_from_object(
+                        entity, object, schema,
+                    )?)),
                     _ => Err(QueryExecutionError::InvalidFilterError),
                 };
             })
-            .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
-            // Flatten all different EntityFilters into one list
-            .into_iter()
-            .flatten()
-            .collect::<Vec<EntityFilter>>()),
+            .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?),
         _ => Err(QueryExecutionError::InvalidFilterError),
     };
 }

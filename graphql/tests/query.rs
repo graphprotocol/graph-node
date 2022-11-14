@@ -2128,7 +2128,7 @@ fn deterministic_error() {
 fn can_query_with_or_filter() {
     const QUERY: &str = "
     query {
-        musicians(where: { or: [{ name: \"John\", id: \"m2\" }] }) {
+        musicians(where: { or: [{ name: \"John\" }, { id: \"m2\" }] }) {
             name
             id
         }
@@ -2141,6 +2141,26 @@ fn can_query_with_or_filter() {
                 object! { name: "John", id: "m1" },
                 object! { name: "Lisa", id: "m2" },
             ],
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn can_query_with_or_filter_fields_always_and() {
+    const QUERY: &str = "
+    query {
+        musicians(where: { or: [{ name: \"John\", id: \"m2\" }] }) {
+            name
+            id
+        }
+    }
+    ";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            musicians: r::Value::List(vec![]),
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
