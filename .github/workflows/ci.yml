@@ -167,3 +167,26 @@ jobs:
         with:
           command: clippy
           args: --no-deps
+
+  release-check:
+    name: Build in release mode
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@v2
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libpq-dev
+      - name: Cargo check (debug)
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --tests
+      - name: Cargo check (release)
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release
