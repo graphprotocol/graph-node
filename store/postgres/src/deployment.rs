@@ -775,6 +775,7 @@ pub(crate) fn revert_subgraph_errors(
     id: &DeploymentHash,
     reverted_block: BlockNumber,
 ) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
     use subgraph_error as e;
 
     let lower_geq = format!("lower({}) >= ", BLOCK_RANGE_COLUMN);
@@ -788,7 +789,21 @@ pub(crate) fn revert_subgraph_errors(
     // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
-    check_health(conn, id, reverted_block - 1)
+    check_health(conn, id, reverted_block - 1)?;
+
+    // If the deployment is failed in both `failed` and `status` columns,
+    // update both values respectively to `false` and `healthy`. Basically
+    // unfail the statuses.
+    update(
+        d::table
+            .filter(d::deployment.eq(id.as_str()))
+            .filter(d::failed.eq(true))
+            .filter(d::health.eq(SubgraphHealth::Failed)),
+    )
+    .set((d::failed.eq(false), d::health.eq(SubgraphHealth::Healthy)))
+    .execute(conn)
+    .map(|_| ())
+    .map_err(StoreError::from)
 }
 
 pub(crate) fn delete_error(conn: &PgConnection, error_id: &str) -> Result<(), StoreError> {
