@@ -1,15 +1,15 @@
 [workspace]
 members = [
-    "core",
-    "chain/*",
-    "graphql",
-    "mock",
-    "node",
-    "runtime/*",
-    "server/*",
-    "store/*",
-    "graph",
-    "tests",
+    "crates/core",
+    "crates/chain/*",
+    "crates/graphql",
+    "crates/mock",
+    "crates/node",
+    "crates/runtime/*",
+    "crates/server/*",
+    "crates/store/*",
+    "crates/graph",
+    "crates/tests",
 ]
 
 [workspace.package]
