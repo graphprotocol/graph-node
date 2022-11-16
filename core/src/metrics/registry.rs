@@ -210,7 +210,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         let id = gauge.desc().first().unwrap().id;
         let maybe_gauge = self.global_gauges.read().unwrap().get(&id).cloned();
         if let Some(gauge) = maybe_gauge {
-            Ok(gauge.clone())
+            Ok(gauge)
         } else {
             self.register(name, Box::new(gauge.clone()));
             self.global_gauges
@@ -284,7 +284,7 @@ fn global_counters_are_shared() {
 
     let logger = log::logger(false);
     let prom_reg = Arc::new(Registry::new());
-    let registry = MetricsRegistry::new(logger, prom_reg.clone());
+    let registry = MetricsRegistry::new(logger, prom_reg);
 
     fn check_counters(
         registry: &MetricsRegistry,

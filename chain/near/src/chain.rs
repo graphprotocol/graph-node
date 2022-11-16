@@ -47,7 +47,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         let adapter = chain
             .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
-            .expect(&format!("no adapter for network {}", chain.name,));
+            .unwrap_or_else(|_| panic!("no adapter for network {}", chain.name));
 
         let firehose_endpoint = chain.firehose_endpoints.random()?;
 
@@ -571,7 +571,7 @@ mod test {
                 true,
                 case.expected
                     .iter()
-                    .all(|x| receipt.partial_accounts.contains(&x)),
+                    .all(|x| receipt.partial_accounts.contains(x)),
                 "name: {}\npartial_accounts: {:?}",
                 case.name,
                 receipt.partial_accounts,

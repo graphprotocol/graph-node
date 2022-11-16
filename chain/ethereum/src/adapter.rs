@@ -143,7 +143,7 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         &mut self,
         data_sources: impl Iterator<Item = <Chain as bc::Blockchain>::DataSourceTemplate>,
     ) {
-        for data_source in data_sources.into_iter() {
+        for data_source in data_sources {
             self.log
                 .extend(EthereumLogFilter::from_mapping(&data_source.mapping));
 
@@ -349,7 +349,7 @@ impl EthereumLogFilter {
                 // Sanity checks:
                 // - The filter is not a wildcard because all nodes have neighbors.
                 // - The graph is bipartite.
-                assert!(filter.contracts.len() > 0 && filter.event_signatures.len() > 0);
+                assert!(!filter.contracts.is_empty() && !filter.event_signatures.is_empty());
                 assert!(filter.contracts.len() == 1 || filter.event_signatures.len() == 1);
                 filters.push(filter);
             };
@@ -480,7 +480,7 @@ impl EthereumCallFilter {
     pub fn from_data_sources<'a>(iter: impl IntoIterator<Item = &'a DataSource>) -> Self {
         iter.into_iter()
             .filter_map(|data_source| data_source.address.map(|addr| (addr, data_source)))
-            .map(|(contract_addr, data_source)| {
+            .flat_map(|(contract_addr, data_source)| {
                 let start_block = data_source.start_block;
                 data_source
                     .mapping
@@ -491,7 +491,6 @@ impl EthereumCallFilter {
                         (start_block, contract_addr, [sig[0], sig[1], sig[2], sig[3]])
                     })
             })
-            .flatten()
             .collect()
     }
 
@@ -548,9 +547,9 @@ impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilt
         let mut lookup: HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)> = HashMap::new();
         iter.into_iter()
             .for_each(|(start_block, address, function_signature)| {
-                if !lookup.contains_key(&address) {
-                    lookup.insert(address, (start_block, HashSet::default()));
-                }
+                lookup
+                    .entry(address)
+                    .or_insert((start_block, HashSet::default()));
                 lookup.get_mut(&address).map(|set| {
                     if set.0 > start_block {
                         set.0 = start_block
@@ -573,7 +572,7 @@ impl From<&EthereumBlockFilter> for EthereumCallFilter {
                 .contract_addresses
                 .iter()
                 .map(|(start_block_opt, address)| {
-                    (address.clone(), (*start_block_opt, HashSet::default()))
+                    (*address, (*start_block_opt, HashSet::default()))
                 })
                 .collect::<HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)>>(),
             wildcard_signatures: HashSet::new(),
@@ -610,7 +609,7 @@ impl EthereumBlockFilter {
     pub fn from_mapping(mapping: &Mapping) -> Self {
         Self {
             contract_addresses: HashSet::new(),
-            trigger_every_block: mapping.block_handlers.len() != 0,
+            trigger_every_block: !mapping.block_handlers.is_empty(),
         }
     }
 
@@ -1117,7 +1116,7 @@ mod tests {
         );
 
         let mut combined_filter = &firehose_filter
-            .get(COMBINED_FILTER_TYPE_URL.into())
+            .get(COMBINED_FILTER_TYPE_URL)
             .expect("a CombinedFilter")
             .value[..];
 
@@ -1185,7 +1184,7 @@ mod tests {
         );
 
         let mut combined_filter = &firehose_filter
-            .get(COMBINED_FILTER_TYPE_URL.into())
+            .get(COMBINED_FILTER_TYPE_URL)
             .expect("a CombinedFilter")
             .value[..];
 
@@ -1520,8 +1519,7 @@ fn complete_log_filter() {
             assert_eq!(
                 logs_filters
                     .iter()
-                    .map(|l| l.contracts.iter())
-                    .flatten()
+                    .flat_map(|l| l.contracts.iter())
                     .copied()
                     .collect::<BTreeSet<_>>(),
                 contracts
@@ -1529,8 +1527,7 @@ fn complete_log_filter() {
             assert_eq!(
                 logs_filters
                     .iter()
-                    .map(|l| l.event_signatures.iter())
-                    .flatten()
+                    .flat_map(|l| l.event_signatures.iter())
                     .copied()
                     .collect::<BTreeSet<_>>(),
                 events

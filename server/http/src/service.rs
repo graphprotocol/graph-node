@@ -97,13 +97,13 @@ where
         let mut version = ApiVersion::default();
 
         if let Some(query) = request.uri().query() {
-            let potential_version_requirement = query.split("&").find_map(|pair| {
+            let potential_version_requirement = query.split('&').find_map(|pair| {
                 if pair.starts_with("api-version=") {
-                    if let Some(version_requirement) = pair.split("=").nth(1) {
+                    if let Some(version_requirement) = pair.split('=').nth(1) {
                         return Some(version_requirement);
                     }
                 }
-                return None;
+                None
             });
 
             if let Some(version_requirement) = potential_version_requirement {
@@ -111,7 +111,7 @@ where
                     &VersionReq::parse(version_requirement)
                         .map_err(|error| GraphQLServerError::ClientError(error.to_string()))?,
                 )
-                .map_err(|error| GraphQLServerError::ClientError(error))?;
+                .map_err(GraphQLServerError::ClientError)?;
             }
         }
 

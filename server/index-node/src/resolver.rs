@@ -93,7 +93,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .argument_value("subgraphs")
             .map(|value| match value {
                 r::Value::List(ids) => ids
-                    .into_iter()
+                    .iter()
                     .map(|id| match id {
                         r::Value::String(s) => s.clone(),
                         _ => unreachable!(),
@@ -101,7 +101,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     .collect(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(|| Vec::new());
+            .unwrap_or_else(Vec::new);
 
         let infos = self
             .store
@@ -334,7 +334,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     "block_hash" => format!("{}", block_hash),
                     "error" => e.to_string(),
                 );
-                return Err(QueryExecutionError::StoreError(Error::from(e).into()));
+                return Err(QueryExecutionError::StoreError(e.into()));
             }
         };
 
@@ -347,7 +347,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         block: object! {
                             hash: cached_call.block_ptr.hash.hash_hex(),
                             number: cached_call.block_ptr.number,
-                            timestamp: timestamp.clone(),
+                            timestamp: timestamp,
                         },
                         contractAddress: &cached_call.contract_address[..],
                         returnValue: &cached_call.return_value[..],
@@ -451,10 +451,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         Some((ref block, _)) => block.clone(),
                         None => PartialBlockPtr::from(request.block_number),
                     },
-                    proof_of_indexing: match poi_result {
-                        Some((_, poi)) => Some(poi),
-                        None => None,
-                    },
+                    proof_of_indexing: poi_result.map(|(_, poi)| poi),
                 })
                 .map(IntoValue::into_value)
                 .collect(),

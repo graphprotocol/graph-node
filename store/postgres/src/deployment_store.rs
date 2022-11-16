@@ -134,7 +134,7 @@ impl DeploymentStore {
         let mut replica_order: Vec<_> = pool_weights
             .iter()
             .enumerate()
-            .map(|(i, weight)| {
+            .flat_map(|(i, weight)| {
                 let replica = if i == 0 {
                     ReplicaId::Main
                 } else {
@@ -142,7 +142,6 @@ impl DeploymentStore {
                 };
                 vec![replica; *weight]
             })
-            .flatten()
             .collect();
         let mut rng = thread_rng();
         replica_order.shuffle(&mut rng);
@@ -280,8 +279,7 @@ impl DeploymentStore {
                 .interfaces_for_type(&key.entity_type)
                 .into_iter()
                 .flatten()
-                .map(|interface| &types_for_interface[&interface.into()])
-                .flatten()
+                .flat_map(|interface| &types_for_interface[&interface.into()])
                 .map(EntityType::from)
                 .filter(|type_name| type_name != &key.entity_type),
         );
@@ -315,7 +313,7 @@ impl DeploymentStore {
         let mut inserts = HashMap::new();
         let mut overwrites = HashMap::new();
         let mut removals = HashMap::new();
-        for modification in mods.into_iter() {
+        for modification in mods.iter() {
             match modification {
                 Insert { key, data } => {
                     inserts
@@ -699,7 +697,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        let layout = store.layout(&conn, site)?;
+        let layout = store.layout(conn, site)?;
         let table = resolve_table_name(&layout, &entity_name)?;
         table.analyze(conn)
     }
@@ -810,7 +808,7 @@ impl DeploymentStore {
         self.with_conn(move |conn, cancel| {
             let layout = store.layout(conn, site.clone())?;
             cancel.check_cancel()?;
-            let state = deployment::state(&conn, site.deployment.clone())?;
+            let state = deployment::state(conn, site.deployment.clone())?;
 
             if state.latest_block.number <= reorg_threshold {
                 return Ok(reporter);
@@ -863,7 +861,7 @@ impl DeploymentStore {
         self.with_conn(|conn, cancel| {
             cancel.check_cancel()?;
 
-            Self::block_ptr_with_conn(&conn, site).map_err(Into::into)
+            Self::block_ptr_with_conn(conn, site).map_err(Into::into)
         })
         .await
     }
@@ -874,7 +872,7 @@ impl DeploymentStore {
         self.with_conn(|conn, cancel| {
             cancel.check_cancel()?;
 
-            deployment::get_subgraph_firehose_cursor(&conn, site)
+            deployment::get_subgraph_firehose_cursor(conn, site)
                 .map(FirehoseCursor::from)
                 .map_err(Into::into)
         })
@@ -981,12 +979,8 @@ impl DeploymentStore {
 
         let info = self.subgraph_info(&site5).map_err(anyhow::Error::from)?;
 
-        let mut finisher = ProofOfIndexingFinisher::new(
-            &block2,
-            &site3.deployment,
-            &indexer,
-            info.poi_version.clone(),
-        );
+        let mut finisher =
+            ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer, info.poi_version);
         for (name, region) in by_causality_region.drain() {
             finisher.add_causality_region(&name, &region);
         }
@@ -1166,7 +1160,7 @@ impl DeploymentStore {
                 // importantly creation of dynamic data sources. We ensure in the
                 // rest of the code that we only record history for those meta data
                 // changes that might need to be reverted
-                Layout::revert_metadata(&conn, &site, block)?;
+                Layout::revert_metadata(conn, &site, block)?;
 
                 deployment::update_entity_count(
                     conn,
@@ -1237,7 +1231,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| deployment::fail(&conn, &id, &error))
+            conn.transaction(|| deployment::fail(conn, &id, &error))
                 .map_err(Into::into)
         })
         .await?;
@@ -1273,7 +1267,7 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(move |conn, _| {
-            conn.transaction(|| crate::dynds::load(&conn, &site, block, manifest_idx_and_name))
+            conn.transaction(|| crate::dynds::load(conn, &site, block, manifest_idx_and_name))
                 .map_err(Into::into)
         })
         .await
@@ -1613,7 +1607,7 @@ impl DeploymentStore {
         &self,
         site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
-        let id = site.id.clone();
+        let id = site.id;
         self.with_conn(move |conn, _| deployment::health(conn, id).map_err(Into::into))
             .await
     }
@@ -1624,7 +1618,7 @@ impl DeploymentStore {
         raw_yaml: String,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            deployment::set_manifest_raw_yaml(&conn, &site, &raw_yaml).map_err(Into::into)
+            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
         })
         .await
     }

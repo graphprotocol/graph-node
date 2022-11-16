@@ -101,7 +101,7 @@ pub struct EthereumBlock {
     pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct EthereumCall {
     pub from: Address,
     pub to: Address,

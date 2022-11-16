@@ -68,7 +68,7 @@ pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         }
         k if k.ends_with("_ends_with") => ("_ends_with", FilterOp::EndsWith),
         k if k.ends_with("_ends_with_nocase") => ("_ends_with_nocase", FilterOp::EndsWithNoCase),
-        k if k.ends_with("_") => ("_", FilterOp::Child),
+        k if k.ends_with('_') => ("_", FilterOp::Child),
         k if k.eq("and") => ("and", FilterOp::And),
         k if k.eq("or") => ("or", FilterOp::Or),
         _ => ("", FilterOp::Equal),
@@ -208,8 +208,8 @@ pub fn get_field<'a>(
 /// Returns the value type for a GraphQL field type.
 pub fn get_field_value_type(field_type: &s::Type) -> Result<ValueType, Error> {
     match field_type {
-        s::Type::NamedType(ref name) => ValueType::from_str(&name),
-        s::Type::NonNullType(inner) => get_field_value_type(&inner),
+        s::Type::NamedType(ref name) => ValueType::from_str(name),
+        s::Type::NonNullType(inner) => get_field_value_type(inner),
         s::Type::ListType(_) => Err(anyhow!("Only scalar values are supported in this context")),
     }
 }

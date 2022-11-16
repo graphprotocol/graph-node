@@ -140,7 +140,7 @@ pub fn mock_data_source(path: &str, api_version: Version) -> DataSource {
             link: Link {
                 link: "link".to_owned(),
             },
-            runtime: Arc::new(runtime.clone()),
+            runtime: Arc::new(runtime),
         },
         context: Default::default(),
         creation_block: None,

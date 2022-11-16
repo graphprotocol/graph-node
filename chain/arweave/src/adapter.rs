@@ -72,9 +72,7 @@ impl ArweaveTransactionFilter {
             })
             .map(|ds| match &ds.source.owner {
                 Some(str) if MATCH_ALL_WILDCARD.eq(str) => MATCH_ALL_WILDCARD.as_bytes().to_owned(),
-                owner @ _ => {
-                    base64_url::decode(&owner.clone().unwrap_or_default()).unwrap_or_default()
-                }
+                owner => base64_url::decode(&owner.clone().unwrap_or_default()).unwrap_or_default(),
             })
             .collect();
 
@@ -86,11 +84,11 @@ impl ArweaveTransactionFilter {
             .into_iter()
             .partition::<Vec<Vec<u8>>, _>(|long| long.len() != MATCH_ALL_WILDCARD.len());
 
-        let match_all = wildcard.len() != 0;
+        let match_all = !wildcard.is_empty();
 
         let owners_sha: Vec<Vec<u8>> = owners_sha
             .into_iter()
-            .chain::<Vec<Vec<u8>>>(owners_pubkey.iter().map(|long| sha256(&long)).collect())
+            .chain::<Vec<Vec<u8>>>(owners_pubkey.iter().map(|long| sha256(long)).collect())
             .collect();
 
         Self {
@@ -158,8 +156,8 @@ mod test {
     fn transaction_filter_wildcard_matches_all() {
         let dss = vec![
             new_datasource(None, 10),
-            new_datasource(Some(base64_url::encode(MATCH_ALL_WILDCARD.into())), 10),
-            new_datasource(Some(base64_url::encode("owner").into()), 10),
+            new_datasource(Some(base64_url::encode(MATCH_ALL_WILDCARD)), 10),
+            new_datasource(Some(base64_url::encode("owner")), 10),
             new_datasource(Some(ARWEAVE_PUBKEY_EXAMPLE.into()), 10),
         ];
 

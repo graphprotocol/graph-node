@@ -173,14 +173,14 @@ fn test_trigger_dedup() {
         call3.clone(),
         call1.clone(),
         call2.clone(),
-        call4.clone(),
+        call4,
         // Block triggers
-        block3.clone(),
+        block3,
         block2.clone(),
         block1.clone(),
         // Event triggers
-        log5.clone(),
-        log4.clone(),
+        log5,
+        log4,
         log3.clone(),
         log2.clone(),
         log1.clone(),

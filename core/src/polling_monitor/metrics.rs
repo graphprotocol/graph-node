@@ -46,7 +46,7 @@ impl PollingMonitorMetrics {
             requests,
             errors,
             not_found,
-            queue_depth: queue_depth.into(),
+            queue_depth,
         }
     }
 

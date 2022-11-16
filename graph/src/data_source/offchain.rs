@@ -21,7 +21,7 @@ use std::{
 
 use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
 
-pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
+pub const OFFCHAIN_KINDS: &[&str] = &["file/ipfs"];
 const NOT_DONE_VALUE: i32 = -1;
 
 #[derive(Debug, Clone)]
@@ -116,7 +116,7 @@ impl DataSource {
             name: template.name.clone(),
             manifest_idx: template.manifest_idx,
             source,
-            mapping: template.mapping.clone(),
+            mapping: template.mapping,
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
             done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),
@@ -302,7 +302,7 @@ impl UnresolvedDataSource {
             kind: self.kind,
             name: self.name,
             source,
-            mapping: self.mapping.resolve(&*resolver, logger).await?,
+            mapping: self.mapping.resolve(resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
             done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),

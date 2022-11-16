@@ -446,7 +446,10 @@ async fn handle_assignment_event(
         AssignmentEvent::Add {
             deployment,
             node_id: _,
-        } => Ok(start_subgraph(deployment, provider.clone(), logger).await),
+        } => {
+            start_subgraph(deployment, provider.clone(), logger).await;
+            Ok(())
+        }
         AssignmentEvent::Remove {
             deployment,
             node_id: _,
@@ -556,8 +559,8 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment,
         raw,
-        &resolver,
-        &logger,
+        resolver,
+        logger,
         ENV_VARS.max_spec_version.clone(),
     )
     .map_err(SubgraphRegistrarError::ResolveError)
@@ -599,7 +602,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             graft.base.clone(),
             match graft_block_override {
                 Some(block) => block,
-                None => resolve_graft_block(&graft, &*chain, &logger).await?,
+                None => resolve_graft_block(graft, &*chain, &logger).await?,
             },
         )),
     };
@@ -631,5 +634,5 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             network_name,
             version_switching_mode,
         )
-        .map_err(|e| SubgraphRegistrarError::SubgraphDeploymentError(e))
+        .map_err(SubgraphRegistrarError::SubgraphDeploymentError)
 }

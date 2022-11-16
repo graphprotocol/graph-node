@@ -276,7 +276,7 @@ fn field_filter_input_values(
             })
         }
         Type::ListType(ref t) => {
-            Ok(field_list_filter_input_values(schema, field, t).unwrap_or(vec![]))
+            Ok(field_list_filter_input_values(schema, field, t).unwrap_or_default())
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
@@ -372,7 +372,7 @@ fn field_list_filter_input_values(
     field_type: &Type,
 ) -> Option<Vec<InputValue>> {
     // Only add a filter field if the type of the field exists in the schema
-    ast::get_type_definition_from_type(schema, field_type).and_then(|typedef| {
+    ast::get_type_definition_from_type(schema, field_type).map(|typedef| {
         // Decide what type of values can be passed to the filter. In the case
         // one-to-many or many-to-many object or interface fields that are not
         // derived, we allow ID strings to be passed on.
@@ -420,7 +420,7 @@ fn field_list_filter_input_values(
             extend_with_child_filter_input_value(field, &parent, &mut input_values);
         }
 
-        Some(input_values)
+        input_values
     })
 }
 
@@ -686,27 +686,27 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
     // non-nullable field, regardless of the presence of a default.
-    let mut skip = input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string()));
+    let mut skip = input_value("skip", "", Type::NamedType("Int".to_string()));
     skip.default_value = Some(Value::Int(0.into()));
 
-    let mut first = input_value(&"first".to_string(), "", Type::NamedType("Int".to_string()));
+    let mut first = input_value("first", "", Type::NamedType("Int".to_string()));
     first.default_value = Some(Value::Int(100.into()));
 
     let args = vec![
         skip,
         first,
         input_value(
-            &"orderBy".to_string(),
+            "orderBy",
             "",
             Type::NamedType(format!("{}_orderBy", type_name)),
         ),
         input_value(
-            &"orderDirection".to_string(),
+            "orderDirection",
             "",
             Type::NamedType("OrderDirection".to_string()),
         ),
         input_value(
-            &"where".to_string(),
+            "where",
             "",
             Type::NamedType(format!("{}_filter", type_name)),
         ),

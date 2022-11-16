@@ -802,7 +802,7 @@ impl Context {
         use graph::components::store::BlockStore;
         self.store()
             .block_store()
-            .chain_store(&chain_name)
+            .chain_store(chain_name)
             .ok_or_else(|| anyhow::anyhow!("Could not find a network named '{}'", chain_name))
     }
 
@@ -815,8 +815,7 @@ impl Context {
         let ethereum_adapter = ethereum_networks
             .networks
             .get(chain_name)
-            .map(|adapters| adapters.cheapest())
-            .flatten()
+            .and_then(|adapters| adapters.cheapest())
             .ok_or(anyhow::anyhow!(
                 "Failed to obtain an Ethereum adapter for chain '{}'",
                 chain_name
@@ -866,7 +865,7 @@ async fn main() -> anyhow::Result<()> {
     let fork_base = match &opt.fork_base {
         Some(url) => {
             // Make sure the endpoint ends with a terminating slash.
-            let url = if !url.ends_with("/") {
+            let url = if !url.ends_with('/') {
                 let mut url = url.clone();
                 url.push('/');
                 Url::parse(&url)
@@ -906,7 +905,7 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let (primary, store) = if status {
                 let (store, primary) = ctx.store_and_primary();
-                (primary.clone(), Some(store))
+                (primary, Some(store))
             } else {
                 (ctx.primary_pool(), None)
             };

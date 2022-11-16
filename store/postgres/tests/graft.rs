@@ -166,7 +166,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Johnton",
         "tonofjohn@email.com",
-        67 as i32,
+        67_i32,
         184.4,
         false,
         None,
@@ -180,7 +180,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Cindini",
         "dinici@email.com",
-        43 as i32,
+        43_i32,
         159.1,
         true,
         Some("red"),
@@ -190,7 +190,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Shaqueeena",
         "queensha@email.com",
-        28 as i32,
+        28_i32,
         111.7,
         false,
         Some("blue"),
@@ -209,7 +209,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Shaqueeena",
         "teeko@email.com",
-        28 as i32,
+        28_i32,
         111.7,
         false,
         None,
@@ -483,7 +483,7 @@ fn prune() {
         let reporter = Box::new(Progress);
 
         store
-            .prune(reporter, &src, earliest_block, 1, 1.1)
+            .prune(reporter, src, earliest_block, 1, 1.1)
             .await
             .map(|_| ())
     }
@@ -508,7 +508,7 @@ fn prune() {
             USER,
             "Cindini",
             "dinici@email.com",
-            44 as i32,
+            44_i32,
             157.1,
             true,
             Some("red"),

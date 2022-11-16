@@ -92,7 +92,8 @@ impl HashMapKVSerializer {
 
 impl Serializer for HashMapKVSerializer {
     fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        Ok(self.kvs.push((key.into(), format!("{}", val))))
+        self.kvs.push((key.into(), format!("{}", val)));
+        Ok(())
     }
 }
 
@@ -125,7 +126,8 @@ impl SimpleKVSerializer {
 
 impl Serializer for SimpleKVSerializer {
     fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        Ok(self.kvs.push((key.into(), format!("{}", val))))
+        self.kvs.push((key.into(), format!("{}", val)));
+        Ok(())
     }
 }
 

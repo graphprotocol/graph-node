@@ -116,7 +116,7 @@ impl AscType for ArrayBuffer {
             DeterministicHostError::from(anyhow!("Attempted to read past end of array"))
         })?;
         Ok(ArrayBuffer {
-            byte_length: u32::from_asc_bytes(&byte_length, api_version)?,
+            byte_length: u32::from_asc_bytes(byte_length, api_version)?,
             padding: [0; 4],
             content: content.to_vec().into(),
         })

@@ -147,7 +147,7 @@ impl NearReceiptFilter {
         let partial_accounts: Vec<(Option<String>, Option<String>)> = sources
             .iter()
             .filter(|s| s.partial_accounts.is_some())
-            .map(|s| {
+            .flat_map(|s| {
                 let partials = s.partial_accounts.as_ref().unwrap();
 
                 let mut pairs: Vec<(Option<String>, Option<String>)> = vec![];
@@ -181,7 +181,6 @@ impl NearReceiptFilter {
 
                 pairs
             })
-            .flatten()
             .collect();
 
         Self {

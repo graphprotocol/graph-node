@@ -85,7 +85,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
+        self.network.as_deref()
     }
 
     fn context(&self) -> Arc<Option<DataSourceContext>> {

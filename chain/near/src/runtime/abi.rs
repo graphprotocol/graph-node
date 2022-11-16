@@ -630,7 +630,7 @@ impl ToAscObj<Uint8Array> for codec::BigInt {
         gas: &GasCounter,
     ) -> Result<Uint8Array, DeterministicHostError> {
         // Bytes are reversed to align with BigInt bytes endianess
-        let reversed: Vec<u8> = self.bytes.iter().rev().map(|x| *x).collect();
+        let reversed: Vec<u8> = self.bytes.iter().rev().copied().collect();
 
         reversed.to_asc_obj(heap, gas)
     }

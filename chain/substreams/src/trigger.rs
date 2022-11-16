@@ -76,7 +76,7 @@ impl blockchain::TriggerFilter<Chain> for TriggerFilter {
             return;
         }
 
-        if let Some(ref ds) = data_sources.next() {
+        if let Some(ds) = data_sources.next() {
             *data_sources_len = 1;
             *modules = ds.source.package.modules.clone();
             *module_name = ds.source.module_name.clone();
@@ -192,7 +192,7 @@ where
                         let new_value: &codec::value::Typed = match &field.new_value {
                             Some(codec::Value {
                                 typed: Some(new_value),
-                            }) => &new_value,
+                            }) => new_value,
                             _ => continue,
                         };
 
@@ -203,7 +203,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
-                            entity_type: &entity_type,
+                            entity_type,
                             id: &entity_id,
                             data: &data,
                         },
@@ -243,12 +243,12 @@ fn decode_value(value: &crate::codec::value::Typed) -> Result<Value, MappingErro
     match value {
         Typed::Int32(new_value) => Ok(Value::Int(*new_value)),
 
-        Typed::Bigdecimal(new_value) => BigDecimal::from_str(&new_value)
-            .map(|bd| Value::BigDecimal(bd))
+        Typed::Bigdecimal(new_value) => BigDecimal::from_str(new_value)
+            .map(Value::BigDecimal)
             .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
 
-        Typed::Bigint(new_value) => BigInt::from_str(&new_value)
-            .map(|bi| Value::BigInt(bi))
+        Typed::Bigint(new_value) => BigInt::from_str(new_value)
+            .map(Value::BigInt)
             .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
 
         Typed::String(new_value) => Ok(Value::String(new_value.clone())),
@@ -257,7 +257,7 @@ fn decode_value(value: &crate::codec::value::Typed) -> Result<Value, MappingErro
             .map(|bs| Value::Bytes(Bytes::from(bs.as_ref())))
             .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
 
-        Typed::Bool(new_value) => Ok(Value::Bool(new_value.clone())),
+        Typed::Bool(new_value) => Ok(Value::Bool(*new_value)),
 
         Typed::Array(arr) => arr
             .value

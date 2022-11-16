@@ -137,7 +137,7 @@ impl FirehoseCursor {
 
 impl fmt::Display for FirehoseCursor {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(&self.0.as_deref().unwrap_or(""))
+        f.write_str(self.0.as_deref().unwrap_or(""))
     }
 }
 
@@ -145,7 +145,7 @@ impl From<String> for FirehoseCursor {
     fn from(cursor: String) -> Self {
         // Treat a cursor of "" as None, not absolutely necessary for correctness since the firehose
         // treats both as the same, but makes it a little clearer.
-        if cursor == "" {
+        if cursor.is_empty() {
             FirehoseCursor::None
         } else {
             FirehoseCursor(Some(cursor))
@@ -500,7 +500,7 @@ mod test {
         let mut count = 0;
         loop {
             match stream.next().await {
-                None if blocks.len() == 0 => panic!("None before blocks"),
+                None if blocks.is_empty() => panic!("None before blocks"),
                 Some(Err(CancelableError::Cancel)) => {
                     assert!(guard.is_canceled(), "Guard shouldn't be called yet");
 

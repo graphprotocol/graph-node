@@ -22,7 +22,7 @@ impl Transport {
     pub async fn new_ipc(ipc: &str) -> Self {
         ipc::Ipc::new(ipc)
             .await
-            .map(|transport| Transport::IPC(transport))
+            .map(Transport::IPC)
             .expect("Failed to connect to Ethereum IPC")
     }
 
@@ -30,7 +30,7 @@ impl Transport {
     pub async fn new_ws(ws: &str) -> Self {
         ws::WebSocket::new(ws)
             .await
-            .map(|transport| Transport::WS(transport))
+            .map(Transport::WS)
             .expect("Failed to connect to Ethereum WS")
     }
 

@@ -6,7 +6,7 @@ use http::header::{
 use hyper::body::Bytes;
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use serde_json;
+
 use std::task::Context;
 use std::task::Poll;
 
@@ -14,7 +14,6 @@ use graph::components::{server::query::GraphQLServerError, store::Store};
 use graph::data::query::QueryResults;
 use graph::prelude::*;
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
-use graphql_parser;
 
 use crate::auth::bearer_token;
 
@@ -146,7 +145,7 @@ where
         // Run the query using the index node resolver
         let query_clone = query.cheap_clone();
         let logger = self.logger.cheap_clone();
-        let result = {
+        let result: QueryResult = {
             let resolver = IndexNodeResolver::new(
                 &logger,
                 store,
@@ -163,10 +162,8 @@ where
             };
             let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);
-            QueryResult::from(
-                // Index status queries are not cacheable, so we may unwrap this.
-                Arc::try_unwrap(result).unwrap(),
-            )
+            // Index status queries are not cacheable, so we may unwrap this.
+            Arc::try_unwrap(result).unwrap()
         };
 
         Ok(QueryResults::from(result).as_http_response())
@@ -374,7 +371,7 @@ impl ValidatedRequest {
 #[cfg(test)]
 mod tests {
     use graph::{data::value::Object, prelude::*};
-    use graphql_parser;
+
     use hyper::body::Bytes;
     use hyper::HeaderMap;
     use std::collections::HashMap;

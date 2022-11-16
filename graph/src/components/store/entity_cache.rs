@@ -123,13 +123,13 @@ impl EntityCache {
     pub fn set(&mut self, key: EntityKey, mut entity: Entity) -> Result<(), anyhow::Error> {
         fn check_id(key: &EntityKey, prev_id: &str) -> Result<(), anyhow::Error> {
             if prev_id != key.entity_id.as_str() {
-                return Err(anyhow!(
+                Err(anyhow!(
                     "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
                 {} != {}",
                     key.entity_type,
                     prev_id,
                     key.entity_id,
-                ));
+                ))
             } else {
                 Ok(())
             }

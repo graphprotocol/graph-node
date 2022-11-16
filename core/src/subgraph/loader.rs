@@ -25,7 +25,7 @@ pub async fn load_dynamic_data_sources<C: Blockchain>(
             .find(|template| template.manifest_idx() == stored.manifest_idx)
             .ok_or_else(|| anyhow!("no template with idx `{}` was found", stored.manifest_idx))?;
 
-        let ds = DataSource::from_stored_dynamic_data_source(&template, stored)?;
+        let ds = DataSource::from_stored_dynamic_data_source(template, stored)?;
 
         // The data sources are ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.

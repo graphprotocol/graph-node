@@ -180,7 +180,7 @@ impl BlockIngestor {
             .block_by_hash(&self.logger, block_hash)
             .compat()
             .await?
-            .ok_or_else(|| IngestorError::BlockUnavailable(block_hash))?;
+            .ok_or(IngestorError::BlockUnavailable(block_hash))?;
         let ethereum_block = self
             .eth_adapter
             .load_full_block(&self.logger, block)

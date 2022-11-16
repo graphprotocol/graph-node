@@ -47,7 +47,7 @@ where
                     None => continue,
                 };
 
-                host_mapping.push((&host, mapping_trigger));
+                host_mapping.push((host, mapping_trigger));
             }
         }
 
@@ -93,7 +93,7 @@ where
                 // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
                 proof_of_indexing
                     .borrow_mut()
-                    .write_deterministic_error(&logger, causality_region);
+                    .write_deterministic_error(logger, causality_region);
             }
         }
 

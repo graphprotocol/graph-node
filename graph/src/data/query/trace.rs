@@ -33,11 +33,11 @@ impl Default for Trace {
 impl Trace {
     pub fn root(query: Arc<String>) -> Trace {
         if ENV_VARS.log_sql_timing() || ENV_VARS.log_gql_timing() {
-            return Trace::Root {
+            Trace::Root {
                 query,
                 elapsed: Mutex::new(Duration::from_millis(0)),
                 children: Vec::new(),
-            };
+            }
         } else {
             Trace::None
         }
