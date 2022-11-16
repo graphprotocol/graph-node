@@ -25,13 +25,13 @@ use graph_core::{
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::chain::{
+use graph_node_utils::chain::{
     connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
     create_firehose_networks, create_ipfs_clients, create_substreams_networks,
 };
-use graph_node::config::Config;
-use graph_node::opt;
-use graph_node::store_builder::StoreBuilder;
+use graph_node_utils::config::Config;
+use graph_node_utils::opt;
+use graph_node_utils::store_builder::StoreBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;

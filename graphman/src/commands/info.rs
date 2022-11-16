@@ -3,7 +3,7 @@ use std::sync::Arc;
 use graph::{components::store::StatusStore, data::subgraph::status, prelude::anyhow};
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::deployment::{Deployment, DeploymentSearch};
+use crate::deployment::{Deployment, DeploymentSearch};
 
 pub fn run(
     pool: ConnectionPool,

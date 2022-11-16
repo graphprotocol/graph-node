@@ -1,5 +1,15 @@
+#[macro_use]
+extern crate diesel;
+
+pub mod catalog;
+pub mod commands;
+pub mod deployment;
+mod display;
+pub mod prompt;
+
+use deployment::DeploymentSearch;
+
 use clap::{Parser, Subcommand};
-use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
@@ -13,19 +23,15 @@ use graph::{
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
 use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::commands;
-use graph_node::{
-    chain::create_all_ethereum_networks,
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
+use graph_node_utils::config::{self, Config as Cfg};
+use graph_node_utils::{
+    chain::create_all_ethereum_networks, store_builder::StoreBuilder, MetricsContext,
 };
-use graph_store_postgres::connection_pool::PoolCoordinator;
-use graph_store_postgres::ChainStore;
+use graph_node_utils::{config::PoolSize, PanicSubscriptionManager};
+use graph_store_postgres::SubscriptionManager;
 use graph_store_postgres::{
-    connection_pool::ConnectionPool, BlockStore, NotificationSender, Shard, Store, SubgraphStore,
-    SubscriptionManager, PRIMARY_SHARD,
+    connection_pool::{ConnectionPool, PoolCoordinator},
+    BlockStore, ChainStore, NotificationSender, Shard, Store, SubgraphStore, PRIMARY_SHARD,
 };
 use lazy_static::lazy_static;
 use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};

@@ -18,7 +18,7 @@ use graph::{
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::connection_pool::ConnectionPool;
 
-use crate::manager::display::List;
+use crate::display::List;
 
 lazy_static! {
     // `Qm...` optionally follow by `:$shard`

@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use graph::prelude::{anyhow::Error, chrono};
 use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
 
-use crate::manager::display::List;
+use crate::display::List;
 
 fn make_list() -> List {
     List::new(vec!["id", "shard", "namespace", "subgraphs", "entities"])

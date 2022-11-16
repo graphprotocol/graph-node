@@ -1,8 +1,7 @@
 [package]
-name = "graph-node"
+name = "graph-node-utils"
 version.workspace = true
 edition.workspace = true
-rust-version = "1.64"
 
 [dependencies]
 clap = { version = "3.2.23", features = ["derive", "env"] }
@@ -21,7 +20,6 @@ graph-chain-near = { path = "../chain/near" }
 graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-chain-substreams = { path = "../chain/substreams" }
 graph-graphql = { path = "../graphql" }
-graph-node-utils = { path = "../node-utils" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }

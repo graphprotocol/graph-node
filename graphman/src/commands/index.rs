@@ -1,4 +1,4 @@
-use crate::manager::deployment::DeploymentSearch;
+use crate::deployment::DeploymentSearch;
 use graph::prelude::{anyhow, StoreError};
 use graph_store_postgres::{connection_pool::ConnectionPool, SubgraphStore};
 use std::{collections::HashSet, sync::Arc};

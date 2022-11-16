@@ -4,7 +4,7 @@ use std::{collections::HashMap, thread::sleep, time::Duration};
 use graph::prelude::anyhow;
 use graph_store_postgres::connection_pool::ConnectionPool;
 
-use crate::manager::catalog;
+use crate::catalog;
 
 pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     fn query(conn: &PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {

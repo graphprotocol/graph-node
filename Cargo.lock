@@ -1765,6 +1765,45 @@ dependencies = [
  "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
+ "graph-node-utils",
+ "graph-runtime-wasm",
+ "graph-server-http",
+ "graph-server-index-node",
+ "graph-server-json-rpc",
+ "graph-server-metrics",
+ "graph-server-websocket",
+ "graph-store-postgres",
+ "graphql-parser",
+ "http",
+ "json-structural-diff",
+ "lazy_static",
+ "prometheus",
+ "regex",
+ "serde",
+ "serde_regex",
+ "shellexpand",
+ "toml",
+ "url",
+]
+
+[[package]]
+name = "graph-node-utils"
+version = "0.28.2"
+dependencies = [
+ "clap",
+ "crossbeam-channel",
+ "diesel",
+ "env_logger 0.9.1",
+ "futures 0.3.16",
+ "git-testament",
+ "graph",
+ "graph-chain-arweave",
+ "graph-chain-cosmos",
+ "graph-chain-ethereum",
+ "graph-chain-near",
+ "graph-chain-substreams",
+ "graph-core",
+ "graph-graphql",
  "graph-runtime-wasm",
  "graph-server-http",
  "graph-server-index-node",
@@ -1962,7 +2001,7 @@ dependencies = [
  "graph-core",
  "graph-graphql",
  "graph-mock",
- "graph-node",
+ "graph-node-utils",
  "graph-runtime-wasm",
  "graph-store-postgres",
  "graphql-parser",
@@ -1973,6 +2012,27 @@ dependencies = [
  "slog",
  "tokio",
  "tokio-stream",
+]
+
+[[package]]
+name = "graphman"
+version = "0.28.2"
+dependencies = [
+ "clap",
+ "diesel",
+ "futures 0.3.16",
+ "git-testament",
+ "graph",
+ "graph-chain-ethereum",
+ "graph-core",
+ "graph-graphql",
+ "graph-node-utils",
+ "graph-store-postgres",
+ "graphql-parser",
+ "json-structural-diff",
+ "lazy_static",
+ "prometheus",
+ "regex",
 ]
 
 [[package]]
@@ -4382,7 +4442,7 @@ dependencies = [
  "graph",
  "graph-graphql",
  "graph-mock",
- "graph-node",
+ "graph-node-utils",
  "graph-store-postgres",
  "graphql-parser",
  "hex-literal",

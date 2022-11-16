@@ -1,4 +1,4 @@
-use crate::manager::prompt::prompt_for_confirmation;
+use crate::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
     components::store::ChainStore as ChainStoreTrait,

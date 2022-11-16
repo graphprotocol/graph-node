@@ -16,8 +16,8 @@ use graph_store_postgres::{
 };
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
 
-use crate::manager::deployment::DeploymentSearch;
-use crate::manager::display::List;
+use crate::deployment::DeploymentSearch;
+use crate::display::List;
 
 type UtcDateTime = DateTime<Utc>;
 

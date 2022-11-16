@@ -1,0 +1,22 @@
+[package]
+name = "graphman"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.64"
+
+[dependencies]
+clap = { version = "3.2.23", features = ["derive", "env"] }
+diesel = "1.4.8"
+futures = { version = "0.3.1", features = ["compat"] }
+git-testament = "0.2"
+graph = { path = "../graph" }
+graph-core = { path = "../core" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-graphql = { path = "../graphql" }
+graph-node-utils = { path = "../node-utils" }
+graph-store-postgres = { path = "../store/postgres" }
+graphql-parser = "0.4.0"
+json-structural-diff = { version = "0.1", features = ["colorize"] }
+lazy_static = "1.2.0"
+prometheus = { version = "0.13.3", features = ["push"] }
+regex = "1.5.4"

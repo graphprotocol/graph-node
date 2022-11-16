@@ -38,8 +38,8 @@ use graph_core::{
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
-use graph_node::manager::PanicSubscriptionManager;
-use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_node_utils::PanicSubscriptionManager;
+use graph_node_utils::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use slog::{info, o, Discard, Logger};

@@ -5,6 +5,7 @@ members = [
     "graphql",
     "mock",
     "node",
+    "graphman",
     "runtime/*",
     "server/*",
     "store/*",

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::manager::deployment::DeploymentSearch;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::PgConnection;
@@ -14,6 +13,8 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
+
+use crate::deployment::DeploymentSearch;
 
 fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,

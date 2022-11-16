@@ -17,8 +17,8 @@ use graph_graphql::prelude::{
 };
 use graph_graphql::test_support::GraphQLMetrics;
 use graph_mock::MockMetricsRegistry;
-use graph_node::config::{Config, Opt};
-use graph_node::store_builder::StoreBuilder;
+use graph_node_utils::config::{Config, Opt};
+use graph_node_utils::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{
