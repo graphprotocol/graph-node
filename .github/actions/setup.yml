@@ -1,0 +1,18 @@
+name: setup
+description: "Shared setup steps"
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v3
+      name: cache
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: env dependencies
+      run: sudo apt-get install -y lld jq

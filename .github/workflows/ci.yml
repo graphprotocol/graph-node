@@ -12,176 +12,189 @@ env:
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://postgres:postgres@localhost:5432/graph_node_test"
 
 jobs:
-  unit-tests:
-    name: Run unit tests
+  build:
+    name: build
     runs-on: ubuntu-latest
-    services:
-      ipfs:
-        image: ipfs/go-ipfs:v0.10.0
-        ports:
-          - 5001:5001
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install lld
-        run: sudo apt-get install -y lld
-
-      - name: Run unit tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --verbose --workspace --exclude graph-tests -- --nocapture
-
-  runner-tests:
-    name: Subgraph Runner integration tests
-    runs-on: ubuntu-latest
-    services:
-      ipfs:
-        image: ipfs/go-ipfs:v0.10.0
-        ports:
-          - 5001:5001
-      postgres:
-        image: postgres
-        env:
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: graph_node_test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install lld
-        run: sudo apt-get install -y lld
-
-      - name: Run runner tests
-        id: runner-tests-1
-        uses: actions-rs/cargo@v1
-        env:
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
-        with:
-          command: test
-          args: --verbose --package graph-tests -- --skip parallel_integration_tests
-
-  integration-tests:
-    name: Run integration tests
-    runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install Node 14
-        uses: actions/setup-node@v3
-        with:
-          node-version: "14"
-          cache: yarn
-          cache-dependency-path: "tests/integration-tests/yarn.lock"
-
-      - name: Install lld and jq
-        run: sudo apt-get install -y lld jq
-
-      - name: Build graph-node
+      - name: checkout
+        uses: actions/checkout@v3
+      - uses: .github/actions/setup.yml
+      - name: build
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --bin graph-node
 
-      # Integration tests are a bit flaky, running them twice increases the
-      # chances of one run succeeding.
-      - name: Run integration tests (round 1)
-        id: integration-tests-1
-        uses: actions-rs/cargo@v1
-        env:
-          N_CONCURRENT_TESTS: "4"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
-        with:
-          command: test
-          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
-        continue-on-error: true
-      - name: Run integration tests (round 2)
-        id: integration-tests-2
-        uses: actions-rs/cargo@v1
-        if: ${{ steps.integration-tests-1.outcome == 'failure' }}
-        env:
-          N_CONCURRENT_TESTS: "4"
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
-        with:
-          command: test
-          args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
+  # unit-tests:
+  #   name: Run unit tests
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     ipfs:
+  #       image: ipfs/go-ipfs:v0.10.0
+  #       ports:
+  #         - 5001:5001
+  #     postgres:
+  #       image: postgres
+  #       env:
+  #         POSTGRES_PASSWORD: postgres
+  #         POSTGRES_DB: graph_node_test
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
+  #   env:
+  #     RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
+  #     - uses: Swatinem/rust-cache@v2
 
-  rustfmt:
-    name: Check rustfmt style
-    runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-D warnings"
-    steps:
-      - uses: actions/checkout@v2
+  #     - name: Install lld
+  #       run: sudo apt-get install -y lld
 
-      - name: Check formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+  #     - name: Run unit tests
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: test
+  #         args: --verbose --workspace --exclude graph-tests -- --nocapture
 
-  clippy:
-    name: Report Clippy warnings
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
-      # caching.
-      - uses: Swatinem/rust-cache@v2
+  # runner-tests:
+  #   name: Subgraph Runner integration tests
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     ipfs:
+  #       image: ipfs/go-ipfs:v0.10.0
+  #       ports:
+  #         - 5001:5001
+  #     postgres:
+  #       image: postgres
+  #       env:
+  #         POSTGRES_PASSWORD: postgres
+  #         POSTGRES_DB: graph_node_test
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #       ports:
+  #         - 5432:5432
+  #   env:
+  #     RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
+  #     - uses: Swatinem/rust-cache@v2
 
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        # We do *not* block builds if Clippy complains. It's just here to let us
-        # keep an eye out on the warnings it produces.
-        continue-on-error: true
-        with:
-          command: clippy
-          args: --no-deps
+  #     - name: Install lld
+  #       run: sudo apt-get install -y lld
 
-  release-check:
-    name: Build in release mode
-    runs-on: ubuntu-latest
-    env:
-      RUSTFLAGS: "-D warnings"
-    steps:
-      - uses: actions/checkout@v2
-      - uses: Swatinem/rust-cache@v2
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libpq-dev
-      - name: Cargo check (release)
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release
+  #     - name: Run runner tests
+  #       id: runner-tests-1
+  #       uses: actions-rs/cargo@v1
+  #       env:
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests -- --skip parallel_integration_tests
+
+  # integration-tests:
+  #   name: Run integration tests
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+  #   steps:
+  #     - name: Checkout sources
+  #       uses: actions/checkout@v2
+  #     - uses: Swatinem/rust-cache@v2
+
+  #     - name: Install Node 14
+  #       uses: actions/setup-node@v3
+  #       with:
+  #         node-version: "14"
+  #         cache: yarn
+  #         cache-dependency-path: "tests/integration-tests/yarn.lock"
+
+  #     - name: Install lld and jq
+  #       run: sudo apt-get install -y lld jq
+
+  #     - name: Build graph-node
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: build
+  #         args: --bin graph-node
+
+  #     # Integration tests are a bit flaky, running them twice increases the
+  #     # chances of one run succeeding.
+  #     - name: Run integration tests (round 1)
+  #       id: integration-tests-1
+  #       uses: actions-rs/cargo@v1
+  #       env:
+  #         N_CONCURRENT_TESTS: "4"
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
+  #       continue-on-error: true
+  #     - name: Run integration tests (round 2)
+  #       id: integration-tests-2
+  #       uses: actions-rs/cargo@v1
+  #       if: ${{ steps.integration-tests-1.outcome == 'failure' }}
+  #       env:
+  #         N_CONCURRENT_TESTS: "4"
+  #         TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+  #       with:
+  #         command: test
+  #         args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
+
+  # rustfmt:
+  #   name: Check rustfmt style
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RUSTFLAGS: "-D warnings"
+  #   steps:
+  #     - uses: actions/checkout@v2
+
+  #     - name: Check formatting
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: fmt
+  #         args: --all -- --check
+
+  # clippy:
+  #   name: Report Clippy warnings
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
+  #     # caching.
+  #     - uses: Swatinem/rust-cache@v2
+
+  #     - name: Run Clippy
+  #       uses: actions-rs/cargo@v1
+  #       # We do *not* block builds if Clippy complains. It's just here to let us
+  #       # keep an eye out on the warnings it produces.
+  #       continue-on-error: true
+  #       with:
+  #         command: clippy
+  #         args: --no-deps
+
+  # release-check:
+  #   name: Build in release mode
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RUSTFLAGS: "-D warnings"
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: Swatinem/rust-cache@v2
+  #     - name: Install dependencies
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get -y install libpq-dev
+  #     - name: Cargo check (release)
+  #       uses: actions-rs/cargo@v1
+  #       with:
+  #         command: check
+  #         args: --release
