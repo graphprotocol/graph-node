@@ -1,4 +1,5 @@
 use crate::{
+    bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
@@ -13,13 +14,16 @@ use crate::{
 use anyhow::{self, Context, Error};
 use serde::Deserialize;
 use slog::{info, Logger};
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
-use super::TriggerWithHandler;
+use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct DataSource {
     pub kind: String,
     pub name: String,
@@ -28,43 +32,81 @@ pub struct DataSource {
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
+    pub done_at: Mutex<Option<i32>>,
+    pub causality_region: CausalityRegion,
 }
 
-impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for DataSource {
-    type Error = Error;
-
-    fn try_from(info: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
-        let template = match info.template {
-            data_source::DataSourceTemplate::Offchain(template) => template,
-            data_source::DataSourceTemplate::Onchain(_) => {
-                anyhow::bail!("Cannot create offchain data source from onchain template")
-            }
-        };
-        let source = info.params.get(0).ok_or(anyhow::anyhow!(
-            "Failed to create data source from template `{}`: source parameter is missing",
-            template.name
-        ))?;
-        Ok(Self {
-            kind: template.kind.clone(),
-            name: template.name.clone(),
-            manifest_idx: template.manifest_idx,
-            source: Source::Ipfs(source.parse()?),
-            mapping: template.mapping.clone(),
-            context: Arc::new(info.context),
-            creation_block: Some(info.creation_block),
-        })
+impl Clone for DataSource {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind.clone(),
+            name: self.name.clone(),
+            manifest_idx: self.manifest_idx.clone(),
+            source: self.source.clone(),
+            mapping: self.mapping.clone(),
+            context: self.context.clone(),
+            creation_block: self.creation_block.clone(),
+            done_at: Mutex::new(*self.done_at.lock().unwrap()),
+            causality_region: self.causality_region.clone(),
+        }
     }
 }
 
 impl DataSource {
+    // mark this data source as processed.
+    pub fn mark_processed_at(&self, block_no: i32) {
+        *self.done_at.lock().unwrap() = Some(block_no);
+    }
+
+    // returns `true` if the data source is processed.
+    pub fn is_processed(&self) -> bool {
+        self.done_at.lock().unwrap().is_some()
+    }
+}
+
+impl DataSource {
+    pub fn from_template_info(
+        info: DataSourceTemplateInfo<impl Blockchain>,
+        causality_region: CausalityRegion,
+    ) -> Result<Self, DataSourceCreationError> {
+        let template = match info.template {
+            data_source::DataSourceTemplate::Offchain(template) => template,
+            data_source::DataSourceTemplate::Onchain(_) => {
+                bail!("Cannot create offchain data source from onchain template")
+            }
+        };
+        let source = info.params.into_iter().next().ok_or(anyhow::anyhow!(
+            "Failed to create data source from template `{}`: source parameter is missing",
+            template.name
+        ))?;
+
+        let source = match source.parse() {
+            Ok(source) => Source::Ipfs(source),
+
+            // Ignore data sources created with an invalid CID.
+            Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
+        };
+
+        Ok(Self {
+            kind: template.kind.clone(),
+            name: template.name.clone(),
+            manifest_idx: template.manifest_idx,
+            source,
+            mapping: template.mapping.clone(),
+            context: Arc::new(info.context),
+            creation_block: Some(info.creation_block),
+            done_at: Mutex::new(None),
+            causality_region,
+        })
+    }
+
     pub fn match_and_decode<C: Blockchain>(
         &self,
         trigger: &TriggerData,
     ) -> Option<TriggerWithHandler<super::MappingTrigger<C>>> {
-        if self.source != trigger.source {
+        if self.source != trigger.source || self.is_processed() {
             return None;
         }
-
         Some(TriggerWithHandler::new(
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),
@@ -86,7 +128,8 @@ impl DataSource {
             param: Some(param),
             context,
             creation_block: self.creation_block,
-            is_offchain: true,
+            done_at: *self.done_at.lock().unwrap(),
+            causality_region: self.causality_region,
         }
     }
 
@@ -94,19 +137,31 @@ impl DataSource {
         template: &DataSourceTemplate,
         stored: StoredDynamicDataSource,
     ) -> Result<Self, Error> {
-        let param = stored.param.context("no param on stored data source")?;
+        let StoredDynamicDataSource {
+            manifest_idx,
+            param,
+            context,
+            creation_block,
+            done_at,
+            causality_region,
+        } = stored;
+
+        let param = param.context("no param on stored data source")?;
         let cid_file = CidFile::try_from(param)?;
 
         let source = Source::Ipfs(cid_file);
-        let context = Arc::new(stored.context.map(serde_json::from_value).transpose()?);
+        let context = Arc::new(context.map(serde_json::from_value).transpose()?);
+
         Ok(Self {
             kind: template.kind.clone(),
             name: template.name.clone(),
-            manifest_idx: stored.manifest_idx,
+            manifest_idx,
             source,
             mapping: template.mapping.clone(),
             context,
-            creation_block: stored.creation_block,
+            creation_block,
+            done_at: Mutex::new(done_at),
+            causality_region,
         })
     }
 
@@ -116,6 +171,35 @@ impl DataSource {
         match self.source {
             Source::Ipfs(ref cid) => Some(cid.to_bytes()),
         }
+    }
+
+    pub(super) fn is_duplicate_of(&self, b: &DataSource) -> bool {
+        let DataSource {
+            // Inferred from the manifest_idx
+            kind: _,
+            name: _,
+            mapping: _,
+
+            manifest_idx,
+            source,
+            context,
+
+            // We want to deduplicate across done status or creation block.
+            done_at: _,
+            creation_block: _,
+
+            // The causality region is also ignored, to be able to detect duplicated file data
+            // sources.
+            //
+            // Note to future: This will become more complicated if we allow for example file data
+            // sources to create other file data sources, because which one is created first (the
+            // original) and which is created later (the duplicate) is no longer deterministic. One
+            // fix would be to check the equality of the parent causality region.
+            causality_region: _,
+        } = self;
+
+        // See also: data-source-is-duplicate-of
+        manifest_idx == &b.manifest_idx && source == &b.source && context == &b.context
     }
 }
 
@@ -158,19 +242,14 @@ pub struct UnresolvedMapping {
 }
 
 impl UnresolvedDataSource {
-    #[allow(unreachable_code)]
-    #[allow(unused_variables)]
-    pub async fn resolve(
+    #[allow(dead_code)]
+    pub(super) async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
         manifest_idx: u32,
+        causality_region: CausalityRegion,
     ) -> Result<DataSource, Error> {
-        anyhow::bail!(
-            "static file data sources are not yet supported, \\
-             for details see https://github.com/graphprotocol/graph-node/issues/3864"
-        );
-
         info!(logger, "Resolve offchain data source";
             "name" => &self.name,
             "kind" => &self.kind,
@@ -193,6 +272,8 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
+            done_at: Mutex::new(None),
+            causality_region,
         })
     }
 }

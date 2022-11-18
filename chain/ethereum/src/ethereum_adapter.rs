@@ -1448,6 +1448,8 @@ pub(crate) async fn blocks_with_triggers(
     block_hashes.insert(to_hash);
     triggers_by_block.entry(to).or_insert(Vec::new());
 
+    let logger2 = logger.cheap_clone();
+
     let blocks = adapter
         .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
         .and_then(
@@ -1455,6 +1457,7 @@ pub(crate) async fn blocks_with_triggers(
                 Some(triggers) => Ok(BlockWithTriggers::new(
                     BlockFinality::Final(block),
                     triggers,
+                    &logger2,
                 )),
                 None => Err(anyhow!(
                     "block {} not found in `triggers_by_block`",

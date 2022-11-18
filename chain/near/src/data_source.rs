@@ -11,7 +11,7 @@ use graph::{
     },
     semver,
 };
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 use crate::chain::Chain;
 use crate::trigger::{NearTrigger, ReceiptWithOutcome};
@@ -31,6 +31,41 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        Err(anyhow!("Near subgraphs do not support templates"))
+
+        // How this might be implemented if/when Near gets support for templates:
+        // let DataSourceTemplateInfo {
+        //     template,
+        //     params,
+        //     context,
+        //     creation_block,
+        // } = info;
+
+        // let account = params
+        //     .get(0)
+        //     .with_context(|| {
+        //         format!(
+        //             "Failed to create data source from template `{}`: account parameter is missing",
+        //             template.name
+        //         )
+        //     })?
+        //     .clone();
+
+        // Ok(DataSource {
+        //     kind: template.kind,
+        //     network: template.network,
+        //     name: template.name,
+        //     source: Source {
+        //         account,
+        //         start_block: 0,
+        //     },
+        //     mapping: template.mapping,
+        //     context: Arc::new(context),
+        //     creation_block: Some(creation_block),
+        // })
+    }
+
     fn address(&self) -> Option<&[u8]> {
         self.source.account.as_ref().map(String::as_bytes)
     }
@@ -289,45 +324,6 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let mapping = mapping.resolve(resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
-    }
-}
-
-impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = Error;
-
-    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        Err(anyhow!("Near subgraphs do not support templates"))
-
-        // How this might be implemented if/when Near gets support for templates:
-        // let DataSourceTemplateInfo {
-        //     template,
-        //     params,
-        //     context,
-        //     creation_block,
-        // } = info;
-
-        // let account = params
-        //     .get(0)
-        //     .with_context(|| {
-        //         format!(
-        //             "Failed to create data source from template `{}`: account parameter is missing",
-        //             template.name
-        //         )
-        //     })?
-        //     .clone();
-
-        // Ok(DataSource {
-        //     kind: template.kind,
-        //     network: template.network,
-        //     name: template.name,
-        //     source: Source {
-        //         account,
-        //         start_block: 0,
-        //     },
-        //     mapping: template.mapping,
-        //     context: Arc::new(context),
-        //     creation_block: Some(creation_block),
-        // })
     }
 }
 

@@ -19,14 +19,14 @@ use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_substreams as substreams;
-use graph_core::polling_monitor::ipfs_service::IpfsService;
+use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
-    connect_ethereum_networks, connect_firehose_networks, create_ethereum_networks,
+    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
     create_firehose_networks, create_ipfs_clients, create_substreams_networks,
 };
 use graph_node::config::Config;
@@ -195,11 +195,11 @@ async fn main() {
     // Try to create IPFS clients for each URL specified in `--ipfs`
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &opt.ipfs);
     let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
-    let ipfs_service = IpfsService::new(
+    let ipfs_service = ipfs_service(
         ipfs_client,
         ENV_VARS.mappings.max_ipfs_file_bytes as u64,
         ENV_VARS.mappings.ipfs_timeout,
-        ENV_VARS.mappings.max_ipfs_concurrent_requests,
+        ENV_VARS.mappings.ipfs_request_limit,
     );
 
     // Convert the clients into a link resolver. Since we want to get past
@@ -223,7 +223,7 @@ async fn main() {
     let eth_networks = if query_only {
         EthereumNetworks::new()
     } else {
-        create_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
+        create_all_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
             .await
             .expect("Failed to parse Ethereum networks")
     };

@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 
@@ -37,6 +37,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
+    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+        Err(anyhow!(TEMPLATE_ERROR))
+    }
+
     fn address(&self) -> Option<&[u8]> {
         None
     }
@@ -323,14 +327,6 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         let mapping = mapping.resolve(resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
-    }
-}
-
-impl TryFrom<DataSourceTemplateInfo<Chain>> for DataSource {
-    type Error = Error;
-
-    fn try_from(_info: DataSourceTemplateInfo<Chain>) -> Result<Self> {
-        Err(anyhow!(TEMPLATE_ERROR))
     }
 }
 

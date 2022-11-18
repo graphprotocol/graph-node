@@ -1,7 +1,7 @@
 use crate::subgraph::inputs::IndexingInputs;
 use graph::blockchain::block_stream::{BlockStream, BufferedBlockStream};
 use graph::blockchain::Blockchain;
-use graph::prelude::Error;
+use graph::prelude::{Error, SubgraphInstanceMetrics};
 use std::sync::Arc;
 
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
@@ -10,6 +10,7 @@ const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
 pub async fn new_block_stream<C: Blockchain>(
     inputs: &IndexingInputs<C>,
     filter: &C::TriggerFilter,
+    metrics: &SubgraphInstanceMetrics,
 ) -> Result<Box<dyn BlockStream<C>>, Error> {
     let is_firehose = inputs.chain.is_firehose_supported();
 
@@ -37,10 +38,13 @@ pub async fn new_block_stream<C: Blockchain>(
             inputs.unified_api_version.clone(),
         ),
     }
-    .await?;
+    .await;
+    if is_firehose && block_stream.is_err() {
+        metrics.firehose_connection_errors.inc();
+    }
 
     Ok(BufferedBlockStream::spawn_from_stream(
-        block_stream,
+        block_stream?,
         buffer_size,
     ))
 }

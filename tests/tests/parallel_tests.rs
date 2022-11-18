@@ -411,6 +411,7 @@ async fn process_stdio<T: AsyncReadExt + Unpin>(
 
 /// run yarn to build everything
 async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
+    let timer = std::time::Instant::now();
     println!("Running `yarn` command in integration tests root directory.");
     let output = Command::new("yarn")
         .current_dir(base_directory)
@@ -419,6 +420,7 @@ async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
         .expect("failed to run yarn command");
 
     if output.status.success() {
+        println!("`yarn` command finished in {}s", timer.elapsed().as_secs());
         return;
     }
     println!("Yarn command failed.");

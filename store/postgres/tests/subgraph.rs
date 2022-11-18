@@ -21,7 +21,6 @@ use graph::{
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
-
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 

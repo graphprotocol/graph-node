@@ -373,6 +373,20 @@ impl SubgraphStoreInner {
         Ok(site)
     }
 
+    fn evict(&self, id: &DeploymentHash) -> Result<(), StoreError> {
+        if let Some((site, _)) = self.sites.remove(id) {
+            let store = self.stores.get(&site.shard).ok_or_else(|| {
+                constraint_violation!(
+                    "shard {} for deployment sgd{} not found when evicting",
+                    site.shard,
+                    site.id
+                )
+            })?;
+            store.layout_cache.remove(&site);
+        }
+        Ok(())
+    }
+
     fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.find(|site| site.id == id) {
             return Ok(site);
@@ -499,6 +513,8 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
+        self.evict(&schema.id)?;
+
         let graft_base = deployment
             .graft_base
             .as_ref()
@@ -607,7 +623,7 @@ impl SubgraphStoreInner {
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
-            earliest_block: deployment.earliest_block.clone(),
+            start_block: deployment.start_block.clone(),
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
@@ -1262,6 +1278,18 @@ impl SubgraphStoreTrait for SubgraphStore {
             .unwrap()
             .insert(deployment, writable.cheap_clone());
         Ok(writable)
+    }
+
+    async fn stop_subgraph(&self, loc: &DeploymentLocator) -> Result<(), StoreError> {
+        self.evict(&loc.hash)?;
+
+        // Remove the writable from the cache and stop it
+        let deployment = loc.id.into();
+        let writable = self.writables.lock().unwrap().remove(&deployment);
+        match writable {
+            Some(writable) => writable.stop().await,
+            None => Ok(()),
+        }
     }
 
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
