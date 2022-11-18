@@ -580,6 +580,11 @@ impl Queue {
                         );
                         queue.queue.pop().await;
                     }
+                    Ok(Err(StoreError::InvalidBoundRangeError)) => {
+                        // NOTE: rpc produce lagged block, ignore it too
+                        warn!(logger, "Past block received, Ignoring...");
+                        queue.queue.pop().await;
+                    }
                     Ok(Err(e)) => {
                         error!(logger, "Subgraph writer failed"; "error" => e.to_string());
                         queue.record_err(e);
