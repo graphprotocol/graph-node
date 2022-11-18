@@ -9,8 +9,8 @@ use tokio::task::JoinError;
 pub enum StoreError {
     #[error("store error: {0:#}")]
     Unknown(Error),
-    #[error("store error(unknown-diesel-error): {0:#}")]
-    UnknownDieselError(Error),
+    #[error("store error(unknown-diesel-database-error): {0:#}")]
+    UnknownDatabaseError(Error),
     #[error(
         "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
          which has an interface in common with `{0}`, exists with the same ID"
@@ -92,7 +92,7 @@ impl From<DieselError> for StoreError {
                 return StoreError::InvalidBoundRangeError;
             }
 
-            return StoreError::UnknownDieselError(e.into());
+            return StoreError::UnknownDatabaseError(e.into());
         }
         StoreError::Unknown(e.into())
     }
