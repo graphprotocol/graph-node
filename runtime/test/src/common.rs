@@ -2,6 +2,7 @@ use ethabi::Contract;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
+use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::log;
@@ -115,6 +116,7 @@ pub fn mock_context(
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),
         debug_fork: None,
+        causality_region: CausalityRegion::default(),
     }
 }
 

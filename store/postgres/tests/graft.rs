@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::data_source::CausalityRegion;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
@@ -262,6 +263,7 @@ fn create_test_entity(
         key: EntityKey {
             entity_type: EntityType::new(entity_type.to_string()),
             entity_id: id.into(),
+            causality_region: CausalityRegion::default(),
         },
         data: test_entity,
     }
@@ -328,6 +330,7 @@ async fn check_graft(
         key: EntityKey {
             entity_type: EntityType::new(USER.to_owned()),
             entity_id: "3".into(),
+            causality_region: CausalityRegion::default(),
         },
         data: shaq,
     };

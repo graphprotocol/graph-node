@@ -27,10 +27,13 @@ fn offchain_duplicate() {
     assert!(!a.is_duplicate_of(&c));
 
     let mut c = a.clone();
-    c.source = Source::Ipfs(CidFile {
-        cid: Cid::default(),
-        path: Some("/foo".into()),
-    });
+    c.source = Source::Ipfs(
+        CidFile {
+            cid: Cid::default(),
+            path: Some("/foo".into()),
+        },
+        CausalityRegion::default().next(),
+    );
     assert!(!a.is_duplicate_of(&c));
 
     let mut c = a.clone();
@@ -50,10 +53,13 @@ fn new_datasource() -> offchain::DataSource {
         "theKind".into(),
         "theName".into(),
         0,
-        Source::Ipfs(CidFile {
-            cid: Cid::default(),
-            path: None,
-        }),
+        Source::Ipfs(
+            CidFile {
+                cid: Cid::default(),
+                path: None,
+            },
+            CausalityRegion::default().next(),
+        ),
         Mapping {
             language: String::new(),
             api_version: Version::new(0, 0, 0),

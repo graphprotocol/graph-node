@@ -1,6 +1,8 @@
 pub mod instance;
 
-use crate::polling_monitor::{spawn_monitor, IpfsService, PollingMonitor, PollingMonitorMetrics};
+use crate::polling_monitor::{
+    spawn_monitor, IpfsItem, IpfsService, PollingMonitor, PollingMonitorMetrics,
+};
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
@@ -10,7 +12,6 @@ use graph::{
         subgraph::{MappingError, SharedProofOfIndexing},
     },
     data_source::{offchain, CausalityRegion, DataSource, TriggerData},
-    ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
         SubgraphInstanceMetrics, TriggerProcessor,
@@ -134,12 +135,14 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         logger: &Logger,
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
-        let source = data_source.as_offchain().map(|ds| ds.source.clone());
-        let host = self.instance.add_dynamic_data_source(logger, data_source)?;
+        let host = self
+            .instance
+            .add_dynamic_data_source(logger, data_source.clone())?;
 
         if host.is_some() {
-            if let Some(source) = source {
-                self.offchain_monitor.add_source(source)?;
+            if let Some(data_source) = data_source.as_offchain() {
+                self.offchain_monitor
+                    .add_source(data_source.source.clone())?;
             }
         }
 
@@ -157,8 +160,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 }
 
 pub struct OffchainMonitor {
-    ipfs_monitor: PollingMonitor<CidFile>,
-    ipfs_monitor_rx: mpsc::Receiver<(CidFile, Bytes)>,
+    ipfs_monitor: PollingMonitor<IpfsItem>,
+    ipfs_monitor_rx: mpsc::Receiver<(IpfsItem, Bytes)>,
 }
 
 impl OffchainMonitor {
@@ -183,7 +186,10 @@ impl OffchainMonitor {
 
     fn add_source(&mut self, source: offchain::Source) -> Result<(), Error> {
         match source {
-            offchain::Source::Ipfs(cid_file) => self.ipfs_monitor.monitor(cid_file),
+            offchain::Source::Ipfs(item, causality_region) => self.ipfs_monitor.monitor(IpfsItem {
+                item,
+                causality_region,
+            }),
         };
         Ok(())
     }
@@ -194,8 +200,8 @@ impl OffchainMonitor {
         let mut triggers = vec![];
         loop {
             match self.ipfs_monitor_rx.try_recv() {
-                Ok((cid_file, data)) => triggers.push(offchain::TriggerData {
-                    source: offchain::Source::Ipfs(cid_file),
+                Ok((item, data)) => triggers.push(offchain::TriggerData {
+                    source: offchain::Source::Ipfs(item.item, item.causality_region),
                     data: Arc::new(data),
                 }),
                 Err(TryRecvError::Disconnected) => {

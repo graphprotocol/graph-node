@@ -19,7 +19,7 @@ use std::io;
 /// This necessary for determinism because offchain data sources don't have a deterministic order of
 /// execution, for example an IPFS file may become available at any point in time. The isolation
 /// rules make the indexing result reproducible, given a set of available files.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromSqlRow)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromSqlRow, PartialOrd, Ord, Hash)]
 pub struct CausalityRegion(i32);
 
 impl fmt::Display for CausalityRegion {
@@ -37,6 +37,12 @@ impl FromSql<Integer, Pg> for CausalityRegion {
 impl ToSql<Integer, Pg> for CausalityRegion {
     fn to_sql<W: io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
         <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+    }
+}
+
+impl Default for CausalityRegion {
+    fn default() -> Self {
+        Self::ONCHAIN
     }
 }
 

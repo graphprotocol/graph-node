@@ -18,7 +18,7 @@ async fn insert_and_query(
 
     let entities = entities
         .into_iter()
-        .map(|(entity_type, data)| (EntityType::new(entity_type.to_owned()), data))
+        .map(|(entity_type, data)| (EntityType::new(entity_type.to_owned()), data, None))
         .collect();
 
     insert_entities(&deployment, entities).await?;

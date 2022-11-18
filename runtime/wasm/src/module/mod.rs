@@ -934,6 +934,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             data,
             stopwatch,
             gas,
+            &self.ctx.causality_region,
         )?;
 
         Ok(())
@@ -955,6 +956,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             entity,
             id,
             gas,
+            &self.ctx.causality_region,
         )
     }
 
@@ -977,6 +979,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             entity_type.clone(),
             id.clone(),
             gas,
+            &self.ctx.causality_region,
         )?;
 
         let ret = match entity_option {

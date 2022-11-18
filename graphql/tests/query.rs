@@ -3,6 +3,7 @@ extern crate pretty_assertions;
 
 use graph::components::store::{EntityKey, EntityType};
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
 use graphql_parser::Pos;
@@ -324,6 +325,7 @@ async fn insert_test_entities(
                     data.get("__typename").unwrap().clone().as_string().unwrap(),
                 ),
                 entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
+                causality_region: CausalityRegion::default(),
             },
             data,
         });

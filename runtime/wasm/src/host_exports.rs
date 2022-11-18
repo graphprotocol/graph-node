@@ -15,7 +15,7 @@ use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
 use graph::data::store;
-use graph::data_source::{DataSource, DataSourceTemplate, EntityTypeAccess};
+use graph::data_source::{CausalityRegion, DataSource, DataSourceTemplate, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
@@ -156,6 +156,7 @@ impl<C: Blockchain> HostExports<C> {
         data: HashMap<String, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
+        causality_region: &CausalityRegion,
     ) -> Result<(), HostExportError> {
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
         write_poi_event(
@@ -173,6 +174,7 @@ impl<C: Blockchain> HostExports<C> {
         let key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
+            causality_region: causality_region.clone(),
         };
         self.check_entity_type_access(&key.entity_type)?;
 
@@ -192,6 +194,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
+        causality_region: &CausalityRegion,
     ) -> Result<(), HostExportError> {
         write_poi_event(
             proof_of_indexing,
@@ -205,6 +208,7 @@ impl<C: Blockchain> HostExports<C> {
         let key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
+            causality_region: causality_region.clone(),
         };
         self.check_entity_type_access(&key.entity_type)?;
 
@@ -221,10 +225,12 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
+        causality_region: &CausalityRegion,
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
+            causality_region: causality_region.clone(),
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 

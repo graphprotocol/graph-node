@@ -2,16 +2,33 @@ use anyhow::{anyhow, Error};
 use bytes::Bytes;
 use futures::future::BoxFuture;
 use graph::{
+    data_source::CausalityRegion,
     ipfs_client::{CidFile, IpfsClient, StatApi},
     prelude::CheapClone,
 };
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 
 const CLOUDFLARE_TIMEOUT: u16 = 524;
 const GATEWAY_TIMEOUT: u16 = 504;
 
-pub type IpfsService = Buffer<CidFile, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+pub struct IpfsItem {
+    pub item: CidFile,
+    pub causality_region: CausalityRegion,
+}
+
+impl Display for IpfsItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let str = match self.item.path {
+            Some(ref f) => format!("{}/{}", self.item.cid.to_string(), f),
+            None => self.item.cid.to_string(),
+        };
+        f.write_str(&str)
+    }
+}
+
+pub type IpfsService = Buffer<IpfsItem, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
 
 pub fn ipfs_service(
     client: IpfsClient,
@@ -28,7 +45,7 @@ pub fn ipfs_service(
     let svc = ServiceBuilder::new()
         .rate_limit(concurrency_and_rate_limit.into(), Duration::from_secs(1))
         .concurrency_limit(concurrency_and_rate_limit as usize)
-        .service_fn(move |req| ipfs.cheap_clone().call_inner(req))
+        .service_fn(move |req: IpfsItem| ipfs.cheap_clone().call_inner(req.item))
         .boxed();
 
     // The `Buffer` makes it so the rate and concurrency limit are shared among clones.
@@ -124,7 +141,7 @@ mod test {
     use tower::ServiceExt;
 
     use cid::Cid;
-    use graph::{ipfs_client::IpfsClient, tokio};
+    use graph::{data_source::CausalityRegion, ipfs_client::IpfsClient, tokio};
 
     use uuid::Uuid;
 
@@ -137,6 +154,7 @@ mod test {
         let cl: ipfs::IpfsClient = ipfs::IpfsClient::default();
 
         let rsp = cl.add_path(&path).await.unwrap();
+        let cr = CausalityRegion::default();
 
         let ipfs_folder = rsp.iter().find(|rsp| rsp.name == "ipfs_folder").unwrap();
 
@@ -147,9 +165,12 @@ mod test {
         let svc = super::ipfs_service(local, 100000, Duration::from_secs(5), 10);
 
         let content = svc
-            .oneshot(super::CidFile {
-                cid,
-                path: Some(file),
+            .oneshot(crate::polling_monitor::IpfsItem {
+                item: super::CidFile {
+                    cid,
+                    path: Some(file),
+                },
+                causality_region: cr.next(),
             })
             .await
             .unwrap()

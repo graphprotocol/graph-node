@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::components::store::{
     self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
 };
+use crate::data_source::CausalityRegion;
 use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
@@ -246,6 +247,8 @@ impl EntityCache {
                 let key = EntityKey {
                     entity_type: entity_type.clone(),
                     entity_id: entity.id().unwrap().into(),
+                    // TODO: Figure this one out
+                    causality_region: CausalityRegion::ONCHAIN,
                 };
                 self.current.insert(key, Some(entity));
             }

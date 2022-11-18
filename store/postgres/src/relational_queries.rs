@@ -14,6 +14,7 @@ use diesel::Connection;
 
 use graph::components::store::EntityKey;
 use graph::data::value::Word;
+use graph::data_source::CausalityRegion;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
@@ -446,11 +447,17 @@ pub struct EntityDeletion {
     entity: String,
     #[sql_type = "Text"]
     id: String,
+    #[sql_type = "Integer"]
+    causality_region: CausalityRegion,
 }
 
 impl EntityDeletion {
     pub fn entity_type(&self) -> EntityType {
         EntityType::new(self.entity.clone())
+    }
+
+    pub fn causality_region(&self) -> CausalityRegion {
+        self.causality_region
     }
 
     pub fn id(&self) -> &str {
@@ -469,11 +476,17 @@ pub struct EntityData {
     entity: String,
     #[sql_type = "Jsonb"]
     data: serde_json::Value,
+    #[sql_type = "Integer"]
+    causality_region: CausalityRegion,
 }
 
 impl EntityData {
     pub fn entity_type(&self) -> EntityType {
         EntityType::new(self.entity.clone())
+    }
+
+    pub fn causality_region(&self) -> CausalityRegion {
+        self.causality_region
     }
 
     /// Map the `EntityData` using the schema information in `Layout`

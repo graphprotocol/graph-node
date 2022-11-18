@@ -170,6 +170,7 @@ fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) 
         EntityKey {
             entity_type: EntityType::new("Band".to_string()),
             entity_id: id.into(),
+            causality_region: CausalityRegion::default(),
         },
         Entity::from(data),
     )

@@ -408,6 +408,17 @@ pub enum MappingTrigger<C: Blockchain> {
     Offchain(offchain::TriggerData),
 }
 
+impl<C: Blockchain> MappingTrigger<C> {
+    pub fn causality_region(&self) -> CausalityRegion {
+        match self {
+            MappingTrigger::Onchain(_) => CausalityRegion::ONCHAIN,
+            MappingTrigger::Offchain(td) => match td.source {
+                offchain::Source::Ipfs(_, cr) => cr,
+            },
+        }
+    }
+}
+
 macro_rules! clone_data_source {
     ($t:ident) => {
         impl<C: Blockchain> Clone for $t<C> {

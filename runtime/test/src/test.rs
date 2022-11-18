@@ -1,5 +1,6 @@
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
+use graph::data_source::CausalityRegion;
 use graph::prelude::web3::types::U256;
 use graph::prelude::*;
 use graph::runtime::{AscIndexId, AscType};
@@ -426,6 +427,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     let key = EntityKey {
         entity_type: EntityType::new("Thing".to_string()),
         entity_id: id.into(),
+        causality_region: CausalityRegion::default(),
     };
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
@@ -936,7 +938,7 @@ async fn test_entity_store(api_version: Version) {
     let user_type = EntityType::from("User");
     test_store::insert_entities(
         &deployment,
-        vec![(user_type.clone(), alex), (user_type, steve)],
+        vec![(user_type.clone(), alex, None), (user_type, steve, None)],
     )
     .await
     .unwrap();

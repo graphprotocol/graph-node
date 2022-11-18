@@ -128,6 +128,9 @@ pub struct EntityKey {
 
     /// ID of the individual entity.
     pub entity_id: Word,
+
+    /// Causality region associated with this Entity id.
+    pub causality_region: CausalityRegion,
 }
 
 impl EntityKey {
@@ -135,7 +138,14 @@ impl EntityKey {
         Self {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
         }
+    }
+
+    pub fn with_causality_region(mut self, cr: CausalityRegion) -> Self {
+        self.causality_region = cr;
+
+        self
     }
 }
 

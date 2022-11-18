@@ -553,6 +553,7 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
+            let causality_region = entity_data.causality_region();
             let mut data: Entity = entity_data.deserialize_with_layout(self, None, false)?;
             let entity_id = Word::from(data.id().expect("Invalid ID for entity."));
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
@@ -565,6 +566,7 @@ impl Layout {
                 key: EntityKey {
                     entity_type,
                     entity_id,
+                    causality_region,
                 },
                 data,
             });
@@ -572,6 +574,7 @@ impl Layout {
 
         for del in &deletions {
             let entity_type = del.entity_type();
+            let causality_region = del.causality_region();
             let entity_id = Word::from(del.id());
 
             // See the doc comment of `FindPossibleDeletionsQuery` for details
@@ -581,6 +584,7 @@ impl Layout {
                     key: EntityKey {
                         entity_type,
                         entity_id,
+                        causality_region,
                     },
                 });
             }

@@ -105,7 +105,7 @@ impl DataSource {
         ))?;
 
         let source = match source.parse() {
-            Ok(source) => Source::Ipfs(source),
+            Ok(source) => Source::Ipfs(source, causality_region),
 
             // Ignore data sources created with an invalid CID.
             Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
@@ -140,7 +140,7 @@ impl DataSource {
 
     pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
         let param = match self.source {
-            Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
+            Source::Ipfs(ref link, _) => Bytes::from(link.to_bytes()),
         };
 
         let done_at = self.done_at.load(std::sync::atomic::Ordering::SeqCst);
@@ -182,7 +182,7 @@ impl DataSource {
         let param = param.context("no param on stored data source")?;
         let cid_file = CidFile::try_from(param)?;
 
-        let source = Source::Ipfs(cid_file);
+        let source = Source::Ipfs(cid_file, causality_region);
         let context = Arc::new(context.map(serde_json::from_value).transpose()?);
 
         Ok(Self {
@@ -202,7 +202,7 @@ impl DataSource {
     /// used as the value to be returned to mappings from the `dataSource.address()` host function.
     pub fn address(&self) -> Option<Vec<u8>> {
         match self.source {
-            Source::Ipfs(ref cid) => Some(cid.to_bytes()),
+            Source::Ipfs(ref cid, _) => Some(cid.to_bytes()),
         }
     }
 
@@ -238,7 +238,7 @@ impl DataSource {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
-    Ipfs(CidFile),
+    Ipfs(CidFile, CausalityRegion),
 }
 
 #[derive(Clone, Debug)]
@@ -289,7 +289,7 @@ impl UnresolvedDataSource {
             "source" => format_args!("{:?}", &self.source),
         );
         let source = match self.kind.as_str() {
-            "file/ipfs" => Source::Ipfs(self.source.file.link.parse()?),
+            "file/ipfs" => Source::Ipfs(self.source.file.link.parse()?, causality_region),
             _ => {
                 anyhow::bail!(
                     "offchain data source has invalid `kind`, expected `file/ipfs` but found {}",

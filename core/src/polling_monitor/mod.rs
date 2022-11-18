@@ -23,7 +23,7 @@ use tower::util::rng::HasherRng;
 use tower::{Service, ServiceExt};
 
 pub use self::metrics::PollingMonitorMetrics;
-pub use ipfs_service::{ipfs_service, IpfsService};
+pub use ipfs_service::{ipfs_service, IpfsItem, IpfsService};
 
 const MIN_BACKOFF: Duration = Duration::from_secs(5);
 

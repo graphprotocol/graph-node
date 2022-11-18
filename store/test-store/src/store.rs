@@ -3,6 +3,7 @@ use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::data_source::causality_region::CausalityRegion;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
@@ -347,17 +348,19 @@ pub fn insert_ens_name(hash: &str, name: &str) {
 /// The inserts all happen at `GENESIS_PTR`, i.e., block 0
 pub async fn insert_entities(
     deployment: &DeploymentLocator,
-    entities: Vec<(EntityType, Entity)>,
+    entities: Vec<(EntityType, Entity, Option<CausalityRegion>)>,
 ) -> Result<(), StoreError> {
-    let insert_ops = entities
-        .into_iter()
-        .map(|(entity_type, data)| EntityOperation::Set {
-            key: EntityKey {
-                entity_type: entity_type.to_owned(),
-                entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
+    let insert_ops =
+        entities.into_iter().map(
+            |(entity_type, data, causality_region)| EntityOperation::Set {
+                key: EntityKey {
+                    entity_type: entity_type.to_owned(),
+                    entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
+                    causality_region: causality_region.unwrap_or(CausalityRegion::ONCHAIN),
+                },
+                data,
             },
-            data,
-        });
+        );
 
     transact_entity_operations(
         &*SUBGRAPH_STORE,

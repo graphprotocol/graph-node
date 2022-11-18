@@ -185,6 +185,7 @@ where
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
+                    causality_region: trigger.trigger.causality_region(),
                 },
                 trigger,
                 result_sender,

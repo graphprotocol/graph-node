@@ -17,7 +17,7 @@ use graph::data::subgraph::{
     SubgraphFeature,
 };
 use graph::data_source::{
-    offchain, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
+    offchain, CausalityRegion, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
 };
 use graph::env::EnvVars;
 use graph::prelude::*;
@@ -999,6 +999,7 @@ async fn update_proof_of_indexing(
         let entity_key = EntityKey {
             entity_type: POI_OBJECT.to_owned(),
             entity_id: causality_region.into(),
+            causality_region: CausalityRegion::ONCHAIN,
         };
 
         // Grab the current digest attribute on this entity

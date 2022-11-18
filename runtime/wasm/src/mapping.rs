@@ -5,7 +5,7 @@ use futures03::channel::oneshot::Sender;
 use graph::blockchain::{Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::{MappingTrigger, TriggerWithHandler};
+use graph::data_source::{CausalityRegion, MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
 use std::collections::BTreeMap;
@@ -124,6 +124,7 @@ pub struct MappingContext<C: Blockchain> {
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
+    pub causality_region: CausalityRegion,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -136,6 +137,7 @@ impl<C: Blockchain> MappingContext<C> {
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),
+            causality_region: self.causality_region,
         }
     }
 }
