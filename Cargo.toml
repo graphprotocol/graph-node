@@ -25,5 +25,10 @@ license = "MIT OR Apache-2.0"
 [profile.test]
 incremental = false
 
+[profile.release]
+lto = "thin"
+codegen-units = 1
+incremental = false
+
 [profile.dev]
 incremental = false
