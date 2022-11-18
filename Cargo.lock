@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "graph-store-postgres"
-version = "0.28.2"
+version = "0.28.3"
 dependencies = [
  "Inflector",
  "anyhow",
