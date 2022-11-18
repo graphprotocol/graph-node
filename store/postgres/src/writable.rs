@@ -23,7 +23,7 @@ use graph::{
         BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,
         StoreEvent, UnfailOutcome, ENV_VARS,
     },
-    slog::{debug, error, warn},
+    slog::{error, warn},
     util::backoff::ExponentialBackoff,
 };
 use store::StoredDynamicDataSource;
@@ -576,8 +576,7 @@ impl Queue {
                 };
                 let res = {
                     let _section = queue.stopwatch.start_section("queue_execute");
-                    let clone_logger = logger.cheap_clone();
-                    graph::spawn_blocking_allow_panic(move || req.execute(&clone_logger)).await
+                    graph::spawn_blocking_allow_panic(move || req.execute()).await
                 };
 
                 let _section = queue.stopwatch.start_section("queue_pop");
