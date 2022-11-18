@@ -13,41 +13,22 @@ ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
     && strip -g /go/bin/envsubst
 
-FROM rust:bullseye AS cargo-chef
-
-WORKDIR /app
-# Best thing in life after sliced bread.
-# <https://github.com/LukeMathWalker/cargo-chef>
-# We're not using cargo-chef's prebuilt image for security reasons (not that
-# there's anything wrong with it per se). The version is pinned to minimize the
-# risk of supply chain attacks.
-RUN cargo install cargo-chef --version 0.1.45
-
-FROM cargo-chef AS cargo-chef-plan
-
-COPY . .
-RUN cargo chef prepare --recipe-path recipe.json
-
-FROM cargo-chef AS graph-node-build
-
-WORKDIR /graph-node
+FROM rust:bullseye as graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
 ARG BRANCH_NAME=unknown
 ARG TAG_NAME=unknown
 
-COPY --from=cargo-chef-plan /app/recipe.json cargo-chef-recipe.json
+ADD . /graph-node
 
 RUN apt-get update \
-    && apt-get install -y cmake
-RUN RUSTFLAGS="-g" cargo chef cook --release --recipe-path cargo-chef-recipe.json
-
-ADD . .
-
-RUN RUSTFLAGS="-g" cargo build --release \
+    && apt-get install -y cmake && \
+    cd /graph-node && \
+    RUSTFLAGS="-g" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
+    # Reduce the size of the layer by removing unnecessary files.
     && cargo clean \
     && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
     && strip -g /usr/local/bin/graph-node \
@@ -59,7 +40,8 @@ RUN RUSTFLAGS="-g" cargo build --release \
     && echo "BRANCH_NAME='$BRANCH_NAME'" >> /etc/image-info \
     && echo "COMMIT_SHA='$COMMIT_SHA'" >> /etc/image-info \
     && echo "CARGO_VERSION='$(cargo --version)'" >> /etc/image-info \
-    && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info
+    && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info \
+    && echo "CARGO_DEV_BUILD='$CARGO_DEV_BUILD'" >> /etc/image-info
 
 # Debug image to access core dumps
 FROM graph-node-build as graph-node-debug

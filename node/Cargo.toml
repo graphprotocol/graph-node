@@ -3,7 +3,6 @@ name = "graph-node"
 version.workspace = true
 edition.workspace = true
 default-run = "graph-node"
-rust-version = "1.64"
 
 [[bin]]
 name = "graph-node"
@@ -28,12 +27,12 @@ graph-chain-arweave = { path = "../chain/arweave" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
 graph-chain-cosmos = { path = "../chain/cosmos" }
-graph-chain-substreams= { path = "../chain/substreams" }
+graph-chain-substreams = { path = "../chain/substreams" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }
-graph-server-json-rpc = { path = "../server/json-rpc"}
+graph-server-json-rpc = { path = "../server/json-rpc" }
 graph-server-websocket = { path = "../server/websocket" }
 graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
@@ -44,5 +43,5 @@ toml = "0.5.7"
 shellexpand = "2.1.0"
 diesel = "1.4.8"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
-prometheus = { version ="0.13.3", features = ["push"] }
-json-structural-diff = {version = "0.1", features = ["colorize"] }
+prometheus = { version = "0.13.3", features = ["push"] }
+json-structural-diff = { version = "0.1", features = ["colorize"] }
