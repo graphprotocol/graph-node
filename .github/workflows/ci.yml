@@ -15,6 +15,7 @@ jobs:
   unit-tests:
     name: Run unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -51,6 +52,7 @@ jobs:
   runner-tests:
     name: Subgraph Runner integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     services:
       ipfs:
         image: ipfs/go-ipfs:v0.10.0
@@ -90,6 +92,7 @@ jobs:
   integration-tests:
     name: Run integration tests
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
@@ -139,6 +142,7 @@ jobs:
   rustfmt:
     name: Check rustfmt style
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     env:
       RUSTFLAGS: "-D warnings"
     steps:
@@ -153,6 +157,7 @@ jobs:
   clippy:
     name: Report Clippy warnings
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v2
       # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
@@ -171,6 +176,7 @@ jobs:
   release-check:
     name: Build in release mode
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       RUSTFLAGS: "-D warnings"
     steps:
