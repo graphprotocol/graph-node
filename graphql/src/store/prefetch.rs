@@ -579,7 +579,6 @@ fn execute_selection_set<'a>(
     mut parent_trace: Trace,
     selection_set: &a::SelectionSet,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Process all field groups in order
