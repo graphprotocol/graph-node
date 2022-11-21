@@ -6,6 +6,7 @@ use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
 };
 use graph::prelude::{async_trait, BlockHash, BlockNumber, BlockPtr, Logger};
+use graph::slog::trace;
 use graph::substreams::module_output::Data;
 use graph::substreams::{BlockScopedData, Clock, ForkStep};
 use prost::Message;
@@ -63,6 +64,11 @@ impl SubstreamsMapper<Chain> for Mapper {
             Some(Data::MapOutput(msg)) => {
                 let changes: EntityChanges = Message::decode(msg.value.as_slice())
                     .map_err(SubstreamsError::DecodingError)?;
+                if changes.entity_changes.is_empty() {
+                    return Ok(None);
+                }
+
+                trace!(&logger, "block changes: {:?}", &changes);
 
                 use ForkStep::*;
                 match step {

@@ -15,6 +15,7 @@ use graph::prelude::{
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
+use graph::slog::trace;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::borrow::Cow;
@@ -310,6 +311,8 @@ impl DeploymentStore {
     ) -> Result<i32, StoreError> {
         use EntityModification::*;
         let mut count = 0;
+
+        trace!(&self.logger, "mods: {:?}", mods);
 
         // Group `Insert`s and `Overwrite`s by key, and accumulate `Remove`s.
         let mut inserts = HashMap::new();
