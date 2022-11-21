@@ -9,6 +9,8 @@ use tokio::task::JoinError;
 pub enum StoreError {
     #[error("store error: {0:#}")]
     Unknown(Error),
+    #[error("store error(unknown-diesel-database-error): {0:#}")]
+    UnknownDatabaseError(Error),
     #[error(
         "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
          which has an interface in common with `{0}`, exists with the same ID"
@@ -29,6 +31,8 @@ pub enum StoreError {
          there are most likely two (or more) nodes indexing this subgraph"
     )]
     DuplicateBlockProcessing(DeploymentHash, BlockNumber),
+    #[error("Bound update error")]
+    InvalidBoundRangeError,
     /// An internal error where we expected the application logic to enforce
     /// some constraint, e.g., that subgraph names are unique, but found that
     /// constraint to not hold
@@ -78,12 +82,17 @@ impl From<DieselError> for StoreError {
         // indexing machinery will retry in that case rather than fail the
         // subgraph
         if let DieselError::DatabaseError(_, info) = &e {
-            if info
-                .message()
-                .contains("server closed the connection unexpectedly")
-            {
+            let err_msg = info.message();
+            if err_msg.contains("server closed the connection unexpectedly") {
                 return StoreError::DatabaseUnavailable;
             }
+
+            if err_msg.contains("range lower bound must be less than or equal to range upper bound")
+            {
+                return StoreError::InvalidBoundRangeError;
+            }
+
+            return StoreError::UnknownDatabaseError(e.into());
         }
         StoreError::Unknown(e.into())
     }
