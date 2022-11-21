@@ -279,55 +279,68 @@ impl StoreResolver {
 }
 
 impl StoreResolver {
-  fn compose_cursor(&self, value: Option<&graph::data::value::Value>) -> r::Value {
-    value.and_then(|v| v.get_required("id").ok()).map(|v| r::Value::String(v)).unwrap_or(r::Value::Null)
-  }
-
-  fn build_connection_object(&self, field: &a::Field, children: Vec<r::Value>) -> Result<r::Value, QueryExecutionError> {
-    let first_arg = field.arguments.iter().find_map(|arg| match arg.0.eq("first") {
-      true => Some(arg.1.clone()),
-      false => None,
-    });
-
-    match first_arg {
-      Some(r::Value::Int(first_arg_value)) => {
-        let (has_next_page, items) = match children.len() > first_arg_value.try_into().unwrap() {
-          true => (true, children[0..children.len() - 1].to_vec()),
-          false => (false, children),
-        };
-
-        let mut connection_response_map = BTreeMap::new();
-        let start_cursor = self.compose_cursor(items.first());
-        let end_cursor = self.compose_cursor(items.last());
-
-        let mut page_info_map = BTreeMap::new();
-        page_info_map.insert("hasNextPage".into(), r::Value::Boolean(has_next_page));
-        page_info_map.insert("startCursor".into(), start_cursor);
-        page_info_map.insert("endCursor".into(), end_cursor);
-
-        connection_response_map.insert("pageInfo".into(), r::Value::object(page_info_map));
-        connection_response_map.insert(
-          "edges".into(),
-          r::Value::List(items
-            .into_iter()
-            .map(|child| {
-                let mut edge_map = BTreeMap::<Word, r::Value>::new();
-                let cursor = self.compose_cursor(Some(&child));
-                edge_map.insert("node".into(), child);
-                edge_map.insert( "cursor".into(), cursor);
-  
-                r::Value::object(edge_map)
-            })
-            .collect::<Vec<r::Value>>()),
-        );
-  
-        return Ok(r::Value::object(connection_response_map));
-      },
-      _ => {
-        return Err(QueryExecutionError::InvalidFilterError);
-      }
+    fn compose_cursor(&self, value: Option<&graph::data::value::Value>) -> r::Value {
+        value
+            .and_then(|v| v.get_required("id").ok())
+            .map(|v| r::Value::String(v))
+            .unwrap_or(r::Value::Null)
     }
-  }
+
+    fn build_connection_object(
+        &self,
+        field: &a::Field,
+        children: Vec<r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let first_arg = field
+            .arguments
+            .iter()
+            .find_map(|arg| match arg.0.eq("first") {
+                true => Some(arg.1.clone()),
+                false => None,
+            });
+
+        match first_arg {
+            Some(r::Value::Int(first_arg_value)) => {
+                let (has_next_page, items) =
+                    match children.len() > first_arg_value.try_into().unwrap() {
+                        true => (true, children[0..children.len() - 1].to_vec()),
+                        false => (false, children),
+                    };
+
+                let mut connection_response_map = BTreeMap::new();
+                let start_cursor = self.compose_cursor(items.first());
+                let end_cursor = self.compose_cursor(items.last());
+
+                let mut page_info_map = BTreeMap::new();
+                page_info_map.insert("hasNextPage".into(), r::Value::Boolean(has_next_page));
+                page_info_map.insert("startCursor".into(), start_cursor);
+                page_info_map.insert("endCursor".into(), end_cursor);
+
+                connection_response_map.insert("pageInfo".into(), r::Value::object(page_info_map));
+                connection_response_map.insert(
+                    "edges".into(),
+                    r::Value::List(
+                        items
+                            .into_iter()
+                            .map(|child| {
+                                let mut edge_map = BTreeMap::<Word, r::Value>::new();
+                                let cursor = self.compose_cursor(Some(&child));
+                                edge_map.insert("node".into(), child);
+                                edge_map.insert("cursor".into(), cursor);
+
+                                r::Value::object(edge_map)
+                            })
+                            .collect::<Vec<r::Value>>(),
+                    ),
+                );
+
+                return Ok(r::Value::object(connection_response_map));
+            }
+            _ => {
+                return Err(QueryExecutionError::InvalidFilterError);
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -382,10 +395,10 @@ impl Resolver for StoreResolver {
 
         if let Some(r::Value::List(children)) = prefetched_object {
             // If we encounter a Connection type, we can safely resolve it as an object
-            // while using the same prefetched objects, since it's fetched before. 
+            // while using the same prefetched objects, since it's fetched before.
             // We just need to construct that as a connectiono object, and calculate the PageInfo based on that response.
             if is_connection_type(&object_type.name().to_string()) {
-              // println!("resolving connection, prefetched_object: {:?}", children);
+                // println!("resolving connection, prefetched_object: {:?}", children);
                 return self.build_connection_object(&field, children);
             }
 
