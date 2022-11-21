@@ -25,12 +25,12 @@ use graph::{
     },
 };
 
-use crate::execution::{ast as a, ExecutionContext, Resolver,self};
+use crate::execution::{self, ast as a, ExecutionContext, Resolver};
 use crate::metrics::GraphQLMetrics;
 use crate::schema::ast as sast;
+use crate::schema::is_connection_type;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
-use crate::schema::is_connection_type;
 
 lazy_static! {
     static ref ARG_FIRST: String = String::from("first");
@@ -532,44 +532,52 @@ fn check_result_size<'a>(
 /// Extracts the actual field, field type and child type from a given query root.
 /// In case of a Connection type, it fallsback into a structure that matches what prefetch is used to have:
 /// SomethingConnection -> [Something!]!
-/// This way, the rest of the prefetch flow works the same way, and can avoid overfetching. 
-fn extract_field_info<'a>(ctx: &'a ExecutionContext<impl Resolver>, object_type: &'a ObjectType, selection_field: &'a execution::ast::Field) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
-  let schema = &ctx.query.schema;
+/// This way, the rest of the prefetch flow works the same way, and can avoid overfetching.
+fn extract_field_info<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
+    object_type: &'a ObjectType,
+    selection_field: &'a execution::ast::Field,
+) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
+    let schema = &ctx.query.schema;
 
-  match is_connection_type(&selection_field.name) {
-    false => {
-      let field_type = object_type
-      .field(&selection_field.name)
-      .expect("field names are valid");
-    let child_type = schema
-      .object_or_interface(field_type.field_type.get_base_type())
-      .expect("we only collect fields that are objects or interfaces");
+    match is_connection_type(&selection_field.name) {
+        false => {
+            let field_type = object_type
+                .field(&selection_field.name)
+                .expect("field names are valid");
+            let child_type = schema
+                .object_or_interface(field_type.field_type.get_base_type())
+                .expect("we only collect fields that are objects or interfaces");
 
-      return (selection_field.name.clone(), field_type.clone(), child_type);
-    },
-    true => {
-      let c_field_type = object_type.field(&selection_field.name).expect("field names are valid");
-      let connection_field_type = &schema
-      .object_or_interface(c_field_type.field_type.get_base_type())
-      .expect("we only collect fields that are objects or interfaces");
+            return (selection_field.name.clone(), field_type.clone(), child_type);
+        }
+        true => {
+            let c_field_type = object_type
+                .field(&selection_field.name)
+                .expect("field names are valid");
+            let connection_field_type = &schema
+                .object_or_interface(c_field_type.field_type.get_base_type())
+                .expect("we only collect fields that are objects or interfaces");
 
-      let field_edge_type = connection_field_type.field("edges").expect("edges is missing");
-      let child_edge_type = schema
-      .object_or_interface(field_edge_type.field_type.get_base_type())
-      .expect("failed to find edges");
+            let field_edge_type = connection_field_type
+                .field("edges")
+                .expect("edges is missing");
+            let child_edge_type = schema
+                .object_or_interface(field_edge_type.field_type.get_base_type())
+                .expect("failed to find edges");
 
-      let field_type = child_edge_type.field("node").expect("node is missing");
-      let child_type = schema
-      .object_or_interface(field_type.field_type.get_base_type())
-      .expect("failed to find node");
+            let field_type = child_edge_type.field("node").expect("node is missing");
+            let child_type = schema
+                .object_or_interface(field_type.field_type.get_base_type())
+                .expect("failed to find node");
 
-      let prefetch_field_name = selection_field.name.replace("Connection", "");
-      let mut cloned_field = c_field_type.clone();
-      cloned_field.field_type = s::Type::ListType(Box::new(c_field_type.field_type.clone()));
+            let prefetch_field_name = selection_field.name.replace("Connection", "");
+            let mut cloned_field = c_field_type.clone();
+            cloned_field.field_type = s::Type::ListType(Box::new(c_field_type.field_type.clone()));
 
-      return (prefetch_field_name, cloned_field, child_type);
+            return (prefetch_field_name, cloned_field, child_type);
+        }
     }
-  }
 }
 
 fn execute_selection_set<'a>(

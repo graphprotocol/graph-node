@@ -223,34 +223,38 @@ fn enrich_type_fields_with_connections(schema: &mut Document) {
     for definition in schema.definitions.iter_mut() {
         match definition {
             Definition::TypeDefinition(TypeDefinition::Object(object_type)) => {
-              if !is_connection_type(&object_type.name) {
-                let fields_with_connections = object_type.fields.iter().flat_map(|f| {
+                if !is_connection_type(&object_type.name) {
+                    let fields_with_connections = object_type
+                        .fields
+                        .iter()
+                        .flat_map(|f| {
+                            if ast::is_list_or_non_null_list_field(f) {
+                                let type_name = ast::get_base_type(&f.field_type);
 
-                  if ast::is_list_or_non_null_list_field(f) {
-                    let type_name = ast::get_base_type(&f.field_type);
+                                vec![
+                                    f.clone(),
+                                    Field {
+                                        position: Pos::default(),
+                                        description: None,
+                                        name: format!(
+                                            "{}Connection",
+                                            type_name.to_plural().to_camel_case()
+                                        ),
+                                        arguments: f.arguments.clone(),
+                                        field_type: Type::NonNullType(Box::new(Type::NamedType(
+                                            format!("{}Connection", type_name),
+                                        ))),
+                                        directives: vec![],
+                                    },
+                                ]
+                            } else {
+                                vec![f.clone()]
+                            }
+                        })
+                        .collect();
 
-                    vec![
-                      f.clone(),
-                      Field {
-                          position: Pos::default(),
-                          description: None,
-                          name: format!("{}Connection", type_name.to_plural().to_camel_case()),
-                          arguments: f.arguments.clone(),
-                          field_type: Type::NonNullType(Box::new(Type::NamedType(format!(
-                              "{}Connection",
-                              type_name
-                          )))),
-                          directives: vec![],
-                      }
-                    ]
-                  } else {
-                    vec![f.clone()]
-                  }
-                }).collect();
-                
-                object_type.fields = fields_with_connections;
-              }
-
+                    object_type.fields = fields_with_connections;
+                }
             }
             _ => (),
         }
