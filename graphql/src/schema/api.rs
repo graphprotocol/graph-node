@@ -26,8 +26,9 @@ pub enum APISchemaError {
     FulltextSearchNonDeterministic,
 }
 
-// The followoing types are defined in meta.graphql
+// The following types are defined in meta.graphql
 const PAGEINFO_TYPE_NAME: &str = "PageInfo";
+// const NODE_INTERFACE: &str = "Node";
 const BLOCK_HEIGHT: &str = "Block_height";
 const CHANGE_BLOCK_FILTER_NAME: &str = "BlockChangedFilter";
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
@@ -143,18 +144,12 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
         .push(Definition::TypeDefinition(TypeDefinition::Object(
             ObjectType {
                 name: edge_type_name.clone(),
-                description: Some(format!(
-                    "Edge type for wrapping {} with a the matching cursor.",
-                    object_type.name
-                )),
+                description: Some("An edge in a connection.".to_string()),
                 directives: vec![],
                 fields: vec![
                     Field {
                         arguments: vec![],
-                        description: Some(format!(
-                            "A cursor for the {} object, within the current connection.",
-                            object_type.name
-                        )),
+                        description: Some("A cursor for use in pagination.".to_string()),
                         directives: vec![],
                         name: "cursor".to_string(),
                         field_type: Type::NonNullType(Box::new(Type::NamedType(
@@ -165,7 +160,7 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
                     Field {
                         arguments: vec![],
                         description: Some(format!(
-                            "The actual {} object, within the current edge.",
+                            "The {} node.",
                             object_type.name
                         )),
                         directives: vec![],
@@ -186,13 +181,13 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
         .push(Definition::TypeDefinition(TypeDefinition::Object(
             ObjectType {
                 name: format!("{}Connection", object_type.name),
-                description: Some(format!("Connection type for {}", object_type.name)),
+                description: Some("A connection to a list of items.".to_string()),
                 directives: vec![],
                 fields: vec![
                     Field {
                         arguments: vec![],
                         description: Some(format!(
-                            "The total count of all {} objects",
+                            "A list of {} edges.",
                             object_type.name
                         )),
                         directives: vec![],
@@ -204,7 +199,7 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
                     },
                     Field {
                         arguments: vec![],
-                        description: None,
+                        description: Some("Information to aid in pagination.".to_string()),
                         directives: vec![],
                         name: "pageInfo".to_string(),
                         field_type: Type::NonNullType(Box::new(Type::NamedType(
@@ -224,13 +219,14 @@ fn enrich_type_fields_with_connections(schema: &mut Document) {
         match definition {
             Definition::TypeDefinition(TypeDefinition::Object(object_type)) => {
                 if !is_connection_type(&object_type.name) {
+                    println!("Enriching type {}", object_type.name);
                     let fields_with_connections = object_type
                         .fields
                         .iter()
                         .flat_map(|f| {
                             if ast::is_list_or_non_null_list_field(f) {
                                 let type_name = ast::get_base_type(&f.field_type);
-
+println!("type_name: {}", type_name);
                                 vec![
                                     f.clone(),
                                     Field {

@@ -135,7 +135,7 @@ fn interface_type_object(
         description: interface_type.description.clone(),
         fields:
             field_objects(schema, type_objects, &interface_type.fields),
-        possibleTypes: schema.types_for_interface().get(&interface_type.into()).unwrap_or(&vec![])
+        possibleTypes: schema.types_for_interface()[&interface_type.into()]
             .iter()
             .map(|object_type| r::Value::String(object_type.name.to_owned()))
             .collect::<Vec<_>>(),
