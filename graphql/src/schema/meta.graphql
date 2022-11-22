@@ -55,13 +55,13 @@ type _Block_ {
   hash: Bytes
   "The block number"
   number: Int!
-  "Integer representation of the timestamp stored in blocks for the chain" 
+  "Integer representation of the timestamp stored in blocks for the chain"
   timestamp: Int
 }
 
 enum _SubgraphErrorPolicy_ {
   "Data will be returned even if the subgraph has indexing errors"
-  allow,
+  allow
 
   "If the subgraph has indexing errors, data will be omitted. The default."
   deny
@@ -74,7 +74,7 @@ input Block_height {
   "Value containing a block number"
   number: Int
   """
-  Value containing the minimum block number. 
+  Value containing the minimum block number.
   In the case of `number_gte`, the query will be executed on the latest block only if
   the subgraph has progressed to or past the minimum block number.
   Defaults to the latest block when omitted.
@@ -88,9 +88,34 @@ enum OrderDirection {
   desc
 }
 
-"Pagination information for the current connection"
+"""
+The common page info type used by all connections.
+"""
 type PageInfo {
+  """
+  When paginating forwards, are there more items?
+  """
   hasNextPage: Boolean!
+  """
+  When paginating backwards, are there more items?
+  """
+  hasPreviousPage: Boolean!
+  """
+  Cursor shorthand for the first node from current page
+  """
   startCursor: String
+  """
+  Cursor shorthand for the last node from current page
+  """
   endCursor: String
 }
+
+# """
+# An object with an ID
+# """
+# interface Node {
+#   """
+#   The id of the object.
+#   """
+#   id: ID!
+# }
