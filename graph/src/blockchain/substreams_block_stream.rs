@@ -162,13 +162,20 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
     module_name: String,
     manifest_start_block_num: BlockNumber,
     manifest_end_block_num: BlockNumber,
-    _subgraph_current_block: Option<BlockPtr>,
+    subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
     metrics: SubstreamsBlockStreamMetrics,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
 
-    let start_block_num = manifest_start_block_num as i64;
+    let start_block_num = subgraph_current_block
+        .as_ref()
+        .map(|ptr| {
+            // current_block has already been processed, we start at next block
+            ptr.block_number() as i64 + 1
+        })
+        .unwrap_or(manifest_start_block_num as i64);
+
     let stop_block_num = manifest_end_block_num as u64;
 
     let request = Request {

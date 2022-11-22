@@ -35,7 +35,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         deployment: DeploymentLocator,
         block_cursor: FirehoseCursor,
         _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
+        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
@@ -51,7 +51,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         Ok(Box::new(SubstreamsBlockStream::new(
             deployment.hash,
             firehose_endpoint,
-            None,
+            subgraph_current_block,
             block_cursor.as_ref().clone(),
             mapper,
             filter.modules.clone(),
