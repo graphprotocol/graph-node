@@ -168,7 +168,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
 
-    let mut start_block_num = subgraph_current_block
+    let start_block_num = subgraph_current_block
         .as_ref()
         .map(|ptr| {
             // current_block has already been processed, we start at next block
