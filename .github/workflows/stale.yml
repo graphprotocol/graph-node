@@ -33,6 +33,3 @@ jobs:
           stale-issue-message: >
             Looks like this issue has been open for 6 months with no activity.
             Is it still relevant? If not, please remember to close it.
-
-      - name: Print stale outputs
-        run: echo ${{ join(steps.stale.outputs.*, ',') }}
