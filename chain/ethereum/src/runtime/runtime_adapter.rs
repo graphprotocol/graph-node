@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::data_source::MappingABI;
+use crate::ENV_VARS;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, DataSource,
     EthereumAdapter, EthereumAdapterTrait, EthereumContractCall, EthereumContractCallError,
@@ -19,8 +20,10 @@ use graph::{
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
     slog::{info, trace, Logger},
+    util::backoff::ExponentialBackoff,
 };
 use graph_runtime_wasm::asc_abi::class::{AscEnumArray, EthereumValueKind};
+use std::time::Duration;
 
 use super::abi::{AscUnresolvedContractCall, AscUnresolvedContractCall_0_0_4};
 
@@ -167,12 +170,25 @@ fn eth_call(
 
     // Run Ethereum call in tokio runtime
     let logger1 = logger.clone();
-    let call_cache = call_cache.clone();
-    let result = match graph::block_on(
-            eth_adapter.contract_call(&logger1, call, call_cache).compat()
+    let mut result = Err(HostExportError::Unknown(anyhow::anyhow!(
+        "Failed to call function \"{}\" of contract \"{}\"",
+        unresolved_call.function_name,
+        unresolved_call.contract_name
+    )));
+    let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(10));
+    for _ in 0..ENV_VARS.request_retries {
+        result = match graph::block_on(
+            eth_adapter.contract_call(&logger1, call.clone(), call_cache.clone()).compat()
         ) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {
+                if reason == "empty response" {
+                    return Err(HostExportError::Deterministic(anyhow::anyhow!(
+                        "Ethereum node return empty response when calling function \"{}\" of contract \"{}\"",
+                        unresolved_call.function_name,
+                        unresolved_call.contract_name,
+                    )));
+                }
                 info!(logger, "Contract call reverted"; "reason" => reason);
                 Ok(None)
             }
@@ -201,6 +217,14 @@ fn eth_call(
                 e
             ))),
         };
+
+        if let Err(HostExportError::Deterministic(_)) = result {
+            trace!(logger, "Retry on empty response");
+            backoff.sleep();
+        } else {
+            break;
+        }
+    }
 
     trace!(logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),
