@@ -288,7 +288,7 @@ impl CopyState {
 /// batch, but don't step up the size by more than 2x at once
 #[derive(Debug, Queryable)]
 pub(crate) struct AdaptiveBatchSize {
-    size: i64,
+    pub size: i64,
 }
 
 impl AdaptiveBatchSize {

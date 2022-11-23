@@ -15,7 +15,7 @@ use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
 use graph::data::store;
-use graph::data_source::{DataSource, DataSourceTemplate};
+use graph::data_source::{DataSource, DataSourceTemplate, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;
 use graph::prelude::ethabi::{decode, encode, Token};
@@ -63,6 +63,7 @@ pub struct HostExports<C: Blockchain> {
     data_source_address: Vec<u8>,
     subgraph_network: String,
     data_source_context: Arc<Option<DataSourceContext>>,
+    entity_type_access: EntityTypeAccess,
 
     /// Some data sources have indeterminism or different notions of time. These
     /// need to be each be stored separately to separate causality between them,
@@ -89,11 +90,27 @@ impl<C: Blockchain> HostExports<C> {
             data_source_name: data_source.name().to_owned(),
             data_source_address: data_source.address().unwrap_or_default(),
             data_source_context: data_source.context().cheap_clone(),
+            entity_type_access: data_source.entities(),
             causality_region: PoICausalityRegion::from_network(&subgraph_network),
             subgraph_network,
             templates,
             link_resolver,
             ens_lookup,
+        }
+    }
+
+    /// Enfore the entity type access restrictions. See also: entity-type-access
+    fn check_entity_type_access(&self, entity_type: &EntityType) -> Result<(), HostExportError> {
+        match self.entity_type_access.allows(entity_type) {
+            true => Ok(()),
+            false => Err(HostExportError::Deterministic(anyhow!(
+                "entity type `{}` is not on the 'entities' list for data source `{}`. \
+                 Hint: Add `{}` to the 'entities' list, which currently is: `{}`.",
+                entity_type,
+                self.data_source_name,
+                entity_type,
+                self.entity_type_access
+            ))),
         }
     }
 
@@ -139,7 +156,7 @@ impl<C: Blockchain> HostExports<C> {
         data: HashMap<String, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), HostExportError> {
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
         write_poi_event(
             proof_of_indexing,
@@ -157,6 +174,7 @@ impl<C: Blockchain> HostExports<C> {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };
+        self.check_entity_type_access(&key.entity_type)?;
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
 
@@ -188,6 +206,7 @@ impl<C: Blockchain> HostExports<C> {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };
+        self.check_entity_type_access(&key.entity_type)?;
 
         gas.consume_host_fn(gas::STORE_REMOVE.with_args(complexity::Size, &key))?;
 
@@ -207,6 +226,7 @@ impl<C: Blockchain> HostExports<C> {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
         };
+        self.check_entity_type_access(&store_key.entity_type)?;
 
         let result = state.entity_cache.get(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;

@@ -1,4 +1,4 @@
-import { ethereum, dataSource, BigInt, Bytes } from '@graphprotocol/graph-ts'
+import { ethereum, dataSource, BigInt, Bytes, DataSourceContext } from '@graphprotocol/graph-ts'
 import { IpfsFile, IpfsFile1 } from '../generated/schema'
 
 export function handleBlock(block: ethereum.Block): void {
@@ -20,6 +20,11 @@ export function handleBlock(block: ethereum.Block): void {
   // to test whether same cid is triggered across different data source.
   if (block.number == BigInt.fromI32(3)) {
     dataSource.create("File1", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
+  }
+
+  // Will fail the subgraph when processed due to mismatch in the entity type and 'entities'.
+  if (block.number == BigInt.fromI32(5)) {
+    dataSource.create("File2", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
   }
 }
 

@@ -1,5 +1,5 @@
 #[rustfmt::skip]
-#[path = "sf.firehose.v1.rs"]
+#[path = "sf.firehose.v2.rs"]
 mod pbfirehose;
 
 #[rustfmt::skip]

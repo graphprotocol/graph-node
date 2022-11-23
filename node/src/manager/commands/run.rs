@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
-use ethereum::chain::{EthereumAdapterSelector, EthereumStreamBuilder};
+use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
 use ethereum::{ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use graph::anyhow::{bail, format_err};
 use graph::blockchain::{BlockchainKind, BlockchainMap};
@@ -23,7 +23,7 @@ use graph::prelude::{
     SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, info, Logger};
-use graph_chain_ethereum::{self as ethereum};
+use graph_chain_ethereum as ethereum;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -55,6 +55,7 @@ pub async fn run(
         subgraph, stop_block
     );
 
+    let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let metrics_registry = metrics_ctx.registry.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None);
 
@@ -63,17 +64,14 @@ pub async fn run(
     let ipfs_client = ipfs_clients.first().cloned().expect("Missing IPFS client");
     let ipfs_service = ipfs_service(
         ipfs_client,
-        ENV_VARS.mappings.max_ipfs_file_bytes as u64,
-        ENV_VARS.mappings.ipfs_timeout,
-        ENV_VARS.mappings.ipfs_request_limit,
+        env_vars.mappings.max_ipfs_file_bytes as u64,
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
     );
 
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
-    let link_resolver = Arc::new(LinkResolver::new(
-        ipfs_clients,
-        Arc::new(EnvVars::default()),
-    ));
+    let link_resolver = Arc::new(LinkResolver::new(ipfs_clients, env_vars.cheap_clone()));
 
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(metrics_registry.clone()));
     let eth_networks =
@@ -127,6 +125,7 @@ pub async fn run(
         eth_adapters.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
+        Arc::new(EthereumBlockRefetcher {}),
         Arc::new(EthereumAdapterSelector::new(
             logger_factory.clone(),
             Arc::new(eth_adapters),
@@ -151,6 +150,7 @@ pub async fn run(
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
+        env_vars.cheap_clone(),
         subgraph_store.clone(),
         blockchain_map.clone(),
         metrics_registry.clone(),

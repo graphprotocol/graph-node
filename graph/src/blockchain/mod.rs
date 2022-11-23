@@ -137,6 +137,14 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError>;
 
+    async fn refetch_firehose_block(
+        &self,
+        logger: &Logger,
+        cursor: FirehoseCursor,
+    ) -> Result<Self::Block, Error>;
+
+    fn is_refetch_block_required(&self) -> bool;
+
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
 
     fn is_firehose_supported(&self) -> bool;

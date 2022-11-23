@@ -831,6 +831,11 @@ impl SubgraphStoreInner {
         Ok(())
     }
 
+    pub fn status_for_id(&self, id: graph::components::store::DeploymentId) -> status::Info {
+        let filter = status::Filter::DeploymentIds(vec![id]);
+        self.status(filter).unwrap().into_iter().next().unwrap()
+    }
+
     pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let sites = match filter {
             status::Filter::SubgraphName(name) => {

@@ -3,7 +3,7 @@ use crate::{
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, StoredDynamicDataSource},
+        store::{BlockNumber, EntityType, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
     data::store::scalar::Bytes,
@@ -16,14 +16,15 @@ use serde::Deserialize;
 use slog::{info, Logger};
 use std::{
     fmt,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicI32, Arc},
 };
 
 use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
 
 pub const OFFCHAIN_KINDS: &'static [&'static str] = &["file/ipfs"];
+const NOT_DONE_VALUE: i32 = -1;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DataSource {
     pub kind: String,
     pub name: String,
@@ -32,35 +33,58 @@ pub struct DataSource {
     pub mapping: Mapping,
     pub context: Arc<Option<DataSourceContext>>,
     pub creation_block: Option<BlockNumber>,
-    pub done_at: Mutex<Option<i32>>,
+    done_at: Arc<AtomicI32>,
     pub causality_region: CausalityRegion,
 }
 
-impl Clone for DataSource {
-    fn clone(&self) -> Self {
+impl DataSource {
+    pub fn new(
+        kind: String,
+        name: String,
+        manifest_idx: u32,
+        source: Source,
+        mapping: Mapping,
+        context: Arc<Option<DataSourceContext>>,
+        creation_block: Option<BlockNumber>,
+        causality_region: CausalityRegion,
+    ) -> Self {
         Self {
-            kind: self.kind.clone(),
-            name: self.name.clone(),
-            manifest_idx: self.manifest_idx.clone(),
-            source: self.source.clone(),
-            mapping: self.mapping.clone(),
-            context: self.context.clone(),
-            creation_block: self.creation_block.clone(),
-            done_at: Mutex::new(*self.done_at.lock().unwrap()),
-            causality_region: self.causality_region.clone(),
+            kind,
+            name,
+            manifest_idx,
+            source,
+            mapping,
+            context,
+            creation_block,
+            done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),
+            causality_region,
         }
     }
-}
 
-impl DataSource {
     // mark this data source as processed.
     pub fn mark_processed_at(&self, block_no: i32) {
-        *self.done_at.lock().unwrap() = Some(block_no);
+        assert!(block_no != NOT_DONE_VALUE);
+        self.done_at
+            .store(block_no, std::sync::atomic::Ordering::SeqCst);
     }
 
     // returns `true` if the data source is processed.
     pub fn is_processed(&self) -> bool {
-        self.done_at.lock().unwrap().is_some()
+        self.done_at.load(std::sync::atomic::Ordering::SeqCst) != NOT_DONE_VALUE
+    }
+
+    pub fn done_at(&self) -> Option<i32> {
+        match self.done_at.load(std::sync::atomic::Ordering::SeqCst) {
+            NOT_DONE_VALUE => None,
+            n => Some(n),
+        }
+    }
+
+    pub fn set_done_at(&self, block: Option<i32>) {
+        let value = block.unwrap_or(NOT_DONE_VALUE);
+
+        self.done_at
+            .store(value, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -95,7 +119,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context: Arc::new(info.context),
             creation_block: Some(info.creation_block),
-            done_at: Mutex::new(None),
+            done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),
             causality_region,
         })
     }
@@ -118,17 +142,26 @@ impl DataSource {
         let param = match self.source {
             Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
         };
+
+        let done_at = self.done_at.load(std::sync::atomic::Ordering::SeqCst);
+        let done_at = if done_at == NOT_DONE_VALUE {
+            None
+        } else {
+            Some(done_at)
+        };
+
         let context = self
             .context
             .as_ref()
             .as_ref()
             .map(|ctx| serde_json::to_value(&ctx).unwrap());
+
         StoredDynamicDataSource {
             manifest_idx: self.manifest_idx,
             param: Some(param),
             context,
             creation_block: self.creation_block,
-            done_at: *self.done_at.lock().unwrap(),
+            done_at,
             causality_region: self.causality_region,
         }
     }
@@ -160,7 +193,7 @@ impl DataSource {
             mapping: template.mapping.clone(),
             context,
             creation_block,
-            done_at: Mutex::new(done_at),
+            done_at: Arc::new(AtomicI32::new(done_at.unwrap_or(NOT_DONE_VALUE))),
             causality_region,
         })
     }
@@ -212,7 +245,7 @@ pub enum Source {
 pub struct Mapping {
     pub language: String,
     pub api_version: semver::Version,
-    pub entities: Vec<String>,
+    pub entities: Vec<EntityType>,
     pub handler: String,
     pub runtime: Arc<Vec<u8>>,
     pub link: Link,
@@ -238,7 +271,7 @@ pub struct UnresolvedMapping {
     pub language: String,
     pub file: Link,
     pub handler: String,
-    pub entities: Vec<String>,
+    pub entities: Vec<EntityType>,
 }
 
 impl UnresolvedDataSource {
@@ -272,7 +305,7 @@ impl UnresolvedDataSource {
             mapping: self.mapping.resolve(&*resolver, logger).await?,
             context: Arc::new(None),
             creation_block: None,
-            done_at: Mutex::new(None),
+            done_at: Arc::new(AtomicI32::new(NOT_DONE_VALUE)),
             causality_region,
         })
     }

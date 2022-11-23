@@ -149,6 +149,17 @@ impl Blockchain for Chain {
             .await
     }
 
+    fn is_refetch_block_required(&self) -> bool {
+        false
+    }
+    async fn refetch_firehose_block(
+        &self,
+        _logger: &Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<Block, Error> {
+        unimplemented!("This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called.")
+    }
+
     async fn new_polling_block_stream(
         &self,
         _deployment: DeploymentLocator,

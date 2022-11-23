@@ -10,7 +10,8 @@ use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+    BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamEvent, BlockWithTriggers,
+    FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
@@ -20,26 +21,28 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
     async_trait, r, ApiVersion, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
     MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
-    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
+    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::slog::crit;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
+use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
-use slog::{info, Logger};
+use slog::{info, o, Discard, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -109,19 +112,76 @@ pub struct TestContext {
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
+    pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
+    pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
+    pub env_vars: Arc<EnvVars>,
     graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
 }
 
 impl TestContext {
+    pub async fn runner(
+        &self,
+        stop_block: BlockPtr,
+    ) -> graph_core::SubgraphRunner<
+        graph_chain_ethereum::Chain,
+        RuntimeHostBuilder<graph_chain_ethereum::Chain>,
+    > {
+        let logger = self.logger.cheap_clone();
+        let deployment = self.deployment.cheap_clone();
+
+        // Stolen from the IPFS provider, there's prolly a nicer way to re-use it
+        let file_bytes = self
+            .link_resolver
+            .cat(&logger, &deployment.hash.to_ipfs_link())
+            .await
+            .unwrap();
+
+        let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes).unwrap();
+        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+
+        self.instance_manager
+            .build_subgraph_runner(
+                logger,
+                self.env_vars.cheap_clone(),
+                deployment,
+                raw,
+                Some(stop_block.block_number()),
+                tp,
+            )
+            .await
+            .unwrap()
+    }
+
     pub async fn start_and_sync_to(&self, stop_block: BlockPtr) {
         self.provider
             .start(self.deployment.clone(), Some(stop_block.number))
             .await
             .expect("unable to start subgraph");
 
-        wait_for_sync(&self.logger, &self.store, &self.deployment.hash, stop_block)
+        wait_for_sync(
+            &self.logger,
+            &self.store,
+            &self.deployment.clone(),
+            stop_block,
+        )
+        .await
+        .unwrap();
+    }
+
+    pub async fn start_and_sync_to_error(&self, stop_block: BlockPtr) -> SubgraphError {
+        self.provider
+            .start(self.deployment.clone(), Some(stop_block.number))
             .await
-            .unwrap();
+            .expect("unable to start subgraph");
+
+        wait_for_sync(
+            &self.logger,
+            &self.store,
+            &self.deployment.clone(),
+            stop_block,
+        )
+        .await
+        .unwrap_err()
     }
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
@@ -219,10 +279,10 @@ pub async fn setup<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
-    let env_vars = match env_vars {
+    let env_vars = Arc::new(match env_vars {
         Some(ev) => ev,
         None => EnvVars::from_env().unwrap(),
-    };
+    });
 
     let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.clone(), None);
@@ -253,6 +313,7 @@ pub async fn setup<C: Blockchain>(
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
+        env_vars.cheap_clone(),
         subgraph_store.clone(),
         blockchain_map.clone(),
         mock_registry.clone(),
@@ -276,7 +337,7 @@ pub async fn setup<C: Blockchain>(
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
         link_resolver.cheap_clone(),
-        subgraph_instance_manager,
+        subgraph_instance_manager.clone(),
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
@@ -315,6 +376,9 @@ pub async fn setup<C: Blockchain>(
         deployment,
         subgraph_name,
         graphql_runner,
+        instance_manager: subgraph_instance_manager,
+        link_resolver,
+        env_vars,
     }
 }
 
@@ -334,14 +398,14 @@ pub fn cleanup(
 pub async fn wait_for_sync(
     logger: &Logger,
     store: &SubgraphStore,
-    hash: &DeploymentHash,
+    deployment: &DeploymentLocator,
     stop_block: BlockPtr,
-) -> Result<(), Error> {
+) -> Result<(), SubgraphError> {
     let mut err_count = 0;
     while err_count < 10 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
 
-        let block_ptr = match store.least_block_ptr(&hash).await {
+        let block_ptr = match store.least_block_ptr(&deployment.hash).await {
             Ok(Some(ptr)) => ptr,
             res => {
                 info!(&logger, "{:?}", res);
@@ -351,19 +415,43 @@ pub async fn wait_for_sync(
         };
 
         if block_ptr == stop_block {
+            info!(logger, "TEST: reached stop block");
             break;
         }
 
-        if !store.is_healthy(&hash).await.unwrap() {
-            return Err(anyhow::anyhow!("subgraph failed unexpectedly"));
+        let status = store.status_for_id(deployment.id);
+        if let Some(fatal_error) = status.fatal_error {
+            return Err(fatal_error);
         }
     }
 
     Ok(())
 }
 
+struct StaticBlockRefetcher<C: Blockchain> {
+    x: PhantomData<C>,
+}
+
+#[async_trait]
+impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
+    fn required(&self, _chain: &C) -> bool {
+        false
+    }
+
+    async fn get_block(
+        &self,
+        _chain: &C,
+        _logger: &Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<C::Block, Error> {
+        unimplemented!("this block refetcher always returns false, get_block shouldn't be called")
+    }
+}
+
 /// `chain` is the sequence of chain heads to be processed. If the next block to be processed in the
 /// chain is not a descendant of the previous one, reorgs will be emitted until it is.
+///
+/// If the stream is reset, emitted reorged blocks will not be emitted again.
 /// See also: static-stream-builder
 struct StaticStreamBuilder<C: Blockchain> {
     chain: Vec<BlockWithTriggers<C>>,
@@ -484,20 +572,50 @@ impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
         _capabilities: &<C as Blockchain>::NodeCapabilities,
         _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<C>>, Error> {
-        Ok(Arc::new(NoopTriggersAdapter {
+        // Return no triggers on data source reprocessing.
+        let triggers_in_block = Arc::new(|block| {
+            let logger = Logger::root(Discard, o!());
+            Ok(BlockWithTriggers::new(block, Vec::new(), &logger))
+        });
+        Ok(Arc::new(MockTriggersAdapter {
             x: PhantomData,
+            triggers_in_block,
             triggers_in_block_sleep: self.triggers_in_block_sleep,
         }))
     }
 }
 
-struct NoopTriggersAdapter<C> {
+pub struct MockAdapterSelector<C: Blockchain> {
+    pub x: PhantomData<C>,
+    pub triggers_in_block_sleep: Duration,
+    pub triggers_in_block:
+        Arc<dyn Fn(<C as Blockchain>::Block) -> Result<BlockWithTriggers<C>, Error> + Sync + Send>,
+}
+
+impl<C: Blockchain> TriggersAdapterSelector<C> for MockAdapterSelector<C> {
+    fn triggers_adapter(
+        &self,
+        _loc: &DeploymentLocator,
+        _capabilities: &<C as Blockchain>::NodeCapabilities,
+        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+    ) -> Result<Arc<dyn graph::blockchain::TriggersAdapter<C>>, Error> {
+        Ok(Arc::new(MockTriggersAdapter {
+            x: PhantomData,
+            triggers_in_block: self.triggers_in_block.clone(),
+            triggers_in_block_sleep: self.triggers_in_block_sleep,
+        }))
+    }
+}
+
+struct MockTriggersAdapter<C: Blockchain> {
     x: PhantomData<C>,
     triggers_in_block_sleep: Duration,
+    triggers_in_block:
+        Arc<dyn Fn(<C as Blockchain>::Block) -> Result<BlockWithTriggers<C>, Error> + Sync + Send>,
 }
 
 #[async_trait]
-impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
+impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
     async fn ancestor_block(
         &self,
         _ptr: BlockPtr,
@@ -517,14 +635,13 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
 
     async fn triggers_in_block(
         &self,
-        logger: &Logger,
+        _logger: &Logger,
         block: <C as Blockchain>::Block,
         _filter: &<C as Blockchain>::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error> {
         tokio::time::sleep(self.triggers_in_block_sleep).await;
 
-        // Return no triggers on data source reprocessing.
-        Ok(BlockWithTriggers::new(block, Vec::new(), logger))
+        (self.triggers_in_block)(block)
     }
 
     async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {

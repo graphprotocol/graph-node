@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::{
-    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticStreamBuilder, Stores, NODE_ID,
+    test_ptr, NoopAdapterSelector, NoopRuntimeAdapter, StaticBlockRefetcher, StaticStreamBuilder,
+    Stores, NODE_ID,
 };
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
@@ -19,23 +20,15 @@ use graph_chain_ethereum::{
 use graph_chain_ethereum::{Chain, ENV_VARS};
 use graph_mock::MockMetricsRegistry;
 
-pub async fn chain(blocks: Vec<BlockWithTriggers<Chain>>, stores: &Stores) -> Chain {
-    chain_with_adapter_selector(
-        blocks,
-        stores,
-        NoopAdapterSelector {
-            x: PhantomData,
-            triggers_in_block_sleep: Duration::ZERO,
-        },
-    )
-    .await
-}
-
-pub async fn chain_with_adapter_selector(
+pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &Stores,
-    adapter_selector: impl TriggersAdapterSelector<Chain> + 'static,
+    triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
 ) -> Chain {
+    let triggers_adapter = triggers_adapter.unwrap_or(Arc::new(NoopAdapterSelector {
+        triggers_in_block_sleep: Duration::ZERO,
+        x: PhantomData,
+    }));
     let logger = graph::log::logger(true);
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None);
     let node_id = NodeId::new(NODE_ID).unwrap();
@@ -65,7 +58,8 @@ pub async fn chain_with_adapter_selector(
         EthereumNetworkAdapters { adapters: vec![] },
         stores.chain_head_listener.cheap_clone(),
         Arc::new(StaticStreamBuilder { chain: blocks }),
-        Arc::new(adapter_selector),
+        Arc::new(StaticBlockRefetcher { x: PhantomData }),
+        triggers_adapter,
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,
         // We assume the tested chain is always ingestible for now

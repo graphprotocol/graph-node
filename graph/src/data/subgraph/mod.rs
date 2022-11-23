@@ -68,7 +68,7 @@ where
 
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DeploymentHash(String);
 
 impl stable_hash_legacy::StableHash for DeploymentHash {

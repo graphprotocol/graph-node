@@ -321,6 +321,18 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
+    fn is_refetch_block_required(&self) -> bool {
+        false
+    }
+
+    async fn refetch_firehose_block(
+        &self,
+        _logger: &slog::Logger,
+        _cursor: FirehoseCursor,
+    ) -> Result<MockBlock, Error> {
+        todo!()
+    }
+
     fn chain_store(&self) -> std::sync::Arc<dyn crate::components::store::ChainStore> {
         todo!()
     }
