@@ -47,8 +47,7 @@ pub fn parse_graphql_request(body: &Bytes) -> Result<Query, GraphQLServerError> 
 
 #[cfg(test)]
 mod tests {
-    use graphql_parser;
-    use hyper;
+
     use std::collections::HashMap;
 
     use graph::{

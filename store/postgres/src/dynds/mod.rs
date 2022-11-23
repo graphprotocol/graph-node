@@ -64,7 +64,7 @@ pub(crate) fn update_offchain_status(
     site: &Site,
     data_sources: &[StoredDynamicDataSource],
 ) -> Result<(), StoreError> {
-    if data_sources.len() == 0 {
+    if data_sources.is_empty() {
         return Ok(());
     }
 

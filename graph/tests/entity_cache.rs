@@ -183,7 +183,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 #[tokio::test]
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
-    let cache = EntityCache::new(store.clone());
+    let cache = EntityCache::new(store);
     let result = cache.as_modifications();
     assert_eq!(result.unwrap().modifications, vec![]);
 }
@@ -195,7 +195,7 @@ fn insert_modifications() {
     let store = MockStore::new(BTreeMap::new());
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store.clone());
+    let mut cache = EntityCache::new(store);
 
     let (mogwai_key, mogwai_data) = make_band(
         "mogwai",
@@ -257,7 +257,7 @@ fn overwrite_modifications() {
     };
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store.clone());
+    let mut cache = EntityCache::new(store);
 
     let (mogwai_key, mogwai_data) = make_band(
         "mogwai",
@@ -318,7 +318,7 @@ fn consecutive_modifications() {
     };
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store.clone());
+    let mut cache = EntityCache::new(store);
 
     // First, add "founded" and change the "label".
     let (update_key, update_data) = make_band(
@@ -329,14 +329,14 @@ fn consecutive_modifications() {
             ("label", "Rock Action Records".into()),
         ],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key, update_data).unwrap();
 
     // Then, just reset the "label".
     let (update_key, update_data) = make_band(
         "mogwai",
         vec![("id", "mogwai".into()), ("label", Value::Null)],
     );
-    cache.set(update_key.clone(), update_data.clone()).unwrap();
+    cache.set(update_key.clone(), update_data).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.

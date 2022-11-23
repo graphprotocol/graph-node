@@ -99,13 +99,13 @@ async fn run(
     ethereum_adapter: &EthereumAdapter,
     logger: &Logger,
 ) -> anyhow::Result<()> {
-    let cached_block = steps::fetch_single_cached_block(*block_hash, &chain_store)?;
+    let cached_block = steps::fetch_single_cached_block(*block_hash, chain_store)?;
     let provider_block =
-        steps::fetch_single_provider_block(&block_hash, ethereum_adapter, logger).await?;
+        steps::fetch_single_provider_block(block_hash, ethereum_adapter, logger).await?;
     let diff = steps::diff_block_pair(&cached_block, &provider_block);
-    steps::report_difference(diff.as_deref(), &block_hash);
+    steps::report_difference(diff.as_deref(), block_hash);
     if diff.is_some() {
-        steps::delete_block(&block_hash, &chain_store)?;
+        steps::delete_block(block_hash, chain_store)?;
     }
     Ok(())
 }
@@ -193,7 +193,7 @@ mod steps {
         logger: &Logger,
     ) -> anyhow::Result<Value> {
         let provider_block = ethereum_adapter
-            .block_by_hash(&logger, *block_hash)
+            .block_by_hash(logger, *block_hash)
             .compat()
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
@@ -213,7 +213,7 @@ mod steps {
         if a == b {
             None
         } else {
-            match JsonDiff::diff(a, &b, false).diff {
+            match JsonDiff::diff(a, b, false).diff {
                 // The diff could potentially be a `Value::Null`, which is equivalent to not being
                 // different at all.
                 None | Some(Value::Null) => None,
@@ -239,7 +239,7 @@ mod steps {
     /// Attempts to delete a block from the block cache.
     pub(super) fn delete_block(hash: &H256, chain_store: &ChainStore) -> anyhow::Result<()> {
         println!("Deleting block {hash} from cache.");
-        chain_store.delete_blocks(&[&hash])?;
+        chain_store.delete_blocks(&[hash])?;
         println!("Done.");
         Ok(())
     }

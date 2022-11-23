@@ -64,8 +64,7 @@ impl EthereumNetworkAdapters {
         // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
         // struct is instantiated so they do not need to be sorted here
         self.adapters
-            .iter()
-            .next()
+            .first()
             .map(|ethereum_network_adapter| ethereum_network_adapter.adapter.clone())
     }
 
@@ -100,7 +99,7 @@ impl EthereumNetworks {
             .or_insert(EthereumNetworkAdapters { adapters: vec![] });
         network_adapters.adapters.push(EthereumNetworkAdapter {
             capabilities,
-            adapter: adapter.clone(),
+            adapter,
             limit,
         });
     }

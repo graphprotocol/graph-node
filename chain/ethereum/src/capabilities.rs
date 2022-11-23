@@ -78,7 +78,7 @@ impl graph::blockchain::NodeCapabilities<crate::Chain> for NodeCapabilities {
                     .requires_archive()
                     .expect("failed to parse mappings")
             }),
-            traces: data_sources.into_iter().any(|ds| {
+            traces: data_sources.iter().any(|ds| {
                 ds.mapping.has_call_handler() || ds.mapping.has_block_handler_with_call_filter()
             }),
         }

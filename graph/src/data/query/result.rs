@@ -117,7 +117,7 @@ impl Serialize for QueryResults {
             impl Serialize for SerError<'_> {
                 fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                     let mut seq = serializer.serialize_seq(None)?;
-                    for err in self.0.results.iter().map(|r| &r.errors).flatten() {
+                    for err in self.0.results.iter().flat_map(|r| &r.errors) {
                         seq.serialize_element(err)?;
                     }
                     seq.end()

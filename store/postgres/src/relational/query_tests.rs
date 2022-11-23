@@ -54,7 +54,7 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     assert!(
         query.to_string().contains(sql),
         "Expected query /{}/ to contain /{}/",
-        query.to_string(),
+        query,
         sql
     );
 }

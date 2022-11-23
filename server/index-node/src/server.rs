@@ -1,4 +1,3 @@
-use hyper;
 use hyper::service::make_service_fn;
 use hyper::Server;
 use std::net::{Ipv4Addr, SocketAddrV4};
@@ -84,8 +83,8 @@ where
         let service = IndexNodeService::new(
             logger_for_service.clone(),
             self.blockchain_map.clone(),
-            graphql_runner.clone(),
-            store.clone(),
+            graphql_runner,
+            store,
             self.link_resolver.clone(),
         );
         let new_service =

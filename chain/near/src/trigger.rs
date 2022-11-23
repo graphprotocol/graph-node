@@ -393,7 +393,7 @@ mod tests {
 
     fn big_int(input: u64) -> Option<codec::BigInt> {
         let value =
-            BigInt::try_from(input).expect(format!("Invalid BigInt value {}", input).as_ref());
+            BigInt::try_from(input).unwrap_or_else(|_| panic!("Invalid BigInt value {}", input));
         let bytes = value.to_signed_bytes_le();
 
         Some(codec::BigInt { bytes })
@@ -401,21 +401,23 @@ mod tests {
 
     fn hash(input: &str) -> Option<codec::CryptoHash> {
         Some(codec::CryptoHash {
-            bytes: hex::decode(input).expect(format!("Invalid hash value {}", input).as_ref()),
+            bytes: hex::decode(input).unwrap_or_else(|_| panic!("Invalid hash value {}", input)),
         })
     }
 
     fn public_key(input: &str) -> Option<codec::PublicKey> {
         Some(codec::PublicKey {
             r#type: 0,
-            bytes: hex::decode(input).expect(format!("Invalid PublicKey value {}", input).as_ref()),
+            bytes: hex::decode(input)
+                .unwrap_or_else(|_| panic!("Invalid PublicKey value {}", input)),
         })
     }
 
     fn signature(input: &str) -> Option<codec::Signature> {
         Some(codec::Signature {
             r#type: 0,
-            bytes: hex::decode(input).expect(format!("Invalid Signature value {}", input).as_ref()),
+            bytes: hex::decode(input)
+                .unwrap_or_else(|_| panic!("Invalid Signature value {}", input)),
         })
     }
 

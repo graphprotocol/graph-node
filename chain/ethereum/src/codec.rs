@@ -260,28 +260,26 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                         header
                             .base_fee_per_gas
                             .as_ref()
-                            .map_or_else(|| U256::default(), |v| v.into()),
+                            .map_or_else(U256::default, |v| v.into()),
                     ),
                     extra_data: Bytes::from(header.extra_data.clone()),
                     logs_bloom: match &header.logs_bloom.len() {
                         0 => None,
                         _ => Some(header.logs_bloom.try_decode_proto("logs bloom")?),
                     },
-                    timestamp: U256::from(
-                        header
-                            .timestamp
-                            .as_ref()
-                            .map_or_else(|| U256::default(), |v| U256::from(v.seconds)),
-                    ),
+                    timestamp: header
+                        .timestamp
+                        .as_ref()
+                        .map_or_else(U256::default, |v| U256::from(v.seconds)),
                     difficulty: header
                         .difficulty
                         .as_ref()
-                        .map_or_else(|| U256::default(), |v| v.into()),
+                        .map_or_else(U256::default, |v| v.into()),
                     total_difficulty: Some(
                         header
                             .total_difficulty
                             .as_ref()
-                            .map_or_else(|| U256::default(), |v| v.into()),
+                            .map_or_else(U256::default, |v| v.into()),
                     ),
                     // FIXME (SF): Firehose does not have seal fields, are they really used? Might be required for POA chains only also, I've seen that stuff on xDai (is this important?)
                     seal_fields: vec![],
@@ -293,7 +291,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                     transactions: self
                         .transaction_traces
                         .iter()
-                        .map(|t| TransactionTraceAt::new(t, &self).try_into())
+                        .map(|t| TransactionTraceAt::new(t, self).try_into())
                         .collect::<Result<Vec<web3::types::Transaction>, Error>>()?,
                     size: Some(U256::from(self.size)),
                     mix_hash: Some(header.mix_hash.try_decode_proto("mix hash")?),
@@ -338,7 +336,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
                                 logs: r
                                     .logs
                                     .iter()
-                                    .map(|l| LogAt::new(l, &self, t).try_into())
+                                    .map(|l| LogAt::new(l, self, t).try_into())
                                     .collect::<Result<Vec<_>, Error>>()?,
                                 status: TransactionTraceStatus::from_i32(t.status)
                                     .ok_or_else(|| {

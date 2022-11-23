@@ -54,7 +54,7 @@ pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Err
     let nodes: Vec<_> = nodes
         .into_iter()
         .map(|name| {
-            NodeId::new(name.replace("-", "_"))
+            NodeId::new(name.replace('-', "_"))
                 .map_err(|()| anyhow!("illegal node name `{}`", name))
         })
         .collect::<Result<_, _>>()?;

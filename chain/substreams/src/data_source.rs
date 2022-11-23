@@ -19,7 +19,7 @@ pub const SUBSTREAMS_KIND: &str = "substreams";
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Substreams do not support dynamic data sources";
 const TEMPLATE_ERROR: &str = "Substreams do not support templates";
 
-const ALLOWED_MAPPING_KIND: [&'static str; 1] = ["substreams/graph-entities"];
+const ALLOWED_MAPPING_KIND: [&str; 1] = ["substreams/graph-entities"];
 
 #[derive(Clone, Debug, PartialEq)]
 /// Represents the DataSource portion of the manifest once it has been parsed
@@ -56,7 +56,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
+        self.network.as_deref()
     }
 
     fn context(&self) -> Arc<Option<graph::prelude::DataSourceContext>> {

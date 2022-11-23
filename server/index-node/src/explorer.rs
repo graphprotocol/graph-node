@@ -96,8 +96,8 @@ where
             totalEthereumBlocksCount: total_ethereum_blocks_count,
             synced: vi.synced,
             failed: vi.failed,
-            description: vi.description.as_ref().map(|s| s.as_str()),
-            repository: vi.repository.as_ref().map(|s| s.as_str()),
+            description: vi.description.as_deref(),
+            repository: vi.repository.as_deref(),
             schema: vi.schema.document.to_string(),
             network: vi.network.as_str()
         };
@@ -110,7 +110,7 @@ where
         let value = object! {
             createdAt: vi.created_at.as_str(),
             deploymentId: vi.deployment_id.as_str(),
-            repository: vi.repository.as_ref().map(|s| s.as_str())
+            repository: vi.repository.as_deref()
         };
         Ok(as_http_response(&value))
     }

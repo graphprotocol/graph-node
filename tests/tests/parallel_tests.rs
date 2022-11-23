@@ -197,7 +197,7 @@ async fn parallel_integration_tests() -> anyhow::Result<()> {
     let mut stream = tokio_stream::iter(test_directories)
         .map(|dir| {
             run_integration_test(
-                dir.clone(),
+                dir,
                 postgres.clone(),
                 postgres_ports.clone(),
                 ipfs_ports.clone(),

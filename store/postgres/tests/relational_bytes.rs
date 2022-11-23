@@ -94,7 +94,7 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
         .insert(
-            &conn,
+            conn,
             &entity_type,
             entities.as_mut_slice(),
             0,
@@ -126,7 +126,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(&conn, Arc::new(site), &schema)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema)
         .expect("Failed to create relational schema")
 }
 
@@ -172,7 +172,7 @@ macro_rules! assert_entity_eq {
 
 fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout) -> (),
+    F: FnOnce(&PgConnection, &Layout),
 {
     run_test_with_conn(|conn| {
         // Reset state before starting
@@ -226,7 +226,7 @@ fn find() {
     run_test(|conn, layout| {
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
-        insert_thing(&conn, &layout, ID, NAME);
+        insert_thing(conn, layout, ID, NAME);
 
         // Happy path: find existing entity
         let entity = layout
@@ -250,8 +250,8 @@ fn find_many() {
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
-        insert_thing(&conn, &layout, ID, NAME);
-        insert_thing(&conn, &layout, ID2, NAME2);
+        insert_thing(conn, layout, ID, NAME);
+        insert_thing(conn, layout, ID2, NAME2);
 
         let mut id_map: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::default();
         id_map.insert(&*THING, vec![ID, ID2, "badd"]);
@@ -277,18 +277,18 @@ fn find_many() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone());
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo");
-        let key = EntityKey::data("Thing".to_owned(), entity.id().unwrap().clone());
+        let key = EntityKey::data("Thing".to_owned(), entity.id().unwrap());
 
-        let entity_id = entity.id().unwrap().clone();
+        let entity_id = entity.id().unwrap();
         let entity_type = key.entity_type.clone();
         let mut entities = vec![(&key, Cow::from(&entity))];
         layout
-            .update(&conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -305,17 +305,17 @@ fn delete() {
     run_test(|conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        insert_entity(&conn, &layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone());
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID);
-        insert_entity(&conn, &layout, "Thing", two);
+        insert_entity(conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
         let key = EntityKey::data("Thing".to_owned(), "ffff".to_owned());
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -325,7 +325,7 @@ fn delete() {
             .map(|key| *key = TWO_ID)
             .expect("Failed to update entity types");
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
     });
@@ -381,8 +381,8 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
     insert_entity(conn, layout, "Thing", root.clone());
     insert_entity(conn, layout, "Thing", child1.clone());
     insert_entity(conn, layout, "Thing", child2.clone());
-    insert_entity(conn, layout, "Thing", grand_child1.clone());
-    insert_entity(conn, layout, "Thing", grand_child2.clone());
+    insert_entity(conn, layout, "Thing", grand_child1);
+    insert_entity(conn, layout, "Thing", grand_child2);
     (root, child1, child2)
 }
 

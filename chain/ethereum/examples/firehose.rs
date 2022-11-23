@@ -15,7 +15,7 @@ async fn main() -> Result<(), Error> {
     let mut cursor: Option<String> = None;
     let token_env = env_var("SF_API_TOKEN", "".to_string());
     let mut token: Option<String> = None;
-    if token_env.len() > 0 {
+    if !token_env.is_empty() {
         token = Some(token_env);
     }
 
@@ -86,7 +86,7 @@ async fn main() -> Result<(), Error> {
                             })
                         });
 
-                        if logs.len() > 0 {
+                        if !logs.is_empty() {
                             println!("Transaction {}", trx.hash.encode_hex::<String>());
                             logs.iter().for_each(|log| println!("{}", log));
                         }

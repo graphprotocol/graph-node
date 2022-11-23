@@ -117,7 +117,7 @@ impl Blockchain for Chain {
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
             .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
-            .expect(&format!("no adapter for network {}", self.name,));
+            .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
         let firehose_endpoint = self.firehose_endpoints.random()?;
         let logger = self
@@ -210,7 +210,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .into_iter()
             .filter(|tx| transaction_filter.matches(&tx.owner))
             .map(|tx| trigger::TransactionWithBlockPtr {
-                tx: Arc::new(tx.clone()),
+                tx: Arc::new(tx),
                 block: shared_block.clone(),
             })
             .collect::<Vec<_>>();

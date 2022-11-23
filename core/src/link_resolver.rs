@@ -186,7 +186,7 @@ impl LinkResolverTrait for LinkResolver {
 
         let req_path = path.clone();
         let timeout = self.timeout;
-        let data = retry_policy(self.retry, "ipfs.cat", &logger)
+        let data = retry_policy(self.retry, "ipfs.cat", logger)
             .run(move || {
                 let path = req_path.clone();
                 let client = client.clone();
@@ -229,7 +229,7 @@ impl LinkResolverTrait for LinkResolver {
         restrict_file_size(&link.link, size, max_file_size)?;
 
         let link = link.link.clone();
-        let data = retry_policy(self.retry, "ipfs.getBlock", &logger)
+        let data = retry_policy(self.retry, "ipfs.getBlock", logger)
             .run(move || {
                 let link = link.clone();
                 let client = client.clone();
@@ -310,7 +310,7 @@ impl LinkResolverTrait for LinkResolver {
                         // run through the loop.
                         match try_ready!(stream.poll().map_err(|e| anyhow::anyhow!("{}", e))) {
                             Some(b) => buf.extend_from_slice(&b),
-                            None if buf.len() > 0 => buf.extend_from_slice(&[b'\n']),
+                            None if !buf.is_empty() => buf.extend_from_slice(&[b'\n']),
                             None => return Ok(Async::Ready(None)),
                         }
                     }

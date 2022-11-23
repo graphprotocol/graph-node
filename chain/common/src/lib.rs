@@ -41,7 +41,7 @@ impl PType {
             v.push(vv);
         }
 
-        if v.len() < 1 {
+        if v.is_empty() {
             None
         } else {
             Some(v.join(","))
@@ -103,23 +103,20 @@ impl From<&FieldDescriptorProto> for Field {
 
         let type_name = if let Some(type_name) = fd.type_name.as_ref() {
             type_name.to_owned()
+        } else if let Type::TYPE_BYTES = fd.type_() {
+            "Vec<u8>".to_owned()
         } else {
-            if let Type::TYPE_BYTES = fd.type_() {
-                "Vec<u8>".to_owned()
-            } else {
-                use heck::ToUpperCamelCase;
-                fd.name().to_string().to_upper_camel_case()
-            }
+            use heck::ToUpperCamelCase;
+            fd.name().to_string().to_upper_camel_case()
         };
 
         Field {
             name: fd.name().to_owned(),
-            type_name: type_name.rsplit(".").next().unwrap().to_owned(),
+            type_name: type_name.rsplit('.').next().unwrap().to_owned(),
             required: options
                 .iter()
                 //(firehose.required) = true,  UnknownValueRef::Varint(0) => false, UnknownValueRef::Varint(1) => true
-                .find(|f| f.0 == REQUIRED_ID && UnknownValueRef::Varint(1) == f.1)
-                .is_some(),
+                .any(|f| f.0 == REQUIRED_ID && UnknownValueRef::Varint(1) == f.1),
             is_enum: false,
             is_array: Label::LABEL_REPEATED == fd.label(),
             fields: vec![],
@@ -154,7 +151,7 @@ impl From<&DescriptorProto> for PType {
                     .iter()
                     .filter(|fd| fd.oneof_index.is_some())
                     .filter(|fd| *fd.oneof_index.as_ref().unwrap() as usize == index)
-                    .map(|fd| Field::from(fd))
+                    .map(Field::from)
                     .collect::<Vec<Field>>();
 
                 fld
@@ -165,7 +162,7 @@ impl From<&DescriptorProto> for PType {
             dp.field
                 .iter()
                 .filter(|fd| fd.oneof_index.is_none())
-                .map(|fd| Field::from(fd))
+                .map(Field::from)
                 .collect::<Vec<Field>>(),
         );
 

@@ -227,8 +227,8 @@ where
         let req1 = req.clone();
         self.service
             .call(req.clone())
-            .map_ok(move |x| (req.clone(), x))
-            .map_err(move |e| (req1.clone(), e))
+            .map_ok(move |x| (req, x))
+            .map_err(move |e| (req1, e))
             .boxed()
     }
 }

@@ -196,10 +196,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         // OR
         // 1 or more handlers with origin filter
         for (event_type, origins) in event_types.iter() {
-            if origins.len() > 1 {
-                if !origins.iter().all(Option::is_some) {
-                    errors.push(combined_origins_err(event_type))
-                }
+            if origins.len() > 1 && !origins.iter().all(Option::is_some) {
+                errors.push(combined_origins_err(event_type))
             }
         }
 

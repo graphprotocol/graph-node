@@ -126,7 +126,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        self.network.as_ref().map(|s| s.as_str())
+        self.network.as_deref()
     }
 
     fn context(&self) -> Arc<Option<DataSourceContext>> {
@@ -389,7 +389,7 @@ impl DataSource {
                 event
                     .inputs
                     .iter()
-                    .map(|input| format!("{}", event_param_type_signature(&input.kind)))
+                    .map(|input| event_param_type_signature(&input.kind))
                     .collect::<Vec<_>>()
                     .join(",")
             )
@@ -424,16 +424,16 @@ impl DataSource {
                 Uint(size) => format!("uint{}", size),
                 Bool => "bool".into(),
                 String => "string".into(),
-                Array(inner) => format!("{}[]", event_param_type_signature(&*inner)),
+                Array(inner) => format!("{}[]", event_param_type_signature(inner)),
                 FixedBytes(size) => format!("bytes{}", size),
                 FixedArray(inner, size) => {
-                    format!("{}[{}]", event_param_type_signature(&*inner), size)
+                    format!("{}[{}]", event_param_type_signature(inner), size)
                 }
                 Tuple(components) => format!(
                     "({})",
                     components
                         .iter()
-                        .map(|component| event_param_type_signature(&component))
+                        .map(event_param_type_signature)
                         .collect::<Vec<_>>()
                         .join(",")
                 ),
@@ -496,7 +496,7 @@ impl DataSource {
                     .collect::<Vec<String>>()
                     .join(",");
                 // `address,uint256,bool)
-                arguments.push_str(")");
+                arguments.push(')');
                 // `operation(address,uint256,bool)`
                 let actual_signature = vec![function.name.clone(), arguments].join("(");
                 target_signature == actual_signature
@@ -531,7 +531,7 @@ impl DataSource {
         block: &Arc<LightEthereumBlock>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<Chain>>, Error> {
-        if !self.matches_trigger_address(&trigger) {
+        if !self.matches_trigger_address(trigger) {
             return Ok(None);
         }
 
@@ -629,7 +629,7 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 let transaction = if log.transaction_hash != block.hash {
                     block
-                        .transaction_for_log(&log)
+                        .transaction_for_log(log)
                         .context("Found no transaction for event")?
                 } else {
                     // Infer some fields from the log and fill the rest with zeros.
@@ -663,7 +663,7 @@ impl DataSource {
             }
             EthereumTrigger::Call(call) => {
                 // Identify the call handler for this call
-                let handler = match self.handler_for_call(&call)? {
+                let handler = match self.handler_for_call(call)? {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
@@ -750,7 +750,7 @@ impl DataSource {
 
                 let transaction = Arc::new(
                     block
-                        .transaction_for_call(&call)
+                        .transaction_for_call(call)
                         .context("Found no transaction for call")?,
                 );
                 let logging_extras = Arc::new(o! {
@@ -804,7 +804,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 
         info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", source.address), "source_start_block" => source.start_block);
 
-        let mapping = mapping.resolve(&*resolver, logger).await?;
+        let mapping = mapping.resolve(resolver, logger).await?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context, manifest_idx)
     }
@@ -1011,7 +1011,7 @@ impl UnresolvedMappingABI {
             "link" => &self.file.link
         );
 
-        let contract_bytes = resolver.cat(&logger, &self.file).await?;
+        let contract_bytes = resolver.cat(logger, &self.file).await?;
         let contract = Contract::load(&*contract_bytes)?;
         Ok(MappingABI {
             name: self.name,
@@ -1059,7 +1059,7 @@ impl MappingEventHandler {
 /// Hashes a string to a H256 hash.
 fn string_to_h256(s: &str) -> H256 {
     let mut result = [0u8; 32];
-    let data = s.replace(" ", "").into_bytes();
+    let data = s.replace(' ', "").into_bytes();
     let mut sponge = Keccak::new_keccak256();
     sponge.update(&data);
     sponge.finalize(&mut result);

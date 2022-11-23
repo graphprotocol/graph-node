@@ -64,10 +64,12 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         let requirements = filter.node_capabilities();
         let adapter = chain
             .triggers_adapter(&deployment, &requirements, unified_api_version)
-            .expect(&format!(
-                "no adapter for network {} with capabilities {}",
-                chain.name, requirements
-            ));
+            .unwrap_or_else(|_| {
+                panic!(
+                    "no adapter for network {} with capabilities {}",
+                    chain.name, requirements
+                )
+            });
 
         let firehose_endpoint = chain.firehose_endpoints.random()?;
 
@@ -164,7 +166,7 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
     ) -> Result<Arc<dyn TriggersAdapterTrait<Chain>>, Error> {
         let logger = self
             .logger_factory
-            .subgraph_logger(&loc)
+            .subgraph_logger(loc)
             .new(o!("component" => "BlockStream"));
 
         let eth_adapter = if capabilities.traces && self.firehose_endpoints.len() > 0 {
@@ -174,9 +176,9 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
                 traces: false,
             };
 
-            self.adapters.cheapest_with(&adjusted_capabilities)?.clone()
+            self.adapters.cheapest_with(&adjusted_capabilities)?
         } else {
-            self.adapters.cheapest_with(capabilities)?.clone()
+            self.adapters.cheapest_with(capabilities)?
         };
 
         let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash));
@@ -260,7 +262,7 @@ impl Chain {
     }
 
     pub fn cheapest_adapter(&self) -> Arc<EthereumAdapter> {
-        self.eth_adapters.cheapest().unwrap().clone()
+        self.eth_adapters.cheapest().unwrap()
     }
 }
 
@@ -330,10 +332,12 @@ impl Blockchain for Chain {
         let requirements = filter.node_capabilities();
         let adapter = self
             .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
-            .expect(&format!(
-                "no adapter for network {} with capabilities {}",
-                self.name, requirements
-            ));
+            .unwrap_or_else(|_| {
+                panic!(
+                    "no adapter for network {} with capabilities {}",
+                    self.name, requirements
+                )
+            });
 
         let logger = self
             .logger_factory
@@ -565,8 +569,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     &filter.log,
                     &full_block.ethereum_block,
                 ));
-                triggers.append(&mut parse_call_triggers(&filter.call, &full_block)?);
-                triggers.append(&mut parse_block_triggers(&filter.block, &full_block));
+                triggers.append(&mut parse_call_triggers(&filter.call, full_block)?);
+                triggers.append(&mut parse_block_triggers(&filter.block, full_block));
                 Ok(BlockWithTriggers::new(block, triggers, logger))
             }
         }

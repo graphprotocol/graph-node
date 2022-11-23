@@ -253,7 +253,7 @@ impl<C: Blockchain> WasmInstance<C> {
         };
 
         if let Some(deterministic_error) = deterministic_error {
-            let message = format!("{:#}", deterministic_error).replace("\n", "\t");
+            let message = format!("{:#}", deterministic_error).replace('\n', "\t");
 
             // Log the error and restore the updates snapshot, effectively reverting the handler.
             error!(&self.instance_ctx().ctx.logger,

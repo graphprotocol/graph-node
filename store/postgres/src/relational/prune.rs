@@ -384,8 +384,7 @@ impl Layout {
             .filter(|s| {
                 prunable_src
                     .iter()
-                    .find(|table| table.name.as_str() == s.tablename)
-                    .is_some()
+                    .any(|table| *table.name.as_str() == s.tablename)
             })
             .collect();
         reporter.finish_analyze(stats.as_slice());

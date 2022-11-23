@@ -104,7 +104,7 @@ table! {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum Status {
     Finished,
     Cancelled,

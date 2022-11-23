@@ -419,7 +419,7 @@ impl<'a> Join<'a> {
             // query are always joined first, and may then be overwritten by the merged selection
             // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
             let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
-            parent.set_children(response_key.to_owned(), values.unwrap_or(vec![]));
+            parent.set_children(response_key.to_owned(), values.unwrap_or_default());
         }
     }
 
@@ -485,16 +485,11 @@ pub fn run(
 ) -> Result<(r::Value, Trace), Vec<QueryExecutionError>> {
     execute_root_selection_set(resolver, ctx, selection_set).map(|(nodes, trace)| {
         graphql_metrics.observe_query_result_size(nodes.weight());
-        let obj = Object::from_iter(
-            nodes
+        let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
+            node.children
                 .into_iter()
-                .map(|node| {
-                    node.children.into_iter().map(|(key, nodes)| {
-                        (format!("prefetch:{}", key), node_list_as_value(nodes))
-                    })
-                })
-                .flatten(),
-        );
+                .map(|(key, nodes)| (format!("prefetch:{}", key), node_list_as_value(nodes)))
+        }));
         (r::Value::Object(obj), trace)
     })
 }

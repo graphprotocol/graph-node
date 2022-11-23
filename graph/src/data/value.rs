@@ -137,7 +137,7 @@ impl Iterator for ObjectOwningIter {
     type Item = (Word, Value);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entry) = self.iter.next() {
+        for entry in self.iter.by_ref() {
             if let Some(key) = entry.key {
                 return Some((key, entry.value));
             }
@@ -173,7 +173,7 @@ impl<'a> Iterator for ObjectIter<'a> {
     type Item = (&'a str, &'a Value);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entry) = self.iter.next() {
+        for entry in self.iter.by_ref() {
             if let Some(key) = &entry.key {
                 return Some((key.as_str(), &entry.value));
             }

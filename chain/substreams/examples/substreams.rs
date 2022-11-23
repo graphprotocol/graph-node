@@ -16,7 +16,7 @@ async fn main() -> Result<(), Error> {
 
     let token_env = env_var("SUBSTREAMS_API_TOKEN", "".to_string());
     let mut token: Option<String> = None;
-    if token_env.len() > 0 {
+    if !token_env.is_empty() {
         token = Some(token_env);
     }
 
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Error> {
     );
 
     let package_file = env_var("SUBSTREAMS_PACKAGE", "".to_string());
-    if package_file == "" {
+    if package_file.is_empty() {
         panic!("Environment variable SUBSTREAMS_PACKAGE must be set");
     }
 

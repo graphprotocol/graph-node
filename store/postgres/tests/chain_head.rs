@@ -32,14 +32,14 @@ where
     F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> Result<(), Error> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
-        for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+        for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             block_store::set_chain(chain.clone(), name);
 
             let chain_store = store.block_store().chain_store(name).expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.cheap_clone())
-                .expect(&format!("test finishes successfully on network {}", name));
+                .unwrap_or_else(|_| panic!("test finishes successfully on network {}", name));
         }
     });
 }
@@ -50,7 +50,7 @@ where
     R: Future<Output = ()> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
-        for name in vec![NETWORK_NAME, FAKE_NETWORK_SHARED] {
+        for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             block_store::set_chain(chain.clone(), name);
 
             let chain_store = store.block_store().chain_store(name).expect("chain store");
@@ -123,7 +123,7 @@ fn genesis_plus_one_with_sibling() {
 #[test]
 fn short_chain_missing_parent() {
     let chain = vec![&*BLOCK_ONE_NO_PARENT];
-    check_chain_head_update(chain, None, Some(&NO_PARENT));
+    check_chain_head_update(chain, None, Some(NO_PARENT));
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn test_get_block_number() {
 
             let query_store = subgraph_store
                 .query_store(
-                    QueryTarget::Deployment(subgraph.cheap_clone().into(), Default::default()),
+                    QueryTarget::Deployment(subgraph.cheap_clone(), Default::default()),
                     false,
                 )
                 .await

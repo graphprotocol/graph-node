@@ -189,7 +189,7 @@ pub fn table_exists(
         .bind::<Text, _>(namespace)
         .bind::<Text, _>(table.as_str())
         .load(conn)?;
-    Ok(result.len() > 0)
+    Ok(!result.is_empty())
 }
 
 pub fn supports_proof_of_indexing(

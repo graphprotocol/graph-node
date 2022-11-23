@@ -150,7 +150,7 @@ where
     }
 
     async fn process_new_block(&self, response: &firehose::Response) -> Result<(), Error> {
-        let block = decode_firehose_block::<M>(&response)
+        let block = decode_firehose_block::<M>(response)
             .context("Mapping firehose block to blockchain::Block")?;
 
         trace!(self.logger, "Received new block to ingest {}", block.ptr());

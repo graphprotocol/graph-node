@@ -72,7 +72,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     ) -> Result<BlockState<C>, MappingError> {
         self.process_trigger_in_hosts(
             logger,
-            &self.instance.hosts(),
+            self.instance.hosts(),
             block,
             trigger,
             state,
@@ -125,8 +125,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
 
         removed
             .into_iter()
-            .map(|source| self.offchain_monitor.add_source(source))
-            .collect()
+            .try_for_each(|source| self.offchain_monitor.add_source(source))
     }
 
     pub fn add_dynamic_data_source(

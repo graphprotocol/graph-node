@@ -94,7 +94,7 @@ impl ForeignServer {
                 })?
                 .into(),
         )?;
-        let port = config.get_ports().get(0).cloned().unwrap_or(5432u16);
+        let port = config.get_ports().first().cloned().unwrap_or(5432u16);
         let dbname = config
             .get_dbname()
             .map(|s| s.to_string())
@@ -1197,12 +1197,7 @@ impl PoolCoordinator {
     }
 
     pub fn pools(&self) -> Vec<Arc<PoolInner>> {
-        self.pools
-            .lock()
-            .unwrap()
-            .values()
-            .map(|pool| pool.clone())
-            .collect()
+        self.pools.lock().unwrap().values().cloned().collect()
     }
 
     pub fn servers(&self) -> Arc<Vec<ForeignServer>> {

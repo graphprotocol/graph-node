@@ -26,7 +26,7 @@ impl ToAscObj<AscTransactionArray> for Vec<Vec<u8>> {
         gas: &GasCounter,
     ) -> Result<AscTransactionArray, DeterministicHostError> {
         let content = self
-            .into_iter()
+            .iter()
             .map(|x| asc_new(heap, x.as_slice(), gas))
             .collect::<Result<Vec<AscPtr<Uint8Array>>, _>>()?;
         Ok(AscTransactionArray(Array::new(&*content, heap, gas)?))
@@ -128,7 +128,7 @@ impl ToAscObj<AscBlock> for codec::Block {
                 &self
                     .txs
                     .iter()
-                    .map(|tx| tx.id.clone().into())
+                    .map(|tx| tx.id.clone())
                     .collect::<Vec<Vec<u8>>>(),
                 gas,
             )?,

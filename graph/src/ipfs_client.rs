@@ -23,7 +23,7 @@ pub struct CidFile {
 impl Display for CidFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self.path {
-            Some(ref f) => format!("{}/{}", self.cid.to_string(), f),
+            Some(ref f) => format!("{}/{}", self.cid, f),
             None => self.cid.to_string(),
         };
         f.write_str(&str)
@@ -64,7 +64,7 @@ impl FromStr for CidFile {
             return Ok(CidFile { cid, path: None });
         }
 
-        let file: String = (&s[cid_str.len() + 1..]).to_string();
+        let file: String = s[cid_str.len() + 1..].to_string();
         let path = if file.is_empty() { None } else { Some(file) };
 
         Ok(CidFile { cid, path })
@@ -257,7 +257,7 @@ mod test {
                 input: cid_str.to_string(),
                 path: cid_str.to_string(),
                 expected: Ok(CidFile {
-                    cid: cid.clone(),
+                    cid: cid,
                     path: None,
                 }),
             },
@@ -266,7 +266,7 @@ mod test {
                 input: format!("{}/file.json", cid),
                 path: format!("{}/file.json", cid_str),
                 expected: Ok(CidFile {
-                    cid: cid.clone(),
+                    cid: cid,
                     path: Some("file.json".into()),
                 }),
             },
@@ -275,7 +275,7 @@ mod test {
                 input: format!("{}/", cid),
                 path: format!("{}", cid),
                 expected: Ok(CidFile {
-                    cid: cid.clone(),
+                    cid: cid,
                     path: None,
                 }),
             },
@@ -290,7 +290,7 @@ mod test {
                 input: format!("{}//", cid),
                 path: format!("{}//", cid),
                 expected: Ok(CidFile {
-                    cid: cid.clone(),
+                    cid: cid,
                     path: Some("/".into()),
                 }),
             },

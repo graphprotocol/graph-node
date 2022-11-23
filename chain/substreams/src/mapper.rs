@@ -33,7 +33,7 @@ impl SubstreamsMapper<Chain> for Mapper {
             )
         });
 
-        if outputs.len() == 0 {
+        if outputs.is_empty() {
             return Ok(None);
         }
 

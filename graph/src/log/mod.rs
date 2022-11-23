@@ -165,7 +165,7 @@ where
                 }
             }
 
-            write!(decorator, "\n")?;
+            writeln!(decorator)?;
             decorator.flush()?;
 
             Ok(())

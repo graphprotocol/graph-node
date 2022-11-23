@@ -36,10 +36,8 @@ struct TextResolver {
 
 impl TextResolver {
     fn add(&mut self, link: &str, text: &impl AsRef<[u8]>) {
-        self.texts.insert(
-            link.to_owned(),
-            text.as_ref().into_iter().cloned().collect(),
-        );
+        self.texts
+            .insert(link.to_owned(), text.as_ref().iter().cloned().collect());
     }
 }
 
@@ -149,7 +147,7 @@ templates:
 specVersion: 0.0.7
 ";
 
-    let manifest = resolve_manifest(&yaml, SPEC_VERSION_0_0_7).await;
+    let manifest = resolve_manifest(yaml, SPEC_VERSION_0_0_7).await;
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
     assert_eq!(manifest.data_sources.len(), 0);
@@ -237,13 +235,12 @@ specVersion: 0.0.2
         // Meaning that the graft will fail just like it's parent
         // but it started at a valid previous block.
         assert!(
-            unvalidated
+            !unvalidated
                 .validate(subgraph_store.clone(), true)
                 .await
                 .expect_err("Validation must fail")
                 .into_iter()
-                .find(|e| matches!(e, SubgraphManifestValidationError::GraftBaseInvalid(_)))
-                .is_none(),
+                .any(|e| matches!(&e, SubgraphManifestValidationError::GraftBaseInvalid(_))),
             "There shouldn't be a GraftBaseInvalid error"
         );
 

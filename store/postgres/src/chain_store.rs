@@ -75,9 +75,9 @@ mod data {
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
-    pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &'static str = "public.ethereum_blocks";
+    pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &str = "public.ethereum_blocks";
 
-    pub(crate) const ETHEREUM_CALL_CACHE_TABLE_NAME: &'static str = "public.eth_call_cache";
+    pub(crate) const ETHEREUM_CALL_CACHE_TABLE_NAME: &str = "public.eth_call_cache";
 
     mod public {
         pub(super) use super::super::public::ethereum_networks;
@@ -517,7 +517,7 @@ mod data {
                         .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                         .filter(b::network_name.eq(chain))
                         .filter(b::hash.eq(any(Vec::from_iter(
-                            hashes.into_iter().map(|h| format!("{:x}", h)),
+                            hashes.iter().map(|h| format!("{:x}", h)),
                         ))))
                         .load::<json::Value>(conn)
                 }
@@ -560,7 +560,7 @@ mod data {
                     .filter(blocks.number().eq(number as i64))
                     .get_results::<Vec<u8>>(conn)?
                     .into_iter()
-                    .map(|hash| BlockHash::from(hash))
+                    .map(BlockHash::from)
                     .collect::<Vec<BlockHash>>()),
             }
         }
@@ -1266,7 +1266,7 @@ mod data {
                         let query = format!("delete from {}", qname);
                         sql_query(query)
                             .execute(conn)
-                            .expect(&format!("Failed to delete {}", qname));
+                            .unwrap_or_else(|_| panic!("Failed to delete {}", qname));
                     }
                 }
             }
@@ -1691,7 +1691,7 @@ impl ChainStoreTrait for ChainStore {
             .pool
             .with_conn(move |conn, _| {
                 self.storage
-                    .ancestor_block(&conn, block_ptr, offset)
+                    .ancestor_block(conn, block_ptr, offset)
                     .map_err(|e| CancelableError::from(StoreError::from(e)))
             })
             .await?)
@@ -1785,9 +1785,9 @@ impl ChainStoreTrait for ChainStore {
         self.pool
             .with_conn(move |conn, _| {
                 storage
-                    .block_number(&conn, &hash)
+                    .block_number(conn, &hash)
                     .map(|opt| opt.map(|(number, timestamp)| (chain.clone(), number, timestamp)))
-                    .map_err(|e| StoreError::from(e).into())
+                    .map_err(|e| e.into())
             })
             .await
     }
@@ -1806,7 +1806,7 @@ impl ChainStoreTrait for ChainStore {
         let block_hash = block_hash.to_owned();
         pool.with_conn(move |conn, _| {
             storage
-                .find_transaction_receipts_in_block(&conn, block_hash)
+                .find_transaction_receipts_in_block(conn, block_hash)
                 .map_err(|e| StoreError::from(e).into())
         })
         .await
@@ -1865,7 +1865,7 @@ impl EthereumCallCache for ChainStore {
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &*self.get_conn()?;
-        conn.transaction::<_, Error, _>(|| Ok(self.storage.get_calls_in_block(conn, block)?))
+        conn.transaction::<_, Error, _>(|| self.storage.get_calls_in_block(conn, block))
     }
 
     fn set_call(
