@@ -233,8 +233,9 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
                     .await
                     {
                         // Received an update.
-                        Ok(Ok(())) => (),
-
+                        Ok(Ok(())) => {
+                            debug!(logger, "Received chain head update, process as normal");
+                        }
                         // The sender was dropped, this should never happen.
                         Ok(Err(_)) => crit!(logger, "chain head watcher terminated"),
 
