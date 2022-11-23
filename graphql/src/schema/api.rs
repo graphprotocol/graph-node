@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use graphql_parser::Pos;
+use graphql_parser::{schema::TypeDefinition, Pos};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 
@@ -32,6 +32,17 @@ const PAGEINFO_TYPE_NAME: &str = "PageInfo";
 const BLOCK_HEIGHT: &str = "Block_height";
 const CHANGE_BLOCK_FILTER_NAME: &str = "BlockChangedFilter";
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
+
+/// Built-in scalars
+const RESERVED_TYPES: [&str; 7] = [
+    "Boolean",
+    "ID",
+    "Int",
+    "BigDecimal",
+    "String",
+    "Bytes",
+    "BigInt",
+];
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum ErrorPolicy {
@@ -87,7 +98,8 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
 
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
-    add_connection_types(&mut schema, &object_types);
+    add_connection_types_for_objects(&mut schema, &object_types);
+    add_connection_types_for_interfaces(&mut schema, &interface_types);
     add_meta_field_type(&mut schema);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
@@ -136,8 +148,8 @@ fn add_types_for_object_types(
     Ok(())
 }
 
-fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
-    let edge_type_name = format!("{}Edge", object_type.name);
+fn add_connection_type(schema: &mut Document, name: &str) -> () {
+    let edge_type_name = format!("{}Edge", name);
 
     schema
         .definitions
@@ -159,15 +171,10 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
                     },
                     Field {
                         arguments: vec![],
-                        description: Some(format!(
-                            "The {} node.",
-                            object_type.name
-                        )),
+                        description: Some(format!("The {} node.", name)),
                         directives: vec![],
                         name: "node".to_string(),
-                        field_type: Type::NonNullType(Box::new(Type::NamedType(
-                            object_type.name.clone(),
-                        ))),
+                        field_type: Type::NonNullType(Box::new(Type::NamedType(name.to_string()))),
                         position: Pos::default(),
                     },
                 ],
@@ -180,16 +187,13 @@ fn add_connection_type(schema: &mut Document, object_type: &ObjectType) -> () {
         .definitions
         .push(Definition::TypeDefinition(TypeDefinition::Object(
             ObjectType {
-                name: format!("{}Connection", object_type.name),
+                name: format!("{}Connection", name),
                 description: Some("A connection to a list of items.".to_string()),
                 directives: vec![],
                 fields: vec![
                     Field {
                         arguments: vec![],
-                        description: Some(format!(
-                            "A list of {} edges.",
-                            object_type.name
-                        )),
+                        description: Some(format!("A list of {} edges.", name)),
                         directives: vec![],
                         name: "edges".to_string(),
                         field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(
@@ -219,21 +223,25 @@ fn enrich_type_fields_with_connections(schema: &mut Document) {
         match definition {
             Definition::TypeDefinition(TypeDefinition::Object(object_type)) => {
                 if !is_connection_type(&object_type.name) {
-                    println!("Enriching type {}", object_type.name);
                     let fields_with_connections = object_type
                         .fields
                         .iter()
                         .flat_map(|f| {
                             if ast::is_list_or_non_null_list_field(f) {
                                 let type_name = ast::get_base_type(&f.field_type);
-println!("type_name: {}", type_name);
+
+                                // base type can be built in types and we want to avoid those
+                                if RESERVED_TYPES.contains(&type_name.as_str()) {
+                                    return vec![f.clone()];
+                                }
+
                                 vec![
                                     f.clone(),
                                     Field {
                                         position: Pos::default(),
                                         description: None,
                                         name: format!(
-                                            "{}Connection",
+                                            "{}Paginated",
                                             type_name.to_plural().to_camel_case()
                                         ),
                                         arguments: f.arguments.clone(),
@@ -257,11 +265,20 @@ println!("type_name: {}", type_name);
     }
 }
 
-fn add_connection_types(schema: &mut Document, object_types: &Vec<&ObjectType>) -> () {
+fn add_connection_types_for_objects(schema: &mut Document, object_types: &Vec<&ObjectType>) -> () {
     for object_type in object_types {
         if !object_type.name.eq(SCHEMA_TYPE_NAME) {
-            add_connection_type(schema, &object_type);
+            add_connection_type(schema, object_type.name.as_str());
         }
+    }
+}
+
+fn add_connection_types_for_interfaces(
+    schema: &mut Document,
+    interface_types: &[&InterfaceType],
+) -> () {
+    for interface_type in interface_types {
+        add_connection_type(schema, interface_type.name.as_str());
     }
 }
 
@@ -603,7 +620,14 @@ fn add_query_type(
         .map(|t| t.name.as_str())
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| t.name.as_str()))
-        .flat_map(query_fields_for_type)
+        .flat_map(|name| {
+            return [
+                query_fields_for_types_single(name),
+                query_fields_for_types_many(name),
+                query_fields_for_types_many_paginated(name),
+            ]
+            .concat();
+        })
         .collect::<Vec<Field>>();
     let mut fulltext_fields = schema
         .get_fulltext_directives()
@@ -699,7 +723,13 @@ fn add_subscription_type(
         .map(|t| &t.name)
         .filter(|name| !name.eq(&SCHEMA_TYPE_NAME))
         .chain(interface_types.iter().map(|t| &t.name))
-        .flat_map(|name| query_fields_for_type(name))
+        .flat_map(|name| {
+            return [
+                query_fields_for_types_single(name),
+                query_fields_for_types_many(name),
+            ]
+            .concat();
+        })
         .collect();
     fields.push(meta_field());
 
@@ -761,14 +791,9 @@ fn subgraph_error_argument() -> InputValue {
     }
 }
 
-/// Generates `Query` fields for the given type name (e.g. `users` and `user`).
-fn query_fields_for_type(type_name: &str) -> Vec<Field> {
-    let mut connection_collection_arguments =
-        connection_collection_arguments_for_named_type(type_name);
-    let mut collection_arguments = collection_arguments_for_named_type(type_name);
-    collection_arguments.push(block_argument());
-
-    let mut by_id_arguments = vec![
+/// Generates `Query` fields for the given type name (e.g. `user`)
+fn query_fields_for_types_single(type_name: &str) -> Vec<Field> {
+    let arguments = vec![
         InputValue {
             position: Pos::default(),
             description: None,
@@ -778,43 +803,52 @@ fn query_fields_for_type(type_name: &str) -> Vec<Field> {
             directives: vec![],
         },
         block_argument(),
+        subgraph_error_argument(),
     ];
 
-    connection_collection_arguments.push(subgraph_error_argument());
-    collection_arguments.push(subgraph_error_argument());
-    by_id_arguments.push(subgraph_error_argument());
+    vec![Field {
+        position: Pos::default(),
+        description: None,
+        name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+        arguments: arguments,
+        field_type: Type::NamedType(type_name.to_owned()),
+        directives: vec![],
+    }]
+}
 
-    vec![
-        Field {
-            position: Pos::default(),
-            description: None,
-            name: type_name.to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
-            arguments: by_id_arguments,
-            field_type: Type::NamedType(type_name.to_owned()),
-            directives: vec![],
-        },
-        Field {
-            position: Pos::default(),
-            description: None,
-            name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
-            arguments: collection_arguments,
-            field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-                Box::new(Type::NamedType(type_name.to_owned())),
-            ))))),
-            directives: vec![],
-        },
-        Field {
-            position: Pos::default(),
-            description: None,
-            name: format!("{}Connection", type_name.to_plural().to_camel_case()),
-            arguments: connection_collection_arguments,
-            field_type: Type::NonNullType(Box::new(Type::NamedType(format!(
-                "{}Connection",
-                type_name
-            )))),
-            directives: vec![],
-        },
-    ]
+/// Generates `Query` fields for the given type name (e.g. `users`)
+fn query_fields_for_types_many(type_name: &str) -> Vec<Field> {
+    let mut arguments = collection_arguments_for_named_type(type_name);
+    arguments.push(subgraph_error_argument());
+
+    vec![Field {
+        position: Pos::default(),
+        description: None,
+        name: type_name.to_plural().to_camel_case(), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+        arguments: arguments,
+        field_type: Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
+            Box::new(Type::NamedType(type_name.to_owned())),
+        ))))),
+        directives: vec![],
+    }]
+}
+
+/// Generates `Query` fields for the given type name (e.g. `usersPaginated`)
+fn query_fields_for_types_many_paginated(type_name: &str) -> Vec<Field> {
+    let mut arguments = connection_collection_arguments_for_named_type(type_name);
+    arguments.push(subgraph_error_argument());
+
+    vec![Field {
+        position: Pos::default(),
+        description: None,
+        name: format!("{}Paginated", type_name.to_plural().to_camel_case()), // Name formatting must be updated in sync with `graph::data::schema::validate_fulltext_directive_name()`
+        arguments: arguments,
+        field_type: Type::NonNullType(Box::new(Type::NamedType(format!(
+            "{}Connection",
+            type_name
+        )))),
+        directives: vec![],
+    }]
 }
 
 fn meta_field() -> Field {
