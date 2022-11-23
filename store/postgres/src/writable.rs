@@ -8,7 +8,6 @@ use graph::components::store::EntityKey;
 use graph::components::store::ReadStore;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
-use graph::env::env_var;
 use graph::prelude::{
     BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
     BLOCK_NUMBER_MAX,
@@ -30,16 +29,6 @@ use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
-
-graph::prelude::lazy_static! {
-    /// The size of the write queue; this many blocks can be buffered for
-    /// writing before calls to transact block operations will block.
-    /// Setting this to `0` disables pipelined writes, and writes will be
-    /// done synchronously.
-    pub static ref WRITE_QUEUE_SIZE: usize = {
-        env_var("GRAPH_STORE_WRITE_QUEUE", 5)
-    };
-}
 
 /// A wrapper around `SubgraphStore` that only exposes functions that are
 /// safe to call from `WritableStore`, i.e., functions that either do not
