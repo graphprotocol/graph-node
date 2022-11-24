@@ -226,15 +226,14 @@ where
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => Ok(Self::index()),
-            (Method::GET, ["graphiql.css"]) => Ok(Self::serve_file(
+            (Method::GET, path @ ["graphiql.css"]) => Ok(Self::serve_file(
                 include_str!("../assets/graphiql.css"),
                 "text/css",
             )),
-            (Method::GET, ["graphiql.min.js"]) => Ok(Self::serve_file(
+            (Method::GET, path @ ["graphiql.min.js"]) => Ok(Self::serve_file(
                 include_str!("../assets/graphiql.min.js"),
                 "text/javascript",
             )),
-
             (Method::GET, path @ ["graphql"]) => {
                 let dest = format!("/{}/playground", path.join("/"));
                 Self::handle_temp_redirect(&dest)
