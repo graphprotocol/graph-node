@@ -240,7 +240,7 @@ impl DockerTestClient {
 
         // 1. Create Exec
         let config = exec::CreateExecOptions {
-            cmd: Some(vec!["createdb", &database_name]),
+            cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", &database_name]),
             user: Some("postgres"),
             attach_stdout: Some(true),
             ..Default::default()
