@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
-use graph::data::subgraph::schema::SubgraphError;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::object;
@@ -351,4 +351,46 @@ async fn retry_create_ds() {
         .await
         .unwrap();
     assert_eq!(runner.context().instance().hosts().len(), 2);
+}
+
+#[tokio::test]
+async fn fatal_error() -> anyhow::Result<()> {
+    let subgraph_name = SubgraphName::new("fatal-error").unwrap();
+
+    let hash = {
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir).await
+    };
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        vec![block_0, block_1, block_2, block_3]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let stores = stores("./integration-tests/config.simple.toml").await;
+    let chain = Arc::new(chain(blocks, &stores, None).await);
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+
+    ctx.start_and_sync_to_error(stop_block).await;
+
+    // Go through the indexing status API to also test it.
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Failed);
+    assert!(status.entity_count == 1.into()); // Only PoI
+    let err = status.fatal_error.unwrap();
+    assert!(err.block.number == 3.into());
+    assert!(err.deterministic);
+
+    // Test that rewind unfails the subgraph.
+    ctx.store.rewind(ctx.deployment.hash.clone(), test_ptr(1))?;
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Healthy);
+    assert!(status.fatal_error.is_none());
+
+    Ok(())
 }

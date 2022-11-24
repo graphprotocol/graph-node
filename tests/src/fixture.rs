@@ -21,13 +21,14 @@ use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
-use graph::data::subgraph::schema::SubgraphError;
+use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, r, ApiVersion, BlockNumber, DeploymentHash, GraphQlRunner as _, LoggerFactory,
-    MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
+    async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
+    LoggerFactory, MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
     SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::slog::crit;
@@ -36,12 +37,13 @@ use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
-use graph_graphql::prelude::GraphQlRunner;
 use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
+use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
+use serde::Deserialize;
 use slog::{info, o, Discard, Logger};
 use std::env::VarError;
 use std::pin::Pin;
@@ -102,6 +104,9 @@ pub fn test_ptr(n: BlockNumber) -> BlockPtr {
         number: n,
     }
 }
+
+type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store, PanicSubscriptionManager>;
+
 pub struct TestContext {
     pub logger: Logger,
     pub provider: Arc<
@@ -115,7 +120,33 @@ pub struct TestContext {
     pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub env_vars: Arc<EnvVars>,
-    graphql_runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,
+    graphql_runner: Arc<GraphQlRunner>,
+    indexing_status_service: Arc<IndexNodeService<GraphQlRunner, graph_store_postgres::Store>>,
+}
+
+#[derive(Deserialize)]
+pub struct IndexingStatusBlock {
+    pub number: BigInt,
+}
+
+#[derive(Deserialize)]
+pub struct IndexingStatusError {
+    pub deterministic: bool,
+    pub block: IndexingStatusBlock,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexingStatus {
+    pub health: SubgraphHealth,
+    pub entity_count: BigInt,
+    pub fatal_error: Option<IndexingStatusError>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexingStatusForCurrentVersion {
+    pub indexing_status_for_current_version: IndexingStatus,
 }
 
 impl TestContext {
@@ -186,21 +217,46 @@ impl TestContext {
 
     pub async fn query(&self, query: &str) -> Result<Option<r::Value>, Vec<QueryError>> {
         let target = QueryTarget::Deployment(self.deployment.hash.clone(), ApiVersion::default());
+        let query = Query::new(
+            graphql_parser::parse_query(query).unwrap().into_static(),
+            None,
+        );
+        let query_res = self.graphql_runner.clone().run_query(query, target).await;
+        query_res.first().unwrap().duplicate().to_result()
+    }
 
-        self.graphql_runner
-            .clone()
-            .run_query(
-                Query::new(
-                    graphql_parser::parse_query(query).unwrap().into_static(),
-                    None,
-                ),
-                target,
-            )
-            .await
+    pub async fn indexing_status(&self) -> IndexingStatus {
+        let query = format!(
+            r#"
+            {{
+                indexingStatusForCurrentVersion(subgraphName: "{}") {{
+                    health
+                    entityCount
+                    fatalError {{
+                        deterministic
+                        block {{
+                            number
+                        }}
+                    }}
+                }}
+            }}
+            "#,
+            &self.subgraph_name
+        );
+        let body = json!({ "query": query }).to_string();
+        let req = hyper::Request::new(body.into());
+        let res = self.indexing_status_service.handle_graphql_query(req).await;
+        let value = res
+            .unwrap()
             .first()
             .unwrap()
             .duplicate()
             .to_result()
+            .unwrap()
+            .unwrap();
+        let query_res: IndexingStatusForCurrentVersion =
+            serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
+        query_res.indexing_status_for_current_version
     }
 }
 
@@ -333,6 +389,14 @@ pub async fn setup<C: Blockchain>(
         mock_registry.clone(),
     ));
 
+    let indexing_status_service = Arc::new(IndexNodeService::new(
+        logger.cheap_clone(),
+        blockchain_map.cheap_clone(),
+        graphql_runner.cheap_clone(),
+        stores.network_store.cheap_clone(),
+        link_resolver.cheap_clone(),
+    ));
+
     // Create IPFS-based subgraph provider
     let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
         &logger_factory,
@@ -379,6 +443,7 @@ pub async fn setup<C: Blockchain>(
         instance_manager: subgraph_instance_manager,
         link_resolver,
         env_vars,
+        indexing_status_service,
     }
 }
 
@@ -414,14 +479,14 @@ pub async fn wait_for_sync(
             }
         };
 
-        if block_ptr == stop_block {
-            info!(logger, "TEST: reached stop block");
-            break;
-        }
-
         let status = store.status_for_id(deployment.id);
         if let Some(fatal_error) = status.fatal_error {
             return Err(fatal_error);
+        }
+
+        if block_ptr == stop_block {
+            info!(logger, "TEST: reached stop block");
+            break;
         }
     }
 
