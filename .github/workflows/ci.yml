@@ -26,6 +26,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: graph_node_test
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -63,6 +64,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: graph_node_test
+          POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
