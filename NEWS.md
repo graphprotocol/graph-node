@@ -2,12 +2,126 @@
 
 ## Unreleased
 
-#### Upgrade notes
+## v0.29.0
 
-- This release includes a **determinism fix** that should affect very few subgraphs on the network (currently only two). There was an issue that if a subgraph manifest had one data source with no contract address, listening to the same events or calls of another data source that has a specified address, the handlers for those would be called twice. With the fix, this will happen no more, the handler will be called just once like it should.
-  - The two affected deployments are: `Qmccst5mbV5a6vT6VvJMLPKMAA1VRgT6NGbxkLL8eDRsE7` and `Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg`;
-  - Here's an example [manifest](https://ipfs.io/ipfs/Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg), taking a look at the data sources of name `ERC721` and `CryptoKitties`, both listen to the `Transfer(...)` event. Considering a block where there's only one occurence of this event, `graph-node` would duplicate it and call `handleTransfer` twice. Now this is fixed and it will be called only once per event/call that happened on chain.
-  - In the case you're indexing one of those, you should first upgrade the `graph-node` version, then rewind the affected subgraphs to the smallest `startBlock` of their subgraph manifest. To achieve that the `graphman rewind` CLI command can be used.
+### Upgrade notes
+
+- This release includes a **determinism fix** that affect a very small number of subgraphs on the network (we counted 2): if a subgraph manifest had one data source with no contract address, listening to the same events or calls of another data source that has a specified address, then the handlers for those would be called twice. After the fix, this will happen no more, and the handler will be called just once like it should.
+
+  Affected subgraph deployments:
+
+  - `Qmccst5mbV5a6vT6VvJMLPKMAA1VRgT6NGbxkLL8eDRsE7`
+  - `Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg`
+ 
+  Here's an example [manifest](https://ipfs.io/ipfs/Qmd9nZKCH8UZU1pBzk7G8ECJr3jX3a2vAf3vowuTwFvrQg), taking a look at the data sources of name `ERC721` and `CryptoKitties`, both listen to the `Transfer(...)` event. Considering a block where there's only one occurence of this event, `graph-node` would duplicate it and call `handleTransfer` twice. Now this is fixed and it will be called only once per event/call that happened on chain.
+
+  In the case you're indexing one of the impacted subgraphs, you should first upgrade the `graph-node` version, then rewind the affected subgraphs to the smallest `startBlock` of their subgraph manifest. To achieve that the `graphman rewind` CLI command can be used.
+
+  See [#4055](https://github.com/graphprotocol/graph-node/pull/4055) for more information.
+
+* This release fixes another determinism bug that affects a handful of subgraphs. The bug affects all subgraphs which have an `apiVersion` **older than** 0.0.5 using call handlers. While call handlers prior to 0.0.5 should be triggered by both failed and successful transactions, in some cases failed transactions would not trigger the handlers. This resulted in nondeterministic behavior. With this version of `graph-node`, call handlers with an `apiVersion` older than 0.0.5 will always be triggered by both successful and failed transactions. Behavior for `apiVersion` 0.0.5 onward is not affected.
+  
+  The affected subgraphs are:
+
+  - `QmNY7gDNXHECV8SXoEY7hbfg4BX1aDMxTBDiFuG4huaSGA`
+  - `QmYzsCjrVwwXtdsNm3PZVNziLGmb9o513GUzkq5wwhgXDT`
+  - `QmccAwofKfT9t4XKieDqwZre1UUZxuHw5ynB35BHwHAJDT`
+  - `QmYUcrn9S1cuSZQGomLRyn8GbNHmX8viqxMykP8kKpghz6`
+  - `QmecPw1iYuu85rtdYL2J2W9qcr6p8ijich9P5GbEAmmbW5`
+  - `Qmaz1R8vcv9v3gUfksqiS9JUz7K9G8S5By3JYn8kTiiP5K`
+
+  In the case you're indexing one of the impacted subgraphs, you should first upgrade the `graph-node` version, then rewind the affected subgraphs to the smallest `startBlock` of their subgraph manifest. To achieve that the `graphman rewind` CLI command can be used.
+
+  See [#4149](https://github.com/graphprotocol/graph-node/pull/4149) for more information.
+
+### What's new
+
+* Grafted subgraphs can now add their own data sources. [#3989](https://github.com/graphprotocol/graph-node/pull/3989), [#4027](https://github.com/graphprotocol/graph-node/pull/4027), [#4030](https://github.com/graphprotocol/graph-node/pull/4030)
+* Add support for filtering by nested interfaces. [#3677](https://github.com/graphprotocol/graph-node/pull/3677)
+* Add support for message handlers in Cosmos [#3975](https://github.com/graphprotocol/graph-node/pull/3975)
+* Dynamic data sources for Firehose-backed subgraphs. [#4075](https://github.com/graphprotocol/graph-node/pull/4075)
+* Various logging improvements. [#4078](https://github.com/graphprotocol/graph-node/pull/4078), [#4084](https://github.com/graphprotocol/graph-node/pull/4084), [#4031](https://github.com/graphprotocol/graph-node/pull/4031), [#4144](https://github.com/graphprotocol/graph-node/pull/4144), [#3990](https://github.com/graphprotocol/graph-node/pull/3990)
+* Some DB queries now have GCP Cloud Insight -compliant tags that show where the query originated from. [#4079](https://github.com/graphprotocol/graph-node/pull/4079)
+* New configuration variable `GRAPH_STATIC_FILTERS_THRESHOLD` to conditionally enable static filtering based on the number of dynamic data sources. [#4008](https://github.com/graphprotocol/graph-node/pull/4008)
+* New configuration variable `GRAPH_STORE_BATCH_TARGET_DURATION`. [#4133](https://github.com/graphprotocol/graph-node/pull/4133)
+
+#### Docker image
+* The official Docker image now runs on Debian 11 "Bullseye". [#4081](https://github.com/graphprotocol/graph-node/pull/4081)
+* We now ship [`envsubst`](https://github.com/a8m/envsubst) with the official Docker image, allowing you to easily run templating logic on your configuration files. [#3974](https://github.com/graphprotocol/graph-node/pull/3974)
+
+#### Graphman
+
+We have a new documentation page for `graphman`, check it out [here](https://github.com/graphprotocol/graph-node/blob/2da697b1af17b1c947679d1b1a124628146545a6/docs/graphman.md)!
+
+* Subgraph pruning with `graphman`! [#3898](https://github.com/graphprotocol/graph-node/pull/3898), [#4125](https://github.com/graphprotocol/graph-node/pull/4125), [#4153](https://github.com/graphprotocol/graph-node/pull/4153), [#4152](https://github.com/graphprotocol/graph-node/pull/4152), [#4156](https://github.com/graphprotocol/graph-node/pull/4156), [#4041](https://github.com/graphprotocol/graph-node/pull/4041)
+* New command `graphman drop` to hastily delete a subgraph deployment. [#4035](https://github.com/graphprotocol/graph-node/pull/4035)
+* New command `graphman chain call-cache` for clearing the call cache for a given chain. [#4066](https://github.com/graphprotocol/graph-node/pull/4066)
+* Add `--delete-duplicates` flag to `graphman check-blocks` by @tilacog in https://github.com/graphprotocol/graph-node/pull/3988
+
+#### Performance
+* Restarting a node now takes much less time because `postgres_fdw` user mappings are only rebuilt upon schema changes. If necessary, you can also use the new commands `graphman database migrate` and `graphman database remap` to respectively apply schema migrations or run remappings manually. [#4009](https://github.com/graphprotocol/graph-node/pull/4009), [#4076](https://github.com/graphprotocol/graph-node/pull/4076)
+* Database replicas now won't fall behind as much when copying subgraph data. [#3966](https://github.com/graphprotocol/graph-node/pull/3966) [#3986](https://github.com/graphprotocol/graph-node/pull/3986)
+* Block handlers optimization with Firehose >= 1.1.0. [#3971](https://github.com/graphprotocol/graph-node/pull/3971)
+* Reduced the amount of data that a non-primary shard has to mirror from the primary shard. [#4015](https://github.com/graphprotocol/graph-node/pull/4015)
+* We now use advisory locks to lock deployments' tables against concurrent writes. [#4010](https://github.com/graphprotocol/graph-node/pull/4010)
+
+#### Bug fixes
+* Fixed a bug that would cause some failed subgraphs to never restart. [#3959](https://github.com/graphprotocol/graph-node/pull/3959)
+* Fixed a bug that would cause bad POIs for Firehose-backed subgraphs when processing `CREATE` calls. [#4085](https://github.com/graphprotocol/graph-node/pull/4085)
+* Fixed a bug which would cause failure to redeploy a subgraph immediately after deletion. [#4044](https://github.com/graphprotocol/graph-node/pull/4044)
+* Firehose connections are now load-balanced. [#4083](https://github.com/graphprotocol/graph-node/pull/4083)
+* Determinism fixes. **See above.** [#4055](https://github.com/graphprotocol/graph-node/pull/4055), [#4149](https://github.com/graphprotocol/graph-node/pull/4149)
+
+#### Dependency updates
+
+| Dependency          | updated to |
+| ------------------- | ---------- |
+| `anyhow`            | 1.0.66     |
+| `base64`            | 0.13.1     |
+| `clap`              | 3.2.23     |
+| `env_logger`        | 0.9.1      |
+| `iana-time-zone`    | 0.1.47     |
+| `itertools`         | 0.10.5     |
+| `jsonrpsee`         | 0.15.1     |
+| `num_cpus`          | 1.14.0     |
+| `openssl`           | 0.10.42    |
+| `pretty_assertions` | 1.3.0      |
+| `proc-macro2`       | 1.0.47     |
+| `prometheus`        | 0.13.3     |
+| `protobuf-parse`    | 3.2.0      |
+| `semver`            | 1.0.14     |
+| `serde_plain`       | 1.0.1      |
+| `sha2`              | 0.10.6     |
+| `structopt`         | removed    |
+| `tokio-stream`      | 0.1.11     |
+| `tokio-tungstenite` | 0.17.2     |
+| `tower-test`        | `d27ba65`  |
+| `url`               | 2.3.1      |
+
+<!--
+* build(deps): bump anyhow from 1.0.65 to 1.0.66 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4107
+* build(deps): bump base64 from 0.13.0 to 0.13.1 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4104
+* build(deps): bump clap from 3.2.22 to 3.2.23 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4106
+* build(deps): bump env_logger from 0.9.0 to 0.9.1 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3955
+* build(deps): bump iana-time-zone from 0.1.44 to 0.1.47 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3892
+* build(deps): bump itertools from 0.10.3 to 0.10.5 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3996
+* build(deps): bump num_cpus from 1.13.1 to 1.14.0 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4141
+* build(deps): bump openssl from 0.10.41 to 0.10.42 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4022
+* build(deps): bump pretty_assertions from 1.2.1 to 1.3.0 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3906
+* build(deps): bump proc-macro2 from 1.0.46 to 1.0.47 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4068
+* build(deps): bump prometheus from 0.13.2 to 0.13.3 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4105
+* build(deps): bump protobuf-parse from 3.1.0 to 3.2.0 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3997
+* build(deps): bump semver from 1.0.12 to 1.0.14 by @dependabot in https://github.com/graphprotocol/graph-node/pull/3994
+* build(deps): bump serde_plain from 1.0.0 to 1.0.1 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4103
+* graph,node: Migrate from structopt to clap v3 by @tilacog in https://github.com/graphprotocol/graph-node/pull/3982
+* build(deps): bump tokio-tungstenite from 0.14.0 to 0.17.2 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4064
+* build(deps): bump tokio-stream from 0.1.10 to 0.1.11 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4057
+* build(deps): bump tower-test from `c049ded` to `d27ba65` by @dependabot in https://github.com/graphprotocol/graph-node/pull/4102
+* build(deps): bump url from 2.3.0 to 2.3.1 by @dependabot in https://github.com/graphprotocol/graph-node/pull/4023
+* Replace unmaintained `jsonrpc` crate with `jsonrpsee` by @neysofu in https://github.com/graphprotocol/graph-node/pull/3949
+-->
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.28.2...v0.29.0-rc.0
 
 ## v0.28.2
 
