@@ -4,7 +4,7 @@ mod pbcodec;
 
 use anyhow::format_err;
 use graph::{
-    blockchain::{Block as BlockchainBlock, BlockPtr},
+    blockchain::{Block as BlockchainBlock, BlockPtr, ChainStoreBlock, ChainStoreData},
     prelude::{
         web3,
         web3::types::{Bytes, H160, H2048, H256, H64, U256, U64},
@@ -441,11 +441,38 @@ impl BlockchainBlock for Block {
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr()
     }
+
+    // This implementation provides the timestamp so that it works with block _meta's timestamp.
+    // However, the firehose types will not populate the transaction receipts so switching back
+    // from firehose ingestor to the firehose ingestor will prevent non final block from being
+    // processed using the block stored by firehose.
+    fn data(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
+        self.header().to_json()
+    }
 }
 
 impl HeaderOnlyBlock {
     pub fn header(&self) -> &BlockHeader {
         self.header.as_ref().unwrap()
+    }
+}
+
+impl Into<ChainStoreData> for &BlockHeader {
+    fn into(self) -> ChainStoreData {
+        ChainStoreData {
+            block: ChainStoreBlock::new(
+                self.timestamp.as_ref().unwrap().seconds,
+                jsonrpc_core::Value::Null,
+            ),
+        }
+    }
+}
+
+impl BlockHeader {
+    fn to_json(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
+        let chain_store_data: ChainStoreData = self.into();
+
+        jsonrpc_core::to_value(chain_store_data)
     }
 }
 
@@ -466,5 +493,44 @@ impl BlockchainBlock for HeaderOnlyBlock {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.header().parent_ptr()
+    }
+
+    // This implementation provides the timestamp so that it works with block _meta's timestamp.
+    // However, the firehose types will not populate the transaction receipts so switching back
+    // from firehose ingestor to the firehose ingestor will prevent non final block from being
+    // processed using the block stored by firehose.
+    fn data(&self) -> Result<jsonrpc_core::serde_json::Value, jsonrpc_core::serde_json::Error> {
+        self.header().to_json()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use graph::{blockchain::Block as _, prelude::chrono::Utc};
+    use prost_types::Timestamp;
+
+    use crate::codec::BlockHeader;
+
+    use super::Block;
+
+    #[test]
+    fn ensure_block_serialization() {
+        let now = Utc::now().timestamp();
+        let mut block = Block::default();
+        let mut header = BlockHeader::default();
+        header.timestamp = Some(Timestamp {
+            seconds: now,
+            nanos: 0,
+        });
+
+        block.header = Some(header);
+
+        let str_block = block.data().unwrap().to_string();
+
+        assert_eq!(
+            str_block,
+            // if you're confused when reading this, format needs {{ to escape {
+            format!(r#"{{"block":{{"data":null,"timestamp":"{}"}}}}"#, now)
+        );
     }
 }

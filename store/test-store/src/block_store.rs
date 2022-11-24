@@ -4,12 +4,14 @@ use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
 use graph::{
-    blockchain::Block,
+    blockchain::Block as BlockchainBlock,
     prelude::{
         serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
         EthereumBlock, LightEthereumBlock,
     },
 };
+use graph_chain_ethereum::codec::{Block, BlockHeader};
+use prost_types::Timestamp;
 
 lazy_static! {
     // Genesis block
@@ -33,6 +35,7 @@ lazy_static! {
     pub static ref BLOCK_THREE: FakeBlock = BLOCK_TWO.make_child("7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c", None);
     pub static ref BLOCK_THREE_NO_PARENT: FakeBlock = FakeBlock::make_no_parent(3, "fa9ebe3f74de4c56908b49f5c4044e85825f7350f3fa08a19151de82a82a7313");
     pub static ref BLOCK_THREE_TIMESTAMP: FakeBlock = BLOCK_TWO.make_child("6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b", Some(U256::from(1657712166)));
+    pub static ref BLOCK_THREE_TIMESTAMP_FIREHOSE: FakeBlock = BLOCK_TWO.make_child("6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986f", Some(U256::from(1657712166)));
     // This block is special and serializes in a slightly different way, this is needed to simulate non-ethereum behaviour at the store level. If you're not sure
     // what you are doing, don't use this block for other tests.
     pub static ref BLOCK_THREE_NO_TIMESTAMP: FakeBlock = BLOCK_TWO.make_child("6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b", None);
@@ -96,9 +99,25 @@ impl FakeBlock {
             transaction_receipts: Vec::new(),
         }
     }
+
+    pub fn as_firehose_block(&self) -> Block {
+        let mut block = Block::default();
+        block.hash = self.hash.clone().into_bytes();
+        block.number = self.number as u64;
+
+        let mut header = BlockHeader::default();
+        header.parent_hash = self.parent_hash.clone().into_bytes();
+        header.timestamp = self.timestamp.map(|ts| Timestamp {
+            seconds: i64::from_str_radix(&ts.to_string(), 10).unwrap(),
+            nanos: 0,
+        });
+        block.header = Some(header);
+
+        block
+    }
 }
 
-impl Block for FakeBlock {
+impl BlockchainBlock for FakeBlock {
     fn ptr(&self) -> BlockPtr {
         self.block_ptr()
     }
@@ -115,7 +134,12 @@ impl Block for FakeBlock {
     }
 
     fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
-        let mut value: serde_json::Value = serde_json::to_value(self.as_ethereum_block())?;
+        let mut value: serde_json::Value = if self.eq(&BLOCK_THREE_TIMESTAMP_FIREHOSE) {
+            self.as_firehose_block().data().unwrap()
+        } else {
+            serde_json::to_value(self.as_ethereum_block())?
+        };
+
         if !self.eq(&BLOCK_THREE_NO_TIMESTAMP) {
             return Ok(value);
         };
@@ -145,6 +169,9 @@ pub fn set_chain(chain: FakeBlockList, network: &str) {
         .block_store()
         .chain_store(network)
         .unwrap();
-    let chain: Vec<&dyn Block> = chain.iter().map(|block| *block as &dyn Block).collect();
+    let chain: Vec<&dyn BlockchainBlock> = chain
+        .iter()
+        .map(|block| *block as &dyn BlockchainBlock)
+        .collect();
     store.set_chain(&GENESIS_BLOCK.hash, chain);
 }

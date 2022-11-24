@@ -1,5 +1,6 @@
 use clap::Parser as _;
 use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
+use ethereum::codec::HeaderOnlyBlock;
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
 };
@@ -373,13 +374,47 @@ async fn main() {
         if !opt.disable_block_ingestor {
             if ethereum_chains.len() > 0 {
                 let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
+                // Each chain contains both the rpc and firehose endpoints so provided
+                // IS_FIREHOSE_PREFERRED is set to true, a chain will use firehose if it has
+                // endpoints set but chains are essentially guaranteed to use EITHER firehose or RPC
+                // but will never start both.
+                let (firehose_eth_chains, polling_eth_chains): (HashMap<_, _>, HashMap<_, _>) =
+                    ethereum_chains
+                        .into_iter()
+                        .partition(|(_, chain)| chain.is_firehose_supported());
 
                 start_block_ingestor(
                     &logger,
                     &logger_factory,
                     block_polling_interval,
-                    ethereum_chains,
+                    polling_eth_chains,
                 );
+
+                firehose_networks_by_kind
+                    .get(&BlockchainKind::Ethereum)
+                    .map(|eth_firehose_endpoints| {
+                        start_firehose_block_ingestor::<_, HeaderOnlyBlock>(
+                            &logger,
+                            &network_store,
+                            firehose_eth_chains
+                                .into_iter()
+                                .map(|(name, chain)| {
+                                    let firehose_endpoints = eth_firehose_endpoints
+                                        .networks
+                                        .get(&name)
+                                        .expect(&format!("chain {} to have endpoints", name))
+                                        .clone();
+                                    (
+                                        name,
+                                        FirehoseChain {
+                                            chain,
+                                            firehose_endpoints,
+                                        },
+                                    )
+                                })
+                                .collect(),
+                        )
+                    });
             }
 
             start_firehose_block_ingestor::<_, ArweaveBlock>(
