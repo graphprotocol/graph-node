@@ -478,7 +478,7 @@ fn field_scalar_filter_input_values(
             "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(field_type)))),
             _ => field_type,
         };
-        input_value(&field.name, filter_type, value_type)
+        input_value(&field.name, filter_type, value_type, None)
     })
     .collect()
 }
@@ -493,6 +493,7 @@ fn extend_with_child_filter_input_value(
         &format!("{}_", field.name),
         "",
         Type::NamedType(format!("{}_filter", field_type_name)),
+        None,
     ));
 }
 
@@ -512,7 +513,7 @@ fn field_enum_filter_input_values(
                 }
                 _ => field_type,
             };
-            input_value(&field.name, filter_type, value_type)
+            input_value(&field.name, filter_type, value_type, None)
         })
         .collect()
 }
@@ -563,6 +564,7 @@ fn field_list_filter_input_values(
                     Type::ListType(Box::new(Type::NonNullType(Box::new(
                         input_field_type.clone(),
                     )))),
+                    None,
                 )
             })
             .collect(),
@@ -577,10 +579,18 @@ fn field_list_filter_input_values(
 }
 
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
-fn input_value(name: &str, suffix: &'static str, value_type: Type) -> InputValue {
+fn input_value(
+    name: &str,
+    suffix: &'static str,
+    value_type: Type,
+    description: Option<&str>,
+) -> InputValue {
     InputValue {
         position: Pos::default(),
-        description: None,
+        description: match description {
+            Some(description) => Some(description.to_string()),
+            None => None,
+        },
         name: if suffix.is_empty() {
             name.to_owned()
         } else {
@@ -869,10 +879,20 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     // `first` and `skip` should be non-nullable, but the Apollo graphql client
     // exhibts non-conforming behaviour by erroing if no value is provided for a
     // non-nullable field, regardless of the presence of a default.
-    let mut skip = input_value(&"skip".to_string(), "", Type::NamedType("Int".to_string()));
+    let mut skip = input_value(
+        &"skip".to_string(),
+        "",
+        Type::NamedType("Int".to_string()),
+        None,
+    );
     skip.default_value = Some(Value::Int(0.into()));
 
-    let mut first = input_value(&"first".to_string(), "", Type::NamedType("Int".to_string()));
+    let mut first = input_value(
+        &"first".to_string(),
+        "",
+        Type::NamedType("Int".to_string()),
+        None,
+    );
     first.default_value = Some(Value::Int(100.into()));
 
     let args = vec![
@@ -882,16 +902,19 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
             &"orderBy".to_string(),
             "",
             Type::NamedType(format!("{}_orderBy", type_name)),
+            None,
         ),
         input_value(
             &"orderDirection".to_string(),
             "",
             Type::NamedType("OrderDirection".to_string()),
+            None,
         ),
         input_value(
             &"where".to_string(),
             "",
             Type::NamedType(format!("{}_filter", type_name)),
+            None,
         ),
     ];
 
@@ -901,32 +924,47 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
 /// Generates arguments for Connection-collection queries of a named type (e.g. User).
 fn connection_collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
     vec![
-        input_value(&"first".to_string(), "", Type::NamedType("Int".to_string())),
-        input_value(&"last".to_string(), "", Type::NamedType("Int".to_string())),
+        input_value(
+            &"first".to_string(),
+            "",
+            Type::NamedType("Int".to_string()),
+            Some("Limit the amount of nodes to be fetched, to be used with 'after'"),
+        ),
+        input_value(
+            &"last".to_string(),
+            "",
+            Type::NamedType("Int".to_string()),
+            Some("Limit the amount of nodes to be fetched, to be used with 'before'"),
+        ),
         input_value(
             &"after".to_string(),
             "",
             Type::NamedType("String".to_string()),
+            Some("Start forward pagination since 'after' cursor"),
         ),
         input_value(
             &"before".to_string(),
             "",
             Type::NamedType("String".to_string()),
+            Some("Start backwards pagination since 'before' cursor"),
         ),
         input_value(
             &"orderBy".to_string(),
             "",
             Type::NamedType(format!("{}_orderBy", type_name)),
+            None,
         ),
         input_value(
             &"orderDirection".to_string(),
             "",
             Type::NamedType("OrderDirection".to_string()),
+            None,
         ),
         input_value(
             &"where".to_string(),
             "",
             Type::NamedType(format!("{}_filter", type_name)),
+            None,
         ),
     ]
 }
