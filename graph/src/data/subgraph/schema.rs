@@ -21,7 +21,8 @@ lazy_static! {
     pub static ref POI_OBJECT: EntityType = EntityType::new("Poi$".to_string());
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SubgraphHealth {
     /// Syncing without errors.
     Healthy,
