@@ -177,6 +177,6 @@ pub struct InnerGraphQl {
     error_result_size: WithDefaultUsize<NoUnderscores<usize>, { usize::MAX }>,
     #[envconfig(from = "GRAPH_GRAPHQL_MAX_OPERATIONS_PER_CONNECTION", default = "1000")]
     max_operations_per_connection: usize,
-    #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS", default = "false")]
+    #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS", default = "true")]
     pub disable_bool_filters: EnvVarBoolean,
 }
