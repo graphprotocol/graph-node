@@ -1011,8 +1011,8 @@ impl PoolInner {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
-        debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
 
+        // Locale check
         if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
             if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
                 die(
@@ -1026,6 +1026,7 @@ impl PoolInner {
             }
         }
 
+        debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
         Ok(())
     }
 
