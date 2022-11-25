@@ -980,18 +980,6 @@ impl PoolInner {
         let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
         let start = Instant::now();
-        if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
-            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
-                die(
-                    &pool.logger,
-                    "Database does not use C locale. \
-                    Please check the graph-node documentation for how to set up the database locale",
-                    &msg,
-                );
-            } else {
-                warn!(pool.logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
-            }
-        }
 
         advisory_lock::lock_migration(&conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
@@ -1023,6 +1011,21 @@ impl PoolInner {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
+
+        // Locale check
+        if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
+            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
+                die(
+                    &pool.logger,
+                    "Database does not use C locale. \
+                    Please check the graph-node documentation for how to set up the database locale",
+                    &msg,
+                );
+            } else {
+                warn!(pool.logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
+            }
+        }
+
         debug!(&pool.logger, "Setup finished"; "setup_time_s" => start.elapsed().as_secs());
         Ok(())
     }
