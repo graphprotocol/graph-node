@@ -82,7 +82,11 @@ impl TestContainerService {
 
         container::Config {
             image: Some(POSTGRES_IMAGE),
-            env: Some(vec!["POSTGRES_PASSWORD=password", "POSTGRES_USER=postgres"]),
+            env: Some(vec![
+                "POSTGRES_PASSWORD=password",
+                "POSTGRES_USER=postgres",
+                "POSTGRES_INITDB_ARGS=-E UTF8 --locale=C",
+            ]),
             host_config: Some(host_config),
             cmd: Some(vec![
                 "postgres",
