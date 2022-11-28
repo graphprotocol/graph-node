@@ -1,1 +1,1 @@
-alter table subgraphs.subgraph_deployment drop column has_causality_region;
+alter table subgraphs.subgraph_manifest drop column entities_with_causality_region;

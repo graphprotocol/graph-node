@@ -65,7 +65,6 @@ pub struct DeploymentDetail {
     current_reorg_depth: i32,
     max_reorg_depth: i32,
     firehose_cursor: Option<String>,
-    has_causality_region: Vec<EntityType>,
 }
 
 #[derive(Queryable, QueryableByName)]
@@ -340,6 +339,7 @@ struct StoredSubgraphManifest {
     start_block_number: Option<i32>,
     start_block_hash: Option<Bytes>,
     raw_yaml: Option<String>,
+    entities_with_causality_region: Vec<EntityType>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
@@ -351,6 +351,7 @@ impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
             features: value.features,
             schema: value.schema,
             raw_yaml: value.raw_yaml,
+            entities_with_causality_region: value.entities_with_causality_region,
         }
     }
 }
@@ -415,7 +416,6 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             reorg_count: detail.reorg_count,
             current_reorg_depth: detail.current_reorg_depth,
             max_reorg_depth: detail.max_reorg_depth,
-            has_causality_region: detail.has_causality_region,
         })
     }
 }

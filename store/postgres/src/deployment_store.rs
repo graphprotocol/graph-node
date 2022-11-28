@@ -175,7 +175,8 @@ impl DeploymentStore {
             let exists = deployment::exists(&conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
-            let has_causality_region = deployment.has_causality_region.clone();
+            let entities_with_causality_region =
+                deployment.manifest.entities_with_causality_region.clone();
             if replace || !exists {
                 deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };
@@ -189,7 +190,7 @@ impl DeploymentStore {
                     &conn,
                     site.clone(),
                     schema,
-                    has_causality_region,
+                    entities_with_causality_region.into_iter().collect(),
                 )?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {

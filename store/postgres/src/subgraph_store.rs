@@ -627,7 +627,6 @@ impl SubgraphStoreInner {
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
-            has_causality_region: deployment.has_causality_region.into_iter().collect(),
         };
 
         let graft_base = self.layout(&src.deployment)?;

@@ -186,7 +186,7 @@ pub struct Catalog {
     pub use_bytea_prefix: bool,
 
     /// Set of tables which have an explicit causality region column.
-    pub(crate) has_causality_region: BTreeSet<EntityType>,
+    pub(crate) entities_with_causality_region: BTreeSet<EntityType>,
 }
 
 impl Catalog {
@@ -195,7 +195,7 @@ impl Catalog {
         conn: &PgConnection,
         site: Arc<Site>,
         use_bytea_prefix: bool,
-        has_causality_region: Vec<EntityType>,
+        entities_with_causality_region: Vec<EntityType>,
     ) -> Result<Self, StoreError> {
         let text_columns = get_text_columns(conn, &site.namespace)?;
         let use_poi = supports_proof_of_indexing(conn, &site.namespace)?;
@@ -204,12 +204,15 @@ impl Catalog {
             text_columns,
             use_poi,
             use_bytea_prefix,
-            has_causality_region: has_causality_region.into_iter().collect(),
+            entities_with_causality_region: entities_with_causality_region.into_iter().collect(),
         })
     }
 
     /// Return a new catalog suitable for creating a new subgraph
-    pub fn for_creation(site: Arc<Site>, has_causality_region: BTreeSet<EntityType>) -> Self {
+    pub fn for_creation(
+        site: Arc<Site>,
+        entities_with_causality_region: BTreeSet<EntityType>,
+    ) -> Self {
         Catalog {
             site,
             text_columns: HashMap::default(),
@@ -218,7 +221,7 @@ impl Catalog {
             // DDL generation creates indexes for prefixes of bytes columns
             // see: attr-bytea-prefix
             use_bytea_prefix: true,
-            has_causality_region,
+            entities_with_causality_region,
         }
     }
 
@@ -227,14 +230,14 @@ impl Catalog {
     /// connection is definitely not available, such as in unit tests
     pub fn for_tests(
         site: Arc<Site>,
-        has_causality_region: BTreeSet<EntityType>,
+        entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Self, StoreError> {
         Ok(Catalog {
             site,
             text_columns: HashMap::default(),
             use_poi: false,
             use_bytea_prefix: true,
-            has_causality_region,
+            entities_with_causality_region,
         })
     }
 

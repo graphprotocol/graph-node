@@ -108,7 +108,6 @@ pub struct DeploymentCreate {
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
-    pub has_causality_region: BTreeSet<EntityType>,
 }
 
 impl DeploymentCreate {
@@ -118,12 +117,11 @@ impl DeploymentCreate {
         start_block: Option<BlockPtr>,
     ) -> Self {
         Self {
-            manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest),
+            manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest, Vec::new()),
             start_block: start_block.cheap_clone(),
             graft_base: None,
             graft_block: None,
             debug_fork: None,
-            has_causality_region: BTreeSet::new(),
         }
     }
 
@@ -140,8 +138,12 @@ impl DeploymentCreate {
         self
     }
 
-    pub fn has_causality_region(mut self, has_causality_region: BTreeSet<EntityType>) -> Self {
-        self.has_causality_region = has_causality_region;
+    pub fn entities_with_causality_region(
+        mut self,
+        entities_with_causality_region: BTreeSet<EntityType>,
+    ) -> Self {
+        self.manifest.entities_with_causality_region =
+            entities_with_causality_region.into_iter().collect();
         self
     }
 }
@@ -167,7 +169,6 @@ pub struct SubgraphDeploymentEntity {
     pub reorg_count: i32,
     pub current_reorg_depth: i32,
     pub max_reorg_depth: i32,
-    pub has_causality_region: Vec<EntityType>,
 }
 
 #[derive(Debug)]
@@ -178,10 +179,15 @@ pub struct SubgraphManifestEntity {
     pub features: Vec<String>,
     pub schema: String,
     pub raw_yaml: Option<String>,
+    pub entities_with_causality_region: Vec<EntityType>,
 }
 
 impl SubgraphManifestEntity {
-    pub fn new(raw_yaml: String, manifest: &super::SubgraphManifest<impl Blockchain>) -> Self {
+    pub fn new(
+        raw_yaml: String,
+        manifest: &super::SubgraphManifest<impl Blockchain>,
+        entities_with_causality_region: Vec<EntityType>,
+    ) -> Self {
         Self {
             spec_version: manifest.spec_version.to_string(),
             description: manifest.description.clone(),
@@ -189,6 +195,7 @@ impl SubgraphManifestEntity {
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
             raw_yaml: Some(raw_yaml),
+            entities_with_causality_region,
         }
     }
 

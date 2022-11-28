@@ -642,7 +642,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     let deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
         .graft(base_block)
         .debug(debug_fork)
-        .has_causality_region(needs_causality_region);
+        .entities_with_causality_region(needs_causality_region);
 
     deployment_store
         .create_subgraph_deployment(

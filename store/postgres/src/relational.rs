@@ -314,7 +314,7 @@ impl Layout {
                     &id_types,
                     i as u32,
                     catalog
-                        .has_causality_region
+                        .entities_with_causality_region
                         .contains(&EntityType::from(obj_type.clone())),
                 )
             })
@@ -408,9 +408,9 @@ impl Layout {
         conn: &PgConnection,
         site: Arc<Site>,
         schema: &Schema,
-        has_causality_region: BTreeSet<EntityType>,
+        entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::for_creation(site.cheap_clone(), has_causality_region);
+        let catalog = Catalog::for_creation(site.cheap_clone(), entities_with_causality_region);
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl()
@@ -1391,7 +1391,7 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
-        let has_causality_region = deployment::has_causality_region(conn, site.id)?;
+        let has_causality_region = deployment::entities_with_causality_region(conn, site.id)?;
         let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)
