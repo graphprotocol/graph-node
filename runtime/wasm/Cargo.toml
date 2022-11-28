@@ -23,7 +23,7 @@ wasmtime = "0.27.0"
 defer = "0.1"
 never = "0.1"
 
-wasm-instrument = { version = "0.2.0", features = ["std", "sign_ext"] }
+wasm-instrument = { version = "0.4.0", features = ["std", "sign_ext"] }
 
 # AssemblyScript uses sign extensions
 parity-wasm = { version = "0.45", features = ["std", "sign_ext"] }
