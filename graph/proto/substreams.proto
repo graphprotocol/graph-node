@@ -1,16 +1,27 @@
+// File generated using this command at the root of `graph-node` project
+// and assuming `substreams` repository is a sibling of `graph-node` (note that you
+// might need to adjust the `head -nN` and `skip N` values in the commands below to skip
+// more/less lines):
+//
+// ```
+// cat graph/proto/substreams.proto | head -n16 > /tmp/substreams.proto && mv /tmp/substreams.proto graph/proto/substreams.proto
+// cat ../substreams/proto/sf/substreams/v1/substreams.proto | grep -Ev 'import *"sf/substreams' >> graph/proto/substreams.proto
+// cat ../substreams/proto/sf/substreams/v1/modules.proto | skip 6 >> graph/proto/substreams.proto
+// cat ../substreams/proto/sf/substreams/v1/package.proto | skip 9 >> graph/proto/substreams.proto
+// cat ../substreams/proto/sf/substreams/v1/clock.proto | skip 7 >> graph/proto/substreams.proto
+// # Manually add line `import "google/protobuf/descriptor.proto";` below `import "google/protobuf/timestamp.proto";`
+// ```
+//
+// FIXME: We copy over and inline most of the substreams files, this is bad and we need a better way to
+// generate that, outside of doing this copying over.
 syntax = "proto3";
 
 package sf.substreams.v1;
-
 option go_package = "github.com/streamingfast/substreams/pb/sf/substreams/v1;pbsubstreams";
 
 import "google/protobuf/any.proto";
-import "google/protobuf/descriptor.proto";
 import "google/protobuf/timestamp.proto";
-
-// FIXME: I copied over and inlined most of the substreams files, this is bad and we need a better way to
-// generate that, outside of doing this copying over. We should check maybe `buf` or a pre-populated
-// package.
+import "google/protobuf/descriptor.proto";
 
 service Stream {
   rpc Blocks(Request) returns (stream Response);
@@ -23,6 +34,18 @@ message Request {
   repeated ForkStep fork_steps = 4;
   string irreversibility_condition = 5;
 
+  // By default, the engine runs in developer mode, with richer and deeper output,
+  // * support for multiple `output_modules`, of `store` and `map` kinds
+  // * support for `initial_store_snapshot_for_modules`
+  // * log outputs for output modules
+  //
+  // With `production_mode`, however, you trade off functionality for high speed, where it:
+  // * restricts the possible requested `output_modules` to a single mapper module,
+  // * turns off support for `initial_store_snapshot_for_modules`,
+  // * still streams output linearly, with a cursor, but at higher speeds
+  // * and purges log outputs from responses.
+  bool production_mode = 9;
+
   Modules modules = 6;
   repeated string output_modules = 7;
   repeated string initial_store_snapshot_for_modules = 8;
@@ -30,6 +53,7 @@ message Request {
 
 message Response {
   oneof message {
+    SessionInit session = 5; // Always sent first
     ModulesProgress progress = 1; // Progress of data preparation, before sending in the stream of `data` events.
     InitialSnapshotData snapshot_data = 2;
     InitialSnapshotComplete snapshot_complete = 3;
@@ -49,6 +73,10 @@ enum ForkStep {
   STEP_IRREVERSIBLE = 4;
   // Removed, was STEP_STALLED
   reserved 5;
+}
+
+message SessionInit  {
+  string trace_id = 1;
 }
 
 message InitialSnapshotComplete {
@@ -71,16 +99,35 @@ message BlockScopedData {
 
 message ModuleOutput {
   string name = 1;
+
   oneof data {
     google.protobuf.Any map_output = 2;
-    StoreDeltas store_deltas = 3;
-  }
-  repeated string logs = 4;
 
+    // StoreDeltas are produced for store modules in development mode.
+    // It is not possible to retrieve store models in production, with parallelization
+    // enabled. If you need the deltas directly, write a pass through mapper module
+    // that will get them down to you.
+    StoreDeltas debug_store_deltas = 3;
+  }
+  repeated string debug_logs = 4;
   // LogsTruncated is a flag that tells you if you received all the logs or if they
   // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
-  bool logs_truncated = 5;
+  bool debug_logs_truncated = 5;
+
+  bool cached = 6;
 }
+
+// think about:
+// message ModuleOutput { ...
+//   ModuleOutputDebug debug_info = 6;
+// ...}
+//message ModuleOutputDebug {
+//  StoreDeltas store_deltas = 3;
+//  repeated string logs = 4;
+//  // LogsTruncated is a flag that tells you if you received all the logs or if they
+//  // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
+//  bool logs_truncated = 5;
+//}
 
 message ModulesProgress {
   repeated ModuleProgress modules = 1;
@@ -116,8 +163,8 @@ message ModuleProgress {
 }
 
 message BlockRange {
-  uint64 start_block = 1;
-  uint64 end_block = 2;
+  uint64 start_block = 2;
+  uint64 end_block = 3;
 }
 
 message StoreDeltas {
@@ -144,7 +191,6 @@ message Output {
   google.protobuf.Timestamp timestamp = 4;
   google.protobuf.Any value = 10;
 }
-
 message Modules {
   repeated Module modules = 1;
   repeated Binary binaries = 2;
@@ -199,8 +245,9 @@ message Module {
       UPDATE_POLICY_MIN = 4;
       // Provides a store where you can `max_*()` keys, where two stores merge by leaving the maximum value.
       UPDATE_POLICY_MAX = 5;
+      // Provides a store where you can `append()` keys, where two stores merge by concatenating the bytes in order.
+      UPDATE_POLICY_APPEND = 6;
     }
-
   }
 
   message Input {
@@ -232,13 +279,6 @@ message Module {
     string type = 1;
   }
 }
-
-message Clock {
-  string id = 1;
-  uint64 number = 2;
-  google.protobuf.Timestamp timestamp = 3;
-}
-
 message Package {
   // Needs to be one so this file can be used _directly_ as a
   // buf `Image` andor a ProtoSet for grpcurl and other tools
@@ -264,4 +304,9 @@ message ModuleMetadata {
   // Corresponds to the index in `Package.metadata.package_meta`
   uint64 package_index = 1;
   string doc = 2;
+}
+message Clock {
+  string id = 1;
+  uint64 number = 2;
+  google.protobuf.Timestamp timestamp = 3;
 }

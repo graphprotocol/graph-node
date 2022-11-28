@@ -98,7 +98,7 @@ impl SubstreamsMapper<Chain> for Mapper {
                     }
                 }
             }
-            Some(Data::StoreDeltas(_)) => Err(UnexpectedStoreDeltaOutput),
+            Some(Data::DebugStoreDeltas(_)) => Err(UnexpectedStoreDeltaOutput),
             _ => Err(SubstreamsError::ModuleOutputNotPresentOrUnexpected),
         }
     }

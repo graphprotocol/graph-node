@@ -10,6 +10,18 @@ pub struct Request {
     pub fork_steps: ::prost::alloc::vec::Vec<i32>,
     #[prost(string, tag="5")]
     pub irreversibility_condition: ::prost::alloc::string::String,
+    /// By default, the engine runs in developer mode, with richer and deeper output,
+    /// * support for multiple `output_modules`, of `store` and `map` kinds
+    /// * support for `initial_store_snapshot_for_modules`
+    /// * log outputs for output modules
+    ///
+    /// With `production_mode`, however, you trade off functionality for high speed, where it:
+    /// * restricts the possible requested `output_modules` to a single mapper module,
+    /// * turns off support for `initial_store_snapshot_for_modules`,
+    /// * still streams output linearly, with a cursor, but at higher speeds
+    /// * and purges log outputs from responses.
+    #[prost(bool, tag="9")]
+    pub production_mode: bool,
     #[prost(message, optional, tag="6")]
     pub modules: ::core::option::Option<Modules>,
     #[prost(string, repeated, tag="7")]
@@ -19,13 +31,16 @@ pub struct Request {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
-    #[prost(oneof="response::Message", tags="1, 2, 3, 4")]
+    #[prost(oneof="response::Message", tags="5, 1, 2, 3, 4")]
     pub message: ::core::option::Option<response::Message>,
 }
 /// Nested message and enum types in `Response`.
 pub mod response {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Message {
+        /// Always sent first
+        #[prost(message, tag="5")]
+        Session(super::SessionInit),
         /// Progress of data preparation, before sending in the stream of `data` events.
         #[prost(message, tag="1")]
         Progress(super::ModulesProgress),
@@ -36,6 +51,11 @@ pub mod response {
         #[prost(message, tag="4")]
         Data(super::BlockScopedData),
     }
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SessionInit {
+    #[prost(string, tag="1")]
+    pub trace_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InitialSnapshotComplete {
@@ -69,11 +89,13 @@ pub struct ModuleOutput {
     #[prost(string, tag="1")]
     pub name: ::prost::alloc::string::String,
     #[prost(string, repeated, tag="4")]
-    pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    pub debug_logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     /// LogsTruncated is a flag that tells you if you received all the logs or if they
     /// were truncated because you logged too much (fixed limit currently is set to 128 KiB).
     #[prost(bool, tag="5")]
-    pub logs_truncated: bool,
+    pub debug_logs_truncated: bool,
+    #[prost(bool, tag="6")]
+    pub cached: bool,
     #[prost(oneof="module_output::Data", tags="2, 3")]
     pub data: ::core::option::Option<module_output::Data>,
 }
@@ -83,10 +105,26 @@ pub mod module_output {
     pub enum Data {
         #[prost(message, tag="2")]
         MapOutput(::prost_types::Any),
+        /// StoreDeltas are produced for store modules in development mode.
+        /// It is not possible to retrieve store models in production, with parallelization
+        /// enabled. If you need the deltas directly, write a pass through mapper module
+        /// that will get them down to you.
         #[prost(message, tag="3")]
-        StoreDeltas(super::StoreDeltas),
+        DebugStoreDeltas(super::StoreDeltas),
     }
 }
+// think about:
+// message ModuleOutput { ...
+//   ModuleOutputDebug debug_info = 6;
+// ...}
+//message ModuleOutputDebug {
+//  StoreDeltas store_deltas = 3;
+//  repeated string logs = 4;
+//  // LogsTruncated is a flag that tells you if you received all the logs or if they
+//  // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
+//  bool logs_truncated = 5;
+//}
+
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModulesProgress {
     #[prost(message, repeated, tag="1")]
@@ -143,9 +181,9 @@ pub mod module_progress {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockRange {
-    #[prost(uint64, tag="1")]
-    pub start_block: u64,
     #[prost(uint64, tag="2")]
+    pub start_block: u64,
+    #[prost(uint64, tag="3")]
     pub end_block: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -258,6 +296,8 @@ pub mod module {
             Min = 4,
             /// Provides a store where you can `max_*()` keys, where two stores merge by leaving the maximum value.
             Max = 5,
+            /// Provides a store where you can `append()` keys, where two stores merge by concatenating the bytes in order.
+            Append = 6,
         }
     }
     #[derive(Clone, PartialEq, ::prost::Message)]
@@ -320,15 +360,6 @@ pub mod module {
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Clock {
-    #[prost(string, tag="1")]
-    pub id: ::prost::alloc::string::String,
-    #[prost(uint64, tag="2")]
-    pub number: u64,
-    #[prost(message, optional, tag="3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
-}
-#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Package {
     /// Needs to be one so this file can be used _directly_ as a
     /// buf `Image` andor a ProtoSet for grpcurl and other tools
@@ -361,6 +392,15 @@ pub struct ModuleMetadata {
     pub package_index: u64,
     #[prost(string, tag="2")]
     pub doc: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Clock {
+    #[prost(string, tag="1")]
+    pub id: ::prost::alloc::string::String,
+    #[prost(uint64, tag="2")]
+    pub number: u64,
+    #[prost(message, optional, tag="3")]
+    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

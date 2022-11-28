@@ -186,6 +186,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
         irreversibility_condition: "".to_string(),
         modules,
         output_modules: vec![module_name],
+        production_mode: true,
         ..Default::default()
     };
 
