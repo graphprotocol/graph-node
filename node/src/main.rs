@@ -5,7 +5,7 @@ use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
 };
 use git_testament::{git_testament, render_testament};
-use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
+use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
@@ -970,11 +970,15 @@ fn start_firehose_block_ingestor<C, M>(
 
             match store.block_store().chain_store(network_name.as_ref()) {
                 Some(s) => {
-                    let block_ingestor = FirehoseBlockIngestor::<M>::new(
+                    let mut block_ingestor = FirehoseBlockIngestor::<M>::new(
                         s,
                         endpoint.clone(),
                         logger.new(o!("component" => "FirehoseBlockIngestor", "provider" => endpoint.provider.clone())),
                     );
+
+                    if C::KIND == BlockchainKind::Ethereum {
+                        block_ingestor = block_ingestor.with_transforms(vec![Transforms::EthereumHeaderOnly]);
+                    }
 
                     // Run the Firehose block ingestor in the background
                     graph::spawn(block_ingestor.run());

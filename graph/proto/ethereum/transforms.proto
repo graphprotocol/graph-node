@@ -5,10 +5,10 @@ option go_package = "github.com/streamingfast/firehose-ethereum/types/pb/sf/ethe
 
 // CombinedFilter is a combination of "LogFilters" and "CallToFilters"
 //
-// It transforms the requested stream in two ways: 
+// It transforms the requested stream in two ways:
 //   1. STRIPPING
 //      The block data is stripped from all transactions that don't
-//      match any of the filters.  
+//      match any of the filters.
 //
 //   2. SKIPPING
 //      If an "block index" covers a range containing a
@@ -25,7 +25,7 @@ message CombinedFilter {
   repeated LogFilter log_filters = 1;
   repeated CallToFilter call_filters = 2;
 
-  // Always send all blocks. if they don't match any log_filters or call_filters, 
+  // Always send all blocks. if they don't match any log_filters or call_filters,
   // all the transactions will be filtered out, sending only the header.
   bool send_all_block_headers = 3;
 }
@@ -60,5 +60,26 @@ message CallToFilter {
   repeated bytes signatures = 2;
 }
 
+// Deprecated: LightBlock is deprecated, replaced by HeaderOnly, note however that the new transform
+// does not have any transactions traces returned, so it's not a direct replacement.
 message LightBlock {
+}
+
+// HeaderOnly returns only the block's header and few top-level core information for the block. Useful
+// for cases where no transactions information is required at all.
+//
+// The structure that would will have access to after:
+//
+// ```ignore
+// Block {
+//  int32 ver = 1;
+//  bytes hash = 2;
+//  uint64 number = 3;
+//  uint64 size = 4;
+//  BlockHeader header = 5;
+// }
+// ```
+//
+// Everything else will be empty.
+message HeaderOnly {
 }

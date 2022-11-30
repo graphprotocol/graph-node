@@ -1,9 +1,9 @@
 /// CombinedFilter is a combination of "LogFilters" and "CallToFilters"
 ///
-/// It transforms the requested stream in two ways: 
+/// It transforms the requested stream in two ways:
 ///   1. STRIPPING
 ///      The block data is stripped from all transactions that don't
-///      match any of the filters.  
+///      match any of the filters.
 ///
 ///   2. SKIPPING
 ///      If an "block index" covers a range containing a
@@ -22,7 +22,7 @@ pub struct CombinedFilter {
     pub log_filters: ::prost::alloc::vec::Vec<LogFilter>,
     #[prost(message, repeated, tag="2")]
     pub call_filters: ::prost::alloc::vec::Vec<CallToFilter>,
-    /// Always send all blocks. if they don't match any log_filters or call_filters, 
+    /// Always send all blocks. if they don't match any log_filters or call_filters,
     /// all the transactions will be filtered out, sending only the header.
     #[prost(bool, tag="3")]
     pub send_all_block_headers: bool,
@@ -64,6 +64,27 @@ pub struct CallToFilter {
     #[prost(bytes="vec", repeated, tag="2")]
     pub signatures: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
 }
+/// Deprecated: LightBlock is deprecated, replaced by HeaderOnly, note however that the new transform
+/// does not have any transactions traces returned, so it's not a direct replacement.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct LightBlock {
+}
+/// HeaderOnly returns only the block's header and few top-level core information for the block. Useful
+/// for cases where no transactions information is required at all.
+///
+/// The structure that would will have access to after:
+///
+/// ```ignore
+/// Block {
+///  int32 ver = 1;
+///  bytes hash = 2;
+///  uint64 number = 3;
+///  uint64 size = 4;
+///  BlockHeader header = 5;
+/// }
+/// ```
+///
+/// Everything else will be empty.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HeaderOnly {
 }

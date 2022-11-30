@@ -3,14 +3,34 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use crate::{
     blockchain::Block as BlockchainBlock,
     components::store::ChainStore,
-    firehose::{self, decode_firehose_block, FirehoseEndpoint},
+    firehose::{self, decode_firehose_block, FirehoseEndpoint, HeaderOnly},
     prelude::{error, info, Logger},
     util::backoff::ExponentialBackoff,
 };
 use anyhow::{Context, Error};
 use futures03::StreamExt;
+use prost::Message;
+use prost_types::Any;
 use slog::trace;
 use tonic::Streaming;
+
+const TRANSFORM_ETHEREUM_HEADER_ONLY: &str =
+    "type.googleapis.com/sf.ethereum.transform.v1.HeaderOnly";
+
+pub enum Transforms {
+    EthereumHeaderOnly,
+}
+
+impl Into<Any> for &Transforms {
+    fn into(self) -> Any {
+        match self {
+            Transforms::EthereumHeaderOnly => Any {
+                type_url: TRANSFORM_ETHEREUM_HEADER_ONLY.to_owned(),
+                value: HeaderOnly {}.encode_to_vec(),
+            },
+        }
+    }
+}
 
 pub struct FirehoseBlockIngestor<M>
 where
@@ -19,6 +39,7 @@ where
     chain_store: Arc<dyn ChainStore>,
     endpoint: Arc<FirehoseEndpoint>,
     logger: Logger,
+    default_transforms: Vec<Transforms>,
 
     phantom: PhantomData<M>,
 }
@@ -37,7 +58,13 @@ where
             endpoint,
             logger,
             phantom: PhantomData {},
+            default_transforms: vec![],
         }
+    }
+
+    pub fn with_transforms(mut self, transforms: Vec<Transforms>) -> Self {
+        self.default_transforms = transforms;
+        self
     }
 
     pub async fn run(self) {
@@ -59,6 +86,7 @@ where
                     start_block_num: -1,
                     cursor: latest_cursor.clone(),
                     final_blocks_only: false,
+                    transforms: self.default_transforms.iter().map(|t| t.into()).collect(),
                     ..Default::default()
                 })
                 .await;
