@@ -12,7 +12,9 @@ graph-mock = { path = "../../mock" }
 graph-node = { path = "../../node" }
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
+graph-chain-ethereum= { path = "../../chain/ethereum" }
 lazy_static = "1.1"
 hex-literal = "0.3"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }
 serde = "1.0"
+prost-types = "0.10.1"

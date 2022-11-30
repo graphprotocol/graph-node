@@ -4389,6 +4389,7 @@ version = "0.28.2"
 dependencies = [
  "diesel",
  "graph",
+ "graph-chain-ethereum",
  "graph-graphql",
  "graph-mock",
  "graph-node",
@@ -4396,6 +4397,7 @@ dependencies = [
  "graphql-parser",
  "hex-literal",
  "lazy_static",
+ "prost-types",
  "serde",
 ]
 

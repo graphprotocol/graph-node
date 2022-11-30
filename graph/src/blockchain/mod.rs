@@ -71,8 +71,52 @@ pub trait Block: Send + Sync {
     }
 
     /// The data that should be stored for this block in the `ChainStore`
+    /// TODO: Return ChainStoreData once it is available for all chains
     fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
         Ok(serde_json::Value::Null)
+    }
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// This is the root data for the chain store. This stucture provides backwards
+/// compatibility with existing data for ethereum.
+pub struct ChainStoreData {
+    pub block: ChainStoreBlock,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+/// ChainStoreBlock is intended to standardize the information stored in the data
+/// field of the ChainStore. All the chains should eventually return this type
+/// on the data() implementation for block. This will ensure that any part of the
+/// structured data can be relied upon for all chains.
+pub struct ChainStoreBlock {
+    /// Unix timestamp (seconds since epoch), can be stored as hex or decimal.
+    timestamp: String,
+    data: serde_json::Value,
+}
+
+impl ChainStoreBlock {
+    pub fn new(unix_timestamp: i64, data: serde_json::Value) -> Self {
+        Self {
+            timestamp: unix_timestamp.to_string(),
+            data,
+        }
+    }
+
+    pub fn timestamp_str(&self) -> &str {
+        &self.timestamp
+    }
+
+    pub fn timestamp(&self) -> i64 {
+        let (rdx, i) = if self.timestamp.starts_with("0x") {
+            (16, 2)
+        } else {
+            (10, 0)
+        };
+
+        i64::from_str_radix(&self.timestamp[i..], rdx).unwrap_or(0)
     }
 }
 
