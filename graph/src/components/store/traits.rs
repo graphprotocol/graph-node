@@ -32,6 +32,8 @@ pub trait EnsLookup: Send + Sync + 'static {
     /// Find the reverse of keccak256 for `hash` through looking it up in the
     /// rainbow table.
     fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError>;
+    // Check if the rainbow table is filled.
+    fn is_table_empty(&self) -> Result<bool, StoreError>;
 }
 
 /// An entry point for all operations that require access to the node's storage
