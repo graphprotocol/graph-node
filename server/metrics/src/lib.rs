@@ -2,13 +2,13 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 
 use anyhow::Error;
-use graph::prometheus::{Encoder, Registry, TextEncoder};
 use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Response, Server};
 use thiserror::Error;
 
-use graph::prelude::{MetricsServer as MetricsServerTrait, *};
+use graph::prelude::*;
+use graph::prometheus::{Encoder, Registry, TextEncoder};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]
@@ -30,15 +30,12 @@ impl PrometheusMetricsServer {
             registry,
         }
     }
-}
 
-impl MetricsServerTrait for PrometheusMetricsServer {
-    type ServeError = PrometheusMetricsServeError;
-
-    fn serve(
+    /// Creates a new Tokio task that, when spawned, brings up the index node server.
+    pub async fn serve(
         &mut self,
         port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Result<(), ()>, PrometheusMetricsServeError> {
         let logger = self.logger.clone();
 
         info!(
@@ -73,6 +70,6 @@ impl MetricsServerTrait for PrometheusMetricsServer {
             .serve(new_service)
             .map_err(move |e| error!(logger, "Metrics server error"; "error" => format!("{}", e)));
 
-        Ok(Box::new(task.compat()))
+        Ok(task.await)
     }
 }

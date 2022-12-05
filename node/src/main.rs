@@ -568,12 +568,12 @@ async fn main() {
                 .compat(),
         );
 
-        graph::spawn(
+        graph::spawn(async move {
             metrics_server
                 .serve(metrics_port)
+                .await
                 .expect("Failed to start metrics server")
-                .compat(),
-        );
+        });
     };
 
     graph::spawn(launch_services(logger.clone(), env_vars.cheap_clone()));
