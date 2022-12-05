@@ -178,18 +178,6 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
 
     let stop_block_num = manifest_end_block_num as u64;
 
-    let request = Request {
-        start_block_num,
-        start_cursor: latest_cursor.clone(),
-        stop_block_num,
-        fork_steps: vec![StepNew as i32, StepUndo as i32],
-        irreversibility_condition: "".to_string(),
-        modules,
-        output_modules: vec![module_name],
-        production_mode: true,
-        ..Default::default()
-    };
-
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
@@ -211,7 +199,19 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
             skip_backoff = false;
 
             let mut connect_start = Instant::now();
-            let result = endpoint.clone().substreams(request.clone()).await;
+            let request = Request {
+                start_block_num,
+                start_cursor: latest_cursor.clone(),
+                stop_block_num,
+                fork_steps: vec![StepNew as i32, StepUndo as i32],
+                irreversibility_condition: "".to_string(),
+                modules: modules.clone(),
+                output_modules: vec![module_name.clone()],
+                production_mode: true,
+                ..Default::default()
+            };
+
+            let result = endpoint.clone().substreams(request).await;
 
             match result {
                 Ok(stream) => {
