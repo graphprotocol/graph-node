@@ -280,6 +280,7 @@ impl StoreResolver {
 
 impl StoreResolver {
     fn compose_cursor(&self, value: Option<&graph::data::value::Value>) -> r::Value {
+        // println!("compose_cursor: {:?}", value);
         value
             .and_then(|v| v.get_required("id").ok())
             .map(|v| r::Value::String(v))
@@ -309,6 +310,11 @@ impl StoreResolver {
 
                 let mut connection_response_map = BTreeMap::new();
                 let start_cursor = self.compose_cursor(items.first());
+                // println!("start_cursor: {:?}", start_cursor);
+                // println!(
+                //     "start_cursor base64: {:?}",
+                //     base64::encode(&start_cursor.to_string())
+                // );
                 let end_cursor = self.compose_cursor(items.last());
 
                 let mut page_info_map = BTreeMap::new();

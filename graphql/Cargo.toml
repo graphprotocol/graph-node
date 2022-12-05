@@ -17,6 +17,7 @@ defer = "0.1"
 parking_lot = "0.12"
 anyhow = "1.0"
 async-recursion = "1.0.0"
+base64 = "0.13.1"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"

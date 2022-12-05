@@ -389,7 +389,7 @@ impl<'a> Join<'a> {
     /// otherwise maintain the order in `children`
     fn perform(parents: &mut [&mut Node], children: Vec<Node>, response_key: &str) {
         let children: Vec<_> = children.into_iter().map(Rc::new).collect();
-
+        // println!("children: {:?}", children);
         if parents.len() == 1 {
             let parent = parents.first_mut().expect("we just checked");
             parent.set_children(response_key.to_owned(), children);
@@ -539,7 +539,7 @@ fn extract_field_info<'a>(
     selection_field: &'a execution::ast::Field,
 ) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
     let schema = &ctx.query.schema;
-
+println!("here ");
     match is_connection_type(&selection_field.name) {
         false => {
             let field_type = object_type
@@ -621,6 +621,8 @@ fn execute_selection_set<'a>(
                 child_type,
                 &field_name,
             );
+
+            // println!("join: {:?}", join);
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,
