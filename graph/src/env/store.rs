@@ -66,6 +66,9 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
     /// (expressed in minutes). The default value is 360 minutes.
     pub remove_unused_interval: chrono::Duration,
+    /// Set by the environment variable
+    /// `GRAPH_STORE_RECENT_BLOCKS_CACHE_CAPACITY`. The default value is 10 blocks.
+    pub recent_blocks_cache_capacity: usize,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and
@@ -123,6 +126,7 @@ impl From<InnerStore> for EnvVarsStore {
             remove_unused_interval: chrono::Duration::minutes(
                 x.remove_unused_interval_in_minutes as i64,
             ),
+            recent_blocks_cache_capacity: x.recent_blocks_cache_capacity,
             connection_timeout: Duration::from_millis(x.connection_timeout_in_millis),
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
@@ -158,6 +162,8 @@ pub struct InnerStore {
     connection_try_always: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u64,
+    #[envconfig(from = "GRAPH_STORE_RECENT_BLOCKS_CACHE_CAPACITY", default = "10")]
+    recent_blocks_cache_capacity: usize,
 
     // These should really be set through the configuration file, especially for
     // `GRAPH_STORE_CONNECTION_MIN_IDLE` and

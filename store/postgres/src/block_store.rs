@@ -8,7 +8,7 @@ use std::{
 use graph::{
     blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, warn, BlockNumber, BlockPtr, Logger},
+    prelude::{error, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
 };
 use graph::{
     constraint_violation,
@@ -372,6 +372,7 @@ impl BlockStore {
             status,
             sender,
             pool,
+            ENV_VARS.store.recent_blocks_cache_capacity,
         );
         if create {
             store.create(&ident)?;
