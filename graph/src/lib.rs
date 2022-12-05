@@ -115,7 +115,6 @@ pub mod prelude {
         PrometheusError, Registry,
     };
     pub use crate::components::server::index_node::IndexNodeServer;
-    pub use crate::components::server::metrics::MetricsServer;
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{

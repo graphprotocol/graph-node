@@ -5,7 +5,4 @@ edition.workspace = true
 
 [dependencies]
 graph = { path = "../../graph" }
-http = "0.2"
 hyper = { version = "0.14", features = ["server"] }
-lazy_static = "1.2.0"
-serde = "1.0"

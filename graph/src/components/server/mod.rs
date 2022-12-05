@@ -6,6 +6,3 @@ pub mod subscription;
 
 /// Component for the index node server.
 pub mod index_node;
-
-/// Components for the Prometheus metrics server.
-pub mod metrics;
