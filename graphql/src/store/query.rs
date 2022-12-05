@@ -34,6 +34,8 @@ pub(crate) fn build_query<'a>(
     schema: &ApiSchema,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
+    let is_conn = is_connection_type(entity.name());
+    println!("is_conn: {}", is_conn);
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names.get(object);
@@ -48,8 +50,10 @@ pub(crate) fn build_query<'a>(
             })
             .collect(),
     });
+    println!("entity_types: {:?}", entity_types);
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
+    println!("cursor: {:?}", build_cursor(field, max_first, max_skip));
     if let Some(filter) = build_filter(entity, field, schema)? {
         query = query.filter(filter);
     }
@@ -66,8 +70,58 @@ pub(crate) fn build_query<'a>(
         (None, _) => EntityOrder::Default,
     };
     query = query.order(order);
+    println!("query: {:?}", query);
     Ok(query)
 }
+
+/// Parses GraphQL arguments into a EntityRange, if present.
+fn build_cursor(
+    field: &a::Field,
+    max_first: u32,
+    max_skip: u32,
+) -> Result<EntityRange, QueryExecutionError> {
+    println!("field args {:?}", field.arguments);
+    let first = match field.argument_value("first") {
+        Some(r::Value::Int(n)) => {
+            let n = *n;
+            if n > 0 && n <= (max_first as i64) {
+                n as u32
+            } else {
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "first", max_first, n,
+                ));
+            }
+        }
+        Some(r::Value::Null) | None => 100,
+        _ => unreachable!("first is an Int with a default value"),
+    };
+
+    let skip = match field.argument_value("skip") {
+        Some(r::Value::Int(n)) => {
+            let n = *n;
+            if n >= 0 && n <= (max_skip as i64) {
+                n as u32
+            } else {
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "skip", max_skip, n,
+                ));
+            }
+        }
+        Some(r::Value::Null) | None => 0,
+        _ => unreachable!("skip is an Int with a default value"),
+    };
+
+    Ok(EntityRange {
+        first: match is_connection_type(&field.name) {
+            // We are a bit overfetching to see ahead when dealing with connections.
+            // This way we can tell the user if there are more pages available.
+            true => Some(first + 1),
+            false => Some(first),
+        },
+        skip,
+    })
+}
+
 
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
