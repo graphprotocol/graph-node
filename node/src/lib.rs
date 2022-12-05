@@ -6,6 +6,7 @@ use graph_core::MetricsRegistry;
 #[macro_use]
 extern crate diesel;
 
+pub mod bus_initializer;
 pub mod chain;
 pub mod config;
 pub mod opt;

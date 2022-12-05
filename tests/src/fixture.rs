@@ -311,6 +311,7 @@ pub async fn setup<C: Blockchain>(
     );
 
     let blockchain_map = Arc::new(blockchain_map);
+
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -320,6 +321,7 @@ pub async fn setup<C: Blockchain>(
         link_resolver.cheap_clone(),
         ipfs_service,
         static_filters,
+        None,
     );
 
     // Graphql runner

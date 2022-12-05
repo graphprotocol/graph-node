@@ -90,7 +90,13 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
             Root { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
             Query {
                 elapsed, children, ..
-            } => *elapsed + children.iter().map(|(_, trace)| query_time(trace)).sum(),
+            } => {
+                *elapsed
+                    + children
+                        .iter()
+                        .map(|(_, trace)| query_time(trace))
+                        .sum::<Duration>()
+            }
         }
     }
 

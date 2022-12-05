@@ -205,6 +205,8 @@ pub struct EnvVars {
     /// Maximum number of Dynamic Data Sources after which a Subgraph will
     /// switch to using static filter.
     pub static_filters_threshold: usize,
+    /// Message Bus service
+    pub bus_url: Option<String>,
 }
 
 impl EnvVars {
@@ -261,6 +263,7 @@ impl EnvVars {
             external_http_base_url: inner.external_http_base_url,
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
+            bus_url: inner.bus_url,
         })
     }
 
@@ -377,6 +380,8 @@ struct Inner {
     // Setting this to be unrealistically high so it doesn't get triggered.
     #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "100000000")]
     static_filters_threshold: usize,
+    #[envconfig(from = "BUS_URL")]
+    bus_url: Option<String>,
 }
 
 #[derive(Clone, Debug)]

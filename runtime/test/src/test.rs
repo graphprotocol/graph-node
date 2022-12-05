@@ -1,3 +1,4 @@
+use crate::common::{mock_context, mock_data_source};
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::prelude::web3::types::U256;
@@ -14,9 +15,8 @@ use semver::Version;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
+use tokio::sync::mpsc::unbounded_channel;
 use web3::types::H160;
-
-use crate::common::{mock_context, mock_data_source};
 
 mod abi;
 
@@ -60,6 +60,7 @@ async fn test_valid_module_and_store_with_timeout(
     DeploymentLocator,
 ) {
     let logger = Logger::root(slog::Discard, o!());
+    let (sender, _) = unbounded_channel();
     let subgraph_id_with_api_version =
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
@@ -103,6 +104,7 @@ async fn test_valid_module_and_store_with_timeout(
             data_source,
             store.subgraph_store(),
             api_version,
+            sender,
         ),
         host_metrics,
         timeout,

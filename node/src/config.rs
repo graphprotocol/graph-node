@@ -29,6 +29,7 @@ const NO_NAME: &str = ".^";
 
 pub struct Opt {
     pub postgres_url: Option<String>,
+    pub bus_url: Option<String>,
     pub config: Option<String>,
     // This is only used when we cosntruct a config purely from command
     // line options. When using a configuration file, pool sizes must be
@@ -58,6 +59,7 @@ impl Default for Opt {
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
             unsafe_config: false,
+            bus_url: None,
         }
     }
 }

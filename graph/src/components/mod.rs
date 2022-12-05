@@ -57,6 +57,9 @@ pub mod trigger_processor;
 /// Components dealing with collecting metrics
 pub mod metrics;
 
+/// Components dealing with message/event
+pub mod bus;
+
 /// Components dealing with versioning
 pub mod versions;
 

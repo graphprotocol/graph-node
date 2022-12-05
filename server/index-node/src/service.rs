@@ -226,11 +226,11 @@ where
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => Ok(Self::index()),
-            (Method::GET, path @ ["graphiql.css"]) => Ok(Self::serve_file(
+            (Method::GET, _path @ ["graphiql.css"]) => Ok(Self::serve_file(
                 include_str!("../assets/graphiql.css"),
                 "text/css",
             )),
-            (Method::GET, path @ ["graphiql.min.js"]) => Ok(Self::serve_file(
+            (Method::GET, _path @ ["graphiql.min.js"]) => Ok(Self::serve_file(
                 include_str!("../assets/graphiql.min.js"),
                 "text/javascript",
             )),

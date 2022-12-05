@@ -1,13 +1,15 @@
+use super::context::OffchainMonitor;
+use super::SubgraphTriggerProcessor;
 use crate::polling_monitor::IpfsService;
 use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
-
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
+use graph::components::bus::BusMessage;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data_source::causality_region::CausalityRegionSeq;
@@ -16,10 +18,8 @@ use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *}
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
 use graph_runtime_wasm::RuntimeHostBuilder;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::task;
-
-use super::context::OffchainMonitor;
-use super::SubgraphTriggerProcessor;
 
 #[derive(Clone)]
 pub struct SubgraphInstanceManager<S: SubgraphStore> {
@@ -33,6 +33,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     ipfs_service: IpfsService,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
+    bus_sender: Option<UnboundedSender<BusMessage>>,
 }
 
 #[async_trait]
@@ -171,6 +172,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
         static_filters: bool,
+        bus_sender: Option<UnboundedSender<BusMessage>>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -188,6 +190,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ipfs_service,
             static_filters,
             env_vars,
+            bus_sender,
         }
     }
 
@@ -378,6 +381,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             chain.runtime_adapter(),
             self.link_resolver.cheap_clone(),
             subgraph_store.ens_lookup(),
+            self.bus_sender.clone(),
         );
 
         let features = manifest.features.clone();
@@ -412,9 +416,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             templates,
             unified_api_version,
             static_filters,
-            manifest_idx_and_name,
             poi_version,
             network,
+            manifest_idx_and_name,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

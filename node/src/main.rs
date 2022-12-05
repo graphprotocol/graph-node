@@ -1,3 +1,6 @@
+mod bus_initializer;
+
+use bus_initializer::BusInitializer;
 use clap::Parser as _;
 use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
 use ethereum::{
@@ -6,6 +9,7 @@ use ethereum::{
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
+use graph::components::bus::Bus;
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
@@ -411,6 +415,13 @@ async fn main() {
         }
         let static_filters = ENV_VARS.experimental_static_filters;
 
+        let (bus, bus_sender, bus_receiver) =
+            BusInitializer::new(ENV_VARS.bus_url.clone().or(opt.bus_url), logger.clone()).await;
+
+        if bus.is_some() {
+            graph::spawn(async move { bus.unwrap().start(bus_receiver.unwrap()).await });
+        };
+
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             env_vars.cheap_clone(),
@@ -420,6 +431,7 @@ async fn main() {
             link_resolver.clone(),
             ipfs_service,
             static_filters,
+            bus_sender,
         );
 
         // Create IPFS-based subgraph provider

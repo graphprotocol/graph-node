@@ -223,6 +223,14 @@ pub struct Opt {
 
     #[clap(long, value_name = "URL", help = "Base URL for forking subgraphs")]
     pub fork_base: Option<String>,
+
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "BUS_URL",
+        help = "Bus service to send event from graph-node to"
+    )]
+    pub bus_url: Option<String>,
 }
 
 impl From<Opt> for config::Opt {
@@ -239,6 +247,7 @@ impl From<Opt> for config::Opt {
             ethereum_ws,
             ethereum_ipc,
             unsafe_config,
+            bus_url,
             ..
         } = opt;
 
@@ -254,6 +263,7 @@ impl From<Opt> for config::Opt {
             ethereum_ws,
             ethereum_ipc,
             unsafe_config,
+            bus_url,
         }
     }
 }

@@ -516,6 +516,9 @@ impl<C: Blockchain> WasmInstance<C> {
             data
         );
 
+        // NOTE: where is this section name defined?
+        link!("bus.send", bus_send, "host_export_bus_send", any_string);
+
         // All IPFS-related functions exported by the host WASM runtime should be listed in the
         // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES array for
         // automatic feature detection to work.
@@ -956,6 +959,18 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             id,
             gas,
         )
+    }
+
+    /// function bus.send(any_string: string): void
+    pub fn bus_send(
+        &mut self,
+        gas: &GasCounter,
+        any_string: AscPtr<Array<AscPtr<AscString>>>,
+    ) -> Result<(), HostExportError> {
+        let send_value: Vec<String> = asc_get(self, any_string, gas)?;
+        warn!(self.ctx.logger, "Bus send request"; "value" => format!("{:?}", send_value));
+        let _res = self.ctx.host_exports.bus_send(send_value, gas);
+        Ok(())
     }
 
     /// function store.get(entity: string, id: string): Entity | null

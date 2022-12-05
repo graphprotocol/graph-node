@@ -157,6 +157,7 @@ pub async fn run(
         link_resolver.cheap_clone(),
         ipfs_service,
         static_filters,
+        None,
     );
 
     // Create IPFS-based subgraph provider

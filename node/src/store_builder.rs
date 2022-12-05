@@ -1,6 +1,3 @@
-use std::iter::FromIterator;
-use std::{collections::HashMap, sync::Arc};
-
 use futures::future::join_all;
 use graph::blockchain::ChainIdentifier;
 use graph::prelude::{o, MetricsRegistry, NodeId};
@@ -17,6 +14,8 @@ use graph_store_postgres::{
     NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
     SubscriptionManager, PRIMARY_SHARD,
 };
+use std::iter::FromIterator;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::config::{Config, Shard};
 
