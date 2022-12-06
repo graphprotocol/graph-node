@@ -1686,36 +1686,37 @@ impl ChainStoreTrait for ChainStore {
 
     async fn ancestor_block(
         self: Arc<Self>,
-        ancestor_ptr: BlockPtr,
+        block_ptr: BlockPtr,
         offset: BlockNumber,
     ) -> Result<Option<json::Value>, Error> {
         ensure!(
-            ancestor_ptr.number >= offset,
+            block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",
             offset,
-            ancestor_ptr.hash_hex()
+            block_ptr.hash_hex()
         );
 
         // Check the local cache first.
-        if let Some(data) = self.recent_blocks_cache.get_block(&ancestor_ptr, offset) {
+        if let Some(data) = self.recent_blocks_cache.get_ancestor(&block_ptr, offset) {
             return Ok(data.1.clone());
         }
 
-        let ancestor_ptr_clone = ancestor_ptr.clone();
+        let block_ptr_clone = block_ptr.clone();
         let chain_store = self.cheap_clone();
         let block_data = self
             .pool
             .with_conn(move |conn, _| {
                 chain_store
                     .storage
-                    .ancestor_block(conn, ancestor_ptr_clone, offset)
-                    .map_err(|e| CancelableError::from(StoreError::from(e)))
+                    .ancestor_block(conn, block_ptr_clone, offset)
+                    .map_err(StoreError::from)
+                    .map_err(CancelableError::from)
             })
             .await?;
 
         if let Some((data, ptr)) = block_data {
             // Update the local cache.
-            self.recent_blocks_cache.set_block(ancestor_ptr, ptr, &data);
+            self.recent_blocks_cache.set_ancestor(block_ptr, ptr, &data);
 
             Ok(Some(data))
         } else {
@@ -1844,73 +1845,73 @@ impl ChainStoreTrait for ChainStore {
 mod recent_blocks_cache {
     use super::*;
 
-    type OffsetFromChainHead = BlockNumber;
-
     struct Inner {
-        blocks: HashMap<OffsetFromChainHead, (BlockPtr, Option<json::Value>)>,
+        chain_head: Option<BlockNumber>,
+        blocks: HashMap<BlockNumber, (BlockPtr, Option<json::Value>)>,
         capacity: usize,
     }
 
     impl Inner {
         fn set_chain_head(&mut self, chain_head: BlockPtr) {
+            self.chain_head = Some(chain_head.number);
             // We invalidate the entire cache when the chain head changes.
             self.blocks.clear();
-            self.blocks.insert(0, (chain_head, None));
+            self.blocks.insert(chain_head.number, (chain_head, None));
         }
 
-        fn get_block(
+        fn get_ancestor(
             &self,
-            ancestor: &BlockPtr,
+            child: &BlockPtr,
             offset: BlockNumber,
         ) -> Option<(BlockPtr, Option<json::Value>)> {
-            // Check if the ancestor itself is in the cache.
-            let ancestor_offset_from_head = self.chain_head_number()? - ancestor.number;
-            match self
-                .blocks
-                .get(&ancestor_offset_from_head)
-                .map(|p| p.0.clone())
-            {
-                None => return None,
-                Some(ptr) if ptr.hash != ancestor.hash => return None,
-                _ => {}
-            }
+            let child_is_cached = match self.blocks.get(&child.number) {
+                Some((ptr, _)) => ptr.hash == child.hash,
+                _ => false,
+            };
 
-            let offset_from_head = ancestor_offset_from_head + offset;
-            self.blocks.get(&offset_from_head).cloned()
+            if child_is_cached {
+                self.blocks.get(&(child.number - offset)).cloned()
+            } else {
+                None
+            }
         }
 
-        fn set_block(&mut self, ancestor: BlockPtr, ptr: BlockPtr, data: &json::Value) {
+        fn contains_block(&self, ptr: &BlockPtr) -> bool {
+            let identity_offset = 0;
+            self.get_ancestor(ptr, identity_offset).is_some()
+        }
+
+        /// Tentatively caches the `ancestor` of a [`BlockPtr`], together with
+        /// its associated `data`.
+        fn set_ancestor(&mut self, child: BlockPtr, ancestor: BlockPtr, data: &json::Value) {
             // We must have a chain head to cache blocks.
-            let chain_head_number = if let Some(n) = self.chain_head_number() {
+            let chain_head = if let Some(n) = self.chain_head {
                 n
             } else {
                 return;
             };
 
-            let offset_from_head = chain_head_number - ptr.number;
             // We only cache blocks that are close to the chain head.
+            let offset_from_head = chain_head - ancestor.number;
             if offset_from_head >= self.capacity as _ {
                 return;
             }
-            // We only cache blocks if their ancestor is in the cache (chain head excluded).
-            if self.get_block(&ancestor, 0).is_none() {
+
+            // We only cache ancestors of blocks that are cached already (chain
+            // head excluded). Otherwise, we might inadvertently cache blocks
+            // that don't belong to the main chain, e.g. uncle blocks.
+            if !self.contains_block(&child) {
                 return;
-            };
+            }
 
             self.blocks
-                .insert(offset_from_head, (ptr, Some(data.clone())));
-        }
-
-        fn chain_head_number(&self) -> Option<BlockNumber> {
-            self.blocks.get(&0).map(|p| p.0.number)
+                .insert(ancestor.number, (ancestor, Some(data.clone())));
         }
     }
 
     /// We cache the most recent blocks in memory to avoid overloading the
     /// database with unnecessary queries close to the chain head. We invalidate
-    /// blocks:
-    /// - After 5 seconds.
-    /// - Whenever the chain head advances.
+    /// blocks whenever the chain head advances.
     pub struct RecentBlocksCache {
         // We protect everything with a global `RwLock` to avoid data races. Ugly...
         inner: RwLock<Inner>,
@@ -1920,6 +1921,7 @@ mod recent_blocks_cache {
         pub fn new(capacity: usize) -> Self {
             RecentBlocksCache {
                 inner: RwLock::new(Inner {
+                    chain_head: None,
                     blocks: HashMap::new(),
                     capacity,
                 }),
@@ -1942,18 +1944,18 @@ mod recent_blocks_cache {
             self.inner.write().blocks.clear();
         }
 
-        pub fn get_block(
+        pub fn get_ancestor(
             &self,
-            ancestor: &BlockPtr,
+            child: &BlockPtr,
             offset: BlockNumber,
         ) -> Option<(BlockPtr, Option<json::Value>)> {
-            self.inner.read().get_block(ancestor, offset)
+            self.inner.read().get_ancestor(child, offset)
         }
 
         /// Inserts this block into the cache, if close enough to the chain
         /// head. If not, it's a no-op.
-        pub fn set_block(&self, ancestor: BlockPtr, ptr: BlockPtr, data: &json::Value) {
-            self.inner.write().set_block(ancestor, ptr, data)
+        pub fn set_ancestor(&self, child: BlockPtr, ancestor: BlockPtr, data: &json::Value) {
+            self.inner.write().set_ancestor(child, ancestor, data)
         }
     }
 }
