@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use graph::data::query::QueryResults;
 use graph::prelude::{DeploymentHash, GraphQLMetrics as GraphQLMetricsTrait, MetricsRegistry};
-use graph::prometheus::{Gauge, Histogram, HistogramVec};
+use graph::prometheus::{CounterVec, Gauge, Histogram, HistogramVec};
 
 pub struct GraphQLMetrics {
     query_execution_time: Box<HistogramVec>,
@@ -13,6 +13,7 @@ pub struct GraphQLMetrics {
     query_validation_time: Box<HistogramVec>,
     query_result_size: Box<Histogram>,
     query_result_size_max: Box<Gauge>,
+    query_validation_error_counter: Box<CounterVec>,
 }
 
 impl fmt::Debug for GraphQLMetrics {
@@ -64,6 +65,14 @@ impl GraphQLMetricsTrait for GraphQLMetrics {
             .with_label_values(&[id.as_str()])
             .observe(duration.as_secs_f64());
     }
+
+    fn observe_query_validation_error(&self, error_codes: Vec<&str>, id: &DeploymentHash) {
+        for code in error_codes.iter() {
+            self.query_validation_error_counter
+                .with_label_values(&[id.as_str(), *code])
+                .inc();
+        }
+    }
 }
 
 impl GraphQLMetrics {
@@ -111,12 +120,21 @@ impl GraphQLMetrics {
             )
             .unwrap();
 
+        let query_validation_error_counter = registry
+            .new_counter_vec(
+                "query_validation_error_counter",
+                "a counter for the number of validation errors",
+                vec![String::from("deployment"), String::from("error_code")],
+            )
+            .unwrap();
+
         Self {
             query_execution_time,
             query_parsing_time,
             query_validation_time,
             query_result_size,
             query_result_size_max,
+            query_validation_error_counter,
         }
     }
 
