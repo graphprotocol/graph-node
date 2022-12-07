@@ -6,7 +6,7 @@ use diesel::{
 };
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicU8, Arc, Mutex},
 };
 use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
@@ -1147,8 +1147,35 @@ impl SubgraphStoreInner {
     }
 }
 
+const STATE_ENS_NOT_CHECKED: u8 = 0;
+const STATE_ENS_EMPTY: u8 = 1;
+const STATE_ENS_NOT_EMPTY: u8 = 2;
+
+/// EnsLookup reads from a rainbow table store in postgres that needs to be manually
+/// loaded. To avoid unnecessary database roundtrips, the empty table check is lazy
+/// and will not be retried. Once the table is checked, any subsequent calls will
+/// just used the stored result.
 struct EnsLookup {
     primary: ConnectionPool,
+    // In order to keep the struct lock free, we'll use u8 for the status:
+    // 0 - Not Checked
+    // 1 - Checked - empty
+    // 2 - Checked - non empty
+    state: AtomicU8,
+}
+
+impl EnsLookup {
+    pub fn new(pool: ConnectionPool) -> Self {
+        Self {
+            primary: pool,
+            state: AtomicU8::new(STATE_ENS_NOT_CHECKED),
+        }
+    }
+
+    fn is_table_empty(pool: &ConnectionPool) -> Result<bool, StoreError> {
+        let conn = pool.get()?;
+        primary::Connection::new(conn).is_ens_table_empty()
+    }
 }
 
 impl EnsLookupTrait for EnsLookup {
@@ -1156,14 +1183,31 @@ impl EnsLookupTrait for EnsLookup {
         let conn = self.primary.get()?;
         primary::Connection::new(conn).find_ens_name(hash)
     }
+
+    fn is_table_empty(&self) -> Result<bool, StoreError> {
+        match self.state.load(std::sync::atomic::Ordering::SeqCst) {
+            STATE_ENS_NOT_CHECKED => {}
+            STATE_ENS_EMPTY => return Ok(true),
+            STATE_ENS_NOT_EMPTY => return Ok(false),
+            _ => unreachable!("unsupported state"),
+        }
+
+        let is_empty = Self::is_table_empty(&self.primary)?;
+        let new_state = match is_empty {
+            true => STATE_ENS_EMPTY,
+            false => STATE_ENS_NOT_EMPTY,
+        };
+        self.state
+            .store(new_state, std::sync::atomic::Ordering::SeqCst);
+
+        Ok(is_empty)
+    }
 }
 
 #[async_trait::async_trait]
 impl SubgraphStoreTrait for SubgraphStore {
     fn ens_lookup(&self) -> Arc<dyn EnsLookupTrait> {
-        Arc::new(EnsLookup {
-            primary: self.mirror.primary().clone(),
-        })
+        Arc::new(EnsLookup::new(self.mirror.primary().clone()))
     }
 
     // FIXME: This method should not get a node_id

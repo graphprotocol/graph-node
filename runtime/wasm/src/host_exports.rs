@@ -676,6 +676,10 @@ impl<C: Blockchain> HostExports<C> {
         Ok(self.ens_lookup.find_name(hash)?)
     }
 
+    pub(crate) fn is_ens_data_empty(&self) -> Result<bool, anyhow::Error> {
+        Ok(self.ens_lookup.is_table_empty()?)
+    }
+
     pub(crate) fn log_log(
         &self,
         logger: &Logger,
