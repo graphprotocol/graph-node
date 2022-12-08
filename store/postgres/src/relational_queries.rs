@@ -1767,8 +1767,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         out.push_sql(") values\n");
 
         // Use a `Peekable` iterator to help us decide how to finalize each line.
-        let mut iter = self.entities.iter().map(|(_key, entity)| entity).peekable();
-        while let Some(entity) = iter.next() {
+        let mut iter = self.entities.iter().peekable();
+        while let Some((key, entity)) = iter.next() {
             out.push_sql("(");
             for column in &self.unique_columns {
                 // If the column name is not within this entity's fields, we will issue the
@@ -1782,8 +1782,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             }
             self.br_column.literal_range_current(&mut out)?;
             if self.table.has_causality_region {
-                // FIXME(#3770) Set correct causality region.
-                out.push_sql(", 0");
+                out.push_sql(", ");
+                out.push_bind_param::<Integer, _>(&key.causality_region)?;
             };
             out.push_sql(")");
 
@@ -3510,7 +3510,11 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         } else {
             out.push_sql(BLOCK_RANGE_COLUMN);
         }
-        // FIXME(#3770) Copy causality region if `src` has the column.
+
+        if self.dst.has_causality_region {
+            out.push_sql(", ");
+            out.push_sql(CAUSALITY_REGION_COLUMN);
+        };
 
         out.push_sql(")\nselect ");
         for column in &self.columns {
@@ -3557,6 +3561,24 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 out.push_sql(&checked_conversion);
             }
             (false, false) => out.push_sql(BLOCK_RANGE_COLUMN),
+        }
+
+        match (self.src.has_causality_region, self.dst.has_causality_region) {
+            (false, false) => (),
+            (true, true) => {
+                out.push_sql(", ");
+                out.push_sql(CAUSALITY_REGION_COLUMN);
+            }
+            (false, true) => {
+                out.push_sql(", 0");
+            }
+            (true, false) => {
+                return Err(constraint_violation!(
+                    "can not copy entity type {} to {} because the src has a causality region but the dst does not",
+                    self.src.object.as_str(),
+                    self.dst.object.as_str()
+                ));
+            }
         }
         out.push_sql(" from ");
         out.push_sql(self.src.qualified_name.as_str());
