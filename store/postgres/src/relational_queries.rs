@@ -1451,16 +1451,24 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
     }
 }
 
+/// A query that finds an entity by key. Used during indexing.
+/// See also `FindManyQuery`.
 #[derive(Debug, Clone, Constructor)]
 pub struct FindQuery<'a> {
     table: &'a Table,
-    id: &'a str,
+    key: &'a EntityKey,
     block: BlockNumber,
 }
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
+
+        let EntityKey {
+            entity_type: _,
+            entity_id,
+            causality_region,
+        } = self.key;
 
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
@@ -1471,8 +1479,13 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(self.id, &mut out)?;
+        self.table.primary_key().eq(entity_id, &mut out)?;
         out.push_sql(" and ");
+        if self.table.has_causality_region {
+            out.push_sql("causality_region = ");
+            out.push_bind_param::<Integer, _>(causality_region)?;
+            out.push_sql(" and ");
+        }
         BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
     }
 }
@@ -1595,10 +1608,10 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct FindManyQuery<'a> {
     pub(crate) _namespace: &'a Namespace,
-    pub(crate) tables: Vec<&'a Table>,
+    pub(crate) tables: Vec<(&'a Table, CausalityRegion)>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: &'a BTreeMap<EntityType, Vec<String>>,
+    pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
     pub(crate) block: BlockNumber,
 }
 
@@ -1614,7 +1627,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
         //      from schema.<table1> e where {id.is_in($ids1))
         //    union all
         //    ...
-        for (i, table) in self.tables.iter().enumerate() {
+        for (i, (table, cr)) in self.tables.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
@@ -1626,8 +1639,13 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
             out.push_sql(" e\n where ");
             table
                 .primary_key()
-                .is_in(&self.ids_for_type[&table.object], &mut out)?;
+                .is_in(&self.ids_for_type[&(table.object.clone(), *cr)], &mut out)?;
             out.push_sql(" and ");
+            if table.has_causality_region {
+                out.push_sql("causality_region = ");
+                out.push_bind_param::<Integer, _>(cr)?;
+                out.push_sql(" and ");
+            }
             BlockRangeColumn::new(table, "e.", self.block).contains(&mut out)?;
         }
         Ok(())

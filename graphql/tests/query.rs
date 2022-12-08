@@ -322,7 +322,7 @@ async fn insert_test_entities(
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
             key: EntityKey::data(
                 data.get("__typename").unwrap().clone().as_string().unwrap(),
-                data.get("id").unwrap().clone().as_string().unwrap().into(),
+                data.get("id").unwrap().clone().as_string().unwrap(),
             ),
             data,
         });

@@ -278,10 +278,10 @@ impl SyncStore {
         keys: BTreeSet<EntityKey>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut by_type: BTreeMap<EntityType, Vec<String>> = BTreeMap::new();
+        let mut by_type: BTreeMap<(EntityType, CausalityRegion), Vec<String>> = BTreeMap::new();
         for key in keys {
             by_type
-                .entry(key.entity_type)
+                .entry((key.entity_type, key.causality_region))
                 .or_default()
                 .push(key.entity_id.into());
         }

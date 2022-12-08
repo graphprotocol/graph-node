@@ -423,7 +423,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     data.set("id", id);
     data.set("value", value);
     data.set("extra", USER_DATA);
-    let key = EntityKey::data("Thing".to_string(), id.into());
+    let key = EntityKey::data("Thing".to_string(), id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::Insert { key, data },

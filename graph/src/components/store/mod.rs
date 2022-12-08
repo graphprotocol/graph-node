@@ -135,10 +135,10 @@ pub struct EntityKey {
 impl EntityKey {
     // For use in tests only
     #[cfg(debug_assertions)]
-    pub fn data(entity_type: String, entity_id: String) -> Self {
+    pub fn data(entity_type: impl Into<String>, entity_id: impl Into<String>) -> Self {
         Self {
-            entity_type: EntityType::new(entity_type),
-            entity_id: entity_id.into(),
+            entity_type: EntityType::new(entity_type.into()),
+            entity_id: entity_id.into().into(),
             causality_region: CausalityRegion::ONCHAIN,
         }
     }

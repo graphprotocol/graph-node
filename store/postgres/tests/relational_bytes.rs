@@ -195,7 +195,11 @@ fn bad_id() {
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = layout.find(conn, &*THING, "bad", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "bad"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Odd number of digits",
@@ -203,7 +207,11 @@ fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = layout.find(conn, &*THING, "\\xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "\\xbadd"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'\\\\\' at position 0",
@@ -211,11 +219,19 @@ fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = layout.find(conn, &*THING, "0xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "0xbadd"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = layout.find(conn, &*THING, "nope", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "nope"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'n\' at position 0",
@@ -233,14 +249,18 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, &*THING, ID, BLOCK_NUMBER_MAX)
+            .find(conn, &EntityKey::data(THING.as_str(), ID), BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&*BEEF_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, &*THING, "badd", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(THING.as_str(), "badd"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Thing[badd]");
         assert!(entity.is_none());
     });
@@ -256,9 +276,9 @@ fn find_many() {
         insert_thing(conn, layout, ID, NAME);
         insert_thing(conn, layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<EntityType, Vec<String>> = BTreeMap::default();
+        let mut id_map = BTreeMap::default();
         id_map.insert(
-            THING.clone(),
+            (THING.clone(), CausalityRegion::ONCHAIN),
             vec![ID.to_string(), ID2.to_string(), "badd".to_string()],
         );
 
@@ -300,7 +320,11 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, &*THING, &entity_id, BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(THING.as_str(), &entity_id),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 

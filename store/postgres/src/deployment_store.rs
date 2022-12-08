@@ -1050,7 +1050,7 @@ impl DeploymentStore {
     ) -> Result<Option<Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
-        layout.find(&conn, &key.entity_type, &key.entity_id, block)
+        layout.find(&conn, &key, block)
     }
 
     /// Retrieve all the entities matching `ids_for_type` from the
@@ -1058,7 +1058,7 @@ impl DeploymentStore {
     pub(crate) fn get_many(
         &self,
         site: Arc<Site>,
-        ids_for_type: &BTreeMap<EntityType, Vec<String>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
