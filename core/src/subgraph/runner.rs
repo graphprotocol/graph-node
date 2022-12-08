@@ -17,7 +17,7 @@ use graph::data::subgraph::{
     SubgraphFeature,
 };
 use graph::data_source::{
-    offchain, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
+    offchain, CausalityRegion, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
 };
 use graph::env::EnvVars;
 use graph::prelude::*;
@@ -653,6 +653,7 @@ where
             let mut block_state = BlockState::<C>::new(EmptyStore::new(schema), LfuCache::new());
 
             // PoI ignores offchain events.
+            // See also: poi-ignores-offchain
             let proof_of_indexing = None;
             let causality_region = "";
 
@@ -998,7 +999,14 @@ async fn update_proof_of_indexing(
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
             entity_type: POI_OBJECT.to_owned(),
+
+            // There are two things called causality regions here, one is the causality region for
+            // the poi which is a string and the PoI entity id. The other is the data source
+            // causality region to which the PoI belongs as an entity. Currently offchain events do
+            // not affect PoI so it is assumed to be `ONCHAIN`.
+            // See also: poi-ignores-offchain
             entity_id: causality_region.into(),
+            causality_region: CausalityRegion::ONCHAIN,
         };
 
         // Grab the current digest attribute on this entity

@@ -128,13 +128,18 @@ pub struct EntityKey {
 
     /// ID of the individual entity.
     pub entity_id: Word,
+
+    pub causality_region: CausalityRegion,
 }
 
 impl EntityKey {
+    // For use in tests only
+    #[cfg(debug_assertions)]
     pub fn data(entity_type: String, entity_id: String) -> Self {
         Self {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
         }
     }
 }
@@ -1095,10 +1100,7 @@ impl ReadStore for EmptyStore {
         Ok(None)
     }
 
-    fn get_many(
-        &self,
-        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    fn get_many(&self, _: BTreeSet<EntityKey>) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(BTreeMap::new())
     }
 

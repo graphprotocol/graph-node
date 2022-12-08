@@ -171,12 +171,11 @@ pub trait ReadStore: Send + Sync + 'static {
     /// Looks up an entity using the given store key at the latest block.
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError>;
 
-    /// Look up multiple entities as of the latest block. Returns a map of
-    /// entities by type.
+    /// Look up multiple entities as of the latest block.
     fn get_many(
         &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError>;
+        keys: BTreeSet<EntityKey>,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
 }
@@ -189,9 +188,9 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
 
     fn get_many(
         &self,
-        ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
-        (**self).get_many(ids_for_type)
+        keys: BTreeSet<EntityKey>,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        (**self).get_many(keys)
     }
 
     fn input_schema(&self) -> Arc<Schema> {

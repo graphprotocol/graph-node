@@ -8,7 +8,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
     data::store::scalar::Bytes,
-    data_source,
+    data_source::{self, CausalityRegion},
     prelude::{
         anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
         RuntimeHostBuilder, Value,
@@ -183,7 +183,11 @@ where
                 Operation::Create | Operation::Update => {
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = entity_change.id.clone();
-                    let key = EntityKey::data(entity_type.to_string(), entity_id.clone());
+                    let key = EntityKey {
+                        entity_type: entity_type.into(),
+                        entity_id: entity_id.clone().into(),
+                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
+                    };
                     let mut data: HashMap<String, Value> = HashMap::from_iter(vec![]);
 
                     for field in entity_change.fields.iter() {
@@ -214,7 +218,11 @@ where
                 Operation::Delete => {
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = entity_change.id.clone();
-                    let key = EntityKey::data(entity_type.to_string(), entity_id.clone());
+                    let key = EntityKey {
+                        entity_type: entity_type.into(),
+                        entity_id: entity_id.clone().into(),
+                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
+                    };
 
                     state.entity_cache.remove(key);
 

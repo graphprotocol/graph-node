@@ -24,6 +24,7 @@ use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
+use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -504,9 +505,9 @@ impl Layout {
     pub fn find_many(
         &self,
         conn: &PgConnection,
-        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<EntityType, Vec<String>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
@@ -521,17 +522,22 @@ impl Layout {
             tables,
             block,
         };
-        let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+        let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type();
             let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
 
-            entities_for_type
-                .entry(entity_type)
-                .or_default()
-                .push(entity_data);
+            let key = EntityKey {
+                entity_type,
+                entity_id: entity_data.id()?.into(),
+                causality_region: CausalityRegion::from_entity(&entity_data),
+            };
+            let overwrite = entities.insert(key, entity_data).is_some();
+            if overwrite {
+                return Err(constraint_violation!("duplicate entity in result set"));
+            }
         }
-        Ok(entities_for_type)
+        Ok(entities)
     }
 
     pub fn find_changes(
@@ -558,18 +564,15 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let mut data: Entity = entity_data.deserialize_with_layout(self, None, false)?;
+            let data: Entity = entity_data.deserialize_with_layout(self, None, true)?;
             let entity_id = Word::from(data.id().expect("Invalid ID for entity."));
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
-
-            // `__typename` is not a real field.
-            data.remove("__typename")
-                .expect("__typename expected; this is a bug");
 
             changes.push(EntityOperation::Set {
                 key: EntityKey {
                     entity_type,
                     entity_id,
+                    causality_region: CausalityRegion::from_entity(&data),
                 },
                 data,
             });
@@ -586,6 +589,7 @@ impl Layout {
                     key: EntityKey {
                         entity_type,
                         entity_id,
+                        causality_region: del.causality_region(),
                     },
                 });
             }

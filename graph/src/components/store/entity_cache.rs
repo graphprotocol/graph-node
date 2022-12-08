@@ -1,11 +1,9 @@
 use anyhow::anyhow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
-use crate::components::store::{
-    self as s, Entity, EntityKey, EntityOp, EntityOperation, EntityType,
-};
+use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
 use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
@@ -233,22 +231,8 @@ impl EntityCache {
         // violation in the database, ensuring correctness
         let missing = missing.filter(|key| !self.schema.is_immutable(&key.entity_type));
 
-        let mut missing_by_type: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::new();
-        for key in missing {
-            missing_by_type
-                .entry(&key.entity_type)
-                .or_default()
-                .push(&key.entity_id);
-        }
-
-        for (entity_type, entities) in self.store.get_many(missing_by_type)? {
-            for entity in entities {
-                let key = EntityKey {
-                    entity_type: entity_type.clone(),
-                    entity_id: entity.id().unwrap().into(),
-                };
-                self.current.insert(key, Some(entity));
-            }
+        for (entity_key, entity) in self.store.get_many(missing.cloned().collect())? {
+            self.current.insert(entity_key, Some(entity));
         }
 
         let mut mods = Vec::new();

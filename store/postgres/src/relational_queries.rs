@@ -14,6 +14,7 @@ use diesel::Connection;
 
 use graph::components::store::EntityKey;
 use graph::data::value::Word;
+use graph::data_source::CausalityRegion;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
     EntityFilter, EntityLink, EntityOrder, EntityRange, EntityWindow, ParentLink,
@@ -449,6 +450,8 @@ pub struct EntityDeletion {
     entity: String,
     #[sql_type = "Text"]
     id: String,
+    #[sql_type = "Integer"]
+    causality_region: CausalityRegion,
 }
 
 impl EntityDeletion {
@@ -458,6 +461,10 @@ impl EntityDeletion {
 
     pub fn id(&self) -> &str {
         &self.id
+    }
+
+    pub fn causality_region(&self) -> CausalityRegion {
+        self.causality_region
     }
 }
 
@@ -1554,7 +1561,13 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
             }
             out.push_sql("select ");
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
-            out.push_sql(" as entity, e.id\n");
+            out.push_sql(" as entity, ");
+            if table.has_causality_region {
+                out.push_sql("causality_region, ");
+            } else {
+                out.push_sql("0 as causality_region, ");
+            }
+            out.push_sql("e.id\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
@@ -1585,7 +1598,7 @@ pub struct FindManyQuery<'a> {
     pub(crate) tables: Vec<&'a Table>,
 
     // Maps object name to ids.
-    pub(crate) ids_for_type: &'a BTreeMap<&'a EntityType, Vec<&'a str>>,
+    pub(crate) ids_for_type: &'a BTreeMap<EntityType, Vec<String>>,
     pub(crate) block: BlockNumber,
 }
 

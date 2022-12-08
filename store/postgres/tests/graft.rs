@@ -259,10 +259,7 @@ fn create_test_entity(
     );
 
     EntityOperation::Set {
-        key: EntityKey {
-            entity_type: EntityType::new(entity_type.to_string()),
-            entity_id: id.into(),
-        },
+        key: EntityKey::data(entity_type.to_string(), id.into()),
         data: test_entity,
     }
 }
@@ -325,10 +322,7 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com");
     let op = EntityOperation::Set {
-        key: EntityKey {
-            entity_type: EntityType::new(USER.to_owned()),
-            entity_id: "3".into(),
-        },
+        key: EntityKey::data(USER.to_owned(), "3".into()),
         data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])

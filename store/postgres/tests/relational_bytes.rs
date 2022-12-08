@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::prelude::EntityQuery;
+use graph::data_source::CausalityRegion;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -255,24 +256,29 @@ fn find_many() {
         insert_thing(conn, layout, ID, NAME);
         insert_thing(conn, layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::default();
-        id_map.insert(&*THING, vec![ID, ID2, "badd"]);
+        let mut id_map: BTreeMap<EntityType, Vec<String>> = BTreeMap::default();
+        id_map.insert(
+            THING.clone(),
+            vec![ID.to_string(), ID2.to_string(), "badd".to_string()],
+        );
 
         let entities = layout
             .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
-        assert_eq!(1, entities.len());
+        assert_eq!(2, entities.len());
 
-        let ids = entities
-            .get(&*THING)
-            .expect("We got some things")
-            .iter()
-            .map(|thing| thing.id().unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(2, ids.len());
-        assert!(ids.contains(&ID.to_owned()), "Missing ID");
-        assert!(ids.contains(&ID2.to_owned()), "Missing ID2");
+        let id_key = EntityKey {
+            entity_id: ID.into(),
+            entity_type: THING.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let id2_key = EntityKey {
+            entity_id: ID2.into(),
+            entity_type: THING.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        assert!(entities.contains_key(&id_key), "Missing ID");
+        assert!(entities.contains_key(&id2_key), "Missing ID2");
     });
 }
 

@@ -3,6 +3,7 @@ use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::data_source::CausalityRegion;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::semver::Version;
@@ -355,6 +356,7 @@ pub async fn insert_entities(
             key: EntityKey {
                 entity_type,
                 entity_id: data.get("id").unwrap().clone().as_string().unwrap().into(),
+                causality_region: CausalityRegion::ONCHAIN,
             },
             data,
         });
