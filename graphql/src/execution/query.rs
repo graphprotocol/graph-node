@@ -16,7 +16,8 @@ use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, GraphQLMetrics, Logger, TryFromValue, ENV_VARS,
+    info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
+    TryFromValue, ENV_VARS,
 };
 
 use crate::execution::ast as a;
@@ -141,6 +142,8 @@ fn validate_query(
     logger: &Logger,
     query: &GraphDataQuery,
     document: &s::Document,
+    metrics: &Arc<dyn GraphQLMetrics>,
+    id: &DeploymentHash,
 ) -> Result<(), Vec<QueryExecutionError>> {
     let validation_errors = validate(document, &query.document, &GRAPHQL_VALIDATION_PLAN);
 
@@ -163,6 +166,13 @@ fn validate_query(
               "variables" => &query.variables_text,
               "errors" => format!("[{:?}]", validation_errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join(", "))
             );
+
+            let error_codes = validation_errors
+                .iter()
+                .map(|e| e.error_code)
+                .collect::<Vec<_>>();
+
+            metrics.observe_query_validation_error(error_codes, id);
         }
     }
 
@@ -196,7 +206,7 @@ impl Query {
         ));
 
         let validation_phase_start = Instant::now();
-        validate_query(&logger, &query, schema.document())?;
+        validate_query(&logger, &query, schema.document(), &metrics, schema.id())?;
         metrics.observe_query_validation(validation_phase_start.elapsed(), schema.id());
 
         let mut operation = None;

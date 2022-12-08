@@ -27,6 +27,7 @@ impl GraphQLMetrics for NoopGraphQLMetrics {
     fn observe_query_execution(&self, _duration: Duration, _results: &QueryResults) {}
     fn observe_query_parsing(&self, _duration: Duration, _results: &QueryResults) {}
     fn observe_query_validation(&self, _duration: Duration, _id: &DeploymentHash) {}
+    fn observe_query_validation_error(&self, _error_codes: Vec<&str>, _id: &DeploymentHash) {}
 }
 
 /// An asynchronous response to a GraphQL request.
