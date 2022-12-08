@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use crate::capabilities::NodeCapabilities;
 use crate::data_source::PartialAccounts;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
@@ -29,8 +28,8 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
         receipt_filter.extend(NearReceiptFilter::from_data_sources(data_sources));
     }
 
-    fn node_capabilities(&self) -> NodeCapabilities {
-        NodeCapabilities {}
+    fn node_capabilities(&self) -> bc::EmptyNodeCapabilities<Chain> {
+        bc::EmptyNodeCapabilities::default()
     }
 
     fn extend_with_template(

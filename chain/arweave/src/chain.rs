@@ -1,4 +1,4 @@
-use graph::blockchain::{Block, BlockchainKind};
+use graph::blockchain::{Block, BlockchainKind, EmptyNodeCapabilities};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
@@ -20,7 +20,6 @@ use prost::Message;
 use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
-use crate::capabilities::NodeCapabilities;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
 use crate::runtime::RuntimeAdapter;
 use crate::trigger::{self, ArweaveTrigger};
@@ -82,7 +81,7 @@ impl Blockchain for Chain {
 
     type TriggerFilter = crate::adapter::TriggerFilter;
 
-    type NodeCapabilities = crate::capabilities::NodeCapabilities;
+    type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
     fn triggers_adapter(
         &self,
@@ -116,7 +115,11 @@ impl Blockchain for Chain {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         let adapter = self
-            .triggers_adapter(&deployment, &NodeCapabilities {}, unified_api_version)
+            .triggers_adapter(
+                &deployment,
+                &EmptyNodeCapabilities::default(),
+                unified_api_version,
+            )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
         let firehose_endpoint = self.firehose_endpoints.random()?;

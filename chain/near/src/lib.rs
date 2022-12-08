@@ -1,5 +1,4 @@
 mod adapter;
-mod capabilities;
 mod chain;
 pub mod codec;
 mod data_source;

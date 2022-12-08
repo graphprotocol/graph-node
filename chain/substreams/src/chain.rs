@@ -1,6 +1,6 @@
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
-use core::fmt;
+use graph::blockchain::EmptyNodeCapabilities;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
@@ -11,11 +11,10 @@ use graph::{
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
-    impl_slog_value,
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 #[derive(Default, Debug, Clone)]
 pub struct Block {
@@ -70,31 +69,6 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq)]
-pub struct NodeCapabilities {}
-
-impl FromStr for NodeCapabilities {
-    type Err = Error;
-
-    fn from_str(_s: &str) -> Result<Self, Self::Err> {
-        Ok(NodeCapabilities {})
-    }
-}
-
-impl fmt::Display for NodeCapabilities {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("substream")
-    }
-}
-
-impl_slog_value!(NodeCapabilities, "{}");
-
-impl graph::blockchain::NodeCapabilities<Chain> for NodeCapabilities {
-    fn from_data_sources(_data_sources: &[DataSource]) -> Self {
-        NodeCapabilities {}
-    }
-}
-
 #[async_trait]
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Substreams;
@@ -116,7 +90,7 @@ impl Blockchain for Chain {
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter = TriggerFilter;
 
-    type NodeCapabilities = NodeCapabilities;
+    type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
     fn triggers_adapter(
         &self,

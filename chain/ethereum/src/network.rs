@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::rand::{self, seq::IteratorRandom};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -134,9 +135,14 @@ impl EthereumNetworks {
 
     pub fn sort(&mut self) {
         for adapters in self.networks.values_mut() {
-            adapters
-                .adapters
-                .sort_by_key(|adapter| adapter.capabilities)
+            adapters.adapters.sort_by(|a, b| {
+                a.capabilities
+                    .partial_cmp(&b.capabilities)
+                    // We can't define a total ordering over node capabilities,
+                    // so incomparable items are considered equal and end up
+                    // near each other.
+                    .unwrap_or(Ordering::Equal)
+            })
         }
     }
 
