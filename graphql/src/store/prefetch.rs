@@ -539,7 +539,7 @@ fn extract_field_info<'a>(
     selection_field: &'a execution::ast::Field,
 ) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
     let schema = &ctx.query.schema;
-println!("here ");
+    println!("here ");
     match is_connection_type(&selection_field.name) {
         false => {
             let field_type = object_type

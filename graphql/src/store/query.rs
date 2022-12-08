@@ -122,7 +122,6 @@ fn build_cursor(
     })
 }
 
-
 /// Parses GraphQL arguments into a EntityRange, if present.
 fn build_range(
     field: &a::Field,
