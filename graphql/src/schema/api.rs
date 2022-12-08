@@ -927,6 +927,12 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
             Type::NamedType(format!("{}_filter", type_name)),
             None,
         ),
+        input_value(
+            &"testing".to_string(),
+            "",
+            Type::NamedType("String".to_string()),
+            None,
+        ),
     ];
 
     args

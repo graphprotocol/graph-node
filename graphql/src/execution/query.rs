@@ -267,7 +267,6 @@ impl Query {
         // compose cursors
         // println!("selection_set: {:?}", selection_set);
 
-
         let query = Self {
             schema,
             selection_set: Arc::new(selection_set),
