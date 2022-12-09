@@ -5,12 +5,10 @@ use std::{
 
 use graph::prelude::BLOCK_NUMBER_MAX;
 
-use crate::{
-    layout_for_tests::CAUSALITY_REGION_COLUMN,
-    relational::{
-        Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
-        STRING_PREFIX_SIZE, VID_COLUMN,
-    },
+use crate::block_range::CAUSALITY_REGION_COLUMN;
+use crate::relational::{
+    Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
+    STRING_PREFIX_SIZE, VID_COLUMN,
 };
 
 use super::{Column, Layout, SqlName, Table};

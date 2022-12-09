@@ -4,7 +4,7 @@ use anyhow::Error;
 use graph::{
     blockchain::{self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities},
     components::{
-        store::{DeploymentLocator, EntityKey, SubgraphFork},
+        store::{DeploymentLocator, EntityKey, EntityType, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
     data::store::scalar::Bytes,
@@ -184,7 +184,7 @@ where
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = entity_change.id.clone();
                     let key = EntityKey {
-                        entity_type: entity_type.into(),
+                        entity_type: EntityType::new(entity_type.to_string()),
                         entity_id: entity_id.clone().into(),
                         causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
                     };
@@ -219,7 +219,7 @@ where
                     let entity_type: &str = &entity_change.entity;
                     let entity_id: String = entity_change.id.clone();
                     let key = EntityKey {
-                        entity_type: entity_type.into(),
+                        entity_type: EntityType::new(entity_type.to_string()),
                         entity_id: entity_id.clone().into(),
                         causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
                     };
