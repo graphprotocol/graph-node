@@ -5,7 +5,7 @@ use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
 use graph::data::value::{Object, Word};
-use graph::prelude::{r, CacheWeight};
+use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
 use lazy_static::lazy_static;
@@ -17,10 +17,9 @@ use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
-        s, ApiSchema, AttributeNames, BlockNumber, ChildMultiplicity, EntityCollection,
-        EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
-        QueryExecutionError, QueryStore, StoreError, Value as StoreValue, WindowAttribute,
-        ENV_VARS,
+        s, ApiSchema, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter,
+        EntityLink, EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
+        Value as StoreValue, WindowAttribute, ENV_VARS,
     },
 };
 
@@ -637,18 +636,12 @@ fn execute_field(
     };
 
     fetch(
-        ctx.logger.clone(),
-        resolver.store.as_ref(),
+        resolver,
+        ctx,
         parents,
         join,
-        ctx.query.schema.as_ref(),
         field,
         multiplicity,
-        ctx.query.schema.types_for_interface(),
-        resolver.block_number(),
-        ctx.max_first,
-        ctx.max_skip,
-        ctx.query.query_id.clone(),
         selected_attrs,
     )
     .map_err(|e| vec![e])
@@ -658,31 +651,25 @@ fn execute_field(
 /// in which child field to look for the parent's id/join field. When
 /// `is_single` is `true`, there is at most one child per parent.
 fn fetch(
-    logger: Logger,
-    store: &(impl QueryStore + ?Sized),
+    resolver: &StoreResolver,
+    ctx: &ExecutionContext<impl Resolver>,
     parents: &[&mut Node],
     join: &Join<'_>,
-    schema: &ApiSchema,
     field: &a::Field,
     multiplicity: ChildMultiplicity,
-    types_for_interface: &BTreeMap<EntityType, Vec<s::ObjectType>>,
-    block: BlockNumber,
-    max_first: u32,
-    max_skip: u32,
-    query_id: String,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
-        block,
+        resolver.block_number(),
         field,
-        types_for_interface,
-        max_first,
-        max_skip,
+        ctx.query.schema.types_for_interface(),
+        ctx.max_first,
+        ctx.max_skip,
         selected_attrs,
-        schema,
+        &ctx.query.schema,
     )?;
-    query.query_id = Some(query_id);
+    query.query_id = Some(ctx.query.query_id.clone());
 
     if multiplicity == ChildMultiplicity::Single {
         // Suppress 'order by' in lookups of scalar values since
@@ -690,7 +677,7 @@ fn fetch(
         query.order = EntityOrder::Unordered;
     }
 
-    query.logger = Some(logger);
+    query.logger = Some(ctx.logger.cheap_clone());
     if let Some(r::Value::String(id)) = field.argument_value(ARG_ID.as_str()) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
@@ -707,12 +694,15 @@ fn fetch(
         }
         query.collection = EntityCollection::Window(windows);
     }
-    store.find_query_values(query).map(|(values, trace)| {
-        (
-            values.into_iter().map(|entity| entity.into()).collect(),
-            trace,
-        )
-    })
+    resolver
+        .store
+        .find_query_values(query)
+        .map(|(values, trace)| {
+            (
+                values.into_iter().map(|entity| entity.into()).collect(),
+                trace,
+            )
+        })
 }
 
 #[derive(Debug, Default, Clone)]
