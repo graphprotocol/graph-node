@@ -238,17 +238,11 @@ impl DeploymentStore {
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         let layout = self.layout(conn, site)?;
 
-        let logger = query.logger.unwrap_or_else(|| self.logger.clone());
-        layout.query(
-            &logger,
-            conn,
-            query.collection,
-            query.filter,
-            query.order,
-            query.range,
-            query.block,
-            query.query_id,
-        )
+        let logger = query
+            .logger
+            .cheap_clone()
+            .unwrap_or_else(|| self.logger.cheap_clone());
+        layout.query(&logger, conn, query)
     }
 
     fn check_interface_entity_uniqueness(

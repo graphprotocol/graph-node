@@ -7,8 +7,7 @@ use graph::entity;
 use graph::prelude::BlockNumber;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityOrder, EntityQuery, EntityRange, Logger, Schema, StopwatchMetrics, Value, ValueType,
-    BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, Logger, Schema, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph_mock::MockMetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
@@ -694,20 +693,11 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         EntityFilter::Equal("bool".into(), false.into()),
     ]);
     let collection = EntityCollection::All(vec![(SCALAR.to_owned(), AttributeNames::All)]);
+    let mut query = EntityQuery::new(layout.site.deployment.clone(), BLOCK_NUMBER_MAX, collection)
+        .filter(filter);
+    query.range.first = None;
     layout
-        .query::<Entity>(
-            &*LOGGER,
-            &conn,
-            collection,
-            Some(filter),
-            EntityOrder::Default,
-            EntityRange {
-                first: None,
-                skip: 0,
-            },
-            BLOCK_NUMBER_MAX,
-            None,
-        )
+        .query::<Entity>(&*LOGGER, &conn, query)
         .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
@@ -925,20 +915,16 @@ fn revert_block() {
         };
 
         let assert_marties = |max_block, except: Vec<BlockNumber>| {
+            let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
+            let collection =
+                EntityCollection::All(vec![(EntityType::from("Mink"), AttributeNames::All)]);
+            let filter = EntityFilter::StartsWith("id".to_string(), Value::from("marty"));
+            let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, collection)
+                .filter(filter)
+                .first(100)
+                .order(EntityOrder::Ascending("order".to_string(), ValueType::Int));
             let marties: Vec<Entity> = layout
-                .query(
-                    &*LOGGER,
-                    conn,
-                    EntityCollection::All(vec![(EntityType::from("Mink"), AttributeNames::All)]),
-                    Some(EntityFilter::StartsWith(
-                        "id".to_string(),
-                        Value::from("marty"),
-                    )),
-                    EntityOrder::Ascending("order".to_string(), ValueType::Int),
-                    EntityRange::first(100),
-                    BLOCK_NUMBER_MAX,
-                    None,
-                )
+                .query(&*LOGGER, conn, query)
                 .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
@@ -1006,21 +992,13 @@ impl<'a> QueryChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(self, expected_entity_ids: Vec<&'static str>, query: EntityQuery) -> Self {
+    fn check(self, expected_entity_ids: Vec<&'static str>, mut query: EntityQuery) -> Self {
         let q = query.clone();
         let unordered = matches!(query.order, EntityOrder::Unordered);
+        query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
-            .query::<Entity>(
-                &*LOGGER,
-                self.conn,
-                query.collection,
-                query.filter,
-                query.order,
-                query.range,
-                BLOCK_NUMBER_MAX,
-                None,
-            )
+            .query::<Entity>(&*LOGGER, self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1669,16 +1647,7 @@ impl<'a> FilterChecker<'a> {
 
         let entities = self
             .layout
-            .query::<Entity>(
-                &*LOGGER,
-                &self.conn,
-                query.collection,
-                query.filter,
-                query.order,
-                query.range,
-                BLOCK_NUMBER_MAX,
-                None,
-            )
+            .query::<Entity>(&*LOGGER, &self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 

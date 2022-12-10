@@ -3,6 +3,7 @@ use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
+use graph::prelude::EntityQuery;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -12,8 +13,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
     o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
-    EntityCollection, EntityLink, EntityOrder, EntityRange, EntityWindow, Logger, ParentLink,
-    Schema, StopwatchMetrics, Value, WindowAttribute, BLOCK_NUMBER_MAX,
+    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, Schema, StopwatchMetrics,
+    Value, WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph::{
     components::store::EntityType,
@@ -389,17 +390,10 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 #[test]
 fn query() {
     fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+        let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
+        let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
-            .query::<Entity>(
-                &*LOGGER,
-                conn,
-                coll,
-                None,
-                EntityOrder::Default,
-                EntityRange::first(10),
-                BLOCK_NUMBER_MAX,
-                None,
-            )
+            .query::<Entity>(&*LOGGER, conn, query)
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
