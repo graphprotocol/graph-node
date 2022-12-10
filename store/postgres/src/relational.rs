@@ -638,33 +638,43 @@ impl Layout {
             query: &FilterQuery,
             elapsed: Duration,
             entity_count: usize,
+            trace: bool,
         ) -> Trace {
             // 20kB
             const MAXLEN: usize = 20_480;
 
-            if !ENV_VARS.log_sql_timing() {
+            if !ENV_VARS.log_sql_timing() && !trace {
                 return Trace::None;
             }
 
             let mut text = debug_query(&query).to_string().replace("\n", "\t");
-            let trace = Trace::query(&text, elapsed, entity_count);
 
-            // If the query + bind variables is more than MAXLEN, truncate it;
-            // this will happen when queries have very large bind variables
-            // (e.g., long arrays of string ids)
-            if text.len() > MAXLEN {
-                text.truncate(MAXLEN);
-                text.push_str(" ...");
+            let trace = if trace {
+                Trace::query(&text, elapsed, entity_count)
+            } else {
+                Trace::None
+            };
+
+            if ENV_VARS.log_sql_timing() {
+                // If the query + bind variables is more than MAXLEN, truncate it;
+                // this will happen when queries have very large bind variables
+                // (e.g., long arrays of string ids)
+                if text.len() > MAXLEN {
+                    text.truncate(MAXLEN);
+                    text.push_str(" ...");
+                }
+                info!(
+                    logger,
+                    "Query timing (SQL)";
+                    "query" => text,
+                    "time_ms" => elapsed.as_millis(),
+                    "entity_count" => entity_count
+                );
             }
-            info!(
-                logger,
-                "Query timing (SQL)";
-                "query" => text,
-                "time_ms" => elapsed.as_millis(),
-                "entity_count" => entity_count
-            );
             trace
         }
+
+        let trace = query.trace;
 
         let filter_collection =
             FilterCollection::new(self, query.collection, query.filter.as_ref(), query.block)?;
@@ -713,7 +723,7 @@ impl Layout {
                     )),
                 }
             })?;
-        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len());
+        let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len(), trace);
 
         let parent_type = filter_collection.parent_type()?.map(ColumnType::from);
         values

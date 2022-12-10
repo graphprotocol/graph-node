@@ -204,6 +204,9 @@ where
 
     /// Records whether this was a cache hit, used for logging.
     pub(crate) cache_status: AtomicCell<CacheStatus>,
+
+    /// Whether to include an execution trace in the result
+    pub trace: bool,
 }
 
 pub(crate) fn get_field<'a>(
@@ -236,6 +239,7 @@ where
 
             // `cache_status` is a dead value for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),
+            trace: ENV_VARS.log_sql_timing(),
         }
     }
 }

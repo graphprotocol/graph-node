@@ -97,6 +97,7 @@ fn create_source_event_stream(
         max_first: options.max_first,
         max_skip: options.max_skip,
         cache_status: Default::default(),
+        trace: ENV_VARS.log_sql_timing(),
     };
 
     let subscription_type = ctx
@@ -222,6 +223,7 @@ async fn execute_subscription_event(
         max_first,
         max_skip,
         cache_status: Default::default(),
+        trace: ENV_VARS.log_sql_timing(),
     });
 
     let subscription_type = match ctx.query.schema.subscription_type.as_ref() {

@@ -1,4 +1,4 @@
-use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
+use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult, ENV_VARS};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -49,6 +49,7 @@ where
         max_first: options.max_first,
         max_skip: options.max_skip,
         cache_status: Default::default(),
+        trace: ENV_VARS.log_sql_timing(),
     });
 
     if !query.is_query() {

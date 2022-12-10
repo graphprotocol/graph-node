@@ -435,6 +435,8 @@ pub struct EntityQuery {
 
     pub query_id: Option<String>,
 
+    pub trace: bool,
+
     _force_use_of_new: (),
 }
 
@@ -453,6 +455,7 @@ impl EntityQuery {
             range: EntityRange::first(100),
             logger: None,
             query_id: None,
+            trace: false,
             _force_use_of_new: (),
         }
     }

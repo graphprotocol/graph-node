@@ -669,6 +669,7 @@ fn fetch(
         selected_attrs,
         &ctx.query.schema,
     )?;
+    query.trace = ctx.trace;
     query.query_id = Some(ctx.query.query_id.clone());
 
     if multiplicity == ChildMultiplicity::Single {
