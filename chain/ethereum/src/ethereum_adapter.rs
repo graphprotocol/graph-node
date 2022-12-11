@@ -1075,6 +1075,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let web3 = Arc::clone(&self.web3);
         let logger = logger.clone();
         let block_hash = block.hash.expect("block is missing block hash");
+        let metrics = self.metrics.cheap_clone();
+        let provider = self.provider.clone();
 
         // The early return is necessary for correctness, otherwise we'll
         // request an empty batch which is not valid in JSON-RPC.
@@ -1096,6 +1098,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     web3.cheap_clone(),
                     tx_hash,
                     block_hash,
+                    metrics.cheap_clone(),
+                    provider.clone(),
                     logger.cheap_clone(),
                 )
             })
@@ -1828,6 +1832,8 @@ async fn fetch_transaction_receipt_with_retry(
     web3: Arc<Web3<Transport>>,
     transaction_hash: H256,
     block_hash: H256,
+    provider_metrics: Arc<ProviderEthRpcMetrics>,
+    provider: String,
     logger: Logger,
 ) -> Result<Arc<TransactionReceipt>, IngestorError> {
     let logger = logger.cheap_clone();
@@ -1837,10 +1843,30 @@ async fn fetch_transaction_receipt_with_retry(
     );
     retry(retry_log_message, &logger)
         .limit(ENV_VARS.request_retries)
-        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-        .run(move || web3.eth().transaction_receipt(transaction_hash).boxed())
-        .await
+        .timeout_secs(ENV_VARS.json_rpc_timeout_get_txn_receipt.as_secs())
+        .run(move || {
+            let web3 = web3.cheap_clone();
+            let provider_metrics = provider_metrics.clone();
+            let provider = provider.clone();
+            let start = Instant::now();
+
+            async move {
+                let result = web3
+                    .eth()
+                    .transaction_receipt(transaction_hash)
+                    .boxed()
+                    .await;
+                let elapsed = start.elapsed().as_secs_f64();
+                provider_metrics.observe_request(elapsed, "eth_getTransactionReceipt", &provider);
+                //TODO(datcm): add subgraph metrics
+                if let Err(_) = &result {
+                    provider_metrics.add_error("eth_getTransactionReceipt", &provider);
+                }
+                result
+            }
+        })
         .map_err(|_timeout| anyhow!(block_hash).into())
+        .await
         .and_then(move |some_receipt| {
             resolve_transaction_receipt(some_receipt, transaction_hash, block_hash, logger)
         })
@@ -2005,6 +2031,8 @@ async fn get_transaction_receipts_for_transaction_hashes(
                 web3.cheap_clone(),
                 *transaction_hash,
                 *block_hash,
+                adapter.metrics.cheap_clone(),
+                adapter.provider.clone(),
                 logger.cheap_clone(),
             );
             receipt_futures.push(receipt_future)
