@@ -499,7 +499,7 @@ fn execute_root_selection_set(
     ctx: &ExecutionContext<impl Resolver>,
     selection_set: &a::SelectionSet,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let trace = Trace::root(ctx.query.query_text.clone());
+    let trace = Trace::root(ctx.query.query_text.clone(), ctx.trace);
     // Execute the root selection set against the root query type
     execute_selection_set(resolver, ctx, make_root_node(), trace, selection_set)
 }

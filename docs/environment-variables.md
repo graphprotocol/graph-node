@@ -123,7 +123,14 @@ those.
 - `SILENT_GRAPHQL_VALIDATIONS`: If `ENABLE_GRAPHQL_VALIDATIONS` is enabled, you are also able to just
   silently print the GraphQL validation errors, without failing the actual query. Note: queries
   might still fail as part of the later stage validations running, during GraphQL engine execution.
-- `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`: disables the ability to use AND/OR filters. This is useful if we want to disable filters because of performance reasons.
+- `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`: disables the ability to use AND/OR
+  filters. This is useful if we want to disable filters because of
+  performance reasons.
+- `GRAPH_GRAPHQL_TRACE_TOKEN`: the token to use to enable query tracing for
+  a GraphQL request. If this is set, requests that have a header
+  `X-GraphTraceQuery` set to this value will include a trace of the SQL
+  queries that were run. Defaults to the empty string which disables
+  tracing.
 
 ### GraphQL caching
 
@@ -201,7 +208,7 @@ those.
   identified as unused, `graph-node` will wait at least this long before
   actually deleting the data (value is in minutes, defaults to 360, i.e. 6
   hours)
-- `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`: enables indexing of subgraphs which 
+- `GRAPH_ALLOW_NON_DETERMINISTIC_IPFS`: enables indexing of subgraphs which
   use `ipfs.cat` as part of subgraph mappings. **This is an experimental
   feature which is not deterministic, and will be removed in future**.
 - `GRAPH_STORE_BATCH_TARGET_DURATION`: How long batch operations during

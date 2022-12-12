@@ -91,7 +91,14 @@ impl Serialize for QueryResults {
         if has_errors {
             len += 1;
         }
-
+        let first_trace = self
+            .results
+            .iter()
+            .find(|r| !r.trace.is_none())
+            .map(|r| &r.trace);
+        if first_trace.is_some() {
+            len += 1;
+        }
         let mut state = serializer.serialize_struct("QueryResults", len)?;
 
         // Serialize data.
@@ -127,6 +134,9 @@ impl Serialize for QueryResults {
             state.serialize_field("errors", &SerError(self))?;
         }
 
+        if let Some(trace) = first_trace {
+            state.serialize_field("trace", trace)?;
+        }
         state.end()
     }
 }

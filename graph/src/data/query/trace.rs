@@ -3,11 +3,9 @@ use std::{
     time::Duration,
 };
 
-use serde::Serialize;
+use serde::{ser::SerializeMap, Serialize};
 
-use crate::env::ENV_VARS;
-
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub enum Trace {
     None,
     Root {
@@ -31,8 +29,8 @@ impl Default for Trace {
 }
 
 impl Trace {
-    pub fn root(query: Arc<String>) -> Trace {
-        if ENV_VARS.log_sql_timing() || ENV_VARS.log_gql_timing() {
+    pub fn root(query: Arc<String>, do_trace: bool) -> Trace {
+        if do_trace {
             Trace::Root {
                 query,
                 elapsed: Mutex::new(Duration::from_millis(0)),
@@ -71,6 +69,52 @@ impl Trace {
             }
             (s, t) => {
                 unreachable!("can not add child self: {:#?} trace: {:#?}", s, t)
+            }
+        }
+    }
+
+    pub fn is_none(&self) -> bool {
+        match self {
+            Trace::None => true,
+            Trace::Root { .. } | Trace::Query { .. } => false,
+        }
+    }
+}
+
+impl Serialize for Trace {
+    fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Trace::None => ser.serialize_none(),
+            Trace::Root {
+                query,
+                elapsed,
+                children,
+            } => {
+                let mut map = ser.serialize_map(Some(children.len() + 2))?;
+                map.serialize_entry("query", query)?;
+                map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
+                for (child, trace) in children {
+                    map.serialize_entry(child, trace)?;
+                }
+                map.end()
+            }
+            Trace::Query {
+                query,
+                elapsed,
+                entity_count,
+                children,
+            } => {
+                let mut map = ser.serialize_map(Some(children.len() + 3))?;
+                map.serialize_entry("query", query)?;
+                map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
+                map.serialize_entry("entity_count", entity_count)?;
+                for (child, trace) in children {
+                    map.serialize_entry(child, trace)?;
+                }
+                map.end()
             }
         }
     }

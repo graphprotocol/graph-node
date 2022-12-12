@@ -87,6 +87,11 @@ pub struct EnvVarsGraphQl {
     /// Set by the flag `GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS`. Off by default.
     /// Disables AND/OR filters
     pub disable_bool_filters: bool,
+    /// Set by `GRAPH_GRAPHQL_TRACE_TOKEN`, the token to use to enable query
+    /// tracing for a GraphQL request. If this is set, requests that have a
+    /// header `X-GraphTraceQuery` set to this value will include a trace of
+    /// the SQL queries that were run.
+    pub query_trace_token: String,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -132,6 +137,7 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
             error_result_size: x.error_result_size.0 .0,
             max_operations_per_connection: x.max_operations_per_connection,
             disable_bool_filters: x.disable_bool_filters.0,
+            query_trace_token: x.query_trace_token,
         }
     }
 }
@@ -179,4 +185,6 @@ pub struct InnerGraphQl {
     max_operations_per_connection: usize,
     #[envconfig(from = "GRAPH_GRAPHQL_DISABLE_BOOL_FILTERS", default = "false")]
     pub disable_bool_filters: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_GRAPHQL_TRACE_TOKEN", default = "")]
+    query_trace_token: String,
 }

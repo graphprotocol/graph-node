@@ -301,7 +301,7 @@ where
                     let subscription = Subscription {
                         // Subscriptions currently do not benefit from the generational cache
                         // anyways, so don't bother passing a network.
-                        query: Query::new(query, variables),
+                        query: Query::new(query, variables, false),
                     };
 
                     debug!(logger, "Start operation";

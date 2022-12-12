@@ -446,6 +446,7 @@ async fn execute_subgraph_query_internal(
     )
     .unwrap();
     let network = Some(status[0].chains[0].network.clone());
+    let trace = query.trace;
     let query = return_err!(PreparedQuery::new(
         &logger,
         schema,
@@ -489,6 +490,7 @@ async fn execute_subgraph_query_internal(
                     load_manager: LOAD_MANAGER.clone(),
                     max_first: std::u32::MAX,
                     max_skip: std::u32::MAX,
+                    trace,
                 },
             )
             .await,

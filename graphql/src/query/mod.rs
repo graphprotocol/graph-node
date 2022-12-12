@@ -1,4 +1,4 @@
-use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult, ENV_VARS};
+use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -27,6 +27,9 @@ pub struct QueryExecutionOptions<R> {
     pub max_skip: u32,
 
     pub load_manager: Arc<LoadManager>,
+
+    /// Whether to include an execution trace in the result
+    pub trace: bool,
 }
 
 /// Executes a query and returns a result.
@@ -49,7 +52,7 @@ where
         max_first: options.max_first,
         max_skip: options.max_skip,
         cache_status: Default::default(),
-        trace: ENV_VARS.log_sql_timing(),
+        trace: options.trace,
     });
 
     if !query.is_query() {

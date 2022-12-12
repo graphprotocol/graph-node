@@ -220,6 +220,7 @@ impl TestContext {
         let query = Query::new(
             graphql_parser::parse_query(query).unwrap().into_static(),
             None,
+            false,
         );
         let query_res = self.graphql_runner.clone().run_query(query, target).await;
         query_res.first().unwrap().duplicate().to_result()

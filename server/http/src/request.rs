@@ -4,7 +4,7 @@ use hyper::body::Bytes;
 use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
 
-pub fn parse_graphql_request(body: &Bytes) -> Result<Query, GraphQLServerError> {
+pub fn parse_graphql_request(body: &Bytes, trace: bool) -> Result<Query, GraphQLServerError> {
     // Parse request body as JSON
     let json: serde_json::Value = serde_json::from_slice(body)
         .map_err(|e| GraphQLServerError::ClientError(format!("{}", e)))?;
@@ -42,7 +42,7 @@ pub fn parse_graphql_request(body: &Bytes) -> Result<Query, GraphQLServerError> 
         )),
     }?;
 
-    Ok(Query::new(document, variables))
+    Ok(Query::new(document, variables, trace))
 }
 
 #[cfg(test)]
@@ -66,33 +66,35 @@ mod tests {
 
     #[test]
     fn rejects_invalid_json() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from("!@#)%"));
+        let request = parse_graphql_request(&hyper::body::Bytes::from("!@#)%"), false);
         request.expect_err("Should reject invalid JSON");
     }
 
     #[test]
     fn rejects_json_without_query_field() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from("{}"));
+        let request = parse_graphql_request(&hyper::body::Bytes::from("{}"), false);
         request.expect_err("Should reject JSON without query field");
     }
 
     #[test]
     fn rejects_json_with_non_string_query_field() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from("{\"query\": 5}"));
+        let request = parse_graphql_request(&hyper::body::Bytes::from("{\"query\": 5}"), false);
         request.expect_err("Should reject JSON with a non-string query field");
     }
 
     #[test]
     fn rejects_broken_queries() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from("{\"query\": \"foo\"}"));
+        let request =
+            parse_graphql_request(&hyper::body::Bytes::from("{\"query\": \"foo\"}"), false);
         request.expect_err("Should reject broken queries");
     }
 
     #[test]
     fn accepts_valid_queries() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from(
-            "{\"query\": \"{ user { name } }\"}",
-        ));
+        let request = parse_graphql_request(
+            &hyper::body::Bytes::from("{\"query\": \"{ user { name } }\"}"),
+            false,
+        );
         let query = request.expect("Should accept valid queries");
         assert_eq!(
             query.document,
@@ -104,13 +106,16 @@ mod tests {
 
     #[test]
     fn accepts_null_variables() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from(
-            "\
+        let request = parse_graphql_request(
+            &hyper::body::Bytes::from(
+                "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": null \
                  }",
-        ));
+            ),
+            false,
+        );
         let query = request.expect("Should accept null variables");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }")
@@ -122,27 +127,33 @@ mod tests {
 
     #[test]
     fn rejects_non_map_variables() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from(
-            "\
+        let request = parse_graphql_request(
+            &hyper::body::Bytes::from(
+                "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": 5 \
                  }",
-        ));
+            ),
+            false,
+        );
         request.expect_err("Should reject non-map variables");
     }
 
     #[test]
     fn parses_variables() {
-        let request = parse_graphql_request(&hyper::body::Bytes::from(
-            "\
+        let request = parse_graphql_request(
+            &hyper::body::Bytes::from(
+                "\
                  {\
                  \"query\": \"{ user { name } }\", \
                  \"variables\": { \
                  \"string\": \"s\", \"map\": {\"k\": \"v\"}, \"int\": 5 \
                  } \
                  }",
-        ));
+            ),
+            false,
+        );
         let query = request.expect("Should accept valid queries");
 
         let expected_query = graphql_parser::parse_query("{ user { name } }")

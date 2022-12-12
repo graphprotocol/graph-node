@@ -123,6 +123,7 @@ where
             .unwrap_or(state);
 
         let max_depth = max_depth.unwrap_or(ENV_VARS.graphql.max_depth);
+        let trace = query.trace;
         let query = crate::execution::Query::new(
             &self.logger,
             schema,
@@ -168,6 +169,7 @@ where
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
                     load_manager: self.load_manager.clone(),
+                    trace,
                 },
             )
             .await;

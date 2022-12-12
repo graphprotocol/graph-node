@@ -34,9 +34,9 @@ use graph::{
 };
 use graph_graphql::{prelude::*, subscription::execute_subscription};
 use test_store::{
-    deployment_state, execute_subgraph_query_with_deadline, graphql_metrics, revert_block,
-    run_test_sequentially, transact_errors, Store, BLOCK_ONE, GENESIS_PTR, LOAD_MANAGER, LOGGER,
-    METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
+    deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline,
+    graphql_metrics, revert_block, run_test_sequentially, transact_errors, Store, BLOCK_ONE,
+    GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
 
 const NETWORK_NAME: &str = "fake_network";
@@ -363,7 +363,7 @@ async fn execute_query_document_with_variables(
         METRICS_REGISTRY.clone(),
     ));
     let target = QueryTarget::Deployment(id.clone(), Default::default());
-    let query = Query::new(query, variables);
+    let query = Query::new(query, variables, false);
 
     runner
         .run_query_with_complexity(query, target, None, None, None, None)
@@ -464,7 +464,7 @@ where
                     METRICS_REGISTRY.clone(),
                 ));
                 let target = QueryTarget::Deployment(id.clone(), Default::default());
-                let query = Query::new(query, variables);
+                let query = Query::new(query, variables, false);
 
                 runner
                     .run_query_with_complexity(query, target, max_complexity, None, None, None)
@@ -497,6 +497,7 @@ async fn run_subscription(
     let query = Query::new(
         graphql_parser::parse_query(query).unwrap().into_static(),
         None,
+        false,
     );
     let options = SubscriptionExecutionOptions {
         logger: logger.clone(),
@@ -1254,6 +1255,7 @@ fn instant_timeout() {
                 .unwrap()
                 .into_static(),
             None,
+            false,
         );
 
         match first_result(
@@ -2175,7 +2177,7 @@ fn can_query_with_and_filter() {
           name
           id
         }
-      }      
+      }
     ";
 
     run_query(QUERY, |result, _| {
@@ -2259,5 +2261,28 @@ fn can_query_with_or_implicit_and_filter() {
         };
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
+    })
+}
+
+#[test]
+fn trace_works() {
+    run_test_sequentially(|store| async move {
+        let deployment = setup_readonly(store.as_ref()).await;
+        let query = Query::new(
+            graphql_parser::parse_query("query { musicians(first: 100) { name } }")
+                .unwrap()
+                .into_static(),
+            None,
+            true,
+        );
+
+        let result = execute_subgraph_query(
+            query,
+            QueryTarget::Deployment(deployment.hash.into(), Default::default()),
+        )
+        .await;
+
+        let trace = &result.first().unwrap().trace;
+        assert!(!trace.is_none(), "result has a trace");
     })
 }

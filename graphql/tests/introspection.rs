@@ -560,6 +560,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
     let query = Query::new(
         graphql_parser::parse_query(query).unwrap().into_static(),
         None,
+        false,
     );
 
     // Execute it
@@ -570,6 +571,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
         load_manager: LOAD_MANAGER.clone(),
+        trace: false,
     };
 
     let schema = Arc::new(ApiSchema::from_api_schema(schema).unwrap());

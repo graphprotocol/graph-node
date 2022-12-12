@@ -132,14 +132,16 @@ pub struct Query {
     pub shape_hash: u64,
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
+    pub trace: bool,
     _force_use_of_new: (),
 }
 
 impl Query {
-    pub fn new(document: q::Document, variables: Option<QueryVariables>) -> Self {
+    pub fn new(document: q::Document, variables: Option<QueryVariables>, trace: bool) -> Self {
         let shape_hash = shape_hash(&document);
 
-        let (query_text, variables_text) = if ENV_VARS.log_gql_timing()
+        let (query_text, variables_text) = if trace
+            || ENV_VARS.log_gql_timing()
             || (ENV_VARS.graphql.enable_validations && ENV_VARS.graphql.silent_graphql_validations)
         {
             (
@@ -158,6 +160,7 @@ impl Query {
             shape_hash,
             query_text: Arc::new(query_text),
             variables_text: Arc::new(variables_text),
+            trace,
             _force_use_of_new: (),
         }
     }

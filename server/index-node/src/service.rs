@@ -160,6 +160,7 @@ where
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,
                 load_manager,
+                trace: false,
             };
             let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);
@@ -355,7 +356,7 @@ impl ValidatedRequest {
             )),
         }?;
 
-        let query = Query::new(document, variables);
+        let query = Query::new(document, variables, false);
         let bearer_token = bearer_token(headers)
             .map(<[u8]>::to_vec)
             .map(String::from_utf8)

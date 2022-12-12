@@ -58,6 +58,7 @@ pub async fn run(
     let query = Query::new(
         document,
         Some(QueryVariables::new(HashMap::from_iter(vars))),
+        true,
     );
 
     let res = runner.run_query(query, target).await;
