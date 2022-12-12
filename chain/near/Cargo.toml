@@ -7,7 +7,7 @@ edition.workspace = true
 tonic-build = { version = "0.7.1", features = ["prost"] }
 
 [dependencies]
-base64 = "0.13"
+base64 = "0.20"
 graph = { path = "../../graph" }
 prost = "0.10.1"
 prost-types = "0.10.1"
