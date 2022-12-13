@@ -78,6 +78,14 @@ impl QueryResults {
     pub fn traces(&self) -> Vec<&Trace> {
         self.results.iter().map(|res| &res.trace).collect()
     }
+
+    pub fn errors(&self) -> Vec<QueryError> {
+        self.results
+            .iter()
+            .map(|r| r.errors.clone())
+            .flatten()
+            .collect()
+    }
 }
 
 impl Serialize for QueryResults {
