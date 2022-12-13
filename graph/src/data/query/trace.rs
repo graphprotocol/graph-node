@@ -5,11 +5,15 @@ use std::{
 
 use serde::{ser::SerializeMap, Serialize};
 
+use crate::prelude::CheapClone;
+
 #[derive(Debug)]
 pub enum Trace {
     None,
     Root {
         query: Arc<String>,
+        variables: Arc<String>,
+        query_id: String,
         elapsed: Mutex<Duration>,
         children: Vec<(String, Trace)>,
     },
@@ -29,10 +33,17 @@ impl Default for Trace {
 }
 
 impl Trace {
-    pub fn root(query: Arc<String>, do_trace: bool) -> Trace {
+    pub fn root(
+        query: &Arc<String>,
+        variables: &Arc<String>,
+        query_id: &str,
+        do_trace: bool,
+    ) -> Trace {
         if do_trace {
             Trace::Root {
-                query,
+                query: query.cheap_clone(),
+                variables: variables.cheap_clone(),
+                query_id: query_id.to_string(),
                 elapsed: Mutex::new(Duration::from_millis(0)),
                 children: Vec::new(),
             }
@@ -90,11 +101,17 @@ impl Serialize for Trace {
             Trace::None => ser.serialize_none(),
             Trace::Root {
                 query,
+                variables,
+                query_id,
                 elapsed,
                 children,
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 2))?;
                 map.serialize_entry("query", query)?;
+                if !variables.is_empty() && variables.as_str() != "{}" {
+                    map.serialize_entry("variables", variables)?;
+                }
+                map.serialize_entry("query_id", query_id)?;
                 map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
