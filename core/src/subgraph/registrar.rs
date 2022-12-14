@@ -88,8 +88,7 @@ where
         // - The event stream sees a Remove event for subgraph B, but the table query finds that
         //   subgraph B has already been removed.
         // The `handle_assignment_events` function handles these cases by ignoring AlreadyRunning
-        // (on subgraph start) or NotRunning (on subgraph stop) error types, which makes the
-        // operations idempotent.
+        // (on subgraph start) which makes the operations idempotent. Subgraph stop is already idempotent.
 
         // Start event stream
         let assignment_event_stream = self.assignment_events();
@@ -455,7 +454,6 @@ async fn handle_assignment_event(
             node_id: _,
         } => match provider.stop(deployment).await {
             Ok(()) => Ok(()),
-            Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
             Err(e) => Err(CancelableError::Error(e)),
         },
     }
