@@ -5,7 +5,7 @@ use std::{
 
 use serde::{ser::SerializeMap, Serialize};
 
-use crate::prelude::CheapClone;
+use crate::{components::store::BlockNumber, prelude::CheapClone};
 
 #[derive(Debug)]
 pub enum Trace {
@@ -14,6 +14,7 @@ pub enum Trace {
         query: Arc<String>,
         variables: Arc<String>,
         query_id: String,
+        block: BlockNumber,
         elapsed: Mutex<Duration>,
         children: Vec<(String, Trace)>,
     },
@@ -37,6 +38,7 @@ impl Trace {
         query: &Arc<String>,
         variables: &Arc<String>,
         query_id: &str,
+        block: BlockNumber,
         do_trace: bool,
     ) -> Trace {
         if do_trace {
@@ -44,6 +46,7 @@ impl Trace {
                 query: query.cheap_clone(),
                 variables: variables.cheap_clone(),
                 query_id: query_id.to_string(),
+                block,
                 elapsed: Mutex::new(Duration::from_millis(0)),
                 children: Vec::new(),
             }
@@ -103,6 +106,7 @@ impl Serialize for Trace {
                 query,
                 variables,
                 query_id,
+                block,
                 elapsed,
                 children,
             } => {
@@ -112,6 +116,7 @@ impl Serialize for Trace {
                     map.serialize_entry("variables", variables)?;
                 }
                 map.serialize_entry("query_id", query_id)?;
+                map.serialize_entry("block", block)?;
                 map.serialize_entry("elapsed_ms", &elapsed.lock().unwrap().as_millis())?;
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;

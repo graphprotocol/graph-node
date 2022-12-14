@@ -503,6 +503,7 @@ fn execute_root_selection_set(
         &ctx.query.query_text,
         &ctx.query.variables_text,
         &ctx.query.query_id,
+        resolver.block_number(),
         ctx.trace,
     );
     // Execute the root selection set against the root query type
