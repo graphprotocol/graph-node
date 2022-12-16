@@ -1,5 +1,9 @@
 import { ethereum, dataSource, BigInt, Bytes } from '@graphprotocol/graph-ts'
+import { TestEvent } from '../generated/Contract/Contract'
 import { IpfsFile, IpfsFile1 } from '../generated/schema'
+
+// CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
+const KNOWN_CID = "QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq"
 
 export function handleBlock(block: ethereum.Block): void {
   let entity = new IpfsFile("onchain")
@@ -9,9 +13,7 @@ export function handleBlock(block: ethereum.Block): void {
   // This will create the same data source twice, once at block 0 and another at block 2.
   // The creation at block 2 should be detected as a duplicate and therefore a noop.
   if (block.number == BigInt.fromI32(0) || block.number == BigInt.fromI32(2)) {
-    // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
-    // `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
-    dataSource.create("File", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
+    dataSource.create("File", [KNOWN_CID])
   }
 
   if (block.number == BigInt.fromI32(1)) {
@@ -19,7 +21,7 @@ export function handleBlock(block: ethereum.Block): void {
     // So the ds created at block 0 will have been processed.
     //
     // Test that onchain data sources cannot read offchain data.
-    assert(IpfsFile.load("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ") == null);
+    assert(IpfsFile.load(KNOWN_CID) == null);
 
     // Test that using an invalid CID will be ignored
     dataSource.create("File", ["hi, I'm not valid"])
@@ -30,14 +32,18 @@ export function handleBlock(block: ethereum.Block): void {
   // to test whether same cid is triggered across different data source.
   if (block.number == BigInt.fromI32(3)) {
     // Test that onchain data sources cannot read offchain data (again, but this time more likely to hit the DB than the write queue).
-    assert(IpfsFile.load("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ") == null);
+    assert(IpfsFile.load(KNOWN_CID) == null);
 
-    dataSource.create("File1", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
+    dataSource.create("File1", [KNOWN_CID])
   }
+}
 
-  // Will fail the subgraph when processed due to mismatch in the entity type and 'entities'.
-  if (block.number == BigInt.fromI32(5)) {
-    dataSource.create("File2", ["QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ"])
+export function handleTestEvent(event: TestEvent): void {
+  let command = event.params.testCommand;
+
+  if (command == "createFile2") {
+    // Will fail the subgraph when processed due to mismatch in the entity type and 'entities'.
+    dataSource.create("File2", [KNOWN_CID])
   }
 }
 

@@ -24,6 +24,7 @@ hex = "0.4.3"
 serde_yaml = "0.8"
 hyper = "0.14"
 serde = "1.0"
+assert-json-diff = "2.0.2"
 
 [dev-dependencies]
 bollard = "0.10"
