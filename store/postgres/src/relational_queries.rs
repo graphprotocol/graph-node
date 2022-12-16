@@ -47,6 +47,9 @@ use crate::{
 /// Those are columns that we always want to fetch from the database.
 const BASE_SQL_COLUMNS: [&'static str; 2] = ["id", "vid"];
 
+/// The maximum number of bind variables that can be used in a query
+const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
+
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
@@ -1694,6 +1697,28 @@ impl<'a> InsertQuery<'a> {
             }
         }
         hashmap.into_iter().map(|(_key, value)| value).collect()
+    }
+
+    /// Return the maximum number of entities that can be inserted with one
+    /// invocation of `InsertQuery`. The number makes it so that we do not
+    /// exceed the maximum number of bind variables that can be used in a
+    /// query, and depends on what columns `table` has and how they get put
+    /// into the query
+    pub fn chunk_size(table: &Table) -> usize {
+        let mut count = 1;
+        for column in table.columns.iter() {
+            // This code depends closely on how `walk_ast` and `QueryValue`
+            // put values into bind variables
+            if let Some(fields) = &column.fulltext_fields {
+                // Fulltext fields use one bind variable for each field that
+                // gets put into the index
+                count += fields.len()
+            } else {
+                // All other values use one bind variable
+                count += 1
+            }
+        }
+        POSTGRES_MAX_PARAMETERS / count
     }
 }
 
