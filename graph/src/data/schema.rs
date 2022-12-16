@@ -163,24 +163,27 @@ impl TryFrom<&str> for FulltextLanguage {
 }
 
 impl FulltextLanguage {
-    pub fn as_str(&self) -> &'static str {
+    /// Return the language as a valid SQL string. The string is safe to
+    /// directly use verbatim in a query, i.e., doesn't require being passed
+    /// through a bind variable
+    pub fn as_sql(&self) -> &'static str {
         match self {
-            Self::Simple => "simple",
-            Self::Danish => "danish",
-            Self::Dutch => "dutch",
-            Self::English => "english",
-            Self::Finnish => "finnish",
-            Self::French => "french",
-            Self::German => "german",
-            Self::Hungarian => "hungarian",
-            Self::Italian => "italian",
-            Self::Norwegian => "norwegian",
-            Self::Portugese => "portugese",
-            Self::Romanian => "romanian",
-            Self::Russian => "russian",
-            Self::Spanish => "spanish",
-            Self::Swedish => "swedish",
-            Self::Turkish => "turkish",
+            Self::Simple => "'simple'",
+            Self::Danish => "'danish'",
+            Self::Dutch => "'dutch'",
+            Self::English => "'english'",
+            Self::Finnish => "'finnish'",
+            Self::French => "'french'",
+            Self::German => "'german'",
+            Self::Hungarian => "'hungarian'",
+            Self::Italian => "'italian'",
+            Self::Norwegian => "'norwegian'",
+            Self::Portugese => "'portugese'",
+            Self::Romanian => "'romanian'",
+            Self::Russian => "'russian'",
+            Self::Spanish => "'spanish'",
+            Self::Swedish => "'swedish'",
+            Self::Turkish => "'turkish'",
         }
     }
 }
