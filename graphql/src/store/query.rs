@@ -36,6 +36,9 @@ pub(crate) fn build_query<'a>(
     let entity = entity.into();
     let is_conn = is_connection_type(entity.name());
     println!("is_conn: {}", is_conn);
+    for (name, _) in field.arguments.iter() {
+        println!("{} {name}", field.name);
+      }
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names.get(object);
