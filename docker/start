@@ -32,12 +32,12 @@ save_coredumps() {
 
 wait_for_ipfs() {
     # Take the IPFS URL in $1 apart and extract host and port. If no explicit
-    # host is given, use 443 for https, and 80 otherwise
-    if [[ "$1" =~ ^((https?)://)?([^:/]+)(:([0-9]+))? ]]
+    # port is given, use 443 for https, and 80 otherwise
+    if [[ "$1" =~ ^((https?)://)?((.*)@)?([^:/]+)(:([0-9]+))? ]]
     then
         proto=${BASH_REMATCH[2]:-http}
-        host=${BASH_REMATCH[3]}
-        port=${BASH_REMATCH[5]}
+        host=${BASH_REMATCH[5]}
+        port=${BASH_REMATCH[7]}
         if [ -z "$port" ]
         then
             [ "$proto" = "https" ] && port=443 || port=80
