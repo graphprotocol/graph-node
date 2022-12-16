@@ -857,6 +857,7 @@ impl Transform {
             }
         }
 
+        println!("arguments: {:?}", arguments);
         // see: graphql-bug-compat
         // avoids error 'unknown argument on field'
         if defined_args < arguments.len() {
@@ -864,10 +865,11 @@ impl Transform {
             match sast::get_argument_definitions(ty, field_name) {
                 None => arguments.clear(),
                 Some(arg_defs) => {
+                    println!("arg_defs: {:?}", arg_defs);
                     arguments.retain(|(name, _)| arg_defs.iter().any(|def| &def.name == name))
                 }
             }
-        }
+        } 
 
         if errors.is_empty() {
             Ok(())
