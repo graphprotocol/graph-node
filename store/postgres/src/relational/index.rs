@@ -38,17 +38,14 @@ impl Display for Method {
 
 impl Method {
     fn parse(method: String) -> Self {
-        match Self::try_from(method.as_str()) {
-            Ok(m) => m,
-            Err(_) => Method::Unknown(method),
-        }
+        method.parse().unwrap_or_else(|()| Method::Unknown(method))
     }
 }
 
-impl<'a> TryFrom<&'a str> for Method {
-    type Error = &'a str;
+impl std::str::FromStr for Method {
+    type Err = ();
 
-    fn try_from(method: &'a str) -> Result<Self, Self::Error> {
+    fn from_str(method: &str) -> Result<Self, Self::Err> {
         use Method::*;
 
         match method {
@@ -56,7 +53,7 @@ impl<'a> TryFrom<&'a str> for Method {
             "btree" => Ok(BTree),
             "gin" => Ok(Gin),
             "gist" => Ok(Gist),
-            _ => Err(method),
+            _ => Err(()),
         }
     }
 }

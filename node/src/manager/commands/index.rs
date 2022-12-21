@@ -35,15 +35,16 @@ pub async fn create(
     validate_fields(&field_names)?;
     let deployment_locator = search.locate_unique(&pool)?;
     println!("Index creation started. Please wait.");
-    let index_method = Method::try_from(index_method.as_str())
-        .map_err(|_| anyhow!("unknown index method `{}`", index_method))?;
+    let index_method = index_method
+        .parse::<Method>()
+        .map_err(|()| anyhow!("unknown index method `{}`", index_method))?;
     match store
         .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
         .await
     {
         Ok(()) => Ok(()),
         Err(StoreError::Canceled) => {
-            eprintln!("Index creation attempt faield. Please retry.");
+            eprintln!("Index creation attempt failed. Please retry.");
             ::std::process::exit(1);
         }
         Err(other) => Err(anyhow::anyhow!(other)),
