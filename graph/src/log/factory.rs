@@ -1,9 +1,8 @@
-use slog::*;
-
+use super::split::split_logger;
 use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
-use crate::log::split::*;
 use crate::prelude::ENV_VARS;
+use slog::*;
 
 /// Configuration for component-specific logging to Elasticsearch.
 pub struct ElasticComponentLoggerConfig {

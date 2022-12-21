@@ -32,7 +32,7 @@ impl Display for CidFile {
 
 impl CidFile {
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().as_bytes().to_vec()
+        self.to_string().into_bytes()
     }
 }
 
@@ -232,12 +232,10 @@ impl IpfsClient {
 
 #[cfg(test)]
 mod test {
-    use std::str::FromStr;
-
+    use crate::ipfs_client::CidFile;
     use anyhow::anyhow;
     use cid::Cid;
-
-    use crate::ipfs_client::CidFile;
+    use std::str::FromStr;
 
     #[test]
     fn test_cid_parsing() {

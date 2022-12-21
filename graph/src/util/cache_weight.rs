@@ -18,7 +18,9 @@ pub trait CacheWeight {
 
     /// The weight of values pointed to by this value but logically owned by it, which is not
     /// accounted for by `size_of`.
-    fn indirect_weight(&self) -> usize;
+    fn indirect_weight(&self) -> usize {
+        0
+    }
 }
 
 impl<T: CacheWeight> CacheWeight for Option<T> {
@@ -109,36 +111,13 @@ impl CacheWeight for q::Value {
     }
 }
 
-impl CacheWeight for usize {
-    fn indirect_weight(&self) -> usize {
-        0
-    }
-}
-
-impl CacheWeight for EntityType {
-    fn indirect_weight(&self) -> usize {
-        0
-    }
-}
-
-impl CacheWeight for EntityKey {
-    fn indirect_weight(&self) -> usize {
-        self.entity_id.indirect_weight() + self.entity_type.indirect_weight()
-    }
-}
-
-impl CacheWeight for [u8; 32] {
-    fn indirect_weight(&self) -> usize {
-        0
-    }
-}
+impl CacheWeight for usize {}
+impl CacheWeight for EntityType {}
+impl CacheWeight for EntityKey {}
+impl CacheWeight for [u8; 32] {}
 
 #[cfg(test)]
-impl CacheWeight for &'static str {
-    fn indirect_weight(&self) -> usize {
-        0
-    }
-}
+impl CacheWeight for &'static str {}
 
 #[test]
 fn big_decimal_cache_weight() {

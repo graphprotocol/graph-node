@@ -1,5 +1,6 @@
-use std::fmt::{Display, Error, Formatter};
+use strum_macros::Display;
 
+#[derive(Display)]
 pub enum LogCode {
     SubgraphStartFailure,
     SubgraphSyncingFailure,
@@ -9,22 +10,6 @@ pub enum LogCode {
     GraphQlQuerySuccess,
     GraphQlQueryFailure,
     TokioContention,
-}
-
-impl Display for LogCode {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let value = match self {
-            LogCode::SubgraphStartFailure => "SubgraphStartFailure",
-            LogCode::SubgraphSyncingFailure => "SubgraphSyncingFailure",
-            LogCode::SubgraphSyncingFailureNotRecorded => "SubgraphSyncingFailureNotRecorded",
-            LogCode::BlockIngestionStatus => "BlockIngestionStatus",
-            LogCode::BlockIngestionLagging => "BlockIngestionLagging",
-            LogCode::GraphQlQuerySuccess => "GraphQLQuerySuccess",
-            LogCode::GraphQlQueryFailure => "GraphQLQueryFailure",
-            LogCode::TokioContention => "TokioContention",
-        };
-        write!(f, "{}", value)
-    }
 }
 
 impl_slog_value!(LogCode, "{}");

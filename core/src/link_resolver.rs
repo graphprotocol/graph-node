@@ -49,7 +49,7 @@ fn retry_policy<I: Send + Sync>(
 /// case multiple clients respond in a timely manner. In addition, we may make
 /// good use of the stat returned.
 async fn select_fastest_client_with_stat(
-    clients: Arc<Vec<Arc<IpfsClient>>>,
+    clients: &[Arc<IpfsClient>],
     logger: Logger,
     api: StatApi,
     path: String,
@@ -139,11 +139,7 @@ impl Debug for LinkResolver {
     }
 }
 
-impl CheapClone for LinkResolver {
-    fn cheap_clone(&self) -> Self {
-        self.clone()
-    }
-}
+impl CheapClone for LinkResolver {}
 
 #[async_trait]
 impl LinkResolverTrait for LinkResolver {
@@ -171,7 +167,7 @@ impl LinkResolverTrait for LinkResolver {
         trace!(logger, "IPFS cache miss"; "hash" => &path);
 
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &self.clients[..],
             logger.cheap_clone(),
             StatApi::Files,
             path.clone(),
@@ -216,7 +212,7 @@ impl LinkResolverTrait for LinkResolver {
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         trace!(logger, "IPFS block get"; "hash" => &link.link);
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &self.clients[..],
             logger.cheap_clone(),
             StatApi::Block,
             link.link.clone(),
@@ -248,7 +244,7 @@ impl LinkResolverTrait for LinkResolver {
         let path = link.link.trim_start_matches("/ipfs/");
 
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &self.clients[..],
             logger.cheap_clone(),
             StatApi::Files,
             path.to_string(),
