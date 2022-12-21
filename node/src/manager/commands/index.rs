@@ -173,9 +173,10 @@ pub async fn list(
         let mut first = true;
         header(&mut term, &indexes, &deployment_locator, entity_name)?;
         for index in &indexes {
-            if !first {
-                writeln!(term, "{:-^76}", "")?;
+            if first {
                 first = false;
+            } else {
+                writeln!(term, "{:-^76}", "")?;
             }
             print_index(&mut term, index)?;
         }
