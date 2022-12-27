@@ -34,7 +34,7 @@ const CHANGE_BLOCK_FILTER_NAME: &str = "BlockChangedFilter";
 const ERROR_POLICY_TYPE: &str = "_SubgraphErrorPolicy_";
 
 /// Built-in scalars
-const RESERVED_TYPES: [&str; 7] = [
+const RESERVED_TYPES: [&str; 10] = [
     "Boolean",
     "ID",
     "Int",
@@ -42,6 +42,9 @@ const RESERVED_TYPES: [&str; 7] = [
     "String",
     "Bytes",
     "BigInt",
+    "Query",
+    "Subscription",
+    "Mutation",
 ];
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -104,9 +107,9 @@ pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema, input_schema)?;
+    enrich_type_fields_with_connections(&mut schema);
     add_query_type(&mut schema, &object_types, &interface_types)?;
     add_subscription_type(&mut schema, &object_types, &interface_types)?;
-    enrich_type_fields_with_connections(&mut schema);
 
     // Remove the `_Schema_` type from the generated schema.
     schema.definitions.retain(|d| match d {
@@ -242,11 +245,11 @@ fn enrich_type_fields_with_connections(schema: &mut Document) {
                                         description: None,
                                         name: format!(
                                             "{}Paginated",
-                                            type_name.to_plural().to_camel_case()
+                                            f.name.to_plural().to_camel_case()
                                         ),
                                         arguments: f.arguments.clone(),
                                         field_type: Type::NonNullType(Box::new(Type::NamedType(
-                                            format!("{}Connection", type_name),
+                                            format!("{}Connection", type_name.to_string()),
                                         ))),
                                         directives: vec![],
                                     },
