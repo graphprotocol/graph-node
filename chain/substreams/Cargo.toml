@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost"] }
+tonic-build = { workspace = true }
 
 [dependencies]
 async-stream = "0.3"
@@ -16,8 +16,8 @@ graph = { path = "../../graph" }
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 lazy_static = "1.2.0"
 serde = "1.0"
-prost = "0.10.4"
-prost-types = "0.10.1"
+prost = { workspace = true }
+prost-types = { workspace = true }
 dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"

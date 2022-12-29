@@ -1,47 +1,54 @@
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SingleBlockRequest {
-    #[prost(message, repeated, tag="6")]
+    #[prost(message, repeated, tag = "6")]
     pub transforms: ::prost::alloc::vec::Vec<::prost_types::Any>,
-    #[prost(oneof="single_block_request::Reference", tags="3, 4, 5")]
+    #[prost(oneof = "single_block_request::Reference", tags = "3, 4, 5")]
     pub reference: ::core::option::Option<single_block_request::Reference>,
 }
 /// Nested message and enum types in `SingleBlockRequest`.
 pub mod single_block_request {
     /// Get the current known canonical version of a block at with this number
+    #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct BlockNumber {
-        #[prost(uint64, tag="1")]
+        #[prost(uint64, tag = "1")]
         pub num: u64,
     }
     /// Get the current block with specific hash and number
+    #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct BlockHashAndNumber {
-        #[prost(uint64, tag="1")]
+        #[prost(uint64, tag = "1")]
         pub num: u64,
-        #[prost(string, tag="2")]
+        #[prost(string, tag = "2")]
         pub hash: ::prost::alloc::string::String,
     }
     /// Get the block that generated a specific cursor
+    #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
     pub struct Cursor {
-        #[prost(string, tag="1")]
+        #[prost(string, tag = "1")]
         pub cursor: ::prost::alloc::string::String,
     }
+    #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Reference {
-        #[prost(message, tag="3")]
+        #[prost(message, tag = "3")]
         BlockNumber(BlockNumber),
-        #[prost(message, tag="4")]
+        #[prost(message, tag = "4")]
         BlockHashAndNumber(BlockHashAndNumber),
-        #[prost(message, tag="5")]
+        #[prost(message, tag = "5")]
         Cursor(Cursor),
     }
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SingleBlockResponse {
-    #[prost(message, optional, tag="1")]
+    #[prost(message, optional, tag = "1")]
     pub block: ::core::option::Option<::prost_types::Any>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Request {
     /// Controls where the stream of blocks will start.
@@ -59,7 +66,7 @@ pub struct Request {
     ///
     /// If `start_cursor` is given, this value is ignored and the stream instead starts
     /// immediately after the Block pointed by the opaque `start_cursor` value.
-    #[prost(int64, tag="1")]
+    #[prost(int64, tag = "1")]
     pub start_block_num: i64,
     /// Controls where the stream of blocks will start which will be immediately after
     /// the Block pointed by this opaque cursor.
@@ -67,32 +74,33 @@ pub struct Request {
     /// Obtain this value from a previously received `Response.cursor`.
     ///
     /// This value takes precedence over `start_block_num`.
-    #[prost(string, tag="2")]
+    #[prost(string, tag = "2")]
     pub cursor: ::prost::alloc::string::String,
     /// When non-zero, controls where the stream of blocks will stop.
     ///
     /// The stream will close **after** that block has passed so the boundary is
     /// **inclusive**.
-    #[prost(uint64, tag="3")]
+    #[prost(uint64, tag = "3")]
     pub stop_block_num: u64,
     /// With final_block_only, you only receive blocks with STEP_FINAL
     /// Default behavior will send blocks as STEP_NEW, with occasional STEP_UNDO
-    #[prost(bool, tag="4")]
+    #[prost(bool, tag = "4")]
     pub final_blocks_only: bool,
-    #[prost(message, repeated, tag="10")]
+    #[prost(message, repeated, tag = "10")]
     pub transforms: ::prost::alloc::vec::Vec<::prost_types::Any>,
 }
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
     /// Chain specific block payload, ex:
-    ///   - sf.eosio.type.v1.Block
-    ///   - sf.ethereum.type.v1.Block
-    ///   - sf.near.type.v1.Block
-    #[prost(message, optional, tag="1")]
+    ///    - sf.eosio.type.v1.Block
+    ///    - sf.ethereum.type.v1.Block
+    ///    - sf.near.type.v1.Block
+    #[prost(message, optional, tag = "1")]
     pub block: ::core::option::Option<::prost_types::Any>,
-    #[prost(enumeration="ForkStep", tag="6")]
+    #[prost(enumeration = "ForkStep", tag = "6")]
     pub step: i32,
-    #[prost(string, tag="10")]
+    #[prost(string, tag = "10")]
     pub cursor: ::prost::alloc::string::String,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
@@ -107,10 +115,35 @@ pub enum ForkStep {
     /// see chain documentation for more details)
     StepFinal = 3,
 }
+impl ForkStep {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            ForkStep::StepUnset => "STEP_UNSET",
+            ForkStep::StepNew => "STEP_NEW",
+            ForkStep::StepUndo => "STEP_UNDO",
+            ForkStep::StepFinal => "STEP_FINAL",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "STEP_UNSET" => Some(Self::StepUnset),
+            "STEP_NEW" => Some(Self::StepNew),
+            "STEP_UNDO" => Some(Self::StepUndo),
+            "STEP_FINAL" => Some(Self::StepFinal),
+            _ => None,
+        }
+    }
+}
 /// Generated client implementations.
 pub mod stream_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct StreamClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -137,6 +170,10 @@ pub mod stream_client {
             let inner = tonic::client::Grpc::new(inner);
             Self { inner }
         }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
@@ -156,19 +193,19 @@ pub mod stream_client {
         {
             StreamClient::new(InterceptedService::new(inner, interceptor))
         }
-        /// Compress requests with `gzip`.
+        /// Compress requests with the given encoding.
         ///
         /// This requires the server to support it otherwise it might respond with an
         /// error.
         #[must_use]
-        pub fn send_gzip(mut self) -> Self {
-            self.inner = self.inner.send_gzip();
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
             self
         }
-        /// Enable decompressing responses with `gzip`.
+        /// Enable decompressing responses.
         #[must_use]
-        pub fn accept_gzip(mut self) -> Self {
-            self.inner = self.inner.accept_gzip();
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
             self
         }
         pub async fn blocks(
@@ -199,6 +236,7 @@ pub mod stream_client {
 pub mod fetch_client {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     #[derive(Debug, Clone)]
     pub struct FetchClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -225,6 +263,10 @@ pub mod fetch_client {
             let inner = tonic::client::Grpc::new(inner);
             Self { inner }
         }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
         pub fn with_interceptor<F>(
             inner: T,
             interceptor: F,
@@ -244,19 +286,19 @@ pub mod fetch_client {
         {
             FetchClient::new(InterceptedService::new(inner, interceptor))
         }
-        /// Compress requests with `gzip`.
+        /// Compress requests with the given encoding.
         ///
         /// This requires the server to support it otherwise it might respond with an
         /// error.
         #[must_use]
-        pub fn send_gzip(mut self) -> Self {
-            self.inner = self.inner.send_gzip();
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
             self
         }
-        /// Enable decompressing responses with `gzip`.
+        /// Enable decompressing responses.
         #[must_use]
-        pub fn accept_gzip(mut self) -> Self {
-            self.inner = self.inner.accept_gzip();
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
             self
         }
         pub async fn block(
@@ -284,10 +326,10 @@ pub mod fetch_client {
 pub mod stream_server {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
-    ///Generated trait containing gRPC methods that should be implemented for use with StreamServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with StreamServer.
     #[async_trait]
     pub trait Stream: Send + Sync + 'static {
-        ///Server streaming response type for the Blocks method.
+        /// Server streaming response type for the Blocks method.
         type BlocksStream: futures_core::Stream<
                 Item = Result<super::Response, tonic::Status>,
             >
@@ -326,16 +368,16 @@ pub mod stream_server {
         {
             InterceptedService::new(Self::new(inner), interceptor)
         }
-        /// Enable decompressing requests with `gzip`.
+        /// Enable decompressing requests with the given encoding.
         #[must_use]
-        pub fn accept_gzip(mut self) -> Self {
-            self.accept_compression_encodings.enable_gzip();
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
             self
         }
-        /// Compress responses with `gzip`, if the client supports it.
+        /// Compress responses with the given encoding, if the client supports it.
         #[must_use]
-        pub fn send_gzip(mut self) -> Self {
-            self.send_compression_encodings.enable_gzip();
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
             self
         }
     }
@@ -429,7 +471,7 @@ pub mod stream_server {
             write!(f, "{:?}", self.0)
         }
     }
-    impl<T: Stream> tonic::transport::NamedService for StreamServer<T> {
+    impl<T: Stream> tonic::server::NamedService for StreamServer<T> {
         const NAME: &'static str = "sf.firehose.v2.Stream";
     }
 }
@@ -437,7 +479,7 @@ pub mod stream_server {
 pub mod fetch_server {
     #![allow(unused_variables, dead_code, missing_docs, clippy::let_unit_value)]
     use tonic::codegen::*;
-    ///Generated trait containing gRPC methods that should be implemented for use with FetchServer.
+    /// Generated trait containing gRPC methods that should be implemented for use with FetchServer.
     #[async_trait]
     pub trait Fetch: Send + Sync + 'static {
         async fn block(
@@ -473,16 +515,16 @@ pub mod fetch_server {
         {
             InterceptedService::new(Self::new(inner), interceptor)
         }
-        /// Enable decompressing requests with `gzip`.
+        /// Enable decompressing requests with the given encoding.
         #[must_use]
-        pub fn accept_gzip(mut self) -> Self {
-            self.accept_compression_encodings.enable_gzip();
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
             self
         }
-        /// Compress responses with `gzip`, if the client supports it.
+        /// Compress responses with the given encoding, if the client supports it.
         #[must_use]
-        pub fn send_gzip(mut self) -> Self {
-            self.send_compression_encodings.enable_gzip();
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
             self
         }
     }
@@ -575,7 +617,7 @@ pub mod fetch_server {
             write!(f, "{:?}", self.0)
         }
     }
-    impl<T: Fetch> tonic::transport::NamedService for FetchServer<T> {
+    impl<T: Fetch> tonic::server::NamedService for FetchServer<T> {
         const NAME: &'static str = "sf.firehose.v2.Fetch";
     }
 }

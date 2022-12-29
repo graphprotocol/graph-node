@@ -4,13 +4,13 @@ version.workspace = true
 edition = "2018"
 
 [build-dependencies]
-tonic-build = { version = "0.7.1", features = ["prost"] }
+tonic-build = { workspace = true }
 graph-chain-common = { path = "../common" }
 
 [dependencies]
 graph = { path = "../../graph" }
-prost = "0.10.1"
-prost-types = "0.10.1"
+prost = { workspace = true }
+prost-types = { workspace = true }
 serde = "1.0"
 anyhow = "1.0"
 semver = "1.0.14"

@@ -11,8 +11,8 @@ jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 serde = "1.0"
-prost = "0.10.4"
-prost-types = "0.10.1"
+prost = { workspace = true }
+prost-types = { workspace = true }
 dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
@@ -29,4 +29,4 @@ test-store = { path = "../../store/test-store" }
 base64 = "0.20.0"
 
 [build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost"] }
+tonic-build = { workspace = true }
