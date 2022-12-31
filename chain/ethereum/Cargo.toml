@@ -11,7 +11,7 @@ jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"
 serde = "1.0"
-prost = "0.10.4"
+prost = "0.11.5"
 prost-types = "0.10.1"
 dirs-next = "2.0"
 anyhow = "1.0"
