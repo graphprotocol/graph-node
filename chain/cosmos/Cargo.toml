@@ -13,7 +13,7 @@ prost = "0.10.1"
 prost-types = "0.10.1"
 serde = "1.0"
 anyhow = "1.0"
-semver = "1.0.14"
+semver = "1.0.16"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
