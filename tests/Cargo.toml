@@ -27,7 +27,7 @@ serde = "1.0"
 
 [dev-dependencies]
 bollard = "0.10"
-anyhow = "1.0.66"
+anyhow = "1.0.68"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 serde_yaml = "0.8"
