@@ -38,7 +38,7 @@ pub(crate) fn build_query<'a>(
     println!("is_conn: {}", is_conn);
     for (name, _) in field.arguments.iter() {
         println!("{} {name}", field.name);
-      }
+    }
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names.get(object);
@@ -54,9 +54,15 @@ pub(crate) fn build_query<'a>(
             .collect(),
     });
     println!("entity_types: {:?}", entity_types);
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
-        .range(build_range(field, max_first, max_skip)?);
-    println!("cursor: {:?}", build_cursor(field, max_first, max_skip));
+
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types);
+
+    if is_conn {
+        query = query.range(build_cursor(field, max_first, max_skip)?);
+    } else {
+        query = query.range(build_range(field, max_first, max_skip)?);
+    }
+
     if let Some(filter) = build_filter(entity, field, schema)? {
         query = query.filter(filter);
     }
@@ -99,20 +105,55 @@ fn build_cursor(
         _ => unreachable!("first is an Int with a default value"),
     };
 
-    let skip = match field.argument_value("skip") {
+    let last = match field.argument_value("last") {
         Some(r::Value::Int(n)) => {
             let n = *n;
             if n >= 0 && n <= (max_skip as i64) {
                 n as u32
             } else {
                 return Err(QueryExecutionError::RangeArgumentsError(
-                    "skip", max_skip, n,
+                    "last", max_skip, n,
                 ));
             }
         }
         Some(r::Value::Null) | None => 0,
-        _ => unreachable!("skip is an Int with a default value"),
+        _ => unreachable!("last is an Int with a default value"),
     };
+
+    let after = match field.argument_value("after") {
+        Some(r::Value::String(s)) => Some(s.clone()),
+        Some(r::Value::Null) | None => None,
+        _ => unreachable!("after is a String"),
+    };
+
+    let before = match field.argument_value("before") {
+        Some(r::Value::String(s)) => Some(s.clone()),
+        Some(r::Value::Null) | None => None,
+        _ => unreachable!("before is a String"),
+    };
+    println!(
+        "first: {}, last: {}, after: {:?}, before: {:?}",
+        first, last, after, before
+    );
+    // Validate compatible input arguments
+    if first > 0 && last > 0 {
+        print!("first > 0 && last > 0");
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "only one of \"first\" and \"last\" may be provided".to_string(),
+        ));
+    } else if before.is_some() && after.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "only one of \"before\" and \"after\" may be provided".to_string(),
+        ));
+    } else if first > 0 && before.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "\"first\" may only be used with \"after\"".to_string(),
+        ));
+    } else if last > 0 && after.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "\"last\" may only be used with \"before\"".to_string(),
+        ));
+    }
 
     Ok(EntityRange {
         first: match is_connection_type(&field.name) {
@@ -121,7 +162,7 @@ fn build_cursor(
             true => Some(first + 1),
             false => Some(first),
         },
-        skip,
+        skip: last,
     })
 }
 
