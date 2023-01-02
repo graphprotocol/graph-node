@@ -1717,7 +1717,7 @@ dependencies = [
  "graphql-parser",
  "hex",
  "ipfs-api",
- "ipfs-api-backend-hyper",
+ "ipfs-api-backend-hyper 0.6.0",
  "lazy_static",
  "lru_time_cache",
  "pretty_assertions",
@@ -2388,7 +2388,7 @@ version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d4854b5cde0a7e935ee4246c5b6c67fbf4961e303963537f10e184a4830bd17"
 dependencies = [
- "ipfs-api-backend-hyper",
+ "ipfs-api-backend-hyper 0.5.0",
 ]
 
 [[package]]
@@ -2404,7 +2404,24 @@ dependencies = [
  "hyper",
  "hyper-multipart-rfc7578",
  "hyper-rustls",
- "ipfs-api-prelude",
+ "ipfs-api-prelude 0.5.0",
+ "thiserror",
+]
+
+[[package]]
+name = "ipfs-api-backend-hyper"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a9d131b408b4caafe1e7c00d410a09ad3eb7e3ab68690cf668e86904b2176b4"
+dependencies = [
+ "async-trait",
+ "base64 0.13.1",
+ "bytes",
+ "futures 0.3.16",
+ "http",
+ "hyper",
+ "hyper-multipart-rfc7578",
+ "ipfs-api-prelude 0.6.0",
  "thiserror",
 ]
 
@@ -2431,6 +2448,31 @@ dependencies = [
  "tokio-util 0.6.7",
  "tracing",
  "typed-builder",
+ "walkdir",
+]
+
+[[package]]
+name = "ipfs-api-prelude"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b74065805db266ba2c6edbd670b23c4714824a955628472b2e46cc9f3a869cb"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "cfg-if 1.0.0",
+ "common-multipart-rfc7578",
+ "dirs",
+ "futures 0.3.16",
+ "http",
+ "multiaddr",
+ "multibase",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "thiserror",
+ "tokio",
+ "tokio-util 0.7.1",
+ "tracing",
  "walkdir",
 ]
 
@@ -2785,6 +2827,24 @@ name = "more-asserts"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0debeb9fcf88823ea64d64e4a815ab1643f33127d995978e099942ce38f25238"
+
+[[package]]
+name = "multiaddr"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b53e0cc5907a5c216ba6584bf74be8ab47d6d6289f72793b2dddbf15dc3bf8c"
+dependencies = [
+ "arrayref",
+ "byteorder",
+ "data-encoding",
+ "multibase",
+ "multihash 0.17.0",
+ "percent-encoding",
+ "serde",
+ "static_assertions",
+ "unsigned-varint 0.7.1",
+ "url",
+]
 
 [[package]]
 name = "multibase"
