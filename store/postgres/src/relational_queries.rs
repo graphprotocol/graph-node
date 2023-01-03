@@ -5,12 +5,12 @@
 ///!
 ///! Code in this module works very hard to minimize the number of allocations
 ///! that it performs
-use diesel::pg::{Pg, PgConnection};
-use diesel::query_builder::{AstPass, QueryFragment, QueryId};
-use diesel::query_dsl::{LoadQuery, RunQueryDsl};
+use diesel::pg::Pg;
+use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
+
+use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
-use diesel::Connection;
 
 use graph::components::store::EntityKey;
 use graph::data::value::Word;
@@ -1474,11 +1474,26 @@ impl<'a> QueryId for FindQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindQuery<'a> {
+    type SqlType = EntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindQuery<'a> {
+//     fn internal_load<'conn>(
+//         self,
+//         conn: &'conn mut PgConnection,
+//     ) -> QueryResult<
+//         <Self as LoadQueryGatWorkaround<
+//             'conn,
+//             'query,
+//             PgConnection,
+//             EntityData,
+//             DefaultLoadingMode,
+//         >>::Ret,
+//     > {
+//         conn.query_by_name(&self)
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 
@@ -1519,11 +1534,15 @@ impl<'a> QueryId for FindChangesQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindChangesQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindChangesQuery<'a> {
+    type SqlType = EntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindChangesQuery<'a> {
+//     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+//         conn.query_by_name(&self)
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 
@@ -1569,11 +1588,28 @@ impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityDeletion> for FindPossibleDeletionsQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityDeletion>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindPossibleDeletionsQuery<'a> {
+    type SqlType = EntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, EntityDeletion>
+//     for FindPossibleDeletionsQuery<'a>
+// {
+//     fn internal_load<'conn>(
+//         self,
+//         conn: &'conn mut PgConnection,
+//     ) -> QueryResult<
+//         <Self as LoadQueryGatWorkaround<
+//             'conn,
+//             'query,
+//             PgConnection,
+//             EntityDeletion,
+//             DefaultLoadingMode,
+//         >>::Ret,
+//     > {
+//         conn.query_by_name(&self)
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
@@ -1625,11 +1661,26 @@ impl<'a> QueryId for FindManyQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FindManyQuery<'a> {
+    type SqlType = EntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindManyQuery<'a> {
+//     fn internal_load<'conn>(
+//         self,
+//         conn: &'conn mut PgConnection,
+//     ) -> QueryResult<
+//         <Self as LoadQueryGatWorkaround<
+//             'conn,
+//             'query,
+//             PgConnection,
+//             EntityData,
+//             DefaultLoadingMode,
+//         >>::Ret,
+//     > {
+//         conn.query_by_name(&self)
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
@@ -1761,12 +1812,27 @@ impl<'a> QueryId for InsertQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for InsertQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-    }
+impl<'a> Query for InsertQuery<'a> {
+    type SqlType = ReturnedEntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, ReturnedEntityData> for InsertQuery<'a> {
+//     fn internal_load<'conn>(
+//         self,
+//         conn: &'conn mut PgConnection,
+//     ) -> QueryResult<
+//         <Self as LoadQueryGatWorkaround<
+//             'conn,
+//             'query,
+//             PgConnection,
+//             ReturnedEntityData,
+//             DefaultLoadingMode,
+//         >>::Ret,
+//     > {
+//         conn.query_by_name(&self)
+//             .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}
 
@@ -1831,11 +1897,28 @@ pub struct ConflictingEntityData {
     pub entity: String,
 }
 
-impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ConflictingEntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for ConflictingEntityQuery<'a> {
+    type SqlType = ConflictingEntityData;
 }
+
+// impl<'a, 'query> LoadQuery<'query, PgConnection, ConflictingEntityData>
+//     for ConflictingEntityQuery<'a>
+// {
+//     fn internal_load<'conn>(
+//         self,
+//         conn: &'conn mut PgConnection,
+//     ) -> QueryResult<
+//         <Self as LoadQueryGatWorkaround<
+//             'conn,
+//             'query,
+//             PgConnection,
+//             ConflictingEntityData,
+//             DefaultLoadingMode,
+//         >>::Ret,
+//     > {
+//         conn.query_by_name(&self)
+//     }
+// }
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
@@ -3158,10 +3241,8 @@ impl<'a> QueryId for FilterQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, EntityData> for FilterQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
-        conn.query_by_name(&self)
-    }
+impl<'a> Query for FilterQuery<'a> {
+    type SqlType = EntityData;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
@@ -3297,11 +3378,8 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-    }
+impl<'a> Query for RevertRemoveQuery<'a> {
+    type SqlType = ReturnedEntityData;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
@@ -3380,11 +3458,8 @@ impl<'a> QueryId for RevertClampQuery<'a> {
     const HAS_STATIC_QUERY_ID: bool = false;
 }
 
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-    }
+impl<'a> Query for RevertClampQuery<'a> {
+    type SqlType = ReturnedEntityData;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}

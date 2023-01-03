@@ -26,6 +26,9 @@ prost = "0.11.5"
 prost-types = "0.11.5"
 tonic = { version = "0.8.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.8.4", features = ["prost"] }
+diesel = { version = "2.0.2", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono", "i-implement-a-third-party-backend-and-opt-into-breaking-changes"] }
+diesel-derive-enum = { version = "2.0.0-rc.0", features = ["postgres"] }
+diesel_derives = "2.0.1"
 
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]

@@ -1,12 +1,12 @@
-use diesel::expression::helper_types::AsExprOf;
 use diesel::expression::{AsExpression, Expression};
+use diesel::helper_types::AsExprOf;
 use diesel::sql_types::Jsonb;
 
 mod operators {
     use diesel::sql_types::Jsonb;
 
     // restrict to backend: Pg
-    diesel_infix_operator!(JsonbMerge, " || ", Jsonb, backend: diesel::pg::Pg);
+    infix_operator!(JsonbMerge, " || ", Jsonb, backend: diesel::pg::Pg);
 }
 
 // This is currently unused, but allowing JSONB merging in the database

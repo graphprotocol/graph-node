@@ -18,4 +18,4 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+diesel = { workspace = true }

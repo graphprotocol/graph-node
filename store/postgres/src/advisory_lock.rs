@@ -22,26 +22,26 @@ use crate::command_support::catalog::Site;
 
 /// Get a lock for running migrations. Blocks until we get
 /// the lock.
-pub(crate) fn lock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn lock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_lock(1)").execute(conn)?;
 
     Ok(())
 }
 
 /// Release the migration lock.
-pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
+pub(crate) fn unlock_migration(conn: &mut PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_unlock(1)").execute(conn)?;
     Ok(())
 }
 
-pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn lock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_lock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
 }
 
-pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_unlock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())
@@ -52,7 +52,7 @@ pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), Stor
 /// got the lock, and `false` if we did not. You don't want to use this
 /// directly. Instead, use `deployment::with_lock`
 pub(crate) fn lock_deployment_session(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
     #[derive(QueryableByName)]
@@ -72,7 +72,7 @@ pub(crate) fn lock_deployment_session(
 
 /// Release the lock acquired with `lock_deployment_session`.
 pub(crate) fn unlock_deployment_session(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
     sql_query(&format!("select pg_advisory_unlock(2, {})", site.id))

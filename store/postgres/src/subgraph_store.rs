@@ -1,14 +1,15 @@
 use diesel::{
+    deserialize::FromSql,
     pg::Pg,
     serialize::Output,
-    sql_types::Text,
-    types::{FromSql, ToSql},
+    serialize::ToSql,
+    sql_types::{self, Text},
 };
+use std::fmt;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{atomic::AtomicU8, Arc, Mutex},
 };
-use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
@@ -53,6 +54,7 @@ use crate::{fork, relational::index::CreateIndex, relational::SqlName};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = sql_types::Text)]
 pub struct Shard(String);
 
 lazy_static! {
@@ -100,14 +102,14 @@ impl fmt::Display for Shard {
 }
 
 impl FromSql<Text, Pg> for Shard {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::backend::RawValue<'_, Pg>) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         Shard::new(s).map_err(Into::into)
     }
 }
 
 impl ToSql<Text, Pg> for Shard {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
@@ -570,7 +572,7 @@ impl SubgraphStoreInner {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -649,7 +651,7 @@ impl SubgraphStoreInner {
         )?;
 
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -1233,12 +1235,12 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph(&name))
+        pconn.transaction(|_| pconn.create_subgraph(&name))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1251,7 +1253,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        pconn.transaction(|_| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })

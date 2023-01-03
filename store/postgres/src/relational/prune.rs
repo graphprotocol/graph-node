@@ -40,7 +40,7 @@ impl TablePair {
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
     fn create(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
@@ -69,7 +69,7 @@ impl TablePair {
     /// concurrently to this copy
     fn copy_final_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         earliest_block: BlockNumber,
         final_block: BlockNumber,
@@ -97,7 +97,7 @@ impl TablePair {
         let mut total_rows: usize = 0;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all rows in `src` in batches of `batch_size`
                 // and copy the ones that are visible to queries at block
                 // heights between `earliest_block` and `final_block`, but
@@ -145,7 +145,7 @@ impl TablePair {
     /// other write activity to the source table is blocked while we copy
     fn copy_nonfinal_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         final_block: BlockNumber,
     ) -> Result<usize, StoreError> {
@@ -168,7 +168,7 @@ impl TablePair {
         let mut total_rows = 0;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`.
@@ -207,7 +207,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, logger: &Logger, conn: &PgConnection) -> Result<(), StoreError> {
+    fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -233,7 +233,7 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|| conn.batch_execute(&query))?;
+        conn.transaction(|conn| conn.batch_execute(&query))?;
 
         Ok(())
     }
@@ -286,7 +286,7 @@ impl Layout {
         &self,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         earliest_block: BlockNumber,
         final_block: BlockNumber,
         prune_ratio: f64,
@@ -308,7 +308,7 @@ impl Layout {
         // Determine which tables are prunable and create a shadow table for
         // them via `TablePair::create`
         let dst_nsp = Namespace::prune(self.site.id);
-        let prunable_tables = conn.transaction(|| -> Result<_, StoreError> {
+        let prunable_tables = conn.transaction(|conn| -> Result<_, StoreError> {
             catalog::recreate_schema(conn, dst_nsp.as_str())?;
 
             let mut prunable_tables: Vec<TablePair> = self
@@ -360,7 +360,7 @@ impl Layout {
             }
 
             for table in prunable_tables {
-                conn.transaction(|| table.switch(logger, conn))?;
+                conn.transaction(|conn| table.switch(logger, conn))?;
                 cancel.check_cancel().map_err(CancelableError::from)?;
             }
 

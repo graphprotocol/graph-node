@@ -47,16 +47,13 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use diesel::sql_types::{Array, Binary};
+    use diesel::sql_types::{Array, Binary, Bool, Nullable};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
-    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
-        pg::Pg,
-        serialize::Output,
-        sql_types::Text,
-        types::{FromSql, ToSql},
+        deserialize::FromSql, pg::Pg, serialize::Output, serialize::ToSql, sql_types::Text,
     };
+    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
@@ -69,9 +66,9 @@ mod data {
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
+    use std::convert::TryFrom;
     use std::fmt;
     use std::iter::FromIterator;
-    use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -294,14 +291,14 @@ mod data {
     }
 
     impl FromSql<Text, Pg> for Storage {
-        fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        fn from_sql(bytes: diesel::backend::RawValue<'_, Pg>) -> diesel::deserialize::Result<Self> {
             let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
             Self::new(s).map_err(Into::into)
         }
     }
 
     impl ToSql<Text, Pg> for Storage {
-        fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
             <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
         }
     }
@@ -331,7 +328,7 @@ mod data {
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
         /// table
-        pub(super) fn create(&self, conn: &PgConnection) -> Result<(), Error> {
+        pub(super) fn create(&self, conn: &mut PgConnection) -> Result<(), Error> {
             fn make_ddl(nsp: &str) -> String {
                 format!(
                     "
@@ -381,7 +378,7 @@ mod data {
 
         pub(super) fn drop_storage(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             name: &str,
         ) -> Result<(), StoreError> {
             match &self {
@@ -397,7 +394,10 @@ mod data {
             }
         }
 
-        pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        pub(super) fn truncate_block_cache(
+            &self,
+            conn: &mut PgConnection,
+        ) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
@@ -406,7 +406,7 @@ mod data {
             Ok(())
         }
 
-        fn truncate_call_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        fn truncate_call_cache(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
                 Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
@@ -421,7 +421,7 @@ mod data {
         /// possibly existing entry. If it is `false`, keep the old entry.
         pub(super) fn upsert_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block: &dyn Block,
             overwrite: bool,
@@ -496,12 +496,10 @@ mod data {
 
         pub(super) fn blocks(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             hashes: &[BlockHash],
         ) -> Result<Vec<json::Value>, Error> {
-            use diesel::dsl::any;
-
             // We need to deal with chain stores where some entries have a
             // toplevel 'block' field and others directly contain what would
             // be in the 'block' field. Make sure we return the contents of
@@ -516,9 +514,10 @@ mod data {
                     b::table
                         .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(Vec::from_iter(
-                            hashes.iter().map(|h| format!("{:x}", h)),
-                        ))))
+                        .filter(
+                            b::hash
+                                .eq_any(Vec::from_iter(hashes.iter().map(|h| format!("{:x}", h)))),
+                        )
                         .load::<json::Value>(conn)
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
@@ -527,7 +526,7 @@ mod data {
                     .filter(
                         blocks
                             .hash()
-                            .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_slice())))),
+                            .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
                     )
                     .load::<json::Value>(conn),
             }
@@ -536,7 +535,7 @@ mod data {
 
         pub(super) fn block_hashes_by_block_number(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             number: BlockNumber,
         ) -> Result<Vec<BlockHash>, Error> {
@@ -567,7 +566,7 @@ mod data {
 
         pub(super) fn confirm_block_hash(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             number: BlockNumber,
             hash: &BlockHash,
@@ -604,7 +603,7 @@ mod data {
         /// ethereum this is a U256 but on different chains it will most likely be different.
         pub(super) fn block_number(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             hash: &BlockHash,
         ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
             const TIMESTAMP_QUERY: &str =
@@ -615,14 +614,14 @@ mod data {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select((b::number, sql(TIMESTAMP_QUERY)))
+                        .select((b::number, sql::<Nullable<Text>>(TIMESTAMP_QUERY)))
                         .filter(b::hash.eq(format!("{:x}", hash)))
                         .first::<(i64, Option<String>)>(conn)
                         .optional()?
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select((blocks.number(), sql(TIMESTAMP_QUERY)))
+                    .select((blocks.number(), sql::<Nullable<Text>>(TIMESTAMP_QUERY)))
                     .filter(blocks.hash().eq(hash.as_slice()))
                     .first::<(i64, Option<String>)>(conn)
                     .optional()?,
@@ -643,7 +642,7 @@ mod data {
         /// `first_block`.
         pub(super) fn missing_parent(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             first_block: i64,
             hash: H256,
@@ -754,7 +753,7 @@ mod data {
         /// hash for the chain
         pub(super) fn chain_head_candidate(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
         ) -> Result<Option<BlockPtr>, Error> {
             use public::ethereum_networks as n;
@@ -792,7 +791,7 @@ mod data {
 
         pub(super) fn ancestor_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
         ) -> Result<Option<json::Value>, Error> {
@@ -884,7 +883,7 @@ mod data {
 
         pub(super) fn delete_blocks_before(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block: i64,
         ) -> Result<usize, Error> {
@@ -914,11 +913,10 @@ mod data {
 
         pub(super) fn delete_blocks_by_hash(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block_hashes: &[&H256],
         ) -> Result<usize, Error> {
-            use diesel::dsl::any;
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
@@ -930,7 +928,7 @@ mod data {
 
                     diesel::delete(b::table)
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(hashes)))
+                        .filter(b::hash.eq_any(hashes))
                         .filter(b::number.gt(0)) // keep genesis
                         .execute(conn)
                         .map_err(Error::from)
@@ -954,7 +952,7 @@ mod data {
 
         pub(super) fn get_call_and_access(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             id: &[u8],
         ) -> Result<Option<(Vec<u8>, bool)>, Error> {
             match self {
@@ -967,7 +965,7 @@ mod data {
                         .inner_join(meta::table)
                         .select((
                             cache::return_value,
-                            sql("CURRENT_DATE > eth_call_meta.accessed_at"),
+                            sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
                         ))
                         .get_result(conn)
                         .optional()
@@ -987,7 +985,7 @@ mod data {
                     .filter(call_cache.id().eq(id))
                     .select((
                         call_cache.return_value(),
-                        sql(&format!(
+                        sql::<Bool>(&format!(
                             "CURRENT_DATE > {}.{}",
                             CallMetaTable::TABLE_NAME,
                             CallMetaTable::ACCESSED_AT
@@ -1001,7 +999,7 @@ mod data {
 
         pub(super) fn get_calls_in_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_ptr: BlockPtr,
         ) -> Result<Vec<CachedEthereumCall>, Error> {
             let block_num = block_ptr.block_number();
@@ -1041,7 +1039,7 @@ mod data {
 
         pub(super) fn clear_call_cache(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             from: Option<i32>,
             to: Option<i32>,
         ) -> Result<(), Error> {
@@ -1107,7 +1105,7 @@ mod data {
 
         pub(super) fn update_accessed_at(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             contract_address: &[u8],
         ) -> Result<(), Error> {
             let result = match self {
@@ -1133,7 +1131,7 @@ mod data {
 
         pub(super) fn set_call(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             id: &[u8],
             contract_address: &[u8],
             block_number: i32,
@@ -1158,7 +1156,7 @@ mod data {
                     // raciness of this check is ok
                     let update_meta = meta::table
                         .filter(meta::contract_address.eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
+                        .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
                         .optional()?
                         .unwrap_or(true);
@@ -1206,7 +1204,7 @@ mod data {
                     let update_meta = call_meta
                         .table()
                         .filter(call_meta.contract_address().eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
+                        .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
                         .optional()?
                         .unwrap_or(true);
@@ -1235,7 +1233,7 @@ mod data {
         // used by `super::set_chain` for test support
         pub(super) fn set_chain(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain_name: &str,
             genesis_hash: &str,
             chain: Vec<&dyn Block>,
@@ -1272,7 +1270,8 @@ mod data {
             }
 
             for block in &chain {
-                self.upsert_block(conn, chain_name, *block, true).unwrap();
+                self.upsert_block(&mut conn, chain_name, *block, true)
+                    .unwrap();
             }
 
             diesel::update(n::table.filter(n::name.eq(chain_name)))
@@ -1288,7 +1287,7 @@ mod data {
         /// Queries the database for all the transaction receipts in a given block.
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_hash: H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
             let query = sql_query(format!(
@@ -1379,7 +1378,7 @@ impl ChainStore {
         use public::ethereum_networks::dsl::*;
 
         let conn = self.get_conn()?;
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             insert_into(ethereum_networks)
                 .values((
                     name.eq(&self.chain),
@@ -1391,8 +1390,8 @@ impl ChainStore {
                 ))
                 .on_conflict(name)
                 .do_nothing()
-                .execute(&conn)?;
-            self.storage.create(&conn)
+                .execute(conn)?;
+            self.storage.create(conn)
         })?;
 
         Ok(())
@@ -1402,17 +1401,17 @@ impl ChainStore {
         use diesel::dsl::delete;
         use public::ethereum_networks as n;
 
-        let conn = self.get_conn()?;
-        conn.transaction(|| {
-            self.storage.drop_storage(&conn, &self.chain)?;
+        let mut conn = self.get_conn()?;
+        conn.transaction(|conn| {
+            self.storage.drop_storage(&mut conn, &self.chain)?;
 
-            delete(n::table.filter(n::name.eq(&self.chain))).execute(&conn)?;
+            delete(n::table.filter(n::name.eq(&self.chain))).execute(conn)?;
             Ok(())
         })
     }
 
     pub fn chain_head_pointers(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
     ) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
 
@@ -1437,7 +1436,7 @@ impl ChainStore {
         let number: Option<i64> = n::table
             .filter(n::name.eq(chain))
             .select(n::head_block_number)
-            .first::<Option<i64>>(&self.get_conn()?)
+            .first::<Option<i64>>(&mut self.get_conn()?)
             .optional()?
             .flatten();
 
@@ -1458,21 +1457,21 @@ impl ChainStore {
     /// `null`
     #[cfg(debug_assertions)]
     pub fn set_chain(&self, genesis_hash: &str, chain: Vec<&dyn Block>) {
-        let conn = self.pool.get().expect("can get a database connection");
+        let mut conn = self.pool.get().expect("can get a database connection");
 
         self.storage
-            .set_chain(&conn, &self.chain, genesis_hash, chain);
+            .set_chain(&mut conn, &self.chain, genesis_hash, chain);
     }
 
     pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
         let conn = self.get_conn()?;
         self.storage
-            .delete_blocks_by_hash(&conn, &self.chain, block_hashes)
+            .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        self.storage.truncate_block_cache(&conn)?;
+        let mut conn = self.get_conn()?;
+        self.storage.truncate_block_cache(&mut conn)?;
         Ok(())
     }
 }
@@ -1488,9 +1487,9 @@ impl ChainStoreTrait for ChainStore {
         let network = self.chain.clone();
         let storage = self.storage.clone();
         pool.with_conn(move |conn, _| {
-            conn.transaction(|| {
+            conn.transaction(|conn| {
                 storage
-                    .upsert_block(conn, &network, block.as_ref(), true)
+                    .upsert_block(&mut conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)
             })
         })
@@ -1502,7 +1501,7 @@ impl ChainStoreTrait for ChainStore {
         let conn = self.pool.get()?;
         for block in blocks {
             self.storage
-                .upsert_block(&conn, &self.chain, *block, false)?;
+                .upsert_block(&mut conn, &self.chain, *block, false)?;
         }
         Ok(())
     }
@@ -1547,7 +1546,7 @@ impl ChainStoreTrait for ChainStore {
                     let number = ptr.number as i64;
 
                     conn.transaction(
-                        || -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                        |conn| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
                             update(n::table.filter(n::name.eq(&chain_store.chain)))
                                 .set((
                                     n::head_block_hash.eq(&hash),
@@ -1619,7 +1618,7 @@ impl ChainStoreTrait for ChainStore {
         ethereum_networks
             .select(head_block_cursor)
             .filter(name.eq(&self.chain))
-            .load::<Option<String>>(&*self.get_conn()?)
+            .load::<Option<String>>(&mut self.get_conn()?)
             .map(|rows| {
                 rows.first()
                     .map(|cursor_opt| cursor_opt.as_ref().cloned())
@@ -1647,9 +1646,9 @@ impl ChainStoreTrait for ChainStore {
         self.chain_head_update_sender.send(&hash, number)?;
 
         pool.with_conn(move |conn, _| {
-            conn.transaction(|| -> Result<(), StoreError> {
+            conn.transaction(|conn| -> Result<(), StoreError> {
                 storage
-                    .upsert_block(conn, &network, block.as_ref(), true)
+                    .upsert_block(&mut conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)?;
 
                 update(n::table.filter(n::name.eq(&self.chain)))
@@ -1670,8 +1669,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
-        let conn = self.get_conn()?;
-        self.storage.blocks(&conn, &self.chain, hashes)
+        let mut conn = self.get_conn()?;
+        self.storage.blocks(&mut conn, &self.chain, hashes)
     }
 
     async fn ancestor_block(
@@ -1726,7 +1725,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -1745,7 +1744,7 @@ impl ChainStoreTrait for ChainStore {
         diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.chain)
-            .load::<MinBlock>(&conn)?
+            .load::<MinBlock>(&mut conn)?
             .first()
             .map(|MinBlock { block }| {
                 // If we could not determine a minimum block, the query
@@ -1753,7 +1752,7 @@ impl ChainStoreTrait for ChainStore {
                 // against removing the genesis block
                 if *block > 0 {
                     self.storage
-                        .delete_blocks_before(&conn, &self.chain, *block as i64)
+                        .delete_blocks_before(&mut conn, &self.chain, *block as i64)
                         .map(|rows| Some((*block, rows)))
                 } else {
                     Ok(None)
@@ -1766,13 +1765,13 @@ impl ChainStoreTrait for ChainStore {
     fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
         let conn = self.get_conn()?;
         self.storage
-            .block_hashes_by_block_number(&conn, &self.chain, number)
+            .block_hashes_by_block_number(&mut conn, &self.chain, number)
     }
 
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error> {
         let conn = self.get_conn()?;
         self.storage
-            .confirm_block_hash(&conn, &self.chain, number, hash)
+            .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
 
     async fn block_number(
@@ -1793,8 +1792,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<(), Error> {
-        let conn = self.get_conn()?;
-        self.storage.clear_call_cache(&conn, from, to)
+        let mut conn = self.get_conn()?;
+        self.storage.clear_call_cache(&mut conn, from, to)
     }
 
     async fn transaction_receipts_in_block(
@@ -1843,14 +1842,14 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
+        let mut conn = &*self.get_conn()?;
+        if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
-                self.storage.get_call_and_access(conn, id.as_ref())?
+                self.storage.get_call_and_access(&mut conn, id.as_ref())?
             {
                 if update_accessed_at {
                     self.storage
-                        .update_accessed_at(conn, contract_address.as_ref())?;
+                        .update_accessed_at(&mut conn, contract_address.as_ref())?;
                 }
                 Ok(Some(return_value))
             } else {
@@ -1865,7 +1864,7 @@ impl EthereumCallCache for ChainStore {
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &*self.get_conn()?;
-        conn.transaction::<_, Error, _>(|| self.storage.get_calls_in_block(conn, block))
+        conn.transaction::<_, Error, _>(|conn| self.storage.get_calls_in_block(conn, block))
     }
 
     fn set_call(
@@ -1877,7 +1876,7 @@ impl EthereumCallCache for ChainStore {
     ) -> Result<(), Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
         let conn = &*self.get_conn()?;
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
                 id.as_ref(),

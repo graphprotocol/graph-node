@@ -6,6 +6,7 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
+use diesel_migrations::EmbeddedMigrations;
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::prelude::tokio;
@@ -113,7 +114,7 @@ impl ForeignServer {
 
     /// Create a new foreign server and user mapping on `conn` for this foreign
     /// server
-    fn create(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn create(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let query = format!(
             "\
         create server \"{name}\"
@@ -133,7 +134,7 @@ impl ForeignServer {
     }
 
     /// Update an existing user mapping with possibly new details
-    fn update(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn update(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let options = catalog::server_options(conn, &self.name)?;
         let set_or_add = |option: &str| -> &'static str {
             if options.contains_key(option) {
@@ -163,7 +164,7 @@ impl ForeignServer {
 
     /// Map key tables from the primary into our local schema. If we are the
     /// primary, set them up as views.
-    fn map_primary(conn: &PgConnection, shard: &Shard) -> Result<(), StoreError> {
+    fn map_primary(conn: &mut PgConnection, shard: &Shard) -> Result<(), StoreError> {
         catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
 
         let mut query = String::new();
@@ -191,7 +192,7 @@ impl ForeignServer {
 
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
-    fn map_metadata(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let nsp = Self::metadata_schema(&self.shard);
         catalog::recreate_schema(conn, &nsp)?;
         let mut query = String::new();
@@ -427,7 +428,7 @@ impl ConnectionPool {
         f: impl 'static
             + Send
             + FnOnce(
-                &PooledConnection<ConnectionManager<PgConnection>>,
+                &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
@@ -850,7 +851,7 @@ impl PoolInner {
         f: impl 'static
             + Send
             + FnOnce(
-                &PooledConnection<ConnectionManager<PgConnection>>,
+                &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
@@ -867,7 +868,7 @@ impl PoolInner {
 
             // A failure to establish a connection is propagated as though the
             // closure failed.
-            let conn = pool
+            let mut conn = pool
                 .get()
                 .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
 
@@ -875,7 +876,7 @@ impl PoolInner {
             // Time to check for cancel.
             cancel_handle.check_cancel()?;
 
-            f(&conn, &cancel_handle)
+            f(&mut conn, &cancel_handle)
         })
         .await
         .unwrap(); // Propagate panics, though there shouldn't be any.
@@ -956,7 +957,7 @@ impl PoolInner {
         self.pool
             .get()
             .ok()
-            .map(|conn| sql_query("select 1").execute(&conn).is_ok())
+            .map(|conn| sql_query("select 1").execute(&mut conn).is_ok())
             .unwrap_or(false)
     }
 
@@ -977,11 +978,11 @@ impl PoolInner {
         }
 
         let pool = self.clone();
-        let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+        let mut conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
         let start = Instant::now();
 
-        advisory_lock::lock_migration(&conn)
+        advisory_lock::lock_migration(&mut conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
         // This code can cause a race in database setup: if pool A has had
         // schema changes and pool B then tries to map tables from pool A,
@@ -998,7 +999,7 @@ impl PoolInner {
         // in the database instead of just in memory
         let result = pool
             .configure_fdw(coord.servers.as_ref())
-            .and_then(|()| migrate_schema(&pool.logger, &conn))
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
             .and_then(|had_migrations| {
                 if had_migrations {
                     coord.propagate_schema_change(&self.shard)
@@ -1007,14 +1008,14 @@ impl PoolInner {
                 }
             });
         debug!(&pool.logger, "Release migration lock");
-        advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
+        advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
 
         // Locale check
-        if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
-            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
+        if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
+            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
                 die(
                     &pool.logger,
                     "Database does not use C locale. \
@@ -1042,15 +1043,15 @@ impl PoolInner {
 
     fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let conn = self.get()?;
+        let mut conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
-        conn.transaction(|| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(&conn)?;
+        conn.transaction(|conn| {
+            let current_servers: Vec<String> = crate::catalog::current_servers(&mut conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 if current_servers.contains(&server.name) {
-                    server.update(&conn)?;
+                    server.update(&mut conn)?;
                 } else {
-                    server.create(&conn)?;
+                    server.create(&mut conn)?;
                 }
             }
             Ok(())
@@ -1064,7 +1065,7 @@ impl PoolInner {
             return Ok(());
         }
         self.with_conn(|conn, handle| {
-            conn.transaction(|| {
+            conn.transaction(|conn| {
                 primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
             })
         })
@@ -1077,8 +1078,8 @@ impl PoolInner {
     pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let conn = self.get()?;
-            conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))?;
+            let mut conn = self.get()?;
+            conn.transaction(|conn| ForeignServer::map_primary(&mut conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -1086,28 +1087,30 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let conn = self.get()?;
-            conn.transaction(|| server.map_metadata(&conn))?;
+            let mut conn = self.get()?;
+            conn.transaction(|conn| server.map_metadata(&mut conn))?;
         }
         Ok(())
     }
 }
 
-embed_migrations!("./migrations");
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
 /// Run all schema migrations.
 ///
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<bool, StoreError> {
+fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    use diesel_migrations::MigrationHarness;
+
     // Collect migration logging output
     let mut output = vec![];
 
     let old_count = catalog::migration_count(conn)?;
 
     info!(logger, "Running migrations");
-    let result = embedded_migrations::run_with_output(conn, &mut output);
+    let result = conn.run_pending_migrations(MIGRATIONS);
     info!(logger, "Migrations finished");
 
     let had_migrations = catalog::migration_count(conn)? != old_count;
@@ -1119,7 +1122,7 @@ fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<bool, StoreErr
         let msg = msg.replace('\n', " ");
         if let Err(e) = result {
             error!(logger, "Postgres migration error"; "output" => msg);
-            return Err(StoreError::Unknown(e.into()));
+            return Err(StoreError::Unknown(anyhow!(e.to_string())));
         } else {
             debug!(logger, "Postgres migration output"; "output" => msg);
         }

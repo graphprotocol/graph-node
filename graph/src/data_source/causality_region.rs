@@ -1,12 +1,8 @@
 use diesel::{
-    pg::Pg,
-    serialize::Output,
-    sql_types::Integer,
-    types::{FromSql, ToSql},
+    deserialize::FromSql, pg::Pg, serialize::Output, serialize::ToSql, sql_types::Integer,
     FromSqlRow,
 };
 use std::fmt;
-use std::io;
 
 /// The causality region of a data source. All onchain data sources share the same causality region,
 /// but each offchain data source is assigned its own. This isolates offchain data sources from
@@ -29,13 +25,13 @@ impl fmt::Display for CausalityRegion {
 }
 
 impl FromSql<Integer, Pg> for CausalityRegion {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::backend::RawValue<'_, Pg>) -> diesel::deserialize::Result<Self> {
         <i32 as FromSql<Integer, Pg>>::from_sql(bytes).map(CausalityRegion)
     }
 }
 
 impl ToSql<Integer, Pg> for CausalityRegion {
-    fn to_sql<W: io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
     }
 }
