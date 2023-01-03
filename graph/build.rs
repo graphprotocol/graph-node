@@ -14,6 +14,7 @@ fn main() {
         .expect("Failed to compile Firehose proto(s)");
 
     tonic_build::configure()
+        .protoc_arg("--experimental_allow_proto3_optional")
         .out_dir("src/substreams")
         .compile(&["proto/substreams.proto"], &["proto"])
         .expect("Failed to compile Substreams proto(s)");

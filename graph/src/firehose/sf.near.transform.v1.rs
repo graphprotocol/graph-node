@@ -1,8 +1,9 @@
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BasicReceiptFilter {
-    #[prost(string, repeated, tag="1")]
+    #[prost(string, repeated, tag = "1")]
     pub accounts: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-    #[prost(message, repeated, tag="2")]
+    #[prost(message, repeated, tag = "2")]
     pub prefix_and_suffix_pairs: ::prost::alloc::vec::Vec<PrefixSuffixPair>,
 }
 /// PrefixSuffixPair applies a logical AND to prefix and suffix when both fields are non-empty.
@@ -12,10 +13,11 @@ pub struct BasicReceiptFilter {
 /// * {prefix="",suffix=""}           is invalid
 ///
 /// Note that the suffix will usually have a TLD, ex: "mydomain.near" or "mydomain.testnet"
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PrefixSuffixPair {
-    #[prost(string, tag="1")]
+    #[prost(string, tag = "1")]
     pub prefix: ::prost::alloc::string::String,
-    #[prost(string, tag="2")]
+    #[prost(string, tag = "2")]
     pub suffix: ::prost::alloc::string::String,
 }

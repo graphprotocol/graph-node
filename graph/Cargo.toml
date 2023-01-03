@@ -50,9 +50,9 @@ tokio-retry = "0.3.0"
 url = "2.3.1"
 prometheus = "0.13.3"
 priority-queue = "0.7.0"
-tonic = { version = "0.7.1", features = ["tls-roots", "compression"] }
-prost = "0.10.4"
-prost-types = "0.10.1"
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
 
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
 wasmparser = "0.78.2"
@@ -71,4 +71,4 @@ clap = { version = "3.2.23", features = ["derive", "env"] }
 maplit = "1.0.2"
 
 [build-dependencies]
-tonic-build = { version = "0.7.2", features = ["prost", "compression"] }
+tonic-build = { workspace = true }
