@@ -103,6 +103,7 @@ impl QueryExecutionError {
             | EntityFieldError(_, _)
             | ListTypesError(_, _)
             | ListFilterError(_)
+            | ValueParseError(_, _)
             | AttributeTypeError(_, _)
             | EmptySelectionSet(_)
             | Unimplemented(_)
@@ -113,7 +114,6 @@ impl QueryExecutionError {
             ListValueError(_, _)
             | ResolveEntitiesError(_)
             | RangeArgumentsError(_, _, _)
-            | ValueParseError(_, _)
             | EntityParseError(_)
             | StoreError(_)
             | Timeout
