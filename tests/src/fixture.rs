@@ -99,8 +99,15 @@ pub async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> Deployme
 }
 
 pub fn test_ptr(n: BlockNumber) -> BlockPtr {
+    test_ptr_reorged(n, 0)
+}
+
+// Set n as the low bits and `reorg_n` as the high bits of the hash.
+pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
+    let mut hash = H256::from_low_u64_be(n as u64);
+    hash[0..4].copy_from_slice(&reorg_n.to_be_bytes());
     BlockPtr {
-        hash: H256::from_low_u64_be(n as u64).into(),
+        hash: hash.into(),
         number: n,
     }
 }
@@ -110,6 +117,16 @@ type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store, PanicSubscript
 pub struct TestChain<C: Blockchain> {
     pub chain: Arc<C>,
     pub block_stream_builder: Arc<MutexBlockStreamBuilder<C>>,
+}
+
+impl<C: Blockchain> TestChain<C> {
+    pub fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>)
+    where
+        C::TriggerData: Clone,
+    {
+        let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
+        *self.block_stream_builder.0.lock().unwrap() = static_block_stream;
+    }
 }
 
 pub struct TestContext {
@@ -213,7 +230,7 @@ impl TestContext {
         self.provider.stop(self.deployment.clone()).await.unwrap();
 
         self.provider
-            .start(self.deployment.clone(), Some(stop_block.number))
+            .start(self.deployment.clone(), None)
             .await
             .expect("unable to start subgraph");
 
@@ -270,6 +287,12 @@ impl TestContext {
         let query_res: IndexingStatusForCurrentVersion =
             serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
         query_res.indexing_status_for_current_version
+    }
+
+    pub fn rewind(&self, block_ptr_to: BlockPtr) {
+        self.store
+            .rewind(self.deployment.hash.clone(), block_ptr_to)
+            .unwrap()
     }
 }
 
@@ -494,8 +517,11 @@ pub async fn wait_for_sync(
         };
 
         let status = store.status_for_id(deployment.id);
+
         if let Some(fatal_error) = status.fatal_error {
-            return Err(fatal_error);
+            if fatal_error.block_ptr.as_ref().unwrap() == &stop_block {
+                return Err(fatal_error);
+            }
         }
 
         if block_ptr == stop_block {

@@ -7,11 +7,18 @@ use graph::prelude::BLOCK_NUMBER_MAX;
 
 use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
-    Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+    ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
+    VID_COLUMN,
 };
 
 use super::{Column, Layout, SqlName, Table};
+
+// In debug builds (for testing etc.) unconditionally create exclusion constraints, in release
+// builds for production, skip them
+#[cfg(debug_assertions)]
+const CREATE_EXCLUSION_CONSTRAINT: bool = true;
+#[cfg(not(debug_assertions))]
+const CREATE_EXCLUSION_CONSTRAINT: bool = false;
 
 impl Layout {
     /// Generate the DDL for the entire layout, i.e., all `create table`
@@ -131,7 +138,7 @@ impl Table {
                 block_range = BLOCK_RANGE_COLUMN
             )?;
 
-            self.exclusion_ddl(out, Catalog::create_exclusion_constraint())
+            self.exclusion_ddl(out)
         }
     }
 
@@ -274,7 +281,10 @@ impl Table {
         self.create_attribute_indexes(out)
     }
 
-    pub fn exclusion_ddl(&self, out: &mut String, as_constraint: bool) -> fmt::Result {
+    pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {
+        // Tables with causality regions need to use exclusion constraints for correctness,
+        // to catch violations of write isolation.
+        let as_constraint = self.has_causality_region || CREATE_EXCLUSION_CONSTRAINT;
         if as_constraint {
             writeln!(
                 out,

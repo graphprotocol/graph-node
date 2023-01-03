@@ -44,6 +44,13 @@ export function handleTestEvent(event: TestEvent): void {
   if (command == "createFile2") {
     // Will fail the subgraph when processed due to mismatch in the entity type and 'entities'.
     dataSource.create("File2", [KNOWN_CID])
+  } else if (command == "saveConflictingEntity") {
+    // Will fail the subgraph because the same entity has been created in a file data source.
+    let entity = new IpfsFile(KNOWN_CID)
+    entity.content = "empty"
+    entity.save()
+  } else {
+    assert(false, "Unknown command: " + command);
   }
 }
 

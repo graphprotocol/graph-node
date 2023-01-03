@@ -13,7 +13,9 @@ use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis, push_test_log};
-use graph_tests::fixture::{self, stores, test_ptr, MockAdapterSelector, NoopAdapterSelector};
+use graph_tests::fixture::{
+    self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector,
+};
 use slog::{o, Discard, Logger};
 
 #[tokio::test]
@@ -211,7 +213,7 @@ async fn file_data_sources() {
     let stop_block = test_ptr(5);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x34e9 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3528 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -220,6 +222,35 @@ async fn file_data_sources() {
         deterministic: false,
     };
     assert_eq!(err, expected_err);
+
+    // Unfail the subgraph to test a different error
+    {
+        ctx.rewind(test_ptr(4));
+
+        // Replace block number 5 with one that contains a different event
+        let mut blocks = blocks.clone();
+        blocks.pop();
+        let block_5_1_ptr = test_ptr_reorged(5, 1);
+        let mut block_5_1 = empty_block(test_ptr(4), block_5_1_ptr.clone());
+        push_test_log(&mut block_5_1, "saveConflictingEntity");
+        blocks.push(block_5_1);
+
+        chain.set_block_stream(blocks);
+
+        // Errors in the store pipeline can be observed by using the runner directly.
+        let err = ctx
+            .runner(block_5_1_ptr.clone())
+            .await
+            .run()
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
+
+        let message =
+            "store error: conflicting key value violates exclusion constraint \"ipfs_file_id_block_range_excl\""
+                .to_string();
+        assert_eq!(err.to_string(), message);
+    }
 }
 
 #[tokio::test]
@@ -372,7 +403,7 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(err.deterministic);
 
     // Test that rewind unfails the subgraph.
-    ctx.store.rewind(ctx.deployment.hash.clone(), test_ptr(1))?;
+    ctx.rewind(test_ptr(1));
     let status = ctx.indexing_status().await;
     assert!(status.health == SubgraphHealth::Healthy);
     assert!(status.fatal_error.is_none());

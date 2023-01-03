@@ -116,13 +116,6 @@ lazy_static! {
         SqlName::verbatim("__diesel_schema_migrations".to_string());
 }
 
-// In debug builds (for testing etc.) create exclusion constraints, in
-// release builds for production, skip them
-#[cfg(debug_assertions)]
-const CREATE_EXCLUSION_CONSTRAINT: bool = true;
-#[cfg(not(debug_assertions))]
-const CREATE_EXCLUSION_CONSTRAINT: bool = false;
-
 pub struct Locale {
     collate: String,
     ctype: String,
@@ -248,12 +241,6 @@ impl Catalog {
             .get(table.as_str())
             .map(|cols| cols.contains(column.as_str()))
             .unwrap_or(false)
-    }
-
-    /// Whether to create exclusion indexes; if false, create gist indexes
-    /// w/o an exclusion constraint
-    pub fn create_exclusion_constraint() -> bool {
-        CREATE_EXCLUSION_CONSTRAINT
     }
 }
 
