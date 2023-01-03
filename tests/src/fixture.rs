@@ -53,11 +53,15 @@ use tokio::fs::read_to_string;
 
 const NODE_ID: &str = "default";
 
-pub async fn build_subgraph(dir: &str) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd(dir, "deploy:test").await
+pub async fn build_subgraph(dir: &str, yarn_dir: &str) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd(dir, "deploy:test", yarn_dir).await
 }
 
-pub async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
+pub async fn build_subgraph_with_yarn_cmd(
+    dir: &str,
+    yarn_cmd: &str,
+    yarn_dir: &str,
+) -> DeploymentHash {
     // Test that IPFS is up.
     IpfsClient::localhost()
         .test()
@@ -70,7 +74,7 @@ pub async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> Deployme
             .arg("install")
             .arg("--mutex")
             .arg("file:.yarn-mutex")
-            .current_dir("./integration-tests"),
+            .current_dir(yarn_dir),
     );
 
     // Run codegen.

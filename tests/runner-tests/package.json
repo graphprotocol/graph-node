@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "workspaces": [
+    "data-source-revert",
+    "data-source-revert2",
+    "dynamic-data-source",
+    "fatal-error",
+    "file-data-sources",
+    "typename"
+  ]
+}
