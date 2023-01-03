@@ -4,13 +4,12 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-port_check = "0.1.5"
 anyhow = "1.0"
+assert-json-diff = "2.0.2"
+async-stream = "0.3.3"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
-tokio = { version = "1.16.1", features = ["rt", "macros", "process"] }
 graph-chain-ethereum = { path = "../chain/ethereum" }
-async-stream = "0.3.3"
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-mock = { path = "../mock" }
@@ -18,13 +17,14 @@ graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-index-node = { path = "../server/index-node" }
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 graphql-parser = "0.4.0"
-hex = "0.4.3"
-serde_yaml = "0.8"
 hyper = "0.14"
+port_check = "0.1.5"
+hex = "0.4.3"
+slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 serde = "1.0"
-assert-json-diff = "2.0.2"
+serde_yaml = "0.8"
+tokio = { version = "1.16.1", features = ["rt", "macros", "process"] }
 
 [dev-dependencies]
 bollard = "0.10"
@@ -34,3 +34,6 @@ tokio-stream = "0.1"
 serde_yaml = "0.8"
 cid = "0.10.1"
 graph-chain-near = { path = "../chain/near" }
+lazy_static = "1.4.0"
+serde_yaml = "0.8"
+tokio-stream = "0.1"
