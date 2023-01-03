@@ -20,12 +20,11 @@ lcov.info
 /docker/parity/network/
 **/*/tests/fixtures/ipfs_folder/random.txt
 
-/tests/integration-tests/**/build
-/tests/integration-tests/**/generated
-/tests/integration-tests/**/node_modules
-/tests/integration-tests/**/yarn.lock
-/tests/integration-tests/**/yarn-error.log
+/tests/**/build
+/tests/**/generated
+/tests/**/node_modules
+/tests/**/yarn-error.log
 
 # Built solidity contracts.
-/tests/integration-tests/**/bin
-/tests/integration-tests/**/truffle_output
+/tests/**/bin
+/tests/**/truffle_output
