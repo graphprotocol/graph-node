@@ -12,6 +12,7 @@ diesel = { workspace = true }
 # # made a release as a crate yet
 diesel-dynamic-schema = "0.2.0"
 diesel-derive-enum = { workspace = true }
+# diesel_enum_derive = "1.0.1"
 diesel_migrations = "2.0.0"
 diesel_derives = { workspace = true }
 fallible-iterator = "0.2.0"

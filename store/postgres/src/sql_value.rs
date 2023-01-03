@@ -1,4 +1,3 @@
-use diesel::expression::AsExpression;
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::{Binary, Bool, Integer, Text};
@@ -7,7 +6,7 @@ use std::str::FromStr;
 
 use graph::data::store::{scalar, Value};
 
-#[derive(Clone, Debug, PartialEq, Eq, AsExpression)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SqlValue(Value);
 
 impl SqlValue {
