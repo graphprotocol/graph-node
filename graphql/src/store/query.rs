@@ -56,7 +56,7 @@ pub(crate) fn build_query<'a>(
     println!("entity_types: {:?}", entity_types);
 
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types);
-
+    println!("query: {:?}", query);
     if is_conn {
         query = query.range(build_cursor(field, max_first, max_skip)?);
     } else {
@@ -64,6 +64,7 @@ pub(crate) fn build_query<'a>(
     }
 
     if let Some(filter) = build_filter(entity, field, schema)? {
+        println!("filter: {:?}", filter);
         query = query.filter(filter);
     }
     let order = match (
@@ -368,6 +369,15 @@ fn build_filter_from_object(
             use self::sast::FilterOp::*;
             let (field_name, op) = sast::parse_field_as_filter(key);
 
+            let is_conn = is_connection_type(entity.name());
+            
+            let ent = match is_conn {
+                false => entity,
+                true => schema
+                    .object_or_interface(&entity.name().replace("Connection", ""))
+                    .unwrap(),
+            };
+
             Ok(match op {
                 And => {
                     if ENV_VARS.graphql.disable_bool_filters {
@@ -377,7 +387,7 @@ fn build_filter_from_object(
                     }
 
                     return Ok(EntityFilter::And(build_list_filter_from_object(
-                        entity, object, schema,
+                        ent, object, schema,
                     )?));
                 }
                 Or => {
@@ -388,17 +398,17 @@ fn build_filter_from_object(
                     }
 
                     return Ok(EntityFilter::Or(build_list_filter_from_object(
-                        entity, object, schema,
+                        ent, object, schema,
                     )?));
                 }
                 Child => match value {
                     DataValue::Object(obj) => {
-                        build_child_filter_from_object(entity, field_name, obj, schema)?
+                        build_child_filter_from_object(ent, field_name, obj, schema)?
                     }
                     _ => {
-                        let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                        let field = sast::get_field(ent, &field_name).ok_or_else(|| {
                             QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
+                                ent.name().to_owned(),
                                 field_name.clone(),
                             )
                         })?;
@@ -410,9 +420,9 @@ fn build_filter_from_object(
                     }
                 },
                 _ => {
-                    let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                    let field = sast::get_field(ent, &field_name).ok_or_else(|| {
                         QueryExecutionError::EntityFieldError(
-                            entity.name().to_owned(),
+                            ent.name().to_owned(),
                             field_name.clone(),
                         )
                     })?;
