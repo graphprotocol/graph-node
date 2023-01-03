@@ -36,7 +36,9 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery};
+use crate::relational_queries::{
+    ConflictingEntityData, FindChangesQuery, FindPossibleDeletionsQuery, ReturnedEntityData,
+};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -609,7 +611,7 @@ impl Layout {
         for chunk in entities.chunks_mut(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
                 .get_results(conn)
-                .map(|ids| ids.len())?
+                .map(|ids: Vec<ReturnedEntityData>| ids.len())?
         }
         Ok(count)
     }
@@ -623,7 +625,7 @@ impl Layout {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
             .load(conn)?
             .pop()
-            .map(|data| data.entity))
+            .map(|data: ConflictingEntityData| data.entity))
     }
 
     /// order is a tuple (attribute, value_type, direction)

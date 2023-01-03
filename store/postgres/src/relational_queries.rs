@@ -10,7 +10,7 @@ use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text, Untyped};
 
 use graph::components::store::EntityKey;
 use graph::data::value::Word;
@@ -1475,7 +1475,7 @@ impl<'a> QueryId for FindQuery<'a> {
 }
 
 impl<'a> Query for FindQuery<'a> {
-    type SqlType = EntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindQuery<'a> {
@@ -1535,7 +1535,7 @@ impl<'a> QueryId for FindChangesQuery<'a> {
 }
 
 impl<'a> Query for FindChangesQuery<'a> {
-    type SqlType = EntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindChangesQuery<'a> {
@@ -1589,7 +1589,7 @@ impl<'a> QueryId for FindPossibleDeletionsQuery<'a> {
 }
 
 impl<'a> Query for FindPossibleDeletionsQuery<'a> {
-    type SqlType = EntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, EntityDeletion>
@@ -1662,7 +1662,7 @@ impl<'a> QueryId for FindManyQuery<'a> {
 }
 
 impl<'a> Query for FindManyQuery<'a> {
-    type SqlType = EntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, EntityData> for FindManyQuery<'a> {
@@ -1813,7 +1813,7 @@ impl<'a> QueryId for InsertQuery<'a> {
 }
 
 impl<'a> Query for InsertQuery<'a> {
-    type SqlType = ReturnedEntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, ReturnedEntityData> for InsertQuery<'a> {
@@ -1898,7 +1898,7 @@ pub struct ConflictingEntityData {
 }
 
 impl<'a> Query for ConflictingEntityQuery<'a> {
-    type SqlType = ConflictingEntityData;
+    type SqlType = Untyped;
 }
 
 // impl<'a, 'query> LoadQuery<'query, PgConnection, ConflictingEntityData>
@@ -3242,7 +3242,7 @@ impl<'a> QueryId for FilterQuery<'a> {
 }
 
 impl<'a> Query for FilterQuery<'a> {
-    type SqlType = EntityData;
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FilterQuery<'a> {}
@@ -3379,7 +3379,7 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
 }
 
 impl<'a> Query for RevertRemoveQuery<'a> {
-    type SqlType = ReturnedEntityData;
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertRemoveQuery<'a> {}
@@ -3459,7 +3459,7 @@ impl<'a> QueryId for RevertClampQuery<'a> {
 }
 
 impl<'a> Query for RevertClampQuery<'a> {
-    type SqlType = ReturnedEntityData;
+    type SqlType = Untyped;
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for RevertClampQuery<'a> {}
