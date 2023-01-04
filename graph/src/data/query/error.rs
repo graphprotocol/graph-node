@@ -107,6 +107,8 @@ impl QueryExecutionError {
             | AttributeTypeError(_, _)
             | EmptySelectionSet(_)
             | Unimplemented(_)
+            | EnumCoercionError(_, _, _, _, _)
+            | ScalarCoercionError(_, _, _, _)
             | CyclicalFragment(_)
             | UndefinedFragment(_)
             | FulltextQueryInvalidSyntax(_)
@@ -117,8 +119,6 @@ impl QueryExecutionError {
             | EntityParseError(_)
             | StoreError(_)
             | Timeout
-            | EnumCoercionError(_, _, _, _, _)
-            | ScalarCoercionError(_, _, _, _)
             | AmbiguousDerivedFromResult(_, _, _, _)
             | TooComplex(_, _)
             | TooDeep(_)
