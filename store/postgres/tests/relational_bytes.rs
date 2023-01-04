@@ -253,6 +253,7 @@ fn find() {
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&*BEEF_ENTITY), entity);
+        assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
         let entity = layout

@@ -100,6 +100,10 @@ impl EntityCache {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
         let mut entity = self.current.get_entity(&*self.store, eref)?;
+
+        // Always test the cache consistency in debug mode.
+        debug_assert!(entity == self.store.get(&eref).unwrap());
+
         if let Some(op) = self.updates.get(eref).cloned() {
             entity = op.apply_to(entity)
         }

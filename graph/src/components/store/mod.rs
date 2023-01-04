@@ -129,6 +129,11 @@ pub struct EntityKey {
     /// ID of the individual entity.
     pub entity_id: Word,
 
+    /// This is the causality region of the data source that created the entity.
+    ///
+    /// In the case of an entity lookup, this is the causality region of the data source that is
+    /// doing the lookup. So if the entity exists but was created on a different causality region,
+    /// the lookup will return empty.
     pub causality_region: CausalityRegion,
 }
 

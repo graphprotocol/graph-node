@@ -51,12 +51,11 @@ impl CausalityRegion {
     }
 
     pub fn from_entity(entity: &Entity) -> Self {
-        CausalityRegion(
-            entity
-                .get("causality_region")
-                .and_then(|v| v.as_int())
-                .unwrap_or(0),
-        )
+        entity
+            .get("causality_region")
+            .and_then(|v| v.as_int())
+            .map(CausalityRegion)
+            .unwrap_or(CausalityRegion::ONCHAIN)
     }
 }
 

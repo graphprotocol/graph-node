@@ -1053,8 +1053,8 @@ impl DeploymentStore {
         layout.find(&conn, &key, block)
     }
 
-    /// Retrieve all the entities matching `ids_for_type` from the
-    /// deployment `site`. Only consider entities as of the given `block`
+    /// Retrieve all the entities matching `ids_for_type`, both the type and causality region, from
+    /// the deployment `site`. Only consider entities as of the given `block`
     pub(crate) fn get_many(
         &self,
         site: Arc<Site>,

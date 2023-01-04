@@ -1,6 +1,11 @@
 use cid::Cid;
 
-use crate::{components::subgraph::Entity, ipfs_client::CidFile, prelude::Link};
+use crate::{
+    blockchain::mock::{MockBlockchain, MockDataSource},
+    components::subgraph::Entity,
+    ipfs_client::CidFile,
+    prelude::Link,
+};
 
 use super::{
     offchain::{Mapping, Source},
@@ -43,6 +48,21 @@ fn offchain_duplicate() {
 fn offchain_mark_processed_error() {
     let x = new_datasource();
     x.mark_processed_at(-1)
+}
+
+#[test]
+fn data_source_helpers() {
+    let offchain = new_datasource();
+    let offchain_ds = DataSource::<MockBlockchain>::Offchain(offchain.clone());
+    assert!(offchain_ds.causality_region() == offchain.causality_region);
+    assert!(offchain_ds
+        .as_offchain()
+        .unwrap()
+        .is_duplicate_of(&offchain));
+
+    let onchain = DataSource::<MockBlockchain>::Onchain(MockDataSource);
+    assert!(onchain.causality_region() == CausalityRegion::ONCHAIN);
+    assert!(onchain.as_offchain().is_none());
 }
 
 fn new_datasource() -> offchain::DataSource {

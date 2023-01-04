@@ -213,7 +213,7 @@ async fn file_data_sources() {
     let stop_block = test_ptr(5);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x35a8 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x365d - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,

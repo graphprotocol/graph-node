@@ -17,6 +17,9 @@ export function handleBlock(block: ethereum.Block): void {
   }
 
   if (block.number == BigInt.fromI32(1)) {
+    let entity = IpfsFile.load("onchain")!
+    assert(entity.content == "onchain")
+
     // The test assumes file data sources are processed in the block in which they are created.
     // So the ds created at block 0 will have been processed.
     //
@@ -71,6 +74,10 @@ export function handleFile(data: Bytes): void {
   let entity = new IpfsFile(dataSource.stringParam())
   entity.content = data.toString()
   entity.save()
+
+  // Test that an offchain data source can load its own entities
+  let loaded_entity = IpfsFile.load(dataSource.stringParam())!
+  assert(loaded_entity.content == entity.content)
 }
 
 export function handleFile1(data: Bytes): void {

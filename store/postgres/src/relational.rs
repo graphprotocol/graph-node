@@ -501,6 +501,7 @@ impl Layout {
             .transpose()
     }
 
+    // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
     pub fn find_many(
         &self,
         conn: &PgConnection,
@@ -1225,7 +1226,7 @@ pub struct Table {
     pub(crate) immutable: bool,
 
     /// Whether this table has an explicit `causality_region` column. If `false`, then the column is
-    /// not present and the causality region for all rows is implicitly `0`.
+    /// not present and the causality region for all rows is implicitly `0` (equivalent to CasualityRegion::ONCHAIN).
     pub(crate) has_causality_region: bool,
 }
 
