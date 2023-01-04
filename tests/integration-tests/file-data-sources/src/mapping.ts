@@ -1,4 +1,4 @@
-import { ethereum, dataSource, BigInt, Bytes } from '@graphprotocol/graph-ts'
+import { ethereum, dataSource, BigInt, Bytes, DataSourceContext } from '@graphprotocol/graph-ts'
 import { TestEvent } from '../generated/Contract/Contract'
 import { IpfsFile, IpfsFile1 } from '../generated/schema'
 
@@ -49,6 +49,11 @@ export function handleTestEvent(event: TestEvent): void {
     let entity = new IpfsFile(KNOWN_CID)
     entity.content = "empty"
     entity.save()
+  } else if (command == "createFile1") {
+    // Will fail the subgraph with a conflict between two entities created by offchain data sources.
+    let context = new DataSourceContext();
+    context.setBytes("hash", event.block.hash);
+    dataSource.createWithContext("File1", [KNOWN_CID], context)
   } else {
     assert(false, "Unknown command: " + command);
   }
