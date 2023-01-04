@@ -285,6 +285,12 @@ impl Table {
         // Tables with causality regions need to use exclusion constraints for correctness,
         // to catch violations of write isolation.
         let as_constraint = self.has_causality_region || CREATE_EXCLUSION_CONSTRAINT;
+
+        self.exclusion_ddl_inner(out, as_constraint)
+    }
+
+    // `pub` for tests.
+    pub(crate) fn exclusion_ddl_inner(&self, out: &mut String, as_constraint: bool) -> fmt::Result {
         if as_constraint {
             writeln!(
                 out,

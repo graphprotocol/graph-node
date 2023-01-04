@@ -88,7 +88,7 @@ fn exlusion_ddl() {
     // When `as_constraint` is false, just create an index
     let mut out = String::new();
     table
-        .exclusion_ddl(&mut out, false)
+        .exclusion_ddl_inner(&mut out, false)
         .expect("can write exclusion DDL");
     check_eqv(
         r#"create index thing_id_block_range_excl on "sgd0815"."thing" using gist (id, block_range);"#,
@@ -98,7 +98,7 @@ fn exlusion_ddl() {
     // When `as_constraint` is true, add an exclusion constraint
     let mut out = String::new();
     table
-        .exclusion_ddl(&mut out, true)
+        .exclusion_ddl_inner(&mut out, true)
         .expect("can write exclusion DDL");
     check_eqv(
         r#"alter table "sgd0815"."thing" add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);"#,
