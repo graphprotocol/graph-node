@@ -170,6 +170,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
 
     type Song @entity {
         id: @ID@!
+        sid: String!
         title: String!
         writtenBy: Musician!
         publisher: Publisher!
@@ -289,10 +290,10 @@ async fn insert_test_entities(
         entity! { __typename: "Publisher", id: "0xb1" },
         entity! { __typename: "Band", id: "b1", name: "The Musicians", originalSongs: vec![s[1], s[2]] },
         entity! { __typename: "Band", id: "b2", name: "The Amateurs",  originalSongs: vec![s[1], s[3], s[4]] },
-        entity! { __typename: "Song", id: s[1], title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1", media: vec![md[1], md[2]] },
-        entity! { __typename: "Song", id: s[2], title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2", media: vec![md[3], md[4]] },
-        entity! { __typename: "Song", id: s[3], title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1", media: vec![md[5]] },
-        entity! { __typename: "Song", id: s[4], title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
+        entity! { __typename: "Song", id: s[1], sid: "s1", title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1", media: vec![md[1], md[2]] },
+        entity! { __typename: "Song", id: s[2], sid: "s2", title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2", media: vec![md[3], md[4]] },
+        entity! { __typename: "Song", id: s[3], sid: "s3", title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1", media: vec![md[5]] },
+        entity! { __typename: "Song", id: s[4], sid: "s4", title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
         entity! { __typename: "SongStat", id: s[1], played: 10 },
         entity! { __typename: "SongStat", id: s[2], played: 15 },
         entity! { __typename: "BandReview", id: "r1", body: "Bad musicians", band: "b1", author: "u1" },
@@ -397,6 +398,16 @@ impl From<&str> for QueryArgs {
     fn from(query: &str) -> Self {
         QueryArgs {
             query: query.to_owned(),
+            variables: None,
+            max_complexity: None,
+        }
+    }
+}
+
+impl From<String> for QueryArgs {
+    fn from(query: String) -> Self {
+        QueryArgs {
+            query,
             variables: None,
             max_complexity: None,
         }
@@ -2285,4 +2296,34 @@ fn trace_works() {
         let trace = &result.first().unwrap().trace;
         assert!(!trace.is_none(), "result has a trace");
     })
+}
+
+/// Check that various comparisons against `id` work as expected. This also
+/// serves as a test that they work for `String` as well as `Bytes` fields
+/// in general
+#[test]
+fn can_compare_id() {
+    // For each entry `(cond, sids)` in this array, check that a query with
+    // a where clause `cond` returns a list of songs whose `sid` are the
+    // ones listed in `sids`
+    let checks = [
+        ("id_gt:  @S2@", vec!["s3", "s4"]),
+        ("id_gte: @S2@", vec!["s2", "s3", "s4"]),
+        ("id_lt:  @S2@", vec!["s1"]),
+        ("id_lte: @S2@", vec!["s1", "s2"]),
+        ("id_not: @S2@", vec!["s1", "s3", "s4"]),
+    ];
+
+    for (cond, sids) in checks {
+        let query = format!("query {{ songs(where: {{ {cond} }}) {{ sid }} }}");
+        let sids: Vec<_> = sids
+            .iter()
+            .map(|sid| object! { sid: sid.to_string() })
+            .collect();
+        let exp = object! { songs: sids };
+        run_query(query, move |result, id_type| {
+            let data = extract_data!(result).unwrap();
+            assert_eq!(data, exp, "check {} for {:?} ids", cond, id_type);
+        })
+    }
 }

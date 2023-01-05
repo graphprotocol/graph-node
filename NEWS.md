@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fields of type `Bytes` can now use less than and greater than filters [#4285](https://github.com/graphprotocol/graph-node/pull/4285)
+
 #### Upgrade notes
 
 - This release includes a **determinism fix** that should affect very few subgraphs on the network (currently only two). There was an issue that if a subgraph manifest had one data source with no contract address, listening to the same events or calls of another data source that has a specified address, the handlers for those would be called twice. With the fix, this will happen no more, the handler will be called just once like it should.
