@@ -216,6 +216,9 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let raw_yaml = serde_yaml::to_string(&manifest).unwrap();
         let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
 
+        // Allow for infinite retries for subgraph definition files.
+        let link_resolver = Arc::from(self.link_resolver.with_retries());
+
         // Make sure the `raw_yaml` is present on both this subgraph and the graft base.
         self.subgraph_store
             .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
@@ -236,8 +239,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         info!(logger, "Resolve subgraph files using IPFS");
 
-        // Allow for infinite retries for subgraph definition files.
-        let link_resolver = Arc::from(self.link_resolver.with_retries());
         let mut manifest = manifest
             .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
             .await?;
