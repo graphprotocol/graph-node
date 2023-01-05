@@ -6,7 +6,7 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
-use diesel_migrations::EmbeddedMigrations;
+use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 use graph::cheap_clone::CheapClone;
 use graph::constraint_violation;
 use graph::prelude::tokio;
@@ -957,7 +957,7 @@ impl PoolInner {
         self.pool
             .get()
             .ok()
-            .map(|conn| sql_query("select 1").execute(&mut conn).is_ok())
+            .map(|mut conn| sql_query("select 1").execute(&mut conn).is_ok())
             .unwrap_or(false)
     }
 
@@ -1046,12 +1046,12 @@ impl PoolInner {
         let mut conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction(|conn| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(&mut conn)?;
+            let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 if current_servers.contains(&server.name) {
-                    server.update(&mut conn)?;
+                    server.update(conn)?;
                 } else {
-                    server.create(&mut conn)?;
+                    server.create(conn)?;
                 }
             }
             Ok(())
@@ -1079,7 +1079,7 @@ impl PoolInner {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get()?;
-            conn.transaction(|conn| ForeignServer::map_primary(&mut conn, &self.shard))?;
+            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -1088,7 +1088,7 @@ impl PoolInner {
                 server.shard.as_str()
             );
             let mut conn = self.get()?;
-            conn.transaction(|conn| server.map_metadata(&mut conn))?;
+            conn.transaction(|conn| server.map_metadata(conn))?;
         }
         Ok(())
     }
@@ -1108,26 +1108,32 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<bool, Stor
     let mut output = vec![];
 
     let old_count = catalog::migration_count(conn)?;
+    let mut harness = HarnessWithOutput::new(conn, &mut output);
 
     info!(logger, "Running migrations");
-    let result = conn.run_pending_migrations(MIGRATIONS);
+    // let result = conn.run_pending_migrations(MIGRATIONS);
+    let result = harness.run_pending_migrations(MIGRATIONS);
     info!(logger, "Migrations finished");
 
-    let had_migrations = catalog::migration_count(conn)? != old_count;
-
-    // If there was any migration output, log it now
-    let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
-    let msg = msg.trim();
-    if !msg.is_empty() {
-        let msg = msg.replace('\n', " ");
-        if let Err(e) = result {
-            error!(logger, "Postgres migration error"; "output" => msg);
-            return Err(StoreError::Unknown(anyhow!(e.to_string())));
-        } else {
-            debug!(logger, "Postgres migration output"; "output" => msg);
+    if let Err(e) = result {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        let mut msg = msg.trim().to_string();
+        if !msg.is_empty() {
+            msg = msg.replace('\n', " ");
         }
+
+        error!(logger, "Postgres migration error"; "output" => msg);
+        return Err(StoreError::Unknown(anyhow!(e.to_string())));
+    } else {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        let mut msg = msg.trim().to_string();
+        if !msg.is_empty() {
+            msg = msg.replace('\n', " ");
+        }
+        debug!(logger, "Postgres migration output"; "output" => msg);
     }
 
+    let had_migrations = catalog::migration_count(conn)? != old_count;
     if had_migrations {
         // Reset the query statistics since a schema change makes them not
         // all that useful. An error here is not serious and can be ignored.

@@ -896,7 +896,7 @@ pub(crate) fn copy_errors(
 /// will wait at most 2s to aquire all necessary locks, and fail if that is
 /// not possible.
 pub fn drop_schema(
-    conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
     let query = format!(
@@ -1086,13 +1086,13 @@ pub fn set_earliest_block(
 //  see also: deployment-lock-for-update
 pub fn with_lock<F, R>(conn: &mut PgConnection, site: &Site, f: F) -> Result<R, StoreError>
 where
-    F: FnOnce() -> Result<R, StoreError>,
+    F: FnOnce(&mut PgConnection) -> Result<R, StoreError>,
 {
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
     while !advisory_lock::lock_deployment_session(conn, site)? {
         backoff.sleep();
     }
-    let res = f();
+    let res = f(conn);
     advisory_lock::unlock_deployment_session(conn, site)?;
     res
 }

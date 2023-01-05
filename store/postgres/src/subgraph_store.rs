@@ -438,7 +438,7 @@ impl SubgraphStoreInner {
             }
             1 => Ok(nodes.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since nodes is not empty
                 let node = conn.least_assigned_node(&nodes)?.unwrap();
@@ -452,7 +452,7 @@ impl SubgraphStoreInner {
             0 => Ok(PRIMARY_SHARD.clone()),
             1 => Ok(shards.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since shards is not empty
                 let shard = conn.least_used_shard(&shards)?.unwrap();
@@ -539,7 +539,7 @@ impl SubgraphStoreInner {
                 None => DeploymentSchemaVersion::LATEST,
                 Some(src_layout) => src_layout.site.schema_version,
             };
-            let conn = self.primary_conn()?;
+            let mut conn = self.primary_conn()?;
             let site = conn.allocate_site(shard, &schema.id, network_name, schema_version)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
@@ -571,8 +571,9 @@ impl SubgraphStoreInner {
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|_| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -650,8 +651,10 @@ impl SubgraphStoreInner {
             false,
         )?;
 
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|_| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -690,7 +693,7 @@ impl SubgraphStoreInner {
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        let conn = self.primary_conn()?;
+        let mut conn = self.primary_conn()?;
         conn.send_store_event(&self.sender, event)
     }
 
@@ -726,7 +729,7 @@ impl SubgraphStoreInner {
     /// it very hard to export items just for testing
     #[cfg(debug_assertions)]
     pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn()?;
         let schemas = pconn.sites()?;
 
         // Delete all subgraph schemas
@@ -1234,13 +1237,15 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|_| pconn.create_subgraph(&name))
+        let mut pconn = self.primary_conn()?;
+        pconn.create_subgraph(&name)
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|_| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1252,8 +1257,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|_| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|conn| -> Result<_, StoreError> {
+            let mut pconn = primary::Connection::new(conn);
+
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })

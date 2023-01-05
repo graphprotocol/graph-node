@@ -276,7 +276,7 @@ impl CopyState {
                         self.dst.site.shard
                     ));
                 }
-                crate::catalog::drop_foreign_schema(&mut conn, self.src.site.as_ref())?;
+                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref())?;
             }
         }
         Ok(())
@@ -722,11 +722,11 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
     where
         F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
-        self.conn.transaction(|conn| f(&mut conn))
+        self.conn.transaction(|conn| f(conn))
     }
 
     fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
@@ -742,17 +742,16 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
-        let mut state = self.transaction(|conn| {
-            CopyState::new(
-                conn,
-                self.src.clone(),
-                self.dst.clone(),
-                self.target_block.clone(),
-            )
-        })?;
+    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
+        let mut state = CopyState::new(
+            &mut self.conn,
+            self.src.clone(),
+            self.dst.clone(),
+            self.target_block.clone(),
+        )?;
 
-        let mut progress = CopyProgress::new(&self.logger, &state);
+        let logger = self.logger.clone();
+        let mut progress = CopyProgress::new(&logger, &state);
         progress.start();
 
         for table in state.tables.iter_mut().filter(|table| !table.finished()) {
@@ -812,7 +811,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when

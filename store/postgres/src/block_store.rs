@@ -148,7 +148,7 @@ pub mod primary {
     }
 
     pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
         delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())

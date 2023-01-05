@@ -352,7 +352,7 @@ impl Layout {
         // the smaller `dst` table
         reporter.start_switch();
         //  see also: deployment-lock-for-update
-        deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
+        deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
             for table in &prunable_tables {
                 reporter.copy_nonfinal_start(table.src.name.as_str());
                 table.copy_nonfinal_entities(conn, reporter, final_block)?;

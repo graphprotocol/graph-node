@@ -641,8 +641,8 @@ impl DeploymentStore {
         &self,
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        deployment::drop_schema(&conn, namespace)
+        let mut conn = self.get_conn()?;
+        deployment::drop_schema(&mut conn, namespace)
     }
 
     // Only used for tests
@@ -779,7 +779,7 @@ impl DeploymentStore {
                 // Index creation falied. We should drop the index before returning.
                 let drop_index_sql =
                     format!("drop index concurrently if exists {schema_name}.{index_name}");
-                sql_query(&sql).execute(conn)?;
+                sql_query(&drop_index_sql).execute(conn)?;
                 Err(StoreError::Canceled)
             }
             .map_err(Into::into)
@@ -1104,7 +1104,7 @@ impl DeploymentStore {
             self.get_conn()?
         };
 
-        let event = deployment::with_lock(&mut conn, &site, || {
+        let event = deployment::with_lock(&mut conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // Emit a store event for the changes we are about to make. We
                 // wait with sending it until we have done all our other work
@@ -1167,7 +1167,7 @@ impl DeploymentStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<StoreEvent, StoreError> {
-        let event = deployment::with_lock(conn, &site, || {
+        let event = deployment::with_lock(conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // Don't revert past a graft point
                 let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
@@ -1382,7 +1382,7 @@ impl DeploymentStore {
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
-            let copy_conn = crate::copy::Connection::new(
+            let mut copy_conn = crate::copy::Connection::new(
                 logger,
                 self.pool.clone(),
                 src.clone(),
@@ -1478,7 +1478,7 @@ impl DeploymentStore {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1574,7 +1574,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
