@@ -331,9 +331,9 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.3.2"
+version = "1.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "895adc16c8b3273fbbc32685a7d55227705eda08c01e77704020f3491924b44b"
+checksum = "42ae2468a89544a466886840aa467a25b766499f4f04bf7d9fcd10ecee9fccef"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.2",
@@ -1862,7 +1862,7 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.28.2"
 dependencies = [
- "blake3 1.3.2",
+ "blake3 1.3.3",
  "either",
  "futures 0.3.16",
  "graph",
@@ -1918,7 +1918,7 @@ dependencies = [
  "Inflector",
  "anyhow",
  "async-trait",
- "blake3 1.3.2",
+ "blake3 1.3.3",
  "clap",
  "derive_more",
  "diesel",
@@ -2818,7 +2818,7 @@ checksum = "835d6ff01d610179fbce3de1694d007e500bf33a7f29689838941d6bf783ae40"
 dependencies = [
  "blake2b_simd",
  "blake2s_simd",
- "blake3 1.3.2",
+ "blake3 1.3.3",
  "core2",
  "digest 0.10.5",
  "multihash-derive",
