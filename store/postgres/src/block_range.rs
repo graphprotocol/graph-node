@@ -92,8 +92,10 @@ impl From<RangeFrom<BlockNumber>> for BlockRange {
 
 impl ToSql<Range<Integer>, Pg> for BlockRange {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
+        let mut out = out.reborrow();
+
         let pair = (self.0, self.1);
-        ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
+        ToSql::<Range<Integer>, Pg>::to_sql(&pair, &mut out)
     }
 }
 
@@ -104,7 +106,7 @@ pub struct BlockRangeLowerBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("lower(");
@@ -123,7 +125,8 @@ pub struct BlockRangeUpperBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        let mut out = out.reborrow();
         out.unsafe_to_cache_prepared();
 
         out.push_sql("coalesce(upper(");
@@ -169,14 +172,25 @@ impl<'a> BlockRangeColumn<'a> {
     }
 }
 
+impl<'a> Into<BlockRange> for BlockRangeColumn<'a> {
+    fn into(self) -> BlockRange {
+        let block = match self {
+            BlockRangeColumn::Mutable { block, .. } => block,
+            BlockRangeColumn::Immutable { block, .. } => block,
+        };
+
+        (block..).into()
+    }
+}
+
 impl<'a> BlockRangeColumn<'a> {
     /// Output SQL that matches only rows whose block range contains `block`
-    pub fn contains(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn contains<'b>(&'b self, mut out: AstPass<'b, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         match self {
             BlockRangeColumn::Mutable { table, block, .. } => {
-                self.name(out);
+                self.name(&mut out);
                 out.push_sql(" @> ");
                 out.push_bind_param::<Integer, _>(block)?;
                 if table.is_account_like && *block < BLOCK_NUMBER_MAX {
@@ -202,9 +216,10 @@ impl<'a> BlockRangeColumn<'a> {
                     out.push_sql("true");
                     Ok(())
                 } else {
-                    self.name(out);
+                    self.name(&mut out);
                     out.push_sql(" <= ");
-                    out.push_bind_param::<Integer, _>(block)
+                    let mut out = out.reborrow();
+                    out.reborrow().push_bind_param::<Integer, _>(block)
                 }
             }
         }
@@ -233,15 +248,17 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output the literal value of the block range `[block,..)`, mostly for
     /// generating an insert statement containing the block range column
-    pub fn literal_range_current(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => {
-                let block_range: BlockRange = (*block..).into();
-                out.push_bind_param::<Range<Integer>, _>(&block_range)
-            }
-            BlockRangeColumn::Immutable { block, .. } => out.push_bind_param::<Integer, _>(block),
-        }
-    }
+    // pub fn literal_range_current<'b>(&'b self, out: &mut AstPass<'b, 'b, Pg>) -> QueryResult<()> {
+    //     let mut out = out.reborrow();
+
+    //     match self {
+    //         BlockRangeColumn::Mutable { block, .. } => {
+    //             let block_range: BlockRange = (*block..).into();
+    //             out.push_bind_param::<Range<Integer>, _>(&block_range)
+    //         }
+    //         BlockRangeColumn::Immutable { block, .. } => out.push_bind_param::<Integer, _>(block),
+    //     }
+    // }
 
     /// Output an expression that matches rows that are the latest version
     /// of their entity
