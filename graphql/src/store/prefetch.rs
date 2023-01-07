@@ -539,7 +539,7 @@ fn extract_field_info<'a>(
     selection_field: &'a execution::ast::Field,
 ) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
     let schema = &ctx.query.schema;
-    println!("here ");
+
     match is_connection_type(&selection_field.name) {
         false => {
             let field_type = object_type
@@ -621,8 +621,6 @@ fn execute_selection_set<'a>(
                 child_type,
                 &field_name,
             );
-
-            // println!("join: {:?}", join);
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,

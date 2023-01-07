@@ -35,10 +35,7 @@ pub(crate) fn build_query<'a>(
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let is_conn = is_connection_type(entity.name());
-    println!("is_conn: {}", is_conn);
-    for (name, _) in field.arguments.iter() {
-        println!("{} {name}", field.name);
-    }
+
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names.get(object);
@@ -56,7 +53,7 @@ pub(crate) fn build_query<'a>(
     println!("entity_types: {:?}", entity_types);
 
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types);
-    println!("query: {:?}", query);
+
     if is_conn {
         query = query.range(build_cursor(field, max_first, max_skip)?);
     } else {
@@ -64,7 +61,6 @@ pub(crate) fn build_query<'a>(
     }
 
     if let Some(filter) = build_filter(entity, field, schema)? {
-        println!("filter: {:?}", filter);
         query = query.filter(filter);
     }
     let order = match (
@@ -80,7 +76,7 @@ pub(crate) fn build_query<'a>(
         (None, _) => EntityOrder::Default,
     };
     query = query.order(order);
-    println!("query: {:?}", query);
+
     Ok(query)
 }
 
@@ -370,7 +366,7 @@ fn build_filter_from_object(
             let (field_name, op) = sast::parse_field_as_filter(key);
 
             let is_conn = is_connection_type(entity.name());
-            
+
             let ent = match is_conn {
                 false => entity,
                 true => schema
