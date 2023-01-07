@@ -279,12 +279,19 @@ impl StoreResolver {
 }
 
 impl StoreResolver {
-    fn compose_cursor(&self, value: Option<&graph::data::value::Value>) -> r::Value {
-        // println!("compose_cursor: {:?}", value);
-        value
+    fn compose_cursor(
+        &self,
+        value: Option<&graph::data::value::Value>,
+        field: &a::Field,
+    ) -> String {
+        let id = value
             .and_then(|v| v.get_required("id").ok())
             .map(|v| r::Value::String(v))
-            .unwrap_or(r::Value::Null)
+            .unwrap_or(r::Value::Null);
+
+        let where_filter = field.argument_value("where").unwrap().to_string();
+        
+        return base64::encode(format!("{}:{}", id, where_filter));
     }
 
     fn build_connection_object(
@@ -309,18 +316,13 @@ impl StoreResolver {
                     };
 
                 let mut connection_response_map = BTreeMap::new();
-                let start_cursor = self.compose_cursor(items.first());
-                // println!("start_cursor: {:?}", start_cursor);
-                // println!(
-                //     "start_cursor base64: {:?}",
-                //     base64::encode(&start_cursor.to_string())
-                // );
-                let end_cursor = self.compose_cursor(items.last());
+                let start_cursor = self.compose_cursor(items.first(), field);
+                let end_cursor = self.compose_cursor(items.last(), field);
 
                 let mut page_info_map = BTreeMap::new();
                 page_info_map.insert("hasNextPage".into(), r::Value::Boolean(has_next_page));
-                page_info_map.insert("startCursor".into(), start_cursor);
-                page_info_map.insert("endCursor".into(), end_cursor);
+                page_info_map.insert("startCursor".into(), r::Value::String(start_cursor));
+                page_info_map.insert("endCursor".into(), r::Value::String(end_cursor));
 
                 connection_response_map.insert("pageInfo".into(), r::Value::object(page_info_map));
                 connection_response_map.insert(
@@ -330,9 +332,9 @@ impl StoreResolver {
                             .into_iter()
                             .map(|child| {
                                 let mut edge_map = BTreeMap::<Word, r::Value>::new();
-                                let cursor = self.compose_cursor(Some(&child));
+                                let cursor = self.compose_cursor(Some(&child), field);
                                 edge_map.insert("node".into(), child);
-                                edge_map.insert("cursor".into(), cursor);
+                                edge_map.insert("cursor".into(), r::Value::String(cursor));
 
                                 r::Value::object(edge_map)
                             })
