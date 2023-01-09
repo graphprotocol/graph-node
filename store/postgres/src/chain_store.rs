@@ -1881,17 +1881,16 @@ mod recent_blocks_cache {
         }
 
         fn chain_head(&self) -> Option<&BlockPtr> {
-            self.blocks.iter().next_back().map(|b| &b.1.ptr)
+            self.blocks.last_key_value().map(|b| &b.1.ptr)
         }
 
-        fn last_block(&self) -> Option<&CachedBlock> {
-            self.blocks.iter().next().map(|b| b.1)
+        fn earliest_block(&self) -> Option<&CachedBlock> {
+            self.blocks.first_key_value().map(|b| b.1)
         }
 
         fn evict_if_necessary(&mut self) {
             while self.blocks.len() > self.capacity && !self.blocks.is_empty() {
-                let block_num = *self.blocks.iter().next().unwrap().0;
-                self.blocks.remove(&block_num);
+                self.blocks.pop_first();
             }
         }
 
@@ -1901,6 +1900,10 @@ mod recent_blocks_cache {
             data: Option<json::Value>,
             parent_hash: BlockHash,
         ) {
+            fn is_parent_of(parent: &BlockPtr, child: &CachedBlock) -> bool {
+                child.ptr.number == parent.number + 1 && child.parent_hash == parent.hash
+            }
+
             let block = CachedBlock {
                 ptr,
                 data,
@@ -1916,7 +1919,7 @@ mod recent_blocks_cache {
                 return;
             };
 
-            if chain_head.number == block.ptr.number - 1 && chain_head.hash == block.parent_hash {
+            if is_parent_of(chain_head, &block) {
                 // We have a new chain head that is a direct child of our
                 // previous chain head, so we get to keep all items in the
                 // cache.
@@ -1927,17 +1930,14 @@ mod recent_blocks_cache {
                 // invalidate all the items in the cache before inserting
                 // this block.
                 self.blocks.clear();
-                // Try again after clearing the cache.
-                self.insert_block(block.ptr, block.data, block.parent_hash);
+                self.blocks.insert(block.ptr.number, block);
             } else {
                 // Unwrap: we have checked already that the cache is not empty,
                 // at the beginning of this function body.
-                let last_block = self.last_block().unwrap();
-                // Let's check if this is the parent of the last block in the
+                let earliest_block = self.earliest_block().unwrap();
+                // Let's check if this is the parent of the earliest block in the
                 // cache.
-                let is_prev_block = last_block.ptr.number == block.ptr.number + 1
-                    && &last_block.parent_hash == &block.ptr.hash;
-                if is_prev_block {
+                if is_parent_of(&block.ptr, earliest_block) {
                     self.blocks.insert(block.ptr.number, block);
                 }
             }
