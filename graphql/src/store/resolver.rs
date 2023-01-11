@@ -289,9 +289,16 @@ impl StoreResolver {
             .map(|v| r::Value::String(v))
             .unwrap_or(r::Value::Null);
 
-        let where_filter = field.argument_value("where").unwrap().to_string();
-        
-        return base64::encode(format!("{}:{}", id, where_filter));
+        let where_filter = field.argument_value("where");
+
+        match where_filter {
+            Some(v) => {
+                return base64::encode(format!("{}:{}", id, v.to_string()));
+            }
+            _ => {
+                return base64::encode(format!("{}:{}", id, ""));
+            }
+        }
     }
 
     fn build_connection_object(
@@ -317,6 +324,13 @@ impl StoreResolver {
 
                 let mut connection_response_map = BTreeMap::new();
                 let start_cursor = self.compose_cursor(items.first(), field);
+                println!("start_cursor - encoded: {}", start_cursor);
+
+                println!(
+                    "start_cursor - decoded: {}",
+                    String::from_utf8(base64::decode(start_cursor.to_owned()).unwrap()).unwrap()
+                );
+
                 let end_cursor = self.compose_cursor(items.last(), field);
 
                 let mut page_info_map = BTreeMap::new();

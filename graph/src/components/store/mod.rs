@@ -184,6 +184,8 @@ pub enum EntityFilter {
     NotEndsWithNoCase(Attribute, Value),
     ChangeBlockGte(BlockNumber),
     Child(Child),
+    // This is used to filter out entities that are after a cursor
+    AfterCursor(Attribute, Value),
 }
 
 // A somewhat concise string representation of a filter
@@ -234,6 +236,7 @@ impl fmt::Display for EntityFilter {
                 child.entity_type,
                 child.filter.to_string()
             ),
+            AfterCursor(a, v) => write!(f, "{} > {}", a, v),
         }
     }
 }
