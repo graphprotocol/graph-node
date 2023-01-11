@@ -254,9 +254,6 @@ impl Query {
         raw_query.validate_fields()?;
         let selection_set = raw_query.convert()?;
 
-        // compose cursors
-        // println!("selection_set: {:?}", selection_set);
-
         let query = Self {
             schema,
             selection_set: Arc::new(selection_set),

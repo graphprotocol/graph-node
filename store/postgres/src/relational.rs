@@ -710,6 +710,8 @@ impl Layout {
                         write!(query_text, "{query_clone}").ok();
                     }
                 };
+                // Debugging SQL
+                println!("query_text: {}", query_text);
                 match e {
                     DatabaseError(DatabaseErrorKind::__Unknown, ref info)
                         if info.message().starts_with("syntax error in tsquery") =>

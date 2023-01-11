@@ -52,17 +52,29 @@ pub(crate) fn build_query<'a>(
     });
     println!("entity_types: {:?}", entity_types);
 
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types);
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
+        .range(build_range(field, max_first, max_skip)?);
 
-    if is_conn {
-        query = query.range(build_cursor(field, max_first, max_skip)?);
-    } else {
-        query = query.range(build_range(field, max_first, max_skip)?);
+    let mut filters: Vec<EntityFilter> = vec![];
+
+    let cursor_filter = match is_conn {
+        true => build_cursor(field, max_first, max_skip)?,
+        false => None,
+    };
+
+    match cursor_filter {
+        Some(f) => {
+            println!("cursor_filter: {:?}", f);
+            filters.push(f);
+        }
+        None => {}
     }
 
     if let Some(filter) = build_filter(entity, field, schema)? {
-        query = query.filter(filter);
+        filters.push(filter);
     }
+
+    query = query.filter(EntityFilter::And(filters));
     let order = match (
         build_order_by(entity, field)?,
         build_order_direction(field)?,
@@ -80,12 +92,12 @@ pub(crate) fn build_query<'a>(
     Ok(query)
 }
 
-/// Parses GraphQL arguments into a EntityRange, if present.
+/// Parses GraphQL arguments into a EntityFilter, if present.
 fn build_cursor(
     field: &a::Field,
     max_first: u32,
     max_skip: u32,
-) -> Result<EntityRange, QueryExecutionError> {
+) -> Result<Option<EntityFilter>, QueryExecutionError> {
     println!("field args {:?}", field.arguments);
     let first = match field.argument_value("first") {
         Some(r::Value::Int(n)) => {
@@ -151,16 +163,56 @@ fn build_cursor(
             "\"last\" may only be used with \"before\"".to_string(),
         ));
     }
+    println!("after: {:?}", after.is_some());
+    // If after exists then create entity filter
+    let after_sql: Option<EntityFilter> = match after {
+        Some(s) => {
+            println!("after encoded: {}", s);
+            let decode_base64 = base64::decode(s.clone());
 
-    Ok(EntityRange {
-        first: match is_connection_type(&field.name) {
-            // We are a bit overfetching to see ahead when dealing with connections.
-            // This way we can tell the user if there are more pages available.
-            true => Some(first + 1),
-            false => Some(first),
-        },
-        skip: last,
-    })
+            match decode_base64 {
+                Ok(decoded) => {
+                    println!("after decoded: {:?}", decoded);
+                    let decoded_value = String::from_utf8(decoded);
+
+                    match decoded_value {
+                        Ok(val) => {
+                            // We encode the cursors using `:` as a separator
+                            // split by `:` and getting the first will give us the ID
+                            let id = val.split(":").collect::<Vec<&str>>()[0];
+                            println!("decoded id: {}", id);
+                            return Ok(Some(EntityFilter::AfterCursor(
+                                "id".to_string(),
+                                Value::String(id.to_string()),
+                            )));
+                        }
+                        Err(_) => {
+                            return Err(QueryExecutionError::InvalidCursorOptions(
+                                "Failed to decode \"after\" cursor value.".to_string(),
+                            ));
+                        }
+                    }
+                }
+                Err(_) => {
+                    return Err(QueryExecutionError::InvalidCursorOptions(
+                        "Invalid base64 value for \"after\" cursor.".to_string(),
+                    ));
+                }
+            }
+        }
+        None => None,
+    };
+
+    match after_sql {
+        Some(_) => {
+            println!("after_sql: {:?}", after_sql);
+            return Ok(after_sql);
+        }
+        None => {
+            println!("after_sql: {:?}", after_sql);
+            return Ok(None);
+        }
+    }
 }
 
 /// Parses GraphQL arguments into a EntityRange, if present.
@@ -354,6 +406,7 @@ fn build_filter_from_object(
     Ok(object
         .iter()
         .map(|(key, value)| {
+            println!("key {}", key);
             // Special handling for _change_block input filter since its not a
             // standard entity filter that is based on entity structure/fields
             if key == "_change_block" {
