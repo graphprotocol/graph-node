@@ -683,7 +683,9 @@ fn execute_field(
     field_definition: &s::Field,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
+    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition)
+        || is_connection_type(&field_definition.field_type.get_base_type().to_string())
+    {
         ChildMultiplicity::Many
     } else {
         ChildMultiplicity::Single
@@ -736,6 +738,8 @@ fn fetch(
         schema,
     )?;
     query.query_id = Some(query_id);
+
+    println!("multiplicity = {:?}", multiplicity);
 
     if multiplicity == ChildMultiplicity::Single {
         // Suppress 'order by' in lookups of scalar values since

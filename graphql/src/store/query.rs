@@ -75,6 +75,7 @@ pub(crate) fn build_query<'a>(
     }
 
     query = query.filter(EntityFilter::And(filters));
+
     let order = match (
         build_order_by(entity, field)?,
         build_order_direction(field)?,
@@ -87,6 +88,7 @@ pub(crate) fn build_query<'a>(
         }
         (None, _) => EntityOrder::Default,
     };
+    println!("order: {:?}", order);
     query = query.order(order);
 
     Ok(query)
