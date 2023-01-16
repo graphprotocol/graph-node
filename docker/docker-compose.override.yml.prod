@@ -1,0 +1,5 @@
+version: '3'
+services:
+  graph-node:
+    environment:
+      ethereum: 'bsc:https://dimensional-twilight-lambo.bsc.quiknode.pro/db39e52ccdca7efbd93bfe429e21e3a5d25cccac/'

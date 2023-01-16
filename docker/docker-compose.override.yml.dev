@@ -1,0 +1,5 @@
+version: '3'
+services:
+  graph-node:
+    environment:
+      ethereum: 'chapel:https://magical-patient-aura.bsc-testnet.quiknode.pro/fde9117b72e6fc0baac4040e1d4f455d575fcbca/'
