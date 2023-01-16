@@ -13,7 +13,6 @@ lcov.info
 
 # IDE files
 .vscode/
-.idea/
 
 # Ignore data files created by running the Docker Compose setup locally
 /docker/data/
@@ -30,5 +29,3 @@ lcov.info
 # Built solidity contracts.
 /tests/integration-tests/**/bin
 /tests/integration-tests/**/truffle_output
-
-docker/docker-compose.override.yml
