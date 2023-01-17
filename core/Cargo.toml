@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-atomic_refcell = "0.1.8"
+atomic_refcell = "0.1.9"
 async-stream = "0.3"
 bytes = "1.0"
 futures01 = { package = "futures", version = "0.1.31" }
