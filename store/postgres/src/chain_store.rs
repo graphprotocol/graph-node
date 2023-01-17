@@ -1852,9 +1852,12 @@ mod recent_blocks_cache {
     }
 
     struct Inner {
-        // Note: At all times, only a continuous range of blocks will be in the
-        // cache, i.e. without gaps. This constraint makes it possible to easily
-        // verify a direct line of ancestry between two blocks via parent hashes.
+        // Note: we only ever store blocks in this cache that have a continuous
+        // line of ancestry between each other. Line of ancestry is verified by
+        // comparing parent hashes. Because of NEAR, however, we cannot
+        // guarantee that there are no block number gaps, as block numbers are
+        // not strictly continuous:
+        //   #14 (Hash ABC1, Parent XX) -> #17 (Hash EBD2, Parent ABC1)
         blocks: BTreeMap<BlockNumber, CachedBlock>,
         // We only store these many blocks.
         capacity: usize,
@@ -1889,7 +1892,7 @@ mod recent_blocks_cache {
         }
 
         fn evict_if_necessary(&mut self) {
-            while self.blocks.len() > self.capacity && !self.blocks.is_empty() {
+            while self.blocks.len() > self.capacity {
                 self.blocks.pop_first();
             }
         }
@@ -1901,7 +1904,7 @@ mod recent_blocks_cache {
             parent_hash: BlockHash,
         ) {
             fn is_parent_of(parent: &BlockPtr, child: &CachedBlock) -> bool {
-                child.ptr.number == parent.number + 1 && child.parent_hash == parent.hash
+                child.parent_hash == parent.hash
             }
 
             let block = CachedBlock {
@@ -1910,9 +1913,7 @@ mod recent_blocks_cache {
                 parent_hash,
             };
 
-            let chain_head = if let Some(ch) = self.chain_head() {
-                ch
-            } else {
+            let Some(chain_head) = self.chain_head() else {
                 // We don't have anything in the cache, so we're free to store
                 // everything we want.
                 self.blocks.insert(block.ptr.number, block);
@@ -1924,7 +1925,7 @@ mod recent_blocks_cache {
                 // previous chain head, so we get to keep all items in the
                 // cache.
                 self.blocks.insert(block.ptr.number, block);
-            } else if block.ptr.number > chain_head.number && block.parent_hash != chain_head.hash {
+            } else if block.ptr.number > chain_head.number {
                 // We have a new chain head, but it's not a direct child of
                 // our previous chain head. This means that we must
                 // invalidate all the items in the cache before inserting
