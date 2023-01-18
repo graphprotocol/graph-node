@@ -1983,15 +1983,14 @@ dependencies = [
  "graph-server-index-node",
  "graph-store-postgres",
  "graphql-parser",
- "hex",
  "hyper",
  "lazy_static",
- "port_check",
  "serde",
  "serde_yaml",
  "slog",
  "tokio",
  "tokio-stream",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -3207,12 +3206,6 @@ name = "pkg-config"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
-
-[[package]]
-name = "port_check"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6519412c9e0d4be579b9f0618364d19cb434b324fc6ddb1b27b1e682c7105ed"
 
 [[package]]
 name = "postgres"

@@ -1,11 +1,9 @@
 pub mod ethereum;
 
 use std::marker::PhantomData;
-use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::helpers::run_cmd;
 use anyhow::Error;
 use async_stream::stream;
 use futures::{Stream, StreamExt};
@@ -52,55 +50,6 @@ use std::task::{Context, Poll};
 use tokio::fs::read_to_string;
 
 const NODE_ID: &str = "default";
-
-pub async fn build_subgraph(dir: &str, yarn_dir: &str) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd(dir, "deploy:test", yarn_dir).await
-}
-
-pub async fn build_subgraph_with_yarn_cmd(
-    dir: &str,
-    yarn_cmd: &str,
-    yarn_dir: &str,
-) -> DeploymentHash {
-    // Test that IPFS is up.
-    IpfsClient::localhost()
-        .test()
-        .await
-        .expect("Could not connect to IPFS, make sure it's running at port 5001");
-
-    // Make sure dependencies are present.
-    run_cmd(
-        Command::new("yarn")
-            .arg("install")
-            .arg("--mutex")
-            .arg("file:.yarn-mutex")
-            .current_dir(yarn_dir),
-    );
-
-    // Run codegen.
-    run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
-
-    // Run `deploy` for the side effect of uploading to IPFS, the graph node url
-    // is fake and the actual deploy call is meant to fail.
-    let deploy_output = run_cmd(
-        Command::new("yarn")
-            .arg(yarn_cmd)
-            .env("IPFS_URI", "http://127.0.0.1:5001")
-            .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
-            .current_dir(dir),
-    );
-
-    // Hack to extract deployment id from `graph deploy` output.
-    const ID_PREFIX: &str = "Build completed: ";
-    let mut line = deploy_output
-        .lines()
-        .find(|line| line.contains(ID_PREFIX))
-        .expect("found no matching line");
-    if !line.starts_with(ID_PREFIX) {
-        line = &line[5..line.len() - 5]; // workaround for colored output
-    }
-    DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
-}
 
 pub fn test_ptr(n: BlockNumber) -> BlockPtr {
     test_ptr_reorged(n, 0)
