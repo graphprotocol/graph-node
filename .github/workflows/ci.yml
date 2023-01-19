@@ -102,10 +102,10 @@ jobs:
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Node 14
+      - name: Install Node 16
         uses: actions/setup-node@v3
         with:
-          node-version: "14"
+          node-version: "16"
           cache: yarn
           cache-dependency-path: "tests/integration-tests/yarn.lock"
 

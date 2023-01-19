@@ -234,7 +234,7 @@ async fn file_data_sources() {
     let stop_block = test_ptr(5);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x365d - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3649 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -345,8 +345,8 @@ async fn template_static_filters_false_positives() {
     assert_eq!(
         poi.unwrap(),
         [
-            172, 174, 50, 50, 108, 187, 89, 216, 16, 123, 40, 207, 250, 97, 247, 138, 180, 67, 20,
-            5, 114, 187, 237, 104, 187, 122, 220, 9, 131, 67, 50, 237
+            253, 249, 50, 171, 127, 117, 77, 13, 79, 132, 88, 246, 223, 214, 225, 39, 112, 19, 73,
+            97, 193, 132, 103, 19, 191, 5, 28, 14, 232, 137, 76, 9
         ],
     );
 }

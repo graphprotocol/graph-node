@@ -1,5 +1,17 @@
 version: 2
 updates:
+
+- package-ecosystem: npm
+  directory: tests/integration-tests
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 10
+  allow:
+    # We always want to test against the latest Graph CLI tooling: `graph-cli`,
+    # `graph-ts`.
+    - dependency-name: "@graphprotocol/graph-*"
+  versioning-strategy: lockfile-only
+
 - package-ecosystem: cargo
   directory: "/"
   schedule:

@@ -43,7 +43,7 @@ The high-level dataflow for a dApp using The Graph is as follows:
 ### 0.3 What's Needed to Build a Graph Node?
 Three repositories are relevant to building on The Graph:
 1. [Graph Node](../README.md) – A server implementation for indexing, caching, and serving queries against data from Ethereum.
-2. [Graph CLI](https://github.com/graphprotocol/graph-cli) – A CLI for building and compiling projects that are deployed to the Graph Node.
+2. [Graph CLI](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli) – A CLI for building and compiling projects that are deployed to the Graph Node.
 3. [Graph TypeScript Library](https://github.com/graphprotocol/graph-tooling/tree/main/packages/ts) – TypeScript/AssemblyScript library for writing subgraph mappings to be deployed to The Graph.
 
 ### 0.4 Getting Started Overview
@@ -182,9 +182,9 @@ schema:
 ```
 
 ### 1.3 Create a Subgraph Project and Generate Types
-Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command-line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-cli/) and follow the instructions up to Step 7 for setting up the subgraph directory.
+Once you have the `subgraph.yaml` manifest and the `./schema.graphql` file, you are ready to use the Graph CLI to set up the subgraph directory. The Graph CLI is a command-line tool that contains helpful commands for deploying the subgraphs. Before continuing with this guide, please go to the [Graph CLI README](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli) and follow the instructions up to Step 7 for setting up the subgraph directory.
 
-Once you run `yarn codegen` as outlined in the [Graph CLI README](https://github.com/graphprotocol/graph-cli/), you are ready to create the mappings.
+Once you run `yarn codegen` as outlined in the [Graph CLI README](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli), you are ready to create the mappings.
 
 `yarn codegen` looks at the contract ABIs defined in the subgraph manifest and generates TypeScript classes for the smart contracts the mappings script will interface with, which includes the types of public methods and events. In reality, the classes are AssemblyScript but more on that later.
 
@@ -228,7 +228,7 @@ export function handleTransfer(event: Transfer): void {
 ```
 A few things to note from this code:
 * We create a new entity named `token`, which is stored in the Graph Node database.
-* We create an ID for that token, which must be unique, and then create an entity with `new Token(tokenID)`. We get the token ID from the event emitted by Ethereum, which was turned into an AssemblyScript type by the [Graph TypeScript Library](https://github.com/graphprotocol/graph-ts). We access it at `event.params.tokenId`. Note that you must set `ID` as a string and call `toHex()` on the `tokenID` to turn it into a hex string.
+* We create an ID for that token, which must be unique, and then create an entity with `new Token(tokenID)`. We get the token ID from the event emitted by Ethereum, which was turned into an AssemblyScript type by the [Graph TypeScript Library](https://github.com/graphprotocol/graph-tooling/tree/main/packages/ts). We access it at `event.params.tokenId`. Note that you must set `ID` as a string and call `toHex()` on the `tokenID` to turn it into a hex string.
 * This entity is updated by the `Transfer` event emitted by the ERC721 contract.
 * The current owner is gathered from the event with `event.params.to`. It is set as an Address by the Token class.
 * Event handlers functions always return `void`.
@@ -252,7 +252,7 @@ The definition for `<entity>.load()` is:
 entity.load() // Entity is representative of the entity type being updated. In our example above, it is Token.
 ```
 
-Once again, all these functions come from the [Graph TypeScript Library](https://github.com/graphprotocol/graph-ts).
+Once again, all these functions come from the [Graph TypeScript Library](https://github.com/graphprotocol/graph-tooling/tree/main/packages/ts).
 
 Let's look at the ERC721 token as an example for using `token.load()`. Above, we showed how to use `token.save()`. Now, let's consider that you have another event handler that needs to retrieve the currentOwner of an ERC721 token. To do this within an event handler, you would write the following:
 
@@ -407,7 +407,7 @@ If you want to sync using a public testnet such as Kovan, Rinkeby, or Ropsten, j
 
 When you deploy the subgraph to the Graph Node, it will start ingesting all the subgraph events from the blockchain, transforming that data with the subgraph mappings and storing it in the Graph Node. Note that a running subgraph can safely be stopped and restarted, picking up where it left off.
 
-Now that the infrastructure is set up, you can run `yarn create-subgraph` and then `yarn deploy` in the subgraph directory. These commands should have been added to `package.json` in section 1.3 when we took a moment to go through the set up for [Graph CLI documentation](https://github.com/graphprotocol/graph-cli). This builds the subgraph and creates the WASM files in the `dist/` folder. Next, it uploads the `dist/
+Now that the infrastructure is set up, you can run `yarn create-subgraph` and then `yarn deploy` in the subgraph directory. These commands should have been added to `package.json` in section 1.3 when we took a moment to go through the set up for [Graph CLI documentation](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli). This builds the subgraph and creates the WASM files in the `dist/` folder. Next, it uploads the `dist/
 ` files to IPFS and deploys it to the Graph Node. The subgraph is now fully running.
 
 The `watch` flag allows the subgraph to continually restart every time you save an update to the `manifest`, `schema`, or `mappings`. If you are making many edits or have a subgraph that has been syncing for a few hours, leave this flag off.

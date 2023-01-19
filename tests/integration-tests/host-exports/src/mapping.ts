@@ -62,10 +62,10 @@ function testBigDecimal(): void {
   assert((bigInt & BigInt.fromI32(42)) == BigInt.fromI32(40));
 
   // Test big int left shift
-  assert(bigInt << 6 == BigInt.fromString("568888888888888832"));
+  assert(bigInt.leftShift(6) == BigInt.fromString("568888888888888832"));
 
   // Test big int right shift
-  assert(bigInt >> 6 == BigInt.fromString("138888888888888"));
+  assert(bigInt.rightShift(6) == BigInt.fromString("138888888888888"));
 }
 
 function testEthereumAbi(): void {

@@ -9,8 +9,8 @@
     "deploy:test": "graph deploy test/value-roundtrip --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#main",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#main",
+    "@graphprotocol/graph-cli": "0.50.0",
+    "@graphprotocol/graph-ts": "0.30.0",
     "solc": "^0.8.2"
   },
   "dependencies": {

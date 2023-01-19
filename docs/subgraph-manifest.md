@@ -34,7 +34,7 @@ Any data format that has a well-defined 1:1 mapping with the [IPLD Canonical For
 | --- | --- | --- |
 | **kind** | *String | The type of data source. Possible values: *ethereum/contract*.|
 | **name** | *String* | The name of the source data. Will be used to generate APIs in the mapping and also for self-documentation purposes. |
-| **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this can be any of "mainnet", "rinkeby", "kovan", "ropsten", "goerli", "poa-core", "poa-sokol", "xdai", "matic", "mumbai", "fantom", "bsc" or "clover". Developers could look for an up to date list in the graph-cli [*code*](https://github.com/graphprotocol/graph-cli/blob/main/packages/cli/src/protocols/index.js#L70-L107).|
+| **network** | *String* | For blockchains, this describes which network the subgraph targets. For Ethereum, this can be any of "mainnet", "rinkeby", "kovan", "ropsten", "goerli", "poa-core", "poa-sokol", "xdai", "matic", "mumbai", "fantom", "bsc" or "clover". Developers could look for an up to date list in the graph-cli [*code*](https://github.com/graphprotocol/graph-tooling/blob/main/packages/cli/src/protocols/index.ts#L76-L117).|
 | **source** | [*EthereumContractSource*](#151-ethereumcontractsource) | The source data on a blockchain such as Ethereum. |
 | **mapping** | [*Mapping*](#152-mapping) | The transformation logic applied to the data prior to being indexed. |
 
