@@ -3,13 +3,13 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+use graph::parking_lot::RwLock;
 
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
     iter::FromIterator,
     sync::Arc,
-    time::Duration,
 };
 
 use graph::blockchain::{Block, BlockHash, ChainIdentifier};
@@ -20,9 +20,9 @@ use graph::prelude::{
     BlockNumber, BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait,
     Error, EthereumCallCache, StoreError,
 };
-use graph::util::timed_cache::TimedCache;
 use graph::{constraint_violation, ensure};
 
+use self::recent_blocks_cache::RecentBlocksCache;
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender,
     connection_pool::ConnectionPool,
@@ -71,6 +71,7 @@ mod data {
     };
     use std::fmt;
     use std::iter::FromIterator;
+    use std::str::FromStr;
     use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
@@ -795,8 +796,8 @@ mod data {
             conn: &PgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
-        ) -> Result<Option<json::Value>, Error> {
-            let data = match self {
+        ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
+            let data_and_hash = match self {
                 Storage::Shared => {
                     const ANCESTOR_SQL: &str = "
         with recursive ancestors(block_hash, block_offset) as (
@@ -821,12 +822,13 @@ mod data {
 
                     match hash {
                         None => None,
-                        Some(hash) => Some(
+                        Some(hash) => Some((
                             b::table
-                                .filter(b::hash.eq(hash.hash))
+                                .filter(b::hash.eq(&hash.hash))
                                 .select(b::data)
                                 .first::<json::Value>(conn)?,
-                        ),
+                            BlockHash::from_str(&hash.hash)?,
+                        )),
                     }
                 }
                 Storage::Private(Schema { blocks, .. }) => {
@@ -854,13 +856,14 @@ mod data {
                         .optional()?;
                     match hash {
                         None => None,
-                        Some(hash) => Some(
+                        Some(hash) => Some((
                             blocks
                                 .table()
-                                .filter(blocks.hash().eq(hash.hash))
+                                .filter(blocks.hash().eq(&hash.hash))
                                 .select(blocks.data())
                                 .first::<json::Value>(conn)?,
-                        ),
+                            BlockHash::from(hash.hash),
+                        )),
                     }
                 }
             };
@@ -871,15 +874,20 @@ mod data {
             // has a 'block' entry
             //
             // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
-            let data = {
+            let data_and_ptr = {
                 use graph::prelude::serde_json::json;
 
-                data.map(|data| match data.get("block") {
-                    Some(_) => data,
-                    None => json!({ "block": data, "transaction_receipts": [] }),
+                data_and_hash.map(|(data, hash)| {
+                    (
+                        match data.get("block") {
+                            Some(_) => data,
+                            None => json!({ "block": data, "transaction_receipts": [] }),
+                        },
+                        BlockPtr::new(hash, block_ptr.number - offset),
+                    )
                 })
             };
-            Ok(data)
+            Ok(data_and_ptr)
         }
 
         pub(super) fn delete_blocks_before(
@@ -1344,7 +1352,13 @@ pub struct ChainStore {
     genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
-    block_cache: TimedCache<&'static str, BlockPtr>,
+    // TODO: We currently only use this cache for
+    // [`ChainStore::ancestor_block`], but it could very well be expanded to
+    // also track the network's chain head and generally improve its hit rate.
+    // It is, however, quite challenging to keep the cache perfectly consistent
+    // with the database and to correctly implement invalidation. So, a
+    // conservative approach is acceptable.
+    recent_blocks_cache: RecentBlocksCache,
 }
 
 impl ChainStore {
@@ -1355,6 +1369,7 @@ impl ChainStore {
         status: ChainStatus,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
+        recent_blocks_cache_capacity: usize,
     ) -> Self {
         ChainStore {
             pool,
@@ -1363,7 +1378,7 @@ impl ChainStore {
             genesis_block_ptr: BlockPtr::new(net_identifier.genesis_block_hash.clone(), 0),
             status,
             chain_head_update_sender,
-            block_cache: TimedCache::new(Duration::from_secs(5)),
+            recent_blocks_cache: RecentBlocksCache::new(recent_blocks_cache_capacity),
         }
     }
 
@@ -1484,6 +1499,12 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
+        // We should always have the parent block available to us at this point.
+        if let Some(parent_hash) = block.parent_hash() {
+            self.recent_blocks_cache
+                .insert_block(block.ptr(), block.data().ok(), parent_hash);
+        }
+
         let pool = self.pool.clone();
         let network = self.chain.clone();
         let storage = self.storage.clone();
@@ -1596,10 +1617,6 @@ impl ChainStoreTrait for ChainStore {
                                 _ => unreachable!(),
                             })
                             .and_then(|opt: Option<BlockPtr>| opt)
-                            .map(|head| {
-                                self.block_cache.set("head", Arc::new(head.clone()));
-                                head
-                            })
                     })
                     .map_err(|e| CancelableError::from(StoreError::from(e)))
             })
@@ -1607,8 +1624,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
-        match self.block_cache.get("head") {
-            Some(head) => Ok(Some(head.as_ref().clone())),
+        match self.recent_blocks_cache.chain_head_ptr() {
+            Some(head) => Ok(Some(head)),
             None => self.chain_head_ptr().await,
         }
     }
@@ -1686,15 +1703,24 @@ impl ChainStoreTrait for ChainStore {
             block_ptr.hash_hex()
         );
 
+        // Check the local cache first.
+        if let Some(data) = self.recent_blocks_cache.get_block(&block_ptr, offset) {
+            return Ok(data.1.clone());
+        }
+
+        let block_ptr_clone = block_ptr.clone();
+        let chain_store = self.cheap_clone();
         Ok(self
-            .cheap_clone()
             .pool
             .with_conn(move |conn, _| {
-                self.storage
-                    .ancestor_block(conn, block_ptr, offset)
-                    .map_err(|e| CancelableError::from(StoreError::from(e)))
+                chain_store
+                    .storage
+                    .ancestor_block(conn, block_ptr_clone, offset)
+                    .map_err(StoreError::from)
+                    .map_err(CancelableError::from)
             })
-            .await?)
+            .await?
+            .map(|b| b.0))
     }
 
     fn cleanup_cached_blocks(
@@ -1708,6 +1734,8 @@ impl ChainStoreTrait for ChainStore {
             #[sql_type = "Integer"]
             block: i32,
         }
+
+        self.recent_blocks_cache.clear();
 
         // Remove all blocks from the cache that are behind the slowest
         // subgraph's head block, but retain the genesis block. We stay
@@ -1810,6 +1838,165 @@ impl ChainStoreTrait for ChainStore {
                 .map_err(|e| StoreError::from(e).into())
         })
         .await
+    }
+}
+
+mod recent_blocks_cache {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    struct CachedBlock {
+        ptr: BlockPtr,
+        data: Option<json::Value>,
+        parent_hash: BlockHash,
+    }
+
+    struct Inner {
+        // Note: we only ever store blocks in this cache that have a continuous
+        // line of ancestry between each other. Line of ancestry is verified by
+        // comparing parent hashes. Because of NEAR, however, we cannot
+        // guarantee that there are no block number gaps, as block numbers are
+        // not strictly continuous:
+        //   #14 (Hash ABC1, Parent XX) -> #17 (Hash EBD2, Parent ABC1)
+        blocks: BTreeMap<BlockNumber, CachedBlock>,
+        // We only store these many blocks.
+        capacity: usize,
+    }
+
+    impl Inner {
+        fn get_block(
+            &self,
+            child: &BlockPtr,
+            offset: BlockNumber,
+        ) -> Option<(&BlockPtr, Option<&json::Value>)> {
+            // Before we can go find the ancestor, we need to make sure that
+            // we're looking for the ancestor of the right block, i.e. check if
+            // the hash (and number) of the child matches.
+            let child_is_cached = &self.blocks.get(&child.number)?.ptr == child;
+
+            if child_is_cached {
+                let ancestor_block_number = child.number - offset;
+                let block = self.blocks.get(&ancestor_block_number)?;
+                Some((&block.ptr, block.data.as_ref()))
+            } else {
+                None
+            }
+        }
+
+        fn chain_head(&self) -> Option<&BlockPtr> {
+            self.blocks.last_key_value().map(|b| &b.1.ptr)
+        }
+
+        fn earliest_block(&self) -> Option<&CachedBlock> {
+            self.blocks.first_key_value().map(|b| b.1)
+        }
+
+        fn evict_if_necessary(&mut self) {
+            while self.blocks.len() > self.capacity {
+                self.blocks.pop_first();
+            }
+        }
+
+        fn insert_block(
+            &mut self,
+            ptr: BlockPtr,
+            data: Option<json::Value>,
+            parent_hash: BlockHash,
+        ) {
+            fn is_parent_of(parent: &BlockPtr, child: &CachedBlock) -> bool {
+                child.parent_hash == parent.hash
+            }
+
+            let block = CachedBlock {
+                ptr,
+                data,
+                parent_hash,
+            };
+
+            let Some(chain_head) = self.chain_head() else {
+                // We don't have anything in the cache, so we're free to store
+                // everything we want.
+                self.blocks.insert(block.ptr.number, block);
+                return;
+            };
+
+            if is_parent_of(chain_head, &block) {
+                // We have a new chain head that is a direct child of our
+                // previous chain head, so we get to keep all items in the
+                // cache.
+                self.blocks.insert(block.ptr.number, block);
+            } else if block.ptr.number > chain_head.number {
+                // We have a new chain head, but it's not a direct child of
+                // our previous chain head. This means that we must
+                // invalidate all the items in the cache before inserting
+                // this block.
+                self.blocks.clear();
+                self.blocks.insert(block.ptr.number, block);
+            } else {
+                // Unwrap: we have checked already that the cache is not empty,
+                // at the beginning of this function body.
+                let earliest_block = self.earliest_block().unwrap();
+                // Let's check if this is the parent of the earliest block in the
+                // cache.
+                if is_parent_of(&block.ptr, earliest_block) {
+                    self.blocks.insert(block.ptr.number, block);
+                }
+            }
+
+            self.evict_if_necessary();
+        }
+    }
+
+    /// We cache the most recent blocks in memory to avoid overloading the
+    /// database with unnecessary queries close to the chain head. We invalidate
+    /// blocks whenever the chain head advances.
+    pub struct RecentBlocksCache {
+        // We protect everything with a global `RwLock` to avoid data races. Ugly...
+        inner: RwLock<Inner>,
+    }
+
+    impl RecentBlocksCache {
+        pub fn new(capacity: usize) -> Self {
+            RecentBlocksCache {
+                inner: RwLock::new(Inner {
+                    blocks: BTreeMap::new(),
+                    capacity,
+                }),
+            }
+        }
+
+        pub fn chain_head_ptr(&self) -> Option<BlockPtr> {
+            let inner = self.inner.read();
+            inner.chain_head().cloned()
+        }
+
+        pub fn clear(&self) {
+            self.inner.write().blocks.clear()
+        }
+
+        pub fn get_block(
+            &self,
+            child: &BlockPtr,
+            offset: BlockNumber,
+        ) -> Option<(BlockPtr, Option<json::Value>)> {
+            self.inner
+                .read()
+                .get_block(child, offset)
+                .map(|b| (b.0.clone(), b.1.cloned()))
+        }
+
+        /// Tentatively caches the `ancestor` of a [`BlockPtr`] (`child`), together with
+        /// its associated `data`. Note that for this to work, `child` must be
+        /// in the cache already. The first block in the cache should be
+        /// inserted via [`RecentBlocksCache::set_chain_head`].
+        pub fn insert_block(
+            &self,
+            ptr: BlockPtr,
+            data: Option<json::Value>,
+            parent_hash: BlockHash,
+        ) {
+            self.inner.write().insert_block(ptr, data, parent_hash)
+        }
     }
 }
 
