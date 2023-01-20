@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-atomic_refcell = "0.1.8"
+atomic_refcell = "0.1.9"
 ethabi = "17.2"
 futures = "0.1.21"
 hex = "0.4.3"
