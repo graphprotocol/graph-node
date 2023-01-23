@@ -37,6 +37,7 @@ pub struct Opt {
 
     #[clap(
         long,
+        env = "GRAPH_START_BLOCK",
         value_name = "BLOCK_HASH:BLOCK_NUMBER",
         help = "block hash and number that the subgraph passed will start indexing at"
     )]
@@ -217,11 +218,17 @@ pub struct Opt {
     #[clap(
         long,
         value_name = "IPFS_HASH",
+        env = "GRAPH_DEBUG_FORK",
         help = "IPFS hash of the subgraph manifest that you want to fork"
     )]
     pub debug_fork: Option<String>,
 
-    #[clap(long, value_name = "URL", help = "Base URL for forking subgraphs")]
+    #[clap(
+        long,
+        value_name = "URL",
+        env = "GRAPH_FORK_BASE",
+        help = "Base URL for forking subgraphs"
+    )]
     pub fork_base: Option<String>,
 }
 

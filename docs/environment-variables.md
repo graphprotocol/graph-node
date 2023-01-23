@@ -215,3 +215,7 @@ those.
   copying or grafting should take. This limits how long transactions for
   such long running operations will be, and therefore helps control bloat
   in other tables. Value is in seconds and defaults to 180s.
+- `GRAPH_START_BLOCK`: block hash:block number where the forked subgraph will start indexing at.
+- `GRAPH_FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
+  for the hosted service.
+- `GRAPH_DEBUG_FORK`: the IPFS hash id of the subgraph to fork.
