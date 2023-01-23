@@ -6,7 +6,7 @@
     "deploy:test": "graph deploy test/data-source-revert2 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#main",
-    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#main"
+    "@graphprotocol/graph-cli": "latest",
+    "@graphprotocol/graph-ts": "latest"
   }
 }
