@@ -1478,9 +1478,9 @@ checksum = "f0a01e0497841a3b2db4f8afa483cce65f7e96a3498bd6c541734792aeac8fe7"
 
 [[package]]
 name = "git-testament"
-version = "0.2.2"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bddca8182c031676362c5ceb276478870044cd714da27a0637aaa143994ad74"
+checksum = "986bf57c808270f3a0a0652c3bfce0f5d667aa5f5b465616dc697c7f390834b1"
 dependencies = [
  "git-testament-derive",
  "no-std-compat",
