@@ -10,6 +10,7 @@ use diesel::prelude::{
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
+use graph::components::store::EntityType;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
 use graph::prelude::{
     bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
@@ -338,6 +339,7 @@ struct StoredSubgraphManifest {
     start_block_number: Option<i32>,
     start_block_hash: Option<Bytes>,
     raw_yaml: Option<String>,
+    entities_with_causality_region: Vec<EntityType>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
@@ -349,6 +351,7 @@ impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
             features: value.features,
             schema: value.schema,
             raw_yaml: value.raw_yaml,
+            entities_with_causality_region: value.entities_with_causality_region,
         }
     }
 }

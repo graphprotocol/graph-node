@@ -6,9 +6,10 @@ use diesel::{
     sql_types::{Array, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
+use graph::components::store::EntityType;
 use graph::components::store::VersionStats;
 use itertools::Itertools;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::iter::FromIterator;
 use std::sync::Arc;
@@ -115,13 +116,6 @@ lazy_static! {
         SqlName::verbatim("__diesel_schema_migrations".to_string());
 }
 
-// In debug builds (for testing etc.) create exclusion constraints, in
-// release builds for production, skip them
-#[cfg(debug_assertions)]
-const CREATE_EXCLUSION_CONSTRAINT: bool = true;
-#[cfg(not(debug_assertions))]
-const CREATE_EXCLUSION_CONSTRAINT: bool = false;
-
 pub struct Locale {
     collate: String,
     ctype: String,
@@ -177,11 +171,15 @@ impl Locale {
 pub struct Catalog {
     pub site: Arc<Site>,
     text_columns: HashMap<String, HashSet<String>>,
+
     pub use_poi: bool,
     /// Whether `bytea` columns are indexed with just a prefix (`true`) or
     /// in their entirety. This influences both DDL generation and how
     /// queries are generated
     pub use_bytea_prefix: bool,
+
+    /// Set of tables which have an explicit causality region column.
+    pub(crate) entities_with_causality_region: BTreeSet<EntityType>,
 }
 
 impl Catalog {
@@ -190,6 +188,7 @@ impl Catalog {
         conn: &PgConnection,
         site: Arc<Site>,
         use_bytea_prefix: bool,
+        entities_with_causality_region: Vec<EntityType>,
     ) -> Result<Self, StoreError> {
         let text_columns = get_text_columns(conn, &site.namespace)?;
         let use_poi = supports_proof_of_indexing(conn, &site.namespace)?;
@@ -198,11 +197,15 @@ impl Catalog {
             text_columns,
             use_poi,
             use_bytea_prefix,
+            entities_with_causality_region: entities_with_causality_region.into_iter().collect(),
         })
     }
 
     /// Return a new catalog suitable for creating a new subgraph
-    pub fn for_creation(site: Arc<Site>) -> Self {
+    pub fn for_creation(
+        site: Arc<Site>,
+        entities_with_causality_region: BTreeSet<EntityType>,
+    ) -> Self {
         Catalog {
             site,
             text_columns: HashMap::default(),
@@ -211,18 +214,23 @@ impl Catalog {
             // DDL generation creates indexes for prefixes of bytes columns
             // see: attr-bytea-prefix
             use_bytea_prefix: true,
+            entities_with_causality_region,
         }
     }
 
     /// Make a catalog as if the given `schema` did not exist in the database
     /// yet. This function should only be used in situations where a database
     /// connection is definitely not available, such as in unit tests
-    pub fn for_tests(site: Arc<Site>) -> Result<Self, StoreError> {
+    pub fn for_tests(
+        site: Arc<Site>,
+        entities_with_causality_region: BTreeSet<EntityType>,
+    ) -> Result<Self, StoreError> {
         Ok(Catalog {
             site,
             text_columns: HashMap::default(),
             use_poi: false,
             use_bytea_prefix: true,
+            entities_with_causality_region,
         })
     }
 
@@ -233,12 +241,6 @@ impl Catalog {
             .get(table.as_str())
             .map(|cols| cols.contains(column.as_str()))
             .unwrap_or(false)
-    }
-
-    /// Whether to create exclusion indexes; if false, create gist indexes
-    /// w/o an exclusion constraint
-    pub fn create_exclusion_constraint() -> bool {
-        CREATE_EXCLUSION_CONSTRAINT
     }
 }
 

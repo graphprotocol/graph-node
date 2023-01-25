@@ -16,6 +16,7 @@ use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::panic;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -426,7 +427,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&*query).unwrap();
 
-    Layout::create_relational_schema(&conn, Arc::new(site), &schema)
+    Layout::create_relational_schema(&conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
 }
 
@@ -494,19 +495,31 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(SCALAR.as_str(), "one"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, &*SCALAR, "noone", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(SCALAR.as_str(), "noone"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
 
         // Find for non-existing entity type
-        let err = layout.find(conn, &*NO_ENTITY, "one", BLOCK_NUMBER_MAX);
+        let err = layout.find(
+            conn,
+            &EntityKey::data(NO_ENTITY.as_str(), "one"),
+            BLOCK_NUMBER_MAX,
+        );
         match err {
             Err(e) => assert_eq!("unknown table 'NoEntity'", e.to_string()),
             _ => {
@@ -529,7 +542,11 @@ fn insert_null_fulltext_fields() {
 
         // Find entity with null string values
         let entity = layout
-            .find(conn, &*NULLABLE_STRINGS, "one", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(NULLABLE_STRINGS.as_str(), "one"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&*EMPTY_NULLABLESTRINGS_ENTITY), entity);
@@ -555,7 +572,11 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(SCALAR.as_str(), "one"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -611,9 +632,13 @@ fn update_many() {
         // check updates took effect
         let updated: Vec<Entity> = ["one", "two", "three"]
             .iter()
-            .map(|id| {
+            .map(|&id| {
                 layout
-                    .find(conn, &*SCALAR, id, BLOCK_NUMBER_MAX)
+                    .find(
+                        conn,
+                        &EntityKey::data(SCALAR.as_str(), id),
+                        BLOCK_NUMBER_MAX,
+                    )
                     .expect(&format!("Failed to read Scalar[{}]", id))
                     .unwrap()
             })
@@ -679,7 +704,11 @@ fn serialize_bigdecimal() {
                 .expect("Failed to update");
 
             let actual = layout
-                .find(conn, &*SCALAR, "one", BLOCK_NUMBER_MAX)
+                .find(
+                    conn,
+                    &EntityKey::data(SCALAR.as_str(), "one"),
+                    BLOCK_NUMBER_MAX,
+                )
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
             assert_entity_eq!(entity, actual);
@@ -880,7 +909,7 @@ fn revert_block() {
 
         let assert_fred = |name: &str| {
             let fred = layout
-                .find(conn, &EntityType::from("Cat"), id, BLOCK_NUMBER_MAX)
+                .find(conn, &EntityKey::data("Cat", id), BLOCK_NUMBER_MAX)
                 .unwrap()
                 .expect("there's a fred");
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())

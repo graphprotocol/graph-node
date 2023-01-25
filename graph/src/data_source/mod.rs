@@ -206,6 +206,13 @@ impl<C: Blockchain> DataSource<C> {
             Self::Offchain(_) => vec![],
         }
     }
+
+    pub fn causality_region(&self) -> CausalityRegion {
+        match self {
+            Self::Onchain(_) => CausalityRegion::ONCHAIN,
+            Self::Offchain(ds) => ds.causality_region,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -247,6 +254,13 @@ impl<C: Blockchain> DataSourceTemplate<C> {
         match self {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
+        }
+    }
+
+    pub fn as_offchain(&self) -> Option<&offchain::DataSourceTemplate> {
+        match self {
+            Self::Onchain(_) => None,
+            Self::Offchain(t) => Some(&t),
         }
     }
 

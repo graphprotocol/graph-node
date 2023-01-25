@@ -3,11 +3,13 @@ use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
+use graph::data_source::CausalityRegion;
 use graph::prelude::EntityQuery;
 use graph_mock::MockMetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -127,7 +129,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(conn, Arc::new(site), &schema)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
 }
 
@@ -193,7 +195,11 @@ fn bad_id() {
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = layout.find(conn, &*THING, "bad", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "bad"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Odd number of digits",
@@ -201,7 +207,11 @@ fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = layout.find(conn, &*THING, "\\xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "\\xbadd"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'\\\\\' at position 0",
@@ -209,11 +219,19 @@ fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = layout.find(conn, &*THING, "0xbadd", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "0xbadd"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = layout.find(conn, &*THING, "nope", BLOCK_NUMBER_MAX);
+        let res = layout.find(
+            conn,
+            &EntityKey::data(THING.as_str(), "nope"),
+            BLOCK_NUMBER_MAX,
+        );
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'n\' at position 0",
@@ -231,14 +249,19 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, &*THING, ID, BLOCK_NUMBER_MAX)
+            .find(conn, &EntityKey::data(THING.as_str(), ID), BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
         assert_entity_eq!(scrub(&*BEEF_ENTITY), entity);
+        assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, &*THING, "badd", BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(THING.as_str(), "badd"),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Thing[badd]");
         assert!(entity.is_none());
     });
@@ -254,24 +277,29 @@ fn find_many() {
         insert_thing(conn, layout, ID, NAME);
         insert_thing(conn, layout, ID2, NAME2);
 
-        let mut id_map: BTreeMap<&EntityType, Vec<&str>> = BTreeMap::default();
-        id_map.insert(&*THING, vec![ID, ID2, "badd"]);
+        let mut id_map = BTreeMap::default();
+        id_map.insert(
+            (THING.clone(), CausalityRegion::ONCHAIN),
+            vec![ID.to_string(), ID2.to_string(), "badd".to_string()],
+        );
 
         let entities = layout
             .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
-        assert_eq!(1, entities.len());
+        assert_eq!(2, entities.len());
 
-        let ids = entities
-            .get(&*THING)
-            .expect("We got some things")
-            .iter()
-            .map(|thing| thing.id().unwrap())
-            .collect::<Vec<_>>();
-
-        assert_eq!(2, ids.len());
-        assert!(ids.contains(&ID.to_owned()), "Missing ID");
-        assert!(ids.contains(&ID2.to_owned()), "Missing ID2");
+        let id_key = EntityKey {
+            entity_id: ID.into(),
+            entity_type: THING.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let id2_key = EntityKey {
+            entity_id: ID2.into(),
+            entity_type: THING.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        assert!(entities.contains_key(&id_key), "Missing ID");
+        assert!(entities.contains_key(&id2_key), "Missing ID2");
     });
 }
 
@@ -293,7 +321,11 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, &*THING, &entity_id, BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &EntityKey::data(THING.as_str(), &entity_id),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 

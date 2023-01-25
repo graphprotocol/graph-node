@@ -24,6 +24,7 @@ use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
+use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
 use inflector::Inflector;
@@ -313,6 +314,9 @@ impl Layout {
                     &enums,
                     &id_types,
                     i as u32,
+                    catalog
+                        .entities_with_causality_region
+                        .contains(&EntityType::from(obj_type.clone())),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -393,6 +397,7 @@ impl Layout {
             position: position as u32,
             is_account_like: false,
             immutable: false,
+            has_causality_region: false,
         }
     }
 
@@ -404,8 +409,9 @@ impl Layout {
         conn: &PgConnection,
         site: Arc<Site>,
         schema: &Schema,
+        entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::for_creation(site.cheap_clone());
+        let catalog = Catalog::for_creation(site.cheap_clone(), entities_with_causality_region);
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl()
@@ -484,31 +490,31 @@ impl Layout {
     pub fn find(
         &self,
         conn: &PgConnection,
-        entity: &EntityType,
-        id: &str,
+        key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let table = self.table_for_entity(entity)?;
-        FindQuery::new(table.as_ref(), id, block)
+        let table = self.table_for_entity(&key.entity_type)?;
+        FindQuery::new(table.as_ref(), key, block)
             .get_result::<EntityData>(conn)
             .optional()?
             .map(|entity_data| entity_data.deserialize_with_layout(self, None, true))
             .transpose()
     }
 
+    // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
     pub fn find_many(
         &self,
         conn: &PgConnection,
-        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
 
         let mut tables = Vec::new();
-        for entity_type in ids_for_type.keys() {
-            tables.push(self.table_for_entity(entity_type)?.as_ref());
+        for (entity_type, cr) in ids_for_type.keys() {
+            tables.push((self.table_for_entity(entity_type)?.as_ref(), *cr));
         }
         let query = FindManyQuery {
             _namespace: &self.catalog.site.namespace,
@@ -516,17 +522,22 @@ impl Layout {
             tables,
             block,
         };
-        let mut entities_for_type: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
+        let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type();
             let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
 
-            entities_for_type
-                .entry(entity_type)
-                .or_default()
-                .push(entity_data);
+            let key = EntityKey {
+                entity_type,
+                entity_id: entity_data.id()?.into(),
+                causality_region: CausalityRegion::from_entity(&entity_data),
+            };
+            let overwrite = entities.insert(key, entity_data).is_some();
+            if overwrite {
+                return Err(constraint_violation!("duplicate entity in result set"));
+            }
         }
-        Ok(entities_for_type)
+        Ok(entities)
     }
 
     pub fn find_changes(
@@ -553,18 +564,15 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let mut data: Entity = entity_data.deserialize_with_layout(self, None, false)?;
+            let data: Entity = entity_data.deserialize_with_layout(self, None, true)?;
             let entity_id = Word::from(data.id().expect("Invalid ID for entity."));
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
-
-            // `__typename` is not a real field.
-            data.remove("__typename")
-                .expect("__typename expected; this is a bug");
 
             changes.push(EntityOperation::Set {
                 key: EntityKey {
                     entity_type,
                     entity_id,
+                    causality_region: CausalityRegion::from_entity(&data),
                 },
                 data,
             });
@@ -581,6 +589,7 @@ impl Layout {
                     key: EntityKey {
                         entity_type,
                         entity_id,
+                        causality_region: del.causality_region(),
                     },
                 });
             }
@@ -1215,6 +1224,10 @@ pub struct Table {
     /// Entities in this table are immutable, i.e., will never be updated or
     /// deleted
     pub(crate) immutable: bool,
+
+    /// Whether this table has an explicit `causality_region` column. If `false`, then the column is
+    /// not present and the causality region for all rows is implicitly `0` (equivalent to CasualityRegion::ONCHAIN).
+    pub(crate) has_causality_region: bool,
 }
 
 impl Table {
@@ -1225,6 +1238,7 @@ impl Table {
         enums: &EnumMap,
         id_types: &IdTypeMap,
         position: u32,
+        has_causality_region: bool,
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(&*defn.name, "object")?;
 
@@ -1250,6 +1264,7 @@ impl Table {
             columns,
             position,
             immutable,
+            has_causality_region,
         };
         Ok(table)
     }
@@ -1265,6 +1280,7 @@ impl Table {
             is_account_like: self.is_account_like,
             position: self.position,
             immutable: self.immutable,
+            has_causality_region: self.has_causality_region,
         };
 
         Arc::new(other)
@@ -1379,7 +1395,8 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
-        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix)?;
+        let has_causality_region = deployment::entities_with_causality_region(conn, site.id)?;
+        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)
     }

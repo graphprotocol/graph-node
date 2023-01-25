@@ -5,6 +5,7 @@ use hex;
 use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
+use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
@@ -116,7 +117,7 @@ impl DeploymentCreate {
         start_block: Option<BlockPtr>,
     ) -> Self {
         Self {
-            manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest),
+            manifest: SubgraphManifestEntity::new(raw_manifest, source_manifest, Vec::new()),
             start_block: start_block.cheap_clone(),
             graft_base: None,
             graft_block: None,
@@ -134,6 +135,15 @@ impl DeploymentCreate {
 
     pub fn debug(mut self, fork: Option<DeploymentHash>) -> Self {
         self.debug_fork = fork;
+        self
+    }
+
+    pub fn entities_with_causality_region(
+        mut self,
+        entities_with_causality_region: BTreeSet<EntityType>,
+    ) -> Self {
+        self.manifest.entities_with_causality_region =
+            entities_with_causality_region.into_iter().collect();
         self
     }
 }
@@ -169,10 +179,15 @@ pub struct SubgraphManifestEntity {
     pub features: Vec<String>,
     pub schema: String,
     pub raw_yaml: Option<String>,
+    pub entities_with_causality_region: Vec<EntityType>,
 }
 
 impl SubgraphManifestEntity {
-    pub fn new(raw_yaml: String, manifest: &super::SubgraphManifest<impl Blockchain>) -> Self {
+    pub fn new(
+        raw_yaml: String,
+        manifest: &super::SubgraphManifest<impl Blockchain>,
+        entities_with_causality_region: Vec<EntityType>,
+    ) -> Self {
         Self {
             spec_version: manifest.spec_version.to_string(),
             description: manifest.description.clone(),
@@ -180,6 +195,7 @@ impl SubgraphManifestEntity {
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
             schema: manifest.schema.document.clone().to_string(),
             raw_yaml: Some(raw_yaml),
+            entities_with_causality_region,
         }
     }
 

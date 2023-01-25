@@ -13,11 +13,14 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::prelude::{
-    anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-    DeploymentHash, DeploymentState, Schema, StoreError,
-};
 use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
+use graph::{
+    components::store::EntityType,
+    prelude::{
+        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
+        DeploymentHash, DeploymentState, Schema, StoreError,
+    },
+};
 use graph::{
     data::subgraph::{
         schema::{DeploymentCreate, SubgraphManifestEntity},
@@ -114,6 +117,10 @@ table! {
         start_block_number -> Nullable<Integer>,
         start_block_hash -> Nullable<Binary>,
         raw_yaml -> Nullable<Text>,
+
+        // Entity types that have a `causality_region` column.
+        // Names stored as present in the schema, not in snake case.
+        entities_with_causality_region -> Array<Text>,
     }
 }
 
@@ -769,6 +776,19 @@ pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHe
         .map_err(|e| e.into())
 }
 
+pub(crate) fn entities_with_causality_region(
+    conn: &PgConnection,
+    id: DeploymentId,
+) -> Result<Vec<EntityType>, StoreError> {
+    use subgraph_manifest as sm;
+
+    sm::table
+        .filter(sm::id.eq(id))
+        .select(sm::entities_with_causality_region)
+        .get_result(conn)
+        .map_err(|e| e.into())
+}
+
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) fn revert_subgraph_errors(
     conn: &PgConnection,
@@ -926,6 +946,7 @@ pub fn create_deployment(
                 features,
                 schema,
                 raw_yaml,
+                entities_with_causality_region,
             },
         start_block,
         graft_base,
@@ -933,6 +954,7 @@ pub fn create_deployment(
         debug_fork,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
+    let entities_with_causality_region = Vec::from_iter(entities_with_causality_region.into_iter());
 
     let deployment_values = (
         d::id.eq(site.id),
@@ -968,6 +990,7 @@ pub fn create_deployment(
         m::start_block_hash.eq(b(&start_block)),
         m::start_block_number.eq(start_block.as_ref().map(|ptr| ptr.number)),
         m::raw_yaml.eq(raw_yaml),
+        m::entities_with_causality_region.eq(entities_with_causality_region),
     );
 
     if exists && replace {

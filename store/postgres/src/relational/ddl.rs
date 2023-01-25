@@ -5,12 +5,20 @@ use std::{
 
 use graph::prelude::BLOCK_NUMBER_MAX;
 
+use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
-    Catalog, ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+    ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
+    VID_COLUMN,
 };
 
 use super::{Column, Layout, SqlName, Table};
+
+// In debug builds (for testing etc.) unconditionally create exclusion constraints, in release
+// builds for production, skip them
+#[cfg(debug_assertions)]
+const CREATE_EXCLUSION_CONSTRAINT: bool = true;
+#[cfg(not(debug_assertions))]
+const CREATE_EXCLUSION_CONSTRAINT: bool = false;
 
 impl Layout {
     /// Generate the DDL for the entire layout, i.e., all `create table`
@@ -77,30 +85,38 @@ impl Table {
         fn columns_ddl(table: &Table) -> Result<String, fmt::Error> {
             let mut cols = String::new();
             let mut first = true;
+
+            if table.has_causality_region {
+                first = false;
+                write!(
+                    cols,
+                    "{causality_region}     int not null",
+                    causality_region = CAUSALITY_REGION_COLUMN
+                )?;
+            }
+
             for column in &table.columns {
                 if !first {
                     writeln!(cols, ",")?;
-                } else {
-                    writeln!(cols)?;
+                    write!(cols, "        ")?;
                 }
-                write!(cols, "    ")?;
                 column.as_ddl(&mut cols)?;
                 first = false;
             }
+
             Ok(cols)
         }
 
         if self.immutable {
             writeln!(
                 out,
-                r#"
-            create table {qname} (
-                {vid}                  bigserial primary key,
-                {block}                int not null,
-                {cols},
-                unique({id})
-            );
-            "#,
+                "
+    create table {qname} (
+        {vid}                  bigserial primary key,
+        {block}                int not null,\n\
+        {cols},
+        unique({id})
+    );",
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
@@ -111,19 +127,18 @@ impl Table {
             writeln!(
                 out,
                 r#"
-            create table {qname} (
-                {vid}                  bigserial primary key,
-                {block_range}          int4range not null,
-                {cols}
-            );
-            "#,
+    create table {qname} (
+        {vid}                  bigserial primary key,
+        {block_range}          int4range not null,
+        {cols}
+    );"#,
                 qname = self.qualified_name,
                 cols = columns_ddl(self)?,
                 vid = VID_COLUMN,
                 block_range = BLOCK_RANGE_COLUMN
             )?;
 
-            self.exclusion_ddl(out, Catalog::create_exclusion_constraint())
+            self.exclusion_ddl(out)
         }
     }
 
@@ -266,14 +281,22 @@ impl Table {
         self.create_attribute_indexes(out)
     }
 
-    pub fn exclusion_ddl(&self, out: &mut String, as_constraint: bool) -> fmt::Result {
+    pub fn exclusion_ddl(&self, out: &mut String) -> fmt::Result {
+        // Tables with causality regions need to use exclusion constraints for correctness,
+        // to catch violations of write isolation.
+        let as_constraint = self.has_causality_region || CREATE_EXCLUSION_CONSTRAINT;
+
+        self.exclusion_ddl_inner(out, as_constraint)
+    }
+
+    // `pub` for tests.
+    pub(crate) fn exclusion_ddl_inner(&self, out: &mut String, as_constraint: bool) -> fmt::Result {
         if as_constraint {
             writeln!(
                 out,
-                r#"
-        alter table {qname}
-          add constraint {bare_name}_{id}_{block_range}_excl exclude using gist ({id} with =, {block_range} with &&);
-               "#,
+                "
+    alter table {qname}
+        add constraint {bare_name}_{id}_{block_range}_excl exclude using gist ({id} with =, {block_range} with &&);",
                 qname = self.qualified_name,
                 bare_name = self.name,
                 id = self.primary_key().name,
@@ -282,10 +305,10 @@ impl Table {
         } else {
             writeln!(
                 out,
-                r#"
+                "
         create index {bare_name}_{id}_{block_range}_excl on {qname}
          using gist ({id}, {block_range});
-               "#,
+               ",
                 qname = self.qualified_name,
                 bare_name = self.name,
                 id = self.primary_key().name,
@@ -303,7 +326,6 @@ impl Column {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     fn as_ddl(&self, out: &mut String) -> fmt::Result {
-        write!(out, "    ")?;
         write!(out, "{:20} {}", self.name.quoted(), self.sql_type())?;
         if self.is_list() {
             write!(out, "[]")?;

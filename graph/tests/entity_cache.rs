@@ -6,7 +6,7 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
 use lazy_static::lazy_static;
 use slog::Logger;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use graph::components::store::{
@@ -14,7 +14,7 @@ use graph::components::store::{
 };
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
-    prelude::{anyhow, DeploymentHash, Entity, EntityCache, EntityModification, Value},
+    prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
 };
 
 lazy_static! {
@@ -38,33 +38,24 @@ lazy_static! {
 }
 
 struct MockStore {
-    get_many_res: BTreeMap<EntityType, Vec<Entity>>,
+    get_many_res: BTreeMap<EntityKey, Entity>,
 }
 
 impl MockStore {
-    fn new(get_many_res: BTreeMap<EntityType, Vec<Entity>>) -> Self {
+    fn new(get_many_res: BTreeMap<EntityKey, Entity>) -> Self {
         Self { get_many_res }
     }
 }
 
 impl ReadStore for MockStore {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        match self.get_many_res.get(&key.entity_type) {
-            Some(entities) => Ok(entities
-                .iter()
-                .find(|entity| entity.id().ok().as_deref() == Some(key.entity_id.as_str()))
-                .cloned()),
-            None => Err(StoreError::Unknown(anyhow!(
-                "nothing for type {}",
-                key.entity_type
-            ))),
-        }
+        Ok(self.get_many_res.get(&key).cloned())
     }
 
     fn get_many(
         &self,
-        _ids_for_type: BTreeMap<&EntityType, Vec<&str>>,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+        _keys: BTreeSet<EntityKey>,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(self.get_many_res.clone())
     }
 
@@ -170,6 +161,7 @@ fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) 
         EntityKey {
             entity_type: EntityType::new("Band".to_string()),
             entity_id: id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
         },
         Entity::from(data),
     )
@@ -227,12 +219,16 @@ fn insert_modifications() {
     );
 }
 
-fn entity_version_map(
-    entity_type: &str,
-    entities: Vec<Entity>,
-) -> BTreeMap<EntityType, Vec<Entity>> {
+fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<EntityKey, Entity> {
     let mut map = BTreeMap::new();
-    map.insert(EntityType::from(entity_type), entities);
+    for entity in entities {
+        let key = EntityKey {
+            entity_type: EntityType::new(entity_type.to_string()),
+            entity_id: entity.id().unwrap().into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        map.insert(key, entity);
+    }
     map
 }
 

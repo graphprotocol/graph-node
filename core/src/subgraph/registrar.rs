@@ -88,8 +88,7 @@ where
         // - The event stream sees a Remove event for subgraph B, but the table query finds that
         //   subgraph B has already been removed.
         // The `handle_assignment_events` function handles these cases by ignoring AlreadyRunning
-        // (on subgraph start) or NotRunning (on subgraph stop) error types, which makes the
-        // operations idempotent.
+        // (on subgraph start) which makes the operations idempotent. Subgraph stop is already idempotent.
 
         // Start event stream
         let assignment_event_stream = self.assignment_events();
@@ -455,7 +454,6 @@ async fn handle_assignment_event(
             node_id: _,
         } => match provider.stop(deployment).await {
             Ok(()) => Ok(()),
-            Err(SubgraphAssignmentProviderError::NotRunning(_)) => Ok(()),
             Err(e) => Err(CancelableError::Error(e)),
         },
     }
@@ -620,11 +618,30 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         "block" => format!("{:?}", base_block.as_ref().map(|(_,ptr)| ptr.number))
     );
 
+    // Entity types that may be touched by offchain data sources need a causality region column.
+    let needs_causality_region = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_offchain())
+        .map(|ds| ds.mapping.entities.iter())
+        .chain(
+            manifest
+                .templates
+                .iter()
+                .filter_map(|ds| ds.as_offchain())
+                .map(|ds| ds.mapping.entities.iter()),
+        )
+        .flatten()
+        .cloned()
+        .collect();
+
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
     let deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
         .graft(base_block)
-        .debug(debug_fork);
+        .debug(debug_fork)
+        .entities_with_causality_region(needs_causality_region);
+
     deployment_store
         .create_subgraph_deployment(
             name,

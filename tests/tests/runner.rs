@@ -3,6 +3,7 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::time::Duration;
 
+use assert_json_diff::assert_json_eq;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
@@ -11,8 +12,10 @@ use graph::env::EnvVars;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
-use graph_tests::fixture::ethereum::{chain, empty_block, genesis};
-use graph_tests::fixture::{self, stores, test_ptr, MockAdapterSelector, NoopAdapterSelector};
+use graph_tests::fixture::ethereum::{chain, empty_block, genesis, push_test_log};
+use graph_tests::fixture::{
+    self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector,
+};
 use slog::{o, Discard, Logger};
 
 #[tokio::test]
@@ -39,16 +42,8 @@ async fn data_source_revert() -> anyhow::Result<()> {
         vec![block0, block1, block1_reorged, block2, block3, block4]
     };
 
-    let chain = Arc::new(chain(blocks.clone(), &stores, None).await);
-    let ctx = fixture::setup(
-        subgraph_name.clone(),
-        &hash,
-        &stores,
-        chain.clone(),
-        None,
-        None,
-    )
-    .await;
+    let chain = chain(blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
@@ -70,7 +65,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
         subgraph_name.clone(),
         &hash,
         &stores,
-        chain,
+        &chain,
         graft_block,
         None,
     )
@@ -119,8 +114,8 @@ async fn typename() -> anyhow::Result<()> {
     let stop_block = blocks.last().unwrap().block.ptr();
 
     let stores = stores("./integration-tests/config.simple.toml").await;
-    let chain = Arc::new(chain(blocks, &stores, None).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+    let chain = chain(blocks, &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -143,10 +138,10 @@ async fn file_data_sources() {
         let block_2 = empty_block(block_1.ptr(), test_ptr(2));
         let block_3 = empty_block(block_2.ptr(), test_ptr(3));
         let block_4 = empty_block(block_3.ptr(), test_ptr(4));
-        let block_5 = empty_block(block_4.ptr(), test_ptr(5));
+        let mut block_5 = empty_block(block_4.ptr(), test_ptr(5));
+        push_test_log(&mut block_5, "createFile2");
         vec![block_0, block_1, block_2, block_3, block_4, block_5]
     };
-    let stop_block = test_ptr(1);
 
     // This test assumes the file data sources will be processed in the same block in which they are
     // created. But the test might fail due to a race condition if for some reason it takes longer
@@ -155,31 +150,28 @@ async fn file_data_sources() {
     // attempt to ensure the monitor has enough time to fetch the file.
     let adapter_selector = NoopAdapterSelector {
         x: PhantomData,
-        triggers_in_block_sleep: Duration::from_millis(100),
+        triggers_in_block_sleep: Duration::from_millis(150),
     };
-    let chain = Arc::new(chain(blocks, &stores, Some(Arc::new(adapter_selector))).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
-    ctx.start_and_sync_to(stop_block).await;
+    let chain = chain(blocks.clone(), &stores, Some(Arc::new(adapter_selector))).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(test_ptr(1)).await;
 
-    // CID QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ is the file
-    // `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
-    let id = "QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ";
-
+    // CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
+    let id = "QmQ2REmceVtzawp7yrnxLQXgNNCtFHEnig6fL9aqE1kcWq";
+    let content_bytes = ctx.ipfs.cat_all(id, Duration::from_secs(10)).await.unwrap();
+    let content = String::from_utf8(content_bytes.into()).unwrap();
     let query_res = ctx
         .query(&format!(r#"{{ ipfsFile(id: "{id}") {{ id, content }} }}"#,))
         .await
         .unwrap();
 
-    assert_eq!(
+    assert_json_eq!(
         query_res,
-        Some(object! { ipfsFile: object!{ id: id.clone() , content: "[]" } })
+        Some(object! { ipfsFile: object!{ id: id.clone() , content: content.clone() } })
     );
 
     // assert whether duplicate data sources are created.
-    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
-    let stop_block = test_ptr(2);
-
-    ctx.start_and_sync_to(stop_block).await;
+    ctx.start_and_sync_to(test_ptr(2)).await;
 
     let store = ctx.store.cheap_clone();
     let writable = store
@@ -189,24 +181,19 @@ async fn file_data_sources() {
     let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
     assert!(datasources.len() == 1);
 
-    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
-    let stop_block = test_ptr(3);
-    ctx.start_and_sync_to(stop_block).await;
+    ctx.start_and_sync_to(test_ptr(3)).await;
 
     let query_res = ctx
         .query(&format!(r#"{{ ipfsFile1(id: "{id}") {{ id, content }} }}"#,))
         .await
         .unwrap();
 
-    assert_eq!(
+    assert_json_eq!(
         query_res,
-        Some(object! { ipfsFile1: object!{ id: id , content: "[]" } })
+        Some(object! { ipfsFile1: object!{ id: id , content: content } })
     );
 
-    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
-    let stop_block = test_ptr(4);
-    ctx.start_and_sync_to(stop_block).await;
-    ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    ctx.start_and_sync_to(test_ptr(4)).await;
     let writable = ctx
         .store
         .clone()
@@ -224,17 +211,72 @@ async fn file_data_sources() {
     }
 
     let stop_block = test_ptr(5);
-    let err = ctx.start_and_sync_to_error(stop_block).await;
+    let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x33bf - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x365d - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
-        block_ptr: Some(test_ptr(5)),
+        block_ptr: Some(stop_block),
         handler: None,
         deterministic: false,
     };
     assert_eq!(err, expected_err);
+
+    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    {
+        ctx.rewind(test_ptr(4));
+
+        // Replace block number 5 with one that contains a different event
+        let mut blocks = blocks.clone();
+        blocks.pop();
+        let block_5_1_ptr = test_ptr_reorged(5, 1);
+        let mut block_5_1 = empty_block(test_ptr(4), block_5_1_ptr.clone());
+        push_test_log(&mut block_5_1, "saveConflictingEntity");
+        blocks.push(block_5_1);
+
+        chain.set_block_stream(blocks);
+
+        // Errors in the store pipeline can be observed by using the runner directly.
+        let runner = ctx.runner(block_5_1_ptr.clone()).await;
+        let err = runner
+            .run()
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
+
+        let message =
+            "store error: conflicting key value violates exclusion constraint \"ipfs_file_id_block_range_excl\""
+                .to_string();
+        assert_eq!(err.to_string(), message);
+    }
+
+    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    {
+        // Replace block number 5 with one that contains a different event
+        let mut blocks = blocks.clone();
+        blocks.pop();
+        let block_5_2_ptr = test_ptr_reorged(5, 2);
+        let mut block_5_2 = empty_block(test_ptr(4), block_5_2_ptr.clone());
+        push_test_log(&mut block_5_2, "createFile1");
+        blocks.push(block_5_2);
+
+        chain.set_block_stream(blocks);
+
+        // Errors in the store pipeline can be observed by using the runner directly.
+        let err = ctx
+            .runner(block_5_2_ptr.clone())
+            .await
+            .run()
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("subgraph ran successfully but an error was expected"));
+
+        let message =
+            "store error: conflicting key value violates exclusion constraint \"ipfs_file_1_id_block_range_excl\""
+                .to_string();
+        assert_eq!(err.to_string(), message);
+    }
 }
 
 #[tokio::test]
@@ -254,7 +296,7 @@ async fn template_static_filters_false_positives() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = test_ptr(1);
-    let chain = Arc::new(chain(blocks, &stores, None).await);
+    let chain = chain(blocks, &stores, None).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
@@ -263,7 +305,7 @@ async fn template_static_filters_false_positives() {
         subgraph_name.clone(),
         &hash,
         &stores,
-        chain,
+        &chain,
         None,
         Some(env_vars),
     )
@@ -329,7 +371,7 @@ async fn retry_create_ds() {
         triggers_in_block_sleep: Duration::ZERO,
         triggers_in_block,
     });
-    let chain = Arc::new(chain(blocks, &stores, Some(triggers_adapter)).await);
+    let chain = chain(blocks, &stores, Some(triggers_adapter)).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.subgraph_error_retry_ceil = Duration::from_secs(1);
@@ -338,7 +380,7 @@ async fn retry_create_ds() {
         subgraph_name.clone(),
         &hash,
         &stores,
-        chain,
+        &chain,
         None,
         Some(env_vars),
     )
@@ -373,8 +415,8 @@ async fn fatal_error() -> anyhow::Result<()> {
     let stop_block = blocks.last().unwrap().block.ptr();
 
     let stores = stores("./integration-tests/config.simple.toml").await;
-    let chain = Arc::new(chain(blocks, &stores, None).await);
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, chain, None, None).await;
+    let chain = chain(blocks, &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to_error(stop_block).await;
 
@@ -387,7 +429,7 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(err.deterministic);
 
     // Test that rewind unfails the subgraph.
-    ctx.store.rewind(ctx.deployment.hash.clone(), test_ptr(1))?;
+    ctx.rewind(test_ptr(1));
     let status = ctx.indexing_status().await;
     assert!(status.health == SubgraphHealth::Healthy);
     assert!(status.fatal_error.is_none());

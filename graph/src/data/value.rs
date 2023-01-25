@@ -43,6 +43,12 @@ impl From<String> for Word {
     }
 }
 
+impl From<Word> for String {
+    fn from(w: Word) -> Self {
+        w.0.into()
+    }
+}
+
 impl Serialize for Word {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

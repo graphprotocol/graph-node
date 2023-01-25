@@ -99,13 +99,35 @@ pub async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> Deployme
 }
 
 pub fn test_ptr(n: BlockNumber) -> BlockPtr {
+    test_ptr_reorged(n, 0)
+}
+
+// Set n as the low bits and `reorg_n` as the high bits of the hash.
+pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
+    let mut hash = H256::from_low_u64_be(n as u64);
+    hash[0..4].copy_from_slice(&reorg_n.to_be_bytes());
     BlockPtr {
-        hash: H256::from_low_u64_be(n as u64).into(),
+        hash: hash.into(),
         number: n,
     }
 }
 
 type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store, PanicSubscriptionManager>;
+
+pub struct TestChain<C: Blockchain> {
+    pub chain: Arc<C>,
+    pub block_stream_builder: Arc<MutexBlockStreamBuilder<C>>,
+}
+
+impl<C: Blockchain> TestChain<C> {
+    pub fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>)
+    where
+        C::TriggerData: Clone,
+    {
+        let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
+        *self.block_stream_builder.0.lock().unwrap() = static_block_stream;
+    }
+}
 
 pub struct TestContext {
     pub logger: Logger,
@@ -120,6 +142,7 @@ pub struct TestContext {
     pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub env_vars: Arc<EnvVars>,
+    pub ipfs: IpfsClient,
     graphql_runner: Arc<GraphQlRunner>,
     indexing_status_service: Arc<IndexNodeService<GraphQlRunner, graph_store_postgres::Store>>,
 }
@@ -184,6 +207,9 @@ impl TestContext {
     }
 
     pub async fn start_and_sync_to(&self, stop_block: BlockPtr) {
+        // In case the subgraph has been previously started.
+        self.provider.stop(self.deployment.clone()).await.unwrap();
+
         self.provider
             .start(self.deployment.clone(), Some(stop_block.number))
             .await
@@ -200,8 +226,11 @@ impl TestContext {
     }
 
     pub async fn start_and_sync_to_error(&self, stop_block: BlockPtr) -> SubgraphError {
+        // In case the subgraph has been previously started.
+        self.provider.stop(self.deployment.clone()).await.unwrap();
+
         self.provider
-            .start(self.deployment.clone(), Some(stop_block.number))
+            .start(self.deployment.clone(), None)
             .await
             .expect("unable to start subgraph");
 
@@ -258,6 +287,12 @@ impl TestContext {
         let query_res: IndexingStatusForCurrentVersion =
             serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
         query_res.indexing_status_for_current_version
+    }
+
+    pub fn rewind(&self, block_ptr_to: BlockPtr) {
+        self.store
+            .rewind(self.deployment.hash.clone(), block_ptr_to)
+            .unwrap()
     }
 }
 
@@ -332,7 +367,7 @@ pub async fn setup<C: Blockchain>(
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     stores: &Stores,
-    chain: Arc<C>,
+    chain: &TestChain<C>,
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
@@ -351,7 +386,7 @@ pub async fn setup<C: Blockchain>(
     cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
-    blockchain_map.insert(stores.network_name.clone(), chain);
+    blockchain_map.insert(stores.network_name.clone(), chain.chain.clone());
 
     let static_filters = env_vars.experimental_static_filters;
 
@@ -361,7 +396,7 @@ pub async fn setup<C: Blockchain>(
         Default::default(),
     ));
     let ipfs_service = ipfs_service(
-        ipfs,
+        ipfs.cheap_clone(),
         env_vars.mappings.max_ipfs_file_bytes as u64,
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
@@ -445,6 +480,7 @@ pub async fn setup<C: Blockchain>(
         link_resolver,
         env_vars,
         indexing_status_service,
+        ipfs,
     }
 }
 
@@ -481,8 +517,11 @@ pub async fn wait_for_sync(
         };
 
         let status = store.status_for_id(deployment.id);
+
         if let Some(fatal_error) = status.fatal_error {
-            return Err(fatal_error);
+            if fatal_error.block_ptr.as_ref().unwrap() == &stop_block {
+                return Err(fatal_error);
+            }
         }
 
         if block_ptr == stop_block {
@@ -511,6 +550,48 @@ impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
         _cursor: FirehoseCursor,
     ) -> Result<C::Block, Error> {
         unimplemented!("this block refetcher always returns false, get_block shouldn't be called")
+    }
+}
+
+pub struct MutexBlockStreamBuilder<C: Blockchain>(pub Mutex<Arc<dyn BlockStreamBuilder<C>>>);
+
+#[async_trait]
+impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
+    async fn build_firehose(
+        &self,
+        chain: &C,
+        deployment: DeploymentLocator,
+        block_cursor: FirehoseCursor,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<<C as Blockchain>::TriggerFilter>,
+        unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        let builder = self.0.lock().unwrap().clone();
+
+        builder
+            .build_firehose(
+                chain,
+                deployment,
+                block_cursor,
+                start_blocks,
+                subgraph_current_block,
+                filter,
+                unified_api_version,
+            )
+            .await
+    }
+
+    async fn build_polling(
+        &self,
+        _chain: Arc<C>,
+        _deployment: DeploymentLocator,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<<C as Blockchain>::TriggerFilter>,
+        _unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        unimplemented!("only firehose mode should be used for tests")
     }
 }
 

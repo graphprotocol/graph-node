@@ -175,6 +175,8 @@ impl DeploymentStore {
             let exists = deployment::exists(&conn, &site)?;
 
             // Create (or update) the metadata. Update only happens in tests
+            let entities_with_causality_region =
+                deployment.manifest.entities_with_causality_region.clone();
             if replace || !exists {
                 deployment::create_deployment(&conn, &site, deployment, exists, replace)?;
             };
@@ -184,7 +186,12 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query)?;
 
-                let layout = Layout::create_relational_schema(&conn, site.clone(), schema)?;
+                let layout = Layout::create_relational_schema(
+                    &conn,
+                    site.clone(),
+                    schema,
+                    entities_with_causality_region.into_iter().collect(),
+                )?;
                 // See if we are grafting and check that the graft is permissible
                 if let Some(base) = graft_base {
                     let errors = layout.can_copy_from(&base);
@@ -274,7 +281,7 @@ impl DeploymentStore {
                 .interfaces_for_type(&key.entity_type)
                 .into_iter()
                 .flatten()
-                .flat_map(|interface| &types_for_interface[&interface.into()])
+                .flat_map(|interface| &types_for_interface[&EntityType::from(interface)])
                 .map(EntityType::from)
                 .filter(|type_name| type_name != &key.entity_type),
         );
@@ -1043,17 +1050,17 @@ impl DeploymentStore {
     ) -> Result<Option<Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
-        layout.find(&conn, &key.entity_type, &key.entity_id, block)
+        layout.find(&conn, &key, block)
     }
 
-    /// Retrieve all the entities matching `ids_for_type` from the
-    /// deployment `site`. Only consider entities as of the given `block`
+    /// Retrieve all the entities matching `ids_for_type`, both the type and causality region, from
+    /// the deployment `site`. Only consider entities as of the given `block`
     pub(crate) fn get_many(
         &self,
         site: Arc<Site>,
-        ids_for_type: &BTreeMap<&EntityType, Vec<&str>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
         block: BlockNumber,
-    ) -> Result<BTreeMap<EntityType, Vec<Entity>>, StoreError> {
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }

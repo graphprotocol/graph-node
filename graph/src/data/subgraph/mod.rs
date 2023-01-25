@@ -28,7 +28,7 @@ use crate::{
     blockchain::{BlockPtr, Blockchain, DataSource as _},
     components::{
         link_resolver::LinkResolver,
-        store::{DeploymentLocator, StoreError, SubgraphStore},
+        store::{StoreError, SubgraphStore},
     },
     data::{
         graphql::TryFromValue,
@@ -304,8 +304,6 @@ pub enum SubgraphAssignmentProviderError {
     /// Occurs when attempting to remove a subgraph that's not hosted.
     #[error("Subgraph with ID {0} already running")]
     AlreadyRunning(DeploymentHash),
-    #[error("Subgraph with ID {0} is not running")]
-    NotRunning(DeploymentLocator),
     #[error("Subgraph provider error: {0}")]
     Unknown(#[from] anyhow::Error),
 }
