@@ -110,6 +110,7 @@ pub async fn provider(
             archive: false,
             traces: false,
         };
+
         for feature in features.split(',') {
             match feature {
                 "archive" => caps.archive = true,

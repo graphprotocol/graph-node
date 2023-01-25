@@ -83,6 +83,14 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    fn is_capabilities_fulfilled(
+        &self,
+        _capabilities: &Self::NodeCapabilities,
+        _logger: &Logger,
+    ) -> bool {
+        true
+    }
+
     fn triggers_adapter(
         &self,
         _loc: &DeploymentLocator,

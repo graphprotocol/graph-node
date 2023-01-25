@@ -63,6 +63,7 @@ pub struct EthereumAdapter {
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
+    pub(crate) call_only: bool,
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -84,6 +85,7 @@ impl CheapClone for EthereumAdapter {
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
+            call_only: self.call_only,
         }
     }
 }
@@ -96,6 +98,7 @@ impl EthereumAdapter {
         transport: Transport,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
+        call_only: bool,
     ) -> Self {
         // Unwrap: The transport was constructed with this url, so it is valid and has a host.
         let hostname = graph::url::Url::parse(url)
@@ -122,6 +125,7 @@ impl EthereumAdapter {
             web3,
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
+            call_only,
         }
     }
 

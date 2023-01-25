@@ -430,6 +430,10 @@ pub async fn create_ethereum_networks_for_chain(
             };
 
             let supports_eip_1898 = !web3.features.contains("no_eip1898");
+            let call_only = web3.features.contains("call_only");
+            if call_only && !capabilities.archive {
+                return Err(anyhow!("Provider {} with feature 'call_only' must also be archive node and specify feature 'archive'", provider.label));
+            }
 
             parsed_networks.insert(
                 network_name.to_string(),
@@ -442,6 +446,7 @@ pub async fn create_ethereum_networks_for_chain(
                         transport,
                         eth_rpc_metrics.clone(),
                         supports_eip_1898,
+                        call_only,
                     )
                     .await,
                 ),
@@ -461,7 +466,7 @@ mod test {
     use graph::log::logger;
     use graph::prelude::tokio;
     use graph::prometheus::Registry;
-    use graph_chain_ethereum::NodeCapabilities;
+    use graph_chain_ethereum::{EthereumNetworks, NodeCapabilities};
     use graph_core::MetricsRegistry;
     use std::sync::Arc;
 
@@ -472,6 +477,7 @@ mod test {
         let network_args = vec![
             "mainnet:traces:http://localhost:8545/".to_string(),
             "goerli:archive:http://localhost:8546/".to_string(),
+            "goerli:call_only,archive:http://localhost:8546/".to_string(),
         ];
 
         let opt = Opt {
@@ -531,7 +537,7 @@ mod test {
             .networks
             .get("goerli")
             .unwrap()
-            .adapters
+            .full_adapters
             .iter()
             .next()
             .unwrap()
@@ -540,7 +546,7 @@ mod test {
             .networks
             .get("mainnet")
             .unwrap()
-            .adapters
+            .full_adapters
             .iter()
             .next()
             .unwrap()
@@ -551,5 +557,167 @@ mod test {
         );
         assert_eq!(goerli_capability, archive);
         assert_eq!(mainnet_capability, traces);
+
+        let goerli_call_only_capability = ethereum_networks
+            .networks
+            .get("goerli")
+            .unwrap()
+            .call_only_adapters
+            .iter()
+            .next()
+            .unwrap()
+            .capabilities;
+
+        assert_eq!(
+            goerli_call_only_capability,
+            NodeCapabilities {
+                archive: true,
+                traces: false,
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn is_capabilities_fulfilled_works_properly_no_features() {
+        let networks = create_networks(vec!["mainnet::http://localhost:8545/".to_string()]).await;
+        let adapters = networks.networks.get("mainnet").unwrap();
+
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: true
+            }),
+            false
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: false
+            }),
+            false
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: false
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: true
+            }),
+            false
+        );
+    }
+
+    #[tokio::test]
+    async fn is_capabilities_fulfilled_works_properly_split() {
+        let networks = create_networks(vec![
+            "mainnet:traces:http://localhost:8545/".to_string(),
+            "mainnet:archive:http://localhost:8545/".to_string(),
+        ])
+        .await;
+
+        let adapters = networks.networks.get("mainnet").unwrap();
+
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: true
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: false
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: false
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: true
+            }),
+            true
+        );
+    }
+
+    #[tokio::test]
+    async fn is_capabilities_fulfilled_works_properly_archive_call_only() {
+        let networks = create_networks(vec![
+            "mainnet:traces:http://localhost:8545/".to_string(),
+            "mainnet:call_only,archive:http://localhost:8546/".to_string(),
+        ])
+        .await;
+
+        let adapters = networks.networks.get("mainnet").unwrap();
+
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: true
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: false
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: false,
+                traces: false
+            }),
+            true
+        );
+        assert_eq!(
+            adapters.is_capabilities_fulfilled(&NodeCapabilities {
+                archive: true,
+                traces: true
+            }),
+            true
+        );
+    }
+
+    async fn create_networks(network_args: Vec<String>) -> EthereumNetworks {
+        let logger = logger(true);
+
+        let opt = Opt {
+            postgres_url: Some("not needed".to_string()),
+            config: None,
+            store_connection_pool_size: 5,
+            postgres_secondary_hosts: vec![],
+            postgres_host_weights: vec![],
+            disable_block_ingestor: true,
+            node_id: "default".to_string(),
+            ethereum_rpc: network_args,
+            ethereum_ws: vec![],
+            ethereum_ipc: vec![],
+            unsafe_config: false,
+        };
+
+        let config = Config::load(&logger, &opt).expect("can create config");
+        let prometheus_registry = Arc::new(Registry::new());
+        let metrics_registry = Arc::new(MetricsRegistry::new(
+            logger.clone(),
+            prometheus_registry.clone(),
+        ));
+
+        create_all_ethereum_networks(logger, metrics_registry, &config)
+            .await
+            .expect("Correctly parse Ethereum network args")
     }
 }

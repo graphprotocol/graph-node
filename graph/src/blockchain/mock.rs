@@ -289,6 +289,14 @@ impl Blockchain for MockBlockchain {
 
     type NodeCapabilities = MockNodeCapabilities;
 
+    fn is_capabilities_fulfilled(
+        &self,
+        _capabilities: &Self::NodeCapabilities,
+        _logger: &slog::Logger,
+    ) -> bool {
+        todo!()
+    }
+
     fn triggers_adapter(
         &self,
         _loc: &crate::components::store::DeploymentLocator,

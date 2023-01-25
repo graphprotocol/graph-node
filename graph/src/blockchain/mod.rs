@@ -149,6 +149,12 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     type NodeCapabilities: NodeCapabilities<Self> + std::fmt::Display;
 
+    fn is_capabilities_fulfilled(
+        &self,
+        capabilities: &Self::NodeCapabilities,
+        logger: &Logger,
+    ) -> bool;
+
     fn triggers_adapter(
         &self,
         log: &DeploymentLocator,

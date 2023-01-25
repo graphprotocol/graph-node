@@ -336,6 +336,14 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             self.metrics_registry.clone(),
         );
 
+        if !chain.is_capabilities_fulfilled(&required_capabilities, &logger) {
+            return Err(anyhow!(
+                "deployment {} with required capabilities {} cannot be fulfilled by this instance",
+                &deployment,
+                &required_capabilities
+            ));
+        }
+
         let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
                 anyhow!(

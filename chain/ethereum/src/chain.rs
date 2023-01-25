@@ -31,6 +31,7 @@ use std::sync::Arc;
 
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
+use crate::NodeCapabilities;
 use crate::{
     adapter::EthereumAdapter as _,
     codec,
@@ -61,7 +62,14 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         filter: Arc<<Chain as Blockchain>::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let requirements = filter.node_capabilities();
+        // Firehose does not require neither of 'archive' nor 'traces' capabilities, it only need the trigger
+        // adapter to call `triggers_in_blocks` which does not involve any RPC calls which would be affected
+        // by capabilities.
+        let requirements = &NodeCapabilities {
+            archive: false,
+            traces: false,
+        };
+
         let adapter = chain
             .triggers_adapter(&deployment, &requirements, unified_api_version)
             .unwrap_or_else(|_| {
@@ -169,18 +177,17 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
             .subgraph_logger(loc)
             .new(o!("component" => "BlockStream"));
 
-        let eth_adapter = if capabilities.traces && self.firehose_endpoints.len() > 0 {
-            debug!(logger, "Removing 'traces' capability requirement for adapter as FirehoseBlockStream will provide the traces");
-            let adjusted_capabilities = crate::capabilities::NodeCapabilities {
-                archive: capabilities.archive,
-                traces: false,
-            };
-
-            self.adapters.cheapest_with(&adjusted_capabilities)?
-        } else {
-            self.adapters.cheapest_with(capabilities)?
+        let mut adjusted_capabilities = NodeCapabilities {
+            archive: capabilities.archive,
+            traces: capabilities.traces,
         };
 
+        if capabilities.traces && self.firehose_endpoints.len() > 0 {
+            debug!(logger, "Removing 'traces' capability requirement for adapter as FirehoseBlockStream will provide the traces");
+            adjusted_capabilities.traces = false;
+        }
+
+        let eth_adapter = self.adapters.cheapest_with(&adjusted_capabilities)?;
         let ethrpc_metrics = Arc::new(SubgraphEthRpcMetrics::new(self.registry.clone(), &loc.hash));
 
         let adapter = TriggersAdapter {
@@ -289,14 +296,44 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = crate::capabilities::NodeCapabilities;
 
+    fn is_capabilities_fulfilled(
+        &self,
+        capabilities: &Self::NodeCapabilities,
+        logger: &Logger,
+    ) -> bool {
+        let mut adjusted_capabilities = NodeCapabilities {
+            archive: capabilities.archive,
+            traces: capabilities.traces,
+        };
+
+        if capabilities.traces && self.firehose_endpoints.len() > 0 {
+            debug!(logger, "Removing 'traces' capability requirement for adapter as FirehoseBlockStream will provide the traces");
+            adjusted_capabilities.traces = false;
+        }
+
+        self.eth_adapters
+            .is_capabilities_fulfilled(&adjusted_capabilities)
+    }
+
     fn triggers_adapter(
         &self,
         loc: &DeploymentLocator,
         capabilities: &Self::NodeCapabilities,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn TriggersAdapterTrait<Self>>, Error> {
-        self.adapter_selector
-            .triggers_adapter(loc, capabilities, unified_api_version)
+        // We don't need to have 'archive' feature set for the adapter to work correctly
+        // so we remove the requirement to avoid problem. Indeed, when the only provider able
+        // to serve 'archive' capabilities is flagged 'call_only' feature the 'triggers_adapter'
+        // call would fail finding the correct adapter. This is because 'call_only' providers
+        // are separated from other providers.
+        self.adapter_selector.triggers_adapter(
+            loc,
+            &NodeCapabilities {
+                archive: false,
+                traces: capabilities.traces,
+            },
+            unified_api_version,
+        )
     }
 
     async fn new_firehose_block_stream(

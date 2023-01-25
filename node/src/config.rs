@@ -634,7 +634,7 @@ impl Web3Provider {
     }
 }
 
-const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
+const PROVIDER_FEATURES: [&str; 4] = ["traces", "archive", "no_eip1898", "call_only"];
 const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {

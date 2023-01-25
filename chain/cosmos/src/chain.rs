@@ -81,9 +81,18 @@ impl Blockchain for Chain {
 
     type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
+    fn is_capabilities_fulfilled(
+        &self,
+        _capabilities: &Self::NodeCapabilities,
+        _logger: &Logger,
+    ) -> bool {
+        true
+    }
+
     fn is_refetch_block_required(&self) -> bool {
         false
     }
+
     async fn refetch_firehose_block(
         &self,
         _logger: &Logger,

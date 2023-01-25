@@ -55,7 +55,10 @@ pub async fn chain(
         chain_store.cheap_clone(),
         chain_store,
         firehose_endpoints,
-        EthereumNetworkAdapters { adapters: vec![] },
+        EthereumNetworkAdapters {
+            full_adapters: vec![],
+            call_only_adapters: vec![],
+        },
         stores.chain_head_listener.cheap_clone(),
         Arc::new(StaticStreamBuilder { chain: blocks }),
         Arc::new(StaticBlockRefetcher { x: PhantomData }),
