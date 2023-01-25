@@ -163,6 +163,13 @@ pub struct Opt {
     pub expensive_queries_filename: String,
     #[clap(long, help = "Enable debug logging")]
     pub debug: bool,
+    #[clap(
+        long,
+        value_name = "JSON_LOGGING",
+        env = "JSON_LOGGING",
+        help = "output logs in json format"
+    )]
+    pub json_logging: bool,
 
     #[clap(
         long,

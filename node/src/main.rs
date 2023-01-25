@@ -98,7 +98,7 @@ async fn main() {
     let opt = opt::Opt::parse();
 
     // Set up logger
-    let logger = logger(opt.debug);
+    let logger = logger(opt.debug, opt.json_logging);
 
     // Log version information
     info!(

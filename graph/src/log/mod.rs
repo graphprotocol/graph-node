@@ -1,3 +1,14 @@
+use std::{fmt, io, result};
+
+use isatty;
+use slog::*;
+use slog_async;
+use slog_envlogger;
+use slog_json;
+use slog_term::*;
+
+use crate::prelude::ENV_VARS;
+
 #[macro_export]
 macro_rules! impl_slog_value {
     ($T:ty) => {
@@ -17,25 +28,24 @@ macro_rules! impl_slog_value {
     };
 }
 
-use isatty;
-use slog::*;
-use slog_async;
-use slog_envlogger;
-use slog_term::*;
-use std::{fmt, io, result};
-
-use crate::prelude::ENV_VARS;
-
 pub mod codes;
 pub mod elastic;
 pub mod factory;
 pub mod split;
 
-pub fn logger(show_debug: bool) -> Logger {
+pub fn logger(show_debug: bool, json: bool) -> Logger {
     let use_color = isatty::stdout_isatty();
     let decorator = slog_term::TermDecorator::new().build();
-    let drain = CustomFormat::new(decorator, use_color).fuse();
-    let drain = slog_envlogger::LogBuilder::new(drain)
+    let json_drain = slog_json::Json::new(std::io::stdout())
+        .add_default_keys()
+        .build();
+    let drain = CustomFormat::new(decorator, use_color);
+    let drain_picker = if json {
+        DrainPicker::JsonFormat(json_drain)
+    } else {
+        DrainPicker::CustomFormat(drain)
+    };
+    let drain = slog_envlogger::LogBuilder::new(drain_picker.fuse())
         .filter(
             None,
             if show_debug {
@@ -170,6 +180,25 @@ where
 
             Ok(())
         })
+    }
+}
+
+enum DrainPicker<W: std::io::Write> {
+    CustomFormat(CustomFormat<TermDecorator>),
+    JsonFormat(slog_json::Json<W>),
+}
+impl<W> Drain for DrainPicker<W>
+where
+    W: io::Write,
+{
+    type Ok = ();
+    type Err = io::Error;
+
+    fn log(&self, record: &Record, values: &OwnedKVList) -> result::Result<Self::Ok, Self::Err> {
+        match self {
+            DrainPicker::CustomFormat(drain) => drain.log(record, values),
+            DrainPicker::JsonFormat(drain) => drain.log(record, values),
+        }
     }
 }
 

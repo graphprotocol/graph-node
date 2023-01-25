@@ -219,3 +219,4 @@ those.
 - `GRAPH_FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
   for the hosted service.
 - `GRAPH_DEBUG_FORK`: the IPFS hash id of the subgraph to fork.
+- `JSON_LOGGING`: turns on JSON logging. Defaults to `false`.
