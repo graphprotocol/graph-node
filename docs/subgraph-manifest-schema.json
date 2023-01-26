@@ -1,0 +1,343 @@
+{
+	"title": "Subgraph manifest",
+	"type": "object",
+	"required": [
+		"specVersion",
+		"schema"
+	],
+	"properties": {
+		"specVersion": {
+			"$ref": "#/$defs/SpecVersion"
+		},
+		"schema": {
+			"$ref": "#/$defs/Schema"
+		},
+		"description": {
+			"type": "string",
+			"description": "An optional description of the subgraph's purpose."
+		},
+		"repository": {
+			"type": "string",
+			"description": "An optional link to where the subgraph lives.",
+			"format": "uri",
+			"pattern": "^(https?|http?|ftp)://",
+			"example": [
+				"https://github.com/Uniswap/v2-subgraph"
+			]
+		},
+		"graft": {
+			"$ref": "#/$defs/Graft"
+		},
+		"dataSources": {
+			"type": "array",
+			"description": "Each data source defines the data that will be ingested as well as the transformation logic to derive the state of the subgraph's entities based on the source data.",
+			"items": {
+				"$ref": "#/$defs/DataSource"
+			}
+		},
+		"templates": {
+			"type": "array",
+			"description": "Each data source template defines a data source that can be created dynamically from the mappings.",
+			"items": {
+				"$ref": "#/$defs/DataSourceTemplate"
+			}
+		},
+		"features": {
+			"type": "array",
+			"description": "A list of feature names used by the subgraph.\n\nStarting from `specVersion: 0.0.4`, a subgraph must declare all feature names it uses to be considered valid.\n\nA Graph Node instance will reject a subgraph deployment if:\n\n1. the `specVersion` is equal to or higher than `0.0.4`, **and**\n2.it hasn't explicitly declared a feature it uses.\n\nNo validation errors will happen if a feature is declared but not used.",
+			"default": [],
+			"items": {
+				"type": "string",
+				"enum": [
+					"nonFatalErrors",
+					"fullTextSearch",
+					"grafting",
+					"ipfsOnEthereumContracts",
+					"nonDeterministicIpfs"
+				]
+			}
+		}
+	},
+	"$defs": {
+		"SpecVersion": {
+			"type": "string",
+			"description": "A [Semver](https://semver.org/) version indicating which version of this API is being used.",
+			"$comment": "Regex from <https://gist.github.com/jhorsman/62eeea161a13b80e39f5249281e17c39?permalink_comment_id=2896416#gistcomment-2896416>",
+			"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[a-zA-Z\\d][-a-zA-Z.\\d]*)?(\\+[a-zA-Z\\d][-a-zA-Z.\\d]*)?$",
+			"default": "0.0.4"
+		},
+		"Schema": {
+			"type": "object",
+			"description": "The GraphQL schema of this subgraph. It only has one field, `file`, which either refers to a path of a file on the local dev machine or an IPLD link.\n\nWhen using the Graph-CLI, local paths may be used during development, and then, the tool will take care of deploying linked files to IPFS and replacing the local paths with IPLD links at deploy time.",
+			"properties": {
+				"file": {
+					"type": "string",
+					"description": "The path (or URL) to the schema file."
+				}
+			}
+		},
+		"Graft": {
+			"type": "object",
+			"description": "An optional base to graft onto.\n\nA subgraph can be grafted on top of another subgraph, meaning that, rather than starting to index the subgraph from the genesis block, the subgraph is initialized with a copy of the given base subgraph, and indexing resumes from the given block.",
+			"required": [
+				"base",
+				"block"
+			],
+			"properties": {
+				"base": {
+					"type": "string",
+					"description": "The subgraph ID of the base subgraph"
+				},
+				"block": {
+					"type": "integer",
+					"description": "The block number up to which to use data from the base subgraph."
+				}
+			}
+		},
+		"EventHandler": {
+			"type": "object",
+			"required": [
+				"event",
+				"handler"
+			],
+			"properties": {
+				"event": {
+					"type": "string",
+					"description": "An identifier for an event that will be handled in the mapping script. For Ethereum contracts, this must be the full event signature to distinguish from events that may share the same name. No alias types can be used. For example, uint will not work, uint256 must be used."
+				},
+				"handler": {
+					"type": "string",
+					"description": "The name of an exported function in the mapping script that should handle the specified event."
+				},
+				"topic0": {
+					"type": "string",
+					"description": "A `0x` prefixed hex string. If provided, events whose topic0 is equal to this value will be processed by the given handler. When topic0 is provided, only the topic0 value will be matched, and not the hash of the event signature. This is useful for processing anonymous events in Solidity, which can have their topic0 set to anything. By default, topic0 is equal to the hash of the event signature."
+				},
+				"receipt": {
+					"type": "boolean",
+					"description": "Starting from `specVersion: 0.0.4`, subgraph features must be explicitly declared in the features section at the top level of the manifest file, using their `camelCase` name."
+				}
+			}
+		},
+		"CallHandler": {
+			"type": "object",
+			"required": [
+				"function",
+				"handler"
+			],
+			"properties": {
+				"function": {
+					"type": "string",
+					"description": "An identifier for a function that will be handled in the mapping script. For Ethereum contracts, this is the normalized function signature to filter calls by."
+				},
+				"handler": {
+					"type": "string",
+					"description": "The name of an exported function in the mapping script that should handle the specified event."
+				}
+			}
+		},
+		"BlockHandler": {
+			"type": "object",
+			"required": [
+				"handler"
+			],
+			"properties": {
+				"handler": {
+					"type": "string",
+					"description": "The name of an exported function in the mapping script that should handle the specified event."
+				},
+				"filter": {
+					"$ref": "#/$defs/BlockHandlerFilter"
+				}
+			}
+		},
+		"BlockHandlerFilter": {
+			"type": "object",
+			"required": [
+				"kind"
+			],
+			"documentation": "The selected block handler filter. Only option for now: `call`: This will only run the handler if the block contains at least one call to the data source contract.",
+			"properties": {
+				"kind": {
+					"type": "string",
+					"enum": [
+						"call"
+					]
+				}
+			}
+		},
+		"EthereumMapping": {
+			"type": "object",
+			"required": [
+				"kind",
+				"apiVersion",
+				"language",
+				"entities",
+				"abis",
+				"file"
+			],
+			"properties": {
+				"kind": {
+					"type": "string",
+					"description": "Must be \"ethereum/events\" for Ethereum Events Mapping.",
+					"default": "ethereum/events"
+				},
+				"apiVersion": {
+					"type": "string",
+					"description": "[Semver](https://semver.org/) string of the version of the Mappings API that will be used by the mapping script.",
+					"default": "0.0.6"
+				},
+				"language": {
+					"type": "string",
+					"description": "The language of the runtime for the Mapping API.",
+					"default": "wasm/assemblyscript"
+				},
+				"entities": {
+					"type": "array",
+					"description": "A list of entities that will be ingested as part of this mapping. Must correspond to names of entities in the GraphQL IDL.",
+					"items": {
+						"type": "string"
+					}
+				},
+				"abis": {
+					"type": "array",
+					"description": "ABIs for the contract classes that should be generated in the Mapping ABI. Name is also used to reference the ABI elsewhere in the manifest.",
+					"items": {
+						"type": "object",
+						"required": [
+							"name",
+							"file"
+						],
+						"properties": {
+							"name": {
+								"type": "string",
+								"description": "The name of the ABI. This is used to reference the ABI elsewhere in the manifest."
+							},
+							"file": {
+								"type": "string",
+								"description": "The path to the ABI file. The path is relative to the root of the subgraph."
+							}
+						}
+					}
+				},
+				"eventHandlers": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/EventHandler"
+					}
+				},
+				"callHandlers": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/CallHandler"
+					}
+				},
+				"blockHandlers": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/BlockHandler"
+					}
+				},
+				"file": {
+					"type": "string"
+				}
+			}
+		},
+		"DataSource": {
+			"allOf": [
+				{
+					"$ref": "#/$defs/DataSourceWithoutRequiredSourceAddress"
+				},
+				{
+					"type": "object",
+					"required": [
+						"source"
+					],
+					"properties": {
+						"source": {
+							"type": "object",
+							"required": [
+								"address"
+							]
+						}
+					}
+				}
+			]
+		},
+		"DataSourceWithoutRequiredSourceAddress": {
+			"type": "object",
+			"$comment": "This definition helps us to validate both templates and actual data sources.",
+			"required": [
+				"kind",
+				"name",
+				"network",
+				"mapping"
+			],
+			"properties": {
+				"kind": {
+					"type": "string",
+					"$comment": "TODO: make this more comprehensive/flexible",
+					"enum": [
+						"ethereum/contract",
+						"near"
+					]
+				},
+				"name": {
+					"type": "string",
+					"description": "The name of the source data. Will be used to generate APIs in the mapping and also for self-documentation purposes."
+				},
+				"network": {
+					"type": "string",
+					"documentation": "For blockchains, this describes which network the subgraph targets. Developers can look for an up to date list in the graph-cli code.",
+					"default": "mainnet"
+				},
+				"mapping": {
+					"$ref": "#/$defs/EthereumMapping"
+				},
+				"source": {
+					"type": "object",
+					"required": [
+						"abi"
+					],
+					"properties": {
+						"address": {
+							"type": "string",
+							"description": "The address of the source data in its respective blockchain."
+						},
+						"abi": {
+							"type": "string",
+							"description": "The name of the ABI for this Ethereum contract. See `abis` in the `mapping` manifest."
+						},
+						"startBlock": {
+							"type": "integer",
+							"description": "The block to start indexing this data source from."
+						}
+					}
+				}
+			}
+		},
+		"DataSourceTemplate": {
+			"allOf": [
+				{
+					"$ref": "#/$defs/DataSourceWithoutRequiredSourceAddress"
+				},
+				{
+					"type": "object",
+					"required": [
+						"source"
+					],
+					"properties": {
+						"source": {
+							"type": "object",
+							"not": {
+								"required": [
+									"address"
+								]
+							}
+						}
+					}
+				}
+			]
+		}
+	}
+}
