@@ -7,7 +7,7 @@ use diesel::{
     Connection, PgConnection, RunQueryDsl,
 };
 use graph::{
-    components::store::PruneReporter,
+    components::store::{PruneReporter, VersionStats},
     prelude::{BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError},
     slog::{warn, Logger},
 };
@@ -242,6 +242,56 @@ impl TablePair {
 }
 
 impl Layout {
+    /// Analyze the `tables` and return `VersionStats` for all tables in
+    /// this `Layout`
+    fn analyze_tables(
+        &self,
+        conn: &PgConnection,
+        reporter: &mut dyn PruneReporter,
+        mut tables: Vec<&Arc<Table>>,
+        cancel: &CancelHandle,
+    ) -> Result<Vec<VersionStats>, CancelableError<StoreError>> {
+        reporter.start_analyze();
+        tables.sort_by_key(|table| table.name.as_str());
+        for table in &tables {
+            reporter.start_analyze_table(table.name.as_str());
+            table.analyze(conn)?;
+            reporter.finish_analyze_table(table.name.as_str());
+            cancel.check_cancel()?;
+        }
+        let stats = catalog::stats(conn, &self.site.namespace)?;
+
+        let analyzed: Vec<_> = tables.iter().map(|table| table.name.as_str()).collect();
+        reporter.finish_analyze(&stats, &analyzed);
+
+        Ok(stats)
+    }
+
+    /// Return statistics for the tables in this `Layout`. If `analyze_all`
+    /// is `true`, analyze all tables before getting statistics. If it is
+    /// `false`, only analyze tables that Postgres' autovacuum daemon would
+    /// consider needing analysis.
+    fn version_stats(
+        &self,
+        conn: &PgConnection,
+        reporter: &mut dyn PruneReporter,
+        analyze_all: bool,
+        cancel: &CancelHandle,
+    ) -> Result<Vec<VersionStats>, CancelableError<StoreError>> {
+        let needs_analyze = if analyze_all {
+            vec![]
+        } else {
+            catalog::needs_autoanalyze(conn, &self.site.namespace)?
+        };
+        let tables: Vec<_> = self
+            .tables
+            .values()
+            .filter(|table| analyze_all || needs_analyze.contains(&table.name))
+            .collect();
+
+        self.analyze_tables(conn, reporter, tables, cancel)
+    }
+
     /// Remove all data from the underlying deployment that is not needed to
     /// respond to queries before block `earliest_block`. The strategy
     /// implemented here works well for situations in which pruning will
@@ -287,18 +337,7 @@ impl Layout {
         prune_ratio: f64,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
-        // Analyze all tables and get statistics for them
-        let mut tables: Vec<_> = self.tables.values().collect();
-        reporter.start_analyze();
-        tables.sort_by_key(|table| table.name.as_str());
-        for table in tables {
-            reporter.start_analyze_table(table.name.as_str());
-            table.analyze(conn)?;
-            reporter.finish_analyze_table(table.name.as_str());
-            cancel.check_cancel()?;
-        }
-        let stats = catalog::stats(conn, &self.site.namespace)?;
-        reporter.finish_analyze(stats.as_slice());
+        let stats = self.version_stats(conn, reporter, true, cancel)?;
 
         // Determine which tables are prunable and create a shadow table for
         // them via `TablePair::create`
@@ -367,22 +406,8 @@ impl Layout {
         catalog::drop_schema(conn, dst_nsp.as_str())?;
 
         // Analyze the new tables
-        reporter.start_analyze();
-        for table in &prunable_src {
-            reporter.start_analyze_table(table.name.as_str());
-            table.analyze(conn)?;
-            reporter.finish_analyze_table(table.name.as_str());
-            cancel.check_cancel()?;
-        }
-        let stats: Vec<_> = catalog::stats(conn, &self.site.namespace)?
-            .into_iter()
-            .filter(|s| {
-                prunable_src
-                    .iter()
-                    .any(|table| *table.name.as_str() == s.tablename)
-            })
-            .collect();
-        reporter.finish_analyze(stats.as_slice());
+        let tables = prunable_src.iter().collect();
+        self.analyze_tables(conn, reporter, tables, cancel)?;
 
         reporter.finish_prune();
 

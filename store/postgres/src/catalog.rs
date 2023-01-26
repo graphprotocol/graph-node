@@ -801,3 +801,34 @@ pub(crate) fn set_stats_target(
     conn.batch_execute(&query)?;
     Ok(())
 }
+
+/// Return the names of all tables in the `namespace` that need to be
+/// analyzed. Whether a table needs to be analyzed is determined with the
+/// same logic that Postgres' [autovacuum
+/// daemon](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM)
+/// uses
+pub(crate) fn needs_autoanalyze(
+    conn: &PgConnection,
+    namespace: &Namespace,
+) -> Result<Vec<SqlName>, StoreError> {
+    const QUERY: &str = "select relname \
+                           from pg_stat_user_tables \
+                          where (select setting::numeric from pg_settings where name = 'autovacuum_analyze_threshold') \
+                              + (select setting::numeric from pg_settings where name = 'autovacuum_analyze_scale_factor')*(n_live_tup + n_dead_tup) < n_mod_since_analyze
+                            and schemaname = $1";
+
+    #[derive(Queryable, QueryableByName)]
+    struct TableName {
+        #[sql_type = "Text"]
+        name: SqlName,
+    }
+
+    let tables = sql_query(QUERY)
+        .bind::<Text, _>(namespace.as_str())
+        .get_results::<TableName>(conn)
+        .optional()?
+        .map(|tables| tables.into_iter().map(|t| t.name).collect())
+        .unwrap_or(vec![]);
+
+    Ok(tables)
+}

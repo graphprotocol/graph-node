@@ -17,6 +17,10 @@ mod query_tests;
 pub(crate) mod index;
 mod prune;
 
+use diesel::pg::Pg;
+use diesel::serialize::Output;
+use diesel::sql_types::Text;
+use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
@@ -165,6 +169,18 @@ impl fmt::Display for SqlName {
 impl Borrow<str> for &SqlName {
     fn borrow(&self) -> &str {
         self.as_str()
+    }
+}
+
+impl FromSql<Text, Pg> for SqlName {
+    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        <String as FromSql<Text, Pg>>::from_sql(bytes).map(|s| SqlName::verbatim(s))
+    }
+}
+
+impl ToSql<Text, Pg> for SqlName {
+    fn to_sql<W: std::io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
 

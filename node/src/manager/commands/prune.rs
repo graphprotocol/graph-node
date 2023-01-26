@@ -67,10 +67,14 @@ impl PruneReporter for Progress {
         std::io::stdout().flush().ok();
     }
 
-    fn finish_analyze(&mut self, stats: &[graph::components::store::VersionStats]) {
+    fn finish_analyze(
+        &mut self,
+        stats: &[graph::components::store::VersionStats],
+        analyzed: &[&str],
+    ) {
         println!(
             "\rAnalyzed {} tables in {}s",
-            stats.len(),
+            analyzed.len(),
             self.analyze_start.elapsed().as_secs()
         );
         show_stats(stats, HashSet::new()).ok();

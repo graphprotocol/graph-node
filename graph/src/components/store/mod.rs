@@ -1149,7 +1149,11 @@ pub trait PruneReporter: Send + 'static {
     fn start_analyze(&mut self) {}
     fn start_analyze_table(&mut self, table: &str) {}
     fn finish_analyze_table(&mut self, table: &str) {}
-    fn finish_analyze(&mut self, stats: &[VersionStats]) {}
+
+    /// Analyzing tables has finished. `stats` are the stats for all tables
+    /// in the deployment, `analyzed ` are the names of the tables that were
+    /// actually analyzed
+    fn finish_analyze(&mut self, stats: &[VersionStats], analyzed: &[&str]) {}
 
     fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {}
     fn copy_final_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {}
