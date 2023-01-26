@@ -292,6 +292,28 @@ impl Layout {
         self.analyze_tables(conn, reporter, tables, cancel)
     }
 
+    /// Return all tables and their stats whose ratio of distinct entities
+    /// to versions is less than `prune_ratio`
+    fn prunable_tables<'a>(
+        &self,
+        stats: &'a [VersionStats],
+        prune_ratio: f64,
+    ) -> Vec<(&Arc<Table>, &'a VersionStats)> {
+        let mut prunable_tables = self
+            .tables
+            .values()
+            .filter_map(|table| {
+                stats
+                    .iter()
+                    .find(|stats| stats.tablename == table.name.as_str())
+                    .map(|stats| (table, stats))
+            })
+            .filter(|(_, stats)| stats.ratio <= prune_ratio)
+            .collect::<Vec<_>>();
+        prunable_tables.sort_by(|(a, _), (b, _)| a.name.as_str().cmp(b.name.as_str()));
+        prunable_tables
+    }
+
     /// Remove all data from the underlying deployment that is not needed to
     /// respond to queries before block `earliest_block`. The strategy
     /// implemented here works well for situations in which pruning will
@@ -345,16 +367,9 @@ impl Layout {
         let prunable_tables = conn.transaction(|| -> Result<_, StoreError> {
             catalog::recreate_schema(conn, dst_nsp.as_str())?;
 
-            let mut prunable_tables: Vec<TablePair> = self
-                .tables
-                .values()
-                .filter_map(|table| {
-                    stats
-                        .iter()
-                        .find(|s| s.tablename == table.name.as_str())
-                        .map(|s| (table, s))
-                })
-                .filter(|(_, stats)| stats.ratio <= prune_ratio)
+            let prunable_tables: Vec<TablePair> = self
+                .prunable_tables(&stats, prune_ratio)
+                .into_iter()
                 .map(|(table, _)| {
                     TablePair::create(
                         conn,
@@ -364,7 +379,6 @@ impl Layout {
                     )
                 })
                 .collect::<Result<_, _>>()?;
-            prunable_tables.sort_by(|a, b| a.src.name.as_str().cmp(b.src.name.as_str()));
             Ok(prunable_tables)
         })?;
         cancel.check_cancel()?;
