@@ -6,7 +6,8 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    EntityKey, EntityType, PruneReporter, PruneRequest, StoredDynamicDataSource,
+    EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
+    StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -17,6 +18,7 @@ use graph::prelude::{
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
+use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::borrow::Cow;
@@ -27,7 +29,7 @@ use std::ops::Bound;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
@@ -1121,7 +1123,8 @@ impl DeploymentStore {
     }
 
     pub(crate) fn transact_block_operations(
-        &self,
+        self: &Arc<Self>,
+        logger: &Logger,
         site: Arc<Site>,
         block_ptr_to: &BlockPtr,
         firehose_cursor: &FirehoseCursor,
@@ -1137,14 +1140,14 @@ impl DeploymentStore {
             self.get_conn()?
         };
 
-        let event = deployment::with_lock(&conn, &site, || {
-            conn.transaction(|| -> Result<_, StoreError> {
-                // Emit a store event for the changes we are about to make. We
-                // wait with sending it until we have done all our other work
-                // so that we do not hold a lock on the notification queue
-                // for longer than we have to
-                let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
+        // Emit a store event for the changes we are about to make. We
+        // wait with sending it until we have done all our other work
+        // so that we do not hold a lock on the notification queue
+        // for longer than we have to
+        let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
 
+        let (layout, earliest_block) = deployment::with_lock(&conn, &site, || {
+            conn.transaction(|| -> Result<_, StoreError> {
                 // Make the changes
                 let layout = self.layout(&conn, site.clone())?;
 
@@ -1177,11 +1180,32 @@ impl DeploymentStore {
                     )?;
                 }
 
-                deployment::transact_block(&conn, &site, block_ptr_to, firehose_cursor, count)?;
+                let earliest_block =
+                    deployment::transact_block(&conn, &site, block_ptr_to, firehose_cursor, count)?;
 
-                Ok(event)
+                Ok((layout, earliest_block))
             })
         })?;
+
+        if block_ptr_to.number as f64
+            > earliest_block as f64
+                + layout.history_blocks as f64 * ENV_VARS.store.history_slack_factor
+        {
+            let _section = stopwatch.start_section("transact_blocks_prune");
+
+            let this = self.clone();
+            let reporter = OngoingPruneReporter::new(logger.cheap_clone());
+
+            let req = PruneRequest::new(
+                &site.as_ref().into(),
+                layout.history_blocks,
+                ENV_VARS.reorg_threshold,
+                earliest_block,
+                block_ptr_to.number,
+            )?;
+
+            graph::block_on(this.prune(reporter, site, req))?;
+        }
 
         Ok(event)
     }
@@ -1765,4 +1789,82 @@ fn resolve_column_names<'a, T: AsRef<str>>(
             }
         })
         .collect()
+}
+
+/// A helper to log progress during pruning that is kicked off from
+/// `transact_block_operations`
+struct OngoingPruneReporter {
+    logger: Logger,
+    start: Instant,
+    analyze_start: Instant,
+    analyze_duration: Duration,
+    rows_copied: usize,
+    rows_deleted: usize,
+    tables: Vec<String>,
+}
+
+impl OngoingPruneReporter {
+    fn new(logger: Logger) -> Box<Self> {
+        Box::new(Self {
+            logger,
+            start: Instant::now(),
+            analyze_start: Instant::now(),
+            analyze_duration: Duration::from_secs(0),
+            rows_copied: 0,
+            rows_deleted: 0,
+            tables: Vec::new(),
+        })
+    }
+}
+
+impl OngoingPruneReporter {
+    fn tables_as_string(&self) -> String {
+        if self.tables.is_empty() {
+            "ø".to_string()
+        } else {
+            format!("[{}]", self.tables.iter().join(","))
+        }
+    }
+}
+
+impl PruneReporter for OngoingPruneReporter {
+    fn start(&mut self, req: &PruneRequest) {
+        self.start = Instant::now();
+        info!(&self.logger, "Start pruning historical entities";
+              "history_pct" => format!("{:.2}", req.history_pct * 100.0),
+              "history_blocks" => req.history_blocks,
+              "earliest_block" => req.earliest_block,
+              "latest_block" => req.latest_block);
+    }
+
+    fn start_analyze(&mut self) {
+        self.analyze_start = Instant::now()
+    }
+
+    fn finish_analyze(&mut self, _stats: &[VersionStats], analyzed: &[&str]) {
+        self.analyze_duration += self.analyze_start.elapsed();
+        debug!(&self.logger, "Analyzed {} tables", analyzed.len(); "time_s" => self.analyze_start.elapsed().as_secs());
+    }
+
+    fn start_table(&mut self, table: &str) {
+        self.tables.push(table.to_string());
+    }
+
+    fn prune_batch(&mut self, _table: &str, rows: usize, phase: PrunePhase, _finished: bool) {
+        match phase.strategy() {
+            PruningStrategy::Copy => self.rows_copied += rows,
+            PruningStrategy::Delete => self.rows_deleted += rows,
+        }
+    }
+    fn finish(&mut self) {
+        info!(
+            &self.logger,
+            "Finished pruning entities";
+            "tables" => self.tables_as_string(),
+            "rows_deleted" => self.rows_deleted,
+            "rows_copied" => self.rows_copied,
+            "time_s" => self.start.elapsed().as_secs(),
+            "analyze_time_s" => self.analyze_duration.as_secs()
+        )
+    }
 }

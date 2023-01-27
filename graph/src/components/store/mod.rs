@@ -7,6 +7,7 @@ pub use entity_cache::{EntityCache, ModificationsAndCache};
 use diesel::types::{FromSql, ToSql};
 pub use err::StoreError;
 use itertools::Itertools;
+use strum_macros::Display;
 pub use traits::*;
 
 use futures::stream::poll_fn;
@@ -1148,11 +1149,31 @@ pub enum PrunePhase {
     CopyFinal,
     /// Handling nonfinal entities
     CopyNonfinal,
+    /// Delete unneeded entity versions
+    Delete,
 }
+
+impl PrunePhase {
+    pub fn strategy(&self) -> PruningStrategy {
+        match self {
+            PrunePhase::CopyFinal | PrunePhase::CopyNonfinal => PruningStrategy::Copy,
+            PrunePhase::Delete => PruningStrategy::Delete,
+        }
+    }
+}
+
 /// Callbacks for `SubgraphStore.prune` so that callers can report progress
 /// of the pruning procedure to users
 #[allow(unused_variables)]
 pub trait PruneReporter: Send + 'static {
+    /// A pruning run has started. It will use the given `strategy` and
+    /// remove `history_frac` part of the blocks of the deployment, which
+    /// amounts to `history_blocks` many blocks.
+    ///
+    /// Before pruning, the subgraph has data for blocks from
+    /// `earliest_block` to `latest_block`
+    fn start(&mut self, req: &PruneRequest) {}
+
     fn start_analyze(&mut self) {}
     fn start_analyze_table(&mut self, table: &str) {}
     fn finish_analyze_table(&mut self, table: &str) {}
@@ -1162,18 +1183,17 @@ pub trait PruneReporter: Send + 'static {
     /// actually analyzed
     fn finish_analyze(&mut self, stats: &[VersionStats], analyzed: &[&str]) {}
 
-    fn start_copy(&mut self) {}
     fn start_table(&mut self, table: &str) {}
     fn prune_batch(&mut self, table: &str, rows: usize, phase: PrunePhase, finished: bool) {}
     fn start_switch(&mut self) {}
     fn finish_switch(&mut self) {}
     fn finish_table(&mut self, table: &str) {}
 
-    fn finish_prune(&mut self) {}
+    fn finish(&mut self) {}
 }
 
 /// Select how pruning should be done
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Display, PartialEq)]
 pub enum PruningStrategy {
     /// Copy the data we want to keep to new tables and swap them out for
     /// the existing tables
@@ -1292,8 +1312,7 @@ impl PruneRequest {
         if removal_ratio >= self.copy_threshold {
             Some(PruningStrategy::Copy)
         } else if removal_ratio >= self.delete_threshold {
-            // We will return 'Delete' here when that's implemented
-            Some(PruningStrategy::Copy)
+            Some(PruningStrategy::Delete)
         } else {
             None
         }

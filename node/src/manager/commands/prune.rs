@@ -51,7 +51,7 @@ fn print_copy_header() {
     std::io::stdout().flush().ok();
 }
 
-fn print_copy_row(
+fn print_batch(
     table: &str,
     total_rows: usize,
     elapsed: Duration,
@@ -62,6 +62,7 @@ fn print_copy_row(
         (true, _) => "          ",
         (false, PrunePhase::CopyFinal) => "(final)",
         (false, PrunePhase::CopyNonfinal) => "(nonfinal)",
+        (false, PrunePhase::Delete) => "(delete)",
     };
     print!(
         "\r{:<30} | {:>10} | {:>9}s {phase}",
@@ -73,6 +74,11 @@ fn print_copy_row(
 }
 
 impl PruneReporter for Progress {
+    fn start(&mut self, req: &PruneRequest) {
+        let history_pct = req.history_pct * 100.0;
+        println!("Remove {history_pct:.2}% of historical blocks");
+    }
+
     fn start_analyze(&mut self) {
         if !self.initial_analyze {
             println!("");
@@ -104,12 +110,13 @@ impl PruneReporter for Progress {
         );
         show_stats(stats.as_slice(), HashSet::new()).ok();
         println!();
-        self.initial_analyze = false;
-    }
 
-    fn start_copy(&mut self) {
-        println!("Copying data to new tables and replacing existing tables with them");
-        print_copy_header();
+        if self.initial_analyze {
+            // After analyzing, we start the actual work
+            println!("Pruning tables");
+            print_copy_header();
+        }
+        self.initial_analyze = false;
     }
 
     fn start_table(&mut self, _table: &str) {
@@ -119,7 +126,7 @@ impl PruneReporter for Progress {
 
     fn prune_batch(&mut self, table: &str, rows: usize, phase: PrunePhase, finished: bool) {
         self.table_rows += rows;
-        print_copy_row(
+        print_batch(
             table,
             self.table_rows,
             self.table_start.elapsed(),
@@ -141,7 +148,7 @@ impl PruneReporter for Progress {
         println!();
     }
 
-    fn finish_prune(&mut self) {
+    fn finish(&mut self) {
         println!(
             "Finished pruning in {}s. Writing was blocked for {}s",
             self.start.elapsed().as_secs(),

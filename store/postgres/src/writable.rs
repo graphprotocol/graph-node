@@ -261,6 +261,7 @@ impl SyncStore {
     ) -> Result<(), StoreError> {
         self.retry("transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
+                &self.logger,
                 self.site.clone(),
                 block_ptr_to,
                 firehose_cursor,

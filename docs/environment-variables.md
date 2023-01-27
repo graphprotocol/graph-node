@@ -222,6 +222,11 @@ those.
 - `GRAPH_FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
   for the hosted service.
 - `GRAPH_DEBUG_FORK`: the IPFS hash id of the subgraph to fork.
+- `GRAPH_STORE_HISTORY_SLACK_FACTOR`: How much history a subgraph with
+  limited history can accumulate before it will be pruned. Setting this to
+  1.1 means that the subgraph will be pruned every time it contains 10%
+  more history (in blocks) than its history limit. The default value is 1.2
+  and the value must be at least 1.01
 - `GRAPH_STORE_HISTORY_COPY_THRESHOLD`,
   `GRAPH_STORE_HISTORY_DELETE_THRESHOLD`: when pruning, prune by copying the
   entities we will keep to new tables if we estimate that we will remove

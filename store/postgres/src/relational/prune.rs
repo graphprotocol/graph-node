@@ -384,6 +384,8 @@ impl Layout {
         req: &PruneRequest,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
+        reporter.start(req);
+
         let stats = self.version_stats(conn, reporter, true, cancel)?;
 
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
@@ -403,7 +405,6 @@ impl Layout {
         // that `final_block` is far enough from the subgraph head that it
         // stays final even if a revert happens during this loop, but that
         // is the definition of 'final'
-        reporter.start_copy();
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
             match strat {
@@ -442,7 +443,37 @@ impl Layout {
                     })?;
                     reporter.finish_switch();
                 }
-                PruningStrategy::Delete => unimplemented!("Coming soon"),
+                PruningStrategy::Delete => {
+                    // Delete all entity versions whose range was closed
+                    // before `req.earliest_block`
+                    let (min_vid, max_vid) = table.vid_range(conn, 0, req.earliest_block)?;
+                    let mut batch_size = AdaptiveBatchSize::new(&table);
+                    let mut next_vid = min_vid;
+                    while next_vid <= max_vid {
+                        let start = Instant::now();
+                        let rows = sql_query(format!(
+                            "delete from {} \
+                                          where coalesce(upper(block_range), 2147483647) <= $1 \
+                                            and vid >= $2 and vid < $2 + $3",
+                            table.qualified_name
+                        ))
+                        .bind::<Integer, _>(req.earliest_block)
+                        .bind::<BigInt, _>(next_vid)
+                        .bind::<BigInt, _>(&batch_size)
+                        .execute(conn)?;
+
+                        next_vid += batch_size.size;
+
+                        batch_size.adapt(start.elapsed());
+
+                        reporter.prune_batch(
+                            table.name.as_str(),
+                            rows as usize,
+                            PrunePhase::Delete,
+                            next_vid > max_vid,
+                        );
+                    }
+                }
             }
             reporter.finish_table(table.name.as_str());
         }
@@ -455,7 +486,7 @@ impl Layout {
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
         self.analyze_tables(conn, reporter, tables, cancel)?;
 
-        reporter.finish_prune();
+        reporter.finish();
 
         Ok(())
     }

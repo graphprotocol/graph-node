@@ -5,7 +5,8 @@ use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
-    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter, PruneRequest,
+    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter,
+    PruneRequest, PruningStrategy,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -543,6 +544,7 @@ fn prune() {
     fn check_at_block(
         store: &DieselSubgraphStore,
         src: &DeploymentLocator,
+        strategy: PruningStrategy,
         block: BlockNumber,
         exp: Vec<&str>,
     ) {
@@ -561,62 +563,84 @@ fn prune() {
             .into_iter()
             .map(|entity| entity.id().unwrap())
             .collect();
-        assert_eq!(act, exp, "different users visible at block {block}");
+        assert_eq!(
+            act, exp,
+            "different users visible at block {block} with {strategy}"
+        );
     }
 
-    run_test(|store, src| async move {
-        store
-            .set_history_blocks(&src, -3, 10)
-            .expect_err("history_blocks can not be set to a negative number");
+    for strategy in [PruningStrategy::Copy, PruningStrategy::Delete] {
+        run_test(move |store, src| async move {
+            store
+                .set_history_blocks(&src, -3, 10)
+                .expect_err("history_blocks can not be set to a negative number");
 
-        store
-            .set_history_blocks(&src, 10, 10)
-            .expect_err("history_blocks must be bigger than reorg_threshold");
+            store
+                .set_history_blocks(&src, 10, 10)
+                .expect_err("history_blocks must be bigger than reorg_threshold");
 
-        // Add another version for user 2 at block 4
-        let user2 = create_test_entity(
-            "2",
-            USER,
-            "Cindini",
-            "dinici@email.com",
-            44_i32,
-            157.1,
-            true,
-            Some("red"),
-        );
-        transact_and_wait(&store, &src, BLOCKS[5].clone(), vec![user2])
-            .await
-            .unwrap();
+            // Add another version for user 2 at block 4
+            let user2 = create_test_entity(
+                "2",
+                USER,
+                "Cindini",
+                "dinici@email.com",
+                44_i32,
+                157.1,
+                true,
+                Some("red"),
+            );
+            transact_and_wait(&store, &src, BLOCKS[5].clone(), vec![user2])
+                .await
+                .unwrap();
 
-        // Setup and the above addition create these user versions:
-        // id | versions
-        // ---+---------
-        //  1 | [0,)
-        //  2 | [1,5) [5,)
-        //  3 | [1,2) [2,)
+            // Setup and the above addition create these user versions:
+            // id | versions
+            // ---+---------
+            //  1 | [0,)
+            //  2 | [1,5) [5,)
+            //  3 | [1,2) [2,)
 
-        // Forward block ptr to block 6
-        transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
-            .await
-            .unwrap();
+            // Forward block ptr to block 6
+            transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
+                .await
+                .unwrap();
 
-        // Prune to 3 blocks of history, with a reorg threshold of 1 where
-        // we have blocks from [0, 6]. That should only remove the [1,2)
-        // version of user 3
-        let req = PruneRequest::new(&src, 3, 1, 0, 6)?;
-        store
-            .prune(Box::new(Progress), &src, req)
-            .await
-            .expect("pruning works");
+            // Prune to 3 blocks of history, with a reorg threshold of 1 where
+            // we have blocks from [0, 6]. That should only remove the [1,2)
+            // version of user 3
+            let mut req = PruneRequest::new(&src, 3, 1, 0, 6)?;
+            // Change the thresholds so that we select the desired strategy
+            match strategy {
+                PruningStrategy::Copy => {
+                    req.copy_threshold = 0.0;
+                    req.delete_threshold = 0.0;
+                }
+                PruningStrategy::Delete => {
+                    req.copy_threshold = 1.0;
+                    req.delete_threshold = 0.0;
+                }
+            }
+            // We have 5 versions for 3 entities
+            assert_eq!(
+                Some(strategy),
+                req.strategy(3.0 / 5.0),
+                "changing thresholds didn't yield desired strategy"
+            );
+            store
+                .prune(Box::new(Progress), &src, req)
+                .await
+                .expect("pruning works");
 
-        // Check which versions exist at every block, even if they are
-        // before the new earliest block, since we don't have a convenient
-        // way to load all entity versions with their block range
-        check_at_block(&store, &src, 0, vec!["1"]);
-        check_at_block(&store, &src, 1, vec!["1", "2"]);
-        for block in 2..=5 {
-            check_at_block(&store, &src, block, vec!["1", "2", "3"]);
-        }
-        Ok(())
-    })
+            // Check which versions exist at every block, even if they are
+            // before the new earliest block, since we don't have a convenient
+            // way to load all entity versions with their block range
+            check_at_block(&store, &src, strategy, 0, vec!["1"]);
+            check_at_block(&store, &src, strategy, 1, vec!["1", "2"]);
+            for block in 2..=5 {
+                check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]);
+            }
+            Ok(())
+        })
+    }
 }
