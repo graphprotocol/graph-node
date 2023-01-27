@@ -69,7 +69,7 @@ those.
 ## IPFS
 
 - `GRAPH_IPFS_TIMEOUT`: timeout for IPFS, which includes requests for manifest files
-  and from mappings (in seconds, default is 30).
+  and from mappings (in seconds, default is 60).
 - `GRAPH_MAX_IPFS_FILE_BYTES`: maximum size for a file that can be retrieved (in bytes, default is 256 MiB).
 - `GRAPH_MAX_IPFS_MAP_FILE_SIZE`: maximum size of files that can be processed
   with `ipfs.map`. When a file is processed through `ipfs.map`, the entities
