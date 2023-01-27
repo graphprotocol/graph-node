@@ -341,6 +341,7 @@ struct StoredSubgraphManifest {
     raw_yaml: Option<String>,
     entities_with_causality_region: Vec<EntityType>,
     on_sync: Option<String>,
+    history_blocks: i32,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
