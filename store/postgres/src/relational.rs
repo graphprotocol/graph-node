@@ -247,6 +247,8 @@ pub struct Layout {
     pub enums: EnumMap,
     /// The query to count all entities
     pub count_query: String,
+    /// How many blocks of history the subgraph should keep
+    pub history_blocks: BlockNumber,
 }
 
 impl Layout {
@@ -374,6 +376,7 @@ impl Layout {
             tables,
             enums,
             count_query,
+            history_blocks: i32::MAX,
         })
     }
 
@@ -909,15 +912,22 @@ impl Layout {
         true
     }
 
-    /// Update the layout with the latest information from the database; for
-    /// now, an update only changes the `is_account_like` flag for tables or
-    /// the layout's site. If no update is needed, just return `self`.
-    pub fn refresh(
+    /// Update the layout with the latest information from the database; an
+    /// update can only change the `is_account_like` flag for tables, the
+    /// layout's site, or the `history_blocks`. If no update is needed, just
+    /// return `self`.
+    ///
+    /// This is tied closely to how the `LayoutCache` works and called from
+    /// it right after creating a `Layout`, and periodically to update the
+    /// `Layout` in case changes were made
+    fn refresh(
         self: Arc<Self>,
         conn: &PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
+        let history_blocks = deployment::history_blocks(conn, &self.site)?;
+
         let is_account_like = { |table: &Table| account_like.contains(table.name.as_str()) };
 
         let changed_tables: Vec<_> = self
@@ -925,9 +935,10 @@ impl Layout {
             .values()
             .filter(|table| table.is_account_like != is_account_like(table.as_ref()))
             .collect();
-        if changed_tables.is_empty() && site == self.site {
+        if changed_tables.is_empty() && site == self.site && history_blocks == self.history_blocks {
             return Ok(self);
         }
+
         let mut layout = (*self).clone();
         for table in changed_tables.into_iter() {
             let mut table = (*table.as_ref()).clone();
@@ -935,6 +946,7 @@ impl Layout {
             layout.tables.insert(table.object.clone(), Arc::new(table));
         }
         layout.site = site;
+        layout.history_blocks = history_blocks;
         Ok(Arc::new(layout))
     }
 }

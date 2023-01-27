@@ -349,6 +349,30 @@ impl ManifestInfo {
     }
 }
 
+// Return how many blocks of history this subgraph should keep
+pub fn history_blocks(conn: &PgConnection, site: &Site) -> Result<BlockNumber, StoreError> {
+    use subgraph_manifest as sm;
+    sm::table
+        .select(sm::history_blocks)
+        .filter(sm::id.eq(site.id))
+        .first::<BlockNumber>(conn)
+        .map_err(StoreError::from)
+}
+
+pub fn set_history_blocks(
+    conn: &PgConnection,
+    site: &Site,
+    history_blocks: BlockNumber,
+) -> Result<(), StoreError> {
+    use subgraph_manifest as sm;
+
+    update(sm::table.filter(sm::id.eq(site.id)))
+        .set(sm::history_blocks.eq(history_blocks))
+        .execute(conn)
+        .map(|_| ())
+        .map_err(StoreError::from)
+}
+
 #[allow(dead_code)]
 pub fn features(conn: &PgConnection, site: &Site) -> Result<BTreeSet<SubgraphFeature>, StoreError> {
     use subgraph_manifest as sm;
