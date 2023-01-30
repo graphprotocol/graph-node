@@ -836,7 +836,7 @@ impl SubgraphStoreInner {
         self.status(filter).unwrap().into_iter().next().unwrap()
     }
 
-    pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+    pub fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
         let sites = match filter {
             status::Filter::SubgraphName(name) => {
                 let deployments = self.mirror.deployments_for_subgraph(&name)?;

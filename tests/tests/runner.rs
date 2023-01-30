@@ -436,3 +436,36 @@ async fn fatal_error() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn deploy_on_aliased_network() {
+    use graph::data::subgraph::status;
+
+    let stores = stores("./integration-tests/config.aliased-network.toml").await;
+
+    let subgraph_name = SubgraphName::new("deploy-on-aliased-network").unwrap();
+    let hash = {
+        let test_dir = format!("./integration-tests/{}", subgraph_name);
+        fixture::build_subgraph(&test_dir).await
+    };
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = test_ptr(1);
+    let chain = chain(blocks, &stores, None).await;
+
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(stop_block).await;
+
+    let status_filter = status::Filter::SubgraphName(subgraph_name.to_string());
+    let statuses = &mut ctx.store.status(status_filter).unwrap();
+    assert_eq!(statuses.len(), 1);
+    let status = statuses.pop().unwrap();
+
+    assert_ne!(status.chains[0].network, "test");
+    assert_eq!(status.chains[0].network, "test-alias");
+}

@@ -1,0 +1,13 @@
+{
+  "name": "data-source-revert",
+  "version": "0.1.0",
+  "scripts": {
+    "codegen": "graph codegen --skip-migrations",
+    "deploy:test": "graph deploy test/data-source-revert --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test-grafted": "graph deploy test/data-source-revert-grafted grafted.yaml --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#main",
+    "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#main"
+  }
+}
