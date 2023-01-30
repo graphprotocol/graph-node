@@ -36,7 +36,7 @@ pub struct EnvVarsMapping {
     /// The timeout for all IPFS requests.
     ///
     /// Set by the environment variable `GRAPH_IPFS_TIMEOUT` (expressed in
-    /// seconds). The default value is 30s.
+    /// seconds). The default value is 60s.
     pub ipfs_timeout: Duration,
     /// Sets the `ipfs.map` file size limit.
     ///
@@ -105,7 +105,7 @@ pub struct InnerMappingHandlers {
     max_ipfs_cache_file_size: WithDefaultUsize<usize, { 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
     max_ipfs_cache_size: u64,
-    #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "30")]
+    #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "60")]
     ipfs_timeout_in_secs: u64,
     #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
     max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
