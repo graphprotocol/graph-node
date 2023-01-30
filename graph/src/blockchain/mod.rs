@@ -3,6 +3,7 @@
 //! trait which is the centerpiece of this module.
 
 pub mod block_stream;
+mod blockchain_map;
 mod empty_node_capabilities;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
@@ -33,8 +34,6 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::{
-    any::Any,
-    collections::HashMap,
     fmt::{self, Debug},
     str::FromStr,
     sync::Arc,
@@ -42,6 +41,7 @@ use std::{
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
+pub use blockchain_map::{AliasingError, BlockchainMap, NetworkAliases};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
@@ -414,29 +414,6 @@ impl BlockchainKind {
             .and_then(|kind| kind.split('/').next())
             .context("invalid manifest")
             .and_then(BlockchainKind::from_str)
-    }
-}
-
-/// A collection of blockchains, keyed by `BlockchainKind` and network.
-#[derive(Default, Debug, Clone)]
-pub struct BlockchainMap(HashMap<(BlockchainKind, String), Arc<dyn Any + Send + Sync>>);
-
-impl BlockchainMap {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn insert<C: Blockchain>(&mut self, network: String, chain: Arc<C>) {
-        self.0.insert((C::KIND, network), chain);
-    }
-
-    pub fn get<C: Blockchain>(&self, network: String) -> Result<Arc<C>, Error> {
-        self.0
-            .get(&(C::KIND, network.clone()))
-            .with_context(|| format!("no network {} found on chain {}", network, C::KIND))?
-            .cheap_clone()
-            .downcast()
-            .map_err(|_| anyhow!("unable to downcast, wrong type for blockchain {}", C::KIND))
     }
 }
 

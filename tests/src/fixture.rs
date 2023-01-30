@@ -14,8 +14,8 @@ use graph::blockchain::block_stream::{
     FirehoseCursor,
 };
 use graph::blockchain::{
-    Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, RuntimeAdapter,
-    TriggersAdapter, TriggersAdapterSelector,
+    Block, BlockHash, BlockPtr, Blockchain, BlockchainMap, ChainIdentifier, NetworkAliases,
+    RuntimeAdapter, TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore, DeploymentLocator};
@@ -385,7 +385,8 @@ pub async fn setup<C: Blockchain>(
     let subgraph_store = stores.network_store.subgraph_store();
     cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
-    let mut blockchain_map = BlockchainMap::new();
+    let network_aliases = NetworkAliases::default();
+    let mut blockchain_map = BlockchainMap::new(network_aliases);
     blockchain_map.insert(stores.network_name.clone(), chain.chain.clone());
 
     let static_filters = env_vars.experimental_static_filters;

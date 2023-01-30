@@ -264,7 +264,8 @@ async fn main() {
         // To support the ethereum block ingestor, ethereum networks are referenced both by the
         // `blockchain_map` and `ethereum_chains`. Future chains should be referred to only in
         // `blockchain_map`.
-        let mut blockchain_map = BlockchainMap::new();
+        let network_aliases = config.network_aliases().unwrap();
+        let mut blockchain_map = BlockchainMap::new(network_aliases);
 
         let (arweave_networks, arweave_idents) = connect_firehose_networks::<ArweaveBlock>(
             &logger,
@@ -344,7 +345,8 @@ async fn main() {
             metrics_registry.clone(),
         );
 
-        let blockchain_map = Arc::new(blockchain_map);
+        let network_aliases = config.network_aliases().expect("Invalid network aliases");
+        let blockchain_map = Arc::new(BlockchainMap::new(network_aliases));
 
         let load_manager = Arc::new(LoadManager::new(
             &logger,
