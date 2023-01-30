@@ -508,6 +508,7 @@ pub struct Chain {
     pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+    #[serde(default)]
     pub aliases: Vec<String>,
 }
 
