@@ -257,7 +257,15 @@ fn decode_value(value: &crate::codec::value::Typed) -> Result<Value, MappingErro
             .map(Value::BigInt)
             .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
 
-        Typed::String(new_value) => Ok(Value::String(new_value.clone())),
+        Typed::String(new_value) => {
+            let mut string = new_value.clone();
+
+            // Strip null characters since they are not accepted by Postgres.
+            if string.contains('\u{0000}') {
+                string = string.replace('\u{0000}', "");
+            }
+            Ok(Value::String(string))
+        }
 
         Typed::Bytes(new_value) => base64::decode(&new_value)
             .map(|bs| Value::Bytes(Bytes::from(bs.as_ref())))
