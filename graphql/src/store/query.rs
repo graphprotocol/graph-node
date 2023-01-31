@@ -181,8 +181,9 @@ fn build_cursor(
                         Ok(val) => {
                             // We encode the cursors using `:` as a separator
                             // split by `:` and getting the first will give us the ID
-                            let id = val.split(":").collect::<Vec<&str>>()[0];
-                            println!("decoded id: {}", id);
+                            // these seems to be `"` around the ID so we need to remove them
+                            let id = val.split(":").collect::<Vec<&str>>()[0].replace("\"", "");
+                            println!("decoded id: {:?}", id);
                             return Ok(Some(EntityFilter::AfterCursor(
                                 "id".to_string(),
                                 Value::String(id.to_string()),
