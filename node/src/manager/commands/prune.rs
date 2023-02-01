@@ -183,7 +183,7 @@ pub async fn run(
         .prune(
             reporter,
             &deployment,
-            latest - history,
+            Some(history),
             // Using the setting for eth chains is a bit lazy; the value
             // should really depend on the chain, but we don't have a
             // convenient way to figure out how each chain deals with

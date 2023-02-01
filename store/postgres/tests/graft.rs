@@ -558,37 +558,25 @@ fn prune() {
             .into_iter()
             .map(|entity| entity.id().unwrap())
             .collect();
-        assert_eq!(act, exp);
+        assert_eq!(act, exp, "different users visible at block {block}");
     }
 
-    async fn prune(
-        store: &DieselSubgraphStore,
-        src: &DeploymentLocator,
-        earliest_block: BlockNumber,
-    ) -> Result<(), StoreError> {
+    async fn prune(store: &DieselSubgraphStore, src: &DeploymentLocator) -> Result<(), StoreError> {
         struct Progress;
         impl PruneReporter for Progress {}
         let reporter = Box::new(Progress);
 
-        store
-            .prune(reporter, src, earliest_block, 1, 1.1)
-            .await
-            .map(|_| ())
+        store.prune(reporter, src, None, 1, 1.1).await.map(|_| ())
     }
 
     run_test(|store, src| async move {
-        // The setup sets the subgraph pointer to block 2, we try to set
-        // earliest block to 5
-        prune(&store, &src, 5)
-            .await
-            .expect_err("setting earliest block later than latest does not work");
+        store
+            .set_history_blocks(&src, -3, 10)
+            .expect_err("history_blocks can not be set to a negative number");
 
-        // Latest block 2 minus reorg threshold 1 means we need to copy
-        // final blocks from block 1, but want earliest as block 2, i.e. no
-        // final blocks which won't work
-        prune(&store, &src, 2)
-            .await
-            .expect_err("setting earliest block after last final block fails");
+        store
+            .set_history_blocks(&src, 10, 10)
+            .expect_err("history_blocks must be bigger than reorg_threshold");
 
         // Add another version for user 2 at block 4
         let user2 = create_test_entity(
@@ -612,12 +600,16 @@ fn prune() {
         //  2 | [1,5) [5,)
         //  3 | [1,2) [2,)
 
-        // Forward block ptr to block 5
+        // Forward block ptr to block 6
         transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
             .await
             .unwrap();
+
+        // Keep 3 blocks of history, i.e. blocks 4..6
+        store.set_history_blocks(&src, 3, 0).unwrap();
+
         // Pruning only removes the [1,2) version of user 3
-        prune(&store, &src, 3).await.expect("pruning works");
+        prune(&store, &src).await.expect("pruning works");
 
         // Check which versions exist at every block, even if they are
         // before the new earliest block, since we don't have a convenient

@@ -1113,8 +1113,11 @@ impl SubgraphStoreInner {
         store.set_account_like(site, table, is_account_like).await
     }
 
-    /// Remove the history that is only needed to respond to queries before
-    /// block number `earliest_block` from the given deployment
+    /// Remove the history exceeding `history_blocks` blocks setting. Only
+    /// entity versions needed for queries at block heights within
+    /// `history_blocks` blocks of the current subgraph head will be kept.
+    /// If `history_blocks` is `None`, use the subgraph's `history_blocks`
+    /// setting.
     ///
     /// Only tables with a ratio of entities to entity versions below
     /// `prune_ratio` will be pruned; that ratio is determined by looking at
@@ -1137,7 +1140,7 @@ impl SubgraphStoreInner {
         &self,
         reporter: Box<dyn PruneReporter>,
         deployment: &DeploymentLocator,
-        earliest_block: BlockNumber,
+        history_blocks: Option<BlockNumber>,
         reorg_threshold: BlockNumber,
         prune_ratio: f64,
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
@@ -1147,7 +1150,7 @@ impl SubgraphStoreInner {
         let store = self.for_site(&site)?;
 
         store
-            .prune(reporter, site, earliest_block, reorg_threshold, prune_ratio)
+            .prune(reporter, site, history_blocks, reorg_threshold, prune_ratio)
             .await
     }
 
