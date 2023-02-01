@@ -1,5 +1,9 @@
+use std::sync::Arc;
+
+use prometheus::Counter;
 use slog::*;
 
+use crate::components::metrics::MetricsRegistry;
 use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
 use crate::log::split::*;
@@ -20,14 +24,20 @@ pub struct ComponentLoggerConfig {
 pub struct LoggerFactory {
     parent: Logger,
     elastic_config: Option<ElasticLoggingConfig>,
+    metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl LoggerFactory {
     /// Creates a new factory using a parent logger and optional Elasticsearch configuration.
-    pub fn new(logger: Logger, elastic_config: Option<ElasticLoggingConfig>) -> Self {
+    pub fn new(
+        logger: Logger,
+        elastic_config: Option<ElasticLoggingConfig>,
+        metrics_registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
         Self {
             parent: logger,
             elastic_config,
+            metrics_registry,
         }
     }
 
@@ -36,6 +46,7 @@ impl LoggerFactory {
         Self {
             parent,
             elastic_config: self.elastic_config.clone(),
+            metrics_registry: self.metrics_registry.clone(),
         }
     }
 
@@ -68,6 +79,7 @@ impl LoggerFactory {
                                     max_retries: ENV_VARS.elastic_search_max_retries,
                                 },
                                 term_logger.clone(),
+                                self.logs_sent_counter(None),
                             ),
                         )
                     })
@@ -98,9 +110,20 @@ impl LoggerFactory {
                             max_retries: ENV_VARS.elastic_search_max_retries,
                         },
                         term_logger.clone(),
+                        self.logs_sent_counter(Some(loc.hash.as_str())),
                     ),
                 )
             })
             .unwrap_or(term_logger)
+    }
+
+    fn logs_sent_counter(&self, deployment: Option<&str>) -> Counter {
+        self.metrics_registry
+            .global_deployment_counter(
+                "graph_elasticsearch_logs_sent",
+                "Count of logs sent to Elasticsearch endpoint",
+                deployment.unwrap_or(""),
+            )
+            .unwrap()
     }
 }
