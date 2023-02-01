@@ -149,6 +149,7 @@ pub async fn run(
     search: DeploymentSearch,
     history: usize,
     prune_ratio: f64,
+    once: bool,
 ) -> Result<(), anyhow::Error> {
     let history = history as BlockNumber;
     let deployment = search.locate_unique(&primary_pool)?;
@@ -191,6 +192,13 @@ pub async fn run(
             prune_ratio,
         )
         .await?;
+
+    // Only after everything worked out, make the history setting permanent
+    if !once {
+        store
+            .subgraph_store()
+            .set_history_blocks(&deployment, history, ETH_ENV.reorg_threshold)?;
+    }
 
     Ok(())
 }

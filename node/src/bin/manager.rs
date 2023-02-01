@@ -240,7 +240,15 @@ pub enum Command {
     #[clap(subcommand)]
     Index(IndexCommand),
 
-    /// Prune deployments
+    /// Prune a deployment
+    ///
+    /// Keep only entity versions that are needed to respond to queries at
+    /// block heights that are within `history` blocks of the subgraph head;
+    /// all other entity versions are removed.
+    ///
+    /// Unless `--once` is given, this setting is permanent and the subgraph
+    /// will periodically be pruned to remove history as the subgraph head
+    /// moves forward.
     Prune {
         /// The deployment to prune (see `help info`)
         deployment: DeploymentSearch,
@@ -250,6 +258,9 @@ pub enum Command {
         /// How much history to keep in blocks
         #[clap(long, short = 'y', default_value = "10000")]
         history: usize,
+        /// Prune only this once
+        #[clap(long, short)]
+        once: bool,
     },
 
     /// General database management
@@ -1372,9 +1383,10 @@ async fn main() -> anyhow::Result<()> {
             deployment,
             history,
             prune_ratio,
+            once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
-            commands::prune::run(store, primary_pool, deployment, history, prune_ratio).await
+            commands::prune::run(store, primary_pool, deployment, history, prune_ratio, once).await
         }
         Drop {
             deployment,

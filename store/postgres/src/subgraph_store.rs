@@ -1151,6 +1151,18 @@ impl SubgraphStoreInner {
             .await
     }
 
+    pub fn set_history_blocks(
+        &self,
+        deployment: &DeploymentLocator,
+        history_blocks: BlockNumber,
+        reorg_threshold: BlockNumber,
+    ) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let store = self.for_site(&site)?;
+
+        store.set_history_blocks(&site, history_blocks, reorg_threshold)
+    }
+
     pub fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
         let src_store = self.for_site(site)?;
         src_store.load_deployment(site)

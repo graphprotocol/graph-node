@@ -863,6 +863,35 @@ impl DeploymentStore {
         .await
     }
 
+    pub(crate) fn set_history_blocks(
+        &self,
+        site: &Site,
+        history_blocks: BlockNumber,
+        reorg_threshold: BlockNumber,
+    ) -> Result<(), StoreError> {
+        if history_blocks <= reorg_threshold {
+            return Err(constraint_violation!(
+                "the amount of history to keep for sgd{} can not be set to \
+                 {history_blocks} since it must be more than the \
+                 reorg threshold {reorg_threshold}",
+                site.id
+            ));
+        }
+
+        if history_blocks <= 0 {
+            return Err(constraint_violation!(
+                "history_blocks must be a positive number"
+            ));
+        }
+
+        // Invalidate the layout cache for this site so that the next access
+        // will use the updated value
+        self.layout_cache.remove(site);
+
+        let conn = self.get_conn()?;
+        deployment::set_history_blocks(&conn, site, history_blocks)
+    }
+
     pub(crate) async fn prune(
         self: &Arc<Self>,
         mut reporter: Box<dyn PruneReporter>,
