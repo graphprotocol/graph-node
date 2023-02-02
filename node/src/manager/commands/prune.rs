@@ -5,12 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use graph::env::ENV_VARS;
 use graph::{
     components::store::{PruneReporter, StatusStore},
     data::subgraph::status,
     prelude::{anyhow, BlockNumber},
 };
-use graph_chain_ethereum::ENV_VARS as ETH_ENV;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::manager::{
@@ -174,7 +174,7 @@ pub async fn run(
 
     println!("prune {deployment}");
     println!("    latest: {latest}");
-    println!("     final: {}", latest - ETH_ENV.reorg_threshold);
+    println!("     final: {}", latest - ENV_VARS.reorg_threshold);
     println!("  earliest: {}\n", latest - history);
 
     let reporter = Box::new(Progress::new());
@@ -188,16 +188,18 @@ pub async fn run(
             // should really depend on the chain, but we don't have a
             // convenient way to figure out how each chain deals with
             // finality
-            ETH_ENV.reorg_threshold,
+            ENV_VARS.reorg_threshold,
             prune_ratio,
         )
         .await?;
 
     // Only after everything worked out, make the history setting permanent
     if !once {
-        store
-            .subgraph_store()
-            .set_history_blocks(&deployment, history, ETH_ENV.reorg_threshold)?;
+        store.subgraph_store().set_history_blocks(
+            &deployment,
+            history,
+            ENV_VARS.reorg_threshold,
+        )?;
     }
 
     Ok(())

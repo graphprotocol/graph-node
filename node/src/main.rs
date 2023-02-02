@@ -718,7 +718,7 @@ fn ethereum_networks_as_chains(
                 Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
                 runtime_adapter,
-                ethereum::ENV_VARS.reorg_threshold,
+                ENV_VARS.reorg_threshold,
                 ethereum::ENV_VARS.ingestor_polling_interval,
                 is_ingestible,
             );

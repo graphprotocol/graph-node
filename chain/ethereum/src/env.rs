@@ -20,9 +20,6 @@ pub struct EnvVars {
     /// default value is 2000.
     pub get_logs_max_contracts: usize,
 
-    /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
-    /// value is 250 blocks.
-    pub reorg_threshold: BlockNumber,
     /// Set by the environment variable `ETHEREUM_TRACE_STREAM_STEP_SIZE`. The
     /// default value is 50 blocks.
     pub trace_stream_step_size: BlockNumber,
@@ -111,7 +108,6 @@ impl From<Inner> for EnvVars {
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect(),
-            reorg_threshold: x.reorg_threshold,
             trace_stream_step_size: x.trace_stream_step_size,
             max_event_only_range: x.max_event_only_range,
             block_batch_size: x.block_batch_size,
@@ -145,9 +141,6 @@ struct Inner {
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
     get_logs_max_contracts: usize,
 
-    // JSON-RPC specific.
-    #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
-    reorg_threshold: BlockNumber,
     #[envconfig(from = "ETHEREUM_TRACE_STREAM_STEP_SIZE", default = "50")]
     trace_stream_step_size: BlockNumber,
     #[envconfig(from = "GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE", default = "500")]
