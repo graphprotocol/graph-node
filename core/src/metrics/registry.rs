@@ -282,7 +282,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
 fn global_counters_are_shared() {
     use graph::log;
 
-    let logger = log::logger(false);
+    let logger = log::logger(false, false);
     let prom_reg = Arc::new(Registry::new());
     let registry = MetricsRegistry::new(logger, prom_reg);
 

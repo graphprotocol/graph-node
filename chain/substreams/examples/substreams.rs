@@ -32,7 +32,7 @@ async fn main() -> Result<(), Error> {
 
     let package = read_package(&package_file)?;
 
-    let logger = logger(true);
+    let logger = logger(true, false);
     // Set up Prometheus registry
     let prometheus_registry = Arc::new(Registry::new());
     let metrics_registry = Arc::new(MetricsRegistry::new(

@@ -467,7 +467,7 @@ mod test {
 
     #[tokio::test]
     async fn correctly_parse_ethereum_networks() {
-        let logger = logger(true);
+        let logger = logger(true, false);
 
         let network_args = vec![
             "mainnet:traces:http://localhost:8545/".to_string(),

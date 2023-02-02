@@ -334,7 +334,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
         Config::from_str(&config, "default").expect("failed to create configuration")
     };
 
-    let logger = graph::log::logger(true);
+    let logger = graph::log::logger(true, false);
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
@@ -376,7 +376,7 @@ pub async fn setup<C: Blockchain>(
         None => EnvVars::from_env().unwrap(),
     });
 
-    let logger = graph::log::logger(true);
+    let logger = graph::log::logger(true, false);
     let logger_factory = LoggerFactory::new(logger.clone(), None);
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
     let node_id = NodeId::new(NODE_ID).unwrap();

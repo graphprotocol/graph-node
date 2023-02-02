@@ -44,7 +44,7 @@ const CONN_POOL_SIZE: u32 = 20;
 
 lazy_static! {
     pub static ref LOGGER: Logger = match ENV_VARS.log_levels {
-        Some(_) => log::logger(false),
+        Some(_) => log::logger(false, false),
         None => Logger::root(slog::Discard, o!()),
     };
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());

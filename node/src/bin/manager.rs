@@ -895,7 +895,7 @@ async fn main() -> anyhow::Result<()> {
     let version_label = opt.version_label.clone();
     // Set up logger
     let logger = match ENV_VARS.log_levels {
-        Some(_) => logger(false),
+        Some(_) => logger(false, false),
         None => Logger::root(slog::Discard, o!()),
     };
 

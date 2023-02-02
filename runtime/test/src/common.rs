@@ -17,7 +17,7 @@ use web3::types::Address;
 
 lazy_static! {
     pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
-        Some(_) => log::logger(false),
+        Some(_) => log::logger(false, false),
         None => Logger::root(slog::Discard, o!()),
     };
 }

@@ -840,7 +840,7 @@ fn bytes_to_string_is_lossy() {
     assert_eq!(
         "Downcoin WETH-USDT",
         bytes_to_string(
-            &graph::log::logger(true),
+            &graph::log::logger(true, false),
             vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84],
         )
     );
@@ -848,7 +848,7 @@ fn bytes_to_string_is_lossy() {
     assert_eq!(
         "Downcoin WETH-USDT�",
         bytes_to_string(
-            &graph::log::logger(true),
+            &graph::log::logger(true, false),
             vec![
                 68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84, 160,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
