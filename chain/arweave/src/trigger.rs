@@ -1,7 +1,7 @@
 use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
-use graph::prelude::web3::types::H256;
+use graph::prelude::BlockHash;
 use graph::prelude::BlockNumber;
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
@@ -81,10 +81,10 @@ impl ArweaveTrigger {
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
+    pub fn block_hash(&self) -> BlockHash {
         match self {
-            ArweaveTrigger::Block(block) => block.ptr().hash_as_h256(),
-            ArweaveTrigger::Transaction(tx) => tx.block.ptr().hash_as_h256(),
+            ArweaveTrigger::Block(block) => block.ptr().hash,
+            ArweaveTrigger::Transaction(tx) => tx.block.ptr().hash,
         }
     }
 }

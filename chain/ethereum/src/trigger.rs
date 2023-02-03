@@ -261,7 +261,7 @@ impl EthereumTrigger {
 
     pub fn block_hash(&self) -> H256 {
         match self {
-            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
+            EthereumTrigger::Block(block_ptr, _) => H256::from_slice(block_ptr.hash_slice()),
             EthereumTrigger::Call(call) => call.block_hash,
             EthereumTrigger::Log(log, _) => log.block_hash.unwrap(),
         }

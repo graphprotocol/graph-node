@@ -28,8 +28,8 @@ impl BlockHash {
         hex::encode(&self.0)
     }
 
-    pub fn zero() -> Self {
-        Self::from(H256::zero())
+    pub fn is_zero(&self) -> bool {
+        self.0.iter().all(|item| *item == 0)
     }
 }
 
@@ -111,13 +111,6 @@ impl BlockPtr {
     /// Block number to be passed into the store. Panics if it does not fit in an i32.
     pub fn block_number(&self) -> BlockNumber {
         self.number
-    }
-
-    // FIXME:
-    //
-    // workaround for arweave
-    pub fn hash_as_h256(&self) -> H256 {
-        H256::from_slice(&self.hash_slice()[..32])
     }
 
     pub fn hash_slice(&self) -> &[u8] {
@@ -262,9 +255,9 @@ impl IntoValue for BlockPtr {
     }
 }
 
-impl From<BlockPtr> for H256 {
+impl From<BlockPtr> for BlockHash {
     fn from(ptr: BlockPtr) -> Self {
-        ptr.hash_as_h256()
+        ptr.hash
     }
 }
 

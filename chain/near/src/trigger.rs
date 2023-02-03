@@ -2,7 +2,7 @@ use graph::blockchain::Block;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
 use graph::prelude::hex;
-use graph::prelude::web3::types::H256;
+use graph::prelude::BlockHash;
 use graph::prelude::BlockNumber;
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -84,10 +84,10 @@ impl NearTrigger {
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
+    pub fn block_hash(&self) -> BlockHash {
         match self {
-            NearTrigger::Block(block) => block.ptr().hash_as_h256(),
-            NearTrigger::Receipt(receipt) => receipt.block.ptr().hash_as_h256(),
+            NearTrigger::Block(block) => block.ptr().hash,
+            NearTrigger::Receipt(receipt) => receipt.block.ptr().hash,
         }
     }
 }

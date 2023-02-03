@@ -1553,8 +1553,8 @@ impl ChainStoreTrait for ChainStore {
                             conn,
                             &chain_store.chain,
                             first_block as i64,
-                            ptr.hash_as_h256(),
-                            chain_store.genesis_block_ptr.hash_as_h256(),
+                            H256::from_slice(ptr.hash_slice()),
+                            H256::from_slice(chain_store.genesis_block_ptr.hash_slice()),
                         )
                         .map_err(CancelableError::from)?
                     {

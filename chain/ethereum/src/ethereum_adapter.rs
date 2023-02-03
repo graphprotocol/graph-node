@@ -444,7 +444,7 @@ impl EthereumAdapter {
         let block_id = if !self.supports_eip_1898 {
             BlockId::Number(block_ptr.number.into())
         } else {
-            BlockId::Hash(block_ptr.hash_as_h256())
+            BlockId::Hash(H256::from_slice(block_ptr.hash_slice()))
         };
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
@@ -676,7 +676,7 @@ impl EthereumAdapter {
             .await?;
         block_hash
             .ok_or_else(|| anyhow!("Ethereum node is missing block #{}", block_ptr.number))
-            .map(|block_hash| block_hash == block_ptr.hash_as_h256())
+            .map(|block_hash| block_hash == H256::from_slice(block_ptr.hash_slice()))
     }
 
     pub(crate) fn logs_in_block_range(
@@ -1694,7 +1694,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
     // We'll also need the receipts for those transactions. In this step we collect all receipts
     // we have in store for the current block.
     let mut receipts = chain_store
-        .transaction_receipts_in_block(&block.ptr().hash_as_h256())
+        .transaction_receipts_in_block(&H256::from_slice(block.ptr().hash_slice()))
         .await?
         .into_iter()
         .map(|receipt| (receipt.transaction_hash, receipt))
