@@ -8,6 +8,7 @@ use std::time::Duration;
 use chrono::prelude::{SecondsFormat, Utc};
 use futures03::TryFutureExt;
 use http::header::CONTENT_TYPE;
+use prometheus::Counter;
 use reqwest;
 use reqwest::Client;
 use serde::ser::Serializer as SerdeSerializer;
@@ -175,15 +176,21 @@ pub struct ElasticDrainConfig {
 pub struct ElasticDrain {
     config: ElasticDrainConfig,
     error_logger: Logger,
+    logs_sent_counter: Counter,
     logs: Arc<Mutex<Vec<ElasticLog>>>,
 }
 
 impl ElasticDrain {
     /// Creates a new `ElasticDrain`.
-    pub fn new(config: ElasticDrainConfig, error_logger: Logger) -> Self {
+    pub fn new(
+        config: ElasticDrainConfig,
+        error_logger: Logger,
+        logs_sent_counter: Counter,
+    ) -> Self {
         let drain = ElasticDrain {
             config,
             error_logger,
+            logs_sent_counter,
             logs: Arc::new(Mutex::new(vec![])),
         };
         drain.periodically_flush_logs();
@@ -192,6 +199,7 @@ impl ElasticDrain {
 
     fn periodically_flush_logs(&self) {
         let flush_logger = self.error_logger.clone();
+        let logs_sent_counter = self.logs_sent_counter.clone();
         let logs = self.logs.clone();
         let config = self.config.clone();
         let mut interval = tokio::time::interval(self.config.flush_interval);
@@ -203,7 +211,6 @@ impl ElasticDrain {
 
                 let logs = logs.clone();
                 let config = config.clone();
-                let flush_logger = flush_logger.clone();
                 let logs_to_send = {
                     let mut logs = logs.lock().unwrap();
                     let logs_to_send = (*logs).clone();
@@ -217,11 +224,7 @@ impl ElasticDrain {
                     continue;
                 }
 
-                debug!(
-                    flush_logger,
-                    "Flushing {} logs to Elasticsearch",
-                    logs_to_send.len()
-                );
+                logs_sent_counter.inc_by(logs_to_send.len() as f64);
 
                 // The Elasticsearch batch API takes requests with the following format:
                 // ```ignore
@@ -382,8 +385,12 @@ impl Drain for ElasticDrain {
 ///
 /// Uses `error_logger` to print any Elasticsearch logging errors,
 /// so they don't go unnoticed.
-pub fn elastic_logger(config: ElasticDrainConfig, error_logger: Logger) -> Logger {
-    let elastic_drain = ElasticDrain::new(config, error_logger).fuse();
+pub fn elastic_logger(
+    config: ElasticDrainConfig,
+    error_logger: Logger,
+    logs_sent_counter: Counter,
+) -> Logger {
+    let elastic_drain = ElasticDrain::new(config, error_logger, logs_sent_counter).fuse();
     let async_drain = slog_async::Async::new(elastic_drain)
         .chan_size(20000)
         .build()

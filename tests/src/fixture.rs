@@ -377,8 +377,8 @@ pub async fn setup<C: Blockchain>(
     });
 
     let logger = graph::log::logger(true);
-    let logger_factory = LoggerFactory::new(logger.clone(), None);
     let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
+    let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 
     // Make sure we're starting from a clean state.

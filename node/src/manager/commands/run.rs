@@ -57,7 +57,7 @@ pub async fn run(
 
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let metrics_registry = metrics_ctx.registry.clone();
-    let logger_factory = LoggerFactory::new(logger.clone(), None);
+    let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
 
     // FIXME: Hard-coded IPFS config, take it from config file instead?
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &ipfs_url);

@@ -191,8 +191,16 @@ async fn main() {
             client: reqwest::Client::new(),
         });
 
+    // Set up Prometheus registry
+    let prometheus_registry = Arc::new(Registry::new());
+    let metrics_registry = Arc::new(MetricsRegistry::new(
+        logger.clone(),
+        prometheus_registry.clone(),
+    ));
+
     // Create a component and subgraph logger factory
-    let logger_factory = LoggerFactory::new(logger.clone(), elastic_config);
+    let logger_factory =
+        LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
 
     // Try to create IPFS clients for each URL specified in `--ipfs`
     let ipfs_clients: Vec<_> = create_ipfs_clients(&logger, &opt.ipfs);
@@ -207,13 +215,6 @@ async fn main() {
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
     let link_resolver = Arc::new(LinkResolver::new(ipfs_clients, env_vars.cheap_clone()));
-
-    // Set up Prometheus registry
-    let prometheus_registry = Arc::new(Registry::new());
-    let metrics_registry = Arc::new(MetricsRegistry::new(
-        logger.clone(),
-        prometheus_registry.clone(),
-    ));
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
