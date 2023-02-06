@@ -525,7 +525,7 @@ version = "3.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea0c8bce528c4be4da13ea6fead8965e95b6073585a2f05204bd8f4119f82a65"
 dependencies = [
- "heck 0.4.0",
+ "heck 0.4.1",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -993,7 +993,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c8910921b014e2af16298f006de12aa08af894b71f0f49a486ab6d74b17bbed"
 dependencies = [
- "heck 0.4.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -1609,7 +1609,7 @@ name = "graph-chain-common"
 version = "0.29.0"
 dependencies = [
  "anyhow",
- "heck 0.4.0",
+ "heck 0.4.1",
  "protobuf 3.2.0",
  "protobuf-parse",
 ]
@@ -1806,7 +1806,7 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.29.0"
 dependencies = [
- "heck 0.4.0",
+ "heck 0.4.1",
  "proc-macro2",
  "quote",
  "syn",
@@ -2087,9 +2087,9 @@ dependencies = [
 
 [[package]]
 name = "heck"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2540771e65fc8cb83cd6e8a237f70c319bd5c29f78ed1084ba5d50eeac86f7f9"
+checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "hermit-abi"
@@ -3410,7 +3410,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb5320c680de74ba083512704acb90fe00f28f79207286a848e730c45dd73ed6"
 dependencies = [
  "bytes",
- "heck 0.4.0",
+ "heck 0.4.1",
  "itertools",
  "lazy_static",
  "log",
