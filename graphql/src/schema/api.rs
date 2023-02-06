@@ -1500,6 +1500,75 @@ mod tests {
     }
 
     #[test]
+    fn api_schema_contains_paginated_entities() {
+        let input_schema = parse_schema(
+            r#"
+              type Pet {
+                  id: ID!
+                  name: String!
+              }
+            "#,
+        )
+        .expect("Failed to parse input schema");
+        let schema = api_schema(&input_schema).expect("Failed to derived API schema");
+
+        let pets_connection = schema
+            .get_named_type("PetConnection")
+            .expect("PetConnection type is missing in derived API schema");
+
+        let pets_connection_type = match pets_connection {
+            TypeDefinition::Object(t) => Some(t),
+            _ => None,
+        }
+        .expect("PetConnection type is not an object type");
+
+        assert_eq!(
+            pets_connection_type
+                .fields
+                .iter()
+                .map(|field| field.name.to_owned())
+                .collect::<Vec<String>>(),
+            ["edges", "pageInfo",]
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+        );
+
+        let query_type = schema
+            .get_named_type("Query")
+            .expect("Query type is missing in derived API schema");
+
+        let pets_paginated_field = match query_type {
+            TypeDefinition::Object(t) => ast::get_field(t, &"petsPaginated".to_string()),
+            _ => None,
+        }
+        .expect("\"petsPaginated\" field is missing on Query type");
+
+        assert_eq!(
+            pets_paginated_field
+                .arguments
+                .iter()
+                .map(|input_value| input_value.name.to_owned())
+                .collect::<Vec<String>>(),
+            [
+                "first",
+                "last",
+                "after",
+                "before",
+                "orderBy",
+                "orderDirection",
+                "where",
+                "block",
+                "subgraphError",
+            ]
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+        );
+
+    }
+
+    #[test]
     fn api_schema_contains_object_fields_on_query_type() {
         let input_schema = parse_schema(
             "type User { id: ID!, name: String! } type UserProfile { id: ID!, title: String! }",
