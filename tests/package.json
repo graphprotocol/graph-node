@@ -1,0 +1,8 @@
+{
+	"private": true,
+	"workspaces": [
+		"integration-tests",
+		"runner-tests"
+	],
+	"packageManager": "yarn@1.22.19"
+}
