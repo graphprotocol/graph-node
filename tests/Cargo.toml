@@ -28,7 +28,7 @@ assert-json-diff = "2.0.2"
 
 [dev-dependencies]
 bollard = "0.10"
-anyhow = "1.0.68"
+anyhow = "1.0.69"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 serde_yaml = "0.8"
