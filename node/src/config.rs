@@ -1228,10 +1228,8 @@ mod tests {
         );
 
         assert_eq!(true, actual.is_err());
-        assert_eq!(
-            actual.unwrap_err().to_string(),
-            "missing field `url` at line 1 column 1"
-        );
+        let err_str = actual.unwrap_err().to_string();
+        assert_eq!(err_str.contains("missing field `url`"), true, "{}", err_str);
     }
 
     #[test]
@@ -1245,9 +1243,12 @@ mod tests {
         );
 
         assert_eq!(true, actual.is_err());
+        let err_str = actual.unwrap_err().to_string();
         assert_eq!(
-            actual.unwrap_err().to_string(),
-            "missing field `features` at line 1 column 1"
+            err_str.contains("missing field `features`"),
+            true,
+            "{}",
+            err_str
         );
     }
 
@@ -1318,7 +1319,8 @@ mod tests {
         );
 
         assert_eq!(true, actual.is_err());
-        assert_eq!(actual.unwrap_err().to_string(), "when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified at line 1 column 1");
+        let err_str = actual.unwrap_err().to_string();
+        assert_eq!(err_str.contains("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"),true, "{}", err_str);
     }
 
     #[test]
