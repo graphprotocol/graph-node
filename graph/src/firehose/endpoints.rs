@@ -9,6 +9,7 @@ use crate::{
     substreams,
 };
 
+use anyhow::bail;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use slog::Logger;
@@ -22,7 +23,10 @@ use tonic::{
 
 use super::codec as firehose;
 
-const SUBGRAPHS_PER_CONN: usize = 100;
+/// This is constant because we found this magic number of connections after
+/// which the grpc connections start to hang.
+/// For more details see: https://github.com/graphprotocol/graph-node/issues/3879
+pub const SUBGRAPHS_PER_CONN: usize = 100;
 
 #[derive(Clone, Debug)]
 pub struct FirehoseEndpoint {
@@ -30,7 +34,15 @@ pub struct FirehoseEndpoint {
     pub token: Option<String>,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
+    pub subgraph_limit: usize,
     channel: Channel,
+}
+
+#[derive(Clone, Debug)]
+pub enum SubgraphLimit {
+    Unlimited,
+    Limit(usize),
+    NoTraffic,
 }
 
 impl Display for FirehoseEndpoint {
@@ -46,6 +58,7 @@ impl FirehoseEndpoint {
         token: Option<String>,
         filters_enabled: bool,
         compression_enabled: bool,
+        subgraph_limit: SubgraphLimit,
     ) -> Self {
         let uri = url
             .as_ref()
@@ -78,13 +91,29 @@ impl FirehoseEndpoint {
             // Timeout on each request, so the timeout to estabilish each 'Blocks' stream.
             .timeout(Duration::from_secs(120));
 
+        let subgraph_limit = match subgraph_limit {
+            // See the comment on the constant
+            SubgraphLimit::Unlimited => SUBGRAPHS_PER_CONN,
+            // This is checked when parsing from config but doesn't hurt to be defensive.
+            SubgraphLimit::Limit(limit) => limit.min(SUBGRAPHS_PER_CONN),
+            SubgraphLimit::NoTraffic => 0,
+        };
+
         FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
             channel: endpoint.connect_lazy(),
             token,
             filters_enabled,
             compression_enabled,
+            subgraph_limit,
         }
+    }
+
+    // The SUBGRAPHS_PER_CONN upper bound was already limited so we leave it the same
+    // we need to use inclusive limits (<=) because there will always be a reference
+    // inside FirehoseEndpoints that is not used (is always cloned).
+    pub fn has_subgraph_capacity(self: &Arc<Self>) -> bool {
+        Arc::strong_count(&self) <= self.subgraph_limit
     }
 
     pub async fn get_block<M>(
@@ -327,8 +356,8 @@ impl FirehoseEndpoints {
             .iter()
             .min_by_key(|x| Arc::strong_count(x))
             .ok_or(anyhow!("no available firehose endpoints"))?;
-        if Arc::strong_count(endpoint) > SUBGRAPHS_PER_CONN {
-            return Err(anyhow!("all connections saturated with {} connections, increase the firehose conn_pool_size", SUBGRAPHS_PER_CONN));
+        if !endpoint.has_subgraph_capacity() {
+            bail!("all connections saturated with {} connections, increase the firehose conn_pool_size or limit for the node", SUBGRAPHS_PER_CONN);
         }
 
         // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
@@ -396,22 +425,22 @@ impl FirehoseNetworks {
 
 #[cfg(test)]
 mod test {
-    use std::{mem, str::FromStr, sync::Arc};
+    use std::{mem, sync::Arc};
 
-    use http::Uri;
-    use tonic::transport::Channel;
+    use crate::firehose::SubgraphLimit;
 
     use super::{FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
 
     #[tokio::test]
     async fn firehose_endpoint_errors() {
-        let endpoint = vec![Arc::new(FirehoseEndpoint {
-            provider: String::new(),
-            token: None,
-            filters_enabled: true,
-            compression_enabled: true,
-            channel: Channel::builder(Uri::from_str("http://127.0.0.1").unwrap()).connect_lazy(),
-        })];
+        let endpoint = vec![Arc::new(FirehoseEndpoint::new(
+            String::new(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+        ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
 
@@ -425,6 +454,60 @@ mod test {
 
         mem::drop(keep);
         endpoints.random().unwrap();
+
+        // Fails when empty too
+        endpoints.remove("");
+
+        let err = endpoints.random().unwrap_err();
+        assert!(err.to_string().contains("no available firehose endpoints"));
+    }
+
+    #[tokio::test]
+    async fn firehose_endpoint_with_limit() {
+        let endpoint = vec![Arc::new(FirehoseEndpoint::new(
+            String::new(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Limit(2),
+        ))];
+
+        let mut endpoints = FirehoseEndpoints::from(endpoint);
+
+        let mut keep = vec![];
+        for _ in 0..2 {
+            keep.push(endpoints.random().unwrap());
+        }
+
+        let err = endpoints.random().unwrap_err();
+        assert!(err.to_string().contains("conn_pool_size"));
+
+        mem::drop(keep);
+        endpoints.random().unwrap();
+
+        // Fails when empty too
+        endpoints.remove("");
+
+        let err = endpoints.random().unwrap_err();
+        assert!(err.to_string().contains("no available firehose endpoints"));
+    }
+
+    #[tokio::test]
+    async fn firehose_endpoint_no_traffic() {
+        let endpoint = vec![Arc::new(FirehoseEndpoint::new(
+            String::new(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::NoTraffic,
+        ))];
+
+        let mut endpoints = FirehoseEndpoints::from(endpoint);
+
+        let err = endpoints.random().unwrap_err();
+        assert!(err.to_string().contains("conn_pool_size"));
 
         // Fails when empty too
         endpoints.remove("");

@@ -8,7 +8,7 @@ use super::{
 };
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
 use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, NodeId};
@@ -45,6 +45,7 @@ pub async fn chain(
         None,
         true,
         false,
+        SubgraphLimit::Unlimited,
     ))]
     .into();
 

@@ -5,7 +5,7 @@ use futures::TryFutureExt;
 use graph::anyhow::Error;
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::firehose::{FirehoseEndpoint, FirehoseNetworks};
+use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::{anyhow, tokio};
 use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};
@@ -137,6 +137,7 @@ pub fn create_substreams_networks(
                             firehose.token.clone(),
                             firehose.filters_enabled(),
                             firehose.compression_enabled(),
+                            SubgraphLimit::Unlimited,
                         )),
                     );
                 }
@@ -168,10 +169,22 @@ pub fn create_firehose_networks(
                     "Configuring firehose endpoint";
                     "provider" => &provider.label,
                 );
+                let subgraph_limit = match firehose.limit_for(&config.node) {
+                    Some(limit) if limit == 0 => SubgraphLimit::Unlimited,
+                    Some(limit) => SubgraphLimit::Limit(limit),
+                    None => SubgraphLimit::NoTraffic,
+                };
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
                     .or_insert_with(|| FirehoseNetworks::new());
+
+                // Create n FirehoseEndpoints where n is the size of the pool. If a
+                // subgraph limit is defined for this endpoint then each endpoint
+                // instance will have their own subgraph limit.
+                // eg: pool_size = 3 and sg_limit 2 will result in 3 separate instances
+                // of FirehoseEndpoint and each of those instance can be used in 2 different
+                // SubgraphInstances.
                 for i in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
                         name.to_string(),
@@ -181,6 +194,7 @@ pub fn create_firehose_networks(
                             firehose.token.clone(),
                             firehose.filters_enabled(),
                             firehose.compression_enabled(),
+                            subgraph_limit.clone(),
                         )),
                     );
                 }

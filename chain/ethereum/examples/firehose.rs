@@ -1,6 +1,7 @@
 use anyhow::Error;
 use graph::{
     env::env_var,
+    firehose::SubgraphLimit,
     prelude::{prost, tokio, tonic},
     {firehose, firehose::FirehoseEndpoint},
 };
@@ -25,6 +26,7 @@ async fn main() -> Result<(), Error> {
         token,
         false,
         false,
+        SubgraphLimit::Unlimited,
     ));
 
     loop {
