@@ -74,7 +74,11 @@ pub(crate) fn build_query<'a>(
         filters.push(filter);
     }
 
-    query = query.filter(EntityFilter::And(filters));
+    if filters.len() == 1 {
+        query = query.filter(filters.pop().unwrap());
+    } else if filters.len() > 1 {
+        query = query.filter(EntityFilter::And(filters));
+    }
 
     let order = match (
         build_order_by(entity, field)?,

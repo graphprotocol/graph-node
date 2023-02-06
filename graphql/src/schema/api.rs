@@ -815,6 +815,7 @@ fn query_fields_for_types_single(type_name: &str) -> Vec<Field> {
             default_value: None,
             directives: vec![],
         },
+        // block: BlockHeight
         block_argument(),
         subgraph_error_argument(),
     ];
@@ -930,12 +931,8 @@ fn collection_arguments_for_named_type(type_name: &str) -> Vec<InputValue> {
             Type::NamedType(format!("{}_filter", type_name)),
             None,
         ),
-        input_value(
-            &"testing".to_string(),
-            "",
-            Type::NamedType("String".to_string()),
-            None,
-        ),
+        // block: BlockHeight
+        block_argument(),
     ];
 
     args
@@ -986,6 +983,8 @@ fn connection_collection_arguments_for_named_type(type_name: &str) -> Vec<InputV
             Type::NamedType(format!("{}_filter", type_name)),
             None,
         ),
+        // block: BlockHeight
+        block_argument(),
     ]
 }
 
