@@ -107,7 +107,7 @@ jobs:
         with:
           node-version: "14"
           cache: yarn
-          cache-dependency-path: "tests/integration-tests/yarn.lock"
+          cache-dependency-path: "tests/yarn.lock"
 
       - name: Install lld and jq
         run: sudo apt-get install -y lld jq protobuf-compiler
