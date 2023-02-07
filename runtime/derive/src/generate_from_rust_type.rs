@@ -188,7 +188,7 @@ fn is_scalar(fld: &str) -> bool {
 fn field_type(fld: &syn::Field) -> String {
     if let syn::Type::Path(tp) = &fld.ty {
         if let Some(ps) = tp.path.segments.last() {
-            return ps.ident.to_string();
+            ps.ident.to_string()
         } else {
             "N/A".into()
         }

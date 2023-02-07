@@ -1074,11 +1074,11 @@ impl Schema {
             .count()
             > 1
         {
-            return vec![SchemaValidationError::FulltextNameConflict(
+            vec![SchemaValidationError::FulltextNameConflict(
                 name.to_string(),
-            )];
+            )]
         } else {
-            return vec![];
+            vec![]
         }
     }
 
@@ -1180,7 +1180,7 @@ impl Schema {
             }
         }
         // Fulltext include validations all passed, so we return an empty vector
-        return vec![];
+        vec![]
     }
 
     fn validate_import_directives(&self) -> Vec<SchemaValidationError> {

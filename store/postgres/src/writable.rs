@@ -489,7 +489,7 @@ impl Request {
             } => store
                 .revert_block_operations(block_ptr.clone(), firehose_cursor)
                 .map(|()| ExecResult::Continue),
-            Request::Stop => return Ok(ExecResult::Stop),
+            Request::Stop => Ok(ExecResult::Stop),
         }
     }
 }

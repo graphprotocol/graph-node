@@ -440,10 +440,10 @@ impl ChainSection {
                 // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
                 // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
                 let colon = arg.find(':').ok_or_else(|| {
-                    return anyhow!(
+                    anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
-                    );
+                    )
                 })?;
 
                 let (name, rest_with_delim) = arg.split_at(colon);
@@ -456,10 +456,10 @@ impl ChainSection {
                 }
 
                 let colon = rest.find(':').ok_or_else(|| {
-                    return anyhow!(
+                    anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
-                    );
+                    )
                 })?;
 
                 let (features, url_str) = rest.split_at(colon);
