@@ -199,7 +199,13 @@ impl Deployment {
             "node_id",
         ];
         if !statuses.is_empty() {
-            rows.extend(vec!["synced", "health", "latest block", "chain head block"]);
+            rows.extend(vec![
+                "synced",
+                "health",
+                "earliest block",
+                "latest block",
+                "chain head block",
+            ]);
         }
 
         let mut list = List::new(rows);
@@ -224,6 +230,7 @@ impl Deployment {
                 rows.extend(vec![
                     status.synced.to_string(),
                     status.health.as_str().to_string(),
+                    chain.earliest_block_number.to_string(),
                     chain
                         .latest_block
                         .as_ref()
