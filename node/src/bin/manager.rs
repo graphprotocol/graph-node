@@ -106,7 +106,10 @@ pub enum Command {
     /// the shard by adding `:shard` to the IPFS hash.
     Info {
         /// The deployment (see above)
-        deployment: DeploymentSearch,
+        deployment: Option<DeploymentSearch>,
+        /// List all the deployments in the graph-node
+        #[clap(long, short)]
+        all: bool,
         /// List only current version
         #[clap(long, short)]
         current: bool,
@@ -979,6 +982,7 @@ async fn main() -> anyhow::Result<()> {
             pending,
             status,
             used,
+            all,
         } => {
             let (primary, store) = if status {
                 let (store, primary) = ctx.store_and_primary();
@@ -986,7 +990,21 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 (ctx.primary_pool(), None)
             };
-            commands::info::run(primary, store, deployment, current, pending, used)
+
+            Ok(match deployment {
+                Some(deployment) => {
+                    commands::info::run(primary, store, deployment, current, pending, used).err();
+                }
+                None => {
+                    if all {
+                        let deployment = DeploymentSearch::All;
+                        commands::info::run(primary, store, deployment, current, pending, used)
+                            .err();
+                    } else {
+                        bail!("Please specify a deployment or use --all to list all deployments");
+                    }
+                }
+            })
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();
