@@ -12,13 +12,14 @@ use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{LightEthereumBlock, LoggerFactory, NodeId};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
-use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::{
     chain::BlockFinality,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
 };
 use graph_chain_ethereum::{Chain, ENV_VARS};
 use graph_mock::MockMetricsRegistry;
+use graph_node::chain::create_all_ethereum_networks;
+use graph_node::config::{Config, Opt};
 
 pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,
@@ -35,6 +36,26 @@ pub async fn chain(
     let mock_registry = Arc::new(MockMetricsRegistry::new());
 
     let chain_store = stores.chain_store.cheap_clone();
+
+    let opt = Opt {
+        postgres_url: Some("not needed".to_string()),
+        config: None,
+        store_connection_pool_size: 5,
+        postgres_secondary_hosts: vec![],
+        postgres_host_weights: vec![],
+        disable_block_ingestor: true,
+        node_id: node_id.to_string(),
+        ethereum_rpc: vec!["mainnet::http://localhost:1/".to_string()],
+        ethereum_ws: vec![],
+        ethereum_ipc: vec![],
+        unsafe_config: false,
+    };
+
+    let config = Config::load(&logger, &opt).expect("can create config");
+    let mut networks = create_all_ethereum_networks(logger, mock_registry.clone(), &config)
+        .await
+        .expect("Correctly parse Ethereum network args");
+    let adapters = networks.networks.remove("mainnet").unwrap();
 
     // This is needed bacause the stream builder only works for firehose and this will only be called if there
     // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
@@ -55,10 +76,7 @@ pub async fn chain(
         chain_store.cheap_clone(),
         chain_store,
         firehose_endpoints,
-        EthereumNetworkAdapters {
-            full_adapters: vec![],
-            call_only_adapters: vec![],
-        },
+        adapters,
         stores.chain_head_listener.cheap_clone(),
         Arc::new(StaticStreamBuilder { chain: blocks }),
         Arc::new(StaticBlockRefetcher { x: PhantomData }),

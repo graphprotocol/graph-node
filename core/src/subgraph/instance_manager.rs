@@ -338,7 +338,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         if !chain.is_capabilities_fulfilled(&required_capabilities, &logger) {
             return Err(anyhow!(
-                "deployment {} with required capabilities {} cannot be fulfilled by this instance",
+                "deployment {} with required capabilities '{}' cannot be fulfilled by this instance",
                 &deployment,
                 &required_capabilities
             ));
