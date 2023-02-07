@@ -31,6 +31,7 @@ lazy_static! {
 pub enum DeploymentSearch {
     Name { name: String },
     Hash { hash: String, shard: Option<String> },
+    All,
     Deployment { namespace: String },
 }
 
@@ -42,6 +43,7 @@ impl fmt::Display for DeploymentSearch {
                 hash,
                 shard: Some(shard),
             } => write!(f, "{}:{}", hash, shard),
+            DeploymentSearch::All => Ok(()),
             DeploymentSearch::Hash { hash, shard: None } => write!(f, "{}", hash),
             DeploymentSearch::Deployment { namespace } => write!(f, "{}", namespace),
         }
@@ -115,6 +117,7 @@ impl DeploymentSearch {
             DeploymentSearch::Deployment { namespace } => {
                 query.filter(ds::name.eq(&namespace)).load(conn)?
             }
+            DeploymentSearch::All => query.load(conn)?,
         };
         Ok(deployments)
     }
