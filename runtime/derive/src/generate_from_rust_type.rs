@@ -46,13 +46,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     );
 
     let name = item_struct.ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+    let asc_name = Ident::new(&format!("Asc{}", name), Span::call_site());
 
     //generate enum fields validator
     let enum_validation = enum_fields.iter().map(|f|{
         let fld_name = f.ident.as_ref().unwrap(); //empty, maybe call it "sum"?
-        let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-        let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+        let type_nm = format!("\"{}\"", name).parse::<proc_macro2::TokenStream>().unwrap();
+        let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();
 
         quote! {
             let #fld_name = self.#fld_name.as_ref()
@@ -75,8 +75,8 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let setter =
                 if is_nullable(&f) {
                     if is_required{
-                        let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-                        let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+                        let type_nm = format!("\"{}\"", name).parse::<proc_macro2::TokenStream>().unwrap();
+                        let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();
 
                         quote! {
                             #fld_name: graph::runtime::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,

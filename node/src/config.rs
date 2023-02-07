@@ -1074,7 +1074,7 @@ fn replace_host(url: &str, host: &str) -> String {
         Err(_) => panic!("Invalid Postgres URL {}", url),
     };
     if let Err(e) = url.set_host(Some(host)) {
-        panic!("Invalid Postgres url {}: {}", url, e.to_string());
+        panic!("Invalid Postgres url {}: {}", url, e);
     }
     String::from(url)
 }

@@ -8,7 +8,7 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     let args = parse_macro_input!(metadata as super::Args);
 
     let name = item_struct.ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+    let asc_name = Ident::new(&format!("Asc{}", name), Span::call_site());
 
     let enum_names = args
         .vars

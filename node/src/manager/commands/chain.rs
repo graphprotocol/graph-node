@@ -68,7 +68,7 @@ pub async fn info(
     hashes: bool,
 ) -> Result<(), Error> {
     fn row(label: &str, value: impl std::fmt::Display) {
-        println!("{:<16} | {}", label, value.to_string());
+        println!("{:<16} | {}", label, value);
     }
 
     fn print_ptr(label: &str, ptr: Option<BlockPtr>, hashes: bool) {

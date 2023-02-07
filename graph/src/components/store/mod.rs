@@ -232,7 +232,7 @@ impl fmt::Display for EntityFilter {
                 "join on {} with {}({})",
                 child.attr,
                 child.entity_type,
-                child.filter.to_string()
+                child.filter
             ),
         }
     }
