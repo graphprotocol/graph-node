@@ -300,7 +300,7 @@ impl<'a> JoinCond<'a> {
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
-                                node.get(*child_field)
+                                node.get(child_field)
                                     .and_then(|value| value.as_str())
                                     .map(|child_id| (id, child_id.to_owned()))
                             })
@@ -315,7 +315,7 @@ impl<'a> JoinCond<'a> {
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
-                                node.get(*child_field)
+                                node.get(child_field)
                                     .and_then(|value| match value {
                                         r::Value::List(values) => {
                                             let values: Vec<_> = values

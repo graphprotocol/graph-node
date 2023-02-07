@@ -180,7 +180,7 @@ impl ForeignServer {
                     NAMESPACE_PUBLIC,
                     table_name,
                     Self::PRIMARY_PUBLIC,
-                    Self::name(&*PRIMARY_SHARD).as_str(),
+                    Self::name(&PRIMARY_SHARD).as_str(),
                 )?
             };
             write!(query, "{}", create_stmt)?;

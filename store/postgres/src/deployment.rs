@@ -904,7 +904,7 @@ pub fn drop_schema(
         "set local lock_timeout=2000; drop schema if exists {} cascade",
         namespace
     );
-    Ok(conn.batch_execute(&*query)?)
+    Ok(conn.batch_execute(&query)?)
 }
 
 pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {

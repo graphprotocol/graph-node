@@ -391,7 +391,7 @@ pub fn drop_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
 pub fn migration_count(conn: &PgConnection) -> Result<i64, StoreError> {
     use __diesel_schema_migrations as m;
 
-    if !table_exists(conn, NAMESPACE_PUBLIC, &*MIGRATIONS_TABLE)? {
+    if !table_exists(conn, NAMESPACE_PUBLIC, &MIGRATIONS_TABLE)? {
         return Ok(0);
     }
 

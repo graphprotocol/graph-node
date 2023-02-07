@@ -92,7 +92,7 @@ impl<C: AscType + AscIndexId, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T]
     ) -> Result<Array<AscPtr<C>>, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Array::new(&*content, heap, gas)
+        Array::new(&content, heap, gas)
     }
 }
 

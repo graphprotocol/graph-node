@@ -1237,7 +1237,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             &self.ctx.host_exports.link_resolver.clone(),
             self,
             link.clone(),
-            &*callback,
+            &callback,
             user_data,
             flags,
         )?;
@@ -1688,7 +1688,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         }
 
         let hash: String = asc_get(self, hash_ptr, gas)?;
-        let name = self.ctx.host_exports.ens_name_by_hash(&*hash)?;
+        let name = self.ctx.host_exports.ens_name_by_hash(&hash)?;
         if name.is_none() && self.ctx.host_exports.is_ens_data_empty()? {
             return Err(anyhow!(
                 "Missing ENS data: see https://github.com/graphprotocol/ens-rainbow"

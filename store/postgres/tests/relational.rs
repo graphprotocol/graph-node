@@ -425,7 +425,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
         NETWORK_NAME.to_string(),
     );
     let query = format!("create schema {}", NAMESPACE.as_str());
-    conn.batch_execute(&*query).unwrap();
+    conn.batch_execute(&query).unwrap();
 
     Layout::create_relational_schema(&conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
@@ -502,7 +502,7 @@ fn find() {
             )
             .expect("Failed to read Scalar[one]")
             .unwrap();
-        assert_entity_eq!(scrub(&*SCALAR_ENTITY), entity);
+        assert_entity_eq!(scrub(&SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
@@ -549,7 +549,7 @@ fn insert_null_fulltext_fields() {
             )
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
-        assert_entity_eq!(scrub(&*EMPTY_NULLABLESTRINGS_ENTITY), entity);
+        assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
     });
 }
 
@@ -726,7 +726,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         .filter(filter);
     query.range.first = None;
     layout
-        .query::<Entity>(&*LOGGER, &conn, query)
+        .query::<Entity>(&LOGGER, &conn, query)
         .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
@@ -812,7 +812,7 @@ async fn layout_cache() {
 
             // Without an entry, account_like is false
             let layout = cache
-                .get(&*LOGGER, &conn, site.clone())
+                .get(&LOGGER, &conn, site.clone())
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(false, table.is_account_like);
@@ -823,7 +823,7 @@ async fn layout_cache() {
 
             // Flip account_like to true
             let layout = cache
-                .get(&*LOGGER, &conn, site.clone())
+                .get(&LOGGER, &conn, site.clone())
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(true, table.is_account_like);
@@ -834,7 +834,7 @@ async fn layout_cache() {
             sleep(Duration::from_millis(50));
 
             let layout = cache
-                .get(&*LOGGER, &conn, site)
+                .get(&LOGGER, &conn, site)
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(false, table.is_account_like);
@@ -953,7 +953,7 @@ fn revert_block() {
                 .first(100)
                 .order(EntityOrder::Ascending("order".to_string(), ValueType::Int));
             let marties: Vec<Entity> = layout
-                .query(&*LOGGER, conn, query)
+                .query(&LOGGER, conn, query)
                 .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
@@ -1027,7 +1027,7 @@ impl<'a> QueryChecker<'a> {
         query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
-            .query::<Entity>(&*LOGGER, self.conn, query)
+            .query::<Entity>(&LOGGER, self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1676,7 +1676,7 @@ impl<'a> FilterChecker<'a> {
 
         let entities = self
             .layout
-            .query::<Entity>(&*LOGGER, &self.conn, query)
+            .query::<Entity>(&LOGGER, &self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 

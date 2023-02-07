@@ -45,7 +45,7 @@ impl ToAscObj<AscLogParamArray> for Vec<ethabi::LogParam> {
     ) -> Result<AscLogParamArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscLogParamArray(Array::new(&*content, heap, gas)?))
+        Ok(AscLogParamArray(Array::new(&content, heap, gas)?))
     }
 }
 

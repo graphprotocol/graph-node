@@ -373,7 +373,7 @@ async fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let runner = Arc::new(GraphQlRunner::new(
-        &*LOGGER,
+        &LOGGER,
         STORE.clone(),
         SUBSCRIPTION_MANAGER.clone(),
         LOAD_MANAGER.clone(),
@@ -484,7 +484,7 @@ where
                     .into_static();
                 let variables = variables.clone();
                 let runner = Arc::new(GraphQlRunner::new(
-                    &*LOGGER,
+                    &LOGGER,
                     STORE.clone(),
                     SUBSCRIPTION_MANAGER.clone(),
                     LOAD_MANAGER.clone(),
@@ -2093,10 +2093,10 @@ fn query_at_block() {
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
     musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&*BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at(&hash(&GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
+    musicians_at(&hash(&BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
 #[test]
@@ -2182,7 +2182,7 @@ fn query_detects_reorg() {
         );
 
         // Revert one block
-        revert_block(&*STORE, &deployment, &*GENESIS_PTR).await;
+        revert_block(&STORE, &deployment, &GENESIS_PTR).await;
 
         // A query is still fine since we query at block 0; we were at block
         // 1 when we got `state`, and reorged once by one block, which can
@@ -2302,7 +2302,7 @@ fn non_fatal_errors() {
             deterministic: true,
         };
 
-        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
             .await
             .unwrap();
 
@@ -2358,7 +2358,7 @@ fn non_fatal_errors() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
         // Test error reverts.
-        revert_block(&*STORE, &deployment, &*BLOCK_ONE).await;
+        revert_block(&STORE, &deployment, &BLOCK_ONE).await;
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
         let result = execute_query(&deployment, query).await;
         let expected = json!({
@@ -2408,7 +2408,7 @@ fn deterministic_error() {
             deterministic: true,
         };
 
-        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
             .await
             .unwrap();
 

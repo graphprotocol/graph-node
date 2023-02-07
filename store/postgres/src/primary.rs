@@ -1668,7 +1668,7 @@ impl Mirror {
 
         // Repopulate `SUBGRAPHS_TABLES` but only copy the data we actually
         // need to respond to queries when the primary is down
-        let src_nsp = ForeignServer::metadata_schema(&*PRIMARY_SHARD);
+        let src_nsp = ForeignServer::metadata_schema(&PRIMARY_SHARD);
         let dst_nsp = NAMESPACE_SUBGRAPHS;
 
         run_query(

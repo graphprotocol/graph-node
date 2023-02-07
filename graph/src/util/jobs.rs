@@ -122,7 +122,7 @@ mod tests {
         let job = CounterJob {
             count: count.clone(),
         };
-        let mut runner = Runner::new(&*LOGGER);
+        let mut runner = Runner::new(&LOGGER);
         runner.register(Arc::new(job), Duration::from_millis(10));
         let stop = runner.stop.clone();
 

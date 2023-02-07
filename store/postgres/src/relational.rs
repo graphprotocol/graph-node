@@ -1065,7 +1065,7 @@ impl Column {
         enums: &EnumMap,
         id_types: &IdTypeMap,
     ) -> Result<Column, StoreError> {
-        SqlName::check_valid_identifier(&*field.name, "attribute")?;
+        SqlName::check_valid_identifier(&field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
         let is_reference =
@@ -1241,7 +1241,7 @@ impl Table {
         position: u32,
         has_causality_region: bool,
     ) -> Result<Table, StoreError> {
-        SqlName::check_valid_identifier(&*defn.name, "object")?;
+        SqlName::check_valid_identifier(&defn.name, "object")?;
 
         let table_name = SqlName::from(&*defn.name);
         let columns = defn
@@ -1344,9 +1344,9 @@ impl Table {
 
     pub(crate) fn block_column(&self) -> &SqlName {
         if self.immutable {
-            &*crate::block_range::BLOCK_COLUMN_SQL
+            &crate::block_range::BLOCK_COLUMN_SQL
         } else {
-            &*crate::block_range::BLOCK_RANGE_COLUMN_SQL
+            &crate::block_range::BLOCK_RANGE_COLUMN_SQL
         }
     }
 }

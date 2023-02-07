@@ -53,7 +53,7 @@ lazy_static! {
     pub static ref METRICS_REGISTRY: Arc<MockMetricsRegistry> =
         Arc::new(MockMetricsRegistry::new());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
-        &*LOGGER,
+        &LOGGER,
         Vec::new(),
         METRICS_REGISTRY.clone(),
     ));
@@ -190,7 +190,7 @@ pub async fn create_subgraph(
         .cheap_clone()
         .writable(LOGGER.clone(), deployment.id)
         .await?
-        .start_subgraph_deployment(&*LOGGER)
+        .start_subgraph_deployment(&LOGGER)
         .await?;
     Ok(deployment)
 }
@@ -362,7 +362,7 @@ pub async fn insert_entities(
         });
 
     transact_entity_operations(
-        &*SUBGRAPH_STORE,
+        &SUBGRAPH_STORE,
         deployment,
         GENESIS_PTR.clone(),
         insert_ops.collect::<Vec<_>>(),
@@ -545,12 +545,12 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     }
     opt.store_connection_pool_size = CONN_POOL_SIZE;
 
-    let config = Config::load(&*LOGGER, &opt)
+    let config = Config::load(&LOGGER, &opt)
         .unwrap_or_else(|_| panic!("config is not valid (file={:?})", &opt.config));
     let registry = Arc::new(MockMetricsRegistry::new());
     std::thread::spawn(move || {
         STORE_RUNTIME.handle().block_on(async {
-            let builder = StoreBuilder::new(&*LOGGER, &*NODE_ID, &config, None, registry).await;
+            let builder = StoreBuilder::new(&LOGGER, &NODE_ID, &config, None, registry).await;
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
 

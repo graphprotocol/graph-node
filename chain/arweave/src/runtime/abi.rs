@@ -29,7 +29,7 @@ impl ToAscObj<AscTransactionArray> for Vec<Vec<u8>> {
             .iter()
             .map(|x| asc_new(heap, x.as_slice(), gas))
             .collect::<Result<Vec<AscPtr<Uint8Array>>, _>>()?;
-        Ok(AscTransactionArray(Array::new(&*content, heap, gas)?))
+        Ok(AscTransactionArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -43,7 +43,7 @@ impl ToAscObj<AscTagArray> for Vec<codec::Tag> {
             .iter()
             .map(|x| asc_new(heap, x, gas))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(AscTagArray(Array::new(&*content, heap, gas)?))
+        Ok(AscTagArray(Array::new(&content, heap, gas)?))
     }
 }
 

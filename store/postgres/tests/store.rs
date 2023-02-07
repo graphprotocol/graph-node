@@ -1008,7 +1008,7 @@ async fn check_basic_revert(
     assert_eq!(&deployment.hash, &state.id);
 
     // Revert block 3
-    revert_block(&store, &deployment, &*TEST_BLOCK_1_PTR).await;
+    revert_block(&store, &deployment, &TEST_BLOCK_1_PTR).await;
 
     let returned_entities = store
         .subgraph_store()
@@ -1068,7 +1068,7 @@ fn revert_block_with_delete() {
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &deployment.hash);
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
         assert_eq!(count + 1, get_entity_count(store.clone(), &deployment.hash));
 
         // Query after revert
@@ -1124,7 +1124,7 @@ fn revert_block_with_partial_update() {
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &deployment.hash);
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
 
         // Obtain the reverted entity from the store
@@ -1247,7 +1247,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let subscription = subscribe(&deployment.hash, USER);
 
         // Revert block that added the user and the dynamic data source
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
 
         // Verify that the user is the original again
         assert_eq!(
@@ -1405,7 +1405,7 @@ fn throttle_subscription_delivers() {
     run_test(|store, _, deployment| async move {
         let subscription = subscribe(&deployment.hash, USER)
             .throttle_while_syncing(
-                &*LOGGER,
+                &LOGGER,
                 store
                     .clone()
                     .query_store(
@@ -1450,7 +1450,7 @@ fn throttle_subscription_throttles() {
         // Throttle for a very long time (30s)
         let subscription = subscribe(&deployment.hash, USER)
             .throttle_while_syncing(
-                &*LOGGER,
+                &LOGGER,
                 store
                     .clone()
                     .query_store(
@@ -2152,11 +2152,11 @@ fn reorg_tracking() {
         check_state!(store, 0, 0, 4);
 
         // Back to block 3
-        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_3_PTR).await;
         check_state!(store, 1, 1, 3);
 
         // Back to block 2
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
         check_state!(store, 2, 2, 2);
 
         // Forward to block 3
@@ -2172,13 +2172,13 @@ fn reorg_tracking() {
         check_state!(store, 2, 2, 5);
 
         // Revert all the way back to block 2
-        revert_block(&store, &deployment, &*TEST_BLOCK_4_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_4_PTR).await;
         check_state!(store, 3, 2, 4);
 
-        revert_block(&store, &deployment, &*TEST_BLOCK_3_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_3_PTR).await;
         check_state!(store, 4, 2, 3);
 
-        revert_block(&store, &deployment, &*TEST_BLOCK_2_PTR).await;
+        revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
         check_state!(store, 5, 3, 2);
     })
 }

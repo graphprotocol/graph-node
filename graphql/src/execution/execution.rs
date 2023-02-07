@@ -288,7 +288,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
             execute_selection_set_to_map(
                 &ictx,
                 ctx.query.selection_set.as_ref(),
-                &*INTROSPECTION_QUERY_TYPE,
+                &INTROSPECTION_QUERY_TYPE,
                 None,
             )
             .await?,
