@@ -218,7 +218,7 @@ async fn file_data_sources() {
     let writable = ctx
         .store
         .clone()
-        .writable(ctx.logger.clone(), ctx.deployment.id.clone())
+        .writable(ctx.logger.clone(), ctx.deployment.id)
         .await
         .unwrap();
     let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();

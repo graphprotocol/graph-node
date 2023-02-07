@@ -246,7 +246,6 @@ impl StoreResolver {
 
             let timestamp = self.block_ptr.as_ref().map(|ptr| {
                 ptr.timestamp
-                    .clone()
                     .map(|ts| r::Value::Int(ts as i64))
                     .unwrap_or(r::Value::Null)
             });
