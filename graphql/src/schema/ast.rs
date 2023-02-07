@@ -405,6 +405,30 @@ pub fn is_list(field_type: &s::Type) -> bool {
     }
 }
 
+/// Returns the base type.
+pub fn get_base_type<'a>(t: &'a s::Type) -> &'a String {
+    match t {
+        s::Type::NamedType(name) => name,
+        s::Type::ListType(inner) => get_base_type(inner),
+        s::Type::NonNullType(inner) => get_base_type(inner),
+    }
+}
+
+#[test]
+fn test_get_base_type() {
+    assert!(get_base_type(&s::Type::NamedType("foo".to_string())) == "foo");
+    assert!(
+        get_base_type(&s::Type::ListType(Box::new(s::Type::NamedType(
+            "foo".to_string()
+        )))) == "foo"
+    );
+    assert!(
+        get_base_type(&s::Type::NonNullType(Box::new(s::Type::NamedType(
+            "foo".to_string()
+        )))) == "foo"
+    );
+}
+
 #[test]
 fn entity_validation() {
     use graph::components::store::EntityKey;

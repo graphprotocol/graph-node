@@ -87,3 +87,25 @@ enum OrderDirection {
   asc
   desc
 }
+
+"""
+The common page info type used by all connections.
+"""
+type PageInfo {
+  """
+  When paginating forwards, are there more items?
+  """
+  hasNextPage: Boolean!
+  """
+  When paginating backwards, are there more items?
+  """
+  hasPreviousPage: Boolean!
+  """
+  Cursor shorthand for the first node from current page
+  """
+  startCursor: String
+  """
+  Cursor shorthand for the last node from current page
+  """
+  endCursor: String
+}

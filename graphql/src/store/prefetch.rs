@@ -5,6 +5,7 @@ use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
 use graph::data::value::{Object, Word};
+use graph::prelude::s::ObjectType;
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
@@ -22,9 +23,9 @@ use graph::{
     },
 };
 
-use crate::execution::{ast as a, ExecutionContext, Resolver};
+use crate::execution::{self, ast as a, ExecutionContext, Resolver};
 use crate::metrics::GraphQLMetrics;
-use crate::schema::ast as sast;
+use crate::schema::{ast as sast, is_connection_type};
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
@@ -413,6 +414,8 @@ impl<'a> Join<'a> {
             // query are always joined first, and may then be overwritten by the merged selection
             // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
             let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
+            // figure out a way to get next/prev from the query
+            // set hasNext and has prev page info field here
             parent.set_children(response_key.to_owned(), values.unwrap_or_default());
         }
     }
@@ -424,6 +427,7 @@ impl<'a> Join<'a> {
         previous_collection: &EntityCollection,
     ) -> Vec<EntityWindow> {
         let mut windows = vec![];
+        println!("Join::windows: parents: {:?}", parents);
         let column_names_map = previous_collection.entity_types_and_column_names();
         for cond in &self.conds {
             let mut parents_by_id = parents
@@ -521,6 +525,57 @@ fn check_result_size<'a>(
     Ok(())
 }
 
+/// Extracts the actual field, field type and child type from a given query root.
+/// In case of a Connection type, it fallback into a structure that matches what prefetch is used to have:
+/// SomethingConnection -> [Something!]!
+/// This way, the rest of the prefetch flow works the same way, and can avoid over-fetching.
+fn extract_field_info<'a>(
+    ctx: &'a ExecutionContext<impl Resolver>,
+    object_type: &'a ObjectType,
+    selection_field: &'a execution::ast::Field,
+) -> (String, Field<'static, String>, ObjectOrInterface<'a>) {
+    let schema = &ctx.query.schema;
+
+    match is_connection_type(&selection_field.name) {
+        false => {
+            let field_type = object_type
+                .field(&selection_field.name)
+                .expect("field names are valid");
+            let child_type = schema
+                .object_or_interface(field_type.field_type.get_base_type())
+                .expect("we only collect fields that are objects or interfaces");
+
+            return (selection_field.name.clone(), field_type.clone(), child_type);
+        }
+        true => {
+            let c_field_type = object_type
+                .field(&selection_field.name)
+                .expect("field names are valid");
+            let connection_field_type = &schema
+                .object_or_interface(c_field_type.field_type.get_base_type())
+                .expect("we only collect fields that are objects or interfaces");
+
+            let field_edge_type = connection_field_type
+                .field("edges")
+                .expect("edges is missing");
+            let child_edge_type = schema
+                .object_or_interface(field_edge_type.field_type.get_base_type())
+                .expect("failed to find edges");
+
+            let field_type = child_edge_type.field("node").expect("node is missing");
+            let child_type = schema
+                .object_or_interface(field_type.field_type.get_base_type())
+                .expect("failed to find node");
+
+            let prefetch_field_name = selection_field.name.replace("Connection", "");
+            let mut cloned_field = c_field_type.clone();
+            cloned_field.field_type = s::Type::ListType(Box::new(c_field_type.field_type.clone()));
+
+            return (prefetch_field_name, cloned_field, child_type);
+        }
+    }
+}
+
 fn execute_selection_set<'a>(
     resolver: &StoreResolver,
     ctx: &'a ExecutionContext<impl Resolver>,
@@ -528,7 +583,6 @@ fn execute_selection_set<'a>(
     mut parent_trace: Trace,
     selection_set: &a::SelectionSet,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
 
     // Process all field groups in order
@@ -555,18 +609,13 @@ fn execute_selection_set<'a>(
         }
 
         for field in fields {
-            let field_type = object_type
-                .field(&field.name)
-                .expect("field names are valid");
-            let child_type = schema
-                .object_or_interface(field_type.field_type.get_base_type())
-                .expect("we only collect fields that are objects or interfaces");
+            let (field_name, field_type, child_type) = extract_field_info(ctx, object_type, &field);
 
             let join = Join::new(
                 ctx.query.schema.as_ref(),
                 object_type,
                 child_type,
-                &field.name,
+                &field_name,
             );
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
@@ -585,10 +634,10 @@ fn execute_selection_set<'a>(
                 &parents,
                 &join,
                 field,
-                field_type,
+                &field_type,
                 collected_columns,
             ) {
-                Ok((children, trace)) => {
+                Ok((children, trace, _, __)) => {
                     match execute_selection_set(
                         resolver,
                         ctx,
@@ -620,6 +669,15 @@ fn execute_selection_set<'a>(
     }
 }
 
+type ExecuteFieldReturn = (
+    Vec<Node>,
+    Trace,
+    // has_next_page
+    bool,
+    // has_previous_page
+    bool,
+);
+
 /// Executes a field.
 fn execute_field(
     resolver: &StoreResolver,
@@ -629,8 +687,10 @@ fn execute_field(
     field: &a::Field,
     field_definition: &s::Field,
     selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
+) -> Result<ExecuteFieldReturn, Vec<QueryExecutionError>> {
+    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition)
+        || is_connection_type(&field_definition.field_type.get_base_type().to_string())
+    {
         ChildMultiplicity::Many
     } else {
         ChildMultiplicity::Single
@@ -659,7 +719,7 @@ fn fetch(
     field: &a::Field,
     multiplicity: ChildMultiplicity,
     selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
+) -> Result<ExecuteFieldReturn, QueryExecutionError> {
     let mut query = build_query(
         join.child_type,
         resolver.block_number(),
@@ -692,17 +752,81 @@ fn fetch(
         // by the parent list
         let windows = join.windows(parents, multiplicity, &query.collection);
         if windows.is_empty() {
-            return Ok((vec![], Trace::None));
+            return Ok((vec![], Trace::None, false, false));
         }
         query.collection = EntityCollection::Window(windows);
     }
+
+    println!(
+        "field: {:?}, is_connection: {}, has_next_page: {}",
+        field.name,
+        field.is_connection_type(),
+        field.has_next_page
+    );
+    println!("query: {:?}", query);
+    let (has_next_page, has_previous_page) = match field.is_connection_type() {
+        true => {
+            if field.has_next_page {
+                // if hasNextPage
+                let mut next_page_query = query.clone();
+                println!(
+                    "ab: {:?}, add: {:?}",
+                    next_page_query.range.first,
+                    next_page_query.range.first.unwrap().checked_add(1)
+                );
+                let initial_range = next_page_query.range.first.unwrap();
+                next_page_query.range.first = initial_range.checked_add(1);
+                let res: Result<Vec<Node>, QueryExecutionError> = resolver
+                    .store
+                    .find_query_values(next_page_query)
+                    .map(|(values, _)| values.into_iter().map(|entity| entity.into()).collect());
+                println!("res: {:?}", res.as_ref().unwrap().len());
+
+                (res.as_ref().unwrap().len() > initial_range as usize, false)
+            } else if field.has_previous_page {
+                // TODO: implement this
+
+                // clone the query
+                // Reverse the cursor and orderby
+                // set the range to be 1
+                (false, true)
+            } else {
+                (false, false)
+            }
+        }
+        false => (false, false),
+    };
+    // we have flat list of items here from the store.
+    // once we get Node from the store -
+    // the node should have `parent_id` if there is a parent
+    //
+    // {"pageInfo:hasNextPage"}
+    // fetch more items from the store
+    // then remove the last item from the result vector
     resolver
         .store
         .find_query_values(query)
         .map(|(values, trace)| {
             (
-                values.into_iter().map(|entity| entity.into()).collect(),
+                values
+                    .into_iter()
+                    .enumerate()
+                    .map(|(count, mut entity)| {
+                        // we insert on first value in the list only
+                        // so when generating the result we can check if the value is there
+                        // and if it is there we can add the pageInfo
+                        if has_next_page && count == 0 {
+                            entity.insert(
+                                Word::from("pageInfo:hasNextPage"),
+                                r::Value::Boolean(has_next_page),
+                            );
+                        }
+                        Node::from(entity)
+                    })
+                    .collect(),
                 trace,
+                has_next_page,
+                has_previous_page,
             )
         })
 }

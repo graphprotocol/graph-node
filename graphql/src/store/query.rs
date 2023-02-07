@@ -10,6 +10,7 @@ use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
 use crate::schema::ast::{self as sast, FilterOp};
+use crate::schema::is_connection_type;
 
 use super::prefetch::SelectedAttributes;
 
@@ -47,11 +48,37 @@ pub(crate) fn build_query<'a>(
             })
             .collect(),
     });
-    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
-        .range(build_range(field, max_first, max_skip)?);
-    if let Some(filter) = build_filter(entity, field, schema)? {
-        query = query.filter(filter);
+
+    let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types);
+
+    let mut filters: Vec<EntityFilter> = vec![];
+
+    // For connection types, we create a filter for the `after` and `before` cursors.
+    let cursor_ranges_and_filter = match is_connection_type(entity.name()) {
+        true => build_cursor(field, max_first)?,
+        false => None,
+    };
+
+    match cursor_ranges_and_filter {
+        Some((range, filter)) => {
+            query = query.range(range);
+            filters.push(filter);
+        }
+        None => {
+            query = query.range(build_range(field, max_first, max_skip)?);
+        }
     }
+
+    if let Some(filter) = build_filter(entity, field, schema)? {
+        filters.push(filter);
+    }
+
+    if filters.len() == 1 {
+        query = query.filter(filters.pop().unwrap());
+    } else if filters.len() > 1 {
+        query = query.filter(EntityFilter::And(filters));
+    }
+
     let order = match (
         build_order_by(entity, field, schema)?,
         build_order_direction(field)?,
@@ -124,6 +151,218 @@ pub(crate) fn build_query<'a>(
     };
     query = query.order(order);
     Ok(query)
+}
+
+/// Parses GraphQL arguments into a EntityFilter for after cursor.
+/// Returns None if no cursor arguments are present.
+/// Complies to the Relay Cursor Connections Specification.
+/// See https://relay.dev/graphql/connections.htm#sec-Arguments
+fn build_cursor(
+    field: &a::Field,
+    max_lookup: u32,
+) -> Result<Option<(EntityRange, EntityFilter)>, QueryExecutionError> {
+    let first = match field.argument_value("first") {
+        Some(r::Value::Int(n)) => {
+            let n = *n;
+            if n > 0 && n <= (max_lookup as i64) {
+                n as u32
+            } else {
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "first", max_lookup, n,
+                ));
+            }
+        }
+        Some(r::Value::Null) | None => 0,
+        _ => unreachable!("first is an Int with a default value"),
+    };
+
+    let last = match field.argument_value("last") {
+        Some(r::Value::Int(n)) => {
+            let n = *n;
+            if n >= 0 && n <= (max_lookup as i64) {
+                n as u32
+            } else {
+                return Err(QueryExecutionError::RangeArgumentsError(
+                    "last", max_lookup, n,
+                ));
+            }
+        }
+        Some(r::Value::Null) | None => 0,
+        _ => unreachable!("last is an Int with a default value"),
+    };
+
+    let after = match field.argument_value("after") {
+        Some(r::Value::String(s)) => Some(s),
+        Some(r::Value::Null) | None => None,
+        _ => unreachable!("after is a String"),
+    };
+
+    let before = match field.argument_value("before") {
+        Some(r::Value::String(s)) => Some(s),
+        Some(r::Value::Null) | None => None,
+        _ => unreachable!("before is a String"),
+    };
+
+    // Validate compatible input arguments
+    if first > 0 && last > 0 {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "only one of \"first\" and \"last\" may be provided".to_string(),
+        ));
+    } else if before.is_some() && after.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "only one of \"before\" and \"after\" may be provided".to_string(),
+        ));
+    } else if first > 0 && before.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "\"first\" may only be used with \"after\"".to_string(),
+        ));
+    } else if last > 0 && after.is_some() {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "\"last\" may only be used with \"before\"".to_string(),
+        ));
+    }
+
+    // If `after` exists then create entity filter
+    match after {
+        Some(s) => {
+            let decode_base64 = base64::decode(s);
+
+            match decode_base64 {
+                Ok(decoded) => {
+                    let decoded_value = String::from_utf8(decoded);
+
+                    match decoded_value {
+                        Ok(val) => {
+                            let id = get_id_from_decoded_cursor(val.as_str(), field);
+                            match id {
+                                Ok(id) => {
+                                    let filter = EntityFilter::GreaterThan(
+                                        "id".to_string(),
+                                        Value::String(id),
+                                    );
+                                    let range = EntityRange {
+                                        first: Some(first),
+                                        skip: 0,
+                                    };
+                                    return Ok(Some((range, filter)));
+                                }
+                                Err(error) => {
+                                    return Err(error);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            return Err(QueryExecutionError::InvalidCursorOptions(
+                                "Failed to decode \"after\" cursor value.".to_string(),
+                            ));
+                        }
+                    }
+                }
+                Err(_) => {
+                    return Err(QueryExecutionError::InvalidCursorOptions(
+                        "Invalid base64 value for \"after\" cursor.".to_string(),
+                    ));
+                }
+            }
+        }
+        None => None::<(EntityRange, EntityFilter)>,
+    };
+
+    // If `before` exists then create entity filter
+    match before {
+        Some(s) => {
+            let decode_base64 = base64::decode(s);
+
+            match decode_base64 {
+                Ok(decoded) => {
+                    let decoded_value = String::from_utf8(decoded);
+
+                    match decoded_value {
+                        Ok(val) => {
+                            let id = get_id_from_decoded_cursor(val.as_str(), field);
+                            match id {
+                                Ok(id) => {
+                                    let filter = EntityFilter::LessThan(
+                                        "id".to_string(),
+                                        Value::String(id.to_string()),
+                                    );
+                                    let range = EntityRange {
+                                        first: Some(last),
+                                        skip: 0,
+                                    };
+                                    return Ok(Some((range, filter)));
+                                }
+                                Err(error) => {
+                                    return Err(error);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            return Err(QueryExecutionError::InvalidCursorOptions(
+                                "Failed to decode \"before\" cursor value.".to_string(),
+                            ));
+                        }
+                    }
+                }
+                Err(_) => {
+                    return Err(QueryExecutionError::InvalidCursorOptions(
+                        "Invalid base64 value for \"before\" cursor.".to_string(),
+                    ));
+                }
+            }
+        }
+        None => None::<(EntityRange, EntityFilter)>,
+    };
+
+    return Ok(None);
+}
+
+/// Takes in a decoded base64 cursor value and returns the ID of the entity
+/// that the cursor is pointing to.
+fn get_id_from_decoded_cursor(
+    cursor: &str,
+    field: &a::Field,
+) -> Result<String, QueryExecutionError> {
+    // ensure the cursor has the correct separator
+    if !cursor.contains("||") {
+        return Err(QueryExecutionError::InvalidCursorOptions(
+            "Incorrect separator used to encode the cursor.".to_string(),
+        ));
+    }
+
+    // We expect the cursor to be in the format of `id||where`
+    // where `id` is the ID of the entity and `where` is the
+    // where clause for the query.
+    let val = cursor.split("||");
+
+    // First we ensure that the cursor has where clause if any
+    // where clause exists in the query
+    let where_clause = field.argument_value("where");
+    match where_clause {
+        Some(where_clause_from_query) => {
+            match val.clone().nth(1) {
+                Some(where_from_cursor) => {
+                    if (format!("{}", where_from_cursor.to_string())
+                        != format!("{}", where_clause_from_query.to_string()))
+                    {
+                        return Err(QueryExecutionError::InvalidCursorOptions(
+                "The \"where\" clause in the cursor does not match the \"where\" clause in the query.".to_string(),
+            ));
+                    }
+                }
+                None => {}
+            };
+        }
+
+        None => {}
+    }
+
+    // The first element in the cursor is the ID of the entity
+    // Something seems to add `"` to the beginning and end of the ID when encoding
+    // so we remove them here
+    let id = val.collect::<Vec<&str>>()[0].replace("\"", "");
+
+    return Ok(id);
 }
 
 /// Parses GraphQL arguments into a EntityRange, if present.
@@ -328,6 +567,13 @@ fn build_filter_from_object(
             use self::sast::FilterOp::*;
             let (field_name, op) = sast::parse_field_as_filter(key);
 
+            let actual_entity = match is_connection_type(entity.name()) {
+                false => entity,
+                true => schema
+                    .object_or_interface(&entity.name().replace("Connection", ""))
+                    .unwrap(),
+            };
+
             Ok(match op {
                 And => {
                     if ENV_VARS.graphql.disable_bool_filters {
@@ -337,7 +583,9 @@ fn build_filter_from_object(
                     }
 
                     return Ok(EntityFilter::And(build_list_filter_from_object(
-                        entity, object, schema,
+                        actual_entity,
+                        object,
+                        schema,
                     )?));
                 }
                 Or => {
@@ -348,20 +596,23 @@ fn build_filter_from_object(
                     }
 
                     return Ok(EntityFilter::Or(build_list_filter_from_object(
-                        entity, object, schema,
+                        actual_entity,
+                        object,
+                        schema,
                     )?));
                 }
                 Child => match value {
                     DataValue::Object(obj) => {
-                        build_child_filter_from_object(entity, field_name, obj, schema)?
+                        build_child_filter_from_object(actual_entity, field_name, obj, schema)?
                     }
                     _ => {
-                        let field = sast::get_field(entity, &field_name).ok_or_else(|| {
-                            QueryExecutionError::EntityFieldError(
-                                entity.name().to_owned(),
-                                field_name.clone(),
-                            )
-                        })?;
+                        let field =
+                            sast::get_field(actual_entity, &field_name).ok_or_else(|| {
+                                QueryExecutionError::EntityFieldError(
+                                    actual_entity.name().to_owned(),
+                                    field_name,
+                                )
+                            })?;
                         let ty = &field.field_type;
                         return Err(QueryExecutionError::AttributeTypeError(
                             value.to_string(),
@@ -370,9 +621,9 @@ fn build_filter_from_object(
                     }
                 },
                 _ => {
-                    let field = sast::get_field(entity, &field_name).ok_or_else(|| {
+                    let field = sast::get_field(actual_entity, &field_name).ok_or_else(|| {
                         QueryExecutionError::EntityFieldError(
-                            entity.name().to_owned(),
+                            actual_entity.name().to_owned(),
                             field_name.clone(),
                         )
                     })?;
@@ -838,6 +1089,8 @@ mod tests {
             arguments,
             directives: vec![],
             selection_set: a::SelectionSet::new(vec![obj_type]),
+            has_next_page: false,
+            has_previous_page: false,
         }
     }
 

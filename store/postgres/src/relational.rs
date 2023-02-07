@@ -31,6 +31,7 @@ use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::slog::warn;
+use graph_graphql::schema::is_connection_type;
 use inflector::Inflector;
 use lazy_static::lazy_static;
 use std::borrow::{Borrow, Cow};
@@ -500,9 +501,19 @@ impl Layout {
     }
 
     pub fn table_for_entity(&self, entity: &EntityType) -> Result<&Arc<Table>, StoreError> {
+        let temp_new;
+        let actual_entity = match is_connection_type(entity.as_str()) {
+            true => {
+                temp_new =
+                    EntityType::new(entity.as_str().trim_end_matches("Connection").to_owned());
+                &temp_new
+            }
+            false => entity,
+        };
+
         self.tables
-            .get(entity)
-            .ok_or_else(|| StoreError::UnknownTable(entity.to_string()))
+            .get(actual_entity)
+            .ok_or_else(|| StoreError::UnknownTable(actual_entity.to_string()))
     }
 
     pub fn find(

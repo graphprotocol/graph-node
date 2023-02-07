@@ -3,7 +3,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::data::query::Trace;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::data::{
     graphql::{object, ObjectOrInterface},
     schema::META_FIELD_TYPE,
@@ -15,6 +15,7 @@ use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
 use crate::query::ext::BlockConstraint;
 use crate::schema::ast as sast;
+use crate::schema::is_connection_type;
 use crate::{prelude::*, schema::api::ErrorPolicy};
 
 use crate::store::query::collect_entities_from_query_field;
@@ -276,6 +277,109 @@ impl StoreResolver {
     }
 }
 
+impl StoreResolver {
+    /// Encode a cursor for a connection field.
+    /// The cursor is a base64 encoded string of the form `id:filter`.
+    /// The `id` is the value of the `id` field of the object at the
+    /// position of the connection edge. The `filter` is the value of
+    /// the `where` argument of the connection field, if any
+    /// (otherwise it is the empty string)
+    fn compose_cursor(
+        &self,
+        value: Option<&graph::data::value::Value>,
+        field: &a::Field,
+    ) -> String {
+        let id = value
+            .and_then(|v| v.get_required("id").ok())
+            .map(|v| r::Value::String(v))
+            .unwrap_or(r::Value::Null);
+
+        let where_filter = field.argument_value("where");
+
+        match where_filter {
+            Some(v) => {
+                return base64::encode(format!("{}||{}", id, v.to_string()));
+            }
+            _ => {
+                return base64::encode(format!("{}||{}", id, ""));
+            }
+        }
+    }
+
+    /// Create a connection object from a list of values
+    ///
+    /// The connection object has the following shape:
+    /// ```json
+    /// {
+    ///   "edges": [
+    ///     {
+    ///       "node": "<value>",
+    ///       "cursor": "<cursor>"
+    ///     }
+    ///   ],
+    ///   "pageInfo": {
+    ///    "startCursor": "<cursor>",
+    ///    "endCursor": "<cursor>",
+    ///    "hasNextPage": "<bool>",
+    ///    "hasPreviousPage": "<bool>"
+    ///   }
+    /// }
+    /// ```
+    fn build_connection_object(
+        &self,
+        field: &a::Field,
+        children: Vec<r::Value>,
+    ) -> Result<r::Value, QueryExecutionError> {
+        let mut connection_response_map = BTreeMap::new();
+        let mut page_info_map = BTreeMap::new();
+
+        // The `hasNextPage` field is a bit special and is computed on-demand.
+        // We compute this during the `prefetch::fetch` and insert it to the first element
+        // of the `children` vector. We then extract it here and remove it from the
+        // first element of the `children` vector.
+        let has_next_page = children
+            .first()
+            .unwrap_or(&r::Value::Null)
+            .get_optional("pageInfo:hasNextPage")
+            .unwrap_or(Some(false));
+
+        page_info_map.insert(
+            "hasNextPage".into(),
+            r::Value::Boolean(has_next_page.unwrap_or(false)),
+        );
+        // TODO: Make it work with SQL
+        page_info_map.insert("hasPreviousPage".into(), r::Value::Boolean(true));
+        // ---------------------------------
+
+        // Encode the cursors for the first and last elements
+        let start_cursor = self.compose_cursor(children.first(), field);
+        let end_cursor = self.compose_cursor(children.last(), field);
+
+        page_info_map.insert("startCursor".into(), r::Value::String(start_cursor));
+        page_info_map.insert("endCursor".into(), r::Value::String(end_cursor));
+
+        connection_response_map.insert("pageInfo".into(), r::Value::object(page_info_map));
+        connection_response_map.insert(
+            "edges".into(),
+            r::Value::List(
+                children
+                    .into_iter()
+                    .map(|child| {
+                        let mut edge_map = BTreeMap::<Word, r::Value>::new();
+                        let cursor = self.compose_cursor(Some(&child), field);
+                        edge_map.insert("node".into(), child);
+                        edge_map.insert("cursor".into(), r::Value::String(cursor));
+
+                        r::Value::object(edge_map)
+                    })
+                    .collect::<Vec<r::Value>>(),
+            ),
+        );
+
+        return Ok(r::Value::object(connection_response_map));
+    }
+}
+
 #[async_trait]
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
@@ -323,7 +427,14 @@ impl Resolver for StoreResolver {
         if let Some(meta) = meta {
             return Ok(meta);
         }
+
         if let Some(r::Value::List(children)) = prefetched_object {
+            // If we encounter a Connection type, we can safely resolve it as an object
+            // while using the same prefetched objects, since it's fetched before.
+            if is_connection_type(&object_type.name().to_string()) {
+                return self.build_connection_object(&field, children);
+            }
+
             if children.len() > 1 {
                 let derived_from_field =
                     sast::get_derived_from_field(object_type, field_definition)
@@ -338,6 +449,8 @@ impl Resolver for StoreResolver {
             } else {
                 Ok(children.into_iter().next().unwrap_or(r::Value::Null))
             }
+        } else if let Some(prefetched_object) = prefetched_object {
+            Ok(prefetched_object)
         } else {
             return Err(QueryExecutionError::ResolveEntitiesError(format!(
                 "internal error resolving {}.{}: \
