@@ -233,7 +233,7 @@ impl StoreResolver {
                     if ptr.ptr.hash.is_zero() {
                         None
                     } else {
-                        Some(r::Value::String(format!("0x{:}", ptr.ptr.hash.hash_hex())))
+                        Some(r::Value::String(format!("0x{:x}", ptr.ptr.hash)))
                     }
                 })
                 .unwrap_or(r::Value::Null);
