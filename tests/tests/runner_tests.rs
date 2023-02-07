@@ -188,7 +188,7 @@ async fn file_data_sources() {
 
     assert_json_eq!(
         query_res,
-        Some(object! { ipfsFile: object!{ id: id.clone() , content: content.clone() } })
+        Some(object! { ipfsFile: object!{ id: id, content: content.clone() } })
     );
 
     // assert whether duplicate data sources are created.

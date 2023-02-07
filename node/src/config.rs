@@ -169,7 +169,7 @@ impl Config {
     pub fn from_str(config: &str, node: &str) -> Result<Config> {
         let mut config: Config = toml::from_str(&config)?;
         config.node =
-            NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id {}", node))?;
+            NodeId::new(node).map_err(|()| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
     }

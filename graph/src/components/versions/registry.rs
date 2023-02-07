@@ -53,7 +53,7 @@ impl ApiVersion {
     fn resolve(version_requirement: &VersionReq) -> Result<&Version, String> {
         for version in VERSIONS.iter() {
             if version_requirement.matches(version) {
-                return Ok(version.clone());
+                return Ok(version);
             }
         }
 

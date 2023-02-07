@@ -197,7 +197,6 @@ where
 
     let file_name = file_path
         .as_ref()
-        .clone()
         .file_name()
         .unwrap()
         .to_str()

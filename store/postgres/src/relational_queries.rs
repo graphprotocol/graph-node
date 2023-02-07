@@ -981,7 +981,7 @@ impl<'a> QueryFilter<'a> {
             table: self.table,
             layout: self.layout,
             block: self.block,
-            table_prefix: self.table_prefix.clone(),
+            table_prefix: self.table_prefix,
         }
     }
 
