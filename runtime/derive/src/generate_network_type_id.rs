@@ -26,7 +26,7 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         .filter_map(|a| {
             if let NestedMeta::Meta(Meta::Path(Path { segments, .. })) = a {
                 if let Some(p) = segments.last() {
-                    return Some(p.ident.to_string().to_owned());
+                    return Some(p.ident.to_string());
                 }
             }
             None

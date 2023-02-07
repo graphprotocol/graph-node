@@ -75,7 +75,7 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
             let ipfs_ok_logger = logger.clone();
             let ipfs_err_logger = logger.clone();
             let ipfs_address_for_ok = ipfs_address.clone();
-            let ipfs_address_for_err = ipfs_address.clone();
+            let ipfs_address_for_err = ipfs_address;
             graph::spawn(async move {
                 ipfs_test
                     .test()
@@ -271,7 +271,7 @@ pub async fn connect_ethereum_networks(
                     ProviderNetworkStatus::Version {
                         chain_id: network,
                         ident,
-                    } => networks.entry(network.to_string()).or_default().push(ident),
+                    } => networks.entry(network).or_default().push(ident),
                 }
                 networks
             });
@@ -354,7 +354,7 @@ where
                         firehose_networks.remove(&chain_id, &provider)
                     }
                     ProviderNetworkStatus::Version { chain_id, ident } => networks
-                        .entry(chain_id.to_string())
+                        .entry(chain_id)
                         .or_default()
                         .push(ident),
                 }

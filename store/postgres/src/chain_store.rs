@@ -1705,7 +1705,7 @@ impl ChainStoreTrait for ChainStore {
 
         // Check the local cache first.
         if let Some(data) = self.recent_blocks_cache.get_block(&block_ptr, offset) {
-            return Ok(data.1.clone());
+            return Ok(data.1);
         }
 
         let block_ptr_clone = block_ptr.clone();

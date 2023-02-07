@@ -542,7 +542,7 @@ async fn run_subscription(
         .api_schema(&deployment.hash, &Default::default())
         .unwrap();
 
-    execute_subscription(Subscription { query }, schema.clone(), options)
+    execute_subscription(Subscription { query }, schema, options)
 }
 
 #[test]
@@ -677,7 +677,7 @@ fn can_query_many_to_many_relationship() {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
                 object! { name: "Lisa", bands: vec![ the_musicians.clone() ] },
-                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
                 object! { name: "Valerie", bands: Vec::<String>::new() }
             ]
         };
@@ -984,7 +984,7 @@ fn can_query_with_child_filter_on_list_type_field() {
         let exp = object! {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
-                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
             ]
         };
 

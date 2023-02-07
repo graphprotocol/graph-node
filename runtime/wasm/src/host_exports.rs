@@ -182,7 +182,7 @@ impl<C: Blockchain> HostExports<C> {
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
 
         let entity = Entity::from(data);
-        state.entity_cache.set(key.clone(), entity)?;
+        state.entity_cache.set(key, entity)?;
 
         Ok(())
     }

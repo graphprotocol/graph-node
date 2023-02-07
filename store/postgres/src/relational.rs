@@ -1484,7 +1484,7 @@ impl LayoutCache {
             .lock()
             .unwrap()
             .remove(&site.deployment)
-            .map(|CacheEntry { value, expires: _ }| value.clone())
+            .map(|CacheEntry { value, expires: _ }| value)
     }
 
     // Only needed for tests

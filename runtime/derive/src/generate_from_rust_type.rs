@@ -52,7 +52,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     let enum_validation = enum_fields.iter().map(|f|{
         let fld_name = f.ident.as_ref().unwrap(); //empty, maybe call it "sum"?
         let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-        let fld_nm = format!("\"{}\"", fld_name.to_string()).to_string().parse::<proc_macro2::TokenStream>().unwrap();
+        let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
 
         quote! {
             let #fld_name = self.#fld_name.as_ref()

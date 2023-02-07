@@ -180,7 +180,7 @@ impl StoreBuilder {
             DieselBlockStore::new(
                 logger,
                 networks,
-                pools.clone(),
+                pools,
                 subgraph_store.notification_sender(),
             )
             .expect("Creating the BlockStore works"),

@@ -175,13 +175,13 @@ lazy_static! {
             bool: true,
             int: std::i32::MAX,
             bigDecimal: decimal.clone(),
-            bigDecimalArray: vec![decimal.clone(), (decimal + 1.into()).clone()],
+            bigDecimalArray: vec![decimal.clone(), (decimal + 1.into())],
             string: "scalar",
             strings: vec!["left", "right", "middle"],
             bytes: *BYTES_VALUE,
             byteArray: vec![*BYTES_VALUE, *BYTES_VALUE2, *BYTES_VALUE3],
             bigInt: big_int.clone(),
-            bigIntArray: vec![big_int.clone(), (big_int + 1.into()).clone()],
+            bigIntArray: vec![big_int.clone(), (big_int + 1.into())],
             color: "yellow",
         }
     };
@@ -563,7 +563,7 @@ fn update() {
         entity.set("string", "updated");
         entity.remove("strings");
         entity.set("bool", Value::Null);
-        let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
+        let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap());
 
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(&key, Cow::from(&entity))];
@@ -747,7 +747,7 @@ fn delete() {
         let count = layout
             .delete(
                 &conn,
-                &entity_type.clone(),
+                &entity_type,
                 &entity_keys,
                 1,
                 &MOCK_STOPWATCH,
@@ -834,7 +834,7 @@ async fn layout_cache() {
             sleep(Duration::from_millis(50));
 
             let layout = cache
-                .get(&*LOGGER, &conn, site.clone())
+                .get(&*LOGGER, &conn, site)
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(false, table.is_account_like);
@@ -875,7 +875,7 @@ fn conflicting_entity() {
         let result = layout.conflicting_entity(
             &conn,
             &id.to_string(),
-            vec![dog.clone(), ferret.clone(), chair.clone()],
+            vec![dog, ferret, chair],
         );
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());

@@ -55,10 +55,10 @@ pub async fn chain(
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
     let chain = Chain::new(
-        logger_factory.clone(),
+        logger_factory,
         stores.network_name.clone(),
         node_id,
-        mock_registry.clone(),
+        mock_registry,
         chain_store.cheap_clone(),
         chain_store,
         client,

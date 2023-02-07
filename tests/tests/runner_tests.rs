@@ -366,7 +366,7 @@ async fn retry_create_ds() {
             number: 1,
             hash: H256::from_low_u64_be(12).into(),
         };
-        let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr.clone());
+        let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr);
         let block2 = empty_block(block1_reorged.ptr(), test_ptr(2));
         vec![block0, block1, block1_reorged, block2]
     };
