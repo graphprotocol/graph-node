@@ -140,7 +140,7 @@ impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
     ) -> Result<Array<AscPtr<AscString>>, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(Array::new(&content, heap, gas)?)
+        Array::new(&content, heap, gas)
     }
 }
 

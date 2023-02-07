@@ -13,7 +13,7 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     let enum_names = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .map(|f| f.ident.to_string())
         .collect::<Vec<String>>();
 
@@ -27,7 +27,7 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     //extend fields list with enum's variants
     args.vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .flat_map(|f| f.fields.named.iter())
         .for_each(|f| fields.push(f));
 

@@ -10,14 +10,14 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     let enum_names = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .map(|f| f.ident.to_string())
         .collect::<Vec<String>>();
 
     let required_flds = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() == super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident == super::REQUIRED_IDENT_NAME)
         .flat_map(|f| f.fields.named.iter())
         .map(|f| f.ident.as_ref().unwrap().to_string())
         .collect::<Vec<String>>();

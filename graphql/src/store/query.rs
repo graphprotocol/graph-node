@@ -307,7 +307,7 @@ fn build_filter_from_object(
     object: &Object,
     schema: &ApiSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
-    Ok(object
+    object
         .iter()
         .map(|(key, value)| {
             // Special handling for _change_block input filter since its not a
@@ -375,7 +375,7 @@ fn build_filter_from_object(
                 }
             })
         })
-        .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?)
+        .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()
 }
 
 fn build_child_filter_from_object(
