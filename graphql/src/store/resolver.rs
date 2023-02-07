@@ -333,7 +333,7 @@ impl StoreResolver {
                 page_info_map.insert("hasNextPage".into(), r::Value::Boolean(true));
                 page_info_map.insert("hasPreviousPage".into(), r::Value::Boolean(true));
                 // ---------------------------------
-                
+
                 page_info_map.insert("startCursor".into(), r::Value::String(start_cursor));
                 page_info_map.insert("endCursor".into(), r::Value::String(end_cursor));
 
