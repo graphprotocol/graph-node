@@ -34,8 +34,9 @@ pub(crate) fn build_query<'a>(
     schema: &ApiSchema,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
+    println!("entity name: {:?}", entity.name());
     let is_conn = is_connection_type(entity.name());
-
+    println!("is_conn: {:?}", is_conn);
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
             let selected_columns = column_names.get(object);
@@ -259,12 +260,7 @@ fn build_range(
     };
 
     Ok(EntityRange {
-        first: match is_connection_type(&field.name) {
-            // We are a bit overfetching to see ahead when dealing with connections.
-            // This way we can tell the user if there are more pages available.
-            true => Some(first + 1),
-            false => Some(first),
-        },
+        first: Some(first),
         skip,
     })
 }

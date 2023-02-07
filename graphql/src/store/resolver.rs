@@ -315,15 +315,9 @@ impl StoreResolver {
             });
 
         match first_arg {
-            Some(r::Value::Int(first_arg_value)) => {
-                let (has_next_page, items) =
-                    match children.len() > first_arg_value.try_into().unwrap() {
-                        true => (true, children[0..children.len() - 1].to_vec()),
-                        false => (false, children),
-                    };
-
+            Some(r::Value::Int(_)) => {
                 let mut connection_response_map = BTreeMap::new();
-                let start_cursor = self.compose_cursor(items.first(), field);
+                let start_cursor = self.compose_cursor(children.first(), field);
                 println!("start_cursor - encoded: {}", start_cursor);
 
                 println!(
@@ -331,10 +325,15 @@ impl StoreResolver {
                     String::from_utf8(base64::decode(start_cursor.to_owned()).unwrap()).unwrap()
                 );
 
-                let end_cursor = self.compose_cursor(items.last(), field);
+                let end_cursor = self.compose_cursor(children.last(), field);
 
                 let mut page_info_map = BTreeMap::new();
-                page_info_map.insert("hasNextPage".into(), r::Value::Boolean(has_next_page));
+
+                // TODO: Make it work with SQL
+                page_info_map.insert("hasNextPage".into(), r::Value::Boolean(true));
+                page_info_map.insert("hasPreviousPage".into(), r::Value::Boolean(true));
+                // ---------------------------------
+                
                 page_info_map.insert("startCursor".into(), r::Value::String(start_cursor));
                 page_info_map.insert("endCursor".into(), r::Value::String(end_cursor));
 
@@ -342,7 +341,7 @@ impl StoreResolver {
                 connection_response_map.insert(
                     "edges".into(),
                     r::Value::List(
-                        items
+                        children
                             .into_iter()
                             .map(|child| {
                                 let mut edge_map = BTreeMap::<Word, r::Value>::new();

@@ -2325,3 +2325,37 @@ fn can_compare_id() {
         })
     }
 }
+
+#[test]
+fn query_cursor_for_paginated_query() {
+    const QUERY: &str = "{
+        songsPaginated(first: 1) {
+          pageInfo {
+            hasNextPage
+            startCursor
+            endCursor
+          }
+        }
+      }";
+
+    run_query(QUERY, |result, id_type| {
+        // cursor generation is determined from id and where fitler
+        let cursor = match id_type {
+            // S1 encoded as base64
+            IdType::String => "InMxIjo=",
+            // 0xf1 encoded as base64
+            IdType::Bytes => "IjB4ZjEiOg==",
+        };
+        let exp = object! {
+            songsPaginated:  object! {
+            pageInfo: object! {
+                hasNextPage: true,
+                startCursor: cursor,
+                endCursor: cursor,
+            },
+        },
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+}

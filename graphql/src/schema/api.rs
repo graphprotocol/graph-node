@@ -1565,7 +1565,6 @@ mod tests {
             .map(ToString::to_string)
             .collect::<Vec<String>>()
         );
-
     }
 
     #[test]
