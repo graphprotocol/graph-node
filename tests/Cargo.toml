@@ -34,6 +34,3 @@ tokio-stream = "0.1"
 serde_yaml = "0.8"
 cid = "0.10.1"
 graph-chain-near = { path = "../chain/near" }
-lazy_static = "1.4.0"
-serde_yaml = "0.8"
-tokio-stream = "0.1"
