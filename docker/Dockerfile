@@ -40,14 +40,23 @@ ADD server ./server
 ADD store ./store
 ADD tests ./tests
 
+
+RUN RUSTFLAGS="-g" cargo build --release --package graph-node
+
+
+RUN cp target/release/graph-node /usr/local/bin/graph-node
+RUN cp target/release/graphman /usr/local/bin/graphman
+
     # Reduce the size of the layer by removing unnecessary files.
-    && cargo clean \
-    && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
+RUN cargo clean
+
+RUN objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
     && strip -g /usr/local/bin/graph-node \
-    && strip -g /usr/local/bin/graphman \
-    && cd /usr/local/bin \
-    && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
-    && echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
+    && strip -g /usr/local/bin/graphman
+
+RUN objcopy --add-gnu-debuglink=/usr/local/bin/graph-node.debug /usr/local/bin/graph-node
+
+RUN echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
     && echo "TAG_NAME='$TAG_NAME'" >> /etc/image-info \
     && echo "BRANCH_NAME='$BRANCH_NAME'" >> /etc/image-info \
     && echo "COMMIT_SHA='$COMMIT_SHA'" >> /etc/image-info \
