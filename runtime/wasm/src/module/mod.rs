@@ -1678,8 +1678,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         // Not enabled on the network, no gas consumed.
-        drop(gas);
-
         // This is unrelated to IPFS, but piggyback on the config to disallow it on the network.
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
