@@ -24,6 +24,22 @@ WORKDIR /graph-node
 
 RUN apt-get update && apt-get install -y cmake protobuf-compiler
 
+# Only adding files needed for Rust to compile to avoid rebuilding on
+# changes in files irrelevant in the build process
+ADD Cargo.lock  ./Cargo.lock
+ADD Cargo.toml ./Cargo.toml
+ADD rust-toolchain.toml ./rust-toolchain.toml
+ADD chain ./chain
+ADD core ./core
+ADD graph ./graph
+ADD graphql ./graphql
+ADD mock ./mock
+ADD node ./node
+ADD runtime ./runtime
+ADD server ./server
+ADD store ./store
+ADD tests ./tests
+
     # Reduce the size of the layer by removing unnecessary files.
     && cargo clean \
     && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
