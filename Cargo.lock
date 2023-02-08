@@ -1640,6 +1640,7 @@ dependencies = [
  "envconfig",
  "futures 0.1.31",
  "graph",
+ "graph-mock",
  "graph-runtime-derive",
  "graph-runtime-wasm",
  "hex",

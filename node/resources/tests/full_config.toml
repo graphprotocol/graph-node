@@ -47,6 +47,7 @@ ingestor = "index_0"
 shard = "primary"
 provider = [
   { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"] },
+  { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }},
   { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }},
   { label = "substreams", details = { type = "substreams", url = "http://localhost:9000", features = [] }},
 ]

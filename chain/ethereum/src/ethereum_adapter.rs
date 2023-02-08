@@ -63,6 +63,7 @@ pub struct EthereumAdapter {
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
     supports_eip_1898: bool,
+    call_only: bool,
 }
 
 /// Gas limit for `eth_call`. The value of 50_000_000 is a protocol-wide parameter so this
@@ -84,11 +85,16 @@ impl CheapClone for EthereumAdapter {
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
+            call_only: self.call_only,
         }
     }
 }
 
 impl EthereumAdapter {
+    pub fn is_call_only(&self) -> bool {
+        self.call_only
+    }
+
     pub async fn new(
         logger: Logger,
         provider: String,
@@ -96,6 +102,7 @@ impl EthereumAdapter {
         transport: Transport,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
+        call_only: bool,
     ) -> Self {
         // Unwrap: The transport was constructed with this url, so it is valid and has a host.
         let hostname = graph::url::Url::parse(url)
@@ -122,6 +129,7 @@ impl EthereumAdapter {
             web3,
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
+            call_only,
         }
     }
 
@@ -133,6 +141,8 @@ impl EthereumAdapter {
         to: BlockNumber,
         addresses: Vec<H160>,
     ) -> Result<Vec<Trace>, Error> {
+        assert!(!self.call_only);
+
         let eth = self.clone();
         let retry_log_message =
             format!("trace_filter RPC call for block range: [{}..{}]", from, to);
@@ -225,6 +235,8 @@ impl EthereumAdapter {
         filter: Arc<EthGetLogsFilter>,
         too_many_logs_fingerprints: &'static [&'static str],
     ) -> Result<Vec<Log>, TimeoutError<web3::error::Error>> {
+        assert!(!self.call_only);
+
         let eth_adapter = self.clone();
         let retry_log_message = format!("eth_getLogs RPC call for block range: [{}..{}]", from, to);
         retry(retry_log_message, &logger)
