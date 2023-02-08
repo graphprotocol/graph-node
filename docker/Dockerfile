@@ -20,7 +20,7 @@ ARG REPO_NAME=unknown
 ARG BRANCH_NAME=unknown
 ARG TAG_NAME=unknown
 
-ADD . /graph-node
+WORKDIR /graph-node
 
 RUN apt-get update \
     && apt-get install -y cmake protobuf-compiler && \
