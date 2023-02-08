@@ -1,6 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
+    firehose::SUBGRAPHS_PER_CONN,
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info,
@@ -566,9 +567,14 @@ pub struct FirehoseProvider {
     pub conn_pool_size: u16,
     #[serde(default)]
     pub features: BTreeSet<String>,
+    #[serde(default, rename = "match")]
+    rules: Vec<Web3Rule>,
 }
 
 impl FirehoseProvider {
+    pub fn limit_for(&self, node: &NodeId) -> Option<usize> {
+        self.rules.iter().find_map(|r| r.limit_for(node))
+    }
     pub fn filters_enabled(&self) -> bool {
         self.features.contains(FIREHOSE_FILTER_FEATURE)
     }
@@ -671,6 +677,13 @@ impl Provider {
                         "supported firehose endpoint filters are: {:?}",
                         FIREHOSE_PROVIDER_FEATURES
                     ));
+                }
+
+                if firehose.rules.iter().any(|r| r.limit > SUBGRAPHS_PER_CONN) {
+                    bail!(
+                        "per node subgraph limit for firehose/substreams has to be in the range 0-{}",
+                        SUBGRAPHS_PER_CONN
+                    );
                 }
             }
 
@@ -779,13 +792,21 @@ impl<'de> Deserialize<'de> for Provider {
 
                 let label = label.ok_or_else(|| serde::de::Error::missing_field("label"))?;
                 let details = match details {
-                    Some(v) => {
+                    Some(mut v) => {
                         if url.is_some()
                             || transport.is_some()
                             || features.is_some()
                             || headers.is_some()
                         {
                             return Err(serde::de::Error::custom("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"));
+                        }
+
+                        match v {
+                            ProviderDetails::Firehose(ref mut firehose)
+                            | ProviderDetails::Substreams(ref mut firehose) => {
+                                firehose.rules = nodes
+                            }
+                            _ => {}
                         }
 
                         v
@@ -1097,10 +1118,13 @@ where
 #[cfg(test)]
 mod tests {
 
+    use crate::config::Web3Rule;
+
     use super::{
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
+    use graph::prelude::regex::Regex;
     use graph::prelude::NodeId;
     use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
@@ -1341,6 +1365,7 @@ mod tests {
                     token: None,
                     features: BTreeSet::new(),
                     conn_pool_size: 20,
+                    rules: vec![],
                 }),
             },
             actual
@@ -1365,6 +1390,7 @@ mod tests {
                     token: None,
                     features: BTreeSet::new(),
                     conn_pool_size: 20,
+                    rules: vec![],
                 }),
             },
             actual
@@ -1372,7 +1398,7 @@ mod tests {
     }
     #[test]
     fn it_works_on_new_firehose_provider_from_toml_no_features() {
-        let actual = toml::from_str(
+        let mut actual = toml::from_str(
             r#"
                 label = "firehose"
                 details = { type = "firehose", url = "http://localhost:9000" }
@@ -1388,10 +1414,164 @@ mod tests {
                     token: None,
                     features: BTreeSet::new(),
                     conn_pool_size: 20,
+                    rules: vec![],
                 }),
             },
             actual
         );
+        assert! {actual.validate().is_ok()};
+    }
+
+    #[test]
+    fn it_works_on_new_firehose_provider_with_doc_example_match() {
+        let mut actual = toml::from_str(
+            r#"
+                label = "firehose"
+                details = { type = "firehose", url = "http://localhost:9000" }
+                match = [
+                  { name = "some_node_.*", limit = 10 },
+                  { name = "other_node_.*", limit = 0 } ] 
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "firehose".to_owned(),
+                details: ProviderDetails::Firehose(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                    token: None,
+                    features: BTreeSet::new(),
+                    conn_pool_size: 20,
+                    rules: vec![
+                        Web3Rule {
+                            name: Regex::new("some_node_.*").unwrap(),
+                            limit: 10,
+                        },
+                        Web3Rule {
+                            name: Regex::new("other_node_.*").unwrap(),
+                            limit: 0,
+                        }
+                    ],
+                }),
+            },
+            actual
+        );
+        assert! { actual.validate().is_ok()};
+    }
+
+    #[test]
+    fn it_errors_on_firehose_provider_with_high_limit() {
+        let mut actual = toml::from_str(
+            r#"
+                label = "substreams"
+                details = { type = "substreams", url = "http://localhost:9000" }
+                match = [
+                  { name = "some_node_.*", limit = 101 },
+                  { name = "other_node_.*", limit = 0 } ] 
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "substreams".to_owned(),
+                details: ProviderDetails::Substreams(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                    token: None,
+                    features: BTreeSet::new(),
+                    conn_pool_size: 20,
+                    rules: vec![
+                        Web3Rule {
+                            name: Regex::new("some_node_.*").unwrap(),
+                            limit: 101,
+                        },
+                        Web3Rule {
+                            name: Regex::new("other_node_.*").unwrap(),
+                            limit: 0,
+                        }
+                    ],
+                }),
+            },
+            actual
+        );
+        assert! { actual.validate().is_err()};
+    }
+
+    #[test]
+    fn it_works_on_new_substreams_provider_with_doc_example_match() {
+        let mut actual = toml::from_str(
+            r#"
+                label = "substreams"
+                details = { type = "substreams", url = "http://localhost:9000" }
+                match = [
+                  { name = "some_node_.*", limit = 10 },
+                  { name = "other_node_.*", limit = 0 } ] 
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "substreams".to_owned(),
+                details: ProviderDetails::Substreams(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                    token: None,
+                    features: BTreeSet::new(),
+                    conn_pool_size: 20,
+                    rules: vec![
+                        Web3Rule {
+                            name: Regex::new("some_node_.*").unwrap(),
+                            limit: 10,
+                        },
+                        Web3Rule {
+                            name: Regex::new("other_node_.*").unwrap(),
+                            limit: 0,
+                        }
+                    ],
+                }),
+            },
+            actual
+        );
+        assert! { actual.validate().is_ok()};
+    }
+
+    #[test]
+    fn it_errors_on_substreams_provider_with_high_limit() {
+        let mut actual = toml::from_str(
+            r#"
+                label = "substreams"
+                details = { type = "substreams", url = "http://localhost:9000" }
+                match = [
+                  { name = "some_node_.*", limit = 101 },
+                  { name = "other_node_.*", limit = 0 } ] 
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "substreams".to_owned(),
+                details: ProviderDetails::Substreams(FirehoseProvider {
+                    url: "http://localhost:9000".to_owned(),
+                    token: None,
+                    features: BTreeSet::new(),
+                    conn_pool_size: 20,
+                    rules: vec![
+                        Web3Rule {
+                            name: Regex::new("some_node_.*").unwrap(),
+                            limit: 101,
+                        },
+                        Web3Rule {
+                            name: Regex::new("other_node_.*").unwrap(),
+                            limit: 0,
+                        }
+                    ],
+                }),
+            },
+            actual
+        );
+        assert! { actual.validate().is_err()};
     }
 
     #[test]
