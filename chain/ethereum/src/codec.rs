@@ -36,9 +36,9 @@ impl TryDecodeProto<[u8; 256], H2048> for &[u8] {}
 impl TryDecodeProto<[u8; 32], H256> for &[u8] {}
 impl TryDecodeProto<[u8; 20], H160> for &[u8] {}
 
-impl Into<web3::types::U256> for &BigInt {
-    fn into(self) -> web3::types::U256 {
-        web3::types::U256::from_big_endian(&self.bytes)
+impl From<&BigInt> for web3::types::U256 {
+    fn from(val: &BigInt) -> Self {
+        web3::types::U256::from_big_endian(&val.bytes)
     }
 }
 
@@ -97,9 +97,9 @@ impl TryInto<web3::types::Call> for Call {
     }
 }
 
-impl Into<web3::types::CallType> for CallType {
-    fn into(self) -> web3::types::CallType {
-        match self {
+impl From<CallType> for web3::types::CallType {
+    fn from(val: CallType) -> Self {
+        match val {
             CallType::Unspecified => web3::types::CallType::None,
             CallType::Call => web3::types::CallType::Call,
             CallType::Callcode => web3::types::CallType::CallCode,
@@ -149,9 +149,9 @@ impl<'a> TryInto<web3::types::Log> for LogAt<'a> {
     }
 }
 
-impl Into<web3::types::U64> for TransactionTraceStatus {
-    fn into(self) -> web3::types::U64 {
-        let status: Option<web3::types::U64> = self.into();
+impl From<TransactionTraceStatus> for web3::types::U64 {
+    fn from(val: TransactionTraceStatus) -> Self {
+        let status: Option<web3::types::U64> = val.into();
         status.unwrap_or_else(|| web3::types::U64::from(0))
     }
 }
@@ -457,11 +457,11 @@ impl HeaderOnlyBlock {
     }
 }
 
-impl Into<ChainStoreData> for &BlockHeader {
-    fn into(self) -> ChainStoreData {
+impl From<&BlockHeader> for ChainStoreData {
+    fn from(val: &BlockHeader) -> Self {
         ChainStoreData {
             block: ChainStoreBlock::new(
-                self.timestamp.as_ref().unwrap().seconds,
+                val.timestamp.as_ref().unwrap().seconds,
                 jsonrpc_core::Value::Null,
             ),
         }

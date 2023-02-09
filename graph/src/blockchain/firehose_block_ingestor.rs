@@ -21,9 +21,9 @@ pub enum Transforms {
     EthereumHeaderOnly,
 }
 
-impl Into<Any> for &Transforms {
-    fn into(self) -> Any {
-        match self {
+impl From<&Transforms> for Any {
+    fn from(val: &Transforms) -> Self {
+        match val {
             Transforms::EthereumHeaderOnly => Any {
                 type_url: TRANSFORM_ETHEREUM_HEADER_ONLY.to_owned(),
                 value: HeaderOnly {}.encode_to_vec(),

@@ -195,9 +195,9 @@ pub(crate) struct EthereumLogFilter {
     wildcard_events: HashMap<EventSignature, bool>,
 }
 
-impl Into<Vec<LogFilter>> for EthereumLogFilter {
-    fn into(self) -> Vec<LogFilter> {
-        self.eth_get_logs_filters()
+impl From<EthereumLogFilter> for Vec<LogFilter> {
+    fn from(val: EthereumLogFilter) -> Self {
+        val.eth_get_logs_filters()
             .map(
                 |EthGetLogsFilter {
                      contracts,
