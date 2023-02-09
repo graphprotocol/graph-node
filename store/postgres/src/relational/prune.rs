@@ -8,7 +8,10 @@ use diesel::{
 };
 use graph::{
     components::store::{PruneReporter, VersionStats},
-    prelude::{BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError},
+    prelude::{
+        BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError,
+        BLOCK_NUMBER_MAX,
+    },
     slog::{warn, Logger},
 };
 use itertools::Itertools;
@@ -21,6 +24,42 @@ use crate::{
 };
 
 use super::{Layout, Namespace};
+
+// Additions to `Table` that are useful for pruning
+impl Table {
+    /// Return the first and last vid of any entity that is visible in the
+    /// block range from `first_block` (inclusive) to `last_block`
+    /// (exclusive)
+    fn vid_range(
+        &self,
+        conn: &PgConnection,
+        first_block: BlockNumber,
+        last_block: BlockNumber,
+    ) -> Result<(i64, i64), StoreError> {
+        #[derive(QueryableByName)]
+        struct VidRange {
+            #[sql_type = "BigInt"]
+            min_vid: i64,
+            #[sql_type = "BigInt"]
+            max_vid: i64,
+        }
+
+        // Determine the last vid that we need to copy
+        let VidRange { min_vid, max_vid } = sql_query(format!(
+            "select coalesce(min(vid), 0) as min_vid, \
+                            coalesce(max(vid), -1) as max_vid from {src} \
+                      where lower(block_range) <= $2 \
+                        and coalesce(upper(block_range), 2147483647) > $1 \
+                        and coalesce(upper(block_range), 2147483647) <= $2 \
+                        and block_range && int4range($1, $2)",
+            src = self.qualified_name,
+        ))
+        .bind::<Integer, _>(first_block)
+        .bind::<Integer, _>(last_block)
+        .get_result::<VidRange>(conn)?;
+        Ok((min_vid, max_vid))
+    }
+}
 
 /// Utility to copy relevant data out of a source table and into a new
 /// destination table and replace the source table with the destination
@@ -78,18 +117,7 @@ impl TablePair {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
-        let VidRange { min_vid, max_vid } = sql_query(format!(
-            "select coalesce(min(vid), 0) as min_vid, \
-                    coalesce(max(vid), -1) as max_vid from {src} \
-              where lower(block_range) <= $2 \
-                and coalesce(upper(block_range), 2147483647) > $1 \
-                and coalesce(upper(block_range), 2147483647) <= $2 \
-                and block_range && int4range($1, $2, '[]')",
-            src = self.src.qualified_name,
-        ))
-        .bind::<Integer, _>(earliest_block)
-        .bind::<Integer, _>(final_block)
-        .get_result::<VidRange>(conn)?;
+        let (min_vid, max_vid) = self.src.vid_range(conn, earliest_block, final_block)?;
 
         let mut batch_size = AdaptiveBatchSize::new(&self.src);
         // The first vid we still need to copy
@@ -147,15 +175,9 @@ impl TablePair {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
-        let VidRange { min_vid, max_vid } = sql_query(format!(
-            "select coalesce(min(vid), 0) as min_vid, \
-                    coalesce(max(vid), -1) as max_vid from {src} \
-              where coalesce(upper(block_range), 2147483647) > $1 \
-              and block_range && int4range($1, null)",
-            src = self.src.qualified_name,
-        ))
-        .bind::<Integer, _>(final_block)
-        .get_result::<VidRange>(conn)?;
+        let (min_vid, max_vid) = self
+            .src
+            .vid_range(conn, final_block + 1, BLOCK_NUMBER_MAX)?;
 
         let mut batch_size = AdaptiveBatchSize::new(&self.src);
         // The first vid we still need to copy
@@ -427,12 +449,4 @@ impl Layout {
 
         Ok(())
     }
-}
-
-#[derive(QueryableByName)]
-struct VidRange {
-    #[sql_type = "BigInt"]
-    min_vid: i64,
-    #[sql_type = "BigInt"]
-    max_vid: i64,
 }
