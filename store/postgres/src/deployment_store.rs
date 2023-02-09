@@ -552,7 +552,7 @@ impl DeploymentStore {
             deployment::manifest_info(conn, site)?;
 
         let graft_block =
-            deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number as i32);
+            deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number);
 
         let debug_fork = deployment::debug_fork(conn, &site.deployment)?;
 

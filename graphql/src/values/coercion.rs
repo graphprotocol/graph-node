@@ -309,7 +309,7 @@ mod tests {
             Ok(Value::String("23".to_string()))
         );
         assert_eq!(
-            coerce_to_definition(Value::Int((-5 as i32).into()), "", &resolver,),
+            coerce_to_definition(Value::Int((-5_i32).into()), "", &resolver,),
             Ok(Value::String("-5".to_string())),
         );
 
@@ -390,7 +390,7 @@ mod tests {
             Ok(Value::String("1234".to_string()))
         );
         assert_eq!(
-            coerce_to_definition(Value::Int((-1234 as i32).into()), "", &resolver,),
+            coerce_to_definition(Value::Int((-1234_i32).into()), "", &resolver,),
             Ok(Value::String("-1234".to_string()))
         );
     }
@@ -417,8 +417,8 @@ mod tests {
             Ok(Value::Int(13289123.into()))
         );
         assert_eq!(
-            coerce_to_definition(Value::Int((-13289123 as i32).into()), "", &resolver,),
-            Ok(Value::Int((-13289123 as i32).into()))
+            coerce_to_definition(Value::Int((-13289123_i32).into()), "", &resolver,),
+            Ok(Value::Int((-13289123_i32).into()))
         );
     }
 }

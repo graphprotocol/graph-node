@@ -130,12 +130,7 @@ impl TablePair {
 
             batch_size.adapt(start.elapsed());
 
-            reporter.copy_final_batch(
-                self.src.name.as_str(),
-                rows as usize,
-                total_rows,
-                next_vid > max_vid,
-            );
+            reporter.copy_final_batch(self.src.name.as_str(), rows, total_rows, next_vid > max_vid);
         }
         Ok(total_rows)
     }
@@ -198,7 +193,7 @@ impl TablePair {
 
             reporter.copy_nonfinal_batch(
                 self.src.name.as_str(),
-                rows as usize,
+                rows,
                 total_rows,
                 next_vid > max_vid,
             );

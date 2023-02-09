@@ -578,7 +578,7 @@ where
                 .enumerate()
                 .find(|(_, b)| b.ptr() == current_block)
                 .unwrap()
-                .0 as usize
+                .0
         });
         Ok(Box::new(StaticStream {
             stream: Box::pin(stream_events(self.chain.clone(), current_idx)),

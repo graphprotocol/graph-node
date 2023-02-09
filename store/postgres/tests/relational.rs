@@ -323,7 +323,7 @@ fn make_user(
         bin_name: bin_name,
         email: email,
         age: age,
-        seconds_age: BigInt::from(age) * BigInt::from(31557600 as u64),
+        seconds_age: BigInt::from(age) * BigInt::from(31557600_u64),
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color
@@ -342,7 +342,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         "User",
         "Johnton",
         "tonofjohn@email.com",
-        67 as i32,
+        67_i32,
         184.4,
         false,
         Some("yellow"),
@@ -356,7 +356,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         "User",
         "Cindini",
         "dinici@email.com",
-        43 as i32,
+        43_i32,
         159.1,
         true,
         Some("red"),
@@ -370,7 +370,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
         "User",
         "Shaqueeena",
         "teeko@email.com",
-        28 as i32,
+        28_i32,
         111.7,
         false,
         None,
@@ -999,7 +999,7 @@ impl<'a> QueryChecker<'a> {
             "User",
             "Jono",
             "achangedemail@email.com",
-            67 as i32,
+            67_i32,
             184.4,
             false,
             Some("yellow"),
@@ -1107,7 +1107,7 @@ fn check_block_finds() {
             "User",
             "Johnton",
             "tonofjohn@email.com",
-            67 as i32,
+            67_i32,
             184.4,
             false,
             Some("yellow"),
@@ -1386,20 +1386,20 @@ fn check_find() {
             .check(
                 vec!["1"],
                 user_query()
-                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
+                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["3", "2"],
                 user_query()
-                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
+                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
                     "age".to_owned(),
-                    Value::Int(43 as i32),
+                    Value::Int(43_i32),
                 )),
             )
             .check(
@@ -1407,17 +1407,14 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::GreaterOrEqual(
                         "age".to_owned(),
-                        Value::Int(43 as i32),
+                        Value::Int(43_i32),
                     ))
                     .asc("name"),
             )
             .check(
                 vec!["2", "3"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(50 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .asc("name"),
             )
             .check(
@@ -1425,26 +1422,20 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::LessOrEqual(
                         "age".to_owned(),
-                        Value::Int(43 as i32),
+                        Value::Int(43_i32),
                     ))
                     .asc("name"),
             )
             .check(
                 vec!["3", "2"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(50 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["2"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(67 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(67_i32)))
                     .desc("name")
                     .first(1)
                     .skip(1),
@@ -1454,7 +1445,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::In(
                         "age".to_owned(),
-                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                        vec![Value::Int(67_i32), Value::Int(43_i32)],
                     ))
                     .desc("name")
                     .first(5),
@@ -1464,7 +1455,7 @@ fn check_find() {
                 user_query()
                     .filter(EntityFilter::NotIn(
                         "age".to_owned(),
-                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                        vec![Value::Int(67_i32), Value::Int(43_i32)],
                     ))
                     .desc("name")
                     .first(5),

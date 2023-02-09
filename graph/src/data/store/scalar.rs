@@ -636,7 +636,7 @@ mod test {
     #[test]
     fn bigint_to_from_u64() {
         for n in 0..100 {
-            let u = U64::from(n as u64);
+            let u = U64::from(n);
             let bn = BigInt::from(u);
             assert_eq!(n, bn.to_u64());
         }

@@ -241,7 +241,7 @@ impl StoreResolver {
             let number = self
                 .block_ptr
                 .as_ref()
-                .map(|ptr| r::Value::Int((ptr.ptr.number as i32).into()))
+                .map(|ptr| r::Value::Int(ptr.ptr.number.into()))
                 .unwrap_or(r::Value::Null);
 
             let timestamp = self.block_ptr.as_ref().map(|ptr| {

@@ -2069,7 +2069,7 @@ impl EthereumCallCache for ChainStore {
                 conn,
                 id.as_ref(),
                 contract_address.as_ref(),
-                block.number as i32,
+                block.number,
                 return_value,
             )
         })

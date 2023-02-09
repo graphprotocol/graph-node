@@ -251,7 +251,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     let dst = dst.locate_unique(primary)?.id.0;
 
     let (shard, deployment) = ds::table
-        .filter(ds::id.eq(dst as i32))
+        .filter(ds::id.eq(dst))
         .select((ds::shard, ds::subgraph))
         .get_result::<(Shard, String)>(&pconn)?;
 

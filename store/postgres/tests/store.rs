@@ -189,7 +189,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Johnton",
         "tonofjohn@email.com",
-        67 as i32,
+        67_i32,
         184.4,
         false,
         None,
@@ -208,7 +208,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Cindini",
         "dinici@email.com",
-        43 as i32,
+        43_i32,
         159.1,
         true,
         Some("red"),
@@ -218,7 +218,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Shaqueeena",
         "queensha@email.com",
-        28 as i32,
+        28_i32,
         111.7,
         false,
         Some("blue"),
@@ -237,7 +237,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         USER,
         "Shaqueeena",
         "teeko@email.com",
-        28 as i32,
+        28_i32,
         111.7,
         false,
         None,
@@ -349,7 +349,7 @@ fn get_entity_1() {
             Value::Bytes("Johnton".as_bytes().into()),
         );
         expected_entity.insert("email".to_owned(), "tonofjohn@email.com".into());
-        expected_entity.insert("age".to_owned(), Value::Int(67 as i32));
+        expected_entity.insert("age".to_owned(), Value::Int(67_i32));
         expected_entity.insert(
             "seconds_age".to_owned(),
             Value::BigInt(BigInt::from(2114359200)),
@@ -379,7 +379,7 @@ fn get_entity_3() {
             Value::Bytes("Shaqueeena".as_bytes().into()),
         );
         expected_entity.insert("email".to_owned(), "teeko@email.com".into());
-        expected_entity.insert("age".to_owned(), Value::Int(28 as i32));
+        expected_entity.insert("age".to_owned(), Value::Int(28_i32));
         expected_entity.insert(
             "seconds_age".to_owned(),
             Value::BigInt(BigInt::from(883612800)),
@@ -402,7 +402,7 @@ fn insert_entity() {
             USER,
             "Wanjon",
             "wanawana@email.com",
-            76 as i32,
+            76_i32,
             111.7,
             true,
             Some("green"),
@@ -433,7 +433,7 @@ fn update_existing() {
             USER,
             "Wanjon",
             "wanawana@email.com",
-            76 as i32,
+            76_i32,
             111.7,
             true,
             Some("green"),
@@ -740,20 +740,20 @@ fn find() {
             .check(
                 vec!["1"],
                 user_query()
-                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67 as i32)))
+                    .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["3", "2"],
                 user_query()
-                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67 as i32)))
+                    .filter(EntityFilter::Not("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
                     "age".to_owned(),
-                    Value::Int(43 as i32),
+                    Value::Int(43_i32),
                 )),
             )
             .check(
@@ -761,17 +761,14 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::GreaterOrEqual(
                         "age".to_owned(),
-                        Value::Int(43 as i32),
+                        Value::Int(43_i32),
                     ))
                     .asc("name"),
             )
             .check(
                 vec!["2", "3"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(50 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .asc("name"),
             )
             .check(
@@ -779,26 +776,20 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::LessOrEqual(
                         "age".to_owned(),
-                        Value::Int(43 as i32),
+                        Value::Int(43_i32),
                     ))
                     .asc("name"),
             )
             .check(
                 vec!["3", "2"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(50 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .desc("name"),
             )
             .check(
                 vec!["2"],
                 user_query()
-                    .filter(EntityFilter::LessThan(
-                        "age".to_owned(),
-                        Value::Int(67 as i32),
-                    ))
+                    .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(67_i32)))
                     .desc("name")
                     .first(1)
                     .skip(1),
@@ -808,7 +799,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::In(
                         "age".to_owned(),
-                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                        vec![Value::Int(67_i32), Value::Int(43_i32)],
                     ))
                     .desc("name")
                     .first(5),
@@ -818,7 +809,7 @@ fn find() {
                 user_query()
                     .filter(EntityFilter::NotIn(
                         "age".to_owned(),
-                        vec![Value::Int(67 as i32), Value::Int(43 as i32)],
+                        vec![Value::Int(67_i32), Value::Int(43_i32)],
                     ))
                     .desc("name")
                     .first(5),
@@ -1420,7 +1411,7 @@ fn throttle_subscription_delivers() {
             USER,
             "Steve",
             "nieve@email.com",
-            72 as i32,
+            72_i32,
             120.7,
             false,
             None,
@@ -1465,7 +1456,7 @@ fn throttle_subscription_throttles() {
             USER,
             "Steve",
             "nieve@email.com",
-            72 as i32,
+            72_i32,
             120.7,
             false,
             None,
