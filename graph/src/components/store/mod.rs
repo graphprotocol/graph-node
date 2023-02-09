@@ -204,15 +204,11 @@ impl fmt::Display for EntityFilter {
             LessThan(a, v) => write!(f, "{a} < {v}"),
             GreaterOrEqual(a, v) => write!(f, "{a} >= {v}"),
             LessOrEqual(a, v) => write!(f, "{a} <= {v}"),
-            In(a, vs) => write!(
-                f,
-                "{a} in ({})",
-                vs.into_iter().map(|v| v.to_string()).join(",")
-            ),
+            In(a, vs) => write!(f, "{a} in ({})", vs.iter().map(|v| v.to_string()).join(",")),
             NotIn(a, vs) => write!(
                 f,
                 "{a} not in ({})",
-                vs.into_iter().map(|v| v.to_string()).join(",")
+                vs.iter().map(|v| v.to_string()).join(",")
             ),
             Contains(a, v) => write!(f, "{a} ~ *{v}*"),
             ContainsNoCase(a, v) => write!(f, "{a} ~ *{v}*i"),

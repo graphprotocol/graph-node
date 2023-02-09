@@ -25,7 +25,7 @@ async fn block_ptr(
     let chains = deployments.iter().map(|d| &d.chain).collect::<HashSet<_>>();
     if chains.len() > 1 {
         let names = searches
-            .into_iter()
+            .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
             .join(", ");

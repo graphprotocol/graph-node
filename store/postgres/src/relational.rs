@@ -756,7 +756,7 @@ impl Layout {
         let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             let ids = entities
-                .into_iter()
+                .iter_mut()
                 .map(|(key, _)| key.entity_id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");

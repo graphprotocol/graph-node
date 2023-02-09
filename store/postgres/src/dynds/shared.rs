@@ -115,7 +115,7 @@ pub(super) fn insert(
     }
 
     let dds: Vec<_> = data_sources
-        .into_iter()
+        .iter()
         .map(|ds| {
             let StoredDynamicDataSource {
                 manifest_idx: _,

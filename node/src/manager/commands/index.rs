@@ -115,7 +115,7 @@ pub async fn list(
             } => {
                 let unique = if *unique { " unique" } else { "" };
                 let start = format!("{unique} using {method}");
-                let columns = columns.into_iter().map(|c| c.to_string()).join(", ");
+                let columns = columns.iter().map(|c| c.to_string()).join(", ");
 
                 term.green()?;
                 if index.is_default_index() {

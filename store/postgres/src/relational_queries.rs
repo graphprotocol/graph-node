@@ -2443,12 +2443,8 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                     }
                     TableLink::Parent(_, ParentIds::List(css)) => {
                         let css = css
-                            .into_iter()
-                            .map(|cs| {
-                                cs.into_iter()
-                                    .filter_map(|c| c.as_ref().map(|s| &s.0))
-                                    .join(",")
-                            })
+                            .iter()
+                            .map(|cs| cs.iter().filter_map(|c| c.as_ref().map(|s| &s.0)).join(","))
                             .join("],[");
                         write!(f, "uniq:id=[{}]", css)?
                     }

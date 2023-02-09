@@ -2037,7 +2037,7 @@ fn check_musicians_at(query0: &str, block_var: r::Value, expected: Expected, qid
     run_query((query0, block_var), move |result, id_type| {
         match &expected {
             Ok(ids) => {
-                let ids: Vec<_> = ids.into_iter().map(|id| object! { id: *id }).collect();
+                let ids: Vec<_> = ids.iter().map(|id| object! { id: *id }).collect();
                 let expected = Some(object_value(vec![("musicians", r::Value::List(ids))]));
                 let data = match result.to_result() {
                     Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),

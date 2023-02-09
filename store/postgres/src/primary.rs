@@ -1273,7 +1273,7 @@ impl<'a> Connection<'a> {
         // Any shards that have no deployments in them will not be in
         // 'used'; add them in with a count of 0
         let missing = shards
-            .into_iter()
+            .iter()
             .filter(|shard| !used.iter().any(|(s, _)| s == shard.as_str()))
             .map(|shard| (shard.as_str(), 0));
 
@@ -1557,7 +1557,7 @@ impl Mirror {
             .expect("we always have a primary pool")
             .clone();
         let pools = pools
-            .into_iter()
+            .iter()
             .filter(|(shard, _)| *shard != &*PRIMARY_SHARD)
             .fold(vec![primary], |mut pools, (_, pool)| {
                 pools.push(pool.clone());

@@ -294,7 +294,7 @@ impl Display for CreateIndex {
                 cond,
                 with,
             } => {
-                let columns = columns.into_iter().map(|c| c.to_string()).join(", ");
+                let columns = columns.iter().map(|c| c.to_string()).join(", ");
                 let unique = if *unique { "[uq]" } else { "" };
                 write!(f, "{name}{unique} {method}({columns})")?;
                 if let Some(cond) = cond {
@@ -543,7 +543,7 @@ impl CreateIndex {
                 let unique = if *unique { "unique " } else { "" };
                 let concurrent = if concurrent { "concurrently " } else { "" };
                 let if_not_exists = if if_not_exists { "if not exists " } else { "" };
-                let columns = columns.into_iter().map(|c| c.to_sql()).join(", ");
+                let columns = columns.iter().map(|c| c.to_sql()).join(", ");
 
                 let mut sql = format!("create {unique}index {concurrent}{if_not_exists}{name} on {nsp}.{table} using {method} ({columns})");
                 if let Some(with) = with {
@@ -631,7 +631,7 @@ fn parse() {
                 columns,
                 cond,
             } = p;
-            let columns: Vec<_> = columns.into_iter().map(|c| Expr::from(c)).collect();
+            let columns: Vec<_> = columns.iter().map(|c| Expr::from(c)).collect();
             let cond = cond.map(Cond::from);
             CreateIndex::Parsed {
                 unique,
