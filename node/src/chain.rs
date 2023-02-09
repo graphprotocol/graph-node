@@ -353,10 +353,9 @@ where
                     ProviderNetworkStatus::Broken { chain_id, provider } => {
                         firehose_networks.remove(&chain_id, &provider)
                     }
-                    ProviderNetworkStatus::Version { chain_id, ident } => networks
-                        .entry(chain_id)
-                        .or_default()
-                        .push(ident),
+                    ProviderNetworkStatus::Version { chain_id, ident } => {
+                        networks.entry(chain_id).or_default().push(ident)
+                    }
                 }
                 networks
             });

@@ -195,12 +195,7 @@ where
     assert!(fd.file.len() == 1);
     assert!(fd.file[0].has_name());
 
-    let file_name = file_path
-        .as_ref()
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap();
+    let file_name = file_path.as_ref().file_name().unwrap().to_str().unwrap();
     assert!(fd.file[0].name() == file_name);
 
     let ret_val = fd

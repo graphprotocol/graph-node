@@ -230,9 +230,7 @@ impl fmt::Display for EntityFilter {
             Child(child /* a, et, cf, _ */) => write!(
                 f,
                 "join on {} with {}({})",
-                child.attr,
-                child.entity_type,
-                child.filter
+                child.attr, child.entity_type, child.filter
             ),
         }
     }

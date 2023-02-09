@@ -73,9 +73,7 @@ fn read_expensive_queries(
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",
-                        expensive_queries_filename,
-                        e,
-                        line
+                        expensive_queries_filename, e, line
                     );
                     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
                 })?

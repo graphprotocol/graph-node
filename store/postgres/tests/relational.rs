@@ -745,13 +745,7 @@ fn delete() {
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
-            .delete(
-                &conn,
-                &entity_type,
-                &entity_keys,
-                1,
-                &MOCK_STOPWATCH,
-            )
+            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
@@ -872,11 +866,7 @@ fn conflicting_entity() {
 
         // Chairs are not pets
         let chair = EntityType::from("Chair");
-        let result = layout.conflicting_entity(
-            &conn,
-            &id.to_string(),
-            vec![dog, ferret, chair],
-        );
+        let result = layout.conflicting_entity(&conn, &id.to_string(), vec![dog, ferret, chair]);
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
     }
