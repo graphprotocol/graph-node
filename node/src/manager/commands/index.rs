@@ -193,7 +193,7 @@ pub async fn drop(
 ) -> Result<(), anyhow::Error> {
     let deployment_locator = search.locate_unique(&pool)?;
     store
-        .drop_index_for_deployment(&deployment_locator, &index_name)
+        .drop_index_for_deployment(&deployment_locator, index_name)
         .await?;
     println!("Dropped index {index_name}");
     Ok(())

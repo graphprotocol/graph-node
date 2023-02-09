@@ -156,11 +156,11 @@ impl<C: AscType> AscPtr<C> {
             ((gc_info.len() + gc_info2.len() + rt_id.len() + rt_size.len() + full_length) as u32)
                 .to_le_bytes();
 
-        header.extend(&mm_info);
-        header.extend(&gc_info);
-        header.extend(&gc_info2);
-        header.extend(&rt_id);
-        header.extend(&rt_size);
+        header.extend(mm_info);
+        header.extend(gc_info);
+        header.extend(gc_info2);
+        header.extend(rt_id);
+        header.extend(rt_size);
 
         Ok(header)
     }

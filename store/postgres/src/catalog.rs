@@ -451,7 +451,7 @@ pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<
           where ts.deployment = $1",
         src_nsp = src_nsp
     );
-    Ok(sql_query(&query)
+    Ok(sql_query(query)
         .bind::<Integer, _>(src.id)
         .bind::<Integer, _>(dst.id)
         .execute(conn)?)
@@ -641,7 +641,7 @@ pub(crate) fn drop_index(
     index_name: &str,
 ) -> Result<(), StoreError> {
     let query = format!("drop index concurrently {schema_name}.{index_name}");
-    sql_query(&query)
+    sql_query(query)
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(index_name)
         .execute(conn)

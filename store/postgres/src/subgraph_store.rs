@@ -961,7 +961,7 @@ impl SubgraphStoreInner {
         block_number: BlockNumber,
         block_store: Arc<impl BlockStore>,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
 
         let chain_store = match block_store.chain_store(&site.network) {
             Some(chain_store) => chain_store,

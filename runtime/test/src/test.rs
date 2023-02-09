@@ -451,7 +451,7 @@ async fn run_ipfs_map(
         let _runtime_guard = runtime.enter();
 
         let (mut module, _, _) = graph::block_on(test_valid_module_and_store(
-            &subgraph_id,
+            subgraph_id,
             mock_data_source(
                 &wasm_file_path("ipfs_map.wasm", api_version.clone()),
                 api_version.clone(),

@@ -814,7 +814,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         //
         // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
         //   uv <= st <=> u < s || u = s && uv <= st
-        let large = self.kind.is_large(&self.text).map_err(|()| {
+        let large = self.kind.is_large(self.text).map_err(|()| {
             constraint_violation!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
                 self.column.name(),
@@ -1064,7 +1064,7 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(" and ");
 
         // Match by block
-        BlockRangeColumn::new(&child_table, child_prefix, self.block).contains(&mut out)?;
+        BlockRangeColumn::new(child_table, child_prefix, self.block).contains(&mut out)?;
 
         out.push_sql(" and ");
 
@@ -1143,7 +1143,7 @@ impl<'a> QueryFilter<'a> {
                 out.push_sql("position(");
                 out.push_bind_param::<Binary, _>(&b.as_slice())?;
                 out.push_sql(" in ");
-                out.push_sql(&self.table_prefix);
+                out.push_sql(self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
                 if negated {
                     out.push_sql(") = 0")
@@ -1154,11 +1154,11 @@ impl<'a> QueryFilter<'a> {
             Value::List(_) => {
                 if negated {
                     out.push_sql(" not ");
-                    out.push_sql(&self.table_prefix);
+                    out.push_sql(self.table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" && ");
                 } else {
-                    out.push_sql(&self.table_prefix);
+                    out.push_sql(self.table_prefix);
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" @> ");
                 }
@@ -1204,12 +1204,12 @@ impl<'a> QueryFilter<'a> {
         } else if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else if column.is_fulltext() {
-            out.push_sql(&self.table_prefix);
+            out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(Comparison::Match.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
         } else {
-            out.push_sql(&self.table_prefix);
+            out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             QueryValue(value, &column.column_type).walk_ast(out)?;
@@ -1229,7 +1229,7 @@ impl<'a> QueryFilter<'a> {
         if column.use_prefix_comparison {
             PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
         } else {
-            out.push_sql(&self.table_prefix);
+            out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
             match value {
@@ -1285,7 +1285,7 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_nulls {
-            out.push_sql(&self.table_prefix);
+            out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             if negated {
                 out.push_sql(" is not null");
@@ -1314,7 +1314,7 @@ impl<'a> QueryFilter<'a> {
                 // is happening here
                 PrefixType::new(column)?.push_column_prefix(&mut out)?;
             } else {
-                out.push_sql(&self.table_prefix);
+                out.push_sql(self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
             }
             if negated {
@@ -1359,7 +1359,7 @@ impl<'a> QueryFilter<'a> {
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
-        out.push_sql(&self.table_prefix);
+        out.push_sql(self.table_prefix);
         out.push_identifier(column.name.as_str())?;
         out.push_sql(op);
         match value {
@@ -1875,7 +1875,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
-            table.primary_key().bind_id(&self.entity_id, &mut out)?;
+            table.primary_key().bind_id(self.entity_id, &mut out)?;
         }
         Ok(())
     }
@@ -2069,7 +2069,7 @@ impl<'a> FilterWindow<'a> {
         }
 
         let query_filter = entity_filter
-            .map(|filter| QueryFilter::new(&filter, table, layout, block))
+            .map(|filter| QueryFilter::new(filter, table, layout, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
         Ok(FilterWindow {
@@ -3527,9 +3527,9 @@ impl<'a> SortKey<'a> {
                 ChildKey::Single(child) => {
                     add(
                         block,
-                        &child.child_table,
-                        &child.child_join_column,
-                        &child.parent_join_column,
+                        child.child_table,
+                        child.child_join_column,
+                        child.parent_join_column,
                         &child.prefix,
                         out,
                     )?;
@@ -3538,9 +3538,9 @@ impl<'a> SortKey<'a> {
                     for child in children.iter() {
                         add(
                             block,
-                            &child.child_table,
-                            &child.child_join_column,
-                            &child.parent_join_column,
+                            child.child_table,
+                            child.child_join_column,
+                            child.parent_join_column,
                             &child.prefix,
                             out,
                         )?;
@@ -3550,9 +3550,9 @@ impl<'a> SortKey<'a> {
                     for child in children.iter() {
                         add(
                             block,
-                            &child.child_table,
-                            &child.child_join_column,
-                            &child.parent_join_column,
+                            child.child_table,
+                            child.child_join_column,
+                            child.parent_join_column,
                             &child.prefix,
                             out,
                         )?;
@@ -3561,9 +3561,9 @@ impl<'a> SortKey<'a> {
                 ChildKey::IdAsc(child, _) | ChildKey::IdDesc(child, _) => {
                     add(
                         block,
-                        &child.child_table,
-                        &child.child_join_column,
-                        &child.parent_join_column,
+                        child.child_table,
+                        child.child_join_column,
+                        child.parent_join_column,
                         &child.prefix,
                         out,
                     )?;
@@ -3681,7 +3681,7 @@ impl<'a> FilterQuery<'a> {
         self.sort_key.add_child(self.block, &mut out)?;
 
         out.push_sql("\n where ");
-        BlockRangeColumn::new(&table, "c.", self.block).contains(&mut out)?;
+        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -3738,7 +3738,7 @@ impl<'a> FilterQuery<'a> {
         window: &FilterWindow,
         mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
-        Self::select_entity_and_data(&window.table, &mut out);
+        Self::select_entity_and_data(window.table, &mut out);
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as g$parent_id");
         window.children(
@@ -3862,7 +3862,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
         // windows always has at least 2 entries
-        windows[0].parent_type().bind_ids(&parent_ids, &mut out)?;
+        windows[0].parent_type().bind_ids(parent_ids, &mut out)?;
         out.push_sql(") as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {

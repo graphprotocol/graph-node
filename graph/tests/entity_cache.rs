@@ -49,7 +49,7 @@ impl MockStore {
 
 impl ReadStore for MockStore {
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        Ok(self.get_many_res.get(&key).cloned())
+        Ok(self.get_many_res.get(key).cloned())
     }
 
     fn get_many(

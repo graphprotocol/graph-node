@@ -233,7 +233,7 @@ fn insert_entity_at(
     );
     let inserted = layout
         .insert(
-            &conn,
+            conn,
             &entity_type,
             &mut entities_with_keys,
             block,
@@ -274,7 +274,7 @@ fn update_entity_at(
 
     let updated = layout
         .update(
-            &conn,
+            conn,
             &entity_type,
             &mut entities_with_keys,
             block,
@@ -427,7 +427,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).unwrap();
 
-    Layout::create_relational_schema(&conn, Arc::new(site), &schema, BTreeSet::new())
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .expect("Failed to create relational schema")
 }
 
@@ -491,7 +491,7 @@ where
 #[test]
 fn find() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Happy path: find existing entity
         let entity = layout
@@ -534,8 +534,8 @@ fn find() {
 fn insert_null_fulltext_fields() {
     run_test(|conn, layout| {
         insert_entity(
-            &conn,
-            &layout,
+            conn,
+            layout,
             "NullableStrings",
             vec![EMPTY_NULLABLESTRINGS_ENTITY.clone()],
         );
@@ -556,7 +556,7 @@ fn insert_null_fulltext_fields() {
 #[test]
 fn update() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -568,7 +568,7 @@ fn update() {
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(&key, Cow::from(&entity))];
         layout
-            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -592,8 +592,8 @@ fn update_many() {
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three");
         insert_entity(
-            &conn,
-            &layout,
+            conn,
+            layout,
             "Scalar",
             vec![one.clone(), two.clone(), three.clone()],
         );
@@ -626,7 +626,7 @@ fn update_many() {
             .collect();
 
         layout
-            .update(&conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -681,7 +681,7 @@ fn update_many() {
 #[test]
 fn serialize_bigdecimal() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -695,7 +695,7 @@ fn serialize_bigdecimal() {
             let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout
                 .update(
-                    &conn,
+                    conn,
                     &entity_type,
                     entities.as_mut_slice(),
                     0,
@@ -726,7 +726,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         .filter(filter);
     query.range.first = None;
     layout
-        .query::<Entity>(&LOGGER, &conn, query)
+        .query::<Entity>(&LOGGER, conn, query)
         .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
@@ -735,17 +735,17 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
 #[test]
 fn delete() {
     run_test(|conn, layout| {
-        insert_entity(&conn, &layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two");
-        insert_entity(&conn, &layout, "Scalar", vec![two]);
+        insert_entity(conn, layout, "Scalar", vec![two]);
 
         // Delete where nothing is getting deleted
         let key = EntityKey::data("Scalar".to_owned(), "no such entity".to_owned());
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key.entity_id.as_str()];
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
@@ -757,7 +757,7 @@ fn delete() {
             .expect("Failed to update key");
 
         let count = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
@@ -772,7 +772,7 @@ fn insert_many_and_delete_many() {
         two.set("id", "two");
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three");
-        insert_entity(&conn, &layout, "Scalar", vec![one, two, three]);
+        insert_entity(conn, layout, "Scalar", vec![one, two, three]);
 
         // confidence test: there should be 3 scalar entities in store right now
         assert_eq!(3, count_scalar_entities(conn, layout));
@@ -781,7 +781,7 @@ fn insert_many_and_delete_many() {
         let entity_type = EntityType::from("Scalar");
         let entity_keys = vec!["two", "three"];
         let num_removed = layout
-            .delete(&conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));
@@ -806,7 +806,7 @@ async fn layout_cache() {
 
             // Without an entry, account_like is false
             let layout = cache
-                .get(&LOGGER, &conn, site.clone())
+                .get(&LOGGER, conn, site.clone())
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(false, table.is_account_like);
@@ -817,7 +817,7 @@ async fn layout_cache() {
 
             // Flip account_like to true
             let layout = cache
-                .get(&LOGGER, &conn, site.clone())
+                .get(&LOGGER, conn, site.clone())
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(true, table.is_account_like);
@@ -828,7 +828,7 @@ async fn layout_cache() {
             sleep(Duration::from_millis(50));
 
             let layout = cache
-                .get(&LOGGER, &conn, site)
+                .get(&LOGGER, conn, site)
                 .expect("we can get the layout");
             let table = layout.table(&table_name).unwrap();
             assert_eq!(false, table.is_account_like);
@@ -850,23 +850,23 @@ fn conflicting_entity() {
         let mut fred = Entity::new();
         fred.set("id", id.clone());
         fred.set("name", Value::String(id.to_string()));
-        insert_entity(&conn, &layout, cat.as_str(), vec![fred]);
+        insert_entity(conn, layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_string(), vec![cat.clone(), ferret.clone()])
+            .conflicting_entity(conn, &id.to_string(), vec![cat.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(Some(cat.to_string()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
         let conflict = layout
-            .conflicting_entity(&conn, &id.to_string(), vec![dog.clone(), ferret.clone()])
+            .conflicting_entity(conn, &id.to_string(), vec![dog.clone(), ferret.clone()])
             .unwrap();
         assert_eq!(None, conflict);
 
         // Chairs are not pets
         let chair = EntityType::from("Chair");
-        let result = layout.conflicting_entity(&conn, &id.to_string(), vec![dog, ferret, chair]);
+        let result = layout.conflicting_entity(conn, &id.to_string(), vec![dog, ferret, chair]);
         assert!(result.is_err());
         assert_eq!("unknown table 'Chair'", result.err().unwrap().to_string());
     }
@@ -1666,7 +1666,7 @@ impl<'a> FilterChecker<'a> {
 
         let entities = self
             .layout
-            .query::<Entity>(&LOGGER, &self.conn, query)
+            .query::<Entity>(&LOGGER, self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 

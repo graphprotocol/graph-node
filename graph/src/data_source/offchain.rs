@@ -154,7 +154,7 @@ impl DataSource {
             .context
             .as_ref()
             .as_ref()
-            .map(|ctx| serde_json::to_value(&ctx).unwrap());
+            .map(|ctx| serde_json::to_value(ctx).unwrap());
 
         StoredDynamicDataSource {
             manifest_idx: self.manifest_idx,

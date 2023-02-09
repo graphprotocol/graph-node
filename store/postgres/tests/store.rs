@@ -315,7 +315,7 @@ fn delete_entity() {
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
 
-        let count = get_entity_count(store.clone(), &&deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash);
         transact_and_wait(
             &store.subgraph_store(),
             &deployment,
@@ -326,10 +326,7 @@ fn delete_entity() {
         )
         .await
         .unwrap();
-        assert_eq!(
-            count,
-            get_entity_count(store.clone(), &&deployment.hash) + 1
-        );
+        assert_eq!(count, get_entity_count(store.clone(), &deployment.hash) + 1);
 
         // Check that that the deleted entity id is not present
         assert!(writable.get(&entity_key).unwrap().is_none());
@@ -410,7 +407,7 @@ fn insert_entity() {
             true,
             Some("green"),
         );
-        let count = get_entity_count(store.clone(), &&deployment.hash);
+        let count = get_entity_count(store.clone(), &deployment.hash);
         transact_and_wait(
             &store.subgraph_store(),
             &deployment,
@@ -956,7 +953,7 @@ async fn check_events(
         .take_while(|event| {
             let mut expected = expected.lock().unwrap();
             for change in &event.changes {
-                if !expected.remove(&change) {
+                if !expected.remove(change) {
                     extra.lock().unwrap().insert(change.clone());
                 }
             }
@@ -1008,7 +1005,7 @@ async fn check_basic_revert(
     assert_eq!(&deployment.hash, &state.id);
 
     // Revert block 3
-    revert_block(&store, &deployment, &TEST_BLOCK_1_PTR).await;
+    revert_block(&store, deployment, &TEST_BLOCK_1_PTR).await;
 
     let returned_entities = store
         .subgraph_store()

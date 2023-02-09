@@ -81,7 +81,7 @@ impl EntityTypeAccess {
 impl<C: Blockchain> DataSource<C> {
     pub fn as_onchain(&self) -> Option<&C::DataSource> {
         match self {
-            Self::Onchain(ds) => Some(&ds),
+            Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
         }
     }
@@ -89,7 +89,7 @@ impl<C: Blockchain> DataSource<C> {
     pub fn as_offchain(&self) -> Option<&offchain::DataSource> {
         match self {
             Self::Onchain(_) => None,
-            Self::Offchain(ds) => Some(&ds),
+            Self::Offchain(ds) => Some(ds),
         }
     }
 
@@ -260,7 +260,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
     pub fn as_offchain(&self) -> Option<&offchain::DataSourceTemplate> {
         match self {
             Self::Onchain(_) => None,
-            Self::Offchain(t) => Some(&t),
+            Self::Offchain(t) => Some(t),
         }
     }
 

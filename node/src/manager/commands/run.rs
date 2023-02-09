@@ -32,7 +32,7 @@ use graph_core::{
 };
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
-    let mut locators = store.locators(&hash)?;
+    let mut locators = store.locators(hash)?;
     match locators.len() {
         0 => bail!("could not find subgraph {hash} we just created"),
         1 => Ok(locators.pop().unwrap()),

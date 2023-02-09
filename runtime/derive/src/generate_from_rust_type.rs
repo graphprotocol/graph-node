@@ -73,7 +73,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let is_required = is_required(f, &required_flds);
 
             let setter =
-                if is_nullable(&f) {
+                if is_nullable(f) {
                     if is_required{
                         let type_nm = format!("\"{}\"", name).parse::<proc_macro2::TokenStream>().unwrap();
                         let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();

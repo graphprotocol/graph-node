@@ -54,7 +54,7 @@ impl IntoValue for PublicProofOfIndexingResult {
                 number: self.block.number,
                 hash: self.block.hash.map(|hash| hash.hash_hex()),
             },
-            proofOfIndexing: self.proof_of_indexing.map(|poi| format!("0x{}", hex::encode(&poi))),
+            proofOfIndexing: self.proof_of_indexing.map(|poi| format!("0x{}", hex::encode(poi))),
         }
     }
 }
@@ -389,7 +389,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .store
             .get_proof_of_indexing(&deployment_id, &indexer, block.clone());
         let poi = match futures::executor::block_on(poi_fut) {
-            Ok(Some(poi)) => r::Value::String(format!("0x{}", hex::encode(&poi))),
+            Ok(Some(poi)) => r::Value::String(format!("0x{}", hex::encode(poi))),
             Ok(None) => r::Value::Null,
             Err(e) => {
                 error!(

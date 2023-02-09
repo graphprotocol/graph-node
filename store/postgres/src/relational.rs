@@ -687,7 +687,7 @@ impl Layout {
             FilterCollection::new(self, query.collection, query.filter.as_ref(), query.block)?;
         let query = FilterQuery::new(
             &filter_collection,
-            &self,
+            self,
             query.filter.as_ref(),
             query.order,
             query.range,
@@ -1276,7 +1276,7 @@ impl Table {
         let other = Table {
             object: self.object.clone(),
             name: name.clone(),
-            qualified_name: SqlName::qualified_name(namespace, &name),
+            qualified_name: SqlName::qualified_name(namespace, name),
             columns: self.columns.clone(),
             is_account_like: self.is_account_like,
             position: self.position,

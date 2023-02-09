@@ -323,7 +323,7 @@ fn update() {
         let actual = layout
             .find(
                 conn,
-                &EntityKey::data(THING.as_str(), &entity_id),
+                &EntityKey::data(THING.as_str(), entity_id),
                 BLOCK_NUMBER_MAX,
             )
             .expect("Failed to read Thing[deadbeef]")

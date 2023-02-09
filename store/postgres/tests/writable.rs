@@ -120,13 +120,13 @@ async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentL
 }
 
 async fn pause_writer(deployment: &DeploymentLocator) {
-    flush(&deployment).await.unwrap();
+    flush(deployment).await.unwrap();
     writable::allow_steps(0).await;
 }
 
 async fn resume_writer(deployment: &DeploymentLocator, steps: usize) {
     writable::allow_steps(steps).await;
-    flush(&deployment).await.unwrap();
+    flush(deployment).await.unwrap();
 }
 
 #[test]

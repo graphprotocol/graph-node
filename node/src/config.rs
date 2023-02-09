@@ -111,7 +111,7 @@ impl Config {
             ));
         }
         for (key, shard) in self.stores.iter_mut() {
-            shard.validate(&key)?;
+            shard.validate(key)?;
         }
         self.deployment.validate()?;
 
@@ -167,7 +167,7 @@ impl Config {
     }
 
     pub fn from_str(config: &str, node: &str) -> Result<Config> {
-        let mut config: Config = toml::from_str(&config)?;
+        let mut config: Config = toml::from_str(config)?;
         config.node = NodeId::new(node).map_err(|()| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
@@ -270,11 +270,11 @@ impl Shard {
             .as_ref()
             .expect("validation checked that postgres_url is set");
         let pool_size = PoolSize::Fixed(opt.store_connection_pool_size);
-        pool_size.validate(is_primary, &postgres_url)?;
+        pool_size.validate(is_primary, postgres_url)?;
         let mut replicas = BTreeMap::new();
         for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
             let replica = Replica {
-                connection: replace_host(&postgres_url, &host),
+                connection: replace_host(postgres_url, host),
                 weight: opt.postgres_host_weights.get(i + 1).cloned().unwrap_or(1),
                 pool_size: pool_size.clone(),
             };

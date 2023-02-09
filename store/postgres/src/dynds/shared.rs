@@ -213,7 +213,7 @@ pub(crate) fn copy(
         src_nsp = src_nsp
     );
 
-    Ok(sql_query(&query)
+    Ok(sql_query(query)
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
         .bind::<Integer, _>(target_block)

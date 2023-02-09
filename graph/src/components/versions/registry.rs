@@ -28,12 +28,12 @@ pub struct ApiVersion {
 
 impl ApiVersion {
     pub fn new(version_requirement: &VersionReq) -> Result<Self, String> {
-        let version = Self::resolve(&version_requirement)?;
+        let version = Self::resolve(version_requirement)?;
 
         Ok(Self {
             version: version.clone(),
             features: VERSION_COLLECTION
-                .get(&version)
+                .get(version)
                 .expect(format!("Version {:?} is not supported", version).as_str())
                 .to_vec(),
         })

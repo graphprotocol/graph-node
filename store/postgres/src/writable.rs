@@ -853,7 +853,7 @@ impl Writer {
                 &block_ptr_to,
                 &firehose_cursor,
                 &mods,
-                &stopwatch,
+                stopwatch,
                 &data_sources,
                 &deterministic_errors,
                 &manifest_idx_and_name,

@@ -108,7 +108,7 @@ pub async fn create(
 
     let chain_store = store
         .block_store()
-        .chain_store(&network)
+        .chain_store(network)
         .ok_or_else(|| anyhow!("could not find chain store for network {}", network))?;
     let mut hashes = chain_store.block_hashes_by_block_number(src_number)?;
     let hash = match hashes.len() {
@@ -248,7 +248,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
     let pconn = primary.get()?;
-    let dst = dst.locate_unique(&primary)?.id.0;
+    let dst = dst.locate_unique(primary)?.id.0;
 
     let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst as i32))

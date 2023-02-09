@@ -194,7 +194,7 @@ impl ValidModule {
             .unwrap(); // Safe because this only panics if size passed is 0.
 
         let engine = &wasmtime::Engine::new(&config)?;
-        let module = wasmtime::Module::from_binary(&engine, &raw_module)?;
+        let module = wasmtime::Module::from_binary(engine, &raw_module)?;
 
         let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
 

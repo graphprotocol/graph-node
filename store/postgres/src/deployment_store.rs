@@ -687,7 +687,7 @@ impl DeploymentStore {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
         let tables = entity
-            .map(|entity| resolve_table_name(&layout, &entity))
+            .map(|entity| resolve_table_name(&layout, entity))
             .transpose()?
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
@@ -719,7 +719,7 @@ impl DeploymentStore {
         let layout = self.layout(&conn, site.clone())?;
 
         let tables = entity
-            .map(|entity| resolve_table_name(&layout, &entity))
+            .map(|entity| resolve_table_name(&layout, entity))
             .transpose()?
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
@@ -1048,7 +1048,7 @@ impl DeploymentStore {
     ) -> Result<Option<Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
-        layout.find(&conn, &key, block)
+        layout.find(&conn, key, block)
     }
 
     /// Retrieve all the entities matching `ids_for_type`, both the type and causality region, from
@@ -1544,7 +1544,7 @@ impl DeploymentStore {
                     warn!(self.logger, "Subgraph error does not have same block hash as deployment head";
                         "subgraph_id" => deployment_id,
                         "error_id" => &subgraph_error.id,
-                        "error_block_hash" => format!("0x{}", hex::encode(&hash_bytes)),
+                        "error_block_hash" => format!("0x{}", hex::encode(hash_bytes)),
                         "deployment_head" => format!("{}", current_ptr.hash),
                     );
 

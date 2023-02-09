@@ -347,7 +347,7 @@ async fn insert_test_entities(
 
         test_store::transact_and_wait(
             &STORE.subgraph_store(),
-            &deployment,
+            deployment,
             block_ptr,
             insert_ops.collect::<Vec<_>>(),
         )
@@ -2154,7 +2154,7 @@ fn query_detects_reorg() {
     async fn query_at(deployment: &DeploymentLocator, block: i32) -> QueryResult {
         let query =
             format!("query {{ musician(id: \"m1\", block: {{ number: {block} }}) {{ id }} }}");
-        execute_query(&deployment, &query).await
+        execute_query(deployment, &query).await
     }
 
     run_test_sequentially(|store| async move {

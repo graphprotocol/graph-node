@@ -475,7 +475,7 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
     );
 
     // Run codegen.
-    run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
+    run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
 
     // Run `deploy` for the side effect of uploading to IPFS, the graph node url
     // is fake and the actual deploy call is meant to fail.

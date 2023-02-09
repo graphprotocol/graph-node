@@ -71,7 +71,7 @@ impl StoreBuilder {
         }));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
+            logger,
             registry.cheap_clone(),
             primary_shard.connection.to_owned(),
         ));

@@ -40,7 +40,7 @@ pub struct Strings(Vec<String>);
 
 impl fmt::Display for Strings {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let s = (&self.0).join(", ");
+        let s = self.0.join(", ");
         write!(f, "{}", s)
     }
 }

@@ -267,7 +267,7 @@ fn decode_value(value: &crate::codec::value::Typed) -> Result<Value, MappingErro
             Ok(Value::String(string))
         }
 
-        Typed::Bytes(new_value) => base64::decode(&new_value)
+        Typed::Bytes(new_value) => base64::decode(new_value)
             .map(|bs| Value::Bytes(Bytes::from(bs.as_ref())))
             .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
 

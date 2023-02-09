@@ -1215,7 +1215,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         };
 
         debug!(logger, "eth_call";
-            "address" => hex::encode(&call.address),
+            "address" => hex::encode(call.address),
             "data" => hex::encode(&call_data)
         );
 

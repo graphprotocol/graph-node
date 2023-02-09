@@ -362,7 +362,7 @@ impl CreateIndex {
             )
             .unwrap();
 
-            let cap = rx.captures(&defn)?;
+            let cap = rx.captures(defn)?;
             let unique = cap.name("unique").is_some();
             let name = field(&cap, "name")?;
             let nsp = field(&cap, "nsp")?;
