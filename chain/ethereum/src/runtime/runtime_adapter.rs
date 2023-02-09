@@ -43,13 +43,10 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
     fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
         let abis = ds.mapping.abis.clone();
         let call_cache = self.call_cache.cheap_clone();
-        let eth_adapter = self
-            .eth_adapters
-            .cheapest_with(&NodeCapabilities {
-                archive: ds.mapping.requires_archive()?,
-                traces: false,
-            })?
-            .cheap_clone();
+        let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
+            archive: ds.mapping.requires_archive()?,
+            traces: false,
+        }))?;
 
         let ethereum_call = HostFn {
             name: "ethereum.call",

@@ -27,6 +27,7 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }
 base64 = "0.20.0"
+graph-mock = { path = "../../mock" }
 
 [build-dependencies]
 tonic-build = { workspace = true }

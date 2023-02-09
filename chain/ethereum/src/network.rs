@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, bail, Context};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::rand::{self, seq::IteratorRandom};
 use std::cmp::Ordering;
@@ -23,12 +23,26 @@ pub struct EthereumNetworkAdapter {
     limit: usize,
 }
 
-#[derive(Clone)]
+impl EthereumNetworkAdapter {
+    fn is_call_only(&self) -> bool {
+        self.adapter.is_call_only()
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct EthereumNetworkAdapters {
     pub adapters: Vec<EthereumNetworkAdapter>,
+    pub call_only_adapters: Vec<EthereumNetworkAdapter>,
 }
 
 impl EthereumNetworkAdapters {
+    pub fn push_adapter(&mut self, adapter: EthereumNetworkAdapter) {
+        if adapter.is_call_only() {
+            self.call_only_adapters.push(adapter);
+        } else {
+            self.adapters.push(adapter);
+        }
+    }
     pub fn all_cheapest_with(
         &self,
         required_capabilities: &NodeCapabilities,
@@ -73,6 +87,42 @@ impl EthereumNetworkAdapters {
         self.adapters
             .retain(|adapter| adapter.adapter.provider() != provider);
     }
+
+    pub fn call_or_cheapest(
+        &self,
+        capabilities: Option<&NodeCapabilities>,
+    ) -> anyhow::Result<Arc<EthereumAdapter>> {
+        match self.call_only_adapter()? {
+            Some(adapter) => Ok(adapter),
+            None => self.cheapest_with(capabilities.unwrap_or(&NodeCapabilities {
+                // Archive is required for call_only
+                archive: true,
+                traces: false,
+            })),
+        }
+    }
+
+    pub fn call_only_adapter(&self) -> anyhow::Result<Option<Arc<EthereumAdapter>>> {
+        if self.call_only_adapters.is_empty() {
+            return Ok(None);
+        }
+
+        let adapters = self
+            .call_only_adapters
+            .iter()
+            .min_by_key(|x| Arc::strong_count(&x.adapter))
+            .ok_or(anyhow!("no available call only endpoints"))?;
+
+        // TODO: This will probably blow up a lot sooner than [limit] amount of
+        // subgraphs, since we probably use a few instances.
+        if Arc::strong_count(&adapters.adapter) >= adapters.limit {
+            bail!("call only adapter has reached the concurrency limit");
+        }
+
+        // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
+        // which could cause a high number of endpoints to be given away before accounting for them.
+        Ok(Some(adapters.adapter.clone()))
+    }
 }
 
 #[derive(Clone)]
@@ -97,8 +147,9 @@ impl EthereumNetworks {
         let network_adapters = self
             .networks
             .entry(name)
-            .or_insert(EthereumNetworkAdapters { adapters: vec![] });
-        network_adapters.adapters.push(EthereumNetworkAdapter {
+            .or_insert(EthereumNetworkAdapters::default());
+
+        network_adapters.push_adapter(EthereumNetworkAdapter {
             capabilities,
             adapter,
             limit,
@@ -160,6 +211,14 @@ impl EthereumNetworks {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use graph::{prelude::MetricsRegistry, tokio, url::Url};
+    use graph_mock::MockMetricsRegistry;
+    use http::HeaderMap;
+
+    use crate::{EthereumAdapter, EthereumNetworks, ProviderEthRpcMetrics, Transport};
+
     use super::NodeCapabilities;
 
     #[test]
@@ -215,5 +274,105 @@ mod tests {
         assert_eq!(false, &full_traces >= &archive_traces);
         assert_eq!(true, &full_traces >= &full);
         assert_eq!(true, &full_traces >= &full_traces);
+    }
+
+    #[tokio::test]
+    async fn adapter_selector_selects_eth_call() {
+        let chain = "mainnet".to_string();
+        let logger = graph::log::logger(true);
+        let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
+        let transport =
+            Transport::new_rpc(Url::parse("http://127.0.0.1").unwrap(), HeaderMap::new());
+        let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
+
+        let eth_call_adapter = Arc::new(
+            EthereumAdapter::new(
+                logger.clone(),
+                String::new(),
+                "http://127.0.0.1",
+                transport.clone(),
+                provider_metrics.clone(),
+                true,
+                true,
+            )
+            .await,
+        );
+
+        let eth_adapter = Arc::new(
+            EthereumAdapter::new(
+                logger.clone(),
+                String::new(),
+                "http://127.0.0.1",
+                transport.clone(),
+                provider_metrics.clone(),
+                true,
+                false,
+            )
+            .await,
+        );
+
+        let mut adapters = {
+            let mut ethereum_networks = EthereumNetworks::new();
+            ethereum_networks.insert(
+                chain.clone(),
+                NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                },
+                eth_call_adapter.clone(),
+                3,
+            );
+            ethereum_networks.insert(
+                chain.clone(),
+                NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                },
+                eth_adapter.clone(),
+                3,
+            );
+            ethereum_networks.networks.get(&chain).unwrap().clone()
+        };
+        // one reference above and one inside adapters struct
+        assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
+        assert_eq!(Arc::strong_count(&eth_adapter), 2);
+
+        {
+            // Not Found
+            assert!(adapters
+                .cheapest_with(&NodeCapabilities {
+                    archive: false,
+                    traces: true,
+                })
+                .is_err());
+
+            // Check cheapest is not call only
+            let adapter = adapters
+                .cheapest_with(&NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                })
+                .unwrap();
+            assert_eq!(adapter.is_call_only(), false);
+        }
+
+        // Check limits
+        {
+            let adapter = adapters.call_or_cheapest(None).unwrap();
+            assert!(adapter.is_call_only());
+            assert!(adapters.call_or_cheapest(None).is_err());
+        }
+
+        // Check empty falls back to call only
+        {
+            adapters.call_only_adapters = vec![];
+            let adapter = adapters
+                .call_or_cheapest(Some(&NodeCapabilities {
+                    archive: true,
+                    traces: false,
+                }))
+                .unwrap();
+            assert_eq!(adapter.is_call_only(), false);
+        }
     }
 }

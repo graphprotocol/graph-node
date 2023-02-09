@@ -548,6 +548,7 @@ pub enum ProviderDetails {
     Firehose(FirehoseProvider),
     Web3(Web3Provider),
     Substreams(FirehoseProvider),
+    Web3Call(Web3Provider),
 }
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";
@@ -687,7 +688,7 @@ impl Provider {
                 }
             }
 
-            ProviderDetails::Web3(ref mut web3) => {
+            ProviderDetails::Web3Call(ref mut web3) | ProviderDetails::Web3(ref mut web3) => {
                 for feature in &web3.features {
                     if !PROVIDER_FEATURES.contains(&feature.as_str()) {
                         return Err(anyhow!(
@@ -1622,5 +1623,30 @@ mod tests {
         d.push(path);
 
         read_to_string(&d).expect(&format!("resource {:?} not found", &d))
+    }
+
+    #[test]
+    fn it_works_on_web3call_provider_without_transport_from_toml() {
+        let actual = toml::from_str(
+            r#"
+            label = "peering"
+            details = { type = "web3call", url = "http://localhost:8545", features = [] }
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            Provider {
+                label: "peering".to_owned(),
+                details: ProviderDetails::Web3Call(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features: BTreeSet::new(),
+                    headers: HeaderMap::new(),
+                    rules: Vec::new(),
+                }),
+            },
+            actual
+        );
     }
 }

@@ -2,7 +2,7 @@ use crate::config::{Config, ProviderDetails};
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::{join_all, try_join_all};
 use futures::TryFutureExt;
-use graph::anyhow::Error;
+use graph::anyhow::{bail, Error};
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
@@ -424,44 +424,52 @@ pub async fn create_ethereum_networks_for_chain(
         .ok_or_else(|| anyhow!("unknown network {}", network_name))?;
 
     for provider in &chain.providers {
-        if let ProviderDetails::Web3(web3) = &provider.details {
-            let capabilities = web3.node_capabilities();
+        let (web3, call_only) = match &provider.details {
+            ProviderDetails::Web3Call(web3) => (web3, true),
+            ProviderDetails::Web3(web3) => (web3, false),
+            _ => continue,
+        };
 
-            let logger = logger.new(o!("provider" => provider.label.clone()));
-            info!(
-                logger,
-                "Creating transport";
-                "url" => &web3.url,
-                "capabilities" => capabilities
-            );
-
-            use crate::config::Transport::*;
-
-            let transport = match web3.transport {
-                Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
-                Ipc => Transport::new_ipc(&web3.url).await,
-                Ws => Transport::new_ws(&web3.url).await,
-            };
-
-            let supports_eip_1898 = !web3.features.contains("no_eip1898");
-
-            parsed_networks.insert(
-                network_name.to_string(),
-                capabilities,
-                Arc::new(
-                    graph_chain_ethereum::EthereumAdapter::new(
-                        logger,
-                        provider.label.clone(),
-                        &web3.url,
-                        transport,
-                        eth_rpc_metrics.clone(),
-                        supports_eip_1898,
-                    )
-                    .await,
-                ),
-                web3.limit_for(&config.node),
-            );
+        let capabilities = web3.node_capabilities();
+        if call_only && !capabilities.archive {
+            bail!("Ethereum call-only adapters require archive features to be enabled");
         }
+
+        let logger = logger.new(o!("provider" => provider.label.clone()));
+        info!(
+            logger,
+            "Creating transport";
+            "url" => &web3.url,
+            "capabilities" => capabilities
+        );
+
+        use crate::config::Transport::*;
+
+        let transport = match web3.transport {
+            Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
+            Ipc => Transport::new_ipc(&web3.url).await,
+            Ws => Transport::new_ws(&web3.url).await,
+        };
+
+        let supports_eip_1898 = !web3.features.contains("no_eip1898");
+
+        parsed_networks.insert(
+            network_name.to_string(),
+            capabilities,
+            Arc::new(
+                graph_chain_ethereum::EthereumAdapter::new(
+                    logger,
+                    provider.label.clone(),
+                    &web3.url,
+                    transport,
+                    eth_rpc_metrics.clone(),
+                    supports_eip_1898,
+                    call_only,
+                )
+                .await,
+            ),
+            web3.limit_for(&config.node),
+        );
     }
 
     parsed_networks.sort();
@@ -523,6 +531,7 @@ mod test {
             archive: true,
             traces: false,
         };
+
         let has_mainnet_with_traces = ethereum_networks
             .adapter_with_capabilities("mainnet".to_string(), &traces)
             .is_ok();
