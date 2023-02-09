@@ -1,7 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    firehose::SUBGRAPHS_PER_CONN,
+    firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info,
@@ -476,7 +476,7 @@ impl ChainSection {
                         url: url.to_string(),
                         features,
                         headers: Default::default(),
-                        rules: Vec::new(),
+                        rules: vec![],
                     }),
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
@@ -573,14 +573,27 @@ pub struct FirehoseProvider {
 }
 
 impl FirehoseProvider {
-    pub fn limit_for(&self, node: &NodeId) -> Option<usize> {
-        self.rules.iter().find_map(|r| r.limit_for(node))
+    pub fn limit_for(&self, node: &NodeId) -> SubgraphLimit {
+        self.rules.limit_for(node)
     }
     pub fn filters_enabled(&self) -> bool {
         self.features.contains(FIREHOSE_FILTER_FEATURE)
     }
     pub fn compression_enabled(&self) -> bool {
         self.features.contains(FIREHOSE_COMPRESSION_FEATURE)
+    }
+}
+
+pub trait Web3Rules {
+    fn limit_for(&self, node: &NodeId) -> SubgraphLimit;
+}
+
+impl Web3Rules for Vec<Web3Rule> {
+    fn limit_for(&self, node: &NodeId) -> SubgraphLimit {
+        self.iter()
+            .map(|rule| rule.limit_for(node))
+            .max()
+            .unwrap_or(SubgraphLimit::Unlimited)
     }
 }
 
@@ -598,10 +611,16 @@ impl PartialEq for Web3Rule {
 }
 
 impl Web3Rule {
-    fn limit_for(&self, node: &NodeId) -> Option<usize> {
+    fn limit_for(&self, node: &NodeId) -> SubgraphLimit {
         match self.name.find(node.as_str()) {
-            Some(m) if m.as_str() == node.as_str() => Some(self.limit),
-            _ => None,
+            Some(m) if m.as_str() == node.as_str() => {
+                if self.limit == 0 {
+                    SubgraphLimit::Disabled
+                } else {
+                    SubgraphLimit::Limit(self.limit)
+                }
+            }
+            _ => SubgraphLimit::Disabled,
         }
     }
 }
@@ -633,11 +652,8 @@ impl Web3Provider {
         }
     }
 
-    pub fn limit_for(&self, node: &NodeId) -> usize {
-        self.rules
-            .iter()
-            .find_map(|l| l.limit_for(node))
-            .unwrap_or(usize::MAX)
+    pub fn limit_for(&self, node: &NodeId) -> SubgraphLimit {
+        self.rules.limit_for(node)
     }
 }
 
@@ -1125,6 +1141,7 @@ mod tests {
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
+    use graph::firehose::SubgraphLimit;
     use graph::prelude::regex::Regex;
     use graph::prelude::NodeId;
     use http::{HeaderMap, HeaderValue};
@@ -1597,7 +1614,7 @@ mod tests {
 
     #[test]
     fn it_parses_web3_provider_rules() {
-        fn limit_for(node: &str) -> usize {
+        fn limit_for(node: &str) -> SubgraphLimit {
             let prov = toml::from_str::<Web3Provider>(
                 r#"
             label = "something"
@@ -1612,11 +1629,29 @@ mod tests {
             prov.limit_for(&NodeId::new(node.to_string()).unwrap())
         }
 
-        assert_eq!(10, limit_for("some_node_0"));
-        assert_eq!(0, limit_for("other_node_0"));
-        assert_eq!(usize::MAX, limit_for("default"));
+        assert_eq!(SubgraphLimit::Limit(10), limit_for("some_node_0"));
+        assert_eq!(SubgraphLimit::Disabled, limit_for("other_node_0"));
+        assert_eq!(SubgraphLimit::Disabled, limit_for("default"));
     }
 
+    #[test]
+    fn it_parses_web3_default_empty_unlimited() {
+        fn limit_for(node: &str) -> SubgraphLimit {
+            let prov = toml::from_str::<Web3Provider>(
+                r#"
+            label = "something"
+            url = "http://example.com"
+            features = []
+            match = []
+        "#,
+            )
+            .unwrap();
+
+            prov.limit_for(&NodeId::new(node.to_string()).unwrap())
+        }
+
+        assert_eq!(SubgraphLimit::Unlimited, limit_for("other_node_0"));
+    }
     fn read_resource_as_string<P: AsRef<Path>>(path: P) -> String {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("resources/tests");
@@ -1648,5 +1683,11 @@ mod tests {
             },
             actual
         );
+    }
+
+    #[test]
+    fn web3rules_have_the_right_order() {
+        assert!(SubgraphLimit::Unlimited > SubgraphLimit::Limit(10));
+        assert!(SubgraphLimit::Limit(10) > SubgraphLimit::Disabled);
     }
 }

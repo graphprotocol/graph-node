@@ -169,11 +169,6 @@ pub fn create_firehose_networks(
                     "Configuring firehose endpoint";
                     "provider" => &provider.label,
                 );
-                let subgraph_limit = match firehose.limit_for(&config.node) {
-                    Some(limit) if limit == 0 => SubgraphLimit::Unlimited,
-                    Some(limit) => SubgraphLimit::Limit(limit),
-                    None => SubgraphLimit::NoTraffic,
-                };
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
@@ -194,7 +189,7 @@ pub fn create_firehose_networks(
                             firehose.token.clone(),
                             firehose.filters_enabled(),
                             firehose.compression_enabled(),
-                            subgraph_limit.clone(),
+                            firehose.limit_for(&config.node),
                         )),
                     );
                 }

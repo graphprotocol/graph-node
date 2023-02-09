@@ -151,9 +151,14 @@ approximate and can differ from the true number by a small amount
 (generally less than 10)
 
 The limit is set through rules that match on the node name. If a node's
-name does not match any rule, the corresponding provider can be used for an
-unlimited number of subgraphs. It is recommended that at least one provider
-is generally unlimited. The limit is set in the following way:
+name does not match any rule, the corresponding provider will be disabled 
+for that node. 
+
+If the match property is omitted then the provider will be unlimited on every
+node. 
+
+It is recommended that at least one provider is generally unlimited. 
+The limit is set in the following way:
 
 ```toml
 [chains.mainnet]
@@ -169,8 +174,7 @@ provider = [
 Nodes named `some_node_.*` will use `mainnet-1` for at most 10 subgraphs,
 and `mainnet-0` for everything else, nodes named `other_node_.*` will never
 use `mainnet-1` and always `mainnet-0`. Any node whose name does not match
-one of these patterns will use `mainnet-0` and `mainnet-1` for an unlimited
-number of subgraphs.
+one of these patterns will not be able to use and `mainnet-1`. 
 
 ## Controlling Deployment
 
