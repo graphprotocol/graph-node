@@ -986,7 +986,7 @@ impl ColumnType {
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
-        if let Some(values) = enums.get(&*name) {
+        if let Some(values) = enums.get(name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
             let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
@@ -1363,7 +1363,7 @@ fn named_type(field_type: &q::Type) -> &str {
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
 
-    !enums.contains_key(&*name) && !ValueType::is_scalar(name)
+    !enums.contains_key(name) && !ValueType::is_scalar(name)
 }
 
 #[derive(Clone)]

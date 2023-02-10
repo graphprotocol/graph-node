@@ -1659,7 +1659,7 @@ impl Mirror {
         for table_name in PUBLIC_TABLES {
             copy_table(
                 conn,
-                &*ForeignServer::PRIMARY_PUBLIC,
+                ForeignServer::PRIMARY_PUBLIC,
                 NAMESPACE_PUBLIC,
                 table_name,
             )?;
