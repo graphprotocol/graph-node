@@ -23,7 +23,7 @@ async fn listen(
         .inspect(move |event| {
             serde_json::to_writer_pretty(std::io::stdout(), event)
                 .expect("event can be serialized to JSON");
-            writeln!(std::io::stdout(), "").unwrap();
+            writeln!(std::io::stdout()).unwrap();
             std::io::stdout().flush().unwrap();
         })
         .collect()

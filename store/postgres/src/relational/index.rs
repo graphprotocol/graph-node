@@ -303,7 +303,7 @@ impl Display for CreateIndex {
                 if let Some(with) = with {
                     write!(f, " with {with}")?;
                 }
-                writeln!(f, "")?;
+                writeln!(f)?;
             }
         }
         Ok(())
