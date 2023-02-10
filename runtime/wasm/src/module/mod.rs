@@ -11,7 +11,7 @@ use anyhow::anyhow;
 use anyhow::Error;
 use never::Never;
 use semver::Version;
-use wasmtime::{Memory, Trap};
+use wasmtime::{Memory, Store, Trap};
 
 use graph::blockchain::{Blockchain, HostFnCtx};
 use graph::data::store;
@@ -230,7 +230,7 @@ impl<C: Blockchain> WasmInstance<C> {
                 ))));
             }
             Err(trap) => {
-                use wasmtime::TrapCode::*;
+                use wasmtime_environ::Trap::*;
                 let trap_code = trap.trap_code();
                 let e = Error::from(trap);
                 match trap_code {
@@ -775,6 +775,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
         experimental_features: ExperimentalFeatures,
     ) -> Result<Self, anyhow::Error> {
+        let mut store = Store::default();
         // Provide access to the WASM runtime linear memory
         let memory = instance
             .get_memory("memory")
@@ -795,9 +796,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             version if *version <= Version::new(0, 0, 4) => None,
             _ => Some(
                 instance
-                    .get_func("id_of_type")
+                    .get_typed_func::<u32, u32>(valid_module.store(), "id_of_type")
                     .context("`id_of_type` function not found")?
-                    .typed()?
                     .clone(),
             ),
         };
@@ -820,7 +820,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     }
 
     pub fn from_caller(
-        caller: wasmtime::Caller,
+        caller: wasmtime::Caller<()>,
         ctx: MappingContext<C>,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
