@@ -1449,7 +1449,7 @@ pub(crate) async fn blocks_with_triggers(
 
     // Make sure `to` is included, even if empty.
     block_hashes.insert(to_hash);
-    triggers_by_block.entry(to).or_insert(Vec::new());
+    triggers_by_block.entry(to).or_default();
 
     let logger2 = logger.cheap_clone();
 

@@ -18,7 +18,7 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
         entity_count,
         ..
     } = deployment;
-    let subgraphs = subgraphs.unwrap_or(vec![]).join(", ");
+    let subgraphs = subgraphs.unwrap_or_default().join(", ");
 
     list.append(vec![
         id.to_string(),

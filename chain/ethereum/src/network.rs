@@ -155,10 +155,7 @@ impl EthereumNetworks {
         adapter: Arc<EthereumAdapter>,
         limit: SubgraphLimit,
     ) {
-        let network_adapters = self
-            .networks
-            .entry(name)
-            .or_insert(EthereumNetworkAdapters::default());
+        let network_adapters = self.networks.entry(name).or_default();
 
         network_adapters.push_adapter(EthereumNetworkAdapter {
             capabilities,

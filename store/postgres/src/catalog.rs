@@ -405,7 +405,7 @@ pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>,
         .select((ts::table_name, ts::is_account_like))
         .get_results::<(String, Option<bool>)>(conn)
         .optional()?
-        .unwrap_or(vec![])
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|(name, account_like)| {
             if account_like == Some(true) {
