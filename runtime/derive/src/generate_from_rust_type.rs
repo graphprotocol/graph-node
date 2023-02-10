@@ -197,7 +197,7 @@ fn field_type(fld: &syn::Field) -> String {
 
 fn is_required(fld: &syn::Field, req_list: &[String]) -> bool {
     let fld_name = fld.ident.as_ref().unwrap().to_string();
-    req_list.iter().find(|r| *r == &fld_name).is_some()
+    req_list.iter().any(|r| r == &fld_name)
 }
 
 fn is_nullable(fld: &syn::Field) -> bool {
