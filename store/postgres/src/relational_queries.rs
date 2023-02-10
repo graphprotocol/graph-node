@@ -1301,8 +1301,8 @@ impl<'a> QueryFilter<'a> {
         if have_non_nulls {
             if column.use_prefix_comparison
                 && values.iter().all(|v| match v {
-                    Value::String(s) => s.len() <= STRING_PREFIX_SIZE - 1,
-                    Value::Bytes(b) => b.len() <= BYTE_ARRAY_PREFIX_SIZE - 1,
+                    Value::String(s) => s.len() < STRING_PREFIX_SIZE,
+                    Value::Bytes(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
                     _ => false,
                 })
             {
