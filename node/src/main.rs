@@ -184,7 +184,7 @@ async fn main() {
         .elasticsearch_url
         .clone()
         .map(|endpoint| ElasticLoggingConfig {
-            endpoint: endpoint,
+            endpoint,
             username: opt.elasticsearch_user.clone(),
             password: opt.elasticsearch_password.clone(),
             client: reqwest::Client::new(),

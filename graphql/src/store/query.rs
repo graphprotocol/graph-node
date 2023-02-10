@@ -448,7 +448,7 @@ fn build_child_filter_from_object(
                     };
 
                     Ok(EntityFilter::Child(Child {
-                        attr: attr,
+                        attr,
                         entity_type: EntityType::new(child_entity.name().to_string()),
                         filter: filter.clone(),
                         derived,
