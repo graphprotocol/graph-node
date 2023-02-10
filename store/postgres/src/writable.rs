@@ -786,10 +786,7 @@ impl Queue {
                 } => {
                     if tracker.visible(block_ptr) {
                         dds.extend(data_sources.clone());
-                        dds = dds
-                            .into_iter()
-                            .filter(|dds| !processed_data_sources.contains(dds))
-                            .collect();
+                        dds.retain(|dds| !processed_data_sources.contains(dds));
                     }
                 }
                 Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }

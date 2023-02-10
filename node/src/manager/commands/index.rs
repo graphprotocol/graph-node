@@ -150,16 +150,10 @@ pub async fn list(
             .indexes_for_entity(&deployment_locator, entity_name)
             .await?;
         if no_attribute_indexes {
-            indexes = indexes
-                .into_iter()
-                .filter(|idx| !idx.is_attribute_index())
-                .collect();
+            indexes.retain(|idx| !idx.is_attribute_index());
         }
         if no_default_indexes {
-            indexes = indexes
-                .into_iter()
-                .filter(|idx| !idx.is_default_index())
-                .collect();
+            indexes.retain(|idx| !idx.is_default_index());
         }
         indexes
     };
