@@ -26,10 +26,9 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
-        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError,
-        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphDeploymentEntity,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -977,7 +976,7 @@ impl SubgraphStoreInner {
         }
 
         // This `unwrap` is safe to do now
-        let block_hash = BlockHash::from(hashes.pop().unwrap());
+        let block_hash = hashes.pop().unwrap();
 
         let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
         let indexer = Some(Address::zero());

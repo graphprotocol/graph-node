@@ -3885,8 +3885,7 @@ impl<'a> FilterQuery<'a> {
                     &window.column_names,
                 )
             })
-            .enumerate()
-            .into_iter();
+            .enumerate();
 
         for (i, window) in unique_child_tables {
             if i > 0 {

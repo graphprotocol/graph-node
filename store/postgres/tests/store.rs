@@ -1397,7 +1397,7 @@ fn throttle_subscription_delivers() {
                 store
                     .clone()
                     .query_store(
-                        QueryTarget::Deployment(deployment.hash.clone().into(), Default::default()),
+                        QueryTarget::Deployment(deployment.hash.clone(), Default::default()),
                         true,
                     )
                     .await

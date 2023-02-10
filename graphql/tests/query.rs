@@ -1561,7 +1561,7 @@ fn instant_timeout() {
         match first_result(
             execute_subgraph_query_with_deadline(
                 query,
-                QueryTarget::Deployment(deployment.hash.into(), Default::default()),
+                QueryTarget::Deployment(deployment.hash, Default::default()),
                 Some(Instant::now()),
             )
             .await,
@@ -2578,7 +2578,7 @@ fn trace_works() {
 
         let result = execute_subgraph_query(
             query,
-            QueryTarget::Deployment(deployment.hash.into(), Default::default()),
+            QueryTarget::Deployment(deployment.hash, Default::default()),
         )
         .await;
 
