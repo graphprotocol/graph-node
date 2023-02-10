@@ -841,7 +841,7 @@ impl<'de> Deserialize<'de> for Provider {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &[
+        const FIELDS: &[&str] = &[
             "label",
             "details",
             "transport",
