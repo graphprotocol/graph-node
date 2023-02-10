@@ -113,7 +113,7 @@ where
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));
         loop {
             match self.chain_store.clone().chain_head_cursor() {
-                Ok(cursor) => return cursor.unwrap_or_else(|| "".to_string()),
+                Ok(cursor) => return cursor.unwrap_or_default(),
                 Err(e) => {
                     error!(self.logger, "Fetching chain head cursor failed: {:#}", e);
 
