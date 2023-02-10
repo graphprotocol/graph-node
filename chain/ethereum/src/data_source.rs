@@ -364,7 +364,7 @@ impl DataSource {
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| handler.filter == None)
+                .find(move |handler| handler.filter.is_none())
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .mapping
