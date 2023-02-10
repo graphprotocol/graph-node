@@ -832,7 +832,7 @@ impl<'de> Deserialize<'de> for Provider {
                         transport: transport.unwrap_or(Transport::Rpc),
                         features: features
                             .ok_or_else(|| serde::de::Error::missing_field("features"))?,
-                        headers: headers.unwrap_or_else(|| HeaderMap::new()),
+                        headers: headers.unwrap_or_else(HeaderMap::new),
                         rules: nodes,
                     }),
                 };

@@ -622,7 +622,7 @@ fn update_many() {
         let entities_vec = vec![one, two, three];
         let mut entities: Vec<(&EntityKey, Cow<'_, Entity>)> = keys
             .iter()
-            .zip(entities_vec.iter().map(|e| Cow::Borrowed(e)))
+            .zip(entities_vec.iter().map(Cow::Borrowed))
             .collect();
 
         layout

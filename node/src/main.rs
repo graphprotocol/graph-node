@@ -270,7 +270,7 @@ async fn main() {
             &logger,
             firehose_networks_by_kind
                 .remove(&BlockchainKind::Arweave)
-                .unwrap_or_else(|| FirehoseNetworks::new()),
+                .unwrap_or_else(FirehoseNetworks::new),
         )
         .await;
 
@@ -282,7 +282,7 @@ async fn main() {
                 &logger,
                 firehose_networks_by_kind
                     .remove(&BlockchainKind::Near)
-                    .unwrap_or_else(|| FirehoseNetworks::new()),
+                    .unwrap_or_else(FirehoseNetworks::new),
             )
             .await;
 
@@ -290,7 +290,7 @@ async fn main() {
             &logger,
             firehose_networks_by_kind
                 .remove(&BlockchainKind::Cosmos)
-                .unwrap_or_else(|| FirehoseNetworks::new()),
+                .unwrap_or_else(FirehoseNetworks::new),
         )
         .await;
 
@@ -701,7 +701,7 @@ fn ethereum_networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let firehose_endpoints = firehose_networks
                 .and_then(|v| v.networks.get(network_name))
-                .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
+                .map_or_else(FirehoseEndpoints::new, |v| v.clone());
 
             let client = Arc::new(ChainClient::<graph_chain_ethereum::Chain>::new(
                 firehose_endpoints,

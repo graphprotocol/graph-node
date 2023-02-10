@@ -808,10 +808,7 @@ impl DeploymentStore {
             let indexes =
                 catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
                     .map_err(StoreError::from)?;
-            Ok(indexes
-                .into_iter()
-                .map(|defn| CreateIndex::parse(defn))
-                .collect())
+            Ok(indexes.into_iter().map(CreateIndex::parse).collect())
         })
         .await
     }

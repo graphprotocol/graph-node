@@ -83,7 +83,7 @@ pub async fn run(
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);
     let firehose_endpoints = firehose_networks
         .and_then(|v| v.networks.get(&network_name))
-        .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
+        .map_or_else(FirehoseEndpoints::new, |v| v.clone());
 
     let eth_adapters = match eth_networks.networks.get(&network_name) {
         Some(adapters) => adapters.clone(),

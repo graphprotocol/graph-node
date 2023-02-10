@@ -126,7 +126,7 @@ pub fn create_substreams_networks(
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
-                    .or_insert_with(|| FirehoseNetworks::new());
+                    .or_insert_with(FirehoseNetworks::new);
 
                 for i in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
@@ -172,7 +172,7 @@ pub fn create_firehose_networks(
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
-                    .or_insert_with(|| FirehoseNetworks::new());
+                    .or_insert_with(FirehoseNetworks::new);
 
                 // Create n FirehoseEndpoints where n is the size of the pool. If a
                 // subgraph limit is defined for this endpoint then each endpoint
@@ -400,7 +400,7 @@ pub async fn create_all_ethereum_networks(
             a.extend(b);
             a
         })
-        .unwrap_or_else(|| EthereumNetworks::new()))
+        .unwrap_or_else(EthereumNetworks::new))
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.

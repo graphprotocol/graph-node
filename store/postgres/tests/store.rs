@@ -931,9 +931,7 @@ async fn check_events(
         })
     }
 
-    let expected = Mutex::new(as_set(
-        expected.into_iter().map(|event| Arc::new(event)).collect(),
-    ));
+    let expected = Mutex::new(as_set(expected.into_iter().map(Arc::new).collect()));
     // Capture extra changes here; this is only needed for debugging, really.
     // It's permissible that we get more changes than we expected because of
     // how store events group changes together

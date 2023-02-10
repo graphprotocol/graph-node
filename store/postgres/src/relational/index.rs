@@ -229,7 +229,7 @@ impl Cond {
             caps.name("number")
                 .map(|number| number.as_str())
                 .and_then(|number| number.parse::<BlockNumber>().ok())
-                .map(|number| Cond::Partial(number))
+                .map(Cond::Partial)
         }
 
         if &cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
@@ -631,7 +631,7 @@ fn parse() {
                 columns,
                 cond,
             } = p;
-            let columns: Vec<_> = columns.iter().map(|c| Expr::from(c)).collect();
+            let columns: Vec<_> = columns.iter().map(Expr::from).collect();
             let cond = cond.map(Cond::from);
             CreateIndex::Parsed {
                 unique,
