@@ -102,7 +102,7 @@ impl From<&FieldDescriptorProto> for Field {
         let options = fd.options.unknown_fields();
 
         let type_name = if let Some(type_name) = fd.type_name.as_ref() {
-            type_name.to_owned()
+            type_name.clone()
         } else if let Type::TYPE_BYTES = fd.type_() {
             "Vec<u8>".to_owned()
         } else {

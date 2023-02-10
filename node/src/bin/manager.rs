@@ -766,7 +766,7 @@ impl Context {
 
         Arc::new(SubscriptionManager::new(
             self.logger.clone(),
-            primary.connection.to_owned(),
+            primary.connection.clone(),
             self.registry.clone(),
         ))
     }

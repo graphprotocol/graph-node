@@ -1348,7 +1348,7 @@ impl Schema {
             .get_object_type_definitions()
             .iter()
             .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
-            .map(|t| t.name.to_owned())
+            .map(|t| t.name.clone())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
             Ok(())
@@ -1367,7 +1367,7 @@ impl Schema {
             reason: &str,
         ) -> SchemaValidationError {
             SchemaValidationError::InvalidDerivedFrom(
-                object_type.name.to_owned(),
+                object_type.name.clone(),
                 field_name.to_owned(),
                 reason.to_owned(),
             )

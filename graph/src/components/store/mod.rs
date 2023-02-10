@@ -63,13 +63,13 @@ impl fmt::Display for EntityType {
 
 impl<'a> From<&s::ObjectType<'a, String>> for EntityType {
     fn from(object_type: &s::ObjectType<'a, String>) -> Self {
-        EntityType::new(object_type.name.to_owned())
+        EntityType::new(object_type.name.clone())
     }
 }
 
 impl<'a> From<&s::InterfaceType<'a, String>> for EntityType {
     fn from(interface_type: &s::InterfaceType<'a, String>) -> Self {
-        EntityType::new(interface_type.name.to_owned())
+        EntityType::new(interface_type.name.clone())
     }
 }
 
@@ -547,15 +547,15 @@ impl EntityQuery {
                     if let EntityLink::Direct(attribute, _) = &window.link {
                         let filter = match attribute {
                             WindowAttribute::Scalar(name) => {
-                                EntityFilter::Equal(name.to_owned(), id.into())
+                                EntityFilter::Equal(name.clone(), id.into())
                             }
                             WindowAttribute::List(name) => {
-                                EntityFilter::Contains(name.to_owned(), Value::from(vec![id]))
+                                EntityFilter::Contains(name.clone(), Value::from(vec![id]))
                             }
                         };
                         self.filter = Some(filter.and_maybe(self.filter));
                         self.collection = EntityCollection::All(vec![(
-                            window.child_type.to_owned(),
+                            window.child_type.clone(),
                             window.column_names.clone(),
                         )]);
                     }

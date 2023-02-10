@@ -252,7 +252,7 @@ impl Layout {
                             enum_type
                                 .values
                                 .iter()
-                                .map(|value| value.name.to_owned())
+                                .map(|value| value.name.clone())
                                 .collect::<BTreeSet<_>>(),
                         ),
                     ))
@@ -288,7 +288,7 @@ impl Layout {
                         // they have a String `id` field
                         // see also: id-type-for-unimplemented-interfaces
                         let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
-                        Ok((interface.to_owned(), id_type))
+                        Ok((interface.clone(), id_type))
                     }
                 })
         });

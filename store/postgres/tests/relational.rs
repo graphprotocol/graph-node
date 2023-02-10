@@ -1024,7 +1024,7 @@ impl<'a> QueryChecker<'a> {
         let mut entity_ids: Vec<_> = entities
             .into_iter()
             .map(|entity| match entity.get("id") {
-                Some(Value::String(id)) => id.to_owned(),
+                Some(Value::String(id)) => id.clone(),
                 Some(_) => panic!("layout.query returned entity with non-string ID attribute"),
                 None => panic!("layout.query returned entity with no ID attribute"),
             })
@@ -1664,7 +1664,7 @@ impl<'a> FilterChecker<'a> {
         let entity_ids: Vec<_> = entities
             .into_iter()
             .map(|entity| match entity.get("id") {
-                Some(Value::String(id)) => id.to_owned(),
+                Some(Value::String(id)) => id.clone(),
                 Some(_) => panic!("layout.query returned entity with non-string ID attribute"),
                 None => panic!("layout.query returned entity with no ID attribute"),
             })

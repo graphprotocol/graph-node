@@ -177,7 +177,7 @@ impl Node {
     fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(r::Value::String(s)) => Ok(s.to_owned()),
+            Some(r::Value::String(s)) => Ok(s.clone()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
@@ -442,7 +442,7 @@ impl<'a> Join<'a> {
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
                 let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
-                let child_type: EntityType = cond.child_type.to_owned();
+                let child_type: EntityType = cond.child_type.clone();
                 let column_names = match column_names_map.get(&child_type) {
                     Some(column_names) => column_names.clone(),
                     None => AttributeNames::All,
@@ -687,7 +687,7 @@ fn fetch(
     query.logger = Some(ctx.logger.cheap_clone());
     if let Some(r::Value::String(id)) = field.argument_value(ARG_ID.as_str()) {
         query.filter = Some(
-            EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.to_owned()))
+            EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
                 .and_maybe(query.filter),
         );
     }

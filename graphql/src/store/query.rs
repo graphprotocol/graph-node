@@ -545,7 +545,7 @@ fn build_order_by(
                     QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
                 })?;
                 sast::get_field_value_type(&field.field_type)
-                    .map(|value_type| Some((name.to_owned(), value_type, None)))
+                    .map(|value_type| Some((name.clone(), value_type, None)))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
                             entity.name().to_owned(),
@@ -622,7 +622,7 @@ fn build_order_by(
                 };
 
                 sast::get_field_value_type(&child_field.field_type)
-                    .map(|value_type| Some((child_field_name.to_owned(), value_type, Some(child))))
+                    .map(|value_type| Some((child_field_name.clone(), value_type, Some(child))))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
                             child_entity.name().to_owned(),
@@ -719,7 +719,7 @@ pub(crate) fn collect_entities_from_query_field(
                         // Obtain the subgraph ID from the object type
                         if let Ok(subgraph_id) = parse_subgraph_id(object_type) {
                             // Add the (subgraph_id, entity_name) tuple to the result set
-                            entities.insert((subgraph_id, object_type.name.to_owned()));
+                            entities.insert((subgraph_id, object_type.name.clone()));
                         }
                     }
 

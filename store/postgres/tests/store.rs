@@ -539,7 +539,7 @@ impl QueryChecker {
         let entity_ids: Vec<_> = entities
             .into_iter()
             .map(|entity| match entity.get("id") {
-                Some(Value::String(id)) => id.to_owned(),
+                Some(Value::String(id)) => id.clone(),
                 Some(_) => panic!("store.find returned entity with non-string ID attribute"),
                 None => panic!("store.find returned entity with no ID attribute"),
             })
@@ -1326,8 +1326,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey::data(USER.to_owned(), id.to_owned()),
-                    data: data.to_owned(),
+                    key: EntityKey::data(USER.to_owned(), id.clone()),
+                    data: data.clone(),
                 })
                 .collect(),
         )
@@ -1809,7 +1809,7 @@ impl WindowQuery {
             .expect("store.find failed to execute query")
             .into_iter()
             .map(|entity| match entity.get("id") {
-                Some(Value::String(id)) => id.to_owned(),
+                Some(Value::String(id)) => id.clone(),
                 Some(_) => panic!("store.find returned entity with non-string ID attribute"),
                 None => panic!("store.find returned entity with no ID attribute"),
             })

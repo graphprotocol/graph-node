@@ -504,7 +504,7 @@ async fn execute_subgraph_query_internal(
 pub async fn deployment_state(store: &Store, subgraph_id: &DeploymentHash) -> DeploymentState {
     store
         .query_store(
-            QueryTarget::Deployment(subgraph_id.to_owned(), Default::default()),
+            QueryTarget::Deployment(subgraph_id.clone(), Default::default()),
             false,
         )
         .await

@@ -639,7 +639,7 @@ impl EthereumBlockFilter {
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(
                             data_source.start_block,
-                            data_source.address.unwrap().to_owned(),
+                            data_source.address.unwrap().clone(),
                         )]
                         .into_iter()
                         .collect()

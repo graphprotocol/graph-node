@@ -1013,7 +1013,7 @@ impl DeploymentStore {
             .map(|e| {
                 let causality_region = e.id()?;
                 let digest = match e.get("digest") {
-                    Some(Value::Bytes(b)) => Ok(b.to_owned()),
+                    Some(Value::Bytes(b)) => Ok(b.clone()),
                     other => Err(anyhow::anyhow!(
                         "Entity has non-bytes digest attribute: {:?}",
                         other

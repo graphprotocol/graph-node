@@ -46,7 +46,7 @@ impl StoreBuilder {
 
         let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
-            primary_shard.connection.to_owned(),
+            primary_shard.connection.clone(),
             registry.clone(),
         ));
 
@@ -73,7 +73,7 @@ impl StoreBuilder {
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
             logger,
             registry.cheap_clone(),
-            primary_shard.connection.to_owned(),
+            primary_shard.connection.clone(),
         ));
 
         Self {
@@ -222,7 +222,7 @@ impl StoreBuilder {
             &logger,
             name,
             PoolName::Main,
-            shard.connection.to_owned(),
+            shard.connection.clone(),
             pool_size,
             Some(fdw_pool_size),
             registry.cheap_clone(),

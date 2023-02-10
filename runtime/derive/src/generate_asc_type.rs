@@ -79,7 +79,7 @@ fn field_type_map(tp: String) -> String {
     } else {
         match tp.as_ref() {
             "String" => "graph_runtime_wasm::asc_abi::class::AscString".into(),
-            _ => tp.to_owned(),
+            _ => tp.clone(),
         }
     }
 }

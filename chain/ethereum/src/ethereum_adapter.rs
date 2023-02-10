@@ -306,7 +306,7 @@ impl EthereumAdapter {
         };
 
         let eth = self;
-        let logger = logger.to_owned();
+        let logger = logger.clone();
         stream::unfold(from, move |start| {
             if start > to {
                 return None;

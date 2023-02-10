@@ -175,7 +175,7 @@ impl ServiceContainer {
             ),
         };
 
-        Ok(to_mapped_ports(ports.to_vec()))
+        Ok(to_mapped_ports(ports.clone()))
     }
 
     /// halts execution until a trigger message is detected on stdout or, optionally,

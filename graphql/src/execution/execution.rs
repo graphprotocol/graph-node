@@ -801,9 +801,9 @@ async fn complete_value(
                     resolved_value.coerce_scalar(scalar_type).map_err(|value| {
                         vec![QueryExecutionError::ScalarCoercionError(
                             field.position,
-                            field.name.to_owned(),
+                            field.name.clone(),
                             value.into(),
-                            scalar_type.name.to_owned(),
+                            scalar_type.name.clone(),
                         )]
                     })
                 }
@@ -813,13 +813,13 @@ async fn complete_value(
                     resolved_value.coerce_enum(enum_type).map_err(|value| {
                         vec![QueryExecutionError::EnumCoercionError(
                             field.position,
-                            field.name.to_owned(),
+                            field.name.clone(),
                             value.into(),
-                            enum_type.name.to_owned(),
+                            enum_type.name.clone(),
                             enum_type
                                 .values
                                 .iter()
-                                .map(|value| value.name.to_owned())
+                                .map(|value| value.name.clone())
                                 .collect(),
                         )]
                     })

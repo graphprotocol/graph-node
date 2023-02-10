@@ -1831,7 +1831,7 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
         let pool = self.pool.clone();
         let storage = self.storage.clone();
-        let block_hash = block_hash.to_owned();
+        let block_hash = block_hash.clone();
         pool.with_conn(move |conn, _| {
             storage
                 .find_transaction_receipts_in_block(conn, block_hash)

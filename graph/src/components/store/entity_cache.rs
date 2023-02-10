@@ -311,7 +311,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
                 self.insert(key.clone(), entity.clone());
                 Ok(entity)
             }
-            Some(data) => Ok(data.to_owned()),
+            Some(data) => Ok(data.clone()),
         }
     }
 }

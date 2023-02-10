@@ -316,7 +316,7 @@ async fn check_graft(
 
     // Make sure we caught Shaqueeena at block 1, before the change in
     // email address
-    let mut shaq = entities.first().unwrap().to_owned();
+    let mut shaq = entities.first().unwrap().clone();
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
 
     // Make our own entries for block 2
@@ -400,7 +400,7 @@ fn graft() {
 
         let (entities, ids) = find_entities(store.as_ref(), &deployment);
         assert_eq!(vec!["1"], ids);
-        let shaq = entities.first().unwrap().to_owned();
+        let shaq = entities.first().unwrap().clone();
         assert_eq!(Some(&Value::from("tonofjohn@email.com")), shaq.get("email"));
         Ok(())
     })

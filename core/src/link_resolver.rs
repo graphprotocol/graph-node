@@ -201,7 +201,7 @@ impl LinkResolverTrait for LinkResolver {
         if data.len() <= max_cache_file_size {
             let mut cache = self.cache.lock().unwrap();
             if !cache.contains_key(&path) {
-                cache.insert(path.to_owned(), data.clone());
+                cache.insert(path.clone(), data.clone());
             }
         } else {
             debug!(logger, "File too large for cache";

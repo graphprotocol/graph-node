@@ -331,9 +331,9 @@ impl Resolver for StoreResolver {
 
                 return Err(QueryExecutionError::AmbiguousDerivedFromResult(
                     field.position,
-                    field.name.to_owned(),
+                    field.name.clone(),
                     object_type.name().to_owned(),
-                    derived_from_field.name.to_owned(),
+                    derived_from_field.name.clone(),
                 ));
             } else {
                 Ok(children.into_iter().next().unwrap_or(r::Value::Null))

@@ -177,7 +177,7 @@ fn field_enum_values(
         enum_values.push(EnumValue {
             position: Pos::default(),
             description: None,
-            name: field.name.to_owned(),
+            name: field.name.clone(),
             directives: vec![],
         });
         enum_values.extend(field_enum_values_from_child_entity(schema, field)?);
@@ -259,7 +259,7 @@ fn add_filter_type(
                     description: None,
                     name: "and".to_string(),
                     value_type: Type::ListType(Box::new(Type::NamedType(
-                        filter_type_name.to_owned(),
+                        filter_type_name.clone(),
                     ))),
                     default_value: None,
                     directives: vec![],
@@ -270,7 +270,7 @@ fn add_filter_type(
                     description: None,
                     name: "or".to_string(),
                     value_type: Type::ListType(Box::new(Type::NamedType(
-                        filter_type_name.to_owned(),
+                        filter_type_name.clone(),
                     ))),
                     default_value: None,
                     directives: vec![],
@@ -397,7 +397,7 @@ fn field_scalar_filter_input_values(
     }
     .into_iter()
     .map(|filter_type| {
-        let field_type = Type::NamedType(field_type.name.to_owned());
+        let field_type = Type::NamedType(field_type.name.clone());
         let value_type = match filter_type {
             "in" | "not_in" => Type::ListType(Box::new(Type::NonNullType(Box::new(field_type)))),
             _ => field_type,
@@ -429,7 +429,7 @@ fn field_enum_filter_input_values(
     vec!["", "not", "in", "not_in"]
         .into_iter()
         .map(|filter_type| {
-            let field_type = Type::NamedType(field_type.name.to_owned());
+            let field_type = Type::NamedType(field_type.name.clone());
             let value_type = match filter_type {
                 "in" | "not_in" => {
                     Type::ListType(Box::new(Type::NonNullType(Box::new(field_type))))
@@ -462,8 +462,8 @@ fn field_list_filter_input_values(
                     (Some(Type::NamedType("String".into())), Some(name.clone()))
                 }
             }
-            TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.to_owned())), None),
-            TypeDefinition::Enum(ref t) => (Some(Type::NamedType(t.name.to_owned())), None),
+            TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.clone())), None),
+            TypeDefinition::Enum(ref t) => (Some(Type::NamedType(t.name.clone())), None),
             TypeDefinition::InputObject(_) | TypeDefinition::Union(_) => (None, None),
         };
 
@@ -1172,7 +1172,7 @@ mod tests {
             user_filter_type
                 .fields
                 .iter()
-                .map(|field| field.name.to_owned())
+                .map(|field| field.name.clone())
                 .collect::<Vec<String>>(),
             [
                 "id",
@@ -1277,7 +1277,7 @@ mod tests {
             pet_filter_type
                 .fields
                 .iter()
-                .map(|field| field.name.to_owned())
+                .map(|field| field.name.clone())
                 .collect::<Vec<String>>(),
             [
                 "id",
@@ -1395,7 +1395,7 @@ mod tests {
             user_filter_type
                 .fields
                 .iter()
-                .map(|field| field.name.to_owned())
+                .map(|field| field.name.clone())
                 .collect::<Vec<String>>(),
             [
                 "id",
@@ -1503,7 +1503,7 @@ mod tests {
             user_singular_field
                 .arguments
                 .iter()
-                .map(|input_value| input_value.name.to_owned())
+                .map(|input_value| input_value.name.clone())
                 .collect::<Vec<String>>(),
             vec![
                 "id".to_string(),
@@ -1529,7 +1529,7 @@ mod tests {
             user_plural_field
                 .arguments
                 .iter()
-                .map(|input_value| input_value.name.to_owned())
+                .map(|input_value| input_value.name.clone())
                 .collect::<Vec<String>>(),
             [
                 "skip",
@@ -1600,7 +1600,7 @@ mod tests {
             singular_field
                 .arguments
                 .iter()
-                .map(|input_value| input_value.name.to_owned())
+                .map(|input_value| input_value.name.clone())
                 .collect::<Vec<String>>(),
             vec![
                 "id".to_string(),
@@ -1626,7 +1626,7 @@ mod tests {
             plural_field
                 .arguments
                 .iter()
-                .map(|input_value| input_value.name.to_owned())
+                .map(|input_value| input_value.name.clone())
                 .collect::<Vec<String>>(),
             [
                 "skip",

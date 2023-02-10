@@ -655,7 +655,7 @@ impl Entity {
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(Value::String(s)) => Ok(s.to_owned()),
+            Some(Value::String(s)) => Ok(s.clone()),
             Some(Value::Bytes(b)) => Ok(b.to_string()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
