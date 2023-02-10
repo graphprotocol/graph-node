@@ -113,7 +113,7 @@ pub async fn run(
     let chain_store = network_store
         .block_store()
         .chain_store(network_name.as_ref())
-        .expect(format!("No chain store for {}", &network_name).as_ref());
+        .unwrap_or_else(|| panic!("No chain store for {}", &network_name));
 
     let client = Arc::new(ChainClient::new(firehose_endpoints, eth_adapters));
 

@@ -203,14 +203,14 @@ impl StoreBuilder {
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
-        let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
-            "cannot determine the pool size for store {}",
-            name
-        ));
-        let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
-            "cannot determine the fdw pool size for store {}",
-            name
-        ));
+        let pool_size = shard
+            .pool_size
+            .size_for(node, name)
+            .unwrap_or_else(|_| panic!("cannot determine the pool size for store {}", name));
+        let fdw_pool_size = shard
+            .fdw_pool_size
+            .size_for(node, name)
+            .unwrap_or_else(|_| panic!("cannot determine the fdw pool size for store {}", name));
         info!(
             logger,
             "Connecting to Postgres";
@@ -254,10 +254,9 @@ impl StoreBuilder {
                         "weight" => replica.weight
                     );
                     weights.push(replica.weight);
-                    let pool_size = replica.pool_size.size_for(node, name).expect(&format!(
-                        "we can determine the pool size for replica {}",
-                        name
-                    ));
+                    let pool_size = replica.pool_size.size_for(node, name).unwrap_or_else(|_| {
+                        panic!("we can determine the pool size for replica {}", name)
+                    });
 
                     coord.clone().create_pool(
                         &logger,

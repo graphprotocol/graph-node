@@ -402,7 +402,9 @@ async fn main() {
                                     let firehose_endpoints = eth_firehose_endpoints
                                         .networks
                                         .get(&name)
-                                        .expect(&format!("chain {} to have endpoints", name))
+                                        .unwrap_or_else(|| {
+                                            panic!("chain {} to have endpoints", name)
+                                        })
                                         .clone();
                                     (
                                         name,

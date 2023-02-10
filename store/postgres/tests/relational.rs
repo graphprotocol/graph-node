@@ -639,7 +639,7 @@ fn update_many() {
                         &EntityKey::data(SCALAR.as_str(), id),
                         BLOCK_NUMBER_MAX,
                     )
-                    .expect(&format!("Failed to read Scalar[{}]", id))
+                    .unwrap_or_else(|_| panic!("Failed to read Scalar[{}]", id))
                     .unwrap()
             })
             .collect();

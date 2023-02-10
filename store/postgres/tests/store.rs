@@ -952,11 +952,13 @@ async fn check_events(
         .compat()
         .timeout(Duration::from_secs(3))
         .await
-        .expect(&format!(
-            "timed out waiting for events\n  still waiting for {:?}\n  got extra events {:?}",
-            expected.lock().unwrap().clone(),
-            extra.lock().unwrap().clone()
-        ))
+        .unwrap_or_else(|_| {
+            panic!(
+                "timed out waiting for events\n  still waiting for {:?}\n  got extra events {:?}",
+                expected.lock().unwrap().clone(),
+                extra.lock().unwrap().clone()
+            )
+        })
         .expect("something went wrong getting events");
     // Check again that we really got everything
     assert_eq!(HashSet::new(), expected.lock().unwrap().clone());

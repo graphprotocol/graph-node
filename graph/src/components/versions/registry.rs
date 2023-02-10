@@ -34,7 +34,7 @@ impl ApiVersion {
             version: version.clone(),
             features: VERSION_COLLECTION
                 .get(version)
-                .expect(format!("Version {:?} is not supported", version).as_str())
+                .unwrap_or_else(|| panic!("Version {:?} is not supported", version))
                 .to_vec(),
         })
     }

@@ -527,9 +527,9 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
     for (k, v) in kvs.into_iter() {
         headers.insert(
             k.parse::<http::header::HeaderName>()
-                .expect(&format!("invalid HTTP header name: {}", k)),
+                .unwrap_or_else(|_| panic!("invalid HTTP header name: {}", k)),
             v.parse::<http::header::HeaderValue>()
-                .expect(&format!("invalid HTTP header value: {}: {}", k, v)),
+                .unwrap_or_else(|_| panic!("invalid HTTP header value: {}: {}", k, v)),
         );
     }
     headers
@@ -1656,7 +1656,7 @@ mod tests {
         d.push("resources/tests");
         d.push(path);
 
-        read_to_string(&d).expect(&format!("resource {:?} not found", &d))
+        read_to_string(&d).unwrap_or_else(|_| panic!("resource {:?} not found", &d))
     }
 
     #[test]
