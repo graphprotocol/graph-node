@@ -304,8 +304,7 @@ async fn test_abi_store_value(api_version: Version) {
 
     // Value::Bool
     let boolean = true;
-    let new_value_ptr =
-        module.takes_val_returns_ptr("value_from_bool", if boolean { 1 } else { 0 });
+    let new_value_ptr = module.takes_val_returns_ptr("value_from_bool", boolean as i32);
     let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Bool(boolean));
 
