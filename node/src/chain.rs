@@ -549,8 +549,7 @@ mod test {
             .get("goerli")
             .unwrap()
             .adapters
-            .iter()
-            .next()
+            .first()
             .unwrap()
             .capabilities;
         let mainnet_capability = ethereum_networks
@@ -558,8 +557,7 @@ mod test {
             .get("mainnet")
             .unwrap()
             .adapters
-            .iter()
-            .next()
+            .first()
             .unwrap()
             .capabilities;
         assert_eq!(
