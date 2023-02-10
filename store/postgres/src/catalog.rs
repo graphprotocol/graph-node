@@ -679,8 +679,7 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
     // values there are in the `id` column) See the [Postgres
     // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
     // the precise meaning of n_distinct
-    let query = format!(
-        "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
+    let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
                      else s.n_distinct::int4
                  end as entities,
                  c.reltuples::int4  as versions,
@@ -696,7 +695,7 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
             and s.attname = 'id'
             and c.relname = s.tablename
           order by c.relname"
-    );
+        .to_string();
 
     let stats = sql_query(query)
         .bind::<Text, _>(namespace.as_str())

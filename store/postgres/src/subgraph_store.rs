@@ -65,9 +65,9 @@ const SITES_CACHE_TTL: Duration = Duration::from_secs(120);
 impl Shard {
     pub fn new(name: String) -> Result<Self, StoreError> {
         if name.is_empty() {
-            return Err(StoreError::InvalidIdentifier(format!(
-                "shard names must not be empty"
-            )));
+            return Err(StoreError::InvalidIdentifier(
+                "shard names must not be empty".to_string(),
+            ));
         }
         if name.len() > 30 {
             return Err(StoreError::InvalidIdentifier(format!(
