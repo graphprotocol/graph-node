@@ -326,8 +326,8 @@ impl EthereumLogFilter {
         // Start with the wildcard event filters.
         let mut filters = self
             .wildcard_events
-            .into_iter()
-            .map(|(event, _)| EthGetLogsFilter::from_event(event))
+            .into_keys()
+            .map(|event| EthGetLogsFilter::from_event(event))
             .collect_vec();
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all

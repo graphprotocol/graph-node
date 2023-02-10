@@ -1727,7 +1727,7 @@ impl<'a> InsertQuery<'a> {
                 }
             }
         }
-        hashmap.into_iter().map(|(_key, value)| value).collect()
+        hashmap.into_values().collect()
     }
 
     /// Return the maximum number of entities that can be inserted with one

@@ -62,7 +62,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.iter().map(|(_, pool)| pool.setup())).await;
+        join_all(pools.values().map(|pool| pool.setup())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
