@@ -653,7 +653,7 @@ impl Layout {
                 return Trace::None;
             }
 
-            let mut text = debug_query(&query).to_string().replace("\n", "\t");
+            let mut text = debug_query(&query).to_string().replace('\n', "\t");
 
             let trace = if trace {
                 Trace::query(&text, elapsed, entity_count)

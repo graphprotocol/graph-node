@@ -89,7 +89,7 @@ fn print_diesel_tables(layout: &Layout) {
 
     for table in &tables {
         println!("    table! {{");
-        let name = table.qualified_name.as_str().replace("\"", "");
+        let name = table.qualified_name.as_str().replace('\"', "");
         println!("        {} (vid) {{", name);
         println!("            vid -> BigInt,");
         for column in &table.as_ref().columns {

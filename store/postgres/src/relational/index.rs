@@ -652,7 +652,7 @@ fn parse() {
         let exp = CreateIndex::from(exp);
         assert_eq!(exp, act);
 
-        let defn = defn.replace("\"", "").to_ascii_lowercase();
+        let defn = defn.replace('\"', "").to_ascii_lowercase();
         assert_eq!(defn, act.to_sql(false, false).unwrap());
     }
 

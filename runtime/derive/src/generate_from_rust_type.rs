@@ -28,7 +28,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         .iter()
         .filter(|f| {
             let nm = f.ident.as_ref().unwrap().to_string();
-            !enum_names.contains(&nm) && !nm.starts_with("_")
+            !enum_names.contains(&nm) && !nm.starts_with('_')
         })
         .collect::<Vec<&Field>>();
 

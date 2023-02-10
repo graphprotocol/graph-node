@@ -158,7 +158,7 @@ async fn main() {
     let fork_base = match &opt.fork_base {
         Some(url) => {
             // Make sure the endpoint ends with a terminating slash.
-            let url = if !url.ends_with("/") {
+            let url = if !url.ends_with('/') {
                 let mut url = url.clone();
                 url.push('/');
                 Url::parse(&url)
@@ -520,7 +520,7 @@ async fn main() {
             let start_block = opt
                 .start_block
                 .map(|block| {
-                    let mut split = block.split(":");
+                    let mut split = block.split(':');
                     (
                         // BlockHash
                         split.next().unwrap().to_owned(),
