@@ -808,14 +808,13 @@ impl SubgraphStoreInner {
 
         // Check that it is not current/pending for any subgraph if it is
         // the active deployment of that subgraph
-        if site.active {
-            if !self
+        if site.active
+            && !self
                 .primary_conn()?
                 .subgraphs_using_deployment(site.as_ref())?
                 .is_empty()
-            {
-                removable = false;
-            }
+        {
+            removable = false;
         }
 
         if removable {
