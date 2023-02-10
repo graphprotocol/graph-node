@@ -1543,9 +1543,7 @@ fn handle_large_string_with_index() {
         // the repeated text compresses so well. This leads to an error
         // 'index row requires 11488 bytes, maximum size is 8191' if
         // used with a btree index without size limitation
-        let long_text = std::iter::repeat("Quo usque tandem")
-            .take(62500)
-            .collect::<String>();
+        let long_text = "Quo usque tandem".repeat(62500);
         let other_text = long_text.clone() + "X";
 
         let metrics_registry = Arc::new(MockMetricsRegistry::new());
@@ -1636,10 +1634,7 @@ fn handle_large_bytea_with_index() {
         // repeated text compresses so well. This leads to an error 'index
         // row size 2784 exceeds btree version 4 maximum 2704' if used with
         // a btree index without size limitation
-        let long_bytea = std::iter::repeat("Quo usque tandem")
-            .take(15000)
-            .collect::<String>()
-            .into_bytes();
+        let long_bytea = "Quo usque tandem".repeat(15000).into_bytes();
         let other_bytea = {
             let mut other_bytea = long_bytea.clone();
             other_bytea.push(b'X');
