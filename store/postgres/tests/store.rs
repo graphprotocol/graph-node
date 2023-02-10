@@ -1005,7 +1005,7 @@ async fn check_basic_revert(
     assert_eq!(1, returned_entities.len());
 
     // Check if the first user in the result vector has email "queensha@email.com"
-    let returned_name = returned_entities[0].get(&"email".to_owned());
+    let returned_name = returned_entities[0].get("email");
     let test_value = Value::String("queensha@email.com".to_owned());
     assert!(returned_name.is_some());
     assert_eq!(&test_value, returned_name.unwrap());
@@ -1067,7 +1067,7 @@ fn revert_block_with_delete() {
         assert_eq!(1, returned_entities.len());
 
         // Check if "dinici@email.com" is in result set
-        let returned_name = returned_entities[0].get(&"email".to_owned());
+        let returned_name = returned_entities[0].get("email");
         let test_value = Value::String("dinici@email.com".to_owned());
         assert!(returned_name.is_some());
         assert_eq!(&test_value, returned_name.unwrap());

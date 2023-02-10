@@ -190,7 +190,7 @@ impl TryFrom<&s::ObjectType> for IdType {
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
         let pk = obj_type
-            .field(&PRIMARY_KEY_COLUMN.to_owned())
+            .field(PRIMARY_KEY_COLUMN)
             .expect("Each ObjectType has an `id` field");
         Self::try_from(&pk.field_type)
     }
