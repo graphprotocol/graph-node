@@ -2377,12 +2377,8 @@ impl<'a> FilterWindow<'a> {
 
     /// Collect all the parent id's from all windows
     fn collect_parents(windows: &[FilterWindow]) -> Vec<String> {
-        let parent_ids: HashSet<String> = HashSet::from_iter(
-            windows
-                .iter()
-                .map(|window| window.ids.iter().cloned())
-                .flatten(),
-        );
+        let parent_ids: HashSet<String> =
+            HashSet::from_iter(windows.iter().flat_map(|window| window.ids.iter().cloned()));
         parent_ids.into_iter().collect()
     }
 }

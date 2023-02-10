@@ -80,11 +80,7 @@ impl QueryResults {
     }
 
     pub fn errors(&self) -> Vec<QueryError> {
-        self.results
-            .iter()
-            .map(|r| r.errors.clone())
-            .flatten()
-            .collect()
+        self.results.iter().flat_map(|r| r.errors.clone()).collect()
     }
 }
 

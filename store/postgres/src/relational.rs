@@ -432,8 +432,7 @@ impl Layout {
         self.tables
             .values()
             .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
-            .map(|(dst, src)| dst.can_copy_from(src))
-            .flatten()
+            .flat_map(|(dst, src)| dst.can_copy_from(src))
             .collect()
     }
 

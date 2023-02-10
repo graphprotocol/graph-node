@@ -776,7 +776,7 @@ impl Schema {
                     .directives
                     .iter()
                     .filter(|directive| directive.name.eq("import"))
-                    .map(|import| {
+                    .flat_map(|import| {
                         import.argument("from").map_or(vec![], |from| {
                             SchemaReference::parse(from).map_or(vec![], |schema_ref| {
                                 parse_types(import)
@@ -786,7 +786,6 @@ impl Schema {
                             })
                         })
                     })
-                    .flatten()
                     .collect::<HashMap<ImportedType, SchemaReference>>()
             })
     }
