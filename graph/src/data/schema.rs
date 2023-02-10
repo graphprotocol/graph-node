@@ -910,14 +910,14 @@ impl Schema {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
-                if !subgraph_schema_type
+                if subgraph_schema_type
                     .directives
                     .iter()
                     .filter(|directive| {
                         !directive.name.eq("import") && !directive.name.eq("fulltext")
                     })
                     .next()
-                    .is_none()
+                    .is_some()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {
