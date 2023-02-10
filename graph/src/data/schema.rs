@@ -137,7 +137,7 @@ pub enum FulltextLanguage {
 impl TryFrom<&str> for FulltextLanguage {
     type Error = String;
     fn try_from(language: &str) -> Result<Self, Self::Error> {
-        match &language[..] {
+        match language {
             "simple" => Ok(FulltextLanguage::Simple),
             "da" => Ok(FulltextLanguage::Danish),
             "nl" => Ok(FulltextLanguage::Dutch),
