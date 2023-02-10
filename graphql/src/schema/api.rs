@@ -258,9 +258,7 @@ fn add_filter_type(
                     position: Pos::default(),
                     description: None,
                     name: "and".to_string(),
-                    value_type: Type::ListType(Box::new(Type::NamedType(
-                        filter_type_name.clone(),
-                    ))),
+                    value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.clone()))),
                     default_value: None,
                     directives: vec![],
                 });
@@ -269,9 +267,7 @@ fn add_filter_type(
                     position: Pos::default(),
                     description: None,
                     name: "or".to_string(),
-                    value_type: Type::ListType(Box::new(Type::NamedType(
-                        filter_type_name.clone(),
-                    ))),
+                    value_type: Type::ListType(Box::new(Type::NamedType(filter_type_name.clone()))),
                     default_value: None,
                     directives: vec![],
                 });

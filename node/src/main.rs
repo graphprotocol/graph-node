@@ -878,11 +878,7 @@ fn start_block_ingestor(
         logger,
         "Starting block ingestors with {} chains [{}]",
         chains.len(),
-        chains
-            .keys()
-            .map(|v| v.clone())
-            .collect::<Vec<String>>()
-            .join(", ")
+        chains.keys().cloned().collect::<Vec<String>>().join(", ")
     );
 
     // Create Ethereum block ingestors and spawn a thread to run each
@@ -948,11 +944,7 @@ fn start_firehose_block_ingestor<C, M>(
         logger,
         "Starting firehose block ingestors with {} chains [{}]",
         chains.len(),
-        chains
-            .keys()
-            .map(|v| v.clone())
-            .collect::<Vec<String>>()
-            .join(", ")
+        chains.keys().cloned().collect::<Vec<String>>().join(", ")
     );
 
     // Create Firehose block ingestors and spawn a thread to run each

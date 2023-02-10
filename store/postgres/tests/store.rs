@@ -926,7 +926,7 @@ async fn check_events(
 ) {
     fn as_set(events: Vec<Arc<StoreEvent>>) -> HashSet<EntityChange> {
         events.into_iter().fold(HashSet::new(), |mut set, event| {
-            set.extend(event.changes.iter().map(|change| change.clone()));
+            set.extend(event.changes.iter().cloned());
             set
         })
     }
