@@ -526,17 +526,15 @@ mod queries {
             } else {
                 ds::table.load::<Schema>(conn)?
             }
+        } else if only_active {
+            ds::table
+                .filter(ds::active)
+                .filter(ds::subgraph.eq_any(ids))
+                .load::<Schema>(conn)?
         } else {
-            if only_active {
-                ds::table
-                    .filter(ds::active)
-                    .filter(ds::subgraph.eq_any(ids))
-                    .load::<Schema>(conn)?
-            } else {
-                ds::table
-                    .filter(ds::subgraph.eq_any(ids))
-                    .load::<Schema>(conn)?
-            }
+            ds::table
+                .filter(ds::subgraph.eq_any(ids))
+                .load::<Schema>(conn)?
         };
         schemas
             .into_iter()

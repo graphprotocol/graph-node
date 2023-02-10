@@ -86,15 +86,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                             #fld_name: graph::runtime::asc_new_or_null(heap, &#self_ref, gas)?,
                         }
                     }
-                } else {
-                    if is_scalar(&field_type(f)){
-                        quote!{
-                            #fld_name: #self_ref,
-                        }
-                    }else{
-                        quote! {
-                            #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
-                        }
+                } else if is_scalar(&field_type(f)){
+                    quote!{
+                        #fld_name: #self_ref,
+                    }
+                }else{
+                    quote! {
+                        #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
                     }
                 };
             setter
