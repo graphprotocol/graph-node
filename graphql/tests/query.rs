@@ -457,7 +457,7 @@ impl From<(&str, r::Value)> for QueryArgs {
 /// replaced with the id's of songs 1 through 4 before running the query.
 fn run_query<F>(args: impl Into<QueryArgs>, test: F)
 where
-    F: Fn(QueryResult, IdType) -> () + Send + 'static,
+    F: Fn(QueryResult, IdType) + Send + 'static,
 {
     let QueryArgs {
         query,

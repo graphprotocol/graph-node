@@ -474,7 +474,7 @@ macro_rules! assert_entity_eq {
 /// Test harness for running database integration tests.
 fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout) -> (),
+    F: FnOnce(&PgConnection, &Layout),
 {
     run_test_with_conn(|conn| {
         // Reset state before starting
