@@ -50,7 +50,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     let deployment = DeploymentCreate::new(String::new(), &manifest, None);
     let name = SubgraphName::new("test/writable").unwrap();
     let node_id = NodeId::new("test").unwrap();
-    let deployment = store
+
+    store
         .create_subgraph_deployment(
             name,
             &TEST_SUBGRAPH_SCHEMA,
@@ -59,8 +60,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
-        .unwrap();
-    deployment
+        .unwrap()
 }
 
 /// Removes test data from the database behind the store.

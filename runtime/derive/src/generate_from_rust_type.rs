@@ -119,8 +119,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let mod_name = item_struct.ident.to_string().to_snake_case();
             let varian_type_name = format!("{}::{}::{}",mod_name, var_type_name, varian_type_name).parse::<proc_macro2::TokenStream>().unwrap();
 
-            let setter =
-                if is_byte_array(f){
+            if is_byte_array(f){
                     quote! {
                         #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &graph_runtime_wasm::asc_abi::class::Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
                     }
@@ -128,9 +127,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     quote! {
                         #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
                     }
-                };
-
-            setter
+                }
         })
         .for_each(|ts| methods.push(ts));
     }
