@@ -166,7 +166,7 @@ impl ChainHeadUpdateListener {
 
                 // Observe the latest chain head for each network to monitor block ingestion
                 metrics
-                    .set_chain_head_number(&update.network_name, *&update.head_block_number as i64);
+                    .set_chain_head_number(&update.network_name, update.head_block_number as i64);
 
                 // If there are subscriptions for this network, notify them.
                 if let Some(watcher) = watchers.read(&logger).get(&update.network_name) {
