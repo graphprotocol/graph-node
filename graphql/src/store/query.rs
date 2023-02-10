@@ -212,7 +212,7 @@ fn parse_change_block_filter(value: &r::Value) -> Result<BlockNumber, QueryExecu
         r::Value::Object(object) => i32::try_from_value(
             object
                 .get("number_gte")
-                .ok_or_else(|| QueryExecutionError::InvalidFilterError)?,
+                .ok_or(QueryExecutionError::InvalidFilterError)?,
         )
         .map_err(|_| QueryExecutionError::InvalidFilterError),
         _ => Err(QueryExecutionError::InvalidFilterError),

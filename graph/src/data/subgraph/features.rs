@@ -112,7 +112,7 @@ fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<Subg
 
 fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
     match schema.document.get_fulltext_directives() {
-        Ok(directives) => (!directives.is_empty()).then(|| SubgraphFeature::FullTextSearch),
+        Ok(directives) => (!directives.is_empty()).then_some(SubgraphFeature::FullTextSearch),
 
         Err(_) => {
             // Currently we return an error from `get_fulltext_directives` function if the

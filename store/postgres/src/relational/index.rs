@@ -235,7 +235,7 @@ impl Cond {
         if &cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
             Cond::Closed
         } else {
-            parse_partial(&cond).unwrap_or_else(|| Cond::Unknown(cond))
+            parse_partial(&cond).unwrap_or(Cond::Unknown(cond))
         }
     }
 
@@ -386,7 +386,7 @@ impl CreateIndex {
         }
 
         defn.make_ascii_lowercase();
-        new_parsed(&defn).unwrap_or_else(|| CreateIndex::Unknown { defn })
+        new_parsed(&defn).unwrap_or(CreateIndex::Unknown { defn })
     }
 
     pub fn create<C: Into<Vec<Expr>>>(
