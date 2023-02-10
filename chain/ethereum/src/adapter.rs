@@ -637,12 +637,9 @@ impl EthereumBlockFilter {
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
-                        vec![(
-                            data_source.start_block,
-                            data_source.address.unwrap().clone(),
-                        )]
-                        .into_iter()
-                        .collect()
+                        vec![(data_source.start_block, data_source.address.unwrap())]
+                            .into_iter()
+                            .collect()
                     } else {
                         HashSet::default()
                     },

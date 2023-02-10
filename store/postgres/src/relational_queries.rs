@@ -2560,7 +2560,7 @@ impl<'a> FilterCollection<'a> {
             FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type())),
             FilterCollection::MultiWindow(windows, _) => {
                 if windows.iter().map(FilterWindow::parent_type).all_equal() {
-                    Ok(Some(windows[0].parent_type().clone()))
+                    Ok(Some(windows[0].parent_type()))
                 } else {
                     Err(graph::constraint_violation!(
                         "all implementors of an interface must use the same type for their `id`"
