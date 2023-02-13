@@ -1,7 +1,9 @@
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::Object;
+use graph::prelude::serde_json::{json, Value};
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
+use graphql_tools::validation::utils::ValidationError;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -16,7 +18,7 @@ use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::schema::ApiSchema;
 use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
+    info, o, q, r, s, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
     TryFromValue, ENV_VARS,
 };
 
@@ -131,6 +133,8 @@ pub struct Query {
 
     kind: Kind,
 
+    extensions: HashMap<String, Value>,
+
     /// Used only for logging; if logging is configured off, these will
     /// have dummy values
     pub query_text: Arc<String>,
@@ -139,12 +143,11 @@ pub struct Query {
 }
 
 fn validate_query(
-    logger: &Logger,
     query: &GraphDataQuery,
     document: &s::Document,
     metrics: &Arc<dyn GraphQLMetrics>,
     id: &DeploymentHash,
-) -> Result<(), Vec<QueryExecutionError>> {
+) -> Result<Vec<ValidationError>, Vec<QueryExecutionError>> {
     let validation_errors = validate(document, &query.document, &GRAPHQL_VALIDATION_PLAN);
 
     if !validation_errors.is_empty() {
@@ -159,14 +162,6 @@ fn validate_query(
                 })
                 .collect());
         } else {
-            warn!(
-              &logger,
-              "GraphQL Validation failure";
-              "query" => &query.query_text,
-              "variables" => &query.variables_text,
-              "errors" => format!("[{:?}]", validation_errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>().join(", "))
-            );
-
             let error_codes = validation_errors
                 .iter()
                 .map(|e| e.error_code)
@@ -176,7 +171,7 @@ fn validate_query(
         }
     }
 
-    Ok(())
+    Ok(validation_errors)
 }
 
 impl Query {
@@ -206,7 +201,7 @@ impl Query {
         ));
 
         let validation_phase_start = Instant::now();
-        validate_query(&logger, &query, schema.document(), &metrics, schema.id())?;
+        let validation_errors = validate_query(&query, schema.document(), &metrics, schema.id())?;
         metrics.observe_query_validation(validation_phase_start.elapsed(), schema.id());
 
         let mut operation = None;
@@ -264,7 +259,7 @@ impl Query {
         raw_query.validate_fields()?;
         let selection_set = raw_query.convert()?;
 
-        let query = Self {
+        let mut query = Self {
             schema,
             selection_set: Arc::new(selection_set),
             shape_hash: query.shape_hash,
@@ -275,7 +270,15 @@ impl Query {
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
             query_id,
+            extensions: HashMap::new(),
         };
+
+        if validation_errors.len() > 0 && ENV_VARS.graphql.silent_graphql_validations {
+            query.extensions.insert("warning".to_owned(), json!({
+            "description": "The Graph will soon start returning validation errors for GraphQL queries. Please fix the errors in your query.",
+            "validationErrors": validation_errors,
+          }));
+        }
 
         Ok(Arc::new(query))
     }

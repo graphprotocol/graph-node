@@ -1,5 +1,6 @@
 use super::error::{QueryError, QueryExecutionError};
 use crate::data::value::Object;
+use crate::prelude::serde_json::Value;
 use crate::prelude::{r, CacheWeight, DeploymentHash};
 use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
@@ -42,6 +43,7 @@ where
 }
 
 pub type Data = Object;
+pub type Extensions = Value;
 
 #[derive(Debug)]
 /// A collection of query results that is serialized as a single result.
@@ -221,6 +223,8 @@ pub struct QueryResult {
     data: Option<Data>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     errors: Vec<QueryError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    extensions: Option<Extensions>,
     #[serde(skip_serializing)]
     pub deployment: Option<DeploymentHash>,
     #[serde(skip_serializing)]
@@ -232,6 +236,7 @@ impl QueryResult {
         QueryResult {
             data: Some(data),
             errors: Vec::new(),
+            extensions: None,
             deployment: None,
             trace: Trace::None,
         }
@@ -244,6 +249,7 @@ impl QueryResult {
         Self {
             data: self.data.clone(),
             errors: self.errors.clone(),
+            extensions: self.extensions.clone(),
             deployment: self.deployment.clone(),
             trace: Trace::None,
         }
@@ -300,6 +306,7 @@ impl From<QueryExecutionError> for QueryResult {
         QueryResult {
             data: None,
             errors: vec![e.into()],
+            extensions: None,
             deployment: None,
             trace: Trace::None,
         }
@@ -311,6 +318,7 @@ impl From<QueryError> for QueryResult {
         QueryResult {
             data: None,
             errors: vec![e],
+            extensions: None,
             deployment: None,
             trace: Trace::None,
         }
@@ -322,6 +330,7 @@ impl From<Vec<QueryExecutionError>> for QueryResult {
         QueryResult {
             data: None,
             errors: e.into_iter().map(QueryError::from).collect(),
+            extensions: None,
             deployment: None,
             trace: Trace::None,
         }
