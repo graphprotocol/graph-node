@@ -1,20 +1,8 @@
 {
 	"private": true,
 	"workspaces": [
-		"integration-tests/api-version-v0-0-4",
-		"integration-tests/ganache-reverts",
-		"integration-tests/host-exports",
-		"integration-tests/non-fatal-errors",
-		"integration-tests/overloaded-contract-functions",
-		"integration-tests/poi-for-failed-subgraph",
-		"integration-tests/remove-then-update",
-		"integration-tests/value-roundtrip",
-		"runner-tests/data-source-revert",
-		"runner-tests/data-source-revert2",
-		"runner-tests/dynamic-data-source",
-		"runner-tests/fatal-error",
-		"runner-tests/file-data-sources",
-		"runner-tests/typename"
+		"integration-tests",
+		"runner-tests"
 	],
 	"packageManager": "yarn@1.22.19"
 }

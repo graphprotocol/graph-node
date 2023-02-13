@@ -1,0 +1,13 @@
+{
+  "private": true,
+  "workspaces": [
+    "api-version-v0-0-4",
+    "ganache-reverts",
+    "host-exports",
+    "non-fatal-errors",
+    "overloaded-contract-functions",
+    "poi-for-failed-subgraph",
+    "remove-then-update",
+    "value-roundtrip"
+  ]
+}
