@@ -416,9 +416,7 @@ impl DeploymentStore {
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
-        layout
-            .delete(conn, entity_type, entity_keys, block_number(ptr), stopwatch)
-            .map_err(|_error| anyhow!("Failed to remove entities: {:?}", entity_keys).into())
+        layout.delete(conn, entity_type, entity_keys, block_number(ptr), stopwatch)
     }
 
     /// Execute a closure with a connection to the database.
