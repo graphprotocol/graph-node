@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::process::Command;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,24 +10,50 @@ use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
+use graph::ipfs_client::IpfsClient;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::{CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
+use graph::prelude::{
+    CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
+};
 use graph_tests::fixture::ethereum::{chain, empty_block, genesis, push_test_log};
 use graph_tests::fixture::{
-    self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector,
+    self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
 };
+use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
+
+struct RunnerTestRecipe {
+    stores: Stores,
+    subgraph_name: SubgraphName,
+    hash: DeploymentHash,
+}
+
+impl RunnerTestRecipe {
+    async fn new(subgraph_name: &str) -> Self {
+        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+
+        let (stores, hash) = tokio::join!(
+            stores("./runner-tests/config.simple.toml"),
+            build_subgraph(&test_dir)
+        );
+
+        Self {
+            stores,
+            subgraph_name,
+            hash,
+        }
+    }
+}
 
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
-    let stores = stores("./integration-tests/config.simple.toml").await;
-
-    let subgraph_name = SubgraphName::new("data-source-revert").unwrap();
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("data-source-revert").await;
 
     let blocks = {
         let block0 = genesis();
@@ -55,11 +82,9 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash = fixture::build_subgraph_with_yarn_cmd(
-        "./integration-tests/data-source-revert",
-        "deploy:test-grafted",
-    )
-    .await;
+    let hash =
+        build_subgraph_with_yarn_cmd("./runner-tests/data-source-revert", "deploy:test-grafted")
+            .await;
     let graft_block = Some(test_ptr(3));
     let ctx = fixture::setup(
         subgraph_name.clone(),
@@ -91,12 +116,11 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn typename() -> anyhow::Result<()> {
-    let subgraph_name = SubgraphName::new("typename").unwrap();
-
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("typename").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -113,7 +137,6 @@ async fn typename() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let stores = stores("./integration-tests/config.simple.toml").await;
     let chain = chain(blocks, &stores, None).await;
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
@@ -124,13 +147,11 @@ async fn typename() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn file_data_sources() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
-
-    let subgraph_name = SubgraphName::new("file-data-sources").unwrap();
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("file-data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -281,13 +302,11 @@ async fn file_data_sources() {
 
 #[tokio::test]
 async fn template_static_filters_false_positives() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
-
-    let subgraph_name = SubgraphName::new("dynamic-data-source").unwrap();
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("dynamic-data-source").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -334,12 +353,11 @@ async fn template_static_filters_false_positives() {
 
 #[tokio::test]
 async fn retry_create_ds() {
-    let stores = stores("./integration-tests/config.simple.toml").await;
-    let subgraph_name = SubgraphName::new("data-source-revert2").unwrap();
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("data-source-revert2").await;
 
     let blocks = {
         let block0 = genesis();
@@ -397,12 +415,11 @@ async fn retry_create_ds() {
 
 #[tokio::test]
 async fn fatal_error() -> anyhow::Result<()> {
-    let subgraph_name = SubgraphName::new("fatal-error").unwrap();
-
-    let hash = {
-        let test_dir = format!("./integration-tests/{}", subgraph_name);
-        fixture::build_subgraph(&test_dir).await
-    };
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("fatal-error").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -414,7 +431,6 @@ async fn fatal_error() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let stores = stores("./integration-tests/config.simple.toml").await;
     let chain = chain(blocks, &stores, None).await;
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
@@ -435,4 +451,50 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(status.fatal_error.is_none());
 
     Ok(())
+}
+
+async fn build_subgraph(dir: &str) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd(dir, "deploy:test").await
+}
+
+async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
+    // Test that IPFS is up.
+    IpfsClient::localhost()
+        .test()
+        .await
+        .expect("Could not connect to IPFS, make sure it's running at port 5001");
+
+    // Make sure dependencies are present.
+
+    run_cmd(
+        Command::new("yarn")
+            .arg("install")
+            .arg("--mutex")
+            .arg("file:.yarn-mutex")
+            .current_dir("./runner-tests/"),
+    );
+
+    // Run codegen.
+    run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
+
+    // Run `deploy` for the side effect of uploading to IPFS, the graph node url
+    // is fake and the actual deploy call is meant to fail.
+    let deploy_output = run_cmd(
+        Command::new("yarn")
+            .arg(yarn_cmd)
+            .env("IPFS_URI", "http://127.0.0.1:5001")
+            .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
+            .current_dir(dir),
+    );
+
+    // Hack to extract deployment id from `graph deploy` output.
+    const ID_PREFIX: &str = "Build completed: ";
+    let mut line = deploy_output
+        .lines()
+        .find(|line| line.contains(ID_PREFIX))
+        .expect("found no matching line");
+    if !line.starts_with(ID_PREFIX) {
+        line = &line[5..line.len() - 5]; // workaround for colored output
+    }
+    DeploymentHash::new(line.trim_start_matches(ID_PREFIX)).unwrap()
 }

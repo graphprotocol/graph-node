@@ -1850,7 +1850,7 @@ dependencies = [
  "semver",
  "strum",
  "strum_macros",
- "uuid 1.1.2",
+ "uuid 1.2.2",
  "wasm-instrument",
  "wasmtime",
 ]
@@ -1960,7 +1960,7 @@ dependencies = [
  "serde",
  "stable-hash 0.3.3",
  "test-store",
- "uuid 1.1.2",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -1984,15 +1984,14 @@ dependencies = [
  "graph-server-index-node",
  "graph-store-postgres",
  "graphql-parser",
- "hex",
  "hyper",
  "lazy_static",
- "port_check",
  "serde",
  "serde_yaml",
  "slog",
  "tokio",
  "tokio-stream",
+ "uuid 1.2.2",
 ]
 
 [[package]]
@@ -3208,12 +3207,6 @@ name = "pkg-config"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
-
-[[package]]
-name = "port_check"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6519412c9e0d4be579b9f0618364d19cb434b324fc6ddb1b27b1e682c7105ed"
 
 [[package]]
 name = "postgres"
@@ -5078,9 +5071,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.1.2"
+version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
+checksum = "422ee0de9031b5b948b97a8fc04e3aa35230001a722ddd27943e0be31564ce4c"
 dependencies = [
  "getrandom",
 ]

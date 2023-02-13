@@ -2,7 +2,7 @@
   "name": "overloaded-contract-functions",
   "version": "0.1.0",
   "scripts": {
-    "build-contracts": "../common/build-contracts.sh",
+    "build-contracts": "../../common/build-contracts.sh",
     "codegen": "graph codegen --skip-migrations",
     "test": "yarn build-contracts && truffle test --compile-none --network test",
     "create:test": "graph create test/overloaded-contract-functions --node $GRAPH_NODE_ADMIN_URI",

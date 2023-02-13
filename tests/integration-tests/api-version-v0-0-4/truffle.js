@@ -2,8 +2,8 @@ require("babel-register");
 require("babel-polyfill");
 
 module.exports = {
-  contracts_directory: "../common",
-  migrations_directory: "../common",
+  contracts_directory: "../../common",
+  migrations_directory: "../../common",
   contracts_build_directory: "./truffle_output",
   networks: {
     test: {
