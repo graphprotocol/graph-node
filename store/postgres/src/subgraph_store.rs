@@ -386,7 +386,7 @@ impl SubgraphStoreInner {
         Ok(())
     }
 
-    fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
+    pub(crate) fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.find(|site| site.id == id) {
             return Ok(site);
         }

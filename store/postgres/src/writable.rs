@@ -29,6 +29,7 @@ use graph::{
 use store::StoredDynamicDataSource;
 
 use crate::deployment_store::DeploymentStore;
+use crate::primary::DeploymentId;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
 
 /// A wrapper around `SubgraphStore` that only exposes functions that are
@@ -53,6 +54,10 @@ impl WritableSubgraphStore {
 
     fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
         self.0.load_deployment(site)
+    }
+
+    fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
+        self.0.find_site(id)
     }
 }
 
@@ -301,11 +306,11 @@ impl SyncStore {
         .await
     }
 
-    fn unassign_subgraph(&self) -> Result<(), StoreError> {
+    fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         self.retry("unassign_subgraph", || {
             let pconn = self.store.primary_conn()?;
             pconn.transaction(|| -> Result<_, StoreError> {
-                let changes = pconn.unassign_subgraph(self.site.as_ref())?;
+                let changes = pconn.unassign_subgraph(site)?;
                 self.store.send_store_event(&StoreEvent::new(changes))
             })
         })
@@ -351,6 +356,23 @@ impl SyncStore {
                     Ok(StoreEvent::new(changes))
                 })?
             };
+
+            // Handle on_sync actions. They only apply to copies (not
+            // grafts) so we make sure that the source, if it exists, has
+            // the same hash as `self.site`
+            if let Some(src) = self.writable.source_of_copy(&self.site)? {
+                let site = self.store.find_site(src)?;
+                if site.deployment == self.site.deployment {
+                    let on_sync = self.writable.on_sync(&self.site)?;
+                    if on_sync.activate() {
+                        let pconn = self.store.primary_conn()?;
+                        pconn.activate(&self.site.as_ref().into())?;
+                    }
+                    if on_sync.replace() {
+                        self.unassign_subgraph(&site)?;
+                    }
+                }
+            }
 
             self.writable.deployment_synced(&self.site.deployment)?;
 
@@ -1111,7 +1133,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     fn unassign_subgraph(&self) -> Result<(), StoreError> {
-        self.store.unassign_subgraph()
+        self.store.unassign_subgraph(&self.store.site)
     }
 
     async fn load_dynamic_data_sources(

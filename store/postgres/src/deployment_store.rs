@@ -45,6 +45,7 @@ use crate::catalog;
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
+use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
@@ -642,6 +643,19 @@ impl DeploymentStore {
     pub(crate) fn deployment_synced(&self, id: &DeploymentHash) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| deployment::set_synced(&conn, id))
+    }
+
+    /// Look up the on_sync action for this deployment
+    pub(crate) fn on_sync(&self, site: &Site) -> Result<OnSync, StoreError> {
+        let conn = self.get_conn()?;
+        deployment::on_sync(&conn, site.id)
+    }
+
+    /// Return the source if `site` or `None` if `site` is neither a graft
+    /// nor a copy
+    pub(crate) fn source_of_copy(&self, site: &Site) -> Result<Option<DeploymentId>, StoreError> {
+        let conn = self.get_conn()?;
+        crate::copy::source(&conn, site)
     }
 
     // Only used for tests
