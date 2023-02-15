@@ -340,6 +340,7 @@ struct StoredSubgraphManifest {
     start_block_hash: Option<Bytes>,
     raw_yaml: Option<String>,
     entities_with_causality_region: Vec<EntityType>,
+    on_sync: Option<String>,
 }
 
 impl From<StoredSubgraphManifest> for SubgraphManifestEntity {

@@ -105,6 +105,7 @@ shard alongside the deployment's data in `sgdNNN`.
 | `use_bytea_prefix`      | `boolean!` |                                                      |
 | `start_block_hash`      | `bytea`    | Parent of the smallest start block from the manifest |
 | `start_block_number`    | `int4`     |                                                      |
+| `on_sync`               | `text`     | Additional behavior when deployment becomes synced   |
 
 ### `subgraph_deployment_assignment`
 

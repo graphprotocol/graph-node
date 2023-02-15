@@ -121,6 +121,7 @@ table! {
         // Entity types that have a `causality_region` column.
         // Names stored as present in the schema, not in snake case.
         entities_with_causality_region -> Array<Text>,
+        on_sync -> Nullable<Text>,
     }
 }
 
