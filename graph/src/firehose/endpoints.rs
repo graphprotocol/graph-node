@@ -34,15 +34,26 @@ pub struct FirehoseEndpoint {
     pub token: Option<String>,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
-    pub subgraph_limit: usize,
+    pub subgraph_limit: SubgraphLimit,
     channel: Channel,
 }
 
-#[derive(Clone, Debug)]
+// TODO: Find a new home for this type.
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum SubgraphLimit {
-    Unlimited,
+    Disabled,
     Limit(usize),
-    NoTraffic,
+    Unlimited,
+}
+
+impl SubgraphLimit {
+    pub fn has_capacity(&self, current: usize) -> bool {
+        match self {
+            SubgraphLimit::Unlimited => true,
+            SubgraphLimit::Limit(limit) => limit > &current,
+            SubgraphLimit::Disabled => false,
+        }
+    }
 }
 
 impl Display for FirehoseEndpoint {
@@ -93,10 +104,10 @@ impl FirehoseEndpoint {
 
         let subgraph_limit = match subgraph_limit {
             // See the comment on the constant
-            SubgraphLimit::Unlimited => SUBGRAPHS_PER_CONN,
+            SubgraphLimit::Unlimited => SubgraphLimit::Limit(SUBGRAPHS_PER_CONN),
             // This is checked when parsing from config but doesn't hurt to be defensive.
-            SubgraphLimit::Limit(limit) => limit.min(SUBGRAPHS_PER_CONN),
-            SubgraphLimit::NoTraffic => 0,
+            SubgraphLimit::Limit(limit) => SubgraphLimit::Limit(limit.min(SUBGRAPHS_PER_CONN)),
+            l => l,
         };
 
         FirehoseEndpoint {
@@ -109,11 +120,11 @@ impl FirehoseEndpoint {
         }
     }
 
-    // The SUBGRAPHS_PER_CONN upper bound was already limited so we leave it the same
-    // we need to use inclusive limits (<=) because there will always be a reference
+    // we need to -1 because there will always be a reference
     // inside FirehoseEndpoints that is not used (is always cloned).
     pub fn has_subgraph_capacity(self: &Arc<Self>) -> bool {
-        Arc::strong_count(&self) <= self.subgraph_limit
+        self.subgraph_limit
+            .has_capacity(Arc::strong_count(&self).checked_sub(1).unwrap_or(0))
     }
 
     pub async fn get_block<M>(
@@ -501,7 +512,7 @@ mod test {
             None,
             false,
             false,
-            SubgraphLimit::NoTraffic,
+            SubgraphLimit::Disabled,
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
