@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
@@ -425,8 +426,13 @@ fn copy() {
             Some(shard) => shard,
         };
 
-        let deployment =
-            store.copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone())?;
+        let deployment = store.copy_deployment(
+            &src,
+            dst_shard,
+            NODE_ID.clone(),
+            BLOCKS[1].clone(),
+            OnSync::None,
+        )?;
 
         store
             .cheap_clone()

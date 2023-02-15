@@ -36,7 +36,7 @@ use graph::{
 
 use crate::{
     connection_pool::ConnectionPool,
-    deployment::SubgraphHealth,
+    deployment::{OnSync, SubgraphHealth},
     primary,
     primary::{DeploymentId, Mirror as PrimaryMirror, Site},
     relational::{index::Method, Layout},
@@ -559,6 +559,7 @@ impl SubgraphStoreInner {
             site.clone(),
             graft_base,
             replace,
+            OnSync::None,
         )?;
 
         let exists_and_synced = |id: &DeploymentHash| {
@@ -586,6 +587,7 @@ impl SubgraphStoreInner {
         shard: Shard,
         node: NodeId,
         block: BlockPtr,
+        on_sync: OnSync,
     ) -> Result<DeploymentLocator, StoreError> {
         let src = self.find_site(src.id.into())?;
         let src_store = self.for_site(src.as_ref())?;
@@ -645,6 +647,7 @@ impl SubgraphStoreInner {
             dst.clone(),
             Some(graft_base),
             false,
+            on_sync,
         )?;
 
         let pconn = self.primary_conn()?;

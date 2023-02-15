@@ -42,7 +42,7 @@ use web3::types::Address;
 
 use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::catalog;
-use crate::deployment;
+use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::relational::index::{CreateIndex, Method};
@@ -169,6 +169,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         graft_base: Option<Arc<Layout>>,
         replace: bool,
+        on_sync: OnSync,
     ) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         conn.transaction(|| -> Result<_, StoreError> {
@@ -211,6 +212,9 @@ impl DeploymentStore {
                     conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())?;
                 }
             }
+
+            deployment::set_on_sync(&conn, &site, on_sync)?;
+
             Ok(())
         })
     }

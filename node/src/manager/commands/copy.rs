@@ -2,7 +2,7 @@ use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQuery
 use std::{collections::HashMap, sync::Arc, time::SystemTime};
 
 use graph::{
-    components::store::BlockStore as _,
+    components::store::{BlockStore as _, DeploymentId},
     data::query::QueryTarget,
     prelude::{
         anyhow::{anyhow, bail, Error},
@@ -11,7 +11,10 @@ use graph::{
     },
 };
 use graph_store_postgres::{
-    command_support::catalog::{self, copy_state, copy_table_state},
+    command_support::{
+        catalog::{self, copy_state, copy_table_state},
+        on_sync, OnSync,
+    },
     PRIMARY_SHARD,
 };
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
@@ -56,7 +59,7 @@ impl CopyState {
         pools: &HashMap<Shard, ConnectionPool>,
         shard: &Shard,
         dst: i32,
-    ) -> Result<Option<(CopyState, Vec<CopyTableState>)>, Error> {
+    ) -> Result<Option<(CopyState, Vec<CopyTableState>, OnSync)>, Error> {
         use copy_state as cs;
         use copy_table_state as cts;
 
@@ -71,11 +74,13 @@ impl CopyState {
             .order_by(cts::entity_type)
             .load::<CopyTableState>(&dconn)?;
 
+        let on_sync = on_sync(&dconn, DeploymentId(dst))?;
+
         Ok(cs::table
             .filter(cs::dst.eq(dst))
             .get_result::<CopyState>(&dconn)
             .optional()?
-            .map(|state| (state, tables)))
+            .map(|state| (state, tables, on_sync)))
     }
 }
 
@@ -87,8 +92,17 @@ pub async fn create(
     shards: Vec<String>,
     node: String,
     block_offset: u32,
+    activate: bool,
+    replace: bool,
 ) -> Result<(), Error> {
     let block_offset = block_offset as i32;
+    let on_sync = match (activate, replace) {
+        (true, true) => bail!("--activate and --replace can't both be specified"),
+        (true, false) => OnSync::Activate,
+        (false, true) => OnSync::Replace,
+        (false, false) => OnSync::None,
+    };
+
     let subgraph_store = store.subgraph_store();
     let src = src.locate_unique(&primary)?;
     let query_store = store
@@ -134,7 +148,7 @@ pub async fn create(
     let shard = Shard::new(shard)?;
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id `{}`", node))?;
 
-    let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr)?;
+    let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr, on_sync)?;
 
     println!("created deployment {} as copy of {}", dst, src);
     Ok(())
@@ -193,7 +207,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
             println!("{:20} | {}", "deployment", deployment_hash);
             println!("{:20} | sgd{} -> sgd{} ({})", "action", src, dst, shard);
             match CopyState::find(&pools, &shard, dst)? {
-                Some((state, tables)) => match cancelled_at {
+                Some((state, tables, _)) => match cancelled_at {
                     Some(cancel_requested) => match state.cancelled_at {
                         Some(cancelled_at) => status("cancelled", cancelled_at),
                         None => status("cancel requested", cancel_requested),
@@ -263,8 +277,8 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         .map(|(_, cancelled_at)| (true, cancelled_at))
         .unwrap_or((false, None));
 
-    let (state, tables) = match CopyState::find(&pools, &shard, dst)? {
-        Some((state, tables)) => (state, tables),
+    let (state, tables, on_sync) = match CopyState::find(&pools, &shard, dst)? {
+        Some((state, tables, on_sync)) => (state, tables, on_sync),
         None => {
             if active {
                 println!("copying is queued but has not started");
@@ -290,6 +304,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         "src",
         "dst",
         "target block",
+        "on sync",
         "duration",
         "status",
     ];
@@ -298,6 +313,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         state.src.to_string(),
         state.dst.to_string(),
         state.target_block_number.to_string(),
+        on_sync.to_str().to_string(),
         duration(&state.started_at, &state.finished_at),
         progress,
     ];

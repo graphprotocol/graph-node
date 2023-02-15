@@ -64,6 +64,63 @@ impl From<SubgraphHealth> for graph::data::subgraph::schema::SubgraphHealth {
     }
 }
 
+/// Additional behavior for a deployment when it becomes synced
+#[derive(Clone, Copy, Debug)]
+pub enum OnSync {
+    None,
+    /// Activate this deployment
+    Activate,
+    /// Activate this deployment and unassign any other copies of the same
+    /// deployment
+    Replace,
+}
+
+impl TryFrom<Option<&str>> for OnSync {
+    type Error = StoreError;
+
+    fn try_from(value: Option<&str>) -> Result<Self, Self::Error> {
+        match value {
+            None => Ok(OnSync::None),
+            Some("activate") => Ok(OnSync::Activate),
+            Some("replace") => Ok(OnSync::Replace),
+            _ => Err(constraint_violation!("illegal value for on_sync: {value}")),
+        }
+    }
+}
+
+impl OnSync {
+    pub fn activate(&self) -> bool {
+        match self {
+            OnSync::None => false,
+            OnSync::Activate => true,
+            OnSync::Replace => true,
+        }
+    }
+
+    pub fn replace(&self) -> bool {
+        match self {
+            OnSync::None => false,
+            OnSync::Activate => false,
+            OnSync::Replace => true,
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            OnSync::None => "none",
+            OnSync::Activate => "activate",
+            OnSync::Replace => "replace",
+        }
+    }
+
+    fn to_sql(&self) -> Option<&str> {
+        match self {
+            OnSync::None => None,
+            OnSync::Activate | OnSync::Replace => Some(self.to_str()),
+        }
+    }
+}
+
 table! {
     subgraphs.subgraph_deployment (id) {
         id -> Integer,
@@ -1082,6 +1139,33 @@ pub fn set_earliest_block(
         .set(d::earliest_block_number.eq(earliest_block))
         .execute(conn)?;
     Ok(())
+}
+
+pub fn on_sync(conn: &PgConnection, id: impl Into<DeploymentId>) -> Result<OnSync, StoreError> {
+    use subgraph_manifest as m;
+
+    let s = m::table
+        .filter(m::id.eq(id.into()))
+        .select(m::on_sync)
+        .get_result::<Option<String>>(conn)?;
+    OnSync::try_from(s.as_deref())
+}
+
+pub fn set_on_sync(conn: &PgConnection, site: &Site, on_sync: OnSync) -> Result<(), StoreError> {
+    use subgraph_manifest as m;
+
+    let n = update(m::table.filter(m::id.eq(site.id)))
+        .set(m::on_sync.eq(on_sync.to_sql()))
+        .execute(conn)?;
+
+    match n {
+        0 => Err(StoreError::DeploymentNotFound(site.to_string())),
+        1 => Ok(()),
+        _ => Err(constraint_violation!(
+            "multiple manifests for deployment {}",
+            site.to_string()
+        )),
+    }
 }
 
 /// Lock the deployment `site` for writes while `f` is running. The lock can

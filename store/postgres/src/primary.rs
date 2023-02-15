@@ -370,6 +370,12 @@ impl TryFrom<Schema> for Site {
     }
 }
 
+impl std::fmt::Display for Site {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}[sgd{}]", self.deployment, self.id)
+    }
+}
+
 impl From<&Site> for DeploymentLocator {
     fn from(site: &Site) -> Self {
         DeploymentLocator::new(site.id.into(), site.deployment.clone())

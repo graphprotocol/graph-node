@@ -366,6 +366,12 @@ pub enum CopyCommand {
         /// How far behind `src` subgraph head to copy
         #[clap(long, short, default_value = "200")]
         offset: u32,
+        /// Activate this copy once it has synced
+        #[clap(long, short, conflicts_with = "replace")]
+        activate: bool,
+        /// Replace the source with this copy once it has synced
+        #[clap(long, short, conflicts_with = "activate")]
+        replace: bool,
         /// The source deployment (see `help info`)
         src: DeploymentSearch,
         /// The name of the database shard into which to copy
@@ -1093,10 +1099,15 @@ async fn main() -> anyhow::Result<()> {
                     shard,
                     node,
                     offset,
+                    activate,
+                    replace,
                 } => {
                     let shards: Vec<_> = ctx.config.stores.keys().cloned().collect();
                     let (store, primary) = ctx.store_and_primary();
-                    commands::copy::create(store, primary, src, shard, shards, node, offset).await
+                    commands::copy::create(
+                        store, primary, src, shard, shards, node, offset, activate, replace,
+                    )
+                    .await
                 }
                 Activate { deployment, shard } => {
                     commands::copy::activate(ctx.subgraph_store(), deployment, shard)
