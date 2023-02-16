@@ -24,7 +24,7 @@ New `graph-node` installations now **mandate** PostgreSQL to use C locale and UT
 graph_elasticsearch_logs_sent
 - Turned "Flushing logs to Elasticsearch" log into a Prometheus metric (`graph_elasticsearch_logs_sent`) to reduce log noise. [#4333](https://github.com/graphprotocol/graph-node/pull/4333)
 - New materialized view `info.chain_sizes`, which works the same way as the already existing `info.subgraph_sizes` and `info.table_sizes`. [#4318](https://github.com/graphprotocol/graph-node/pull/4318)
-- New `graphman stats` subcommands `set-target` and `target` to manage statics targets for specific deployments (i.e. how much data PostgreSQL samples when analyzing a table). [#4092](https://github.com/graphprotocol/graph-node/pull/4092)
+- New `graphman stats` subcommands `set-target` and `target` to manage statistics targets for specific deployments (i.e. how much data PostgreSQL samples when analyzing a table). [#4092](https://github.com/graphprotocol/graph-node/pull/4092)
 - Added support for a Firehose-based block ingestor. [#4059](https://github.com/graphprotocol/graph-node/issues/4059), [#4204](https://github.com/graphprotocol/graph-node/pull/4204), [#4216](https://github.com/graphprotocol/graph-node/pull/4216)
 
 ### Fixes
