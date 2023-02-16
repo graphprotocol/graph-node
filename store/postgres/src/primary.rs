@@ -335,7 +335,7 @@ pub struct Site {
     /// Whether this is the site that should be used for queries. There's
     /// exactly one for each `deployment`, i.e., other entries for that
     /// deployment have `active = false`
-    pub(crate) active: bool,
+    pub active: bool,
 
     pub(crate) schema_version: DeploymentSchemaVersion,
     /// Only the store and tests can create Sites

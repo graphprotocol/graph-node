@@ -12,7 +12,7 @@ use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::prelude::*;
 use graph::semver::Version;
-use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
+use graph_store_postgres::{Shard, SubgraphStore as DieselSubgraphStore};
 
 const USER_GQL: &str = "
 enum Color { yellow, red, blue, green }
@@ -407,44 +407,103 @@ fn graft() {
     })
 }
 
+fn other_shard(
+    store: &DieselSubgraphStore,
+    src: &DeploymentLocator,
+) -> Result<Option<Shard>, StoreError> {
+    let src_shard = store.shard(src)?;
+
+    match all_shards()
+        .into_iter()
+        .find(|shard| shard.as_str() != src_shard.as_str())
+    {
+        None => {
+            // The tests are configured with just one shard, copying is not possible
+            println!("skipping copy test since there is no shard to copy to");
+            Ok(None)
+        }
+        Some(shard) => Ok(Some(shard)),
+    }
+}
+
 // This test will only do something if the test configuration uses at least
 // two shards
 #[test]
 fn copy() {
     run_test(|store, src| async move {
-        let src_shard = store.shard(&src)?;
+        if let Some(dst_shard) = other_shard(&store, &src)? {
+            let deployment = store.copy_deployment(
+                &src,
+                dst_shard,
+                NODE_ID.clone(),
+                BLOCKS[1].clone(),
+                OnSync::None,
+            )?;
 
-        let dst_shard = match all_shards()
-            .into_iter()
-            .find(|shard| shard.as_str() != src_shard.as_str())
-        {
-            None => {
-                // The tests are configured with just one shard, copying is not possible
-                println!("skipping copy test since there is no shard to copy to");
-                return Ok(());
-            }
-            Some(shard) => shard,
-        };
+            store
+                .cheap_clone()
+                .writable(LOGGER.clone(), deployment.id)
+                .await?
+                .start_subgraph_deployment(&LOGGER)
+                .await?;
 
-        let deployment = store.copy_deployment(
-            &src,
-            dst_shard,
-            NODE_ID.clone(),
-            BLOCKS[1].clone(),
-            OnSync::None,
-        )?;
+            store.activate(&deployment)?;
 
-        store
-            .cheap_clone()
-            .writable(LOGGER.clone(), deployment.id)
-            .await?
-            .start_subgraph_deployment(&LOGGER)
-            .await?;
-
-        store.activate(&deployment)?;
-
-        check_graft(store, deployment).await
+            check_graft(store, deployment).await?;
+        }
+        Ok(())
     })
+}
+
+// Test that the on_sync behavior is correct when `deployment_synced` gets
+// run. This test will only do something if the test configuration uses at
+// least two shards
+#[test]
+fn on_sync() {
+    for on_sync in [OnSync::None, OnSync::Activate, OnSync::Replace] {
+        run_test(move |store, src| async move {
+            if let Some(dst_shard) = other_shard(&store, &src)? {
+                let dst = store.copy_deployment(
+                    &src,
+                    dst_shard,
+                    NODE_ID.clone(),
+                    BLOCKS[1].clone(),
+                    on_sync,
+                )?;
+
+                let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
+
+                writable.start_subgraph_deployment(&*LOGGER).await?;
+                writable.deployment_synced()?;
+
+                let primary = primary_connection();
+                let src_site = primary.locate_site(src)?.unwrap();
+                let src_node = primary.assigned_node(&src_site)?;
+                let dst_site = primary.locate_site(dst)?.unwrap();
+                let dst_node = primary.assigned_node(&dst_site)?;
+
+                assert!(dst_node.is_some());
+                match on_sync {
+                    OnSync::None => {
+                        assert!(src_node.is_some());
+                        assert!(src_site.active);
+                        assert!(!dst_site.active)
+                    }
+                    OnSync::Activate => {
+                        assert!(src_node.is_some());
+                        assert!(!src_site.active);
+                        assert!(dst_site.active)
+                    }
+                    OnSync::Replace => {
+                        assert!(src_node.is_none());
+                        assert!(!src_site.active);
+                        assert!(dst_site.active)
+                    }
+                }
+            }
+            Ok(())
+        })
+    }
 }
 
 #[test]
