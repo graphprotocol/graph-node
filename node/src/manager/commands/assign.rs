@@ -58,5 +58,14 @@ pub fn reassign(
     };
     conn.send_store_event(sender, &StoreEvent::new(changes))?;
 
+    // It's easy to make a typo in the name of the node; if this operation
+    // assigns to a node that wasn't used before, warn the user that they
+    // might have mistyped the node name
+    let mirror = catalog::Mirror::primary_only(primary);
+    let count = mirror.assignments(&node)?.len();
+    if count == 1 {
+        println!("warning: this is the only deployment assigned to {node}");
+        println!("         are you sure it is spelled correctly?");
+    }
     Ok(())
 }

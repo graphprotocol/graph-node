@@ -71,11 +71,11 @@ pub mod command_support {
         pub use crate::block_store::primary as block_store;
         pub use crate::catalog::{account_like, stats};
         pub use crate::copy::{copy_state, copy_table_state};
-        pub use crate::primary::Connection;
         pub use crate::primary::{
             active_copies, deployment_schemas, ens_names, subgraph, subgraph_deployment_assignment,
             subgraph_version, Site,
         };
+        pub use crate::primary::{Connection, Mirror};
     }
     pub mod index {
         pub use crate::relational::index::{CreateIndex, Method};
