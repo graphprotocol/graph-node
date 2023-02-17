@@ -4,7 +4,9 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockchainKind, TriggersAdapterSelector};
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
-use graph::prelude::{EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt};
+use graph::prelude::{
+    BlockHash, EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt,
+};
 use graph::{
     blockchain::{
         block_stream::{
@@ -632,18 +634,29 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         use futures::stream::Stream;
         use graph::prelude::LightEthereumBlockExt;
 
-        let blocks = with_cheapest_rpc_adapter(&self.chain_client, &self.capabilities)?
-            .load_blocks(
-                self.logger.cheap_clone(),
-                self.chain_store.cheap_clone(),
-                HashSet::from_iter(Some(block.hash_as_h256())),
-            )
-            .collect()
-            .compat()
-            .await?;
-        assert_eq!(blocks.len(), 1);
+        let block = match self.chain_client.as_ref() {
+            ChainClient::Firehose(_) => Some(BlockPtr {
+                hash: BlockHash::from(vec![0xff; 32]),
+                number: block.number.saturating_sub(1),
+            }),
+            ChainClient::Rpc(adapters) => {
+                let blocks = adapters
+                    .cheapest_with(&self.capabilities)?
+                    .load_blocks(
+                        self.logger.cheap_clone(),
+                        self.chain_store.cheap_clone(),
+                        HashSet::from_iter(Some(block.hash_as_h256())),
+                    )
+                    .collect()
+                    .compat()
+                    .await?;
+                assert_eq!(blocks.len(), 1);
 
-        Ok(blocks[0].parent_ptr())
+                blocks[0].parent_ptr()
+            }
+        };
+
+        Ok(block)
     }
 }
 
