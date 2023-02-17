@@ -1,6 +1,8 @@
-use crate::firehose::FirehoseEndpoints;
+use std::sync::Arc;
 
 use super::Blockchain;
+use crate::firehose::{FirehoseEndpoint, FirehoseEndpoints};
+use anyhow::anyhow;
 
 // EthereumClient represents the mode in which the ethereum chain block can be retrieved,
 // alongside their requirements.
@@ -35,6 +37,13 @@ impl<C: Blockchain> ChainClient<C> {
         match self {
             ChainClient::Firehose(_) => true,
             ChainClient::Rpc(_) => false,
+        }
+    }
+
+    pub fn firehose_endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
+        match self {
+            ChainClient::Firehose(endpoints) => endpoints.random(),
+            _ => Err(anyhow!("rpc unsupported on arweave")),
         }
     }
 }

@@ -46,7 +46,10 @@ pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersA
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
-use self::block_stream::{BlockStream, FirehoseCursor};
+use self::{
+    block_stream::{BlockStream, FirehoseCursor},
+    client::ChainClient,
+};
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -203,6 +206,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     fn is_refetch_block_required(&self) -> bool;
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
+
+    fn chain_client(&self) -> Arc<ChainClient<Self>>;
 }
 
 #[derive(Error, Debug)]

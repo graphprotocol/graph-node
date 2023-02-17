@@ -1502,6 +1502,7 @@ pub(crate) async fn blocks_with_triggers(
     Ok(blocks)
 }
 
+#[inline]
 pub(crate) fn with_cheapest_rpc_adapter(
     adapter: &Arc<ChainClient<Chain>>,
     capabilities: &NodeCapabilities,

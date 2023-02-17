@@ -426,6 +426,10 @@ impl Blockchain for Chain {
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         self.runtime_adapter.clone()
     }
+
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
+    }
 }
 
 /// This is used in `EthereumAdapter::triggers_in_block`, called when re-processing a block for

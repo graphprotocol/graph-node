@@ -1,8 +1,9 @@
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::{Block, BlockchainKind, EmptyNodeCapabilities};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
-use graph::prelude::{MetricsRegistry, TryFutureExt};
+use graph::prelude::MetricsRegistry;
 use graph::{
     blockchain::{
         block_stream::{
@@ -32,7 +33,7 @@ use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    firehose_endpoints: Arc<FirehoseEndpoints>,
+    client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 }
@@ -54,7 +55,7 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            firehose_endpoints: Arc::new(firehose_endpoints),
+            client: Arc::new(ChainClient::<Self>::new_firehose(firehose_endpoints)),
             chain_store,
             metrics_registry,
         }
@@ -123,7 +124,7 @@ impl Blockchain for Chain {
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
-        let firehose_endpoint = self.firehose_endpoints.random()?;
+        let firehose_endpoint = self.client.firehose_endpoint()?;
         let logger = self
             .logger_factory
             .subgraph_logger(&deployment)
@@ -165,15 +166,19 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        self.firehose_endpoints
-            .random()?
+        self.client
+            .firehose_endpoint()?
             .block_ptr_for_number::<codec::Block>(logger, number)
-            .map_err(Into::into)
             .await
+            .map_err(Into::into)
     }
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
+    }
+
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
     }
 }
 

@@ -10,6 +10,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 use super::{
     block_stream::{self, FirehoseCursor},
+    client::ChainClient,
     HostFn, IngestorError, TriggerWithHandler,
 };
 
@@ -347,6 +348,10 @@ impl Blockchain for MockBlockchain {
     }
 
     fn runtime_adapter(&self) -> std::sync::Arc<dyn RuntimeAdapter<Self>> {
+        todo!()
+    }
+
+    fn chain_client(&self) -> Arc<ChainClient<MockBlockchain>> {
         todo!()
     }
 }

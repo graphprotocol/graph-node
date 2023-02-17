@@ -1,5 +1,6 @@
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::EmptyNodeCapabilities;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
@@ -41,21 +42,21 @@ pub struct Chain {
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
 
     pub(crate) logger_factory: LoggerFactory,
-    pub(crate) endpoints: FirehoseEndpoints,
+    pub(crate) client: Arc<ChainClient<Self>>,
     pub(crate) metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
-        endpoints: FirehoseEndpoints,
+        firehose_endpoints: FirehoseEndpoints,
         metrics_registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     ) -> Self {
         Self {
             logger_factory,
-            endpoints,
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             metrics_registry,
             chain_store,
             block_stream_builder,
@@ -166,6 +167,10 @@ impl Blockchain for Chain {
     }
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
+    }
+
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
     }
 }
 

@@ -1,3 +1,4 @@
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -53,7 +54,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", chain.name));
 
-        let firehose_endpoint = chain.firehose_endpoints.random()?;
+        let firehose_endpoint = chain.chain_client().firehose_endpoint()?;
 
         let logger = chain
             .logger_factory
@@ -92,7 +93,7 @@ impl BlockStreamBuilder<Chain> for NearStreamBuilder {
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    firehose_endpoints: Arc<FirehoseEndpoints>,
+    client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<dyn MetricsRegistry>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
@@ -116,7 +117,7 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            firehose_endpoints: Arc::new(firehose_endpoints),
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             chain_store,
             metrics_registry,
             block_stream_builder,
@@ -211,7 +212,7 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        let firehose_endpoint = self.firehose_endpoints.random()?;
+        let firehose_endpoint = self.client.firehose_endpoint()?;
 
         firehose_endpoint
             .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
@@ -221,6 +222,10 @@ impl Blockchain for Chain {
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
+    }
+
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
     }
 }
 
