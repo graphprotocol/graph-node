@@ -218,34 +218,46 @@ impl ServiceContainer {
         docker: &ServiceContainer,
         db_name: &str,
     ) -> Result<(), DockerError> {
+        const EXEC_TRIES: usize = 10;
+
         use bollard::exec;
 
-        // 1. Create Exec
-        let config = exec::CreateExecOptions {
-            cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", &db_name]),
-            user: Some("postgres"),
-            attach_stdout: Some(true),
-            ..Default::default()
-        };
+        for attempt in 1..=EXEC_TRIES {
+            // 1. Create Exec
+            let config = exec::CreateExecOptions {
+                cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", &db_name]),
+                user: Some("postgres"),
+                attach_stdout: Some(true),
+                ..Default::default()
+            };
 
-        let message = docker
-            .client
-            .create_exec(docker.container_name(), config)
-            .await?;
+            let message = docker
+                .client
+                .create_exec(docker.container_name(), config)
+                .await?;
 
-        // 2. Start Exec
-        let mut stream = docker.client.start_exec(&message.id, None);
-        while let Some(_) = stream.next().await { /* consume stream */ }
+            // 2. Start Exec
+            let mut stream = docker.client.start_exec(&message.id, None);
+            while let Some(_) = stream.next().await { /* consume stream */ }
 
-        // 3. Inspect exec
-        let inspect = docker.client.inspect_exec(&message.id).await?;
-        match inspect.exit_code {
-            Some(0) => Ok(()),
-            code => panic!(
-                "failed to run 'createdb' command using docker exec (exit code: {:?})",
-                code
-            ),
+            // 3. Inspect exec
+            let inspect = docker.client.inspect_exec(&message.id).await?;
+            match inspect.exit_code {
+                Some(0) => return Ok(()),
+                code if attempt < EXEC_TRIES => {
+                    println!(
+                        "failed to run 'createdb' (exit code: {:?}) Will try again, attempt {attempt} of {EXEC_TRIES}",
+                        code
+                    );
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                code => panic!(
+                    "failed to run 'createdb' command using docker exec (exit code: {:?})",
+                    code
+                ),
+            }
         }
+        Ok(())
     }
 }
 
