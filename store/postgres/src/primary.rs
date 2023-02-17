@@ -1570,6 +1570,15 @@ impl Mirror {
         Mirror { pools }
     }
 
+    /// Create a mirror that only uses the primary. Such a mirror will not
+    /// be able to do anything if the primary is down, and should only be
+    /// used for non-critical uses like command line tools
+    pub fn primary_only(primary: ConnectionPool) -> Mirror {
+        Mirror {
+            pools: vec![primary],
+        }
+    }
+
     /// Execute the function `f` with connections from each of our pools in
     /// order until for one of them we get any result other than
     /// `Err(StoreError::DatabaseUnavailable)`. In other words, we try to
