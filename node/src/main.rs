@@ -1,5 +1,7 @@
 use clap::Parser as _;
-use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumClient, EthereumStreamBuilder,
+};
 use ethereum::codec::HeaderOnlyBlock;
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
@@ -382,7 +384,7 @@ async fn main() {
                 let (firehose_eth_chains, polling_eth_chains): (HashMap<_, _>, HashMap<_, _>) =
                     ethereum_chains
                         .into_iter()
-                        .partition(|(_, chain)| chain.is_firehose_supported());
+                        .partition(|(_, chain)| chain.client.is_firehose());
 
                 start_block_ingestor(
                     &logger,
@@ -700,16 +702,17 @@ fn ethereum_networks_as_chains(
                 })
         })
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
-            let firehose_endpoints = firehose_networks.and_then(|v| v.networks.get(network_name));
+            let firehose_endpoints = firehose_networks
+                .and_then(|v| v.networks.get(network_name))
+                .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
 
+            let client = Arc::new(EthereumClient::new(
+                firehose_endpoints,
+                eth_adapters.clone(),
+            ));
             let adapter_selector = EthereumAdapterSelector::new(
                 logger_factory.clone(),
-                Arc::new(eth_adapters.clone()),
-                Arc::new(
-                    firehose_endpoints
-                        .map(|fe| fe.clone())
-                        .unwrap_or(FirehoseEndpoints::new()),
-                ),
+                client.clone(),
                 registry.clone(),
                 chain_store.clone(),
             );
@@ -726,11 +729,12 @@ fn ethereum_networks_as_chains(
                 registry.clone(),
                 chain_store.cheap_clone(),
                 chain_store,
-                firehose_endpoints.map_or_else(|| FirehoseEndpoints::new(), |v| v.clone()),
-                eth_adapters.clone(),
+                client.clone(),
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
-                Arc::new(EthereumBlockRefetcher {}),
+                Arc::new(EthereumBlockRefetcher {
+                    requires_refetch: client.is_firehose(),
+                }),
                 Arc::new(adapter_selector),
                 runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,

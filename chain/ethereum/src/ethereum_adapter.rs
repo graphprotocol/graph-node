@@ -54,7 +54,7 @@ use crate::{
     TriggerFilter, ENV_VARS,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
     url_hostname: Arc<String>,

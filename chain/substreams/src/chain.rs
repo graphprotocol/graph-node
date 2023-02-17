@@ -73,6 +73,7 @@ impl std::fmt::Debug for Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Substreams;
 
+    type Client = ();
     type Block = Block;
     type DataSource = DataSource;
     type UnresolvedDataSource = UnresolvedDataSource;
@@ -165,10 +166,6 @@ impl Blockchain for Chain {
     }
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
-    }
-
-    fn is_firehose_supported(&self) -> bool {
-        true
     }
 }
 

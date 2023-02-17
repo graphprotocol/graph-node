@@ -10,7 +10,9 @@ use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
-use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
+use ethereum::chain::{
+    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumClient, EthereumStreamBuilder,
+};
 use ethereum::{ProviderEthRpcMetrics, RuntimeAdapter as EthereumRuntimeAdapter};
 use graph::anyhow::{bail, format_err};
 use graph::blockchain::{BlockchainKind, BlockchainMap};
@@ -114,6 +116,8 @@ pub async fn run(
         .chain_store(network_name.as_ref())
         .expect(format!("No chain store for {}", &network_name).as_ref());
 
+    let client = Arc::new(EthereumClient::new(firehose_endpoints, eth_adapters));
+
     let chain = ethereum::Chain::new(
         logger_factory.clone(),
         network_name.clone(),
@@ -121,15 +125,15 @@ pub async fn run(
         metrics_registry.clone(),
         chain_store.cheap_clone(),
         chain_store.cheap_clone(),
-        firehose_endpoints.clone(),
-        eth_adapters.clone(),
+        client.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
-        Arc::new(EthereumBlockRefetcher {}),
+        Arc::new(EthereumBlockRefetcher {
+            requires_refetch: client.is_firehose(),
+        }),
         Arc::new(EthereumAdapterSelector::new(
             logger_factory.clone(),
-            Arc::new(eth_adapters),
-            Arc::new(firehose_endpoints.clone()),
+            client,
             metrics_registry.clone(),
             chain_store.cheap_clone(),
         )),

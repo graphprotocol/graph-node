@@ -128,6 +128,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Near;
 
+    type Client = ();
     type Block = codec::Block;
 
     type DataSource = DataSource;
@@ -220,10 +221,6 @@ impl Blockchain for Chain {
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
         Arc::new(RuntimeAdapter {})
-    }
-
-    fn is_firehose_supported(&self) -> bool {
-        true
     }
 }
 

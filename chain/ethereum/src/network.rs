@@ -13,7 +13,7 @@ use crate::adapter::EthereumAdapter as _;
 use crate::capabilities::NodeCapabilities;
 use crate::EthereumAdapter;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EthereumNetworkAdapter {
     pub capabilities: NodeCapabilities,
     adapter: Arc<EthereumAdapter>,
@@ -30,7 +30,7 @@ impl EthereumNetworkAdapter {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct EthereumNetworkAdapters {
     pub adapters: Vec<EthereumNetworkAdapter>,
     pub call_only_adapters: Vec<EthereumNetworkAdapter>,

@@ -271,6 +271,7 @@ impl<C: Blockchain> RuntimeAdapter<C> for MockRuntimeAdapter {
 impl Blockchain for MockBlockchain {
     const KIND: BlockchainKind = BlockchainKind::Ethereum;
 
+    type Client = ();
     type Block = MockBlock;
 
     type DataSource = MockDataSource;
@@ -346,10 +347,6 @@ impl Blockchain for MockBlockchain {
     }
 
     fn runtime_adapter(&self) -> std::sync::Arc<dyn RuntimeAdapter<Self>> {
-        todo!()
-    }
-
-    fn is_firehose_supported(&self) -> bool {
         todo!()
     }
 }

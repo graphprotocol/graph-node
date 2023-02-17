@@ -726,7 +726,7 @@ impl From<ProviderStatus> for f64 {
 }
 
 const STATUS_HELP: &str = "0 = ok, 1 = net_version failed, 2 = get genesis failed, 3 = net_version timeout, 4 = get genesis timeout";
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ProviderEthRpcMetrics {
     request_duration: Box<HistogramVec>,
     errors: Box<CounterVec>,
