@@ -1,12 +1,11 @@
 use clap::Parser as _;
-use ethereum::chain::{
-    EthereumAdapterSelector, EthereumBlockRefetcher, EthereumClient, EthereumStreamBuilder,
-};
+use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
 use ethereum::codec::HeaderOnlyBlock;
 use ethereum::{
     BlockIngestor as EthereumBlockIngestor, EthereumAdapterTrait, EthereumNetworks, RuntimeAdapter,
 };
 use git_testament::{git_testament, render_testament};
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::BlockStore;
@@ -706,7 +705,7 @@ fn ethereum_networks_as_chains(
                 .and_then(|v| v.networks.get(network_name))
                 .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
 
-            let client = Arc::new(EthereumClient::new(
+            let client = Arc::new(ChainClient::<graph_chain_ethereum::Chain>::new(
                 firehose_endpoints,
                 eth_adapters.clone(),
             ));

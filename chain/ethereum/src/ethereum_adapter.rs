@@ -1,6 +1,7 @@
 use futures::future;
 use futures::prelude::*;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
 use graph::components::transaction_receipt::LightTransactionReceipt;
@@ -43,6 +44,8 @@ use std::time::Instant;
 
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
+use crate::Chain;
+use crate::NodeCapabilities;
 use crate::{
     adapter::{
         EthGetLogsFilter, EthereumAdapter as EthereumAdapterTrait, EthereumBlockFilter,
@@ -1358,7 +1361,7 @@ pub(crate) async fn blocks_with_triggers(
     // Scan for Logs
     if !filter.log.is_empty() {
         let logs_future = get_logs_and_transactions(
-            eth.clone(),
+            &eth,
             &logger,
             subgraph_metrics.clone(),
             from,
@@ -1383,7 +1386,7 @@ pub(crate) async fn blocks_with_triggers(
 
     // Scan for Blocks
     if filter.block.trigger_every_block {
-        let block_future = adapter
+        let block_future = eth
             .block_range_to_ptrs(logger.clone(), from, to)
             .map(move |ptrs| {
                 ptrs.into_iter()
@@ -1412,7 +1415,7 @@ pub(crate) async fn blocks_with_triggers(
     }
 
     // Get hash for "to" block
-    let to_hash_fut = adapter
+    let to_hash_fut = eth
         .block_hash_by_block_number(&logger, to)
         .and_then(|hash| match hash {
             Some(hash) => Ok(hash),
@@ -1450,7 +1453,7 @@ pub(crate) async fn blocks_with_triggers(
 
     let logger2 = logger.cheap_clone();
 
-    let blocks = adapter
+    let blocks = eth
         .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
@@ -1499,10 +1502,21 @@ pub(crate) async fn blocks_with_triggers(
     Ok(blocks)
 }
 
+pub(crate) fn with_cheapest_rpc_adapter(
+    adapter: &Arc<ChainClient<Chain>>,
+    capabilities: &NodeCapabilities,
+) -> anyhow::Result<Arc<EthereumAdapter>> {
+    match adapter.as_ref() {
+        ChainClient::Firehose(_) => panic!("can't use eth adapter with firehose"),
+        ChainClient::Rpc(adapter) => adapter.cheapest_with(capabilities),
+    }
+}
+
 pub(crate) async fn get_calls(
-    adapter: &EthereumAdapter,
+    adapter: &Arc<ChainClient<Chain>>,
     logger: Logger,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
+    capabilities: &NodeCapabilities,
     requires_traces: bool,
     block: BlockFinality,
 ) -> Result<BlockFinality, Error> {
@@ -1522,7 +1536,7 @@ pub(crate) async fn get_calls(
             let calls = if !requires_traces || ethereum_block.transaction_receipts.is_empty() {
                 vec![]
             } else {
-                adapter
+                with_cheapest_rpc_adapter(adapter, &capabilities)?
                     .calls_in_block(
                         &logger,
                         subgraph_metrics.clone(),
@@ -1905,7 +1919,7 @@ fn resolve_transaction_receipt(
 
 /// Retrieves logs and the associated transaction receipts, if required by the [`EthereumLogFilter`].
 async fn get_logs_and_transactions(
-    adapter: Arc<EthereumAdapter>,
+    adapter: &Arc<EthereumAdapter>,
     logger: &Logger,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     from: BlockNumber,
