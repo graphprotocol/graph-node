@@ -127,9 +127,7 @@ pub async fn run(
         client.clone(),
         chain_head_update_listener,
         Arc::new(EthereumStreamBuilder {}),
-        Arc::new(EthereumBlockRefetcher {
-            requires_refetch: client.is_firehose(),
-        }),
+        Arc::new(EthereumBlockRefetcher {}),
         Arc::new(EthereumAdapterSelector::new(
             logger_factory.clone(),
             client,

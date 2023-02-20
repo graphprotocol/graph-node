@@ -43,7 +43,14 @@ impl<C: Blockchain> ChainClient<C> {
     pub fn firehose_endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
         match self {
             ChainClient::Firehose(endpoints) => endpoints.random(),
-            _ => Err(anyhow!("rpc unsupported on arweave")),
+            _ => Err(anyhow!("firehose endpoint requested on rpc chain client")),
+        }
+    }
+
+    pub fn rpc(&self) -> anyhow::Result<&C::Client> {
+        match self {
+            Self::Rpc(rpc) => Ok(rpc),
+            _ => Err(anyhow!("rpc endpoint requested on firehose chain client")),
         }
     }
 }

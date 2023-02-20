@@ -1502,19 +1502,8 @@ pub(crate) async fn blocks_with_triggers(
     Ok(blocks)
 }
 
-#[inline]
-pub(crate) fn with_cheapest_rpc_adapter(
-    adapter: &Arc<ChainClient<Chain>>,
-    capabilities: &NodeCapabilities,
-) -> anyhow::Result<Arc<EthereumAdapter>> {
-    match adapter.as_ref() {
-        ChainClient::Firehose(_) => panic!("can't use eth adapter with firehose"),
-        ChainClient::Rpc(adapter) => adapter.cheapest_with(capabilities),
-    }
-}
-
 pub(crate) async fn get_calls(
-    adapter: &Arc<ChainClient<Chain>>,
+    client: &Arc<ChainClient<Chain>>,
     logger: Logger,
     subgraph_metrics: Arc<SubgraphEthRpcMetrics>,
     capabilities: &NodeCapabilities,
@@ -1537,7 +1526,9 @@ pub(crate) async fn get_calls(
             let calls = if !requires_traces || ethereum_block.transaction_receipts.is_empty() {
                 vec![]
             } else {
-                with_cheapest_rpc_adapter(adapter, &capabilities)?
+                client
+                    .rpc()?
+                    .cheapest_with(&capabilities)?
                     .calls_in_block(
                         &logger,
                         subgraph_metrics.clone(),

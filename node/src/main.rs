@@ -383,7 +383,7 @@ async fn main() {
                 let (firehose_eth_chains, polling_eth_chains): (HashMap<_, _>, HashMap<_, _>) =
                     ethereum_chains
                         .into_iter()
-                        .partition(|(_, chain)| chain.client.is_firehose());
+                        .partition(|(_, chain)| chain.chain_client().is_firehose());
 
                 start_block_ingestor(
                     &logger,
@@ -731,9 +731,7 @@ fn ethereum_networks_as_chains(
                 client.clone(),
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
-                Arc::new(EthereumBlockRefetcher {
-                    requires_refetch: client.is_firehose(),
-                }),
+                Arc::new(EthereumBlockRefetcher {}),
                 Arc::new(adapter_selector),
                 runtime_adapter,
                 ethereum::ENV_VARS.reorg_threshold,
