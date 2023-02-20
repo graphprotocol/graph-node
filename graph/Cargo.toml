@@ -42,7 +42,7 @@ strum_macros = "0.21.1"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
-petgraph = "0.6.2"
+petgraph = "0.6.3"
 tiny-keccak = "1.5.0"
 tokio = { version = "1.16.1", features = ["time", "sync", "macros", "test-util", "rt-multi-thread", "parking_lot"] }
 tokio-stream = { version = "0.1.11", features = ["sync"] }
