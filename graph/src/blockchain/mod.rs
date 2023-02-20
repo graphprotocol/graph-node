@@ -3,6 +3,7 @@
 //! trait which is the centerpiece of this module.
 
 pub mod block_stream;
+pub mod client;
 mod empty_node_capabilities;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
@@ -45,7 +46,10 @@ pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersA
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
-use self::block_stream::{BlockStream, FirehoseCursor};
+use self::{
+    block_stream::{BlockStream, FirehoseCursor},
+    client::ChainClient,
+};
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -122,12 +126,22 @@ impl ChainStoreBlock {
     }
 }
 
+// // ChainClient represents the type of client used to ingest data from the chain. For most chains
+// // this will be either firehose or some sort of rpc client.
+// // If a specific chain requires more than one adapter this should be handled by the chain specifically
+// // as it's not common behavior across chains.
+// pub enum ChainClient<C: Blockchain> {
+//     Firehose(FirehoseEndpoints),
+//     Rpc(C::Client),
+// }
+
 #[async_trait]
 // This is only `Debug` because some tests require that
 pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     const KIND: BlockchainKind;
     const ALIASES: &'static [&'static str] = &[];
 
+    type Client: Debug + Default;
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone + Debug + Default;
@@ -193,7 +207,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
 
-    fn is_firehose_supported(&self) -> bool;
+    fn chain_client(&self) -> Arc<ChainClient<Self>>;
 }
 
 #[derive(Error, Debug)]

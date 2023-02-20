@@ -6,6 +6,7 @@ use super::{
     test_ptr, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
     StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain, NODE_ID,
 };
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
@@ -13,7 +14,6 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
 use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, NodeId};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
-use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::{
     chain::BlockFinality,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
@@ -49,6 +49,8 @@ pub async fn chain(
     ))]
     .into();
 
+    let client = Arc::new(ChainClient::<Chain>::new_firehose(firehose_endpoints));
+
     let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
@@ -59,11 +61,7 @@ pub async fn chain(
         mock_registry.clone(),
         chain_store.cheap_clone(),
         chain_store,
-        firehose_endpoints,
-        EthereumNetworkAdapters {
-            adapters: vec![],
-            call_only_adapters: vec![],
-        },
+        client,
         stores.chain_head_listener.cheap_clone(),
         block_stream_builder.clone(),
         Arc::new(StaticBlockRefetcher { x: PhantomData }),

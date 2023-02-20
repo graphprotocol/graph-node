@@ -7,6 +7,7 @@ use graph::{
             BlockStream, BlockStreamBuilder as BlockStreamBuilderTrait, FirehoseCursor,
         },
         substreams_block_stream::SubstreamsBlockStream,
+        Blockchain,
     },
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
@@ -39,7 +40,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let firehose_endpoint = chain.endpoints.random()?;
+        let firehose_endpoint = chain.chain_client().firehose_endpoint()?;
 
         let mapper = Arc::new(Mapper {});
 

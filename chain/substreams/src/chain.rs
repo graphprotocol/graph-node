@@ -1,5 +1,6 @@
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::EmptyNodeCapabilities;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
@@ -41,21 +42,21 @@ pub struct Chain {
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
 
     pub(crate) logger_factory: LoggerFactory,
-    pub(crate) endpoints: FirehoseEndpoints,
+    pub(crate) client: Arc<ChainClient<Self>>,
     pub(crate) metrics_registry: Arc<dyn MetricsRegistry>,
 }
 
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
-        endpoints: FirehoseEndpoints,
+        firehose_endpoints: FirehoseEndpoints,
         metrics_registry: Arc<dyn MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     ) -> Self {
         Self {
             logger_factory,
-            endpoints,
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             metrics_registry,
             chain_store,
             block_stream_builder,
@@ -73,6 +74,7 @@ impl std::fmt::Debug for Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Substreams;
 
+    type Client = ();
     type Block = Block;
     type DataSource = DataSource;
     type UnresolvedDataSource = UnresolvedDataSource;
@@ -167,8 +169,8 @@ impl Blockchain for Chain {
         Arc::new(RuntimeAdapter {})
     }
 
-    fn is_firehose_supported(&self) -> bool {
-        true
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
     }
 }
 

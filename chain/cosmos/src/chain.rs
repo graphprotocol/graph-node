@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::client::ChainClient;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
@@ -30,7 +31,7 @@ use crate::{codec, TriggerFilter};
 pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
-    firehose_endpoints: Arc<FirehoseEndpoints>,
+    client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<dyn MetricsRegistry>,
 }
@@ -52,7 +53,7 @@ impl Chain {
         Chain {
             logger_factory,
             name,
-            firehose_endpoints: Arc::new(firehose_endpoints),
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             chain_store,
             metrics_registry,
         }
@@ -63,6 +64,7 @@ impl Chain {
 impl Blockchain for Chain {
     const KIND: BlockchainKind = BlockchainKind::Cosmos;
 
+    type Client = ();
     type Block = codec::Block;
 
     type DataSource = DataSource;
@@ -119,7 +121,7 @@ impl Blockchain for Chain {
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
-        let firehose_endpoint = self.firehose_endpoints.random()?;
+        let firehose_endpoint = self.client.firehose_endpoint()?;
 
         let logger = self
             .logger_factory
@@ -162,7 +164,7 @@ impl Blockchain for Chain {
         logger: &Logger,
         number: BlockNumber,
     ) -> Result<BlockPtr, IngestorError> {
-        let firehose_endpoint = self.firehose_endpoints.random()?;
+        let firehose_endpoint = self.client.firehose_endpoint()?;
 
         firehose_endpoint
             .block_ptr_for_number::<codec::HeaderOnlyBlock>(logger, number)
@@ -174,8 +176,8 @@ impl Blockchain for Chain {
         Arc::new(RuntimeAdapter {})
     }
 
-    fn is_firehose_supported(&self) -> bool {
-        true
+    fn chain_client(&self) -> Arc<ChainClient<Self>> {
+        self.client.clone()
     }
 }
 

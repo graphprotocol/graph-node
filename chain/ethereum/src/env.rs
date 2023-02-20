@@ -11,12 +11,6 @@ lazy_static! {
 #[derive(Clone)]
 #[non_exhaustive]
 pub struct EnvVars {
-    /// Controls if firehose should be preferred over RPC if Firehose endpoints
-    /// are present, if not set, the default behavior is is kept which is to
-    /// automatically favor Firehose.
-    ///
-    /// Set by the flag `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`. On by default.
-    pub is_firehose_preferred: bool,
     /// Additional deterministic errors that have not yet been hardcoded.
     ///
     /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
@@ -107,7 +101,6 @@ impl EnvVars {
 impl From<Inner> for EnvVars {
     fn from(x: Inner) -> Self {
         Self {
-            is_firehose_preferred: x.is_firehose_preferred.0,
             get_logs_max_contracts: x.get_logs_max_contracts,
             geth_eth_call_errors: x
                 .geth_eth_call_errors
@@ -143,8 +136,6 @@ impl Default for EnvVars {
 
 #[derive(Clone, Debug, Envconfig)]
 struct Inner {
-    #[envconfig(from = "GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED", default = "true")]
-    is_firehose_preferred: EnvVarBoolean,
     #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
     geth_eth_call_errors: String,
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]

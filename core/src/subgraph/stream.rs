@@ -12,7 +12,7 @@ pub async fn new_block_stream<C: Blockchain>(
     filter: &C::TriggerFilter,
     metrics: &SubgraphInstanceMetrics,
 ) -> Result<Box<dyn BlockStream<C>>, Error> {
-    let is_firehose = inputs.chain.is_firehose_supported();
+    let is_firehose = inputs.chain.chain_client().is_firehose();
 
     let buffer_size = match is_firehose {
         true => BUFFERED_FIREHOSE_STREAM_SIZE,
