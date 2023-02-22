@@ -1,0 +1,2 @@
+[alias]
+check-clippy = "clippy --no-deps -- --allow warnings"
