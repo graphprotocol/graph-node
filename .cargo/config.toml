@@ -1,2 +1,3 @@
 [alias]
+# Warnings create a lot of noise, we only print errors.
 check-clippy = "clippy --no-deps -- --allow warnings"
