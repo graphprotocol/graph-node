@@ -3027,7 +3027,7 @@ impl<'a> SortKey<'a> {
                                 child_join_column: asd.child_join_column,
                                 sort_by_column: asd.sort_by_column,
                                 prefix: asd.prefix.clone(),
-                                direction: asd.direction.clone(),
+                                direction: asd.direction,
                             })
                             .collect(),
                     )))
