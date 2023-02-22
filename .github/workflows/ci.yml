@@ -157,7 +157,7 @@ jobs:
           args: --all -- --check
 
   clippy:
-    name: Report Clippy warnings
+    name: Clippy linting
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -165,15 +165,14 @@ jobs:
       # Unlike rustfmt, Clippy actually compiles stuff so it benefits from
       # caching.
       - uses: Swatinem/rust-cache@v2
-
+      - name: Install deps
+        run: sudo apt-get install -y protobuf-compiler
       - name: Run Clippy
         uses: actions-rs/cargo@v1
-        # We do *not* block builds if Clippy complains. It's just here to let us
-        # keep an eye out on the warnings it produces.
-        continue-on-error: true
         with:
           command: clippy
-          args: --no-deps
+          # Warnings create a lot of noise, we only print errors.
+          args: --no-deps -- --allow warnings
 
   release-check:
     name: Build in release mode
