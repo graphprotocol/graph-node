@@ -446,7 +446,7 @@ fn entity_validation() {
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&schema, &key);
-        if errmsg == "" {
+        if errmsg.is_empty() {
             assert!(
                 err.is_ok(),
                 "checking entity {}: expected ok but got {}",

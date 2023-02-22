@@ -34,7 +34,7 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         .collect::<Vec<String>>();
 
     assert!(
-        args.len() > 0,
+        !args.is_empty(),
         "arguments not found! generate_network_type_id(<network-name>)"
     );
 

@@ -315,7 +315,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     let mut lst = List::new(lst);
     lst.append(vals);
     lst.render();
-    println!("");
+    println!();
 
     println!(
         "{:^30} | {:^8} | {:^8} | {:^8} | {:^8}",

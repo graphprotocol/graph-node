@@ -64,7 +64,7 @@ impl NodeId {
         let s = s.into();
 
         // Enforce minimum and maximum length limit
-        if s.len() > 63 || s.len() < 1 {
+        if s.len() > 63 || s.is_empty() {
             return Err(());
         }
 
@@ -935,7 +935,7 @@ fn entity_validation() {
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&schema, &key);
-        if errmsg == "" {
+        if errmsg.is_empty() {
             assert!(
                 err.is_ok(),
                 "checking entity {}: expected ok but got {}",

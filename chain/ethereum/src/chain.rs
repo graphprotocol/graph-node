@@ -176,7 +176,7 @@ impl TriggersAdapterSelector<Chain> for EthereumAdapterSelector {
             chain_client: self.client.cheap_clone(),
             chain_store: self.chain_store.cheap_clone(),
             unified_api_version,
-            capabilities: capabilities.clone(),
+            capabilities: *capabilities,
         };
         Ok(Arc::new(adapter))
     }

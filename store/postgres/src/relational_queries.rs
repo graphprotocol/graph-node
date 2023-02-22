@@ -3280,11 +3280,9 @@ impl<'a> SortKey<'a> {
                 out.push_sql("order by g$parent_id, ");
                 SortKey::sort_expr(column, value, direction, None, None, out)
             }
-            SortKey::ChildKey(_) => {
-                return Err(diesel::result::Error::QueryBuilderError(
-                    "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
-                ));
-            }
+            SortKey::ChildKey(_) => Err(diesel::result::Error::QueryBuilderError(
+                "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
+            )),
         }
     }
 

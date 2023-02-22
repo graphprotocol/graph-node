@@ -41,7 +41,7 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     );
     sleep(Duration::from_secs(delay));
     println!("Number of transactions/minute");
-    println!("{:10} {:>7} {}", "database", "all", "write");
+    println!("{:10} {:>7} write", "database", "all");
     for (datname, all_txn, write_txn) in query(&conn)? {
         let (all_speed, write_speed) = speeds
             .get(&datname)

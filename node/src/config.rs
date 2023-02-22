@@ -282,7 +282,7 @@ impl Shard {
         }
         Ok(Self {
             connection: postgres_url.clone(),
-            weight: opt.postgres_host_weights.get(0).cloned().unwrap_or(1),
+            weight: opt.postgres_host_weights.first().cloned().unwrap_or(1),
             pool_size,
             fdw_pool_size: PoolSize::five(),
             replicas,

@@ -557,7 +557,7 @@ fn build_order_by(
                 if entity.is_interface() {
                     return Err(QueryExecutionError::OrderByNotSupportedError(
                         entity.name().to_owned(),
-                        parent_field_name.clone(),
+                        parent_field_name,
                     ));
                 }
 
@@ -632,12 +632,8 @@ fn build_order_by(
             }
         },
         _ => match field.argument_value("text") {
-            Some(r::Value::Object(filter)) => {
-                build_fulltext_order_by_from_object(filter).map(|order_by| match order_by {
-                    Some((attr, value)) => Some((attr, value, None)),
-                    None => None,
-                })
-            }
+            Some(r::Value::Object(filter)) => build_fulltext_order_by_from_object(filter)
+                .map(|order_by| order_by.map(|(attr, value)| (attr, value, None))),
             None => Ok(None),
             _ => Err(QueryExecutionError::InvalidFilterError),
         },
