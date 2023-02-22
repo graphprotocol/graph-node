@@ -229,13 +229,13 @@ impl Cond {
             caps.name("number")
                 .map(|number| number.as_str())
                 .and_then(|number| number.parse::<BlockNumber>().ok())
-                .map(|number| Cond::Partial(number))
+                .map(Cond::Partial)
         }
 
         if &cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
             Cond::Closed
         } else {
-            parse_partial(&cond).unwrap_or_else(|| Cond::Unknown(cond))
+            parse_partial(&cond).unwrap_or(Cond::Unknown(cond))
         }
     }
 
@@ -294,7 +294,7 @@ impl Display for CreateIndex {
                 cond,
                 with,
             } => {
-                let columns = columns.into_iter().map(|c| c.to_string()).join(", ");
+                let columns = columns.iter().map(|c| c.to_string()).join(", ");
                 let unique = if *unique { "[uq]" } else { "" };
                 write!(f, "{name}{unique} {method}({columns})")?;
                 if let Some(cond) = cond {
@@ -303,7 +303,7 @@ impl Display for CreateIndex {
                 if let Some(with) = with {
                     write!(f, " with {with}")?;
                 }
-                writeln!(f, "")?;
+                writeln!(f)?;
             }
         }
         Ok(())
@@ -362,7 +362,7 @@ impl CreateIndex {
             )
             .unwrap();
 
-            let cap = rx.captures(&defn)?;
+            let cap = rx.captures(defn)?;
             let unique = cap.name("unique").is_some();
             let name = field(&cap, "name")?;
             let nsp = field(&cap, "nsp")?;
@@ -386,7 +386,7 @@ impl CreateIndex {
         }
 
         defn.make_ascii_lowercase();
-        new_parsed(&defn).unwrap_or_else(|| CreateIndex::Unknown { defn })
+        new_parsed(&defn).unwrap_or(CreateIndex::Unknown { defn })
     }
 
     pub fn create<C: Into<Vec<Expr>>>(
@@ -543,7 +543,7 @@ impl CreateIndex {
                 let unique = if *unique { "unique " } else { "" };
                 let concurrent = if concurrent { "concurrently " } else { "" };
                 let if_not_exists = if if_not_exists { "if not exists " } else { "" };
-                let columns = columns.into_iter().map(|c| c.to_sql()).join(", ");
+                let columns = columns.iter().map(|c| c.to_sql()).join(", ");
 
                 let mut sql = format!("create {unique}index {concurrent}{if_not_exists}{name} on {nsp}.{table} using {method} ({columns})");
                 if let Some(with) = with {
@@ -631,7 +631,7 @@ fn parse() {
                 columns,
                 cond,
             } = p;
-            let columns: Vec<_> = columns.into_iter().map(|c| Expr::from(c)).collect();
+            let columns: Vec<_> = columns.iter().map(Expr::from).collect();
             let cond = cond.map(Cond::from);
             CreateIndex::Parsed {
                 unique,
@@ -652,7 +652,7 @@ fn parse() {
         let exp = CreateIndex::from(exp);
         assert_eq!(exp, act);
 
-        let defn = defn.replace("\"", "").to_ascii_lowercase();
+        let defn = defn.replace('\"', "").to_ascii_lowercase();
         assert_eq!(defn, act.to_sql(false, false).unwrap());
     }
 

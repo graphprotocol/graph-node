@@ -447,7 +447,7 @@ impl From<f64> for EnumPayload {
 
 impl From<bool> for EnumPayload {
     fn from(b: bool) -> EnumPayload {
-        EnumPayload(if b { 1 } else { 0 })
+        EnumPayload(b.into())
     }
 }
 

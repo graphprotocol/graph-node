@@ -190,7 +190,7 @@ impl TryFrom<&s::ObjectType> for IdType {
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
         let pk = obj_type
-            .field(&PRIMARY_KEY_COLUMN.to_owned())
+            .field(PRIMARY_KEY_COLUMN)
             .expect("Each ObjectType has an `id` field");
         Self::try_from(&pk.field_type)
     }
@@ -252,7 +252,7 @@ impl Layout {
                             enum_type
                                 .values
                                 .iter()
-                                .map(|value| value.name.to_owned())
+                                .map(|value| value.name.clone())
                                 .collect::<BTreeSet<_>>(),
                         ),
                     ))
@@ -288,7 +288,7 @@ impl Layout {
                         // they have a String `id` field
                         // see also: id-type-for-unimplemented-interfaces
                         let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
-                        Ok((interface.to_owned(), id_type))
+                        Ok((interface.clone(), id_type))
                     }
                 })
         });
@@ -432,8 +432,7 @@ impl Layout {
         self.tables
             .values()
             .filter_map(|dst| base.table(&dst.name).map(|src| (dst, src)))
-            .map(|(dst, src)| dst.can_copy_from(src))
-            .flatten()
+            .flat_map(|(dst, src)| dst.can_copy_from(src))
             .collect()
     }
 
@@ -654,7 +653,7 @@ impl Layout {
                 return Trace::None;
             }
 
-            let mut text = debug_query(&query).to_string().replace("\n", "\t");
+            let mut text = debug_query(&query).to_string().replace('\n', "\t");
 
             let trace = if trace {
                 Trace::query(&text, elapsed, entity_count)
@@ -687,7 +686,7 @@ impl Layout {
             FilterCollection::new(self, query.collection, query.filter.as_ref(), query.block)?;
         let query = FilterQuery::new(
             &filter_collection,
-            &self,
+            self,
             query.filter.as_ref(),
             query.order,
             query.range,
@@ -756,7 +755,7 @@ impl Layout {
         let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             let ids = entities
-                .into_iter()
+                .iter_mut()
                 .map(|(key, _)| key.entity_id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -987,7 +986,7 @@ impl ColumnType {
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
-        if let Some(values) = enums.get(&*name) {
+        if let Some(values) = enums.get(name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
             let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
@@ -1065,7 +1064,7 @@ impl Column {
         enums: &EnumMap,
         id_types: &IdTypeMap,
     ) -> Result<Column, StoreError> {
-        SqlName::check_valid_identifier(&*field.name, "attribute")?;
+        SqlName::check_valid_identifier(&field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
         let is_reference =
@@ -1241,7 +1240,7 @@ impl Table {
         position: u32,
         has_causality_region: bool,
     ) -> Result<Table, StoreError> {
-        SqlName::check_valid_identifier(&*defn.name, "object")?;
+        SqlName::check_valid_identifier(&defn.name, "object")?;
 
         let table_name = SqlName::from(&*defn.name);
         let columns = defn
@@ -1276,7 +1275,7 @@ impl Table {
         let other = Table {
             object: self.object.clone(),
             name: name.clone(),
-            qualified_name: SqlName::qualified_name(namespace, &name),
+            qualified_name: SqlName::qualified_name(namespace, name),
             columns: self.columns.clone(),
             is_account_like: self.is_account_like,
             position: self.position,
@@ -1344,9 +1343,9 @@ impl Table {
 
     pub(crate) fn block_column(&self) -> &SqlName {
         if self.immutable {
-            &*crate::block_range::BLOCK_COLUMN_SQL
+            &crate::block_range::BLOCK_COLUMN_SQL
         } else {
-            &*crate::block_range::BLOCK_RANGE_COLUMN_SQL
+            &crate::block_range::BLOCK_RANGE_COLUMN_SQL
         }
     }
 }
@@ -1364,7 +1363,7 @@ fn named_type(field_type: &q::Type) -> &str {
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
     let name = named_type(field_type);
 
-    !enums.contains_key(&*name) && !ValueType::is_scalar(name)
+    !enums.contains_key(name) && !ValueType::is_scalar(name)
 }
 
 #[derive(Clone)]
@@ -1484,7 +1483,7 @@ impl LayoutCache {
             .lock()
             .unwrap()
             .remove(&site.deployment)
-            .map(|CacheEntry { value, expires: _ }| value.clone())
+            .map(|CacheEntry { value, expires: _ }| value)
     }
 
     // Only needed for tests

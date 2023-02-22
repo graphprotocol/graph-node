@@ -10,14 +10,14 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     let enum_names = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .map(|f| f.ident.to_string())
         .collect::<Vec<String>>();
 
     let required_flds = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() == super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident == super::REQUIRED_IDENT_NAME)
         .flat_map(|f| f.fields.named.iter())
         .map(|f| f.ident.as_ref().unwrap().to_string())
         .collect::<Vec<String>>();
@@ -28,7 +28,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
         .iter()
         .filter(|f| {
             let nm = f.ident.as_ref().unwrap().to_string();
-            !enum_names.contains(&nm) && !nm.starts_with("_")
+            !enum_names.contains(&nm) && !nm.starts_with('_')
         })
         .collect::<Vec<&Field>>();
 
@@ -46,13 +46,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
     );
 
     let name = item_struct.ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+    let asc_name = Ident::new(&format!("Asc{}", name), Span::call_site());
 
     //generate enum fields validator
     let enum_validation = enum_fields.iter().map(|f|{
         let fld_name = f.ident.as_ref().unwrap(); //empty, maybe call it "sum"?
-        let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-        let fld_nm = format!("\"{}\"", fld_name.to_string()).to_string().parse::<proc_macro2::TokenStream>().unwrap();
+        let type_nm = format!("\"{}\"", name).parse::<proc_macro2::TokenStream>().unwrap();
+        let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();
 
         quote! {
             let #fld_name = self.#fld_name.as_ref()
@@ -73,10 +73,10 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let is_required = is_required(f, &required_flds);
 
             let setter =
-                if is_nullable(&f) {
+                if is_nullable(f) {
                     if is_required{
-                        let type_nm = format!("\"{}\"", name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
-                        let fld_nm = format!("\"{}\"", fld_name.to_string()).parse::<proc_macro2::TokenStream>().unwrap();
+                        let type_nm = format!("\"{}\"", name).parse::<proc_macro2::TokenStream>().unwrap();
+                        let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();
 
                         quote! {
                             #fld_name: graph::runtime::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
@@ -86,15 +86,13 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                             #fld_name: graph::runtime::asc_new_or_null(heap, &#self_ref, gas)?,
                         }
                     }
-                } else {
-                    if is_scalar(&field_type(f)){
-                        quote!{
-                            #fld_name: #self_ref,
-                        }
-                    }else{
-                        quote! {
-                            #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
-                        }
+                } else if is_scalar(&field_type(f)){
+                    quote!{
+                        #fld_name: #self_ref,
+                    }
+                }else{
+                    quote! {
+                        #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
                     }
                 };
             setter
@@ -121,8 +119,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let mod_name = item_struct.ident.to_string().to_snake_case();
             let varian_type_name = format!("{}::{}::{}",mod_name, var_type_name, varian_type_name).parse::<proc_macro2::TokenStream>().unwrap();
 
-            let setter =
-                if is_byte_array(f){
+            if is_byte_array(f){
                     quote! {
                         #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &graph_runtime_wasm::asc_abi::class::Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
                     }
@@ -130,9 +127,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     quote! {
                         #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
                     }
-                };
-
-            setter
+                }
         })
         .for_each(|ts| methods.push(ts));
     }
@@ -188,7 +183,7 @@ fn is_scalar(fld: &str) -> bool {
 fn field_type(fld: &syn::Field) -> String {
     if let syn::Type::Path(tp) = &fld.ty {
         if let Some(ps) = tp.path.segments.last() {
-            return ps.ident.to_string();
+            ps.ident.to_string()
         } else {
             "N/A".into()
         }
@@ -199,7 +194,7 @@ fn field_type(fld: &syn::Field) -> String {
 
 fn is_required(fld: &syn::Field, req_list: &[String]) -> bool {
     let fld_name = fld.ident.as_ref().unwrap().to_string();
-    req_list.iter().find(|r| *r == &fld_name).is_some()
+    req_list.iter().any(|r| r == &fld_name)
 }
 
 fn is_nullable(fld: &syn::Field) -> bool {

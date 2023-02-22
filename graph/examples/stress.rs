@@ -295,9 +295,7 @@ impl Template for HashMap<String, String> {
 
     fn sample(&self, size: usize, _rng: Option<&mut SmallRng>) -> Box<Self> {
         Box::new(HashMap::from_iter(
-            self.iter()
-                .take(size)
-                .map(|(k, v)| (k.to_owned(), v.to_owned())),
+            self.iter().take(size).map(|(k, v)| (k.clone(), v.clone())),
         ))
     }
 }
@@ -364,7 +362,7 @@ impl Template for Object {
             Box::new(Object::from_iter(
                 self.iter()
                     .take(size)
-                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+                    .map(|(k, v)| (k.to_owned(), v.clone())),
             ))
         } else {
             Box::new(make_object(size, rng))
@@ -387,7 +385,7 @@ impl Template for QueryResult {
                     .unwrap()
                     .iter()
                     .take(size)
-                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+                    .map(|(k, v)| (k.to_owned(), v.clone())),
             )))
         } else {
             Box::new(QueryResult::new(make_domains(size, rng)))
@@ -451,7 +449,7 @@ impl Template for ValueMap {
                 self.0
                     .iter()
                     .take(size)
-                    .map(|(k, v)| (k.to_owned(), v.to_owned())),
+                    .map(|(k, v)| (k.clone(), v.clone())),
             )))
         } else {
             Box::new(Self::make_map(size, rng))

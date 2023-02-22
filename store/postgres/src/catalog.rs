@@ -391,7 +391,7 @@ pub fn drop_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
 pub fn migration_count(conn: &PgConnection) -> Result<i64, StoreError> {
     use __diesel_schema_migrations as m;
 
-    if !table_exists(conn, NAMESPACE_PUBLIC, &*MIGRATIONS_TABLE)? {
+    if !table_exists(conn, NAMESPACE_PUBLIC, &MIGRATIONS_TABLE)? {
         return Ok(0);
     }
 
@@ -405,7 +405,7 @@ pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>,
         .select((ts::table_name, ts::is_account_like))
         .get_results::<(String, Option<bool>)>(conn)
         .optional()?
-        .unwrap_or(vec![])
+        .unwrap_or_default()
         .into_iter()
         .filter_map(|(name, account_like)| {
             if account_like == Some(true) {
@@ -451,7 +451,7 @@ pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<
           where ts.deployment = $1",
         src_nsp = src_nsp
     );
-    Ok(sql_query(&query)
+    Ok(sql_query(query)
         .bind::<Integer, _>(src.id)
         .bind::<Integer, _>(dst.id)
         .execute(conn)?)
@@ -641,7 +641,7 @@ pub(crate) fn drop_index(
     index_name: &str,
 ) -> Result<(), StoreError> {
     let query = format!("drop index concurrently {schema_name}.{index_name}");
-    sql_query(&query)
+    sql_query(query)
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(index_name)
         .execute(conn)
@@ -679,8 +679,7 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
     // values there are in the `id` column) See the [Postgres
     // docs](https://www.postgresql.org/docs/current/view-pg-stats.html) for
     // the precise meaning of n_distinct
-    let query = format!(
-        "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
+    let query = "select case when s.n_distinct < 0 then (- s.n_distinct * c.reltuples)::int4
                      else s.n_distinct::int4
                  end as entities,
                  c.reltuples::int4  as versions,
@@ -696,7 +695,7 @@ pub fn stats(conn: &PgConnection, namespace: &Namespace) -> Result<Vec<VersionSt
             and s.attname = 'id'
             and c.relname = s.tablename
           order by c.relname"
-    );
+        .to_string();
 
     let stats = sql_query(query)
         .bind::<Text, _>(namespace.as_str())

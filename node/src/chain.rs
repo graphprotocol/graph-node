@@ -75,7 +75,7 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
             let ipfs_ok_logger = logger.clone();
             let ipfs_err_logger = logger.clone();
             let ipfs_address_for_ok = ipfs_address.clone();
-            let ipfs_address_for_err = ipfs_address.clone();
+            let ipfs_address_for_err = ipfs_address;
             graph::spawn(async move {
                 ipfs_test
                     .test()
@@ -126,7 +126,7 @@ pub fn create_substreams_networks(
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
-                    .or_insert_with(|| FirehoseNetworks::new());
+                    .or_insert_with(FirehoseNetworks::new);
 
                 for i in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
@@ -172,7 +172,7 @@ pub fn create_firehose_networks(
 
                 let parsed_networks = networks_by_kind
                     .entry(chain.protocol)
-                    .or_insert_with(|| FirehoseNetworks::new());
+                    .or_insert_with(FirehoseNetworks::new);
 
                 // Create n FirehoseEndpoints where n is the size of the pool. If a
                 // subgraph limit is defined for this endpoint then each endpoint
@@ -271,7 +271,7 @@ pub async fn connect_ethereum_networks(
                     ProviderNetworkStatus::Version {
                         chain_id: network,
                         ident,
-                    } => networks.entry(network.to_string()).or_default().push(ident),
+                    } => networks.entry(network).or_default().push(ident),
                 }
                 networks
             });
@@ -353,10 +353,9 @@ where
                     ProviderNetworkStatus::Broken { chain_id, provider } => {
                         firehose_networks.remove(&chain_id, &provider)
                     }
-                    ProviderNetworkStatus::Version { chain_id, ident } => networks
-                        .entry(chain_id.to_string())
-                        .or_default()
-                        .push(ident),
+                    ProviderNetworkStatus::Version { chain_id, ident } => {
+                        networks.entry(chain_id).or_default().push(ident)
+                    }
                 }
                 networks
             });
@@ -401,7 +400,7 @@ pub async fn create_all_ethereum_networks(
             a.extend(b);
             a
         })
-        .unwrap_or_else(|| EthereumNetworks::new()))
+        .unwrap_or_else(EthereumNetworks::new))
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -550,8 +549,7 @@ mod test {
             .get("goerli")
             .unwrap()
             .adapters
-            .iter()
-            .next()
+            .first()
             .unwrap()
             .capabilities;
         let mainnet_capability = ethereum_networks
@@ -559,8 +557,7 @@ mod test {
             .get("mainnet")
             .unwrap()
             .adapters
-            .iter()
-            .next()
+            .first()
             .unwrap()
             .capabilities;
         assert_eq!(

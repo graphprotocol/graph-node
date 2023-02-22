@@ -78,7 +78,7 @@ impl TablePair {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
-        let VidRange { min_vid, max_vid } = sql_query(&format!(
+        let VidRange { min_vid, max_vid } = sql_query(format!(
             "select coalesce(min(vid), 0) as min_vid, \
                     coalesce(max(vid), -1) as max_vid from {src} \
               where lower(block_range) <= $2 \
@@ -105,7 +105,7 @@ impl TablePair {
                 // since they could still be reverted while we copy.
                 // The conditions on `block_range` are expressed redundantly
                 // to make more indexes useable
-                sql_query(&format!(
+                sql_query(format!(
                     "insert into {dst}({column_list}) \
                      select {column_list} from {src} \
                       where lower(block_range) <= $2 \
@@ -130,12 +130,7 @@ impl TablePair {
 
             batch_size.adapt(start.elapsed());
 
-            reporter.copy_final_batch(
-                self.src.name.as_str(),
-                rows as usize,
-                total_rows,
-                next_vid > max_vid,
-            );
+            reporter.copy_final_batch(self.src.name.as_str(), rows, total_rows, next_vid > max_vid);
         }
         Ok(total_rows)
     }
@@ -152,7 +147,7 @@ impl TablePair {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
-        let VidRange { min_vid, max_vid } = sql_query(&format!(
+        let VidRange { min_vid, max_vid } = sql_query(format!(
             "select coalesce(min(vid), 0) as min_vid, \
                     coalesce(max(vid), -1) as max_vid from {src} \
               where coalesce(upper(block_range), 2147483647) > $1 \
@@ -174,7 +169,7 @@ impl TablePair {
                 // starting right after `final_block`.
                 // The conditions on `block_range` are expressed redundantly
                 // to make more indexes useable
-                sql_query(&format!(
+                sql_query(format!(
                     "insert into {dst}({column_list}) \
                      select {column_list} from {src} \
                       where coalesce(upper(block_range), 2147483647) > $1 \
@@ -198,7 +193,7 @@ impl TablePair {
 
             reporter.copy_nonfinal_batch(
                 self.src.name.as_str(),
-                rows as usize,
+                rows,
                 total_rows,
                 next_vid > max_vid,
             );

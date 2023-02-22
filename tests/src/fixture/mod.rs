@@ -306,7 +306,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
     let chain_store = network_store
         .block_store()
         .chain_store(network_name.as_ref())
-        .expect(format!("No chain store for {}", &network_name).as_ref());
+        .unwrap_or_else(|| panic!("No chain store for {}", &network_name));
 
     Stores {
         network_name,
@@ -578,7 +578,7 @@ where
                 .enumerate()
                 .find(|(_, b)| b.ptr() == current_block)
                 .unwrap()
-                .0 as usize
+                .0
         });
         Ok(Box::new(StaticStream {
             stream: Box::pin(stream_events(self.chain.clone(), current_idx)),

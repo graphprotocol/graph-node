@@ -111,7 +111,7 @@ impl Config {
             ));
         }
         for (key, shard) in self.stores.iter_mut() {
-            shard.validate(&key)?;
+            shard.validate(key)?;
         }
         self.deployment.validate()?;
 
@@ -167,9 +167,8 @@ impl Config {
     }
 
     pub fn from_str(config: &str, node: &str) -> Result<Config> {
-        let mut config: Config = toml::from_str(&config)?;
-        config.node =
-            NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id {}", node))?;
+        let mut config: Config = toml::from_str(config)?;
+        config.node = NodeId::new(node).map_err(|()| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
     }
@@ -271,11 +270,11 @@ impl Shard {
             .as_ref()
             .expect("validation checked that postgres_url is set");
         let pool_size = PoolSize::Fixed(opt.store_connection_pool_size);
-        pool_size.validate(is_primary, &postgres_url)?;
+        pool_size.validate(is_primary, postgres_url)?;
         let mut replicas = BTreeMap::new();
         for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
             let replica = Replica {
-                connection: replace_host(&postgres_url, &host),
+                connection: replace_host(postgres_url, host),
                 weight: opt.postgres_host_weights.get(i + 1).cloned().unwrap_or(1),
                 pool_size: pool_size.clone(),
             };
@@ -440,10 +439,10 @@ impl ChainSection {
                 // Parse string (format is "NETWORK_NAME:NETWORK_CAPABILITIES:URL" OR
                 // "NETWORK_NAME::URL" which will default to NETWORK_CAPABILITIES="archive,traces")
                 let colon = arg.find(':').ok_or_else(|| {
-                    return anyhow!(
+                    anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
-                    );
+                    )
                 })?;
 
                 let (name, rest_with_delim) = arg.split_at(colon);
@@ -456,10 +455,10 @@ impl ChainSection {
                 }
 
                 let colon = rest.find(':').ok_or_else(|| {
-                    return anyhow!(
+                    anyhow!(
                         "A network name must be provided alongside the \
                          Ethereum node location. Try e.g. 'mainnet:URL'."
-                    );
+                    )
                 })?;
 
                 let (features, url_str) = rest.split_at(colon);
@@ -528,9 +527,9 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
     for (k, v) in kvs.into_iter() {
         headers.insert(
             k.parse::<http::header::HeaderName>()
-                .expect(&format!("invalid HTTP header name: {}", k)),
+                .unwrap_or_else(|_| panic!("invalid HTTP header name: {}", k)),
             v.parse::<http::header::HeaderValue>()
-                .expect(&format!("invalid HTTP header value: {}: {}", k, v)),
+                .unwrap_or_else(|_| panic!("invalid HTTP header value: {}: {}", k, v)),
         );
     }
     headers
@@ -833,7 +832,7 @@ impl<'de> Deserialize<'de> for Provider {
                         transport: transport.unwrap_or(Transport::Rpc),
                         features: features
                             .ok_or_else(|| serde::de::Error::missing_field("features"))?,
-                        headers: headers.unwrap_or_else(|| HeaderMap::new()),
+                        headers: headers.unwrap_or_else(HeaderMap::new),
                         rules: nodes,
                     }),
                 };
@@ -842,7 +841,7 @@ impl<'de> Deserialize<'de> for Provider {
             }
         }
 
-        const FIELDS: &'static [&'static str] = &[
+        const FIELDS: &[&str] = &[
             "label",
             "details",
             "transport",
@@ -1074,7 +1073,7 @@ fn replace_host(url: &str, host: &str) -> String {
         Err(_) => panic!("Invalid Postgres URL {}", url),
     };
     if let Err(e) = url.set_host(Some(host)) {
-        panic!("Invalid Postgres url {}: {}", url, e.to_string());
+        panic!("Invalid Postgres url {}: {}", url, e);
     }
     String::from(url)
 }
@@ -1657,7 +1656,7 @@ mod tests {
         d.push("resources/tests");
         d.push(path);
 
-        read_to_string(&d).expect(&format!("resource {:?} not found", &d))
+        read_to_string(&d).unwrap_or_else(|_| panic!("resource {:?} not found", &d))
     }
 
     #[test]

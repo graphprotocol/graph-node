@@ -7,8 +7,8 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
     let item_struct = parse_macro_input!(input as ItemStruct);
     let name = item_struct.ident.clone();
 
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
-    let asc_name_array = Ident::new(&format!("Asc{}Array", name.to_string()), Span::call_site());
+    let asc_name = Ident::new(&format!("Asc{}", name), Span::call_site());
+    let asc_name_array = Ident::new(&format!("Asc{}Array", name), Span::call_site());
 
     let args = parse_macro_input!(metadata as AttributeArgs);
 
@@ -17,7 +17,7 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
         .filter_map(|a| {
             if let NestedMeta::Meta(Meta::Path(Path { segments, .. })) = a {
                 if let Some(p) = segments.last() {
-                    return Some(p.ident.to_string().to_owned());
+                    return Some(p.ident.to_string());
                 }
             }
             None

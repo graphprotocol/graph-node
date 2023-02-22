@@ -212,7 +212,7 @@ fn parse_change_block_filter(value: &r::Value) -> Result<BlockNumber, QueryExecu
         r::Value::Object(object) => i32::try_from_value(
             object
                 .get("number_gte")
-                .ok_or_else(|| QueryExecutionError::InvalidFilterError)?,
+                .ok_or(QueryExecutionError::InvalidFilterError)?,
         )
         .map_err(|_| QueryExecutionError::InvalidFilterError),
         _ => Err(QueryExecutionError::InvalidFilterError),
@@ -225,7 +225,7 @@ fn build_entity_filter(
     operation: FilterOp,
     store_value: Value,
 ) -> Result<EntityFilter, QueryExecutionError> {
-    return match operation {
+    match operation {
         FilterOp::Not => Ok(EntityFilter::Not(field_name, store_value)),
         FilterOp::GreaterThan => Ok(EntityFilter::GreaterThan(field_name, store_value)),
         FilterOp::LessThan => Ok(EntityFilter::LessThan(field_name, store_value)),
@@ -255,7 +255,7 @@ fn build_entity_filter(
         FilterOp::NotEndsWithNoCase => Ok(EntityFilter::NotEndsWithNoCase(field_name, store_value)),
         FilterOp::Equal => Ok(EntityFilter::Equal(field_name, store_value)),
         _ => unreachable!(),
-    };
+    }
 }
 
 /// Iterate over the list and generate an EntityFilter from it
@@ -266,23 +266,23 @@ fn build_list_filter_from_value(
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     // We have object like this
     // { or: [{ name: \"John\", id: \"m1\" }, { mainBand: \"b2\" }] }
-    return match value {
+    match value {
         r::Value::List(list) => Ok(list
             .iter()
             .map(|item| {
                 // It is each filter in the object
                 // { name: \"John\", id: \"m1\" }
                 // the fields within the object are ANDed together
-                return match item {
+                match item {
                     r::Value::Object(object) => Ok(EntityFilter::And(build_filter_from_object(
                         entity, object, schema,
                     )?)),
                     _ => Err(QueryExecutionError::InvalidFilterError),
-                };
+                }
             })
             .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?),
         _ => Err(QueryExecutionError::InvalidFilterError),
-    };
+    }
 }
 
 /// build a filter which has list of nested filters
@@ -293,9 +293,7 @@ fn build_list_filter_from_object(
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
     Ok(object
         .iter()
-        .map(|(_, value)| {
-            return build_list_filter_from_value(entity, schema, value);
-        })
+        .map(|(_, value)| build_list_filter_from_value(entity, schema, value))
         .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
         .into_iter()
         // We iterate an object so all entity filters are flattened into one list
@@ -309,7 +307,7 @@ fn build_filter_from_object(
     object: &Object,
     schema: &ApiSchema,
 ) -> Result<Vec<EntityFilter>, QueryExecutionError> {
-    Ok(object
+    object
         .iter()
         .map(|(key, value)| {
             // Special handling for _change_block input filter since its not a
@@ -377,7 +375,7 @@ fn build_filter_from_object(
                 }
             })
         })
-        .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()?)
+        .collect::<Result<Vec<EntityFilter>, QueryExecutionError>>()
 }
 
 fn build_child_filter_from_object(
@@ -450,7 +448,7 @@ fn build_child_filter_from_object(
                     };
 
                     Ok(EntityFilter::Child(Child {
-                        attr: attr.clone(),
+                        attr,
                         entity_type: EntityType::new(child_entity.name().to_string()),
                         filter: filter.clone(),
                         derived,
@@ -547,7 +545,7 @@ fn build_order_by(
                     QueryExecutionError::EntityFieldError(entity.name().to_owned(), name.clone())
                 })?;
                 sast::get_field_value_type(&field.field_type)
-                    .map(|value_type| Some((name.to_owned(), value_type, None)))
+                    .map(|value_type| Some((name.clone(), value_type, None)))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
                             entity.name().to_owned(),
@@ -624,7 +622,7 @@ fn build_order_by(
                 };
 
                 sast::get_field_value_type(&child_field.field_type)
-                    .map(|value_type| Some((child_field_name.to_owned(), value_type, Some(child))))
+                    .map(|value_type| Some((child_field_name.clone(), value_type, Some(child))))
                     .map_err(|_| {
                         QueryExecutionError::OrderByNotSupportedError(
                             child_entity.name().to_owned(),
@@ -721,7 +719,7 @@ pub(crate) fn collect_entities_from_query_field(
                         // Obtain the subgraph ID from the object type
                         if let Ok(subgraph_id) = parse_subgraph_id(object_type) {
                             // Add the (subgraph_id, entity_name) tuple to the result set
-                            entities.insert((subgraph_id, object_type.name.to_owned()));
+                            entities.insert((subgraph_id, object_type.name.clone()));
                         }
                     }
 

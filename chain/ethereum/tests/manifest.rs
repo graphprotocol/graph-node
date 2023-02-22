@@ -36,8 +36,7 @@ struct TextResolver {
 
 impl TextResolver {
     fn add(&mut self, link: &str, text: &impl AsRef<[u8]>) {
-        self.texts
-            .insert(link.to_owned(), text.as_ref().iter().cloned().collect());
+        self.texts.insert(link.to_owned(), text.as_ref().to_vec());
     }
 }
 

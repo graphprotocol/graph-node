@@ -8,12 +8,12 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     let args = parse_macro_input!(metadata as super::Args);
 
     let name = item_struct.ident.clone();
-    let asc_name = Ident::new(&format!("Asc{}", name.to_string()), Span::call_site());
+    let asc_name = Ident::new(&format!("Asc{}", name), Span::call_site());
 
     let enum_names = args
         .vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .map(|f| f.ident.to_string())
         .collect::<Vec<String>>();
 
@@ -27,7 +27,7 @@ pub fn generate_asc_type(metadata: TokenStream, input: TokenStream) -> TokenStre
     //extend fields list with enum's variants
     args.vars
         .iter()
-        .filter(|f| f.ident.to_string() != super::REQUIRED_IDENT_NAME)
+        .filter(|f| f.ident != super::REQUIRED_IDENT_NAME)
         .flat_map(|f| f.fields.named.iter())
         .for_each(|f| fields.push(f));
 
@@ -79,7 +79,7 @@ fn field_type_map(tp: String) -> String {
     } else {
         match tp.as_ref() {
             "String" => "graph_runtime_wasm::asc_abi::class::AscString".into(),
-            _ => tp.to_owned(),
+            _ => tp.clone(),
         }
     }
 }

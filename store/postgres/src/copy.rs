@@ -408,7 +408,7 @@ impl TableState {
         } else {
             "lower(block_range) <= $1"
         };
-        let target_vid = sql_query(&format!(
+        let target_vid = sql_query(format!(
             "select coalesce(max(vid), -1) as max_vid from {} where {}",
             src.qualified_name.as_str(),
             max_block_clause

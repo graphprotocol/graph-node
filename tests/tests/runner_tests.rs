@@ -188,7 +188,7 @@ async fn file_data_sources() {
 
     assert_json_eq!(
         query_res,
-        Some(object! { ipfsFile: object!{ id: id.clone() , content: content.clone() } })
+        Some(object! { ipfsFile: object!{ id: id, content: content.clone() } })
     );
 
     // assert whether duplicate data sources are created.
@@ -218,7 +218,7 @@ async fn file_data_sources() {
     let writable = ctx
         .store
         .clone()
-        .writable(ctx.logger.clone(), ctx.deployment.id.clone())
+        .writable(ctx.logger.clone(), ctx.deployment.id)
         .await
         .unwrap();
     let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
@@ -366,7 +366,7 @@ async fn retry_create_ds() {
             number: 1,
             hash: H256::from_low_u64_be(12).into(),
         };
-        let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr.clone());
+        let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr);
         let block2 = empty_block(block1_reorged.ptr(), test_ptr(2));
         vec![block0, block1, block1_reorged, block2]
     };
@@ -475,7 +475,7 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
     );
 
     // Run codegen.
-    run_cmd(Command::new("yarn").arg("codegen").current_dir(&dir));
+    run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
 
     // Run `deploy` for the side effect of uploading to IPFS, the graph node url
     // is fake and the actual deploy call is meant to fail.

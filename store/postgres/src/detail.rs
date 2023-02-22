@@ -315,7 +315,7 @@ pub(crate) fn deployment_statuses(
     details_with_fatal_error
         .into_iter()
         .map(|(detail, fatal)| {
-            let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or(vec![]);
+            let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or_default();
             info_from_details(detail, fatal, non_fatal, sites)
         })
         .collect()

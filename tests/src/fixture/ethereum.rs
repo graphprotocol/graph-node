@@ -55,10 +55,10 @@ pub async fn chain(
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
     let chain = Chain::new(
-        logger_factory.clone(),
+        logger_factory,
         stores.network_name.clone(),
         node_id,
-        mock_registry.clone(),
+        mock_registry,
         chain_store.cheap_clone(),
         chain_store,
         client,
@@ -100,7 +100,7 @@ pub fn empty_block(
     // A 0x000.. transaction is used so `push_test_log` can use it
     let transactions = vec![Transaction {
         hash: H256::zero(),
-        block_hash: Some(H256::from_slice(ptr.hash.as_slice().into())),
+        block_hash: Some(H256::from_slice(ptr.hash.as_slice())),
         block_number: Some(ptr.number.into()),
         transaction_index: Some(0.into()),
         from: Some(H160::zero()),
@@ -128,7 +128,7 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
             data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
             block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
             block_number: Some(block.ptr().number.into()),
-            transaction_hash: Some(H256::from_low_u64_be(0).into()),
+            transaction_hash: Some(H256::from_low_u64_be(0)),
             transaction_index: Some(0.into()),
             log_index: Some(0.into()),
             transaction_log_index: Some(0.into()),

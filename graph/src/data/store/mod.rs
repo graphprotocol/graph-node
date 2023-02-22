@@ -655,7 +655,7 @@ impl Entity {
     pub fn id(&self) -> Result<String, Error> {
         match self.get("id") {
             None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(Value::String(s)) => Ok(s.to_owned()),
+            Some(Value::String(s)) => Ok(s.clone()),
             Some(Value::Bytes(b)) => Ok(b.to_string()),
             _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
@@ -942,15 +942,13 @@ fn entity_validation() {
                 id,
                 err.unwrap_err()
             );
+        } else if let Err(e) = err {
+            assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
         } else {
-            if let Err(e) = err {
-                assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
-            } else {
-                panic!(
-                    "Expected error `{}` but got ok when checking entity {}",
-                    errmsg, id
-                );
-            }
+            panic!(
+                "Expected error `{}` but got ok when checking entity {}",
+                errmsg, id
+            );
         }
     }
 

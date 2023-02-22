@@ -437,7 +437,7 @@ async fn handle_assignment_event(
     provider: Arc<impl SubgraphAssignmentProviderTrait>,
     logger: Logger,
 ) -> Result<(), CancelableError<SubgraphAssignmentProviderError>> {
-    let logger = logger.to_owned();
+    let logger = logger.clone();
 
     debug!(logger, "Received assignment event: {:?}", event);
 

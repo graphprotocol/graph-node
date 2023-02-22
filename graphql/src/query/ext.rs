@@ -49,7 +49,7 @@ impl ValueExt for q::Value {
         match self {
             q::Value::Variable(name) => vars
                 .get(name)
-                .ok_or_else(|| QueryExecutionError::MissingVariableError(pos, name.to_owned())),
+                .ok_or_else(|| QueryExecutionError::MissingVariableError(pos, name.clone())),
             _ => Ok(self),
         }
     }

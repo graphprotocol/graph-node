@@ -1237,7 +1237,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             &self.ctx.host_exports.link_resolver.clone(),
             self,
             link.clone(),
-            &*callback,
+            &callback,
             user_data,
             flags,
         )?;
@@ -1678,8 +1678,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         hash_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         // Not enabled on the network, no gas consumed.
-        drop(gas);
-
         // This is unrelated to IPFS, but piggyback on the config to disallow it on the network.
         if !self.experimental_features.allow_non_deterministic_ipfs {
             return Err(HostExportError::Deterministic(anyhow!(
@@ -1688,7 +1686,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         }
 
         let hash: String = asc_get(self, hash_ptr, gas)?;
-        let name = self.ctx.host_exports.ens_name_by_hash(&*hash)?;
+        let name = self.ctx.host_exports.ens_name_by_hash(&hash)?;
         if name.is_none() && self.ctx.host_exports.is_ens_data_empty()? {
             return Err(anyhow!(
                 "Missing ENS data: see https://github.com/graphprotocol/ens-rainbow"

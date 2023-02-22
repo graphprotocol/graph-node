@@ -391,7 +391,7 @@ impl Blockchain for Chain {
                 .random()?
                 .block_ptr_for_number::<HeaderOnlyBlock>(logger, number)
                 .await
-                .map_err(|e| IngestorError::Unknown(e)),
+                .map_err(IngestorError::Unknown),
             ChainClient::Rpc(adapters) => {
                 let adapter = adapters
                     .cheapest()

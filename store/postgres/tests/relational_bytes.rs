@@ -122,7 +122,7 @@ fn create_schema(conn: &PgConnection) -> Layout {
     let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
-    conn.batch_execute(&*query).unwrap();
+    conn.batch_execute(&query).unwrap();
 
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -252,7 +252,7 @@ fn find() {
             .find(conn, &EntityKey::data(THING.as_str(), ID), BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
-        assert_entity_eq!(scrub(&*BEEF_ENTITY), entity);
+        assert_entity_eq!(scrub(&BEEF_ENTITY), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
@@ -323,7 +323,7 @@ fn update() {
         let actual = layout
             .find(
                 conn,
-                &EntityKey::data(THING.as_str(), &entity_id),
+                &EntityKey::data(THING.as_str(), entity_id),
                 BLOCK_NUMBER_MAX,
             )
             .expect("Failed to read Thing[deadbeef]")
@@ -425,7 +425,7 @@ fn query() {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
-            .query::<Entity>(&*LOGGER, conn, query)
+            .query::<Entity>(&LOGGER, conn, query)
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()

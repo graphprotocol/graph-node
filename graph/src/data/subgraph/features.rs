@@ -23,7 +23,7 @@ use super::calls_host_fn;
 /// This array must contain all IPFS-related functions that are exported by the host WASM runtime.
 ///
 /// For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
-const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&'static str; 3] =
+const IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES: [&str; 3] =
     ["ipfs.cat", "ipfs.getBlock", "ipfs.map"];
 
 #[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -112,7 +112,7 @@ fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<Subg
 
 fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
     match schema.document.get_fulltext_directives() {
-        Ok(directives) => (!directives.is_empty()).then(|| SubgraphFeature::FullTextSearch),
+        Ok(directives) => (!directives.is_empty()).then_some(SubgraphFeature::FullTextSearch),
 
         Err(_) => {
             // Currently we return an error from `get_fulltext_directives` function if the

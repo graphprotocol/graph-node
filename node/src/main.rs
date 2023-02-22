@@ -73,9 +73,7 @@ fn read_expensive_queries(
                 .map_err(|e| {
                     let msg = format!(
                         "invalid GraphQL query in {}: {}\n{}",
-                        expensive_queries_filename,
-                        e.to_string(),
-                        line
+                        expensive_queries_filename, e, line
                     );
                     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
                 })?
@@ -160,7 +158,7 @@ async fn main() {
     let fork_base = match &opt.fork_base {
         Some(url) => {
             // Make sure the endpoint ends with a terminating slash.
-            let url = if !url.ends_with("/") {
+            let url = if !url.ends_with('/') {
                 let mut url = url.clone();
                 url.push('/');
                 Url::parse(&url)
@@ -186,7 +184,7 @@ async fn main() {
         .elasticsearch_url
         .clone()
         .map(|endpoint| ElasticLoggingConfig {
-            endpoint: endpoint.clone(),
+            endpoint,
             username: opt.elasticsearch_user.clone(),
             password: opt.elasticsearch_password.clone(),
             client: reqwest::Client::new(),
@@ -272,7 +270,7 @@ async fn main() {
             &logger,
             firehose_networks_by_kind
                 .remove(&BlockchainKind::Arweave)
-                .unwrap_or_else(|| FirehoseNetworks::new()),
+                .unwrap_or_else(FirehoseNetworks::new),
         )
         .await;
 
@@ -284,7 +282,7 @@ async fn main() {
                 &logger,
                 firehose_networks_by_kind
                     .remove(&BlockchainKind::Near)
-                    .unwrap_or_else(|| FirehoseNetworks::new()),
+                    .unwrap_or_else(FirehoseNetworks::new),
             )
             .await;
 
@@ -292,7 +290,7 @@ async fn main() {
             &logger,
             firehose_networks_by_kind
                 .remove(&BlockchainKind::Cosmos)
-                .unwrap_or_else(|| FirehoseNetworks::new()),
+                .unwrap_or_else(FirehoseNetworks::new),
         )
         .await;
 
@@ -404,7 +402,9 @@ async fn main() {
                                     let firehose_endpoints = eth_firehose_endpoints
                                         .networks
                                         .get(&name)
-                                        .expect(&format!("chain {} to have endpoints", name))
+                                        .unwrap_or_else(|| {
+                                            panic!("chain {} to have endpoints", name)
+                                        })
                                         .clone();
                                     (
                                         name,
@@ -522,7 +522,7 @@ async fn main() {
             let start_block = opt
                 .start_block
                 .map(|block| {
-                    let mut split = block.split(":");
+                    let mut split = block.split(':');
                     (
                         // BlockHash
                         split.next().unwrap().to_owned(),
@@ -703,7 +703,7 @@ fn ethereum_networks_as_chains(
         .map(|(network_name, eth_adapters, chain_store, is_ingestible)| {
             let firehose_endpoints = firehose_networks
                 .and_then(|v| v.networks.get(network_name))
-                .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
+                .map_or_else(FirehoseEndpoints::new, |v| v.clone());
 
             let client = Arc::new(ChainClient::<graph_chain_ethereum::Chain>::new(
                 firehose_endpoints,
@@ -878,11 +878,7 @@ fn start_block_ingestor(
         logger,
         "Starting block ingestors with {} chains [{}]",
         chains.len(),
-        chains
-            .keys()
-            .map(|v| v.clone())
-            .collect::<Vec<String>>()
-            .join(", ")
+        chains.keys().cloned().collect::<Vec<String>>().join(", ")
     );
 
     // Create Ethereum block ingestors and spawn a thread to run each
@@ -948,11 +944,7 @@ fn start_firehose_block_ingestor<C, M>(
         logger,
         "Starting firehose block ingestors with {} chains [{}]",
         chains.len(),
-        chains
-            .keys()
-            .map(|v| v.clone())
-            .collect::<Vec<String>>()
-            .join(", ")
+        chains.keys().cloned().collect::<Vec<String>>().join(", ")
     );
 
     // Create Firehose block ingestors and spawn a thread to run each

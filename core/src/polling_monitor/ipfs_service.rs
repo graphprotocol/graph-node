@@ -136,7 +136,7 @@ mod test {
 
         let cl: ipfs::IpfsClient = ipfs::IpfsClient::default();
 
-        let rsp = cl.add_path(&path).await.unwrap();
+        let rsp = cl.add_path(path).await.unwrap();
 
         let ipfs_folder = rsp.iter().find(|rsp| rsp.name == "ipfs_folder").unwrap();
 

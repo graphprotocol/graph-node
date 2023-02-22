@@ -127,7 +127,7 @@ pub async fn test_module(
 pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInstance<Chain> {
     let version = ENV_VARS.mappings.max_api_version.clone();
     let ds = mock_data_source(
-        &wasm_file_path(wasm_file, API_VERSION_0_0_5.clone()),
+        &wasm_file_path(wasm_file, API_VERSION_0_0_5),
         version.clone(),
     );
     test_valid_module_and_store(subgraph_id, ds, version)
@@ -451,7 +451,7 @@ async fn run_ipfs_map(
         let _runtime_guard = runtime.enter();
 
         let (mut module, _, _) = graph::block_on(test_valid_module_and_store(
-            &subgraph_id,
+            subgraph_id,
             mock_data_source(
                 &wasm_file_path("ipfs_map.wasm", api_version.clone()),
                 api_version.clone(),

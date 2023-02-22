@@ -28,14 +28,14 @@ pub struct ApiVersion {
 
 impl ApiVersion {
     pub fn new(version_requirement: &VersionReq) -> Result<Self, String> {
-        let version = Self::resolve(&version_requirement)?;
+        let version = Self::resolve(version_requirement)?;
 
         Ok(Self {
             version: version.clone(),
             features: VERSION_COLLECTION
-                .get(&version)
-                .expect(format!("Version {:?} is not supported", version).as_str())
-                .to_vec(),
+                .get(version)
+                .unwrap_or_else(|| panic!("Version {:?} is not supported", version))
+                .clone(),
         })
     }
 
@@ -53,7 +53,7 @@ impl ApiVersion {
     fn resolve(version_requirement: &VersionReq) -> Result<&Version, String> {
         for version in VERSIONS.iter() {
             if version_requirement.matches(version) {
-                return Ok(version.clone());
+                return Ok(version);
             }
         }
 

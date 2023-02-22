@@ -10,7 +10,7 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
     let asc_name = if name.to_string().to_uppercase().starts_with("ASC") {
         name.clone()
     } else {
-        Ident::new(&format!("Asc{}", name.to_string()), Span::call_site())
+        Ident::new(&format!("Asc{}", name), Span::call_site())
     };
 
     let no_asc_name = if name.to_string().to_uppercase().starts_with("ASC") {
@@ -26,7 +26,7 @@ pub fn generate_network_type_id(metadata: TokenStream, input: TokenStream) -> To
         .filter_map(|a| {
             if let NestedMeta::Meta(Meta::Path(Path { segments, .. })) = a {
                 if let Some(p) = segments.last() {
-                    return Some(p.ident.to_string().to_owned());
+                    return Some(p.ident.to_string());
                 }
             }
             None

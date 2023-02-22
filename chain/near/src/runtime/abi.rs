@@ -99,7 +99,7 @@ impl ToAscObj<AscChunkHeaderArray> for Vec<codec::ChunkHeader> {
     ) -> Result<AscChunkHeaderArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscChunkHeaderArray(Array::new(&*content, heap, gas)?))
+        Ok(AscChunkHeaderArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -203,7 +203,7 @@ impl ToAscObj<AscActionEnumArray> for Vec<codec::Action> {
     ) -> Result<AscActionEnumArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscActionEnumArray(Array::new(&*content, heap, gas)?))
+        Ok(AscActionEnumArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -395,7 +395,7 @@ impl ToAscObj<AscDataReceiverArray> for Vec<codec::DataReceiver> {
     ) -> Result<AscDataReceiverArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscDataReceiverArray(Array::new(&*content, heap, gas)?))
+        Ok(AscDataReceiverArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -490,7 +490,7 @@ impl ToAscObj<AscMerklePathItemArray> for Vec<codec::MerklePathItem> {
     ) -> Result<AscMerklePathItemArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscMerklePathItemArray(Array::new(&*content, heap, gas)?))
+        Ok(AscMerklePathItemArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -524,7 +524,7 @@ impl ToAscObj<AscSignatureArray> for Vec<codec::Signature> {
     ) -> Result<AscSignatureArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscSignatureArray(Array::new(&*content, heap, gas)?))
+        Ok(AscSignatureArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -572,7 +572,7 @@ impl ToAscObj<AscValidatorStakeArray> for Vec<codec::ValidatorStake> {
     ) -> Result<AscValidatorStakeArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscValidatorStakeArray(Array::new(&*content, heap, gas)?))
+        Ok(AscValidatorStakeArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -597,7 +597,7 @@ impl ToAscObj<AscSlashedValidatorArray> for Vec<codec::SlashedValidator> {
     ) -> Result<AscSlashedValidatorArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscSlashedValidatorArray(Array::new(&*content, heap, gas)?))
+        Ok(AscSlashedValidatorArray(Array::new(&content, heap, gas)?))
     }
 }
 
@@ -619,7 +619,7 @@ impl ToAscObj<AscCryptoHashArray> for Vec<codec::CryptoHash> {
     ) -> Result<AscCryptoHashArray, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(AscCryptoHashArray(Array::new(&*content, heap, gas)?))
+        Ok(AscCryptoHashArray(Array::new(&content, heap, gas)?))
     }
 }
 

@@ -46,7 +46,7 @@ impl StoreBuilder {
 
         let subscription_manager = Arc::new(SubscriptionManager::new(
             logger.cheap_clone(),
-            primary_shard.connection.to_owned(),
+            primary_shard.connection.clone(),
             registry.clone(),
         ));
 
@@ -62,7 +62,7 @@ impl StoreBuilder {
         // attempt doesn't work for all of them because the database is
         // unavailable, they will try again later in the normal course of
         // using the pool
-        join_all(pools.iter().map(|(_, pool)| pool.setup())).await;
+        join_all(pools.values().map(|pool| pool.setup())).await;
 
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
@@ -71,9 +71,9 @@ impl StoreBuilder {
         }));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
-            &logger,
+            logger,
             registry.cheap_clone(),
-            primary_shard.connection.to_owned(),
+            primary_shard.connection.clone(),
         ));
 
         Self {
@@ -180,7 +180,7 @@ impl StoreBuilder {
             DieselBlockStore::new(
                 logger,
                 networks,
-                pools.clone(),
+                pools,
                 subgraph_store.notification_sender(),
             )
             .expect("Creating the BlockStore works"),
@@ -203,14 +203,14 @@ impl StoreBuilder {
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
-        let pool_size = shard.pool_size.size_for(node, name).expect(&format!(
-            "cannot determine the pool size for store {}",
-            name
-        ));
-        let fdw_pool_size = shard.fdw_pool_size.size_for(node, name).expect(&format!(
-            "cannot determine the fdw pool size for store {}",
-            name
-        ));
+        let pool_size = shard
+            .pool_size
+            .size_for(node, name)
+            .unwrap_or_else(|_| panic!("cannot determine the pool size for store {}", name));
+        let fdw_pool_size = shard
+            .fdw_pool_size
+            .size_for(node, name)
+            .unwrap_or_else(|_| panic!("cannot determine the fdw pool size for store {}", name));
         info!(
             logger,
             "Connecting to Postgres";
@@ -222,7 +222,7 @@ impl StoreBuilder {
             &logger,
             name,
             PoolName::Main,
-            shard.connection.to_owned(),
+            shard.connection.clone(),
             pool_size,
             Some(fdw_pool_size),
             registry.cheap_clone(),
@@ -254,10 +254,9 @@ impl StoreBuilder {
                         "weight" => replica.weight
                     );
                     weights.push(replica.weight);
-                    let pool_size = replica.pool_size.size_for(node, name).expect(&format!(
-                        "we can determine the pool size for replica {}",
-                        name
-                    ));
+                    let pool_size = replica.pool_size.size_for(node, name).unwrap_or_else(|_| {
+                        panic!("we can determine the pool size for replica {}", name)
+                    });
 
                     coord.clone().create_pool(
                         &logger,

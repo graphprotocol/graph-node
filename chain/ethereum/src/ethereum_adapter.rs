@@ -306,7 +306,7 @@ impl EthereumAdapter {
         };
 
         let eth = self;
-        let logger = logger.to_owned();
+        let logger = logger.clone();
         stream::unfold(from, move |start| {
             if start > to {
                 return None;
@@ -1215,7 +1215,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         };
 
         debug!(logger, "eth_call";
-            "address" => hex::encode(&call.address),
+            "address" => hex::encode(call.address),
             "data" => hex::encode(&call_data)
         );
 
@@ -1449,7 +1449,7 @@ pub(crate) async fn blocks_with_triggers(
 
     // Make sure `to` is included, even if empty.
     block_hashes.insert(to_hash);
-    triggers_by_block.entry(to).or_insert(Vec::new());
+    triggers_by_block.entry(to).or_default();
 
     let logger2 = logger.cheap_clone();
 

@@ -32,7 +32,7 @@ use graph_core::{
 };
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
-    let mut locators = store.locators(&hash)?;
+    let mut locators = store.locators(hash)?;
     match locators.len() {
         0 => bail!("could not find subgraph {hash} we just created"),
         1 => Ok(locators.pop().unwrap()),
@@ -83,7 +83,7 @@ pub async fn run(
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);
     let firehose_endpoints = firehose_networks
         .and_then(|v| v.networks.get(&network_name))
-        .map_or_else(|| FirehoseEndpoints::new(), |v| v.clone());
+        .map_or_else(FirehoseEndpoints::new, |v| v.clone());
 
     let eth_adapters = match eth_networks.networks.get(&network_name) {
         Some(adapters) => adapters.clone(),
@@ -113,7 +113,7 @@ pub async fn run(
     let chain_store = network_store
         .block_store()
         .chain_store(network_name.as_ref())
-        .expect(format!("No chain store for {}", &network_name).as_ref());
+        .unwrap_or_else(|| panic!("No chain store for {}", &network_name));
 
     let client = Arc::new(ChainClient::new(firehose_endpoints, eth_adapters));
 

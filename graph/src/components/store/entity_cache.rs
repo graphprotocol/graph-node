@@ -102,7 +102,7 @@ impl EntityCache {
         let mut entity = self.current.get_entity(&*self.store, eref)?;
 
         // Always test the cache consistency in debug mode.
-        debug_assert!(entity == self.store.get(&eref).unwrap());
+        debug_assert!(entity == self.store.get(eref).unwrap());
 
         if let Some(op) = self.updates.get(eref).cloned() {
             entity = op.apply_to(entity)
@@ -311,7 +311,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
                 self.insert(key.clone(), entity.clone());
                 Ok(entity)
             }
-            Some(data) => Ok(data.to_owned()),
+            Some(data) => Ok(data.clone()),
         }
     }
 }

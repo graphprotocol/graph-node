@@ -291,12 +291,12 @@ fn ancestor_block_simple() {
     ];
 
     run_test(chain, move |store, _| -> Result<(), Error> {
-        check_ancestor(&store, &*BLOCK_FIVE, 1, &*BLOCK_FOUR)?;
-        check_ancestor(&store, &*BLOCK_FIVE, 2, &*BLOCK_THREE)?;
-        check_ancestor(&store, &*BLOCK_FIVE, 3, &*BLOCK_TWO)?;
-        check_ancestor(&store, &*BLOCK_FIVE, 4, &*BLOCK_ONE)?;
-        check_ancestor(&store, &*BLOCK_FIVE, 5, &*GENESIS_BLOCK)?;
-        check_ancestor(&store, &*BLOCK_THREE, 2, &*BLOCK_ONE)?;
+        check_ancestor(&store, &BLOCK_FIVE, 1, &BLOCK_FOUR)?;
+        check_ancestor(&store, &BLOCK_FIVE, 2, &BLOCK_THREE)?;
+        check_ancestor(&store, &BLOCK_FIVE, 3, &BLOCK_TWO)?;
+        check_ancestor(&store, &BLOCK_FIVE, 4, &BLOCK_ONE)?;
+        check_ancestor(&store, &BLOCK_FIVE, 5, &GENESIS_BLOCK)?;
+        check_ancestor(&store, &BLOCK_THREE, 2, &BLOCK_ONE)?;
 
         for offset in [6, 7, 8, 50].iter() {
             let offset = *offset;
@@ -324,10 +324,10 @@ fn ancestor_block_ommers() {
     ];
 
     run_test(chain, move |store, _| -> Result<(), Error> {
-        check_ancestor(&store, &*BLOCK_ONE, 1, &*GENESIS_BLOCK)?;
-        check_ancestor(&store, &*BLOCK_ONE_SIBLING, 1, &*GENESIS_BLOCK)?;
-        check_ancestor(&store, &*BLOCK_TWO, 1, &*BLOCK_ONE)?;
-        check_ancestor(&store, &*BLOCK_TWO, 2, &*GENESIS_BLOCK)?;
+        check_ancestor(&store, &BLOCK_ONE, 1, &GENESIS_BLOCK)?;
+        check_ancestor(&store, &BLOCK_ONE_SIBLING, 1, &GENESIS_BLOCK)?;
+        check_ancestor(&store, &BLOCK_TWO, 1, &BLOCK_ONE)?;
+        check_ancestor(&store, &BLOCK_TWO, 2, &GENESIS_BLOCK)?;
         Ok(())
     });
 }

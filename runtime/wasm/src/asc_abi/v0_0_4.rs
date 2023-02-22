@@ -87,8 +87,8 @@ impl AscType for ArrayBuffer {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
-        asc_layout.extend(&byte_length);
-        asc_layout.extend(&self.padding);
+        asc_layout.extend(byte_length);
+        asc_layout.extend(self.padding);
         asc_layout.extend(self.content.iter());
 
         // Allocate extra capacity to next power of two, as required by asc.
@@ -212,7 +212,7 @@ impl AscType for AscString {
         let mut asc_layout: Vec<u8> = Vec::new();
 
         let length: [u8; 4] = self.length.to_le_bytes();
-        asc_layout.extend(&length);
+        asc_layout.extend(length);
 
         // Write the code points, in little-endian (LE) order.
         for &code_unit in self.content.iter() {

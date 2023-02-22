@@ -140,7 +140,7 @@ impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
     ) -> Result<Array<AscPtr<AscString>>, DeterministicHostError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
-        Ok(Array::new(&*content, heap, gas)?)
+        Array::new(&content, heap, gas)
     }
 }
 
@@ -159,11 +159,11 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
                 asc_new::<Uint8Array, _, _>(heap, &**bytes, gas)?.to_payload()
             }
             Int(uint) => {
-                let n = BigInt::from_signed_u256(&uint);
+                let n = BigInt::from_signed_u256(uint);
                 asc_new(heap, &n, gas)?.to_payload()
             }
             Uint(uint) => {
-                let n = BigInt::from_unsigned_u256(&uint);
+                let n = BigInt::from_unsigned_u256(uint);
                 asc_new(heap, &n, gas)?.to_payload()
             }
             Bool(b) => *b as u64,

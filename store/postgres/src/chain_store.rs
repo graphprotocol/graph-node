@@ -1705,7 +1705,7 @@ impl ChainStoreTrait for ChainStore {
 
         // Check the local cache first.
         if let Some(data) = self.recent_blocks_cache.get_block(&block_ptr, offset) {
-            return Ok(data.1.clone());
+            return Ok(data.1);
         }
 
         let block_ptr_clone = block_ptr.clone();
@@ -1831,7 +1831,7 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
         let pool = self.pool.clone();
         let storage = self.storage.clone();
-        let block_hash = block_hash.to_owned();
+        let block_hash = *block_hash;
         pool.with_conn(move |conn, _| {
             storage
                 .find_transaction_receipts_in_block(conn, block_hash)
@@ -2069,7 +2069,7 @@ impl EthereumCallCache for ChainStore {
                 conn,
                 id.as_ref(),
                 contract_address.as_ref(),
-                block.number as i32,
+                block.number,
                 return_value,
             )
         })

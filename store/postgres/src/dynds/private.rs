@@ -266,7 +266,7 @@ impl DataSourcesTable {
                 dst = dst.qname
             );
 
-            count += sql_query(&query)
+            count += sql_query(query)
                 .bind::<Integer, _>(target_block)
                 .bind::<sql_types::Range<Integer>, _>(block_range)
                 .bind::<Integer, _>(dst_manifest_idx)

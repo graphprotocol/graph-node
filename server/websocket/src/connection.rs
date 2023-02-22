@@ -291,7 +291,7 @@ where
                             return send_error_string(
                                 &msg_sink,
                                 id,
-                                format!("Invalid variables provided (must be an object)"),
+                                "Invalid variables provided (must be an object)".to_string(),
                             );
                         }
                     };

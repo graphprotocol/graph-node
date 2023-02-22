@@ -136,7 +136,7 @@ fn create_subgraph() {
         let schema = Schema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
-            id: id,
+            id,
             spec_version: Version::new(1, 0, 0),
             features: Default::default(),
             description: None,

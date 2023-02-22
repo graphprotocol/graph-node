@@ -124,7 +124,7 @@ impl FirehoseEndpoint {
     // inside FirehoseEndpoints that is not used (is always cloned).
     pub fn has_subgraph_capacity(self: &Arc<Self>) -> bool {
         self.subgraph_limit
-            .has_capacity(Arc::strong_count(&self).checked_sub(1).unwrap_or(0))
+            .has_capacity(Arc::strong_count(self).checked_sub(1).unwrap_or(0))
     }
 
     pub async fn get_block<M>(

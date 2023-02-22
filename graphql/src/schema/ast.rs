@@ -453,15 +453,13 @@ fn entity_validation() {
                 id,
                 err.unwrap_err()
             );
+        } else if let Err(e) = err {
+            assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
         } else {
-            if let Err(e) = err {
-                assert_eq!(errmsg, e.to_string(), "checking entity {}", id);
-            } else {
-                panic!(
-                    "Expected error `{}` but got ok when checking entity {}",
-                    errmsg, id
-                );
-            }
+            panic!(
+                "Expected error `{}` but got ok when checking entity {}",
+                errmsg, id
+            );
         }
     }
 

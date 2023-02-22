@@ -25,7 +25,7 @@ async fn block_ptr(
     let chains = deployments.iter().map(|d| &d.chain).collect::<HashSet<_>>();
     if chains.len() > 1 {
         let names = searches
-            .into_iter()
+            .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
             .join(", ");
@@ -44,15 +44,13 @@ async fn block_ptr(
                 block_ptr_to.number
             );
         }
-    } else {
-        if !force {
-            bail!(
-                "the chain {} does not have a block with hash {} \
-                   (run with --force to avoid this error)",
-                chain,
-                block_ptr_to.hash
-            );
-        }
+    } else if !force {
+        bail!(
+            "the chain {} does not have a block with hash {} \
+               (run with --force to avoid this error)",
+            chain,
+            block_ptr_to.hash
+        );
     }
     Ok(block_ptr_to)
 }

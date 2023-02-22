@@ -115,7 +115,7 @@ pub async fn list(
             } => {
                 let unique = if *unique { " unique" } else { "" };
                 let start = format!("{unique} using {method}");
-                let columns = columns.into_iter().map(|c| c.to_string()).join(", ");
+                let columns = columns.iter().map(|c| c.to_string()).join(", ");
 
                 term.green()?;
                 if index.is_default_index() {
@@ -150,16 +150,10 @@ pub async fn list(
             .indexes_for_entity(&deployment_locator, entity_name)
             .await?;
         if no_attribute_indexes {
-            indexes = indexes
-                .into_iter()
-                .filter(|idx| !idx.is_attribute_index())
-                .collect();
+            indexes.retain(|idx| !idx.is_attribute_index());
         }
         if no_default_indexes {
-            indexes = indexes
-                .into_iter()
-                .filter(|idx| !idx.is_default_index())
-                .collect();
+            indexes.retain(|idx| !idx.is_default_index());
         }
         indexes
     };
@@ -193,7 +187,7 @@ pub async fn drop(
 ) -> Result<(), anyhow::Error> {
     let deployment_locator = search.locate_unique(&pool)?;
     store
-        .drop_index_for_deployment(&deployment_locator, &index_name)
+        .drop_index_for_deployment(&deployment_locator, index_name)
         .await?;
     println!("Dropped index {index_name}");
     Ok(())

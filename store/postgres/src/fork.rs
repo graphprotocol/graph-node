@@ -159,7 +159,7 @@ impl SubgraphFork {
             .iter()
             .map(|f| {
                 let fname = f.name.to_string();
-                let ftype = f.field_type.to_string().replace(&['!', '[', ']'], "");
+                let ftype = f.field_type.to_string().replace(['!', '[', ']'], "");
                 match ValueType::from_str(&ftype) {
                     Ok(_) => fname,
                     Err(_) => {

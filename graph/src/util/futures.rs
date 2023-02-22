@@ -50,7 +50,7 @@ use tokio_retry::Retry;
 pub fn retry<I, E>(operation_name: impl ToString, logger: &Logger) -> RetryConfig<I, E> {
     RetryConfig {
         operation_name: operation_name.to_string(),
-        logger: logger.to_owned(),
+        logger: logger.clone(),
         condition: RetryIf::Error,
         log_after: 1,
         warn_after: 10,

@@ -35,14 +35,14 @@ pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
 }
 
 pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
-    sql_query(&format!("select pg_advisory_lock(1, {})", dst.id))
+    sql_query(format!("select pg_advisory_lock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
 }
 
 pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
-    sql_query(&format!("select pg_advisory_unlock(1, {})", dst.id))
+    sql_query(format!("select pg_advisory_unlock(1, {})", dst.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)
@@ -61,7 +61,7 @@ pub(crate) fn lock_deployment_session(
         locked: bool,
     }
 
-    sql_query(&format!(
+    sql_query(format!(
         "select pg_try_advisory_lock(2, {}) as locked",
         site.id
     ))
@@ -75,7 +75,7 @@ pub(crate) fn unlock_deployment_session(
     conn: &PgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
-    sql_query(&format!("select pg_advisory_unlock(2, {})", site.id))
+    sql_query(format!("select pg_advisory_unlock(2, {})", site.id))
         .execute(conn)
         .map(|_| ())
         .map_err(StoreError::from)

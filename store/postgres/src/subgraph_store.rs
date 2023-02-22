@@ -26,10 +26,9 @@ use graph::{
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        ApiVersion, BlockHash, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation,
-        Logger, MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError,
-        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
-        SubgraphVersionSwitchingMode,
+        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphDeploymentEntity,
+        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -66,9 +65,9 @@ const SITES_CACHE_TTL: Duration = Duration::from_secs(120);
 impl Shard {
     pub fn new(name: String) -> Result<Self, StoreError> {
         if name.is_empty() {
-            return Err(StoreError::InvalidIdentifier(format!(
-                "shard names must not be empty"
-            )));
+            return Err(StoreError::InvalidIdentifier(
+                "shard names must not be empty".to_string(),
+            ));
         }
         if name.len() > 30 {
             return Err(StoreError::InvalidIdentifier(format!(
@@ -809,14 +808,13 @@ impl SubgraphStoreInner {
 
         // Check that it is not current/pending for any subgraph if it is
         // the active deployment of that subgraph
-        if site.active {
-            if !self
+        if site.active
+            && !self
                 .primary_conn()?
                 .subgraphs_using_deployment(site.as_ref())?
                 .is_empty()
-            {
-                removable = false;
-            }
+        {
+            removable = false;
         }
 
         if removable {
@@ -883,7 +881,7 @@ impl SubgraphStoreInner {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| constraint_violation!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
-            let statuses = store.deployment_statuses(&vec![site.clone()])?;
+            let statuses = store.deployment_statuses(&[site.clone()])?;
             let status = statuses
                 .first()
                 .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
@@ -961,7 +959,7 @@ impl SubgraphStoreInner {
         block_number: BlockNumber,
         block_store: Arc<impl BlockStore>,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(id)?;
 
         let chain_store = match block_store.chain_store(&site.network) {
             Some(chain_store) => chain_store,
@@ -977,7 +975,7 @@ impl SubgraphStoreInner {
         }
 
         // This `unwrap` is safe to do now
-        let block_hash = BlockHash::from(hashes.pop().unwrap());
+        let block_hash = hashes.pop().unwrap();
 
         let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
         let indexer = Some(Address::zero());

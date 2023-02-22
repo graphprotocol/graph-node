@@ -166,7 +166,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
     logger: Logger,
     metrics: SubstreamsBlockStreamMetrics,
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
-    let mut latest_cursor = cursor.unwrap_or_else(|| "".to_string());
+    let mut latest_cursor = cursor.unwrap_or_default();
 
     let start_block_num = subgraph_current_block
         .as_ref()

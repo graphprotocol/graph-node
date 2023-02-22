@@ -178,7 +178,7 @@ impl blockchain::DataSource<Chain> for DataSource {
                 .context
                 .as_ref()
                 .as_ref()
-                .map(|ctx| serde_json::to_value(&ctx).unwrap()),
+                .map(|ctx| serde_json::to_value(ctx).unwrap()),
             creation_block: self.creation_block,
             done_at: None,
             causality_region: CausalityRegion::ONCHAIN,
@@ -364,7 +364,7 @@ impl DataSource {
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| handler.filter == None)
+                .find(move |handler| handler.filter.is_none())
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .mapping

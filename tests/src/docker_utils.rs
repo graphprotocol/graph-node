@@ -175,7 +175,7 @@ impl ServiceContainer {
             ),
         };
 
-        Ok(to_mapped_ports(ports.to_vec()))
+        Ok(to_mapped_ports(ports.clone()))
     }
 
     /// halts execution until a trigger message is detected on stdout or, optionally,
@@ -225,7 +225,7 @@ impl ServiceContainer {
         for attempt in 1..=EXEC_TRIES {
             // 1. Create Exec
             let config = exec::CreateExecOptions {
-                cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", &db_name]),
+                cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", db_name]),
                 user: Some("postgres"),
                 attach_stdout: Some(true),
                 ..Default::default()

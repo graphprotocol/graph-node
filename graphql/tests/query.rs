@@ -347,7 +347,7 @@ async fn insert_test_entities(
 
         test_store::transact_and_wait(
             &STORE.subgraph_store(),
-            &deployment,
+            deployment,
             block_ptr,
             insert_ops.collect::<Vec<_>>(),
         )
@@ -373,7 +373,7 @@ async fn execute_query_document_with_variables(
     variables: Option<QueryVariables>,
 ) -> QueryResult {
     let runner = Arc::new(GraphQlRunner::new(
-        &*LOGGER,
+        &LOGGER,
         STORE.clone(),
         SUBSCRIPTION_MANAGER.clone(),
         LOAD_MANAGER.clone(),
@@ -457,7 +457,7 @@ impl From<(&str, r::Value)> for QueryArgs {
 /// replaced with the id's of songs 1 through 4 before running the query.
 fn run_query<F>(args: impl Into<QueryArgs>, test: F)
 where
-    F: Fn(QueryResult, IdType) -> () + Send + 'static,
+    F: Fn(QueryResult, IdType) + Send + 'static,
 {
     let QueryArgs {
         query,
@@ -484,7 +484,7 @@ where
                     .into_static();
                 let variables = variables.clone();
                 let runner = Arc::new(GraphQlRunner::new(
-                    &*LOGGER,
+                    &LOGGER,
                     STORE.clone(),
                     SUBSCRIPTION_MANAGER.clone(),
                     LOAD_MANAGER.clone(),
@@ -542,7 +542,7 @@ async fn run_subscription(
         .api_schema(&deployment.hash, &Default::default())
         .unwrap();
 
-    execute_subscription(Subscription { query }, schema.clone(), options)
+    execute_subscription(Subscription { query }, schema, options)
 }
 
 #[test]
@@ -677,7 +677,7 @@ fn can_query_many_to_many_relationship() {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
                 object! { name: "Lisa", bands: vec![ the_musicians.clone() ] },
-                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
                 object! { name: "Valerie", bands: Vec::<String>::new() }
             ]
         };
@@ -984,7 +984,7 @@ fn can_query_with_child_filter_on_list_type_field() {
         let exp = object! {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
-                object! { name: "Tom", bands: vec![ the_musicians.clone(), the_amateurs.clone() ] },
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
             ]
         };
 
@@ -1561,7 +1561,7 @@ fn instant_timeout() {
         match first_result(
             execute_subgraph_query_with_deadline(
                 query,
-                QueryTarget::Deployment(deployment.hash.into(), Default::default()),
+                QueryTarget::Deployment(deployment.hash, Default::default()),
                 Some(Instant::now()),
             )
             .await,
@@ -2037,7 +2037,7 @@ fn check_musicians_at(query0: &str, block_var: r::Value, expected: Expected, qid
     run_query((query0, block_var), move |result, id_type| {
         match &expected {
             Ok(ids) => {
-                let ids: Vec<_> = ids.into_iter().map(|id| object! { id: *id }).collect();
+                let ids: Vec<_> = ids.iter().map(|id| object! { id: *id }).collect();
                 let expected = Some(object_value(vec![("musicians", r::Value::List(ids))]));
                 let data = match result.to_result() {
                     Err(errors) => panic!("unexpected error: {:?} ({})\n", errors, qid),
@@ -2093,10 +2093,10 @@ fn query_at_block() {
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
     musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
 
-    musicians_at(&hash(&*GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&*BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&*BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
-    musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at(&hash(&GENESIS_BLOCK), Ok(vec!["m1", "m2"]), "h0");
+    musicians_at(&hash(&BLOCK_ONE), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
+    musicians_at(&hash(&BLOCK_TWO), Err(BLOCK_NOT_INDEXED2), "h2");
+    musicians_at(&hash(&BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3");
 }
 
 #[test]
@@ -2154,7 +2154,7 @@ fn query_detects_reorg() {
     async fn query_at(deployment: &DeploymentLocator, block: i32) -> QueryResult {
         let query =
             format!("query {{ musician(id: \"m1\", block: {{ number: {block} }}) {{ id }} }}");
-        execute_query(&deployment, &query).await
+        execute_query(deployment, &query).await
     }
 
     run_test_sequentially(|store| async move {
@@ -2182,7 +2182,7 @@ fn query_detects_reorg() {
         );
 
         // Revert one block
-        revert_block(&*STORE, &deployment, &*GENESIS_PTR).await;
+        revert_block(&STORE, &deployment, &GENESIS_PTR).await;
 
         // A query is still fine since we query at block 0; we were at block
         // 1 when we got `state`, and reorged once by one block, which can
@@ -2302,7 +2302,7 @@ fn non_fatal_errors() {
             deterministic: true,
         };
 
-        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
             .await
             .unwrap();
 
@@ -2358,7 +2358,7 @@ fn non_fatal_errors() {
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
         // Test error reverts.
-        revert_block(&*STORE, &deployment, &*BLOCK_ONE).await;
+        revert_block(&STORE, &deployment, &BLOCK_ONE).await;
         let query = "query { musician(id: \"m1\") { id }  _meta { hasIndexingErrors } }";
         let result = execute_query(&deployment, query).await;
         let expected = json!({
@@ -2408,7 +2408,7 @@ fn deterministic_error() {
             deterministic: true,
         };
 
-        transact_errors(&*STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
             .await
             .unwrap();
 
@@ -2578,7 +2578,7 @@ fn trace_works() {
 
         let result = execute_subgraph_query(
             query,
-            QueryTarget::Deployment(deployment.hash.into(), Default::default()),
+            QueryTarget::Deployment(deployment.hash, Default::default()),
         )
         .await;
 

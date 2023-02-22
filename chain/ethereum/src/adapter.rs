@@ -195,9 +195,9 @@ pub(crate) struct EthereumLogFilter {
     wildcard_events: HashMap<EventSignature, bool>,
 }
 
-impl Into<Vec<LogFilter>> for EthereumLogFilter {
-    fn into(self) -> Vec<LogFilter> {
-        self.eth_get_logs_filters()
+impl From<EthereumLogFilter> for Vec<LogFilter> {
+    fn from(val: EthereumLogFilter) -> Self {
+        val.eth_get_logs_filters()
             .map(
                 |EthGetLogsFilter {
                      contracts,
@@ -326,8 +326,8 @@ impl EthereumLogFilter {
         // Start with the wildcard event filters.
         let mut filters = self
             .wildcard_events
-            .into_iter()
-            .map(|(event, _)| EthGetLogsFilter::from_event(event))
+            .into_keys()
+            .map(|event| EthGetLogsFilter::from_event(event))
             .collect_vec();
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
@@ -637,12 +637,9 @@ impl EthereumBlockFilter {
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
                     contract_addresses: if has_block_handler_with_call_filter {
-                        vec![(
-                            data_source.start_block,
-                            data_source.address.unwrap().to_owned(),
-                        )]
-                        .into_iter()
-                        .collect()
+                        vec![(data_source.start_block, data_source.address.unwrap())]
+                            .into_iter()
+                            .collect()
                     } else {
                         HashSet::default()
                     },

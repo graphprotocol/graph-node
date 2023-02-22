@@ -57,7 +57,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
             mapper,
             filter.modules.clone(),
             filter.module_name.clone(),
-            filter.start_block.map(|x| vec![x]).unwrap_or(vec![]),
+            filter.start_block.map(|x| vec![x]).unwrap_or_default(),
             vec![],
             logger,
             chain.metrics_registry.clone(),

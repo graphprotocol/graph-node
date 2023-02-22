@@ -632,7 +632,7 @@ pub fn exists_and_synced(conn: &PgConnection, id: &str) -> Result<bool, StoreErr
 fn insert_subgraph_error(conn: &PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
     use subgraph_error as e;
 
-    let error_id = hex::encode(&stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
+    let error_id = hex::encode(stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
         &error,
     ));
     let SubgraphError {
@@ -881,7 +881,7 @@ pub(crate) fn copy_errors(
         src_nsp = src_nsp
     );
 
-    Ok(sql_query(&query)
+    Ok(sql_query(query)
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
         .bind::<Integer, _>(target_block.number)
@@ -904,7 +904,7 @@ pub fn drop_schema(
         "set local lock_timeout=2000; drop schema if exists {} cascade",
         namespace
     );
-    Ok(conn.batch_execute(&*query)?)
+    Ok(conn.batch_execute(&query)?)
 }
 
 pub fn drop_metadata(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {

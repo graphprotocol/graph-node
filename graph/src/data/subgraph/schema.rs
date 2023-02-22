@@ -223,7 +223,7 @@ impl SubgraphManifestEntity {
         let template_idx_and_name = manifest
             .templates
             .iter()
-            .map(|t| t.name.to_owned())
+            .map(|t| t.name.clone())
             .enumerate()
             .map(move |(idx, name)| (ds_len + idx as i32, name))
             .collect();

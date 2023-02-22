@@ -405,7 +405,7 @@ pub fn coerce_variables(
         if !schema.is_input_type(&variable_def.var_type) {
             errors.push(QueryExecutionError::InvalidVariableTypeError(
                 variable_def.position,
-                variable_def.name.to_owned(),
+                variable_def.name.clone(),
             ));
             continue;
         }
@@ -427,7 +427,7 @@ pub fn coerce_variables(
                 if sast::is_non_null_type(&variable_def.var_type) {
                     errors.push(QueryExecutionError::MissingVariableError(
                         variable_def.position,
-                        variable_def.name.to_owned(),
+                        variable_def.name.clone(),
                     ));
                 };
                 continue;
@@ -438,7 +438,7 @@ pub fn coerce_variables(
         // We have a variable value, attempt to coerce it to the value type
         // of the variable definition
         coerced_values.insert(
-            variable_def.name.to_owned(),
+            variable_def.name.clone(),
             coerce_variable(schema, variable_def, value)?,
         );
     }
@@ -462,7 +462,7 @@ fn coerce_variable(
     coerce_value(value, &variable_def.var_type, &resolver).map_err(|value| {
         vec![QueryExecutionError::InvalidArgumentError(
             variable_def.position,
-            variable_def.name.to_owned(),
+            variable_def.name.clone(),
             value.into(),
         )]
     })

@@ -50,7 +50,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     let deployment = DeploymentCreate::new(String::new(), &manifest, None);
     let name = SubgraphName::new("test/writable").unwrap();
     let node_id = NodeId::new("test").unwrap();
-    let deployment = store
+
+    store
         .create_subgraph_deployment(
             name,
             &TEST_SUBGRAPH_SCHEMA,
@@ -59,8 +60,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
-        .unwrap();
-    deployment
+        .unwrap()
 }
 
 /// Removes test data from the database behind the store.
@@ -120,13 +120,13 @@ async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentL
 }
 
 async fn pause_writer(deployment: &DeploymentLocator) {
-    flush(&deployment).await.unwrap();
+    flush(deployment).await.unwrap();
     writable::allow_steps(0).await;
 }
 
 async fn resume_writer(deployment: &DeploymentLocator, steps: usize) {
     writable::allow_steps(steps).await;
-    flush(&deployment).await.unwrap();
+    flush(deployment).await.unwrap();
 }
 
 #[test]

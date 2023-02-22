@@ -13,7 +13,7 @@ pub struct Word(Box<str>);
 
 impl Word {
     pub fn as_str(&self) -> &str {
-        &*self.0
+        &self.0
     }
 }
 
@@ -27,7 +27,7 @@ impl std::ops::Deref for Word {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 

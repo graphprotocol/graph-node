@@ -109,7 +109,7 @@ mod tests {
             }
 
             let online = hex::encode(finisher.finish());
-            let offline = hex::encode(&offline);
+            let offline = hex::encode(offline);
             assert_eq!(&online, &offline);
             assert_eq!(&online, hardcoded);
 

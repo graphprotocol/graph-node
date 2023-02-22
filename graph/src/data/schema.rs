@@ -40,7 +40,7 @@ pub struct Strings(Vec<String>);
 
 impl fmt::Display for Strings {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let s = (&self.0).join(", ");
+        let s = self.0.join(", ");
         write!(f, "{}", s)
     }
 }
@@ -137,7 +137,7 @@ pub enum FulltextLanguage {
 impl TryFrom<&str> for FulltextLanguage {
     type Error = String;
     fn try_from(language: &str) -> Result<Self, Self::Error> {
-        match &language[..] {
+        match language {
             "simple" => Ok(FulltextLanguage::Simple),
             "da" => Ok(FulltextLanguage::Danish),
             "nl" => Ok(FulltextLanguage::Dutch),
@@ -776,7 +776,7 @@ impl Schema {
                     .directives
                     .iter()
                     .filter(|directive| directive.name.eq("import"))
-                    .map(|import| {
+                    .flat_map(|import| {
                         import.argument("from").map_or(vec![], |from| {
                             SchemaReference::parse(from).map_or(vec![], |schema_ref| {
                                 parse_types(import)
@@ -786,7 +786,6 @@ impl Schema {
                             })
                         })
                     })
-                    .flatten()
                     .collect::<HashMap<ImportedType, SchemaReference>>()
             })
     }
@@ -911,14 +910,14 @@ impl Schema {
         match self
             .subgraph_schema_object_type()
             .and_then(|subgraph_schema_type| {
-                if !subgraph_schema_type
+                if subgraph_schema_type
                     .directives
                     .iter()
                     .filter(|directive| {
                         !directive.name.eq("import") && !directive.name.eq("fulltext")
                     })
                     .next()
-                    .is_none()
+                    .is_some()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {
@@ -1074,11 +1073,11 @@ impl Schema {
             .count()
             > 1
         {
-            return vec![SchemaValidationError::FulltextNameConflict(
+            vec![SchemaValidationError::FulltextNameConflict(
                 name.to_string(),
-            )];
+            )]
         } else {
-            return vec![];
+            vec![]
         }
     }
 
@@ -1180,7 +1179,7 @@ impl Schema {
             }
         }
         // Fulltext include validations all passed, so we return an empty vector
-        return vec![];
+        vec![]
     }
 
     fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
@@ -1349,7 +1348,7 @@ impl Schema {
             .get_object_type_definitions()
             .iter()
             .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
-            .map(|t| t.name.to_owned())
+            .map(|t| t.name.clone())
             .collect::<Vec<_>>();
         if types_without_entity_directive.is_empty() {
             Ok(())
@@ -1368,7 +1367,7 @@ impl Schema {
             reason: &str,
         ) -> SchemaValidationError {
             SchemaValidationError::InvalidDerivedFrom(
-                object_type.name.to_owned(),
+                object_type.name.clone(),
                 field_name.to_owned(),
                 reason.to_owned(),
             )

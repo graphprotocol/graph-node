@@ -489,7 +489,7 @@ impl Request {
             } => store
                 .revert_block_operations(block_ptr.clone(), firehose_cursor)
                 .map(|()| ExecResult::Continue),
-            Request::Stop => return Ok(ExecResult::Stop),
+            Request::Stop => Ok(ExecResult::Stop),
         }
     }
 }
@@ -786,10 +786,7 @@ impl Queue {
                 } => {
                     if tracker.visible(block_ptr) {
                         dds.extend(data_sources.clone());
-                        dds = dds
-                            .into_iter()
-                            .filter(|dds| !processed_data_sources.contains(dds))
-                            .collect();
+                        dds.retain(|dds| !processed_data_sources.contains(dds));
                     }
                 }
                 Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
@@ -853,7 +850,7 @@ impl Writer {
                 &block_ptr_to,
                 &firehose_cursor,
                 &mods,
-                &stopwatch,
+                stopwatch,
                 &data_sources,
                 &deterministic_errors,
                 &manifest_idx_and_name,

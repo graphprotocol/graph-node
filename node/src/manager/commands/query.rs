@@ -42,10 +42,7 @@ pub async fn run(
         .map(|v| {
             let mut pair = v.splitn(2, '=').map(|s| s.to_string());
             let key = pair.next();
-            let value = pair
-                .next()
-                .map(|s| r::Value::String(s))
-                .unwrap_or(r::Value::Null);
+            let value = pair.next().map(r::Value::String).unwrap_or(r::Value::Null);
             match key {
                 Some(key) => Ok((key, value)),
                 None => Err(anyhow!(
