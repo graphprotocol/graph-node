@@ -112,9 +112,8 @@ pub mod prelude {
     };
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
-        aggregate::Aggregate, stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter,
-        CounterVec, Gauge, GaugeVec, Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts,
-        PrometheusError, Registry,
+        stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter, CounterVec, Gauge, GaugeVec,
+        Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError, Registry,
     };
     pub use crate::components::server::index_node::IndexNodeServer;
     pub use crate::components::server::query::GraphQLServer;

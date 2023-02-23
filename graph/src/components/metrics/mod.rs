@@ -10,9 +10,6 @@ use std::collections::HashMap;
 /// Metrics for measuring where time is spent during indexing.
 pub mod stopwatch;
 
-/// Aggregates over individual values.
-pub mod aggregate;
-
 fn deployment_labels(subgraph: &str) -> HashMap<String, String> {
     labels! { String::from("deployment") => String::from(subgraph), }
 }
