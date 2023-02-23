@@ -411,21 +411,10 @@ where
         hash: &DeploymentHash,
         node_id: &NodeId,
     ) -> Result<(), SubgraphRegistrarError> {
-        let locations = self.store.locators(hash)?;
-        let deployment = match locations.len() {
-            0 => return Err(SubgraphRegistrarError::DeploymentNotFound(hash.to_string())),
-            1 => locations[0].clone(),
-            _ => {
-                return Err(SubgraphRegistrarError::StoreError(
-                    anyhow!(
-                        "there are {} different deployments with id {}",
-                        locations.len(),
-                        hash.as_str()
-                    )
-                    .into(),
-                ))
-            }
-        };
+        let locator = self.store.active_locator(hash)?;
+        let deployment =
+            locator.ok_or_else(|| SubgraphRegistrarError::DeploymentNotFound(hash.to_string()))?;
+
         self.store.reassign_subgraph(&deployment, node_id)?;
 
         Ok(())

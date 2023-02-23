@@ -1397,6 +1397,17 @@ impl SubgraphStoreTrait for SubgraphStore {
             .collect())
     }
 
+    fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError> {
+        let sites = self.mirror.find_sites(&[hash.to_string()], true)?;
+        if sites.len() > 1 {
+            return Err(constraint_violation!(
+                "There are {} active deployments for {hash}, there should only be one",
+                sites.len()
+            ));
+        }
+        Ok(sites.first().map(DeploymentLocator::from))
+    }
+
     async fn set_manifest_raw_yaml(
         &self,
         hash: &DeploymentHash,

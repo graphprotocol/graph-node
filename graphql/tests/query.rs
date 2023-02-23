@@ -138,7 +138,7 @@ async fn setup(
 
     global_init();
     let id = DeploymentHash::new(id).unwrap();
-    let loc = store.subgraph_store().locators(&id).unwrap().pop();
+    let loc = store.subgraph_store().active_locator(&id).unwrap();
 
     match loc {
         Some(loc) if id_type.deployment_id() == loc.hash.as_str() => loc,
