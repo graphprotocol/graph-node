@@ -316,7 +316,7 @@ impl Layout {
                     i as u32,
                     catalog
                         .entities_with_causality_region
-                        .contains(&EntityType::from(obj_type.clone())),
+                        .contains(&EntityType::from(*obj_type)),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;

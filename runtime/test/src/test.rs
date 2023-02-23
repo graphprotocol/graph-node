@@ -9,7 +9,7 @@ use graph_chain_ethereum::{Chain, DataSource};
 use graph_mock::MockMetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
-use hex;
+
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
@@ -464,7 +464,7 @@ async fn run_ipfs_map(
 
         // Invoke the callback
         let func = module.get_func("ipfsMap").typed().unwrap().clone();
-        let _: () = func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+        func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
         let mut mods = module
             .take_ctx()
             .ctx

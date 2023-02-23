@@ -494,9 +494,9 @@ impl LoadManager {
 #[async_trait]
 impl QueryLoadManager for LoadManager {
     fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
-        self.query_counters
-            .get(&cache_status)
-            .map(|counter| counter.inc());
+        if let Some(counter) = self.query_counters.get(&cache_status) {
+            counter.inc()
+        }
         if !ENV_VARS.load_management_is_disabled() {
             self.effort.add(shape_hash, duration, &self.effort_gauge);
         }

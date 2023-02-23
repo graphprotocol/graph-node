@@ -315,7 +315,7 @@ async fn run_integration_test(
     ganache_hard_wait: Duration,
 ) -> anyhow::Result<IntegrationTestSummary> {
     let db_name =
-        format!("{}-{}", basename(&test_directory), uuid::Uuid::new_v4()).replace("-", "_");
+        format!("{}-{}", basename(&test_directory), uuid::Uuid::new_v4()).replace('-', "_");
 
     let (ganache, _) = tokio::try_join!(
         // Start a dedicated Ganache container for this test.

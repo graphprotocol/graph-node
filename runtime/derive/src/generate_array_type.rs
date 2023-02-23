@@ -25,7 +25,7 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
         .collect::<Vec<String>>();
 
     assert!(
-        args.len() > 0,
+        !args.is_empty(),
         "arguments not found! generate_array_type(<network-name>)"
     );
 

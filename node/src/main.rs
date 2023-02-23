@@ -372,7 +372,7 @@ async fn main() {
         );
 
         if !opt.disable_block_ingestor {
-            if ethereum_chains.len() > 0 {
+            if !ethereum_chains.is_empty() {
                 let block_polling_interval = Duration::from_millis(opt.ethereum_polling_interval);
                 // Each chain contains both the rpc and firehose endpoints so provided
                 // IS_FIREHOSE_PREFERRED is set to true, a chain will use firehose if it has
@@ -390,33 +390,31 @@ async fn main() {
                     polling_eth_chains,
                 );
 
-                firehose_networks_by_kind
-                    .get(&BlockchainKind::Ethereum)
-                    .map(|eth_firehose_endpoints| {
-                        start_firehose_block_ingestor::<_, HeaderOnlyBlock>(
-                            &logger,
-                            &network_store,
-                            firehose_eth_chains
-                                .into_iter()
-                                .map(|(name, chain)| {
-                                    let firehose_endpoints = eth_firehose_endpoints
-                                        .networks
-                                        .get(&name)
-                                        .unwrap_or_else(|| {
-                                            panic!("chain {} to have endpoints", name)
-                                        })
-                                        .clone();
-                                    (
-                                        name,
-                                        FirehoseChain {
-                                            chain,
-                                            firehose_endpoints,
-                                        },
-                                    )
-                                })
-                                .collect(),
-                        )
-                    });
+                if let Some(eth_firehose_endpoints) =
+                    firehose_networks_by_kind.get(&BlockchainKind::Ethereum)
+                {
+                    start_firehose_block_ingestor::<_, HeaderOnlyBlock>(
+                        &logger,
+                        &network_store,
+                        firehose_eth_chains
+                            .into_iter()
+                            .map(|(name, chain)| {
+                                let firehose_endpoints = eth_firehose_endpoints
+                                    .networks
+                                    .get(&name)
+                                    .unwrap_or_else(|| panic!("chain {} to have endpoints", name))
+                                    .clone();
+                                (
+                                    name,
+                                    FirehoseChain {
+                                        chain,
+                                        firehose_endpoints,
+                                    },
+                                )
+                            })
+                            .collect(),
+                    )
+                }
             }
 
             start_firehose_block_ingestor::<_, ArweaveBlock>(
@@ -728,7 +726,7 @@ fn ethereum_networks_as_chains(
                 registry.clone(),
                 chain_store.cheap_clone(),
                 chain_store,
-                client.clone(),
+                client,
                 chain_head_update_listener.clone(),
                 Arc::new(EthereumStreamBuilder {}),
                 Arc::new(EthereumBlockRefetcher {}),

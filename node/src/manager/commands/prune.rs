@@ -74,7 +74,7 @@ impl PruneReporter for Progress {
             self.analyze_start.elapsed().as_secs()
         );
         show_stats(stats, HashSet::new()).ok();
-        println!("");
+        println!();
     }
 
     fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {
@@ -88,7 +88,7 @@ impl PruneReporter for Progress {
     fn copy_final_batch(&mut self, table: &str, _rows: usize, total_rows: usize, finished: bool) {
         print_copy_row(table, total_rows, self.table_start.elapsed());
         if finished {
-            println!("");
+            println!();
             self.table_start = Instant::now();
         }
         std::io::stdout().flush().ok();
@@ -128,7 +128,7 @@ impl PruneReporter for Progress {
     ) {
         print_copy_row(table, total_rows, self.table_start.elapsed());
         if finished {
-            println!("");
+            println!();
             self.table_start = Instant::now();
         }
         std::io::stdout().flush().ok();

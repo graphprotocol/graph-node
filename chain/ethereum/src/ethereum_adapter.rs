@@ -1528,7 +1528,7 @@ pub(crate) async fn get_calls(
             } else {
                 client
                     .rpc()?
-                    .cheapest_with(&capabilities)?
+                    .cheapest_with(capabilities)?
                     .calls_in_block(
                         &logger,
                         subgraph_metrics.clone(),
@@ -1961,7 +1961,7 @@ async fn get_logs_and_transactions(
 
     // Obtain receipts externally
     let transaction_receipts_by_hash = get_transaction_receipts_for_transaction_hashes(
-        &adapter,
+        adapter,
         &transaction_hashes_by_block,
         subgraph_metrics,
         logger.cheap_clone(),

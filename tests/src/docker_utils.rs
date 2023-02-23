@@ -118,7 +118,7 @@ impl ServiceContainer {
         let client =
             Docker::connect_with_local_defaults().expect("Failed to connect to docker daemon.");
         let container_name =
-            format!("{}-{}", service.name(), uuid::Uuid::new_v4()).replace("-", "_");
+            format!("{}-{}", service.name(), uuid::Uuid::new_v4()).replace('-', "_");
 
         let docker_test_client = Self {
             container_name: container_name.clone(),
