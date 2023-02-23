@@ -99,9 +99,22 @@ impl BlockIngestor {
         // block, as we expect the poll interval to be much shorter than the block time.
         let latest_block = self.latest_block().await?;
 
-        // If latest block matches head block in store, nothing needs to be done
-        if Some(&latest_block) == head_block_ptr_opt.as_ref() {
-            return Ok(());
+        if let Some(head_block) = head_block_ptr_opt.as_ref() {
+            // If latest block matches head block in store, nothing needs to be done
+            if &latest_block == head_block {
+                return Ok(());
+            }
+
+            if latest_block.number < head_block.number {
+                // An ingestor might wait or move forward, but it never
+                // wavers and goes back. More seriously, this keeps us from
+                // later trying to ingest a block with the same number again
+                warn!(self.logger,
+                    "Provider went backwards - ignoring this latest block";
+                    "current_block_head" => head_block.number,
+                    "latest_block_head" => latest_block.number);
+                return Ok(());
+            }
         }
 
         // Compare latest block with head ptr, alert user if far behind
