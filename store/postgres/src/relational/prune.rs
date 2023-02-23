@@ -350,14 +350,15 @@ impl Layout {
     /// needed to respond to queries at block heights at or after
     /// `earliest_block` to a new table and then to replace the existing
     /// tables with these new tables atomically in a transaction. Copying
-    /// happens in two stages: we first copy data for final blocks without
-    /// blocking writes, and then copy data for nonfinal blocks. The latter
-    /// blocks writes by taking a lock on the row for the deployment in
-    /// `subgraph_deployment` (via `deployment::lock`) The process for
-    /// switching to the new tables needs to take the naming of various
-    /// database objects that Postgres creates automatically into account so
-    /// that they all have the same names as the original objects to ensure
-    /// that pruning can be done again without risking name clashes.
+    /// happens in two stages that are performed for each table in turn: we
+    /// first copy data for final blocks without blocking writes, and then
+    /// copy data for nonfinal blocks. The latter blocks writes by taking a
+    /// lock on the row for the deployment in `subgraph_deployment` (via
+    /// `deployment::lock`) The process for switching to the new tables
+    /// needs to take the naming of various database objects that Postgres
+    /// creates automatically into account so that they all have the same
+    /// names as the original objects to ensure that pruning can be done
+    /// again without risking name clashes.
     ///
     /// The reason this strategy works well when a lot (or even the
     /// majority) of the data needs to be removed is that in the more
@@ -383,66 +384,53 @@ impl Layout {
     ) -> Result<(), CancelableError<StoreError>> {
         let stats = self.version_stats(conn, reporter, true, cancel)?;
 
-        // Determine which tables are prunable and create a shadow table for
-        // them via `TablePair::create`
-        let dst_nsp = Namespace::prune(self.site.id);
-        let prunable_tables = conn.transaction(|| -> Result<_, StoreError> {
-            catalog::recreate_schema(conn, dst_nsp.as_str())?;
-
-            let prunable_tables: Vec<TablePair> = self
-                .prunable_tables(&stats, prune_ratio)
-                .into_iter()
-                .map(|(table, _)| {
-                    TablePair::create(
-                        conn,
-                        table.cheap_clone(),
-                        self.site.namespace.clone(),
-                        dst_nsp.clone(),
-                    )
-                })
-                .collect::<Result<_, _>>()?;
-            Ok(prunable_tables)
-        })?;
-        cancel.check_cancel()?;
-
-        // Copy final entities. This can happen in parallel to indexing as
-        // that part of the table will not change
-        reporter.copy_final_start(earliest_block, final_block);
-        for table in &prunable_tables {
-            table.copy_final_entities(conn, reporter, earliest_block, final_block, cancel)?;
-        }
-        reporter.copy_final_finish();
-
-        let prunable_src: Vec<_> = prunable_tables
-            .iter()
-            .map(|table| table.src.clone())
+        let prunable_tables: Vec<_> = self
+            .prunable_tables(&stats, prune_ratio)
+            .into_iter()
             .collect();
 
-        // Copy nonfinal entities, and replace the original `src` table with
-        // the smaller `dst` table
-        reporter.start_switch();
-        //  see also: deployment-lock-for-update
-        deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
-            for table in &prunable_tables {
-                reporter.copy_nonfinal_start(table.src.name.as_str());
-                table.copy_nonfinal_entities(conn, reporter, final_block)?;
+        // create a shadow namespace where we will put the copies of our tables
+        let dst_nsp = Namespace::prune(self.site.id);
+        catalog::recreate_schema(conn, dst_nsp.as_str())?;
+
+        // Go table by table; note that the subgraph writer can write in
+        // between the execution of the `with_lock` block below, and might
+        // therefore work with tables where some are pruned and some are not
+        // pruned yet. That does not affect correctness since we make no
+        // assumption about where the subgraph head is. If the subgraph
+        // advances during this loop, we might have an unnecessarily
+        // pessimistic but still safe value for `final_block`. We do assume
+        // that `final_block` is far enough from the subgraph head that it
+        // stays final even if a revert happens during this loop, but that
+        // is the definition of 'final'
+        for (table, _) in &prunable_tables {
+            let pair = TablePair::create(
+                conn,
+                table.cheap_clone(),
+                self.site.namespace.clone(),
+                dst_nsp.clone(),
+            )?;
+            // Copy final entities. This can happen in parallel to indexing as
+            // that part of the table will not change
+            pair.copy_final_entities(conn, reporter, earliest_block, final_block, cancel)?;
+            // Copy nonfinal entities, and replace the original `src` table with
+            // the smaller `dst` table
+            // see also: deployment-lock-for-update
+            deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
+                pair.copy_nonfinal_entities(conn, reporter, final_block)?;
                 cancel.check_cancel().map_err(CancelableError::from)?;
-            }
 
-            for table in prunable_tables {
-                conn.transaction(|| table.switch(logger, conn))?;
+                conn.transaction(|| pair.switch(logger, conn))?;
                 cancel.check_cancel().map_err(CancelableError::from)?;
-            }
 
-            Ok(())
-        })?;
-        reporter.finish_switch();
-
+                Ok(())
+            })?;
+        }
         // Get rid of the temporary prune schema
         catalog::drop_schema(conn, dst_nsp.as_str())?;
 
         // Analyze the new tables
-        let tables = prunable_src.iter().collect();
+        let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
         self.analyze_tables(conn, reporter, tables, cancel)?;
 
         reporter.finish_prune();

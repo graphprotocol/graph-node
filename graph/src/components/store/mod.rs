@@ -1166,6 +1166,10 @@ pub trait PruneReporter: Send + 'static {
     fn finish_switch(&mut self) {}
 
     fn finish_prune(&mut self) {}
+
+    fn start_table(&mut self, table: &str) {}
+
+    fn finish_table(&mut self, table: &str) {}
 }
 
 /// Represents an item retrieved from an
