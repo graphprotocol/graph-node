@@ -344,6 +344,14 @@ impl SyncStore {
         .await
     }
 
+    fn maybe_find_site(&self, src: DeploymentId) -> Result<Option<Arc<Site>>, StoreError> {
+        match self.store.find_site(src) {
+            Ok(site) => Ok(Some(site)),
+            Err(StoreError::DeploymentNotFound(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     fn deployment_synced(&self) -> Result<(), StoreError> {
         self.retry("deployment_synced", || {
             let event = {
@@ -361,15 +369,16 @@ impl SyncStore {
             // grafts) so we make sure that the source, if it exists, has
             // the same hash as `self.site`
             if let Some(src) = self.writable.source_of_copy(&self.site)? {
-                let site = self.store.find_site(src)?;
-                if site.deployment == self.site.deployment {
-                    let on_sync = self.writable.on_sync(&self.site)?;
-                    if on_sync.activate() {
-                        let pconn = self.store.primary_conn()?;
-                        pconn.activate(&self.site.as_ref().into())?;
-                    }
-                    if on_sync.replace() {
-                        self.unassign_subgraph(&site)?;
+                if let Some(src) = self.maybe_find_site(src)? {
+                    if src.deployment == self.site.deployment {
+                        let on_sync = self.writable.on_sync(&self.site)?;
+                        if on_sync.activate() {
+                            let pconn = self.store.primary_conn()?;
+                            pconn.activate(&self.site.as_ref().into())?;
+                        }
+                        if on_sync.replace() {
+                            self.unassign_subgraph(&src)?;
+                        }
                     }
                 }
             }

@@ -504,6 +504,35 @@ fn on_sync() {
             Ok(())
         })
     }
+
+    // Check that on_sync does not cause an error when the source of the
+    // copy has vanished
+    run_test(move |store, src| async move {
+        if let Some(dst_shard) = other_shard(&store, &src)? {
+            let dst = store.copy_deployment(
+                &src,
+                dst_shard,
+                NODE_ID.clone(),
+                BLOCKS[1].clone(),
+                OnSync::Replace,
+            )?;
+
+            let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
+
+            // Perform the copy
+            writable.start_subgraph_deployment(&*LOGGER).await?;
+
+            let primary = primary_connection();
+            let src_site = primary.locate_site(src.clone())?.unwrap();
+            primary.unassign_subgraph(&src_site)?;
+            store.activate(&dst)?;
+            store.remove_deployment(src.id.into())?;
+
+            let res = writable.deployment_synced();
+            assert!(res.is_ok());
+        }
+        Ok(())
+    })
 }
 
 #[test]
