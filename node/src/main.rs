@@ -44,7 +44,6 @@ use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::sync::atomic;
 use std::time::Duration;
 use std::{collections::HashMap, env};
 use tokio::sync::mpsc;
@@ -105,11 +104,6 @@ async fn main() {
         "Graph Node version: {}",
         render_testament!(TESTAMENT)
     );
-
-    if opt.unsafe_config {
-        warn!(logger, "allowing unsafe configurations");
-        graph::env::UNSAFE_CONFIG.store(true, atomic::Ordering::SeqCst);
-    }
 
     if !graph_server_index_node::PoiProtection::from_env(&ENV_VARS).is_active() {
         warn!(
