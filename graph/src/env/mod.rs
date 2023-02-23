@@ -5,14 +5,7 @@ mod store;
 use envconfig::Envconfig;
 use lazy_static::lazy_static;
 use semver::Version;
-use std::{
-    collections::HashSet,
-    env::VarError,
-    fmt,
-    str::FromStr,
-    sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
-};
+use std::{collections::HashSet, env::VarError, fmt, str::FromStr, time::Duration};
 
 use self::graphql::*;
 use self::mappings::*;
@@ -21,41 +14,8 @@ use crate::{
     components::subgraph::SubgraphVersionSwitchingMode, runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
 
-pub static UNSAFE_CONFIG: AtomicBool = AtomicBool::new(false);
-
 lazy_static! {
     pub static ref ENV_VARS: EnvVars = EnvVars::from_env().unwrap();
-}
-
-// This is currently unused but is kept as a potentially useful mechanism.
-/// Panics if:
-/// - The value is not UTF8.
-/// - The value cannot be parsed as T.
-/// - The value differs from the default, and `--unsafe-config` flag is not set.
-pub fn unsafe_env_var<E: std::error::Error + Send + Sync, T: FromStr<Err = E> + Eq>(
-    name: &'static str,
-    default_value: T,
-) -> T {
-    let var = match std::env::var(name) {
-        Ok(var) => var,
-        Err(VarError::NotPresent) => return default_value,
-        Err(VarError::NotUnicode(_)) => panic!("environment variable {} is not UTF8", name),
-    };
-
-    let value = var
-        .parse::<T>()
-        .unwrap_or_else(|e| panic!("failed to parse environment variable {}: {}", name, e));
-
-    if !UNSAFE_CONFIG.load(Ordering::SeqCst) && value != default_value {
-        panic!(
-            "unsafe environment variable {} is set. The recommended action is to unset it. \
-             If this is not an indexer on the network, \
-             you may provide the `--unsafe-config` to allow setting this variable.",
-            name
-        )
-    }
-
-    value
 }
 
 /// Panics if:
@@ -112,8 +72,6 @@ pub struct EnvVars {
     /// Set by the environment variable `GRAPH_MAX_SPEC_VERSION`. The default
     /// value is `0.0.7`.
     pub max_spec_version: Version,
-    /// Set by the flag `GRAPH_DISABLE_GRAFTS`.
-    pub disable_grafts: bool,
     /// Set by the environment variable `GRAPH_LOAD_WINDOW_SIZE` (expressed in
     /// seconds). The default value is 300 seconds.
     pub load_window_size: Duration,
@@ -227,7 +185,6 @@ impl EnvVars {
                 .0
                 || cfg!(debug_assertions),
             max_spec_version: inner.max_spec_version,
-            disable_grafts: inner.disable_grafts.0,
             load_window_size: Duration::from_secs(inner.load_window_size_in_secs),
             load_bin_size: Duration::from_secs(inner.load_bin_size_in_secs),
             elastic_search_flush_interval: Duration::from_secs(
@@ -315,8 +272,6 @@ struct Inner {
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
     #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.7")]
     max_spec_version: Version,
-    #[envconfig(from = "GRAPH_DISABLE_GRAFTS", default = "false")]
-    disable_grafts: EnvVarBoolean,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,
     #[envconfig(from = "GRAPH_LOAD_BIN_SIZE", default = "1")]

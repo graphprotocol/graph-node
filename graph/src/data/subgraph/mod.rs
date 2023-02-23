@@ -579,11 +579,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             });
 
         if let Some(graft) = &self.0.graft {
-            if ENV_VARS.disable_grafts {
-                errors.push(SubgraphManifestValidationError::GraftBaseInvalid(
-                    "Grafting of subgraphs is currently disabled".to_owned(),
-                ));
-            }
             if validate_graft_base {
                 if let Err(graft_err) = graft.validate(store).await {
                     errors.push(graft_err);
