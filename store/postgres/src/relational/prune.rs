@@ -7,7 +7,7 @@ use diesel::{
     Connection, PgConnection, RunQueryDsl,
 };
 use graph::{
-    components::store::{PruneReporter, VersionStats},
+    components::store::{PrunePhase, PruneReporter, VersionStats},
     prelude::{
         BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError,
         BLOCK_NUMBER_MAX,
@@ -113,7 +113,7 @@ impl TablePair {
         earliest_block: BlockNumber,
         final_block: BlockNumber,
         cancel: &CancelHandle,
-    ) -> Result<usize, CancelableError<StoreError>> {
+    ) -> Result<(), CancelableError<StoreError>> {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
@@ -122,7 +122,6 @@ impl TablePair {
         let mut batch_size = AdaptiveBatchSize::new(&self.src);
         // The first vid we still need to copy
         let mut next_vid = min_vid;
-        let mut total_rows: usize = 0;
         while next_vid <= max_vid {
             let start = Instant::now();
             let rows = conn.transaction(|| {
@@ -153,14 +152,18 @@ impl TablePair {
             })?;
             cancel.check_cancel()?;
 
-            total_rows += rows;
             next_vid += batch_size.size;
 
             batch_size.adapt(start.elapsed());
 
-            reporter.copy_final_batch(self.src.name.as_str(), rows, total_rows, next_vid > max_vid);
+            reporter.prune_batch(
+                self.src.name.as_str(),
+                rows,
+                PrunePhase::CopyFinal,
+                next_vid > max_vid,
+            );
         }
-        Ok(total_rows)
+        Ok(())
     }
 
     /// Copy all entity versions visible after `final_block` in batches,
@@ -171,7 +174,7 @@ impl TablePair {
         conn: &PgConnection,
         reporter: &mut dyn PruneReporter,
         final_block: BlockNumber,
-    ) -> Result<usize, StoreError> {
+    ) -> Result<(), StoreError> {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
@@ -182,7 +185,6 @@ impl TablePair {
         let mut batch_size = AdaptiveBatchSize::new(&self.src);
         // The first vid we still need to copy
         let mut next_vid = min_vid;
-        let mut total_rows = 0;
         while next_vid <= max_vid {
             let start = Instant::now();
             let rows = conn.transaction(|| {
@@ -208,19 +210,18 @@ impl TablePair {
                 .map_err(StoreError::from)
             })?;
 
-            total_rows += rows;
             next_vid += batch_size.size;
 
             batch_size.adapt(start.elapsed());
 
-            reporter.copy_nonfinal_batch(
+            reporter.prune_batch(
                 self.src.name.as_str(),
                 rows,
-                total_rows,
+                PrunePhase::CopyNonfinal,
                 next_vid > max_vid,
             );
         }
-        Ok(total_rows)
+        Ok(())
     }
 
     /// Replace the `src` table with the `dst` table
@@ -403,7 +404,9 @@ impl Layout {
         // that `final_block` is far enough from the subgraph head that it
         // stays final even if a revert happens during this loop, but that
         // is the definition of 'final'
+        reporter.start_copy();
         for (table, _) in &prunable_tables {
+            reporter.start_table(table.name.as_str());
             let pair = TablePair::create(
                 conn,
                 table.cheap_clone(),
@@ -416,6 +419,7 @@ impl Layout {
             // Copy nonfinal entities, and replace the original `src` table with
             // the smaller `dst` table
             // see also: deployment-lock-for-update
+            reporter.start_switch();
             deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
                 pair.copy_nonfinal_entities(conn, reporter, final_block)?;
                 cancel.check_cancel().map_err(CancelableError::from)?;
@@ -425,6 +429,8 @@ impl Layout {
 
                 Ok(())
             })?;
+            reporter.finish_switch();
+            reporter.finish_table(table.name.as_str());
         }
         // Get rid of the temporary prune schema
         catalog::drop_schema(conn, dst_nsp.as_str())?;

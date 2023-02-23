@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use graph::env::ENV_VARS;
+use graph::{components::store::PrunePhase, env::ENV_VARS};
 use graph::{
     components::store::{PruneReporter, StatusStore},
     data::subgraph::status,
@@ -22,9 +22,10 @@ struct Progress {
     start: Instant,
     analyze_start: Instant,
     switch_start: Instant,
+    switch_time: Duration,
     table_start: Instant,
-    final_start: Instant,
-    nonfinal_start: Instant,
+    table_rows: usize,
+    initial_analyze: bool,
 }
 
 impl Progress {
@@ -33,9 +34,10 @@ impl Progress {
             start: Instant::now(),
             analyze_start: Instant::now(),
             switch_start: Instant::now(),
-            final_start: Instant::now(),
+            switch_time: Duration::from_secs(0),
             table_start: Instant::now(),
-            nonfinal_start: Instant::now(),
+            table_rows: 0,
+            initial_analyze: true,
         }
     }
 }
@@ -46,9 +48,20 @@ fn print_copy_header() {
     std::io::stdout().flush().ok();
 }
 
-fn print_copy_row(table: &str, total_rows: usize, elapsed: Duration) {
+fn print_copy_row(
+    table: &str,
+    total_rows: usize,
+    elapsed: Duration,
+    phase: PrunePhase,
+    finished: bool,
+) {
+    let phase = match (finished, phase) {
+        (true, _) => "          ",
+        (false, PrunePhase::CopyFinal) => "(final)",
+        (false, PrunePhase::CopyNonfinal) => "(nonfinal)",
+    };
     print!(
-        "\r{:<30} | {:>10} | {:>9}s",
+        "\r{:<30} | {:>10} | {:>9}s {phase}",
         abbreviate_table_name(table, 30),
         total_rows,
         elapsed.as_secs()
@@ -58,6 +71,9 @@ fn print_copy_row(table: &str, total_rows: usize, elapsed: Duration) {
 
 impl PruneReporter for Progress {
     fn start_analyze(&mut self) {
+        if !self.initial_analyze {
+            println!("");
+        }
         print!("Analyze tables");
         self.analyze_start = Instant::now();
     }
@@ -72,74 +88,62 @@ impl PruneReporter for Progress {
         stats: &[graph::components::store::VersionStats],
         analyzed: &[&str],
     ) {
+        let stats: Vec<_> = stats
+            .iter()
+            .filter(|stat| self.initial_analyze || analyzed.contains(&stat.tablename.as_str()))
+            .map(|stats| stats.clone())
+            .collect();
         println!(
-            "\rAnalyzed {} tables in {}s",
+            "\rAnalyzed {} tables in {}s{: ^30}",
             analyzed.len(),
-            self.analyze_start.elapsed().as_secs()
+            self.analyze_start.elapsed().as_secs(),
+            ""
         );
-        show_stats(stats, HashSet::new()).ok();
+        show_stats(stats.as_slice(), HashSet::new()).ok();
         println!();
+        self.initial_analyze = false;
     }
 
-    fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {
-        println!("Copy final entities (versions live between {earliest_block} and {final_block})");
+    fn start_copy(&mut self) {
+        println!("Copying data to new tables and replacing existing tables with them");
         print_copy_header();
-
-        self.final_start = Instant::now();
-        self.table_start = self.final_start;
     }
 
-    fn copy_final_batch(&mut self, table: &str, _rows: usize, total_rows: usize, finished: bool) {
-        print_copy_row(table, total_rows, self.table_start.elapsed());
-        if finished {
-            println!();
-            self.table_start = Instant::now();
-        }
+    fn start_table(&mut self, _table: &str) {
+        self.table_start = Instant::now();
+        self.table_rows = 0
+    }
+
+    fn prune_batch(&mut self, table: &str, rows: usize, phase: PrunePhase, finished: bool) {
+        self.table_rows += rows;
+        print_copy_row(
+            table,
+            self.table_rows,
+            self.table_start.elapsed(),
+            phase,
+            finished,
+        );
         std::io::stdout().flush().ok();
     }
 
-    fn copy_final_finish(&mut self) {
-        println!(
-            "Finished copying final entity versions in {}s\n",
-            self.final_start.elapsed().as_secs()
-        );
-    }
-
     fn start_switch(&mut self) {
-        println!("Blocking writes and switching tables");
-        print_copy_header();
         self.switch_start = Instant::now();
     }
 
     fn finish_switch(&mut self) {
-        println!(
-            "Enabling writes. Switching took {}s\n",
-            self.switch_start.elapsed().as_secs()
-        );
+        self.switch_time += self.switch_start.elapsed();
     }
 
-    fn copy_nonfinal_start(&mut self, table: &str) {
-        print_copy_row(table, 0, Duration::from_secs(0));
-        self.nonfinal_start = Instant::now();
-    }
-
-    fn copy_nonfinal_batch(
-        &mut self,
-        table: &str,
-        _rows: usize,
-        total_rows: usize,
-        finished: bool,
-    ) {
-        print_copy_row(table, total_rows, self.table_start.elapsed());
-        if finished {
-            println!();
-            self.table_start = Instant::now();
-        }
-        std::io::stdout().flush().ok();
+    fn finish_table(&mut self, _table: &str) {
+        println!();
     }
 
     fn finish_prune(&mut self) {
-        println!("Finished pruning in {}s", self.start.elapsed().as_secs());
+        println!(
+            "Finished pruning in {}s. Writing was blocked for {}s",
+            self.start.elapsed().as_secs(),
+            self.switch_time.as_secs()
+        );
     }
 }
 

@@ -1142,6 +1142,13 @@ pub struct VersionStats {
     pub ratio: f64,
 }
 
+/// What phase of pruning we are working on
+pub enum PrunePhase {
+    /// Handling final entities
+    CopyFinal,
+    /// Handling nonfinal entities
+    CopyNonfinal,
+}
 /// Callbacks for `SubgraphStore.prune` so that callers can report progress
 /// of the pruning procedure to users
 #[allow(unused_variables)]
@@ -1155,21 +1162,14 @@ pub trait PruneReporter: Send + 'static {
     /// actually analyzed
     fn finish_analyze(&mut self, stats: &[VersionStats], analyzed: &[&str]) {}
 
-    fn copy_final_start(&mut self, earliest_block: BlockNumber, final_block: BlockNumber) {}
-    fn copy_final_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {}
-    fn copy_final_finish(&mut self) {}
-
+    fn start_copy(&mut self) {}
+    fn start_table(&mut self, table: &str) {}
+    fn prune_batch(&mut self, table: &str, rows: usize, phase: PrunePhase, finished: bool) {}
     fn start_switch(&mut self) {}
-    fn copy_nonfinal_start(&mut self, table: &str) {}
-    fn copy_nonfinal_batch(&mut self, table: &str, rows: usize, total_rows: usize, finished: bool) {
-    }
     fn finish_switch(&mut self) {}
+    fn finish_table(&mut self, table: &str) {}
 
     fn finish_prune(&mut self) {}
-
-    fn start_table(&mut self, table: &str) {}
-
-    fn finish_table(&mut self, table: &str) {}
 }
 
 /// Represents an item retrieved from an
