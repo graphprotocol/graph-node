@@ -8,7 +8,6 @@ pub struct EnvVarsGraphQl {
     pub enable_validations: bool,
     /// Set by the flag `SILENT_GRAPHQL_VALIDATIONS`. On by default.
     pub silent_graphql_validations: bool,
-    pub subscription_throttle_interval: Duration,
     /// This is the timeout duration for SQL queries.
     ///
     /// If it is not set, no statement timeout will be enforced. The statement
@@ -109,9 +108,6 @@ impl From<InnerGraphQl> for EnvVarsGraphQl {
         Self {
             enable_validations: x.enable_validations.0,
             silent_graphql_validations: x.silent_graphql_validations.0,
-            subscription_throttle_interval: Duration::from_millis(
-                x.subscription_throttle_interval_in_ms,
-            ),
             sql_statement_timeout: x.sql_statement_timeout_in_secs.map(Duration::from_secs),
             cached_subgraph_ids: if x.cached_subgraph_ids == "*" {
                 CachedSubgraphIds::All
@@ -152,8 +148,6 @@ pub struct InnerGraphQl {
     enable_validations: EnvVarBoolean,
     #[envconfig(from = "SILENT_GRAPHQL_VALIDATIONS", default = "true")]
     silent_graphql_validations: EnvVarBoolean,
-    #[envconfig(from = "SUBSCRIPTION_THROTTLE_INTERVAL", default = "1000")]
-    subscription_throttle_interval_in_ms: u64,
     #[envconfig(from = "GRAPH_SQL_STATEMENT_TIMEOUT")]
     sql_statement_timeout_in_secs: Option<u64>,
 

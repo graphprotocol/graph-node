@@ -85,8 +85,6 @@ those.
 
 - `GRAPH_GRAPHQL_QUERY_TIMEOUT`: maximum execution time for a graphql query, in
   seconds. Default is unlimited.
-- `SUBSCRIPTION_THROTTLE_INTERVAL`: while a subgraph is syncing, subscriptions
-  to that subgraph get updated at most this often, in ms. Default is 1000ms.
 - `GRAPH_GRAPHQL_MAX_COMPLEXITY`: maximum complexity for a graphql query. See
   [here](https://developer.github.com/v4/guides/resource-limitations) for what
   that means. Default is unlimited. Typical introspection queries have a
