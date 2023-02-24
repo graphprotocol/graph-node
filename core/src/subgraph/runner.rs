@@ -145,8 +145,6 @@ where
             // deployment is unassigned
             self.ctx
                 .instances
-                .write()
-                .unwrap()
                 .insert(self.inputs.deployment.id, block_stream_canceler);
 
             debug!(self.logger, "Starting block stream");
@@ -827,11 +825,7 @@ where
 
                 if matches!(action, Action::Restart) {
                     // Cancel the stream for real
-                    self.ctx
-                        .instances
-                        .write()
-                        .unwrap()
-                        .remove(&self.inputs.deployment.id);
+                    self.ctx.instances.remove(&self.inputs.deployment.id);
 
                     // And restart the subgraph
                     return Ok(Action::Restart);
@@ -897,11 +891,7 @@ where
                         // Retry logic below:
 
                         // Cancel the stream for real.
-                        self.ctx
-                            .instances
-                            .write()
-                            .unwrap()
-                            .remove(&self.inputs.deployment.id);
+                        self.ctx.instances.remove(&self.inputs.deployment.id);
 
                         let message = format!("{:#}", e).replace('\n', "\t");
                         error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;

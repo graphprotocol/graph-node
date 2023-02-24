@@ -12,8 +12,9 @@ use graph::{
     data_source::{offchain, CausalityRegion, DataSource, TriggerData},
     ipfs_client::CidFile,
     prelude::{
-        BlockNumber, BlockState, CancelGuard, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
-        SubgraphInstanceMetrics, TriggerProcessor,
+        BlockNumber, BlockState, CancelGuard, CheapClone, DeploymentHash, MetricsRegistry,
+        RuntimeHostBuilder, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
+        TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -23,7 +24,35 @@ use std::sync::{Arc, RwLock};
 
 use self::instance::SubgraphInstance;
 
-pub type SharedInstanceKeepAliveMap = Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>;
+#[derive(Clone, Debug)]
+pub struct SharedInstanceKeepAliveMap {
+    alive_map: Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>,
+    manager_metrics: Arc<SubgraphInstanceManagerMetrics>,
+}
+
+impl CheapClone for SharedInstanceKeepAliveMap {
+    fn cheap_clone(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl SharedInstanceKeepAliveMap {
+    pub fn new(manager_metrics: Arc<SubgraphInstanceManagerMetrics>) -> Self {
+        Self {
+            manager_metrics,
+            alive_map: Arc::new(RwLock::new(HashMap::default())),
+        }
+    }
+
+    pub fn remove(&self, deployment_id: &DeploymentId) {
+        self.alive_map.write().unwrap().remove(deployment_id);
+        self.manager_metrics.subgraph_count.dec();
+    }
+    pub fn insert(&self, deployment_id: DeploymentId, guard: CancelGuard) {
+        self.alive_map.write().unwrap().insert(deployment_id, guard);
+        self.manager_metrics.subgraph_count.inc();
+    }
+}
 
 // The context keeps track of mutable in-memory state that is retained across blocks.
 //

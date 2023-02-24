@@ -86,6 +86,7 @@ impl SubgraphInstanceMetrics {
     }
 }
 
+#[derive(Debug)]
 pub struct SubgraphInstanceManagerMetrics {
     pub subgraph_count: Box<Gauge>,
 }
