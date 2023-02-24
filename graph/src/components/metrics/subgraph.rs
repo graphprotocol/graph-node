@@ -87,11 +87,11 @@ impl SubgraphInstanceMetrics {
 }
 
 #[derive(Debug)]
-pub struct SubgraphInstanceManagerMetrics {
+pub struct SubgraphCountMetric {
     pub subgraph_count: Box<Gauge>,
 }
 
-impl SubgraphInstanceManagerMetrics {
+impl SubgraphCountMetric {
     pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
         let subgraph_count = registry
             .new_gauge(

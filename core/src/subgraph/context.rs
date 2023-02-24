@@ -13,8 +13,7 @@ use graph::{
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockState, CancelGuard, CheapClone, DeploymentHash, MetricsRegistry,
-        RuntimeHostBuilder, SubgraphInstanceManagerMetrics, SubgraphInstanceMetrics,
-        TriggerProcessor,
+        RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics, TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -25,21 +24,21 @@ use std::sync::{Arc, RwLock};
 use self::instance::SubgraphInstance;
 
 #[derive(Clone, Debug)]
-pub struct SharedInstanceKeepAliveMap {
+pub struct SubgraphKeepAlive {
     alive_map: Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>,
-    manager_metrics: Arc<SubgraphInstanceManagerMetrics>,
+    manager_metrics: Arc<SubgraphCountMetric>,
 }
 
-impl CheapClone for SharedInstanceKeepAliveMap {
+impl CheapClone for SubgraphKeepAlive {
     fn cheap_clone(&self) -> Self {
         self.clone()
     }
 }
 
-impl SharedInstanceKeepAliveMap {
-    pub fn new(manager_metrics: Arc<SubgraphInstanceManagerMetrics>) -> Self {
+impl SubgraphKeepAlive {
+    pub fn new(metrics_registry: Arc<dyn MetricsRegistry>) -> Self {
         Self {
-            manager_metrics,
+            manager_metrics: Arc::new(SubgraphCountMetric::new(metrics_registry)),
             alive_map: Arc::new(RwLock::new(HashMap::default())),
         }
     }
@@ -65,7 +64,7 @@ where
     C: Blockchain,
 {
     instance: SubgraphInstance<C, T>,
-    pub instances: SharedInstanceKeepAliveMap,
+    pub instances: SubgraphKeepAlive,
     pub filter: C::TriggerFilter,
     pub offchain_monitor: OffchainMonitor,
     trigger_processor: Box<dyn TriggerProcessor<C, T>>,
@@ -74,7 +73,7 @@ where
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn new(
         instance: SubgraphInstance<C, T>,
-        instances: SharedInstanceKeepAliveMap,
+        instances: SubgraphKeepAlive,
         filter: C::TriggerFilter,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,

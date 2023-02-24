@@ -1,5 +1,5 @@
 use crate::polling_monitor::IpfsService;
-use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
+use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 
@@ -27,7 +27,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
     metrics_registry: Arc<dyn MetricsRegistry>,
-    instances: SharedInstanceKeepAliveMap,
+    instances: SubgraphKeepAlive,
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
     static_filters: bool,
@@ -174,9 +174,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             subgraph_store,
             chains,
             metrics_registry: metrics_registry.cheap_clone(),
-            instances: SharedInstanceKeepAliveMap::new(Arc::new(
-                SubgraphInstanceManagerMetrics::new(metrics_registry),
-            )),
+            instances: SubgraphKeepAlive::new(metrics_registry),
             link_resolver,
             ipfs_service,
             static_filters,
