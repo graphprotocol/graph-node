@@ -1,5 +1,5 @@
 use crate::polling_monitor::IpfsService;
-use crate::subgraph::context::{IndexingContext, SharedInstanceKeepAliveMap};
+use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
 
@@ -27,8 +27,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
     metrics_registry: Arc<dyn MetricsRegistry>,
-    manager_metrics: Arc<SubgraphInstanceManagerMetrics>,
-    instances: SharedInstanceKeepAliveMap,
+    instances: SubgraphKeepAlive,
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
     static_filters: bool,
@@ -46,7 +45,6 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
         let logger = self.logger_factory.subgraph_logger(&loc);
         let err_logger = logger.clone();
         let instance_manager = self.cheap_clone();
-        let manager_metrics = instance_manager.manager_metrics.clone();
 
         let subgraph_start_future = async move {
             match BlockchainKind::from_manifest(&manifest)? {
@@ -130,7 +128,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
         // manager does not hang because of that work.
         graph::spawn(async move {
             match subgraph_start_future.await {
-                Ok(()) => manager_metrics.subgraph_count.inc(),
+                Ok(()) => {}
                 Err(err) => error!(
                     err_logger,
                     "Failed to start subgraph";
@@ -151,11 +149,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
             }
         }
 
-        // Drop the cancel guard to shut down the subgraph now
-        let mut instances = self.instances.write().unwrap();
-        instances.remove(&loc.id);
-
-        self.manager_metrics.subgraph_count.dec();
+        self.instances.remove(&loc.id);
 
         info!(logger, "Stopped subgraph");
     }
@@ -179,11 +173,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             logger_factory,
             subgraph_store,
             chains,
-            manager_metrics: Arc::new(SubgraphInstanceManagerMetrics::new(
-                metrics_registry.cheap_clone(),
-            )),
-            metrics_registry,
-            instances: SharedInstanceKeepAliveMap::default(),
+            metrics_registry: metrics_registry.cheap_clone(),
+            instances: SubgraphKeepAlive::new(metrics_registry),
             link_resolver,
             ipfs_service,
             static_filters,
