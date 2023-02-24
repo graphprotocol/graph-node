@@ -1050,66 +1050,43 @@ mod data {
         pub(super) fn clear_call_cache(
             &self,
             conn: &PgConnection,
-            from: Option<i32>,
-            to: Option<i32>,
+            head: BlockNumber,
+            from: BlockNumber,
+            to: BlockNumber,
         ) -> Result<(), Error> {
-            if from.is_none() && to.is_none() {
-                // If both `from` and `to` arguments are equal to `None`, then truncation should be
-                // preferred over deletion as it is a faster operation.
+            if from <= 0 && to >= head {
+                // We are removing the entire cache. Truncating is much
+                // faster in that case
                 self.truncate_call_cache(conn)?;
                 return Ok(());
             }
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
-                    let mut delete_stmt = diesel::delete(cache::table).into_boxed();
-                    if let Some(from) = from {
-                        delete_stmt = delete_stmt.filter(cache::block_number.ge(from));
-                    }
-                    if let Some(to) = to {
-                        delete_stmt = delete_stmt.filter(cache::block_number.le(to))
-                    }
-                    delete_stmt.execute(conn).map_err(Error::from)?;
+                    diesel::delete(
+                        cache::table
+                            .filter(cache::block_number.ge(from))
+                            .filter(cache::block_number.le(to)),
+                    )
+                    .execute(conn)
+                    .map_err(Error::from)?;
                     Ok(())
                 }
-                Storage::Private(Schema { call_cache, .. }) => match (from, to) {
+                Storage::Private(Schema { call_cache, .. }) => {
                     // Because they are dynamically defined, our private call cache tables can't
                     // implement all the required traits for deletion. This means we can't use Diesel
                     // DSL with them and must rely on the `sql_query` function instead.
-                    (Some(from), None) => {
-                        let query =
-                            format!("delete from {} where block_number >= $1", call_cache.qname);
-                        sql_query(query)
-                            .bind::<Integer, _>(from)
-                            .execute(conn)
-                            .map_err(Error::from)?;
-                        Ok(())
-                    }
-                    (None, Some(to)) => {
-                        let query =
-                            format!("delete from {} where block_number <= $1", call_cache.qname);
-                        sql_query(query)
-                            .bind::<Integer, _>(to)
-                            .execute(conn)
-                            .map_err(Error::from)?;
-                        Ok(())
-                    }
-                    (Some(from), Some(to)) => {
-                        let query = format!(
-                            "delete from {} where block_number >= $1 and block_number <= $2",
-                            call_cache.qname
-                        );
-                        sql_query(query)
-                            .bind::<Integer, _>(from)
-                            .bind::<Integer, _>(to)
-                            .execute(conn)
-                            .map_err(Error::from)?;
-                        Ok(())
-                    }
-                    (None, None) => {
-                        unreachable!("truncation was handled at the beginning of this function");
-                    }
-                },
+                    let query = format!(
+                        "delete from {} where block_number >= $1 and block_number <= $2",
+                        call_cache.qname
+                    );
+                    sql_query(query)
+                        .bind::<Integer, _>(from)
+                        .bind::<Integer, _>(to)
+                        .execute(conn)
+                        .map_err(Error::from)
+                        .map(|_| ())
+                }
             }
         }
 
@@ -1820,9 +1797,12 @@ impl ChainStoreTrait for ChainStore {
             .await
     }
 
-    async fn clear_call_cache(&self, from: Option<i32>, to: Option<i32>) -> Result<(), Error> {
+    async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error> {
         let conn = self.get_conn()?;
-        self.storage.clear_call_cache(&conn, from, to)
+        if let Some(head) = self.chain_head_block(&self.chain)? {
+            self.storage.clear_call_cache(&conn, head, from, to)?;
+        }
+        Ok(())
     }
 
     async fn transaction_receipts_in_block(

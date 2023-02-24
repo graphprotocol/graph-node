@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
+use graph::bail;
+use graph::prelude::BLOCK_NUMBER_MAX;
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     log::logger,
@@ -455,14 +457,19 @@ pub enum ChainCommand {
 pub enum CallCacheCommand {
     /// Remove the call cache of the specified chain.
     ///
-    /// If block numbers are not mentioned in `--from` and `--to`, then all the call cache will be
-    /// removed.
+    /// Either remove entries in the range `--from` and `--to`, or remove
+    /// the entire cache with `--remove-entire-cache`. Removing the entire
+    /// cache can reduce indexing performance significantly and should
+    /// generally be avoided.
     Remove {
+        /// Remove the entire cache
+        #[clap(long, conflicts_with_all = &["from", "to"])]
+        remove_entire_cache: bool,
         /// Starting block number
-        #[clap(long, short)]
+        #[clap(long, short, conflicts_with = "remove-entire-cache", requires = "to")]
         from: Option<i32>,
         /// Ending block number
-        #[clap(long, short)]
+        #[clap(long, short, conflicts_with = "remove-entire-cache", requires = "from")]
         to: Option<i32>,
     },
 }
@@ -1187,12 +1194,27 @@ async fn main() -> anyhow::Result<()> {
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
-                CallCache { method, chain_name } => match method {
-                    CallCacheCommand::Remove { from, to } => {
-                        let chain_store = ctx.chain_store(&chain_name)?;
-                        commands::chain::clear_call_cache(chain_store, from, to).await
+                CallCache { method, chain_name } => {
+                    match method {
+                        CallCacheCommand::Remove {
+                            from,
+                            to,
+                            remove_entire_cache,
+                        } => {
+                            let chain_store = ctx.chain_store(&chain_name)?;
+                            if !remove_entire_cache && from.is_none() && to.is_none() {
+                                bail!("you must specify either --from and --to or --remove-entire-cache");
+                            }
+                            let (from, to) = if remove_entire_cache {
+                                (0, BLOCK_NUMBER_MAX)
+                            } else {
+                                // Clap makes sure that this does not panic
+                                (from.unwrap(), to.unwrap())
+                            };
+                            commands::chain::clear_call_cache(chain_store, from, to).await
+                        }
                     }
-                },
+                }
             }
         }
         Stats(cmd) => {

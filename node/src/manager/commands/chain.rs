@@ -52,11 +52,14 @@ pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(),
 
 pub async fn clear_call_cache(
     chain_store: Arc<ChainStore>,
-    from: Option<i32>,
-    to: Option<i32>,
+    from: i32,
+    to: i32,
 ) -> Result<(), Error> {
+    println!(
+        "Removing entries for blocks from {from} to {to} from the call cache for `{}`",
+        chain_store.chain
+    );
     chain_store.clear_call_cache(from, to).await?;
-    println!("The call cache has cleared");
     Ok(())
 }
 
