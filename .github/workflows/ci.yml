@@ -86,7 +86,7 @@ jobs:
         id: runner-tests-1
         uses: actions-rs/cargo@v1
         env:
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+          TESTS_GANACHE_HARD_WAIT_SECONDS: "60"
         with:
           command: test
           args: --verbose --package graph-tests -- --skip parallel_integration_tests
