@@ -1,15 +1,15 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 
 use graph::{
     blockchain::{self, Block, Blockchain, TriggerWithHandler},
     components::store::StoredDynamicDataSource,
     data::subgraph::DataSourceContext,
     prelude::{
-        anyhow, async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize,
-        Link, LinkResolver, Logger,
+        anyhow, async_trait, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
+        LinkResolver, Logger,
     },
 };
 
@@ -320,9 +320,12 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name, "source" => &source.start_block);
-
-        let mapping = mapping.resolve(resolver, logger).await?;
+        let mapping = mapping.resolve(resolver, logger).await.with_context(|| {
+            format!(
+                "failed to resolve data source {} with source {}",
+                name, source.start_block
+            )
+        })?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
     }
@@ -405,8 +408,10 @@ impl UnresolvedMapping {
 
         let api_version = semver::Version::parse(&api_version)?;
 
-        info!(logger, "Resolve mapping"; "link" => &link.link);
-        let module_bytes = resolver.cat(logger, &link).await?;
+        let module_bytes = resolver
+            .cat(logger, &link)
+            .await
+            .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
         Ok(Mapping {
             api_version,

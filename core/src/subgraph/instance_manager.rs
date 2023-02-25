@@ -229,13 +229,32 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             }
         }
 
-        info!(logger, "Resolve subgraph files using IPFS");
+        info!(logger, "Resolve subgraph files using IPFS";
+            "n_data_sources" => manifest.data_sources.len(),
+            "n_templates" => manifest.templates.len(),
+        );
 
         let mut manifest = manifest
             .resolve(&link_resolver, &logger, ENV_VARS.max_spec_version.clone())
             .await?;
 
-        info!(logger, "Successfully resolved subgraph files using IPFS");
+        {
+            let features = if manifest.features.is_empty() {
+                "ø".to_string()
+            } else {
+                manifest
+                    .features
+                    .iter()
+                    .map(|f| f.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            info!(logger, "Successfully resolved subgraph files using IPFS";
+                "n_data_sources" => manifest.data_sources.len(),
+                "n_templates" => manifest.templates.len(),
+                "features" => features
+            );
+        }
 
         let manifest_idx_and_name: Vec<(u32, String)> = manifest.template_idx_and_name().collect();
 
