@@ -10,12 +10,12 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use semver::Version;
 use serde::{de, ser};
 use serde_yaml;
-use slog::{info, Logger};
+use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
 use std::{collections::BTreeSet, marker::PhantomData};
@@ -388,9 +388,10 @@ impl UnresolvedSchema {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<Schema, anyhow::Error> {
-        info!(logger, "Resolve schema"; "link" => &self.file.link);
-
-        let schema_bytes = resolver.cat(logger, &self.file).await?;
+        let schema_bytes = resolver
+            .cat(logger, &self.file)
+            .await
+            .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
         Schema::parse(&String::from_utf8(schema_bytes)?, id)
     }
 }

@@ -1,3 +1,4 @@
+use graph::anyhow::Context;
 use graph::blockchain::{Block, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::DataSourceContext;
@@ -6,7 +7,7 @@ use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait, info, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
+        async_trait, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
         LinkResolver, Logger,
     },
     semver,
@@ -231,9 +232,14 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", base64_url::encode(&source.owner.clone().unwrap_or_default())), "source_start_block" => source.start_block);
-
-        let mapping = mapping.resolve(resolver, logger).await?;
+        let mapping = mapping.resolve(resolver, logger).await.with_context(|| {
+            format!(
+                "failed to resolve data source {} with source_address {:?} and start_block {}",
+                name,
+                base64_url::encode(&source.owner.clone().unwrap_or_default()),
+                source.start_block
+            )
+        })?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context)
     }
@@ -265,13 +271,16 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             mapping,
         } = self;
 
-        info!(logger, "Resolve data source template"; "name" => &name);
+        let mapping = mapping
+            .resolve(resolver, logger)
+            .await
+            .with_context(|| format!("failed to resolve data source template {}", name))?;
 
         Ok(DataSourceTemplate {
             kind,
             network,
             name,
-            mapping: mapping.resolve(resolver, logger).await?,
+            mapping,
         })
     }
 }
@@ -324,8 +333,10 @@ impl UnresolvedMapping {
 
         let api_version = semver::Version::parse(&api_version)?;
 
-        info!(logger, "Resolve mapping"; "link" => &link.link);
-        let module_bytes = resolver.cat(logger, &link).await?;
+        let module_bytes = resolver
+            .cat(logger, &link)
+            .await
+            .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
         Ok(Mapping {
             api_version,

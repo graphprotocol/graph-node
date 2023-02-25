@@ -18,7 +18,7 @@ use graph::{
     prelude::{
         async_trait,
         ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
-        info, serde_json, warn,
+        serde_json, warn,
         web3::types::{Log, Transaction, H256},
         BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
         LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
@@ -802,9 +802,12 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             context,
         } = self;
 
-        info!(logger, "Resolve data source"; "name" => &name, "source_address" => format_args!("{:?}", source.address), "source_start_block" => source.start_block);
-
-        let mapping = mapping.resolve(resolver, logger).await?;
+        let mapping = mapping.resolve(resolver, logger).await.with_context(|| {
+            format!(
+                "failed to resolve data source {} with source_address {:?} and source_start_block {}",
+                name, source.address, source.start_block
+            )
+        })?;
 
         DataSource::from_manifest(kind, network, name, source, mapping, context, manifest_idx)
     }
@@ -845,7 +848,10 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             mapping,
         } = self;
 
-        info!(logger, "Resolve data source template"; "name" => &name);
+        let mapping = mapping
+            .resolve(resolver, logger)
+            .await
+            .with_context(|| format!("failed to resolve data source template {}", name))?;
 
         Ok(DataSourceTemplate {
             kind,
@@ -853,7 +859,7 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
             name,
             manifest_idx,
             source,
-            mapping: mapping.resolve(resolver, logger).await?,
+            mapping,
         })
     }
 }
@@ -950,8 +956,6 @@ impl UnresolvedMapping {
             file: link,
         } = self;
 
-        info!(logger, "Resolve mapping"; "link" => &link.link);
-
         let api_version = semver::Version::parse(&api_version)?;
 
         let (abis, runtime) = try_join(
@@ -969,7 +973,8 @@ impl UnresolvedMapping {
                 Ok(Arc::new(module_bytes))
             },
         )
-        .await?;
+        .await
+        .with_context(|| format!("failed to resolve mapping {}", link.link))?;
 
         Ok(Mapping {
             kind,
@@ -1004,14 +1009,12 @@ impl UnresolvedMappingABI {
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
     ) -> Result<MappingABI, anyhow::Error> {
-        info!(
-            logger,
-            "Resolve ABI";
-            "name" => &self.name,
-            "link" => &self.file.link
-        );
-
-        let contract_bytes = resolver.cat(logger, &self.file).await?;
+        let contract_bytes = resolver.cat(logger, &self.file).await.with_context(|| {
+            format!(
+                "failed to resolve ABI {} from {}",
+                self.name, self.file.link
+            )
+        })?;
         let contract = Contract::load(&*contract_bytes)?;
         Ok(MappingABI {
             name: self.name,

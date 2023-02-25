@@ -353,14 +353,18 @@ impl UnresolvedDataSourceTemplate {
         logger: &Logger,
         manifest_idx: u32,
     ) -> Result<DataSourceTemplate, Error> {
-        info!(logger, "Resolve data source template"; "name" => &self.name);
+        let mapping = self
+            .mapping
+            .resolve(resolver, logger)
+            .await
+            .with_context(|| format!("failed to resolve data source template {}", self.name))?;
 
         Ok(DataSourceTemplate {
             kind: self.kind,
             network: self.network,
             name: self.name,
             manifest_idx,
-            mapping: self.mapping.resolve(resolver, logger).await?,
+            mapping,
         })
     }
 }
