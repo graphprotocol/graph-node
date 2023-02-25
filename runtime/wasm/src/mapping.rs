@@ -124,6 +124,8 @@ pub struct MappingContext<C: Blockchain> {
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
+    /// Logger for messages coming from mappings
+    pub mapping_logger: Logger,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -136,6 +138,7 @@ impl<C: Blockchain> MappingContext<C> {
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),
+            mapping_logger: Logger::new(&self.logger, o!("component" => "UserMapping")),
         }
     }
 }
