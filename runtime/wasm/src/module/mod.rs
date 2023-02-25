@@ -1709,7 +1709,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let msg: String = asc_get(self, msg, gas)?;
         self.ctx
             .host_exports
-            .log_log(&self.ctx.logger, level, msg, gas)
+            .log_log(&self.ctx.mapping_logger, level, msg, gas)
     }
 
     /// function encode(token: ethereum.Value): Bytes | null

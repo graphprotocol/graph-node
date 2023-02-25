@@ -115,6 +115,7 @@ pub fn mock_context(
         proof_of_indexing: None,
         host_fns: Arc::new(Vec::new()),
         debug_fork: None,
+        mapping_logger: Logger::root(slog::Discard, o!()),
     }
 }
 

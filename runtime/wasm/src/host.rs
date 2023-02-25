@@ -185,6 +185,7 @@ where
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
+                    mapping_logger: Logger::new(&logger, o!("component" => "UserMapping")),
                 },
                 trigger,
                 result_sender,
