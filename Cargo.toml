@@ -22,7 +22,7 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-prost = "0.11.6"
+prost = "0.11.8"
 prost-types = "0.11.6"
 tonic = { version = "0.8.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.8.4", features = ["prost"] }
