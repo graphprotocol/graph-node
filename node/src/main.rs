@@ -440,11 +440,14 @@ async fn main() {
         }
         let static_filters = ENV_VARS.experimental_static_filters;
 
+        let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
+
         let subgraph_instance_manager = SubgraphInstanceManager::new(
             &logger_factory,
             env_vars.cheap_clone(),
             network_store.subgraph_store(),
             blockchain_map.cheap_clone(),
+            sg_count.cheap_clone(),
             metrics_registry.clone(),
             link_resolver.clone(),
             ipfs_service,
@@ -456,6 +459,7 @@ async fn main() {
             &logger_factory,
             link_resolver.clone(),
             subgraph_instance_manager,
+            sg_count,
         );
 
         // Check version switching mode environment variable

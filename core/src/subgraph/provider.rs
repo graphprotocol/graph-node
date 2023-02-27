@@ -8,9 +8,42 @@ use graph::{
     prelude::{SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait, *},
 };
 
+#[derive(Debug)]
+struct DeploymentRegistry {
+    subgraphs_deployed: Arc<Mutex<HashSet<DeploymentId>>>,
+    subgraph_metrics: Arc<SubgraphCountMetric>,
+}
+
+impl DeploymentRegistry {
+    fn new(subgraph_metrics: Arc<SubgraphCountMetric>) -> Self {
+        Self {
+            subgraphs_deployed: Arc::new(Mutex::new(HashSet::new())),
+            subgraph_metrics,
+        }
+    }
+
+    fn insert(&self, id: DeploymentId) -> bool {
+        if !self.subgraphs_deployed.lock().unwrap().insert(id) {
+            return false;
+        }
+
+        self.subgraph_metrics.deployment_count.inc();
+        true
+    }
+
+    fn remove(&self, id: &DeploymentId) -> bool {
+        if !self.subgraphs_deployed.lock().unwrap().remove(id) {
+            return false;
+        }
+
+        self.subgraph_metrics.deployment_count.dec();
+        true
+    }
+}
+
 pub struct SubgraphAssignmentProvider<I> {
     logger_factory: LoggerFactory,
-    subgraphs_running: Arc<Mutex<HashSet<DeploymentId>>>,
+    deployment_registry: DeploymentRegistry,
     link_resolver: Arc<dyn LinkResolver>,
     instance_manager: Arc<I>,
 }
@@ -20,6 +53,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
         logger_factory: &LoggerFactory,
         link_resolver: Arc<dyn LinkResolver>,
         instance_manager: I,
+        subgraph_metrics: Arc<SubgraphCountMetric>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphAssignmentProvider", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -27,9 +61,9 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProvider<I> {
         // Create the subgraph provider
         SubgraphAssignmentProvider {
             logger_factory,
-            subgraphs_running: Arc::new(Mutex::new(HashSet::new())),
             link_resolver: link_resolver.with_retries().into(),
             instance_manager: Arc::new(instance_manager),
+            deployment_registry: DeploymentRegistry::new(subgraph_metrics),
         }
     }
 }
@@ -44,7 +78,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
         let logger = self.logger_factory.subgraph_logger(&loc);
 
         // If subgraph ID already in set
-        if !self.subgraphs_running.lock().unwrap().insert(loc.id) {
+        if !self.deployment_registry.insert(loc.id) {
             info!(logger, "Subgraph deployment is already running");
 
             return Err(SubgraphAssignmentProviderError::AlreadyRunning(
@@ -74,12 +108,7 @@ impl<I: SubgraphInstanceManager> SubgraphAssignmentProviderTrait for SubgraphAss
         deployment: DeploymentLocator,
     ) -> Result<(), SubgraphAssignmentProviderError> {
         // If subgraph ID was in set
-        if self
-            .subgraphs_running
-            .lock()
-            .unwrap()
-            .remove(&deployment.id)
-        {
+        if self.deployment_registry.remove(&deployment.id) {
             // Shut down subgraph processing
             self.instance_manager.stop_subgraph(deployment).await;
         }

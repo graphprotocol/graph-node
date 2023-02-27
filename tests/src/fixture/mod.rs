@@ -26,8 +26,9 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    LoggerFactory, MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphName,
-    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
+    LoggerFactory, MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::slog::crit;
 use graph_core::polling_monitor::ipfs_service;
@@ -354,6 +355,7 @@ pub async fn setup<C: Blockchain>(
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
     );
+    let sg_count = Arc::new(SubgraphCountMetric::new(mock_registry.cheap_clone()));
 
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
@@ -361,6 +363,7 @@ pub async fn setup<C: Blockchain>(
         env_vars.cheap_clone(),
         subgraph_store.clone(),
         blockchain_map.clone(),
+        sg_count.cheap_clone(),
         mock_registry.clone(),
         link_resolver.cheap_clone(),
         ipfs_service,
@@ -391,6 +394,7 @@ pub async fn setup<C: Blockchain>(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_instance_manager.clone(),
+        sg_count,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});

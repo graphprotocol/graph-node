@@ -26,30 +26,26 @@ use self::instance::SubgraphInstance;
 #[derive(Clone, Debug)]
 pub struct SubgraphKeepAlive {
     alive_map: Arc<RwLock<HashMap<DeploymentId, CancelGuard>>>,
-    manager_metrics: Arc<SubgraphCountMetric>,
+    sg_metrics: Arc<SubgraphCountMetric>,
 }
 
-impl CheapClone for SubgraphKeepAlive {
-    fn cheap_clone(&self) -> Self {
-        self.clone()
-    }
-}
+impl CheapClone for SubgraphKeepAlive {}
 
 impl SubgraphKeepAlive {
-    pub fn new(metrics_registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(sg_metrics: Arc<SubgraphCountMetric>) -> Self {
         Self {
-            manager_metrics: Arc::new(SubgraphCountMetric::new(metrics_registry)),
+            sg_metrics,
             alive_map: Arc::new(RwLock::new(HashMap::default())),
         }
     }
 
     pub fn remove(&self, deployment_id: &DeploymentId) {
         self.alive_map.write().unwrap().remove(deployment_id);
-        self.manager_metrics.subgraph_count.dec();
+        self.sg_metrics.running_count.dec();
     }
     pub fn insert(&self, deployment_id: DeploymentId, guard: CancelGuard) {
         self.alive_map.write().unwrap().insert(deployment_id, guard);
-        self.manager_metrics.subgraph_count.inc();
+        self.sg_metrics.running_count.inc();
     }
 }
 
