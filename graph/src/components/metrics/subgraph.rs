@@ -88,19 +88,30 @@ impl SubgraphInstanceMetrics {
 
 #[derive(Debug)]
 pub struct SubgraphCountMetric {
-    pub subgraph_count: Box<Gauge>,
+    pub running_count: Box<Gauge>,
+    pub deployment_count: Box<Gauge>,
 }
 
 impl SubgraphCountMetric {
     pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
-        let subgraph_count = registry
+        let running_count = registry
             .new_gauge(
-                "deployment_count",
+                "deployment_running_count",
                 "Counts the number of deployments currently being indexed by the graph-node.",
                 HashMap::new(),
             )
             .expect("failed to create `deployment_count` gauge");
-        Self { subgraph_count }
+        let deployment_count = registry
+            .new_gauge(
+                "deployment_count",
+                "Counts the number of deployments currently deployed to the graph-node.",
+                HashMap::new(),
+            )
+            .expect("failed to create `deployment_count` gauge");
+        Self {
+            running_count,
+            deployment_count,
+        }
     }
 }
 

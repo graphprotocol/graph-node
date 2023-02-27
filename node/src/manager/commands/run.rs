@@ -21,7 +21,8 @@ use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, LoggerFactory, NodeId, SubgraphAssignmentProvider,
-    SubgraphName, SubgraphRegistrar, SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore,
+    SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, info, Logger};
 use graph_chain_ethereum as ethereum;
@@ -148,12 +149,15 @@ pub async fn run(
 
     let static_filters = ENV_VARS.experimental_static_filters;
 
+    let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
+
     let blockchain_map = Arc::new(blockchain_map);
     let subgraph_instance_manager = SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
         subgraph_store.clone(),
         blockchain_map.clone(),
+        sg_metrics.cheap_clone(),
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
         ipfs_service,
@@ -165,6 +169,7 @@ pub async fn run(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_instance_manager,
+        sg_metrics,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
