@@ -1164,14 +1164,7 @@ impl DeploymentStore {
                     )?;
                 }
 
-                deployment::transact_block(
-                    &conn,
-                    &site,
-                    block_ptr_to,
-                    firehose_cursor,
-                    layout.count_query.as_str(),
-                    count,
-                )?;
+                deployment::transact_block(&conn, &site, block_ptr_to, firehose_cursor, count)?;
 
                 Ok(event)
             })
@@ -1227,12 +1220,7 @@ impl DeploymentStore {
                 // changes that might need to be reverted
                 Layout::revert_metadata(conn, &site, block)?;
 
-                deployment::update_entity_count(
-                    conn,
-                    site.as_ref(),
-                    layout.count_query.as_str(),
-                    count,
-                )?;
+                deployment::update_entity_count(conn, site.as_ref(), count)?;
                 Ok(event)
             })
         })?;
