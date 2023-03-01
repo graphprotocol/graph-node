@@ -15,10 +15,14 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::store::{DeploymentLocator, StoredDynamicDataSource},
+    components::{
+        metrics::MetricsRegistry,
+        store::{DeploymentLocator, StoredDynamicDataSource},
+    },
     data::subgraph::UnifiedMappingApiVersion,
     data_source,
-    prelude::DataSourceContext,
+    firehose::FirehoseEndpoints,
+    prelude::{DataSourceContext, LoggerFactory},
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
@@ -134,6 +138,19 @@ impl ChainStoreBlock {
 //     Firehose(FirehoseEndpoints),
 //     Rpc(C::Client),
 // }
+
+/// A chain-agnostic interface for instantiating chains of a specific kind. Not
+/// all chains may support this interface, but that's okay, as some may require
+/// special logic.
+pub trait BuildableBlockchain: Blockchain {
+    fn build(
+        logger_factory: LoggerFactory,
+        chain_id: String,
+        chain_store: Arc<dyn ChainStore>,
+        fh_endpoints: FirehoseEndpoints,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self;
+}
 
 #[async_trait]
 // This is only `Debug` because some tests require that

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::client::ChainClient;
+use graph::blockchain::BuildableBlockchain;
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
@@ -39,6 +40,24 @@ pub struct Chain {
 impl std::fmt::Debug for Chain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "chain: cosmos")
+    }
+}
+
+impl BuildableBlockchain for Chain {
+    fn build(
+        logger_factory: LoggerFactory,
+        chain_id: String,
+        chain_store: Arc<dyn ChainStore>,
+        fh_endpoints: FirehoseEndpoints,
+        registry: Arc<dyn MetricsRegistry>,
+    ) -> Self {
+        Chain::new(
+            logger_factory,
+            chain_id,
+            chain_store,
+            fh_endpoints,
+            registry,
+        )
     }
 }
 
