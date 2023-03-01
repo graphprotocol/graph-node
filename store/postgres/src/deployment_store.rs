@@ -5,7 +5,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{EntityKey, EntityType, PruneReporter, StoredDynamicDataSource};
+use graph::components::store::{
+    EntityKey, EntityType, PruneReporter, PruneRequest, StoredDynamicDataSource,
+};
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
@@ -896,52 +898,32 @@ impl DeploymentStore {
         self: &Arc<Self>,
         mut reporter: Box<dyn PruneReporter>,
         site: Arc<Site>,
-        history_blocks: Option<BlockNumber>,
-        reorg_threshold: BlockNumber,
-        prune_ratio: f64,
+        req: PruneRequest,
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         let store = self.clone();
         self.with_conn(move |conn, cancel| {
             let layout = store.layout(conn, site.clone())?;
             cancel.check_cancel()?;
             let state = deployment::state(conn, site.deployment.clone())?;
-            let history_blocks = history_blocks.unwrap_or(layout.history_blocks);
 
-            if state.latest_block.number <= history_blocks {
+            if state.latest_block.number <= req.history_blocks {
                 // We haven't accumulated enough history yet, nothing to prune
                 return Ok(reporter);
             }
 
-            let earliest_block = state.latest_block.number - history_blocks;
-
-            if state.earliest_block_number > earliest_block {
+            if state.earliest_block_number > req.earliest_block {
                 // We already have less history than we need (e.g., because
                 // of a manual onetime prune), nothing to prune
-                return Ok(reporter)
+                return Ok(reporter);
             }
-
-            let final_block = state.latest_block.number - reorg_threshold;
-            if final_block <= earliest_block {
-                return Err(constraint_violation!("the earliest block {} must be at least {} blocks before the current latest block {}", earliest_block, reorg_threshold, state.latest_block.number).into());
-            }
-
-            cancel.check_cancel()?;
 
             conn.transaction(|| {
-                deployment::set_earliest_block(conn, site.as_ref(), earliest_block)
+                deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block)
             })?;
 
             cancel.check_cancel()?;
 
-            layout.prune_by_copying(
-                &store.logger,
-                reporter.as_mut(),
-                conn,
-                earliest_block,
-                final_block,
-                prune_ratio,
-                cancel,
-            )?;
+            layout.prune(&store.logger, reporter.as_mut(), conn, &req, cancel)?;
             Ok(reporter)
         })
         .await

@@ -27,7 +27,7 @@ use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
-use crate::prelude::*;
+use crate::{constraint_violation, prelude::*};
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -1170,6 +1170,134 @@ pub trait PruneReporter: Send + 'static {
     fn finish_table(&mut self, table: &str) {}
 
     fn finish_prune(&mut self) {}
+}
+
+/// Select how pruning should be done
+#[derive(Clone, Copy)]
+pub enum PruningStrategy {
+    /// Copy the data we want to keep to new tables and swap them out for
+    /// the existing tables
+    Copy,
+    /// Delete unneeded data from the existing tables
+    Delete,
+}
+
+/// A request to prune a deployment. This struct encapsulates decision
+/// making around the best strategy for pruning (deleting historical
+/// entities or copying current ones) It needs to be filled with accurate
+/// information about the deployment that should be pruned.
+pub struct PruneRequest {
+    /// How many blocks of history to keep
+    pub history_blocks: BlockNumber,
+    /// The reorg threshold for the chain the deployment is on
+    pub reorg_threshold: BlockNumber,
+    /// The earliest block pruning should preserve
+    pub earliest_block: BlockNumber,
+    /// The last block that contains final entities not subject to a reorg
+    pub final_block: BlockNumber,
+    /// The latest block, i.e., the subgraph head
+    pub latest_block: BlockNumber,
+    /// An estimate of how much of the deployment we will remove
+    pub history_pct: f64,
+    /// Use the copy strategy when removing more than this fraction of
+    /// history. Initialized from `ENV_VARS.store.copy_threshold`, but can
+    /// be modified after construction
+    pub copy_threshold: f64,
+    /// Use the delete strategy when removing more than this fraction of
+    /// history but less than `copy_threshold`. Initialized from
+    /// `ENV_VARS.store.delete_threshold`, but can be modified after
+    /// construction
+    pub delete_threshold: f64,
+}
+
+impl PruneRequest {
+    /// Create a `PruneRequest` for a deployment that currently contains
+    /// entities for blocks from `first_block` to `latest_block` that should
+    /// retain only `history_blocks` blocks of history and is subject to a
+    /// reorg threshold of `reorg_threshold`.
+    pub fn new(
+        deployment: &DeploymentLocator,
+        history_blocks: BlockNumber,
+        reorg_threshold: BlockNumber,
+        first_block: BlockNumber,
+        latest_block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        let copy_threshold = ENV_VARS.store.copy_threshold;
+        let delete_threshold = ENV_VARS.store.delete_threshold;
+        if copy_threshold < 0.0 || copy_threshold > 1.0 {
+            return Err(constraint_violation!(
+                "the copy threshold must be between 0 and 1 but is {copy_threshold}"
+            ));
+        }
+        if delete_threshold < 0.0 || delete_threshold > 1.0 {
+            return Err(constraint_violation!(
+                "the delete threshold must be between 0 and 1 but is {delete_threshold}"
+            ));
+        }
+        if history_blocks < reorg_threshold {
+            return Err(constraint_violation!(
+                "the deployment {} needs to keep at least {} blocks \
+                   of history and can't be pruned to only {} blocks of history",
+                deployment,
+                reorg_threshold,
+                history_blocks
+            ));
+        }
+        if first_block >= latest_block {
+            return Err(constraint_violation!(
+                "the earliest block {} must be before the latest block {}",
+                first_block,
+                latest_block
+            ));
+        }
+
+        let earliest_block = latest_block - history_blocks;
+        let final_block = latest_block - reorg_threshold;
+        let total_blocks = latest_block - first_block + 1;
+
+        let history_pct = 1.0 - history_blocks as f64 / total_blocks as f64;
+
+        Ok(Self {
+            history_blocks,
+            reorg_threshold,
+            earliest_block,
+            final_block,
+            latest_block,
+            history_pct,
+            copy_threshold,
+            delete_threshold,
+        })
+    }
+
+    /// Determine what strategy to use for pruning
+    ///
+    /// We are pruning `history_pct` of the blocks from a table that has a ratio
+    /// of `version_ratio` entities to versions. If we are removing more than
+    /// `copy_threshold` percent of the versions, we prune by copying, and if we
+    /// are removing more than `delete_threshold` percent of the versions, we
+    /// prune by deleting. If we would remove less than `delete_threshold`
+    /// percent of the versions, we don't prune.
+    pub fn strategy(&self, version_ratio: f64) -> Option<PruningStrategy> {
+        // If the deployment doesn't have enough history to cover the reorg
+        // threshold, do not prune
+        if self.earliest_block >= self.final_block {
+            return None;
+        }
+
+        // Estimate how much data we will throw away; we assume that
+        // entity versions are distributed evenly across all blocks so
+        // that `history_pct` will tell us how much of that data pruning
+        // will remove.
+        let removal_ratio = self.history_pct * (1.0 - version_ratio);
+        if removal_ratio >= self.copy_threshold {
+            Some(PruningStrategy::Copy)
+        } else if removal_ratio >= self.delete_threshold {
+            // We will return 'Delete' here when that's implemented
+            Some(PruningStrategy::Copy)
+        } else {
+            None
+        }
+    }
 }
 
 /// Represents an item retrieved from an

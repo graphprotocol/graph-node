@@ -5,7 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use graph::{components::store::PrunePhase, env::ENV_VARS};
+use graph::{
+    components::store::{PrunePhase, PruneRequest},
+    env::ENV_VARS,
+};
 use graph::{
     components::store::{PruneReporter, StatusStore},
     data::subgraph::status,
@@ -152,7 +155,8 @@ pub async fn run(
     primary_pool: ConnectionPool,
     search: DeploymentSearch,
     history: usize,
-    prune_ratio: f64,
+    copy_threshold: Option<f64>,
+    delete_threshold: Option<f64>,
     once: bool,
 ) -> Result<(), anyhow::Error> {
     let history = history as BlockNumber;
@@ -181,20 +185,25 @@ pub async fn run(
     println!("     final: {}", latest - ENV_VARS.reorg_threshold);
     println!("  earliest: {}\n", latest - history);
 
+    let mut req = PruneRequest::new(
+        &deployment,
+        history,
+        ENV_VARS.reorg_threshold,
+        status.earliest_block_number,
+        latest,
+    )?;
+    if let Some(copy_threshold) = copy_threshold {
+        req.copy_threshold = copy_threshold;
+    }
+    if let Some(delete_threshold) = delete_threshold {
+        req.delete_threshold = delete_threshold;
+    }
+
     let reporter = Box::new(Progress::new());
+
     store
         .subgraph_store()
-        .prune(
-            reporter,
-            &deployment,
-            Some(history),
-            // Using the setting for eth chains is a bit lazy; the value
-            // should really depend on the chain, but we don't have a
-            // convenient way to figure out how each chain deals with
-            // finality
-            ENV_VARS.reorg_threshold,
-            prune_ratio,
-        )
+        .prune(reporter, &deployment, req)
         .await?;
 
     // Only after everything worked out, make the history setting permanent

@@ -252,9 +252,15 @@ pub enum Command {
     Prune {
         /// The deployment to prune (see `help info`)
         deployment: DeploymentSearch,
-        /// Prune tables with a ratio of entities to entity versions lower than this
-        #[clap(long, short, default_value = "0.20")]
-        prune_ratio: f64,
+        /// Prune by copying when removing more than this fraction of
+        /// history. Defaults to GRAPH_STORE_HISTORY_COPY_THRESHOLD
+        #[clap(long, short)]
+        copy_threshold: Option<f64>,
+        /// Prune by deleting when removing more than this fraction of
+        /// history but less than copy_threshold. Defaults to
+        /// GRAPH_STORE_HISTORY_DELETE_THRESHOLD
+        #[clap(long, short)]
+        delete_threshold: Option<f64>,
         /// How much history to keep in blocks
         #[clap(long, short = 'y', default_value = "10000")]
         history: usize,
@@ -1382,11 +1388,21 @@ async fn main() -> anyhow::Result<()> {
         Prune {
             deployment,
             history,
-            prune_ratio,
+            copy_threshold,
+            delete_threshold,
             once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
-            commands::prune::run(store, primary_pool, deployment, history, prune_ratio, once).await
+            commands::prune::run(
+                store,
+                primary_pool,
+                deployment,
+                history,
+                copy_threshold,
+                delete_threshold,
+                once,
+            )
+            .await
         }
         Drop {
             deployment,

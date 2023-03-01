@@ -222,3 +222,14 @@ those.
 - `GRAPH_FORK_BASE`: api url for where the graph node will fork from, use `https://api.thegraph.com/subgraphs/id/`
   for the hosted service.
 - `GRAPH_DEBUG_FORK`: the IPFS hash id of the subgraph to fork.
+- `GRAPH_STORE_HISTORY_COPY_THRESHOLD`,
+  `GRAPH_STORE_HISTORY_DELETE_THRESHOLD`: when pruning, prune by copying the
+  entities we will keep to new tables if we estimate that we will remove
+  more than a factor of `COPY_THRESHOLD` of the deployment's history. If we
+  estimate to remove a factor between `COPY_THRESHOLD` and
+  `DELETE_THRESHOLD`, prune by deleting from the existing tables of the
+  deployment. If we estimate to remove less than `DELETE_THRESHOLD`
+  entities, do not change the table. Both settings are floats, and default
+  to 0.5 for the `COPY_THRESHOLD` and 0.05 for the `DELETE_THRESHOLD`; they
+  must be between 0 and 1, and `COPY_THRESHOLD` must be bigger than
+  `DELETE_THRESHOLD`.

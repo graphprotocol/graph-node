@@ -5,7 +5,7 @@ use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
-    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter,
+    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter, PruneRequest,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -537,6 +537,9 @@ fn on_sync() {
 
 #[test]
 fn prune() {
+    struct Progress;
+    impl PruneReporter for Progress {}
+
     fn check_at_block(
         store: &DieselSubgraphStore,
         src: &DeploymentLocator,
@@ -559,14 +562,6 @@ fn prune() {
             .map(|entity| entity.id().unwrap())
             .collect();
         assert_eq!(act, exp, "different users visible at block {block}");
-    }
-
-    async fn prune(store: &DieselSubgraphStore, src: &DeploymentLocator) -> Result<(), StoreError> {
-        struct Progress;
-        impl PruneReporter for Progress {}
-        let reporter = Box::new(Progress);
-
-        store.prune(reporter, src, None, 1, 1.1).await.map(|_| ())
     }
 
     run_test(|store, src| async move {
@@ -605,11 +600,14 @@ fn prune() {
             .await
             .unwrap();
 
-        // Keep 3 blocks of history, i.e. blocks 4..6
-        store.set_history_blocks(&src, 3, 0).unwrap();
-
-        // Pruning only removes the [1,2) version of user 3
-        prune(&store, &src).await.expect("pruning works");
+        // Prune to 3 blocks of history, with a reorg threshold of 1 where
+        // we have blocks from [0, 6]. That should only remove the [1,2)
+        // version of user 3
+        let req = PruneRequest::new(&src, 3, 1, 0, 6)?;
+        store
+            .prune(Box::new(Progress), &src, req)
+            .await
+            .expect("pruning works");
 
         // Check which versions exist at every block, even if they are
         // before the new earliest block, since we don't have a convenient

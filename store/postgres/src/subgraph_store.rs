@@ -17,7 +17,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, PruneReporter, SubgraphFork,
+            EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest, SubgraphFork,
         },
     },
     constraint_violation,
@@ -1113,23 +1113,7 @@ impl SubgraphStoreInner {
         store.set_account_like(site, table, is_account_like).await
     }
 
-    /// Remove the history exceeding `history_blocks` blocks setting. Only
-    /// entity versions needed for queries at block heights within
-    /// `history_blocks` blocks of the current subgraph head will be kept.
-    /// If `history_blocks` is `None`, use the subgraph's `history_blocks`
-    /// setting.
-    ///
-    /// Only tables with a ratio of entities to entity versions below
-    /// `prune_ratio` will be pruned; that ratio is determined by looking at
-    /// Postgres planner stats to avoid lengthy counting queries. It is
-    /// assumed that if the ratio is higher than `prune_ratio` that pruning
-    /// won't make much of a difference and will just cause unnecessary
-    /// work.
-    ///
-    /// The `reorg_threshold` is used to determine which blocks will not be
-    /// modified any more by the subgraph writer that may be running
-    /// concurrently to reduce the amount of time that the writer needs to
-    /// be locked out while pruning is happening.
+    /// Prune the history according to the parameters in `req`.
     ///
     /// Pruning can take a long time, and is structured into multiple
     /// transactions such that none of them takes an excessively long time.
@@ -1140,18 +1124,14 @@ impl SubgraphStoreInner {
         &self,
         reporter: Box<dyn PruneReporter>,
         deployment: &DeploymentLocator,
-        history_blocks: Option<BlockNumber>,
-        reorg_threshold: BlockNumber,
-        prune_ratio: f64,
+        req: PruneRequest,
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         // Find the store by the deployment id; otherwise, we could only
         // prune the active copy of the deployment with `deployment.hash`
         let site = self.find_site(deployment.id.into())?;
         let store = self.for_site(&site)?;
 
-        store
-            .prune(reporter, site, history_blocks, reorg_threshold, prune_ratio)
-            .await
+        store.prune(reporter, site, req).await
     }
 
     pub fn set_history_blocks(
