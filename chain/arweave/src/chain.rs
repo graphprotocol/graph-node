@@ -52,30 +52,12 @@ impl BuildableBlockchain for Chain {
         fh_endpoints: FirehoseEndpoints,
         registry: Arc<dyn MetricsRegistry>,
     ) -> Self {
-        Chain::new(
+        Self {
             logger_factory,
-            chain_id,
+            name: chain_id,
+            client: Arc::new(ChainClient::<Self>::new_firehose(fh_endpoints)),
             chain_store,
-            fh_endpoints,
-            registry,
-        )
-    }
-}
-
-impl Chain {
-    pub fn new(
-        logger_factory: LoggerFactory,
-        name: String,
-        chain_store: Arc<dyn ChainStore>,
-        firehose_endpoints: FirehoseEndpoints,
-        metrics_registry: Arc<dyn MetricsRegistry>,
-    ) -> Self {
-        Chain {
-            logger_factory,
-            name,
-            client: Arc::new(ChainClient::<Self>::new_firehose(firehose_endpoints)),
-            chain_store,
-            metrics_registry,
+            metrics_registry: registry,
         }
     }
 }

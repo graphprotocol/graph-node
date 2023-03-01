@@ -108,38 +108,18 @@ impl std::fmt::Debug for Chain {
 impl BuildableBlockchain for Chain {
     fn build(
         logger_factory: LoggerFactory,
-        chain_id: String,
-        chain_store: Arc<dyn ChainStore>,
-        fh_endpoints: FirehoseEndpoints,
-        registry: Arc<dyn MetricsRegistry>,
-    ) -> Self {
-        Chain::new(
-            logger_factory,
-            chain_id,
-            chain_store,
-            fh_endpoints,
-            registry,
-            Arc::new(NearStreamBuilder {}),
-        )
-    }
-}
-
-impl Chain {
-    pub fn new(
-        logger_factory: LoggerFactory,
         name: String,
         chain_store: Arc<dyn ChainStore>,
-        firehose_endpoints: FirehoseEndpoints,
+        fh_endpoints: FirehoseEndpoints,
         metrics_registry: Arc<dyn MetricsRegistry>,
-        block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     ) -> Self {
-        Chain {
+        Self {
             logger_factory,
             name,
-            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
             chain_store,
+            client: Arc::new(ChainClient::new_firehose(fh_endpoints)),
             metrics_registry,
-            block_stream_builder,
+            block_stream_builder: Arc::new(NearStreamBuilder {}),
         }
     }
 }
