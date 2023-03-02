@@ -562,42 +562,17 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
     let included_entity = include.as_object().unwrap();
     let entity_name = included_entity.get("entity").unwrap().as_str().unwrap();
 
-    let mut arguments = vec![
-        // text: String
-        InputValue {
-            position: Pos::default(),
-            description: None,
-            name: String::from("text"),
-            value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
-            default_value: None,
-            directives: vec![],
-        },
-        // first: Int
-        InputValue {
-            position: Pos::default(),
-            description: None,
-            name: String::from("first"),
-            value_type: Type::NamedType(String::from("Int")),
-            default_value: Some(Value::Int(100.into())),
-            directives: vec![],
-        },
-        // skip: Int
-        InputValue {
-            position: Pos::default(),
-            description: None,
-            name: String::from("skip"),
-            value_type: Type::NamedType(String::from("Int")),
-            default_value: Some(Value::Int(0.into())),
-            directives: vec![],
-        },
-        // block: BlockHeight
-        block_argument(),
-        input_value(
-            "where",
-            "",
-            Type::NamedType(format!("{}_filter", entity_name)),
-        ),
-    ];
+    let mut arguments = collection_arguments_for_named_type(entity_name);
+
+    arguments.push(InputValue {
+        position: Pos::default(),
+        description: None,
+        name: String::from("text"),
+        value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
+        default_value: None,
+        directives: vec![],
+    });
+    arguments.push(block_argument());
 
     arguments.push(subgraph_error_argument());
 
