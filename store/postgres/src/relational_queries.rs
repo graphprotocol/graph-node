@@ -1405,7 +1405,9 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
             NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
 
-            Equal(attr, value) | Fulltext(attr, value) => self.equals(attr, value, c::Equal, out)?,
+            Equal(attr, value) | Fulltext(attr, value) => {
+                self.equals(attr, value, c::Equal, out)?
+            }
             Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
 
             GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,
@@ -2625,6 +2627,7 @@ pub struct ChildIdDetails<'a> {
 #[derive(Debug, Clone)]
 pub enum ChildKey<'a> {
     Single(ChildKeyDetails<'a>),
+    WithFullText(ChildKeyDetails<'a>, SortKeyDetail<'a>),
     Many(Vec<ChildKeyDetails<'a>>),
     IdAsc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
     IdDesc(ChildIdDetails<'a>, Option<BlockRangeColumn<'a>>),
@@ -2663,7 +2666,8 @@ pub enum SortKey<'a> {
     IdDesc(Option<BlockRangeColumn<'a>>),
     /// Order by some other column; `column` will never be `id`
     Key(SortKeyDetail<'a>),
-    Many (Vec<SortKeyDetail<'a>>),
+    /// Orders by multiple columns
+    Many(Vec<SortKeyDetail<'a>>),
     /// Order by some other column; `column` will never be `id`
     ChildKey(ChildKey<'a>),
 }
@@ -2681,16 +2685,26 @@ impl<'a> fmt::Display for SortKey<'a> {
             SortKey::IdDesc(Some(br)) => {
                 write!(f, "{} desc, {} desc", PRIMARY_KEY_COLUMN, br.column_name())
             }
-            SortKey::Key (detail) => write!(
-                f,
-                "{}",
-                detail.to_string()
-            ),
-            SortKey::Many(keys) => write!(f, "{}", keys.iter().map(|k| { k.to_string()}).join(", ")),
+            SortKey::Key(detail) => write!(f, "{}", detail.to_string()),
+            SortKey::Many(keys) => {
+                write!(f, "{}", keys.iter().map(|k| { k.to_string() }).join(", "))
+            }
             SortKey::ChildKey(child) => match child {
                 ChildKey::Single(details) => write!(
                     f,
                     "{}.{} {}, {}.{} {}",
+                    details.child_table.name.as_str(),
+                    details.sort_by_column.name.as_str(),
+                    details.direction,
+                    details.child_table.name.as_str(),
+                    PRIMARY_KEY_COLUMN,
+                    details.direction
+                ),
+                ChildKey::WithFullText(details, full_text_column) => write!(
+                    f,
+                    "{} {}, {}.{} {}, {}.{} {}",
+                    full_text_column.column.name.as_str(),
+                    full_text_column.direction,
                     details.child_table.name.as_str(),
                     details.sort_by_column.name.as_str(),
                     details.direction,
@@ -2798,14 +2812,15 @@ impl<'a> SortKey<'a> {
         block: BlockNumber,
         layout: &'a Layout,
     ) -> Result<Self, QueryExecutionError> {
-
-        fn get_fulltext_sort_value<'a>(filter: &Option<&'a EntityFilter>) -> Option<&'a Value> {
+        fn get_fulltext_sort_value<'a>(
+            filter: &Option<&'a EntityFilter>,
+        ) -> Option<(&'a String, &'a Value)> {
             match filter {
-                Some(EntityFilter::Fulltext(_, value)) => Some(value),
+                Some(EntityFilter::Fulltext(attr, value)) => Some((attr, value)),
                 Some(EntityFilter::And(vec)) => match vec.first() {
-                    Some(EntityFilter::Fulltext(_, value)) => Some(value),
+                    Some(EntityFilter::Fulltext(attr, value)) => Some((attr, value)),
                     _ => None,
-                }
+                },
                 _ => None,
             }
         }
@@ -2818,32 +2833,34 @@ impl<'a> SortKey<'a> {
             br_column: Option<BlockRangeColumn<'a>>,
         ) -> Result<SortKey<'a>, QueryExecutionError> {
             let column = table.column_for_field(&attribute)?;
-            let asf = get_fulltext_sort_value(&filter);
-            println!("asf: {:?}", asf);
-            if column.is_fulltext() {
-                match filter {
-                    Some(EntityFilter::Fulltext(_, value)) => {
-                        let sort_value = value.as_str();
-
-                        Ok(SortKey::Key (SortKeyDetail {
+            let fulltext = get_fulltext_sort_value(&filter);
+            if fulltext.is_some() {
+                let (fulltext_attr, fulltext_value) = fulltext.unwrap();
+                let fulltext_value = fulltext_value.as_str();
+                if column.is_fulltext() {
+                    Ok(SortKey::Key(SortKeyDetail {
+                        column,
+                        value: fulltext_value,
+                        direction,
+                    }))
+                } else if column.is_primary_key() {
+                    let entity = fulltext_attr.to_string();
+                    let field = attribute;
+                    Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(entity, field))
+                } else {
+                    let fulltext_column = table.column_for_field(&fulltext_attr)?;
+                    Ok(SortKey::Many(vec![
+                        SortKeyDetail {
+                            column: fulltext_column,
+                            value: fulltext_value,
+                            direction: DESC,
+                        },
+                        SortKeyDetail {
                             column,
-                            value: sort_value,
+                            value: None,
                             direction,
-                        }))
-                    }
-                    Some(EntityFilter::And(vec)) => match vec.first().ok_or(QueryExecutionError::InvalidFilterError)? {
-                        EntityFilter::Fulltext(_, value) => {
-                            let sort_value = value.as_str();
-
-                            Ok(SortKey::Key( SortKeyDetail  {
-                                column,
-                                value: sort_value,
-                                direction,
-                            }))
-                        }
-                        _ => unreachable!(),
-                    }
-                    _ => unreachable!(),
+                        },
+                    ]))
                 }
             } else if column.is_primary_key() {
                 match direction {
@@ -2862,6 +2879,7 @@ impl<'a> SortKey<'a> {
 
         fn with_child_object_key<'a>(
             parent_table: &'a Table,
+            parent_filter: Option<&'a EntityFilter>,
             child_table: &'a Table,
             join_attribute: String,
             derived: bool,
@@ -2899,8 +2917,34 @@ impl<'a> SortKey<'a> {
                         child_table.primary_key(),
                     ),
                 };
-
-                if sort_by_column.is_primary_key() {
+                let fulltext = get_fulltext_sort_value(&parent_filter);
+                if fulltext.is_some() {
+                    let (fulltext_attr, fulltext_value) = fulltext.unwrap();
+                    if sort_by_column.is_primary_key() {
+                        let entity = fulltext_attr.to_string();
+                        let field = format!("{}__{}", join_attribute, attribute);
+                        return Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(entity, field));
+                    }
+                    let fulltext_value = fulltext_value.as_str();
+                    let fulltext_column = parent_table.column_for_field(&fulltext_attr)?;
+                    return Ok(SortKey::ChildKey(ChildKey::WithFullText(
+                        ChildKeyDetails {
+                            parent_table,
+                            child_table,
+                            parent_join_column: parent_column,
+                            child_join_column: child_column,
+                            /// Sort by this column
+                            sort_by_column,
+                            prefix: "cc".to_string(),
+                            direction,
+                        },
+                        SortKeyDetail {
+                            column: fulltext_column,
+                            value: fulltext_value,
+                            direction: DESC,
+                        },
+                    )));
+                } else if sort_by_column.is_primary_key() {
                     return match direction {
                         ASC => Ok(SortKey::ChildKey(ChildKey::IdAsc(
                             ChildIdDetails {
@@ -3091,7 +3135,6 @@ impl<'a> SortKey<'a> {
             None
         };
 
-        println!("{:?}", order);
         match order {
             EntityOrder::Ascending(attr, _) => with_key(table, attr, filter, ASC, br_column),
             EntityOrder::Descending(attr, _) => with_key(table, attr, filter, DESC, br_column),
@@ -3100,6 +3143,7 @@ impl<'a> SortKey<'a> {
             EntityOrder::ChildAscending(kind) => match kind {
                 EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
                     table,
+                    filter,
                     layout.table_for_entity(&entity_type)?,
                     child.join_attribute,
                     child.derived,
@@ -3114,6 +3158,7 @@ impl<'a> SortKey<'a> {
             EntityOrder::ChildDescending(kind) => match kind {
                 EntityOrderByChild::Object(child, entity_type) => with_child_object_key(
                     table,
+                    filter,
                     layout.table_for_entity(&entity_type)?,
                     child.join_attribute,
                     child.derived,
@@ -3139,7 +3184,7 @@ impl<'a> SortKey<'a> {
                 }
                 Ok(())
             }
-            SortKey::Key ( SortKeyDetail {
+            SortKey::Key(SortKeyDetail {
                 column,
                 value: _,
                 direction: _,
@@ -3150,13 +3195,20 @@ impl<'a> SortKey<'a> {
                 out.push_sql(", c.");
                 out.push_identifier(column.name.as_str())?;
                 Ok(())
-            },
+            }
             SortKey::Many(keys) => {
-                todo!()
-            },
+                for key in keys.iter() {
+                    if key.column.is_primary_key() {
+                        return Err(constraint_violation!("SortKey::Key never uses 'id'"));
+                    }
+                    out.push_sql(", c.");
+                    out.push_identifier(key.column.name.as_str())?;
+                }
+                Ok(())
+            }
             SortKey::ChildKey(nested) => {
                 match nested {
-                    ChildKey::Single(child) => {
+                    ChildKey::Single(child) | ChildKey::WithFullText(child, _) => {
                         if child.sort_by_column.is_primary_key() {
                             return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                         }
@@ -3227,26 +3279,22 @@ impl<'a> SortKey<'a> {
                 }
                 Ok(())
             }
-            SortKey::Key ( SortKeyDetail {
+            SortKey::Key(SortKeyDetail {
                 column,
                 value,
                 direction,
             }) => {
                 out.push_sql("order by ");
                 SortKey::sort_expr(column, value, direction, None, None, out)
-            },
+            }
             SortKey::Many(keys) => {
                 out.push_sql("order by ");
-
-
-                // SortKey::sort_expr(column, value, direction, None, None, out);
-                // todo!();
-                let columns: Vec<(&Column, &str)> = keys
+                let columns = keys
                     .iter()
-                    .map(|key| (key.column, key.direction))
+                    .map(|key| (key.column, None, key.value, key.direction))
                     .collect();
-                SortKey::multi_sort_expr(columns, keys.first().unwrap().direction, None, out)
-            },
+                SortKey::multi_sort_expr(columns, None, out)
+            }
             SortKey::ChildKey(child) => {
                 out.push_sql("order by ");
                 match child {
@@ -3258,17 +3306,39 @@ impl<'a> SortKey<'a> {
                         Some("c"),
                         out,
                     ),
+                    ChildKey::WithFullText(
+                        child,
+                        SortKeyDetail {
+                            column,
+                            value,
+                            direction,
+                        },
+                    ) => {
+                        let columns = vec![
+                            (*column, None, *value, *direction),
+                            (
+                                child.sort_by_column,
+                                Some(child.prefix.as_str()),
+                                None,
+                                child.direction,
+                            ),
+                        ];
+                        SortKey::multi_sort_expr(columns, Some("c"), out)
+                    }
                     ChildKey::Many(children) => {
-                        let columns: Vec<(&Column, &str)> = children
+                        let direction = children.first().unwrap().direction;
+                        let columns = children
                             .iter()
-                            .map(|child| (child.sort_by_column, child.prefix.as_str()))
+                            .map(|child| {
+                                (
+                                    child.sort_by_column,
+                                    Some(child.prefix.as_str()),
+                                    None,
+                                    direction,
+                                )
+                            })
                             .collect();
-                        SortKey::multi_sort_expr(
-                            columns,
-                            children.first().unwrap().direction,
-                            Some("c"),
-                            out,
-                        )
+                        SortKey::multi_sort_expr(columns, Some("c"), out)
                     }
 
                     ChildKey::ManyIdAsc(children, br_column) => {
@@ -3328,7 +3398,7 @@ impl<'a> SortKey<'a> {
                 out.push_sql(" desc");
                 Ok(())
             }
-            SortKey::Key ( SortKeyDetail {
+            SortKey::Key(SortKeyDetail {
                 column,
                 value,
                 direction,
@@ -3336,13 +3406,15 @@ impl<'a> SortKey<'a> {
                 out.push_sql("order by g$parent_id, ");
                 SortKey::sort_expr(column, value, direction, None, None, out)
             }
-            SortKey::Many(_) | SortKey::ChildKey(_) => Err(diesel::result::Error::QueryBuilderError(
-                "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
-            )),
+            SortKey::Many(_) | SortKey::ChildKey(_) => {
+                Err(diesel::result::Error::QueryBuilderError(
+                    "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
+                ))
+            }
         }
     }
 
-    fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
+    fn push_prefix(prefix: &Option<&str>, out: &mut AstPass<Pg>) {
         if let Some(prefix) = prefix {
             out.push_sql(prefix);
             out.push_sql(".");
@@ -3353,9 +3425,9 @@ impl<'a> SortKey<'a> {
         column: &Column,
         value: &Option<&str>,
         direction: &str,
-        column_prefix: Option<&str>,
+        column_prefix: &Option<&str>,
         out: &mut AstPass<Pg>,
-    ) -> QueryResult<()>  {
+    ) -> QueryResult<()> {
         match &column.column_type {
             ColumnType::TSVector(config) => {
                 let algorithm = match config.algorithm {
@@ -3399,47 +3471,17 @@ impl<'a> SortKey<'a> {
             ));
         }
 
-        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
-            if let Some(prefix) = prefix {
-                out.push_sql(prefix);
-                out.push_sql(".");
-            }
-        }
+        SortKey::sort_keys_by_col_type(column, value, direction, &column_prefix, out)?;
 
-        match &column.column_type {
-            ColumnType::TSVector(config) => {
-                let algorithm = match config.algorithm {
-                    FulltextAlgorithm::Rank => "ts_rank(",
-                    FulltextAlgorithm::ProximityRank => "ts_rank_cd(",
-                };
-                out.push_sql(algorithm);
-                let name = column.name.as_str();
-                push_prefix(column_prefix, out);
-                out.push_identifier(name)?;
-                out.push_sql(", to_tsquery(");
-
-                out.push_bind_param::<Text, _>(&value.unwrap())?;
-                out.push_sql("))");
-            }
-            _ => {
-                let name = column.name.as_str();
-                push_prefix(column_prefix, out);
-                out.push_identifier(name)?;
-            }
-        }
         if ENV_VARS.store.reversible_order_by_off {
             // Old behavior
-            out.push_sql(" ");
-            out.push_sql(direction);
             out.push_sql(" nulls last");
             out.push_sql(", ");
-            push_prefix(rest_prefix, out);
+            SortKey::push_prefix(&rest_prefix, out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
         } else {
-            out.push_sql(" ");
-            out.push_sql(direction);
             out.push_sql(", ");
-            push_prefix(rest_prefix, out);
+            SortKey::push_prefix(&rest_prefix, out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
             out.push_sql(" ");
             out.push_sql(direction);
@@ -3447,72 +3489,45 @@ impl<'a> SortKey<'a> {
         Ok(())
     }
 
-    fn multi_sort_expr2(
-        columns: Vec<(&Column, &str)>,
-        out: &mut AstPass<Pg>,
-    ) -> QueryResult<()> {
-        
-        Ok(())
-    }
     /// Generate
-    ///   [COALESCE(name1, name2) direction,] id1, id2
+    ///   [name1 direction1, name2 direction2,] id1, id2
     fn multi_sort_expr(
-        columns: Vec<(&Column, &str)>,
-        direction: &str,
+        columns: Vec<(&Column, Option<&str>, Option<&str>, &str)>, //vec< col, prefix, value, direction >
         rest_prefix: Option<&str>,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
-        for (column, _) in columns.iter() {
+        for (column, _, _, _) in columns.iter() {
             if column.is_primary_key() {
                 // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
                 return Err(constraint_violation!(
                     "multi_sort_expr called with primary key column"
                 ));
             }
-
-            match column.column_type {
-                ColumnType::TSVector(_) => {
-                    return Err(constraint_violation!("TSVector is not supported"));
-                }
-                _ => {}
-            }
         }
 
-        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
-            if let Some(prefix) = prefix {
-                out.push_sql(prefix);
-                out.push_sql(".");
-            }
-        }
+        // out.push_sql("coalesce(");
 
-        out.push_sql("coalesce(");
-
-        for (i, (column, prefix)) in columns.iter().enumerate() {
+        for (i, (column, prefix, value, direction)) in columns.iter().enumerate() {
             if i != 0 {
                 out.push_sql(", ");
             }
 
-            let name = column.name.as_str();
-            push_prefix(Some(prefix), out);
-            out.push_identifier(name)?;
+            SortKey::sort_keys_by_col_type(column, value, direction, prefix, out)?;
         }
 
-        out.push_sql(") ");
+        // out.push_sql(") ");
 
         if ENV_VARS.store.reversible_order_by_off {
             // Old behavior
-            out.push_sql(direction);
             out.push_sql(" nulls last");
             out.push_sql(", ");
-            push_prefix(rest_prefix, out);
+            SortKey::push_prefix(&rest_prefix, out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
         } else {
-            out.push_sql(direction);
             out.push_sql(", ");
-            push_prefix(rest_prefix, out);
+            SortKey::push_prefix(&rest_prefix, out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
             out.push_sql(" ");
-            out.push_sql(direction);
         }
         Ok(())
     }
@@ -3525,20 +3540,13 @@ impl<'a> SortKey<'a> {
         br_column: &Option<BlockRangeColumn>,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
-        fn push_prefix(prefix: Option<&str>, out: &mut AstPass<Pg>) {
-            if let Some(prefix) = prefix {
-                out.push_sql(prefix);
-                out.push_sql(".");
-            }
-        }
-
         out.push_sql("coalesce(");
         for (i, prefix) in prefixes.iter().enumerate() {
             if i != 0 {
                 out.push_sql(", ");
             }
 
-            push_prefix(Some(prefix), out);
+            SortKey::push_prefix(&Some(prefix), out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
         }
         out.push_sql(") ");
@@ -3552,7 +3560,7 @@ impl<'a> SortKey<'a> {
                     out.push_sql(", ");
                 }
 
-                push_prefix(Some(prefix), out);
+                SortKey::push_prefix(&Some(prefix), out);
                 br_column.bare_name(out);
             }
             out.push_sql(") ");
@@ -3617,7 +3625,7 @@ impl<'a> SortKey<'a> {
 
         match self {
             SortKey::ChildKey(nested) => match nested {
-                ChildKey::Single(child) => {
+                ChildKey::Single(child) | ChildKey::WithFullText(child, _) => {
                     add(
                         block,
                         child.child_table,
@@ -3743,8 +3751,6 @@ impl<'a> FilterQuery<'a> {
         query_id: Option<String>,
         site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
-        println!("order: {:?} \n \n filter: {:?}", order, filter);
-
         let sort_key = SortKey::new(order, collection, filter, block, layout)?;
 
         Ok(FilterQuery {

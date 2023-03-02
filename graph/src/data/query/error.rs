@@ -39,6 +39,7 @@ pub enum QueryExecutionError {
     MissingVariableError(Pos, String),
     ResolveEntitiesError(String),
     OrderByNotSupportedError(String, String),
+    OrderByIdNotSupportedTextSearchError(String, String),
     OrderByNotSupportedForType(String),
     FilterNotSupportedError(String, String),
     UnknownField(Pos, String, String),
@@ -94,6 +95,7 @@ impl QueryExecutionError {
             | MissingVariableError(_, _)
             | OrderByNotSupportedError(_, _)
             | OrderByNotSupportedForType(_)
+            | OrderByIdNotSupportedTextSearchError(_, _)
             | FilterNotSupportedError(_, _)
             | UnknownField(_, _, _)
             | EmptyQuery
@@ -194,6 +196,13 @@ impl fmt::Display for QueryExecutionError {
             }
             OrderByNotSupportedForType(field_type) => {
                 write!(f, "Ordering by `{}` fields is not supported", field_type)
+            }
+            OrderByIdNotSupportedTextSearchError(entity, field) => {
+                write!(
+                    f,
+                    "Ordering by id `{}` is not supported when using full text search `{}`",
+                    field, entity
+                )
             }
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
