@@ -19,6 +19,7 @@ To build and run this project you need to have the following installed on your s
   - Note that `rustfmt`, which is part of the default Rust installation, is a build-time requirement.
 - PostgreSQL – [PostgreSQL Downloads](https://www.postgresql.org/download/)
 - IPFS – [Installing IPFS](https://docs.ipfs.io/install/)
+- Profobuf Compiler - [Installing Protobuf](https://grpc.io/docs/protoc-installation/)
 
 For Ethereum network data, you can either run your own Ethereum node or use an Ethereum node provider of your choice.
 
