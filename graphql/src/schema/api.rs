@@ -592,6 +592,11 @@ fn query_field_for_fulltext(fulltext: &Directive) -> Option<Field> {
         },
         // block: BlockHeight
         block_argument(),
+        input_value(
+            "where",
+            "",
+            Type::NamedType(format!("{}_filter", entity_name)),
+        ),
     ];
 
     arguments.push(subgraph_error_argument());
