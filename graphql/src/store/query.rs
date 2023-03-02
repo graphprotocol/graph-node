@@ -174,18 +174,33 @@ fn build_filter(
     field: &a::Field,
     schema: &ApiSchema,
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
-    match field.argument_value("where") {
+    let where_filter = match field.argument_value("where") {
         Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
-            Ok(filter) => Ok(Some(EntityFilter::And(filter))),
+            Ok(filter) => Ok(Some(filter)),
             Err(e) => Err(e),
         },
-        Some(r::Value::Null) => Ok(None),
-        None => match field.argument_value("text") {
-            Some(r::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
-            None => Ok(None),
-            _ => Err(QueryExecutionError::InvalidFilterError),
-        },
+        Some(r::Value::Null) | None => Ok(None),
         _ => Err(QueryExecutionError::InvalidFilterError),
+    };
+
+    
+    let text_filter = match field.argument_value("text") {
+        Some(r::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
+        None => Ok(None),
+        _ => Err(QueryExecutionError::InvalidFilterError),
+    };
+    let mut entity_filter: Vec<EntityFilter> = vec![];
+    if let Some(filter) = text_filter? {
+        entity_filter.push(filter);
+    }
+    if let Some(filter) = where_filter? {
+        entity_filter.extend(filter);
+    }
+
+    match entity_filter.len() {
+        0 => Ok(None),
+        1 => Ok(entity_filter.pop()),
+        _ => Ok(Some(EntityFilter::And(entity_filter)))
     }
 }
 
@@ -196,7 +211,7 @@ fn build_fulltext_filter_from_object(
         Err(QueryExecutionError::FulltextQueryRequiresFilter),
         |(key, value)| {
             if let r::Value::String(s) = value {
-                Ok(Some(EntityFilter::Equal(
+                Ok(Some(EntityFilter::Fulltext(
                     key.to_string(),
                     Value::String(s.clone()),
                 )))

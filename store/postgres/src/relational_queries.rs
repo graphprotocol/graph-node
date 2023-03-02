@@ -954,6 +954,7 @@ impl<'a> QueryFilter<'a> {
             | NotContains(attr, _)
             | NotContainsNoCase(attr, _)
             | Equal(attr, _)
+            | Fulltext(attr, _)
             | Not(attr, _)
             | GreaterThan(attr, _)
             | LessThan(attr, _)
@@ -1404,7 +1405,7 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
             NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
 
-            Equal(attr, value) => self.equals(attr, value, c::Equal, out)?,
+            Equal(attr, value) | Fulltext(attr, value) => self.equals(attr, value, c::Equal, out)?,
             Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
 
             GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,

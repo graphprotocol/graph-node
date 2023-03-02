@@ -184,6 +184,7 @@ pub enum EntityFilter {
     NotEndsWithNoCase(Attribute, Value),
     ChangeBlockGte(BlockNumber),
     Child(Child),
+    Fulltext(Attribute, Value),
 }
 
 // A somewhat concise string representation of a filter
@@ -198,7 +199,7 @@ impl fmt::Display for EntityFilter {
             Or(fs) => {
                 write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" or "))
             }
-            Equal(a, v) => write!(f, "{a} = {v}"),
+            Equal(a, v) | Fulltext(a, v) => write!(f, "{a} = {v}"),
             Not(a, v) => write!(f, "{a} != {v}"),
             GreaterThan(a, v) => write!(f, "{a} > {v}"),
             LessThan(a, v) => write!(f, "{a} < {v}"),
