@@ -473,7 +473,7 @@ fn on_sync() {
 
                 let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
 
-                writable.start_subgraph_deployment(&*LOGGER).await?;
+                writable.start_subgraph_deployment(&LOGGER).await?;
                 writable.deployment_synced()?;
 
                 let primary = primary_connection();
@@ -520,7 +520,7 @@ fn on_sync() {
             let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
 
             // Perform the copy
-            writable.start_subgraph_deployment(&*LOGGER).await?;
+            writable.start_subgraph_deployment(&LOGGER).await?;
 
             let primary = primary_connection();
             let src_site = primary.locate_site(src.clone())?.unwrap();

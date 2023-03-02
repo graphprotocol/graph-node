@@ -28,7 +28,7 @@ pub use crate::adapter::{
 };
 pub use crate::chain::Chain;
 pub use crate::network::EthereumNetworks;
-pub use ingestor::BlockIngestor;
+pub use graph::blockchain::BlockIngestor;
 
 #[cfg(test)]
 mod tests;

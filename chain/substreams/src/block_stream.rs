@@ -66,7 +66,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
 
     async fn build_polling(
         &self,
-        _chain: Arc<Chain>,
+        _chain: &Chain,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,

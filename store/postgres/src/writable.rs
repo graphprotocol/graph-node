@@ -5,8 +5,8 @@ use std::time::Duration;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::EntityKey;
 use graph::components::store::ReadStore;
+use graph::components::store::{DeploymentCursorTracker, EntityKey};
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -1033,16 +1033,18 @@ impl ReadStore for WritableStore {
     }
 }
 
-#[async_trait::async_trait]
-impl WritableStoreTrait for WritableStore {
+impl DeploymentCursorTracker for WritableStore {
     fn block_ptr(&self) -> Option<BlockPtr> {
         self.block_ptr.lock().unwrap().clone()
     }
 
-    fn block_cursor(&self) -> FirehoseCursor {
+    fn firehose_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
     }
+}
 
+#[async_trait::async_trait]
+impl WritableStoreTrait for WritableStore {
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         let store = self.store.cheap_clone();
         let logger = logger.cheap_clone();

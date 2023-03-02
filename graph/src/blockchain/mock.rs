@@ -1,5 +1,9 @@
 use crate::{
-    components::{link_resolver::LinkResolver, store::BlockNumber},
+    components::{
+        link_resolver::LinkResolver,
+        store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator},
+    },
+    data::subgraph::UnifiedMappingApiVersion,
     prelude::DataSourceTemplateInfo,
 };
 use anyhow::Error;
@@ -8,9 +12,9 @@ use serde::Deserialize;
 use std::{convert::TryFrom, sync::Arc};
 
 use super::{
-    block_stream::{self, FirehoseCursor},
+    block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
-    EmptyNodeCapabilities, HostFn, IngestorError, TriggerWithHandler,
+    BlockIngestor, EmptyNodeCapabilities, HostFn, IngestorError, TriggerWithHandler,
 };
 
 use super::{
@@ -284,26 +288,14 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    async fn new_firehose_block_stream(
+    async fn new_block_stream(
         &self,
-        _deployment: crate::components::store::DeploymentLocator,
-        _block_cursor: FirehoseCursor,
-        _start_blocks: Vec<crate::components::store::BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: std::sync::Arc<Self::TriggerFilter>,
-        _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
-        todo!()
-    }
-
-    async fn new_polling_block_stream(
-        &self,
-        _deployment: crate::components::store::DeploymentLocator,
-        _start_blocks: Vec<crate::components::store::BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: std::sync::Arc<Self::TriggerFilter>,
-        _unified_api_version: crate::data::subgraph::UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn block_stream::BlockStream<Self>>, anyhow::Error> {
+        _deployment: DeploymentLocator,
+        _store: impl DeploymentCursorTracker,
+        _start_blocks: Vec<BlockNumber>,
+        _filter: Arc<Self::TriggerFilter>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         todo!()
     }
 
@@ -336,6 +328,10 @@ impl Blockchain for MockBlockchain {
     }
 
     fn chain_client(&self) -> Arc<ChainClient<MockBlockchain>> {
+        todo!()
+    }
+
+    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
         todo!()
     }
 }

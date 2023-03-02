@@ -1,11 +1,14 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{BlockchainKind, TriggersAdapterSelector};
+use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
+use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
+use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::prelude::{
-    BlockHash, EthereumBlock, EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt,
+    BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
+    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt,
 };
 use graph::{
     blockchain::{
@@ -30,10 +33,12 @@ use prost::Message;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::codec::HeaderOnlyBlock;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
+use crate::ingestor::PollingBlockIngestor;
 use crate::network::EthereumNetworkAdapters;
 use crate::EthereumAdapter;
 use crate::NodeCapabilities;
@@ -76,8 +81,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
                 )
             });
 
-        let firehose_endpoint = chain.chain_client().firehose_endpoint()?;
-
         let logger = chain
             .logger_factory
             .subgraph_logger(&deployment)
@@ -87,7 +90,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
-            firehose_endpoint,
+            chain.chain_client(),
             subgraph_current_block,
             block_cursor,
             firehose_mapper,
@@ -101,14 +104,66 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
 
     async fn build_polling(
         &self,
-        _chain: Arc<Chain>,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<<Chain as Blockchain>::TriggerFilter>,
-        _unified_api_version: UnifiedMappingApiVersion,
+        chain: &Chain,
+        deployment: DeploymentLocator,
+        start_blocks: Vec<BlockNumber>,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+        unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        todo!()
+        let requirements = filter.node_capabilities();
+        let adapter = chain
+            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
+            .unwrap_or_else(|_| {
+                panic!(
+                    "no adapter for network {} with capabilities {}",
+                    chain.name, requirements
+                )
+            });
+
+        let logger = chain
+            .logger_factory
+            .subgraph_logger(&deployment)
+            .new(o!("component" => "BlockStream"));
+        let chain_store = chain.chain_store();
+        let chain_head_update_stream = chain
+            .chain_head_update_listener
+            .subscribe(chain.name.clone(), logger.clone());
+
+        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
+        // This is ok because Celo blocks are always final. And we _need_ to do this because
+        // some events appear only in eth_getLogs but not in transaction receipts.
+        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
+        let chain_id = match chain.chain_client().as_ref() {
+            ChainClient::Rpc(adapter) => {
+                adapter
+                    .cheapest()
+                    .ok_or(anyhow!("unable to get eth adapter for chan_id call"))?
+                    .chain_id()
+                    .await?
+            }
+            _ => panic!("expected rpc when using polling blockstream"),
+        };
+        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
+            false => chain.reorg_threshold,
+            true => 0,
+        };
+
+        Ok(Box::new(PollingBlockStream::new(
+            chain_store,
+            chain_head_update_stream,
+            adapter,
+            chain.node_id.clone(),
+            deployment.hash,
+            filter,
+            start_blocks,
+            reorg_threshold,
+            logger,
+            ENV_VARS.max_block_range_size,
+            ENV_VARS.target_triggers_per_block_range,
+            unified_api_version,
+            subgraph_current_block,
+        )))
     }
 }
 
@@ -192,6 +247,7 @@ pub struct Chain {
     call_cache: Arc<dyn EthereumCallCache>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
+    polling_ingestor_interval: Duration,
     pub is_ingestible: bool,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
@@ -221,6 +277,7 @@ impl Chain {
         adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
         runtime_adapter: Arc<dyn RuntimeAdapterTrait<Self>>,
         reorg_threshold: BlockNumber,
+        polling_ingestor_interval: Duration,
         is_ingestible: bool,
     ) -> Self {
         Chain {
@@ -238,6 +295,7 @@ impl Chain {
             runtime_adapter,
             reorg_threshold,
             is_ingestible,
+            polling_ingestor_interval,
         }
     }
 
@@ -292,89 +350,42 @@ impl Blockchain for Chain {
             .triggers_adapter(loc, capabilities, unified_api_version)
     }
 
-    async fn new_firehose_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
+        store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        self.block_stream_builder
-            .build_firehose(
-                self,
-                deployment,
-                block_cursor,
-                start_blocks,
-                subgraph_current_block,
-                filter,
-                unified_api_version,
-            )
-            .await
-    }
-
-    async fn new_polling_block_stream(
-        &self,
-        deployment: DeploymentLocator,
-        start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<Self::TriggerFilter>,
-        unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        let requirements = filter.node_capabilities();
-        let adapter = self
-            .triggers_adapter(&deployment, &requirements, unified_api_version.clone())
-            .unwrap_or_else(|_| {
-                panic!(
-                    "no adapter for network {} with capabilities {}",
-                    self.name, requirements
-                )
-            });
-
-        let logger = self
-            .logger_factory
-            .subgraph_logger(&deployment)
-            .new(o!("component" => "BlockStream"));
-        let chain_store = self.chain_store().clone();
-        let chain_head_update_stream = self
-            .chain_head_update_listener
-            .subscribe(self.name.clone(), logger.clone());
-
-        // Special case: Detect Celo and set the threshold to 0, so that eth_getLogs is always used.
-        // This is ok because Celo blocks are always final. And we _need_ to do this because
-        // some events appear only in eth_getLogs but not in transaction receipts.
-        // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
-        let chain_id = match self.client.as_ref() {
-            ChainClient::Rpc(adapter) => {
-                adapter
-                    .cheapest()
-                    .ok_or(anyhow!("unable to get eth adapter for chan_id call"))?
-                    .chain_id()
-                    .await?
+        let current_ptr = store.block_ptr();
+        match self.chain_client().as_ref() {
+            ChainClient::Rpc(_) => {
+                self.block_stream_builder
+                    .build_polling(
+                        self,
+                        deployment,
+                        start_blocks,
+                        current_ptr,
+                        filter,
+                        unified_api_version,
+                    )
+                    .await
             }
-            _ => panic!("expected rpc when using polling blockstream"),
-        };
-        let reorg_threshold = match CELO_CHAIN_IDS.contains(&chain_id) {
-            false => self.reorg_threshold,
-            true => 0,
-        };
-
-        Ok(Box::new(PollingBlockStream::new(
-            chain_store,
-            chain_head_update_stream,
-            adapter,
-            self.node_id.clone(),
-            deployment.hash,
-            filter,
-            start_blocks,
-            reorg_threshold,
-            logger,
-            ENV_VARS.max_block_range_size,
-            ENV_VARS.target_triggers_per_block_range,
-            unified_api_version,
-            subgraph_current_block,
-        )))
+            ChainClient::Firehose(_) => {
+                self.block_stream_builder
+                    .build_firehose(
+                        self,
+                        deployment,
+                        store.firehose_cursor(),
+                        start_blocks,
+                        current_ptr,
+                        filter,
+                        unified_api_version,
+                    )
+                    .await
+            }
+        }
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -424,6 +435,60 @@ impl Blockchain for Chain {
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
+    }
+
+    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+        let ingestor: Box<dyn BlockIngestor> = match self.chain_client().as_ref() {
+            ChainClient::Firehose(_) => {
+                let ingestor = FirehoseBlockIngestor::<HeaderOnlyBlock, Self>::new(
+                    self.chain_store.cheap_clone(),
+                    self.chain_client(),
+                    self.logger_factory
+                        .component_logger("EthereumFirehoseBlockIngestor", None),
+                    self.name.clone(),
+                );
+                let ingestor = ingestor.with_transforms(vec![Transforms::EthereumHeaderOnly]);
+
+                Box::new(ingestor)
+            }
+            ChainClient::Rpc(rpc) => {
+                let eth_adapter = rpc
+                    .cheapest()
+                    .ok_or_else(|| anyhow!("unable to get adapter for ethereum block ingestor"))?;
+                let logger = self
+                    .logger_factory
+                    .component_logger(
+                        "EthereumPollingBlockIngestor",
+                        Some(ComponentLoggerConfig {
+                            elastic: Some(ElasticComponentLoggerConfig {
+                                index: String::from("block-ingestor-logs"),
+                            }),
+                        }),
+                    )
+                    .new(o!("provider" => eth_adapter.provider().to_string()));
+
+                if !self.is_ingestible {
+                    bail!(
+                        "Not starting block ingestor (chain is defective), network_name {}",
+                        &self.name
+                    );
+                }
+
+                // The block ingestor must be configured to keep at least REORG_THRESHOLD ancestors,
+                // because the json-rpc BlockStream expects blocks after the reorg threshold to be
+                // present in the DB.
+                Box::new(PollingBlockIngestor::new(
+                    logger,
+                    crate::ENV_VARS.reorg_threshold,
+                    eth_adapter,
+                    self.chain_store().cheap_clone(),
+                    self.polling_ingestor_interval,
+                    self.name.clone(),
+                )?)
+            }
+        };
+
+        Ok(ingestor)
     }
 }
 

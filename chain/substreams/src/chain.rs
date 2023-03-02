@@ -1,7 +1,8 @@
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{EmptyNodeCapabilities, NoopRuntimeAdapter};
+use graph::blockchain::{BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter};
+use graph::components::store::DeploymentCursorTracker;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
@@ -103,12 +104,11 @@ impl Blockchain for Chain {
         Ok(Arc::new(TriggersAdapter {}))
     }
 
-    async fn new_firehose_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
+        store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -116,9 +116,9 @@ impl Blockchain for Chain {
             .build_firehose(
                 self,
                 deployment,
-                block_cursor,
+                store.firehose_cursor(),
                 start_blocks,
-                subgraph_current_block,
+                store.block_ptr(),
                 filter,
                 unified_api_version,
             )
@@ -134,17 +134,6 @@ impl Blockchain for Chain {
         _cursor: FirehoseCursor,
     ) -> Result<Block, Error> {
         unimplemented!("This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called.")
-    }
-
-    async fn new_polling_block_stream(
-        &self,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<Self::TriggerFilter>,
-        _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        unimplemented!("this should never be called for substreams")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -171,5 +160,9 @@ impl Blockchain for Chain {
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
+    }
+
+    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+        unreachable!("Substreams rely on the block ingestor from the network they are processing")
     }
 }

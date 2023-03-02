@@ -6,10 +6,10 @@ pub mod block_stream;
 mod builder;
 pub mod client;
 mod empty_node_capabilities;
-mod empty_runtime_adapter;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
+mod noop_runtime_adapter;
 pub mod polling_block_stream;
 pub mod substreams_block_stream;
 mod types;
@@ -17,7 +17,7 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::store::{DeploymentLocator, StoredDynamicDataSource},
+    components::store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
     data_source,
     prelude::DataSourceContext,
@@ -47,13 +47,19 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
-pub use empty_runtime_adapter::NoopRuntimeAdapter;
+pub use noop_runtime_adapter::NoopRuntimeAdapter;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::{
     block_stream::{BlockStream, FirehoseCursor},
     client::ChainClient,
 };
+
+#[async_trait]
+pub trait BlockIngestor: 'static + Send + Sync {
+    async fn run(self: Box<Self>);
+    fn network_name(&self) -> String;
+}
 
 pub trait TriggersAdapterSelector<C: Blockchain>: Sync + Send {
     fn triggers_adapter(
@@ -145,10 +151,11 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     const KIND: BlockchainKind;
     const ALIASES: &'static [&'static str] = &[];
 
-    type Client: Debug + Default;
+    type Client: Debug + Default + Sync + Send;
     // The `Clone` bound is used when reprocessing a block, because `triggers_in_block` requires an
     // owned `Block`. It would be good to come up with a way to remove this bound.
     type Block: Block + Clone + Debug + Default;
+
     type DataSource: DataSource<Self>;
     type UnresolvedDataSource: UnresolvedDataSource<Self>;
 
@@ -174,21 +181,11 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Arc<dyn TriggersAdapter<Self>>, Error>;
 
-    async fn new_firehose_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
+        store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<Self::TriggerFilter>,
-        unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error>;
-
-    async fn new_polling_block_stream(
-        &self,
-        deployment: DeploymentLocator,
-        start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error>;
@@ -212,6 +209,8 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapter<Self>>;
 
     fn chain_client(&self) -> Arc<ChainClient<Self>>;
+
+    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>>;
 }
 
 #[derive(Error, Debug)]

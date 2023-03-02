@@ -188,14 +188,6 @@ pub struct Opt {
     pub elasticsearch_password: Option<String>,
     #[clap(
         long,
-        value_name = "MILLISECONDS",
-        default_value = "1000",
-        env = "ETHEREUM_POLLING_INTERVAL",
-        help = "How often to poll the Ethereum node for new blocks"
-    )]
-    pub ethereum_polling_interval: u64,
-    #[clap(
-        long,
         value_name = "DISABLE_BLOCK_INGESTOR",
         env = "DISABLE_BLOCK_INGESTOR",
         help = "Ensures that the block ingestor component does not execute"
