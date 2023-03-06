@@ -47,7 +47,7 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
-pub use empty_runtime_adapter::EmptyRuntimeAdapter;
+pub use empty_runtime_adapter::NoopRuntimeAdapter;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::{

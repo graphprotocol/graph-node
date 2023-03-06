@@ -1,6 +1,6 @@
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockchainBuilder, BlockchainKind, EmptyRuntimeAdapter,
+    BasicBlockchainBuilder, BlockchainBuilder, BlockchainKind, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -215,7 +215,7 @@ impl Blockchain for Chain {
     }
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(EmptyRuntimeAdapter::default())
+        Arc::new(NoopRuntimeAdapter::default())
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {

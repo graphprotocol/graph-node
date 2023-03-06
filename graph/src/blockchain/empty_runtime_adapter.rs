@@ -4,15 +4,15 @@ use super::{Blockchain, HostFn, RuntimeAdapter};
 
 /// A [`RuntimeAdapter`] that does not expose any host functions.
 #[derive(Debug, Clone)]
-pub struct EmptyRuntimeAdapter<C>(PhantomData<C>);
+pub struct NoopRuntimeAdapter<C>(PhantomData<C>);
 
-impl<C> Default for EmptyRuntimeAdapter<C> {
+impl<C> Default for NoopRuntimeAdapter<C> {
     fn default() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<C> RuntimeAdapter<C> for EmptyRuntimeAdapter<C>
+impl<C> RuntimeAdapter<C> for NoopRuntimeAdapter<C>
 where
     C: Blockchain,
 {

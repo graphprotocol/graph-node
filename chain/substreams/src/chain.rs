@@ -1,7 +1,7 @@
 use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{EmptyNodeCapabilities, EmptyRuntimeAdapter};
+use graph::blockchain::{EmptyNodeCapabilities, NoopRuntimeAdapter};
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
@@ -166,7 +166,7 @@ impl Blockchain for Chain {
         })
     }
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(EmptyRuntimeAdapter::default())
+        Arc::new(NoopRuntimeAdapter::default())
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
