@@ -6,6 +6,7 @@ pub mod block_stream;
 mod builder;
 pub mod client;
 mod empty_node_capabilities;
+mod empty_runtime_adapter;
 pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
@@ -46,6 +47,7 @@ use web3::types::H256;
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
+pub use empty_runtime_adapter::NoopRuntimeAdapter;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
 use self::{

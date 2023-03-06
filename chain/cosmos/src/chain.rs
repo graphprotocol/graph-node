@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder};
+use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, NoopRuntimeAdapter};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
@@ -26,7 +26,6 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, EventOrigin, UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 use crate::trigger::CosmosTrigger;
-use crate::RuntimeAdapter;
 use crate::{codec, TriggerFilter};
 
 pub struct Chain {
@@ -168,7 +167,7 @@ impl Blockchain for Chain {
     }
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(RuntimeAdapter {})
+        Arc::new(NoopRuntimeAdapter::default())
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {

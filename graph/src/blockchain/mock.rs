@@ -4,20 +4,19 @@ use crate::{
 };
 use anyhow::Error;
 use async_trait::async_trait;
-use core::fmt;
 use serde::Deserialize;
 use std::{convert::TryFrom, sync::Arc};
 
 use super::{
     block_stream::{self, FirehoseCursor},
     client::ChainClient,
-    HostFn, IngestorError, TriggerWithHandler,
+    EmptyNodeCapabilities, HostFn, IngestorError, TriggerWithHandler,
 };
 
 use super::{
     block_stream::BlockWithTriggers, Block, BlockPtr, Blockchain, BlockchainKind, DataSource,
-    DataSourceTemplate, NodeCapabilities, RuntimeAdapter, TriggerData, TriggerFilter,
-    TriggersAdapter, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    DataSourceTemplate, RuntimeAdapter, TriggerData, TriggerFilter, TriggersAdapter,
+    UnresolvedDataSource, UnresolvedDataSourceTemplate,
 };
 
 #[derive(Debug)]
@@ -245,21 +244,6 @@ impl<C: Blockchain> TriggerFilter<C> for MockTriggerFilter {
     }
 }
 
-#[derive(Debug)]
-pub struct MockNodeCapabilities;
-
-impl fmt::Display for MockNodeCapabilities {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-impl<C: Blockchain> NodeCapabilities<C> for MockNodeCapabilities {
-    fn from_data_sources(_data_sources: &[C::DataSource]) -> Self {
-        todo!()
-    }
-}
-
 pub struct MockRuntimeAdapter;
 
 impl<C: Blockchain> RuntimeAdapter<C> for MockRuntimeAdapter {
@@ -289,7 +273,7 @@ impl Blockchain for MockBlockchain {
 
     type TriggerFilter = MockTriggerFilter;
 
-    type NodeCapabilities = MockNodeCapabilities;
+    type NodeCapabilities = EmptyNodeCapabilities<Self>;
 
     fn triggers_adapter(
         &self,
