@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::client::ChainClient;
+use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
@@ -16,7 +17,7 @@ use graph::{
         IngestorError, RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
-    firehose::{self, FirehoseEndpoint, FirehoseEndpoints, ForkStep},
+    firehose::{self, FirehoseEndpoint, ForkStep},
     prelude::{async_trait, o, BlockNumber, ChainStore, Error, Logger, LoggerFactory},
 };
 use prost::Message;
@@ -42,20 +43,14 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-impl Chain {
-    pub fn new(
-        logger_factory: LoggerFactory,
-        name: String,
-        chain_store: Arc<dyn ChainStore>,
-        firehose_endpoints: FirehoseEndpoints,
-        metrics_registry: Arc<dyn MetricsRegistry>,
-    ) -> Self {
+impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
+    fn build(self) -> Chain {
         Chain {
-            logger_factory,
-            name,
-            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
-            chain_store,
-            metrics_registry,
+            logger_factory: self.logger_factory,
+            name: self.name,
+            client: Arc::new(ChainClient::new_firehose(self.firehose_endpoints)),
+            chain_store: self.chain_store,
+            metrics_registry: self.metrics_registry,
         }
     }
 }

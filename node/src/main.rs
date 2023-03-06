@@ -7,7 +7,10 @@ use ethereum::{
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
-use graph::blockchain::{Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap};
+use graph::blockchain::{
+    BasicBlockchainBuilder, Block as BlockchainBlock, Blockchain, BlockchainBuilder,
+    BlockchainKind, BlockchainMap,
+};
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
 use graph::env::EnvVars;
@@ -40,7 +43,6 @@ use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
-use near::NearStreamBuilder;
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
@@ -297,7 +299,7 @@ async fn main() {
 
         let network_store = store_builder.network_store(network_identifiers);
 
-        let arweave_chains = arweave_networks_as_chains(
+        let arweave_chains = networks_as_chains::<arweave::Chain>(
             &mut blockchain_map,
             &logger,
             &arweave_networks,
@@ -320,7 +322,7 @@ async fn main() {
             metrics_registry.clone(),
         );
 
-        let near_chains = near_networks_as_chains(
+        let near_chains = networks_as_chains::<near::Chain>(
             &mut blockchain_map,
             &logger,
             &near_networks,
@@ -329,7 +331,7 @@ async fn main() {
             metrics_registry.clone(),
         );
 
-        let cosmos_chains = cosmos_networks_as_chains(
+        let cosmos_chains = networks_as_chains::<cosmos::Chain>(
             &mut blockchain_map,
             &logger,
             &cosmos_networks,
@@ -613,15 +615,19 @@ async fn main() {
     futures::future::pending::<()>().await;
 }
 
-/// Return the hashmap of Arweave chains and also add them to `blockchain_map`.
-fn arweave_networks_as_chains(
+/// Return the hashmap of chains and also add them to `blockchain_map`.
+fn networks_as_chains<C>(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<arweave::Chain>> {
+) -> HashMap<String, FirehoseChain<C>>
+where
+    C: Blockchain,
+    BasicBlockchainBuilder: BlockchainBuilder<C>,
+{
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
@@ -633,7 +639,9 @@ fn arweave_networks_as_chains(
                 .or_else(|| {
                     error!(
                         logger,
-                        "No store configured for Arweave chain {}; ignoring this chain", chain_id
+                        "No store configured for {} chain {}; ignoring this chain",
+                        C::KIND,
+                        chain_id
                     );
                     None
                 })
@@ -642,13 +650,16 @@ fn arweave_networks_as_chains(
             (
                 chain_id.clone(),
                 FirehoseChain {
-                    chain: Arc::new(arweave::Chain::new(
-                        logger_factory.clone(),
-                        chain_id.clone(),
-                        chain_store,
-                        endpoints.clone(),
-                        metrics_registry.clone(),
-                    )),
+                    chain: Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints: endpoints.clone(),
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(),
+                    ),
                     firehose_endpoints: endpoints.clone(),
                 },
             )
@@ -656,7 +667,7 @@ fn arweave_networks_as_chains(
         .collect();
 
     for (chain_id, firehose_chain) in chains.iter() {
-        blockchain_map.insert::<arweave::Chain>(chain_id.clone(), firehose_chain.chain.clone())
+        blockchain_map.insert::<C>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
@@ -759,106 +770,6 @@ fn ethereum_networks_as_chains(
                 )),
             );
         }
-    }
-
-    HashMap::from_iter(chains)
-}
-
-fn cosmos_networks_as_chains(
-    blockchain_map: &mut BlockchainMap,
-    logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
-    store: &Store,
-    logger_factory: &LoggerFactory,
-    metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<cosmos::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(network_name, firehose_endpoints)| {
-            store
-                .block_store()
-                .chain_store(network_name)
-                .map(|chain_store| (network_name, chain_store, firehose_endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for Cosmos chain {}; ignoring this chain",
-                        network_name
-                    );
-                    None
-                })
-        })
-        .map(|(network_name, chain_store, firehose_endpoints)| {
-            (
-                network_name.clone(),
-                FirehoseChain {
-                    chain: Arc::new(cosmos::Chain::new(
-                        logger_factory.clone(),
-                        network_name.clone(),
-                        chain_store,
-                        firehose_endpoints.clone(),
-                        metrics_registry.clone(),
-                    )),
-                    firehose_endpoints: firehose_endpoints.clone(),
-                },
-            )
-        })
-        .collect();
-
-    for (network_name, firehose_chain) in chains.iter() {
-        blockchain_map.insert::<cosmos::Chain>(network_name.clone(), firehose_chain.chain.clone())
-    }
-
-    HashMap::from_iter(chains)
-}
-
-/// Return the hashmap of NEAR chains and also add them to `blockchain_map`.
-fn near_networks_as_chains(
-    blockchain_map: &mut BlockchainMap,
-    logger: &Logger,
-    firehose_networks: &FirehoseNetworks,
-    store: &Store,
-    logger_factory: &LoggerFactory,
-    metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<near::Chain>> {
-    let chains: Vec<_> = firehose_networks
-        .networks
-        .iter()
-        .filter_map(|(chain_id, endpoints)| {
-            store
-                .block_store()
-                .chain_store(chain_id)
-                .map(|chain_store| (chain_id, chain_store, endpoints))
-                .or_else(|| {
-                    error!(
-                        logger,
-                        "No store configured for NEAR chain {}; ignoring this chain", chain_id
-                    );
-                    None
-                })
-        })
-        .map(|(chain_id, chain_store, endpoints)| {
-            (
-                chain_id.clone(),
-                FirehoseChain {
-                    chain: Arc::new(near::Chain::new(
-                        logger_factory.clone(),
-                        chain_id.clone(),
-                        chain_store,
-                        endpoints.clone(),
-                        metrics_registry.clone(),
-                        Arc::new(NearStreamBuilder {}),
-                    )),
-                    firehose_endpoints: endpoints.clone(),
-                },
-            )
-        })
-        .collect();
-
-    for (chain_id, firehose_chain) in chains.iter() {
-        blockchain_map
-            .insert::<graph_chain_near::Chain>(chain_id.clone(), firehose_chain.chain.clone())
     }
 
     HashMap::from_iter(chains)
