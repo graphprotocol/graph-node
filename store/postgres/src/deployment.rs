@@ -362,7 +362,6 @@ pub fn transact_block(
     site: &Site,
     ptr: &BlockPtr,
     firehose_cursor: &FirehoseCursor,
-    full_count_query: &str,
     count: i32,
 ) -> Result<(), StoreError> {
     use crate::diesel::BoolExpressionMethods;
@@ -371,12 +370,7 @@ pub fn transact_block(
     // Work around a Diesel issue with serializing BigDecimals to numeric
     let number = format!("{}::numeric", ptr.number);
 
-    let count_sql = if count == 0 {
-        // This amounts to a noop - the entity count does not change
-        "entity_count".to_string()
-    } else {
-        entity_count_sql(full_count_query, count)
-    };
+    let count_sql = entity_count_sql(count);
 
     let row_count = update(
         d::table.filter(d::id.eq(site.id)).filter(
@@ -1071,42 +1065,18 @@ pub fn create_deployment(
     Ok(())
 }
 
-fn entity_count_sql(full_count_query: &str, count: i32) -> String {
-    // The big complication in this query is how to determine what the
-    // new entityCount should be. We want to make sure that if the entityCount
-    // is NULL or the special value `-1`, it gets recomputed. Using `-1` here
-    // makes it possible to manually set the `entityCount` to that value
-    // to force a recount; setting it to `NULL` is not desirable since
-    // `entityCount` on the GraphQL level is not nullable, and so setting
-    // `entityCount` to `NULL` could cause errors at that layer; temporarily
-    // returning `-1` is more palatable. To be exact, recounts have to be
-    // done here, from the subgraph writer.
-    //
-    // The first argument of `coalesce` will be `NULL` if the entity count
-    // is `NULL` or `-1`, forcing `coalesce` to evaluate its second
-    // argument, the query to count entities. In all other cases,
-    // `coalesce` does not evaluate its second argument
-    format!(
-        "coalesce((nullif(entity_count, -1)) + ({count}),
-                  ({full_count_query}))",
-        full_count_query = full_count_query,
-        count = count
-    )
+fn entity_count_sql(count: i32) -> String {
+    format!("entity_count + ({count})")
 }
 
-pub fn update_entity_count(
-    conn: &PgConnection,
-    site: &Site,
-    full_count_query: &str,
-    count: i32,
-) -> Result<(), StoreError> {
+pub fn update_entity_count(conn: &PgConnection, site: &Site, count: i32) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
     if count == 0 {
         return Ok(());
     }
 
-    let count_sql = entity_count_sql(full_count_query, count);
+    let count_sql = entity_count_sql(count);
     update(d::table.filter(d::id.eq(site.id)))
         .set(d::entity_count.eq(sql(&count_sql)))
         .execute(conn)?;
