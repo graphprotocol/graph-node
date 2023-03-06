@@ -1141,6 +1141,8 @@ pub struct VersionStats {
     pub tablename: String,
     /// The ratio `entities / versions`
     pub ratio: f64,
+    /// The last block to which this table was pruned
+    pub last_pruned_block: Option<BlockNumber>,
 }
 
 /// What phase of pruning we are working on
@@ -1217,8 +1219,6 @@ pub struct PruneRequest {
     pub final_block: BlockNumber,
     /// The latest block, i.e., the subgraph head
     pub latest_block: BlockNumber,
-    /// An estimate of how much of the deployment we will remove
-    pub history_pct: f64,
     /// Use the copy strategy when removing more than this fraction of
     /// history. Initialized from `ENV_VARS.store.copy_threshold`, but can
     /// be modified after construction
@@ -1273,9 +1273,6 @@ impl PruneRequest {
 
         let earliest_block = latest_block - history_blocks;
         let final_block = latest_block - reorg_threshold;
-        let total_blocks = latest_block - first_block + 1;
-
-        let history_pct = 1.0 - history_blocks as f64 / total_blocks as f64;
 
         Ok(Self {
             history_blocks,
@@ -1283,7 +1280,6 @@ impl PruneRequest {
             earliest_block,
             final_block,
             latest_block,
-            history_pct,
             copy_threshold,
             delete_threshold,
         })
@@ -1297,7 +1293,7 @@ impl PruneRequest {
     /// are removing more than `delete_threshold` percent of the versions, we
     /// prune by deleting. If we would remove less than `delete_threshold`
     /// percent of the versions, we don't prune.
-    pub fn strategy(&self, version_ratio: f64) -> Option<PruningStrategy> {
+    pub fn strategy(&self, stats: &VersionStats) -> Option<PruningStrategy> {
         // If the deployment doesn't have enough history to cover the reorg
         // threshold, do not prune
         if self.earliest_block >= self.final_block {
@@ -1308,13 +1304,29 @@ impl PruneRequest {
         // entity versions are distributed evenly across all blocks so
         // that `history_pct` will tell us how much of that data pruning
         // will remove.
-        let removal_ratio = self.history_pct * (1.0 - version_ratio);
+        let removal_ratio = self.history_pct(stats) * (1.0 - stats.ratio);
         if removal_ratio >= self.copy_threshold {
             Some(PruningStrategy::Copy)
         } else if removal_ratio >= self.delete_threshold {
             Some(PruningStrategy::Delete)
         } else {
             None
+        }
+    }
+
+    /// Return an estimate of the fraction of the entities that are
+    /// historical in the table whose `stats` we are given
+    fn history_pct(&self, stats: &VersionStats) -> f64 {
+        let total_blocks = self.latest_block - stats.last_pruned_block.unwrap_or(0);
+        if total_blocks <= 0 || total_blocks < self.history_blocks {
+            // Something has gone very wrong; this could happen if the
+            // subgraph is ever rewound to before the last_pruned_block or
+            // if this is called when the subgraph has fewer blocks than
+            // history_blocks. In both cases, which should be transient,
+            // pretend that we would not delete any history
+            0.0
+        } else {
+            1.0 - self.history_blocks as f64 / total_blocks as f64
         }
     }
 }

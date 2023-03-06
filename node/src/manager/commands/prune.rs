@@ -75,8 +75,7 @@ fn print_batch(
 
 impl PruneReporter for Progress {
     fn start(&mut self, req: &PruneRequest) {
-        let history_pct = req.history_pct * 100.0;
-        println!("Remove {history_pct:.2}% of historical blocks");
+        println!("Prune to {} historical blocks", req.history_blocks);
     }
 
     fn start_analyze(&mut self) {

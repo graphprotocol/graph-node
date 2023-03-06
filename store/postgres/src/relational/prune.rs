@@ -287,7 +287,7 @@ impl Layout {
             reporter.finish_analyze_table(table.name.as_str());
             cancel.check_cancel()?;
         }
-        let stats = catalog::stats(conn, &self.site.namespace)?;
+        let stats = catalog::stats(conn, &self.site)?;
 
         let analyzed: Vec<_> = tables.iter().map(|table| table.name.as_str()).collect();
         reporter.finish_analyze(&stats, &analyzed);
@@ -330,13 +330,14 @@ impl Layout {
         let mut prunable_tables = self
             .tables
             .values()
+            .filter(|table| !table.immutable)
             .filter_map(|table| {
                 stats
                     .iter()
                     .find(|stats| stats.tablename == table.name.as_str())
                     .map(|stats| (table, stats))
             })
-            .filter_map(|(table, stats)| req.strategy(stats.ratio).map(|strat| (table, strat)))
+            .filter_map(|(table, stats)| req.strategy(stats).map(|strat| (table, strat)))
             .collect::<Vec<_>>();
         prunable_tables.sort_by(|(a, _), (b, _)| a.name.as_str().cmp(b.name.as_str()));
         prunable_tables
@@ -487,6 +488,10 @@ impl Layout {
         // Get rid of the temporary prune schema if we actually created it
         if !recreate_dst_nsp {
             catalog::drop_schema(conn, dst_nsp.as_str())?;
+        }
+
+        for (table, _) in &prunable_tables {
+            catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
         }
 
         // Analyze the new tables

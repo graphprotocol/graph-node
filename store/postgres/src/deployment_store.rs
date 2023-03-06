@@ -1831,7 +1831,6 @@ impl PruneReporter for OngoingPruneReporter {
     fn start(&mut self, req: &PruneRequest) {
         self.start = Instant::now();
         info!(&self.logger, "Start pruning historical entities";
-              "history_pct" => format!("{:.2}", req.history_pct * 100.0),
               "history_blocks" => req.history_blocks,
               "earliest_block" => req.earliest_block,
               "latest_block" => req.latest_block);

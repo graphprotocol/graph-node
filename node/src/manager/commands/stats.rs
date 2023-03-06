@@ -108,7 +108,7 @@ pub fn show(
 ) -> Result<(), anyhow::Error> {
     let (site, conn) = site_and_conn(pools, search)?;
 
-    let stats = store_catalog::stats(&conn, &site.namespace)?;
+    let stats = store_catalog::stats(&conn, &site)?;
 
     let account_like = store_catalog::account_like(&conn, &site)?;
 

@@ -6,7 +6,7 @@ use test_store::*;
 
 use graph::components::store::{
     DeploymentLocator, EntityKey, EntityOrder, EntityQuery, EntityType, PruneReporter,
-    PruneRequest, PruningStrategy,
+    PruneRequest, PruningStrategy, VersionStats,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
@@ -622,9 +622,16 @@ fn prune() {
                 }
             }
             // We have 5 versions for 3 entities
+            let stats = VersionStats {
+                entities: 3,
+                versions: 5,
+                tablename: USER.to_ascii_lowercase(),
+                ratio: 3.0 / 5.0,
+                last_pruned_block: None,
+            };
             assert_eq!(
                 Some(strategy),
-                req.strategy(3.0 / 5.0),
+                req.strategy(&stats),
                 "changing thresholds didn't yield desired strategy"
             );
             store
