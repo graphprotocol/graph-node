@@ -8,7 +8,8 @@ use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
-    Block as BlockchainBlock, Blockchain, BlockchainKind, BlockchainMap, BuildableBlockchain,
+    BasicBlockchainBuilder, Block as BlockchainBlock, Blockchain, BlockchainBuilder,
+    BlockchainKind, BlockchainMap,
 };
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
@@ -615,14 +616,18 @@ async fn main() {
 }
 
 /// Return the hashmap of chains and also add them to `blockchain_map`.
-fn networks_as_chains<C: BuildableBlockchain>(
+fn networks_as_chains<C>(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
     store: &Store,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
-) -> HashMap<String, FirehoseChain<C>> {
+) -> HashMap<String, FirehoseChain<C>>
+where
+    C: Blockchain,
+    BasicBlockchainBuilder: BlockchainBuilder<C>,
+{
     let chains: Vec<_> = firehose_networks
         .networks
         .iter()
@@ -645,13 +650,16 @@ fn networks_as_chains<C: BuildableBlockchain>(
             (
                 chain_id.clone(),
                 FirehoseChain {
-                    chain: Arc::new(C::build(
-                        logger_factory.clone(),
-                        chain_id.clone(),
-                        chain_store,
-                        endpoints.clone(),
-                        metrics_registry.clone(),
-                    )),
+                    chain: Arc::new(
+                        BasicBlockchainBuilder {
+                            logger_factory: logger_factory.clone(),
+                            name: chain_id.clone(),
+                            chain_store,
+                            firehose_endpoints: endpoints.clone(),
+                            metrics_registry: metrics_registry.clone(),
+                        }
+                        .build(),
+                    ),
                     firehose_endpoints: endpoints.clone(),
                 },
             )

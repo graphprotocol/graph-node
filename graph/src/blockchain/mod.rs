@@ -3,6 +3,7 @@
 //! trait which is the centerpiece of this module.
 
 pub mod block_stream;
+mod builder;
 pub mod client;
 mod empty_node_capabilities;
 pub mod firehose_block_ingestor;
@@ -15,14 +16,10 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::{
-        metrics::MetricsRegistry,
-        store::{DeploymentLocator, StoredDynamicDataSource},
-    },
+    components::store::{DeploymentLocator, StoredDynamicDataSource},
     data::subgraph::UnifiedMappingApiVersion,
     data_source,
-    firehose::FirehoseEndpoints,
-    prelude::{DataSourceContext, LoggerFactory},
+    prelude::DataSourceContext,
     runtime::{gas::GasCounter, AscHeap, HostExportError},
 };
 use crate::{
@@ -47,6 +44,7 @@ use std::{
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
+pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use types::{BlockHash, BlockPtr, ChainIdentifier};
 
@@ -138,19 +136,6 @@ impl ChainStoreBlock {
 //     Firehose(FirehoseEndpoints),
 //     Rpc(C::Client),
 // }
-
-/// A chain-agnostic interface for instantiating chains of a specific kind. Not
-/// all chains may support this interface, but that's okay, as some may require
-/// special logic.
-pub trait BuildableBlockchain: Blockchain {
-    fn build(
-        logger_factory: LoggerFactory,
-        chain_id: String,
-        chain_store: Arc<dyn ChainStore>,
-        fh_endpoints: FirehoseEndpoints,
-        registry: Arc<dyn MetricsRegistry>,
-    ) -> Self;
-}
 
 #[async_trait]
 // This is only `Debug` because some tests require that

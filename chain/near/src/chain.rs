@@ -1,8 +1,8 @@
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{BlockchainKind, BuildableBlockchain};
+use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, BlockchainKind};
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
+use graph::firehose::FirehoseEndpoint;
 use graph::prelude::{MetricsRegistry, TryFutureExt};
 use graph::{
     anyhow::Result,
@@ -105,20 +105,14 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-impl BuildableBlockchain for Chain {
-    fn build(
-        logger_factory: LoggerFactory,
-        name: String,
-        chain_store: Arc<dyn ChainStore>,
-        fh_endpoints: FirehoseEndpoints,
-        metrics_registry: Arc<dyn MetricsRegistry>,
-    ) -> Self {
-        Self {
-            logger_factory,
-            name,
-            chain_store,
-            client: Arc::new(ChainClient::new_firehose(fh_endpoints)),
-            metrics_registry,
+impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
+    fn build(self) -> Chain {
+        Chain {
+            logger_factory: self.logger_factory,
+            name: self.name,
+            chain_store: self.chain_store,
+            client: Arc::new(ChainClient::new_firehose(self.firehose_endpoints)),
+            metrics_registry: self.metrics_registry,
             block_stream_builder: Arc::new(NearStreamBuilder {}),
         }
     }
