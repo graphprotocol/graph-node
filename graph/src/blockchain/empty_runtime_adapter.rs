@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use super::{Blockchain, HostFn, RuntimeAdapter};
 
+/// A [`RuntimeAdapter`] that does not expose any host functions.
 #[derive(Debug, Clone)]
 pub struct EmptyRuntimeAdapter<C>(PhantomData<C>);
 
