@@ -8,11 +8,11 @@ description = "Provides static store instance for tests."
 [dependencies]
 graph-graphql = { path = "../../graphql" }
 graphql-parser = "0.4.0"
-graph-mock = { path = "../../mock" }
+graph-core = { path = "../../core" }
 graph-node = { path = "../../node" }
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
-graph-chain-ethereum= { path = "../../chain/ethereum" }
+graph-chain-ethereum = { path = "../../chain/ethereum" }
 lazy_static = "1.1"
 hex-literal = "0.3"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2"] }

@@ -3,7 +3,6 @@ members = [
     "core",
     "chain/*",
     "graphql",
-    "mock",
     "node",
     "runtime/*",
     "server/*",

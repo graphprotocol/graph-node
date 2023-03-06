@@ -9,7 +9,7 @@ use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityOrder, EntityQuery, Logger, Schema, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
-use graph_mock::MockMetricsRegistry;
+use graph_core::MetricsRegistry;
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
@@ -197,7 +197,7 @@ lazy_static! {
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
         "test",
-        Arc::new(MockMetricsRegistry::new()),
+        Arc::new(MetricsRegistry::mock_new()),
     );
 }
 

@@ -42,6 +42,10 @@ impl MetricsRegistry {
         }
     }
 
+    pub fn mock_new() -> Self {
+        MetricsRegistry::new(Logger::root(slog::Discard, o!()), Arc::new(Registry::new()))
+    }
+
     fn gen_register_errors_counter(registry: Arc<Registry>) -> Box<Counter> {
         let opts = Opts::new(
             String::from("metrics_register_errors"),
