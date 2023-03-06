@@ -1,6 +1,7 @@
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, Block, BlockchainBuilder, BlockchainKind, EmptyNodeCapabilities,
+    EmptyRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -24,7 +25,6 @@ use std::sync::Arc;
 
 use crate::adapter::TriggerFilter;
 use crate::data_source::{DataSourceTemplate, UnresolvedDataSourceTemplate};
-use crate::runtime::RuntimeAdapter;
 use crate::trigger::{self, ArweaveTrigger};
 use crate::{
     codec,
@@ -170,7 +170,7 @@ impl Blockchain for Chain {
     }
 
     fn runtime_adapter(&self) -> Arc<dyn RuntimeAdapterTrait<Self>> {
-        Arc::new(RuntimeAdapter {})
+        Arc::new(EmptyRuntimeAdapter::default())
     }
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
