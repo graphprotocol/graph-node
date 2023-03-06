@@ -991,7 +991,7 @@ async fn main() -> anyhow::Result<()> {
                 (ctx.primary_pool(), None)
             };
 
-            Ok(match deployment {
+            match deployment {
                 Some(deployment) => {
                     commands::info::run(primary, store, deployment, current, pending, used).err();
                 }
@@ -1004,7 +1004,8 @@ async fn main() -> anyhow::Result<()> {
                         bail!("Please specify a deployment or use --all to list all deployments");
                     }
                 }
-            })
+            };
+            Ok(())
         }
         Unused(cmd) => {
             let store = ctx.subgraph_store();

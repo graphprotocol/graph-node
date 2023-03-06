@@ -1,9 +1,12 @@
+use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
+use graph::blockchain::BlockIngestor;
 use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BasicBlockchainBuilder, BlockchainBuilder, NoopRuntimeAdapter};
 use graph::cheap_clone::CheapClone;
+use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::prelude::MetricsRegistry;
 use graph::{
@@ -98,12 +101,11 @@ impl Blockchain for Chain {
         Ok(Arc::new(adapter))
     }
 
-    async fn new_firehose_block_stream(
+    async fn new_block_stream(
         &self,
         deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
+        store: impl DeploymentCursorTracker,
         start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
@@ -115,8 +117,6 @@ impl Blockchain for Chain {
             )
             .unwrap_or_else(|_| panic!("no adapter for network {}", self.name));
 
-        let firehose_endpoint = self.client.firehose_endpoint()?;
-
         let logger = self
             .logger_factory
             .subgraph_logger(&deployment)
@@ -126,9 +126,9 @@ impl Blockchain for Chain {
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
-            firehose_endpoint,
-            subgraph_current_block,
-            block_cursor,
+            self.chain_client(),
+            store.block_ptr(),
+            store.firehose_cursor(),
             firehose_mapper,
             adapter,
             filter,
@@ -136,17 +136,6 @@ impl Blockchain for Chain {
             logger,
             self.metrics_registry.clone(),
         )))
-    }
-
-    async fn new_polling_block_stream(
-        &self,
-        _deployment: DeploymentLocator,
-        _start_blocks: Vec<BlockNumber>,
-        _subgraph_start_block: Option<BlockPtr>,
-        _filter: Arc<Self::TriggerFilter>,
-        _unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<Self>>, Error> {
-        panic!("Cosmos does not support polling block stream")
     }
 
     fn chain_store(&self) -> Arc<dyn ChainStore> {
@@ -172,6 +161,17 @@ impl Blockchain for Chain {
 
     fn chain_client(&self) -> Arc<ChainClient<Self>> {
         self.client.clone()
+    }
+
+    fn block_ingestor(&self) -> anyhow::Result<Box<dyn BlockIngestor>> {
+        let ingestor = FirehoseBlockIngestor::<crate::Block, Self>::new(
+            self.chain_store.cheap_clone(),
+            self.chain_client(),
+            self.logger_factory
+                .component_logger("CosmosFirehoseBlockIngestor", None),
+            self.name.clone(),
+        );
+        Ok(Box::new(ingestor))
     }
 }
 

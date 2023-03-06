@@ -541,7 +541,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
 
     async fn build_polling(
         &self,
-        _chain: Arc<C>,
+        _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<BlockNumber>,
         _subgraph_current_block: Option<BlockPtr>,
@@ -591,7 +591,7 @@ where
 
     async fn build_polling(
         &self,
-        _chain: Arc<C>,
+        _chain: &C,
         _deployment: DeploymentLocator,
         _start_blocks: Vec<graph::prelude::BlockNumber>,
         _subgraph_current_block: Option<graph::blockchain::BlockPtr>,

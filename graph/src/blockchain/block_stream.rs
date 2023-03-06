@@ -113,7 +113,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
 
     async fn build_polling(
         &self,
-        chain: Arc<C>,
+        chain: &C,
         deployment: DeploymentLocator,
         start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,

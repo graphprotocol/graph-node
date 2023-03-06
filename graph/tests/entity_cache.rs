@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use graph::components::store::{
-    EntityKey, EntityType, ReadStore, StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, EntityKey, EntityType, ReadStore, StoredDynamicDataSource,
+    WritableStore,
 };
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
@@ -63,17 +64,18 @@ impl ReadStore for MockStore {
         SCHEMA.clone()
     }
 }
-
-#[async_trait]
-impl WritableStore for MockStore {
+impl DeploymentCursorTracker for MockStore {
     fn block_ptr(&self) -> Option<BlockPtr> {
         unimplemented!()
     }
 
-    fn block_cursor(&self) -> FirehoseCursor {
+    fn firehose_cursor(&self) -> FirehoseCursor {
         unimplemented!()
     }
+}
 
+#[async_trait]
+impl WritableStore for MockStore {
     async fn start_subgraph_deployment(&self, _: &Logger) -> Result<(), StoreError> {
         unimplemented!()
     }

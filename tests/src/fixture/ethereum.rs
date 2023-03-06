@@ -68,6 +68,7 @@ pub async fn chain(
         triggers_adapter,
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,
+        ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
     );

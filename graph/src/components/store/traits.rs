@@ -202,19 +202,32 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
     }
 }
 
-/// A view of the store for indexing. All indexing-related operations need
-/// to go through this trait. Methods in this trait will never return a
-/// `StoreError::DatabaseUnavailable`. Instead, they will retry the
-/// operation indefinitely until it succeeds.
-#[async_trait]
-pub trait WritableStore: ReadStore {
+pub trait DeploymentCursorTracker: Sync + Send + 'static {
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
     /// Returns the Firehose `cursor` this deployment is currently at in the block stream of events. This
     /// is used when re-connecting a Firehose stream to start back exactly where we left off.
-    fn block_cursor(&self) -> FirehoseCursor;
+    fn firehose_cursor(&self) -> FirehoseCursor;
+}
 
+// This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
+impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
+    fn block_ptr(&self) -> Option<BlockPtr> {
+        (**self).block_ptr()
+    }
+
+    fn firehose_cursor(&self) -> FirehoseCursor {
+        (**self).firehose_cursor()
+    }
+}
+
+/// A view of the store for indexing. All indexing-related operations need
+/// to go through this trait. Methods in this trait will never return a
+/// `StoreError::DatabaseUnavailable`. Instead, they will retry the
+/// operation indefinitely until it succeeds.
+#[async_trait]
+pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     /// Start an existing subgraph deployment.
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError>;
 
