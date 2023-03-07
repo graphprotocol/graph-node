@@ -19,7 +19,7 @@ enum EndpointMetric {
     Failure(String),
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct EndpointMetrics {
     logger: Logger,
     sender: UnboundedSender<EndpointMetric>,
@@ -27,6 +27,18 @@ pub struct EndpointMetrics {
 }
 
 impl EndpointMetrics {
+    #[cfg(debug_assertions)]
+    pub fn noop() -> Self {
+        use slog::{o, Discard};
+        let (sender, _) = mpsc::unbounded_channel();
+
+        Self {
+            logger: Logger::root(Discard, o!()),
+            sender,
+            hosts: Arc::new(HashMap::default()),
+        }
+    }
+
     pub fn success(&self, host: String) -> anyhow::Result<()> {
         if let Err(e) = self.sender.send(EndpointMetric::Success(host)) {
             warn!(self.logger, "metrics channel has been closed: {}", e)
@@ -67,6 +79,15 @@ pub struct EndpointMetricsProcessor {
 }
 
 impl EndpointMetricsProcessor {
+    /// This is a convenience function for launching the background task automatically
+    /// Each pair will track different metrics so for production use this should be
+    /// shared across all client.
+    pub fn tokio_spawn(logger: Logger, hosts: &[String]) -> EndpointMetrics {
+        let (processor, metrics) = Self::new(logger, hosts);
+        tokio::spawn(processor.run());
+        metrics
+    }
+
     pub fn new(logger: Logger, hosts: &[String]) -> (Self, EndpointMetrics) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let hosts = Arc::new(HashMap::from_iter(

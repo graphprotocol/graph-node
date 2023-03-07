@@ -4,37 +4,41 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
+    endpoint::EndpointMetrics,
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
 };
 
+use crate::firehose::fetch_client::FetchClient;
+use crate::firehose::interceptors::AuthInterceptor;
 use anyhow::bail;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use slog::Logger;
 use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
+use tonic::codegen::InterceptedService;
 use tonic::{
     codegen::CompressionEncoding,
-    metadata::MetadataValue,
+    metadata::{Ascii, MetadataValue},
     transport::{Channel, ClientTlsConfig},
-    Request,
 };
 
-use super::codec as firehose;
+use super::{codec as firehose, stream_client::StreamClient};
 
 /// This is constant because we found this magic number of connections after
 /// which the grpc connections start to hang.
 /// For more details see: https://github.com/graphprotocol/graph-node/issues/3879
 pub const SUBGRAPHS_PER_CONN: usize = 100;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
-    pub token: Option<String>,
+    pub auth: AuthInterceptor,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
     pub subgraph_limit: SubgraphLimit,
+    endpoint_metrics: Arc<EndpointMetrics>,
     channel: Channel,
 }
 
@@ -70,6 +74,7 @@ impl FirehoseEndpoint {
         filters_enabled: bool,
         compression_enabled: bool,
         subgraph_limit: SubgraphLimit,
+        endpoint_metrics: Arc<EndpointMetrics>,
     ) -> Self {
         let uri = url
             .as_ref()
@@ -83,6 +88,13 @@ impl FirehoseEndpoint {
                 .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
+
+        // These tokens come from the config so they have to be ascii.
+        let token: Option<MetadataValue<Ascii>> = token
+            .map_or(Ok(None), |token| {
+                token.parse::<MetadataValue<Ascii>>().map(Some)
+            })
+            .expect("Firehose token is invalid");
 
         // Note on the connection window size: We run multiple block streams on a same connection,
         // and a problematic subgraph with a stalled block stream might consume the entire window
@@ -113,10 +125,11 @@ impl FirehoseEndpoint {
         FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
             channel: endpoint.connect_lazy(),
-            token,
+            auth: AuthInterceptor { token },
             filters_enabled,
             compression_enabled,
             subgraph_limit,
+            endpoint_metrics,
         }
     }
 
@@ -127,6 +140,52 @@ impl FirehoseEndpoint {
             .has_capacity(Arc::strong_count(self).saturating_sub(1))
     }
 
+    fn new_client(
+        &self,
+    ) -> FetchClient<InterceptedService<Channel, impl tonic::service::Interceptor>> {
+        let mut client =
+            FetchClient::with_interceptor(self.channel.cheap_clone(), self.auth.clone())
+                .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
+    }
+
+    fn new_stream_client(
+        &self,
+    ) -> StreamClient<InterceptedService<Channel, impl tonic::service::Interceptor>> {
+        let mut client =
+            StreamClient::with_interceptor(self.channel.cheap_clone(), self.auth.clone())
+                .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
+    }
+
+    fn new_substreams_client(
+        &self,
+    ) -> substreams::stream_client::StreamClient<
+        InterceptedService<Channel, impl tonic::service::Interceptor>,
+    > {
+        let mut client = substreams::stream_client::StreamClient::with_interceptor(
+            self.channel.cheap_clone(),
+            self.auth.clone(),
+        )
+        .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
+    }
+
     pub async fn get_block<M>(
         &self,
         cursor: FirehoseCursor,
@@ -135,27 +194,6 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::fetch_client::FetchClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
         debug!(
             logger,
             "Connecting to firehose to retrieve block for cursor {}", cursor
@@ -169,9 +207,9 @@ impl FirehoseEndpoint {
                 },
             )),
         };
-        let resp = client.block(req);
 
-        match resp.await {
+        let mut client = self.new_client();
+        match client.block(req).await {
             Ok(v) => Ok(M::decode(
                 v.get_ref().block.as_ref().unwrap().value.as_ref(),
             )?),
@@ -200,31 +238,12 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
         debug!(
             logger,
             "Connecting to firehose to retrieve block for number {}", number
         );
+
+        let mut client = self.new_stream_client();
 
         // The trick is the following.
         //
@@ -294,26 +313,7 @@ impl FirehoseEndpoint {
         self: Arc<Self>,
         request: firehose::Request,
     ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
+        let mut client = self.new_stream_client();
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -324,22 +324,7 @@ impl FirehoseEndpoint {
         self: Arc<Self>,
         request: substreams::Request,
     ) -> Result<tonic::Streaming<substreams::Response>, anyhow::Error> {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = substreams::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        );
-
+        let mut client = self.new_substreams_client();
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -438,7 +423,7 @@ impl FirehoseNetworks {
 mod test {
     use std::{mem, sync::Arc};
 
-    use crate::firehose::SubgraphLimit;
+    use crate::{endpoint::EndpointMetrics, firehose::SubgraphLimit};
 
     use super::{FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
 
@@ -451,6 +436,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Unlimited,
+            Arc::new(EndpointMetrics::noop()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
@@ -482,6 +468,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Limit(2),
+            Arc::new(EndpointMetrics::noop()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
@@ -513,6 +500,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Disabled,
+            Arc::new(EndpointMetrics::noop()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);

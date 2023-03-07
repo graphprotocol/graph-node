@@ -1,6 +1,7 @@
 use anyhow::{format_err, Context, Error};
 use graph::blockchain::block_stream::BlockStreamEvent;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
+use graph::endpoint::EndpointMetricsProcessor;
 use graph::firehose::SubgraphLimit;
 use graph::prelude::{info, tokio, DeploymentHash, Registry};
 use graph::tokio_stream::StreamExt;
@@ -41,6 +42,10 @@ async fn main() -> Result<(), Error> {
         prometheus_registry.clone(),
     ));
 
+    let (processor, endpoint_metrics) =
+        EndpointMetricsProcessor::new(logger.clone(), &[endpoint.clone()]);
+    tokio::spawn(processor.run());
+
     let firehose = Arc::new(FirehoseEndpoint::new(
         "substreams",
         &endpoint,
@@ -48,6 +53,7 @@ async fn main() -> Result<(), Error> {
         false,
         false,
         SubgraphLimit::Unlimited,
+        Arc::new(endpoint_metrics),
     ));
 
     let mut stream: SubstreamsBlockStream<graph_chain_substreams::Chain> =
