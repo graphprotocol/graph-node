@@ -1,5 +1,5 @@
 use graph::{
-    components::store::EntityKey,
+    components::store::EntityMultiKey,
     prelude::Entity,
     util::{backoff::ExponentialBackoff, lfu_cache::LfuCache},
 };
@@ -18,5 +18,5 @@ pub struct IndexingState {
     /// - The time THRESHOLD is passed
     /// - Or the subgraph has triggers for the block
     pub skip_ptr_updates_timer: Instant,
-    pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub entity_lfu_cache: LfuCache<EntityMultiKey, Option<Entity>>,
 }

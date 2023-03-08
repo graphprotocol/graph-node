@@ -49,7 +49,7 @@ use crate::{
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::{EntityKey, EntityType};
+use graph::components::store::{EntityDerived, EntityKey, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
 use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
 use graph::data::store::BYTES_SCALAR;
@@ -555,6 +555,17 @@ impl Layout {
                 return Err(constraint_violation!("duplicate entity in result set"));
             }
         }
+        Ok(entities)
+    }
+
+    pub fn find_where(
+        &self,
+        conn: &PgConnection,
+        key: &EntityDerived,
+        block: BlockNumber,
+    ) -> Result<Vec<Entity>, StoreError> {
+        let entities = Vec::new();
+        println!("find_where: {:?} {:?}", key, block);
         Ok(entities)
     }
 
