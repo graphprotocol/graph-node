@@ -1,7 +1,14 @@
+use std::future::Future;
+use std::pin::Pin;
+use std::{fmt, sync::Arc};
+
 use tonic::{
+    codegen::Service,
     metadata::{Ascii, MetadataValue},
     service::Interceptor,
 };
+
+use crate::endpoint::{EndpointMetrics, Host};
 
 #[derive(Clone)]
 pub struct AuthInterceptor {
@@ -24,5 +31,49 @@ impl Interceptor for AuthInterceptor {
         }
 
         Ok(req)
+    }
+}
+
+pub struct MetricsInterceptor<S> {
+    pub(crate) metrics: Arc<EndpointMetrics>,
+    pub(crate) service: S,
+    pub(crate) host: Host,
+}
+
+impl<S, Request> Service<Request> for MetricsInterceptor<S>
+where
+    S: Service<Request>,
+    S::Future: Send + 'static,
+    Request: fmt::Debug,
+{
+    type Response = S::Response;
+
+    type Error = S::Error;
+
+    type Future = Pin<Box<dyn Future<Output = <S::Future as Future>::Output> + Send + 'static>>;
+
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let host = self.host.clone();
+        let metrics = self.metrics.clone();
+
+        let fut = self.service.call(req);
+        let res = async move {
+            let res = fut.await;
+            if res.is_ok() {
+                metrics.success(host).unwrap_or_default();
+            } else {
+                metrics.failure(host).unwrap_or_default();
+            }
+            res
+        };
+
+        Box::pin(res)
     }
 }

@@ -12,11 +12,34 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 /// HostCount is the underlying structure to keep the count,
 /// we require that all the hosts are known ahead of time, this way we can
 /// avoid locking since we don't need to modify the entire struture.
-type HostCount = Arc<HashMap<String, AtomicU64>>;
+type HostCount = Arc<HashMap<Host, AtomicU64>>;
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub struct Host(Box<str>);
+
+impl From<String> for Host {
+    fn from(s: String) -> Self {
+        Host(s.into_boxed_str())
+    }
+}
+
+impl From<&str> for Host {
+    fn from(s: &str) -> Self {
+        Host(s.into())
+    }
+}
+
+impl std::ops::Deref for Host {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 enum EndpointMetric {
-    Success(String),
-    Failure(String),
+    Success(Host),
+    Failure(Host),
 }
 
 #[derive(Debug)]
@@ -39,7 +62,7 @@ impl EndpointMetrics {
         }
     }
 
-    pub fn success(&self, host: String) -> anyhow::Result<()> {
+    pub fn success(&self, host: Host) -> anyhow::Result<()> {
         if let Err(e) = self.sender.send(EndpointMetric::Success(host)) {
             warn!(self.logger, "metrics channel has been closed: {}", e)
         }
@@ -47,7 +70,7 @@ impl EndpointMetrics {
         Ok(())
     }
 
-    pub fn failure(&self, host: String) -> anyhow::Result<()> {
+    pub fn failure(&self, host: Host) -> anyhow::Result<()> {
         if let Err(e) = self.sender.send(EndpointMetric::Failure(host)) {
             warn!(self.logger, "metrics channel has been closed: {}", e)
         }
@@ -57,7 +80,7 @@ impl EndpointMetrics {
 
     /// Returns the current error count of a host or 0 if the host
     /// doesn't have a value on the map.
-    pub fn get_count(&self, host: &str) -> u64 {
+    pub fn get_count(&self, host: &Host) -> u64 {
         self.hosts
             .get(host)
             .map(|c| c.load(Ordering::Relaxed))
@@ -88,10 +111,12 @@ impl EndpointMetricsProcessor {
         metrics
     }
 
-    pub fn new(logger: Logger, hosts: &[String]) -> (Self, EndpointMetrics) {
+    pub fn new(logger: Logger, hosts: &[impl AsRef<str>]) -> (Self, EndpointMetrics) {
         let (sender, receiver) = mpsc::unbounded_channel();
         let hosts = Arc::new(HashMap::from_iter(
-            hosts.iter().map(|h| (h.clone(), AtomicU64::new(0))),
+            hosts
+                .iter()
+                .map(|h| (Host::from(h.as_ref()), AtomicU64::new(0))),
         ));
 
         (
@@ -136,12 +161,14 @@ mod test {
 
     use slog::{o, Discard, Logger};
 
+    use crate::endpoint::Host;
+
     use super::EndpointMetricsProcessor;
 
     #[tokio::test]
     async fn should_increment_and_reset() {
-        let (a, b, c) = ("a".to_string(), "b".to_string(), "c".to_string());
-        let hosts = &[a.clone(), b.clone(), c.clone()];
+        let (a, b, c): (Host, Host, Host) = ("a".into(), "b".into(), "c".into());
+        let hosts: &[&str] = &[&a, &b, &c];
         let logger = Logger::root(Discard, o!());
 
         let (processor, metrics) = EndpointMetricsProcessor::new(logger, hosts);

@@ -4,7 +4,7 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
-    endpoint::EndpointMetrics,
+    endpoint::{EndpointMetrics, Host},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
@@ -24,7 +24,7 @@ use tonic::{
     transport::{Channel, ClientTlsConfig},
 };
 
-use super::{codec as firehose, stream_client::StreamClient};
+use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
 
 /// This is constant because we found this magic number of connections after
 /// which the grpc connections start to hang.
@@ -34,6 +34,7 @@ pub const SUBGRAPHS_PER_CONN: usize = 100;
 #[derive(Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
+    pub host: Host,
     pub auth: AuthInterceptor,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
@@ -80,6 +81,7 @@ impl FirehoseEndpoint {
             .as_ref()
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
+        let host = Host::from(uri.to_string());
 
         let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
@@ -130,6 +132,7 @@ impl FirehoseEndpoint {
             compression_enabled,
             subgraph_limit,
             endpoint_metrics,
+            host,
         }
     }
 
@@ -142,10 +145,19 @@ impl FirehoseEndpoint {
 
     fn new_client(
         &self,
-    ) -> FetchClient<InterceptedService<Channel, impl tonic::service::Interceptor>> {
-        let mut client =
-            FetchClient::with_interceptor(self.channel.cheap_clone(), self.auth.clone())
-                .accept_compressed(CompressionEncoding::Gzip);
+    ) -> FetchClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client: FetchClient<
+            InterceptedService<MetricsInterceptor<Channel>, AuthInterceptor>,
+        > = FetchClient::with_interceptor(metrics, self.auth.clone())
+            .accept_compressed(CompressionEncoding::Gzip);
 
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
@@ -156,10 +168,17 @@ impl FirehoseEndpoint {
 
     fn new_stream_client(
         &self,
-    ) -> StreamClient<InterceptedService<Channel, impl tonic::service::Interceptor>> {
-        let mut client =
-            StreamClient::with_interceptor(self.channel.cheap_clone(), self.auth.clone())
-                .accept_compressed(CompressionEncoding::Gzip);
+    ) -> StreamClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client = StreamClient::with_interceptor(metrics, self.auth.clone())
+            .accept_compressed(CompressionEncoding::Gzip);
 
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
@@ -171,13 +190,17 @@ impl FirehoseEndpoint {
     fn new_substreams_client(
         &self,
     ) -> substreams::stream_client::StreamClient<
-        InterceptedService<Channel, impl tonic::service::Interceptor>,
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
     > {
-        let mut client = substreams::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            self.auth.clone(),
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client =
+            substreams::stream_client::StreamClient::with_interceptor(metrics, self.auth.clone())
+                .accept_compressed(CompressionEncoding::Gzip);
 
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
