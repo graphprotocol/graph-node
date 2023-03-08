@@ -1,6 +1,6 @@
 use crate::{
     blockchain::Blockchain,
-    components::store::{EntityMultiKey, ReadStore, StoredDynamicDataSource},
+    components::store::{EntityKey, ReadStore, StoredDynamicDataSource},
     data::subgraph::schema::SubgraphError,
     data_source::DataSourceTemplate,
     prelude::*,
@@ -35,7 +35,7 @@ pub struct BlockState<C: Blockchain> {
 }
 
 impl<C: Blockchain> BlockState<C> {
-    pub fn new(store: impl ReadStore, lfu_cache: LfuCache<EntityMultiKey, Option<Entity>>) -> Self {
+    pub fn new(store: impl ReadStore, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache),
             deterministic_errors: Vec::new(),

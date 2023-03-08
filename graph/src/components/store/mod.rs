@@ -142,11 +142,10 @@ pub struct EntityKey {
 pub struct EntityDerived {
     /// Name of the entity type.
     pub entity_type: EntityType,
-
-    pub entity_field: Word,
-
     /// ID of the individual entity.
     pub entity_id: Word,
+
+    pub entity_field: Word,
 
     /// This is the causality region of the data source that created the entity.
     ///
@@ -154,15 +153,6 @@ pub struct EntityDerived {
     /// doing the lookup. So if the entity exists but was created on a different causality region,
     /// the lookup will return empty.
     pub causality_region: CausalityRegion,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum EntityMultiKey {
-    /// A filter that matches all entities of a given type.
-    Derived(EntityDerived),
-
-    /// A filter that matches a specific entity.
-    Single(EntityKey),
 }
 
 impl EntityKey {
