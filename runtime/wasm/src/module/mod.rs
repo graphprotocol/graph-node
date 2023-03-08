@@ -528,12 +528,12 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
-            "store.getDerived",
-            store_get_derived,
+            "store.loadRelated",
+            store_load_related,
             "host_export_store_get_derived",
             entity,
-            field,
-            id
+            id,
+            field
         );
         link!(
             "store.set",
@@ -1067,22 +1067,22 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         Ok(ret)
     }
 
-    /// function store.getDerived(entity: string, field: string, id: string): Entity[]
-    pub fn store_get_derived(
+    /// function store.loadRelated(entity_type: string, id: string, field: string): Array<Entity>
+    pub fn store_load_related(
         &mut self,
         gas: &GasCounter,
-        entity_ptr: AscPtr<AscString>,
-        field_ptr: AscPtr<AscString>,
+        entity_type_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
+        field_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<Array<AscPtr<AscEntity>>>, HostExportError> {
-        let entity_type: String = asc_get(self, entity_ptr, gas)?;
-        let field: String = asc_get(self, field_ptr, gas)?;
+        let entity_type: String = asc_get(self, entity_type_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        let entities = self.ctx.host_exports.store_get_derived(
+        let field: String = asc_get(self, field_ptr, gas)?;
+        let entities = self.ctx.host_exports.store_load_related(
             &mut self.ctx.state,
             entity_type.clone(),
-            field.clone(),
             id.clone(),
+            field.clone(),
             gas,
         )?;
 

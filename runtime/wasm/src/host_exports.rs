@@ -239,12 +239,12 @@ impl<C: Blockchain> HostExports<C> {
         Ok(result)
     }
 
-    pub(crate) fn store_get_derived(
+    pub(crate) fn store_load_related(
         &self,
         state: &mut BlockState<C>,
         entity_type: String,
-        entity_field: String,
         entity_id: String,
+        entity_field: String,
         gas: &GasCounter,
     ) -> Result<Vec<Entity>, anyhow::Error> {
         let store_key = EntityDerived {
@@ -255,7 +255,7 @@ impl<C: Blockchain> HostExports<C> {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get_derived(&store_key)?;
+        let result = state.entity_cache.load_related(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
         Ok(result)

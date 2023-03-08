@@ -1,5 +1,5 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType};
+use crate::components::store::{EntityDerived, EntityKey, EntityType, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
@@ -536,6 +536,43 @@ impl Schema {
                     s
                 ))
             }
+        }
+    }
+
+    pub fn get_type_for_field(&self, key: &EntityDerived) -> Result<(&str, &str), Error> {
+        let field = self
+            .document
+            .get_object_type_definition(key.entity_type.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Entity {}[{}]: unknown entity type `{}`",
+                    key.entity_type,
+                    key.entity_id,
+                    key.entity_type,
+                )
+            })?
+            .field(&key.entity_field)
+            .ok_or_else(|| {
+                anyhow!(
+                    "Entity {}[{}]: unknown field `{}`",
+                    key.entity_type,
+                    key.entity_id,
+                    key.entity_field,
+                )
+            })?;
+        if field.is_derived() {
+            let derived_from = field.find_directive("derivedFrom").unwrap();
+            let base_type = field.field_type.get_base_type();
+            let field = derived_from.argument("field").unwrap();
+
+            Ok((base_type, field.as_str().unwrap()))
+        } else {
+            Err(anyhow!(
+                "Entity {}[{}]: field `{}` is not derived",
+                key.entity_type,
+                key.entity_id,
+                key.entity_field,
+            ))
         }
     }
 
