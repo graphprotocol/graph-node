@@ -338,8 +338,7 @@ impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(String, store::Value)>> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Array<AscPtr<AscEntity>>, DeterministicHostError>
-    {
+    ) -> Result<Array<AscPtr<AscEntity>>, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &x, gas)).collect();
         let content = content?;
         Array::new(&content, heap, gas)
