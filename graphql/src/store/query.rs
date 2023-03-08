@@ -198,7 +198,6 @@ fn build_filter(
 
     match entity_filter.len() {
         0 => Ok(None),
-        1 => Ok(entity_filter.pop()),
         _ => Ok(Some(EntityFilter::And(entity_filter))),
     }
 }
