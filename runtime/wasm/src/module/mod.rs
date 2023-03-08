@@ -1078,7 +1078,6 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let field: String = asc_get(self, field_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        println!("store_get_derived: {} {} {}", entity_type, field, id);
         let entities = self.ctx.host_exports.store_get_derived(
             &mut self.ctx.state,
             entity_type.clone(),

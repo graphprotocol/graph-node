@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use graph::components::store::{
     DeploymentCursorTracker, EntityKey, EntityType, ReadStore, StoredDynamicDataSource,
-    WritableStore,
+    WritableStore, EntityDerived,
 };
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
@@ -58,6 +58,14 @@ impl ReadStore for MockStore {
         _keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(self.get_many_res.clone())
+    }
+
+    fn get_derived(
+        &self,
+        _key: &EntityDerived,
+    ) -> Result<Vec<Entity>, StoreError> {
+        let values: Vec<Entity> = self.get_many_res.clone().into_iter().map(|(_, v)| v).collect();
+        Ok(values)
     }
 
     fn input_schema(&self) -> Arc<Schema> {
