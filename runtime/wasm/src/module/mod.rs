@@ -528,9 +528,9 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
-            "store.getWhere",
-            store_get_where,
-            "host_export_store_get_where",
+            "store.getDerived",
+            store_get_derived,
+            "host_export_store_get_derived",
             entity,
             field,
             id
@@ -1067,8 +1067,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         Ok(ret)
     }
 
-    /// function store.getWhere(entity: string, field: string, id: string): Entity[] | null
-    pub fn store_get_where(
+    /// function store.getDerived(entity: string, field: string, id: string): Entity[]
+    pub fn store_get_derived(
         &mut self,
         gas: &GasCounter,
         entity_ptr: AscPtr<AscString>,
@@ -1078,8 +1078,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let entity_type: String = asc_get(self, entity_ptr, gas)?;
         let field: String = asc_get(self, field_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
-        println!("store_get_where: {} {} {}", entity_type, field, id);
-        let entities = self.ctx.host_exports.store_get_where(
+        println!("store_get_derived: {} {} {}", entity_type, field, id);
+        let entities = self.ctx.host_exports.store_get_derived(
             &mut self.ctx.state,
             entity_type.clone(),
             field.clone(),
