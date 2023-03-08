@@ -239,7 +239,8 @@ impl<C: Blockchain> HostExports<C> {
         Ok(result)
     }
 
-    pub(crate) fn store_get_where(
+
+    pub(crate) fn store_get_derived(
         &self,
         state: &mut BlockState<C>,
         entity_type: String,
@@ -255,7 +256,7 @@ impl<C: Blockchain> HostExports<C> {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get_where(&store_key)?;
+        let result = state.entity_cache.get_derived(&store_key)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
         Ok(result)
