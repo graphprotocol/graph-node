@@ -2672,8 +2672,6 @@ pub enum SortKey<'a> {
     ChildKey(ChildKey<'a>),
 }
 
-
-
 /// String representation that is useful for debugging when `walk_ast` fails
 impl<'a> fmt::Display for SortKey<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -2846,7 +2844,9 @@ impl<'a> SortKey<'a> {
                 } else if column.is_primary_key() {
                     let entity = fulltext_attr.to_string();
                     let field = attribute;
-                    Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(entity, field))
+                    Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(
+                        entity, field,
+                    ))
                 } else {
                     let fulltext_column = table.column_for_field(&fulltext_attr)?;
                     Ok(SortKey::Many(vec![
@@ -2923,7 +2923,9 @@ impl<'a> SortKey<'a> {
                     if sort_by_column.is_primary_key() {
                         let entity = fulltext_attr.to_string();
                         let field = format!("{}__{}", join_attribute, attribute);
-                        return Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(entity, field));
+                        return Err(QueryExecutionError::OrderByIdNotSupportedTextSearchError(
+                            entity, field,
+                        ));
                     }
                     let fulltext_value = fulltext_value.as_str();
                     let fulltext_column = parent_table.column_for_field(&fulltext_attr)?;
