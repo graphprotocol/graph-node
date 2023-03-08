@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
-use graph::components::store::{EntityKey, EntityDerived};
+use graph::components::store::{EntityDerived, EntityKey};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{

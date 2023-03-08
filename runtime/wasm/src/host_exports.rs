@@ -239,7 +239,6 @@ impl<C: Blockchain> HostExports<C> {
         Ok(result)
     }
 
-
     pub(crate) fn store_get_derived(
         &self,
         state: &mut BlockState<C>,
