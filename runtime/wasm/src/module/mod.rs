@@ -528,6 +528,14 @@ impl<C: Blockchain> WasmInstance<C> {
 
         link!("store.get", store_get, "host_export_store_get", entity, id);
         link!(
+            "store.getWhere",
+            store_get_where,
+            "host_export_store_get_where",
+            entity,
+            field,
+            id
+        );
+        link!(
             "store.set",
             store_set,
             "host_export_store_set",
@@ -1057,6 +1065,28 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         };
 
         Ok(ret)
+    }
+
+    /// function store.getWhere(entity: string, field: string, id: string): Entity[] | null
+    pub fn store_get_where(
+        &mut self,
+        gas: &GasCounter,
+        entity_ptr: AscPtr<AscString>,
+        field_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<Array<AscPtr<AscEntity>>>, HostExportError> {
+        let entity_type: String = asc_get(self, entity_ptr, gas)?;
+        let field: String = asc_get(self, field_ptr, gas)?;
+        let id: String = asc_get(self, id_ptr, gas)?;
+        println!("store_get_where: {} {} {}", entity_type, field, id);
+        let entity_option = self.ctx.host_exports.store_get_where(
+            &mut self.ctx.state,
+            entity_type.clone(),
+            field.clone(),
+            id.clone(),
+            gas,
+        )?;
+        Ok(AscPtr::null())
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string

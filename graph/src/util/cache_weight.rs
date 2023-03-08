@@ -1,5 +1,5 @@
 use crate::{
-    components::store::{EntityKey, EntityType},
+    components::store::{EntityDerived, EntityKey, EntityMultiKey, EntityType},
     data::value::Word,
     prelude::{q, BigDecimal, BigInt, Value},
 };
@@ -124,6 +124,23 @@ impl CacheWeight for EntityType {
 impl CacheWeight for EntityKey {
     fn indirect_weight(&self) -> usize {
         self.entity_id.indirect_weight() + self.entity_type.indirect_weight()
+    }
+}
+
+impl CacheWeight for EntityDerived {
+    fn indirect_weight(&self) -> usize {
+        self.entity_id.indirect_weight()
+            + self.entity_type.indirect_weight()
+            + self.entity_field.indirect_weight()
+    }
+}
+
+impl CacheWeight for EntityMultiKey {
+    fn indirect_weight(&self) -> usize {
+        match self {
+            EntityMultiKey::All(derived) => derived.indirect_weight(),
+            EntityMultiKey::Equal(key) => key.indirect_weight(),
+        }
     }
 }
 
