@@ -4,8 +4,7 @@ use std::sync::Mutex;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::ReadStore;
-use graph::components::store::{DeploymentCursorTracker, EntityDerived, EntityKey};
+use graph::components::store::{DeploymentCursorTracker, EntityDerived, EntityKey, ReadStore};
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
