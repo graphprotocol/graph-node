@@ -566,7 +566,6 @@ impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
         // in a locale other than English. In that case, their database will
         // be marked as unavailable even though it is perfectly fine.
         if msg.contains("canceling statement")
-            || msg.contains("no connection to the server")
             || msg.contains("terminating connection due to conflict with recovery")
         {
             return;
