@@ -3334,13 +3334,11 @@ impl<'a> SortKey<'a> {
                             .map(|child| {
                                 (
                                     child.sort_by_column,
-                                    Some(child.prefix.as_str()),
-                                    None,
-                                    direction,
+                                    child.prefix.as_str()
                                 )
                             })
                             .collect();
-                        SortKey::multi_sort_expr(columns, Some("c"), out)
+                        SortKey::multi_sort_coalesce_expr(columns,direction,  Some("c"), out)
                     }
 
                     ChildKey::ManyIdAsc(children, br_column) => {
@@ -3498,6 +3496,7 @@ impl<'a> SortKey<'a> {
         rest_prefix: Option<&str>,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
+        println!("MULTISORT!");
         for (column, _, _, _) in columns.iter() {
             if column.is_primary_key() {
                 // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
@@ -3530,6 +3529,62 @@ impl<'a> SortKey<'a> {
             SortKey::push_prefix(&rest_prefix, out);
             out.push_identifier(PRIMARY_KEY_COLUMN)?;
             out.push_sql(" ");
+        }
+        Ok(())
+    }
+
+    /// Generate
+    ///   [COALESCE(name1, name2) direction,] id1, id2
+    fn multi_sort_coalesce_expr(
+        columns: Vec<(&Column, &str)>,
+        direction: &str,
+        rest_prefix: Option<&str>,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        for (column, _) in columns.iter() {
+            if column.is_primary_key() {
+                // This shouldn't happen since we'd use SortKey::ManyIdAsc/ManyDesc
+                return Err(constraint_violation!(
+                    "multi_sort_expr called with primary key column"
+                ));
+            }
+
+            match column.column_type {
+                ColumnType::TSVector(_) => {
+                    return Err(constraint_violation!("TSVector is not supported"));
+                }
+                _ => {}
+            }
+        }
+
+        out.push_sql("coalesce(");
+
+        for (i, (column, prefix)) in columns.iter().enumerate() {
+            if i != 0 {
+                out.push_sql(", ");
+            }
+
+            let name = column.name.as_str();
+            SortKey::push_prefix(&Some(*prefix), out);
+            out.push_identifier(name)?;
+        }
+
+        out.push_sql(") ");
+
+        if ENV_VARS.store.reversible_order_by_off {
+            // Old behavior
+            out.push_sql(direction);
+            out.push_sql(" nulls last");
+            out.push_sql(", ");
+            SortKey::push_prefix(&rest_prefix, out);
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        } else {
+            out.push_sql(direction);
+            out.push_sql(", ");
+            SortKey::push_prefix(&rest_prefix, out);
+            out.push_identifier(PRIMARY_KEY_COLUMN)?;
+            out.push_sql(" ");
+            out.push_sql(direction);
         }
         Ok(())
     }
