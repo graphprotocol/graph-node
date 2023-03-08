@@ -226,6 +226,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                 "start_block" => start_block_num,
                 "subgraph" => &deployment,
                 "cursor" => latest_cursor.to_string(),
+                "provider_err_count" => endpoint.current_error_count(),
             );
 
             // We just reconnected, assume that we want to back off on errors

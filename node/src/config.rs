@@ -565,12 +565,16 @@ pub enum ProviderDetails {
 
 impl ProviderDetails {
     pub fn url(&self) -> String {
-        match self {
+        let url = match self {
             ProviderDetails::Substreams(firehose) | ProviderDetails::Firehose(firehose) => {
                 firehose.url.clone()
             }
             ProviderDetails::Web3(web3) | ProviderDetails::Web3Call(web3) => web3.url.to_string(),
-        }
+        };
+
+        // parsing and printing here normalizes the urls so we don't have
+        // mismatches later on.
+        url.parse::<Url>().expect("failed to parse url").to_string()
     }
 }
 

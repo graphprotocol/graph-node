@@ -37,6 +37,7 @@ impl std::ops::Deref for Host {
     }
 }
 
+#[derive(Debug)]
 enum EndpointMetric {
     Success(Host),
     Failure(Host),
@@ -50,7 +51,7 @@ pub struct EndpointMetrics {
 }
 
 impl EndpointMetrics {
-    #[cfg(debug_assertions)]
+    /// This should only be used for testing.
     pub fn noop() -> Self {
         use slog::{o, Discard};
         let (sender, _) = mpsc::unbounded_channel();
@@ -135,7 +136,8 @@ impl EndpointMetricsProcessor {
 
     pub async fn run(mut self) {
         loop {
-            match self.receiver.recv().await {
+            let event = self.receiver.recv().await;
+            match event {
                 Some(EndpointMetric::Success(host)) => {
                     if let Some(count) = self.hosts.get(&host) {
                         count.store(0, Ordering::Relaxed);

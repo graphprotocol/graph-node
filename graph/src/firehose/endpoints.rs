@@ -12,9 +12,9 @@ use crate::{
 
 use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
-use anyhow::bail;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
+use itertools::Itertools;
 use slog::Logger;
 use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
 use tonic::codegen::InterceptedService;
@@ -134,6 +134,10 @@ impl FirehoseEndpoint {
             endpoint_metrics,
             host,
         }
+    }
+
+    pub fn current_error_count(&self) -> u64 {
+        self.endpoint_metrics.get_count(&self.host)
     }
 
     // we need to -1 because there will always be a reference
@@ -370,14 +374,17 @@ impl FirehoseEndpoints {
     // selects the FirehoseEndpoint with the least amount of references, which will help with spliting
     // the load naively across the entire list.
     pub fn random(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
+        // This isn't really efficient, we could prolly find a better way
+        // since we have repeated endpoints which usually boil down to
+        // a handful of different hosts, perhaps a map here would be
+        // better.
         let endpoint = self
             .0
             .iter()
-            .min_by_key(|x| Arc::strong_count(x))
-            .ok_or(anyhow!("no available firehose endpoints"))?;
-        if !endpoint.has_subgraph_capacity() {
-            bail!("all connections saturated with {} connections, increase the firehose conn_pool_size or limit for the node", SUBGRAPHS_PER_CONN);
-        }
+            .filter(|x| x.has_subgraph_capacity())
+            .sorted_by_key(|x| x.current_error_count())
+            .find(|x| x.has_subgraph_capacity())
+            .ok_or(anyhow!("unable to get a connection: {} connections in use, increase the firehose conn_pool_size or limit for the node", self.0.len()))?;
 
         // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
         // which could cause a high number of endpoints to be given away before accounting for them.
@@ -479,7 +486,7 @@ mod test {
         endpoints.remove("");
 
         let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        assert!(err.to_string().contains("unable to get a connection"));
     }
 
     #[tokio::test]
@@ -511,7 +518,7 @@ mod test {
         endpoints.remove("");
 
         let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        assert!(err.to_string().contains("unable to get a connection"));
     }
 
     #[tokio::test]
@@ -535,6 +542,6 @@ mod test {
         endpoints.remove("");
 
         let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        assert!(err.to_string().contains("unable to get a connection"));
     }
 }
