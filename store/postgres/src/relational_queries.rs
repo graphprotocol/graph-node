@@ -3331,14 +3331,9 @@ impl<'a> SortKey<'a> {
                         let direction = children.first().unwrap().direction;
                         let columns = children
                             .iter()
-                            .map(|child| {
-                                (
-                                    child.sort_by_column,
-                                    child.prefix.as_str()
-                                )
-                            })
+                            .map(|child| (child.sort_by_column, child.prefix.as_str()))
                             .collect();
-                        SortKey::multi_sort_coalesce_expr(columns,direction,  Some("c"), out)
+                        SortKey::multi_sort_coalesce_expr(columns, direction, Some("c"), out)
                     }
 
                     ChildKey::ManyIdAsc(children, br_column) => {
