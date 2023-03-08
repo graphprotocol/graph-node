@@ -609,6 +609,10 @@ impl AscIndexId for AscTypedMap<AscString, AscEnum<StoreValueKind>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TypedMapStringStoreValue;
 }
 
+impl AscIndexId for Array<AscPtr<AscEntity>> {
+    const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::ArrayTypedMapStringStoreValue;
+}
+
 impl AscIndexId for AscTypedMap<AscString, AscEnum<JsonValueKind>> {
     const INDEX_ASC_TYPE_ID: IndexForAscTypeId = IndexForAscTypeId::TypedMapStringJsonValue;
 }

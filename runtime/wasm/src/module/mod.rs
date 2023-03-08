@@ -1079,14 +1079,19 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let field: String = asc_get(self, field_ptr, gas)?;
         let id: String = asc_get(self, id_ptr, gas)?;
         println!("store_get_where: {} {} {}", entity_type, field, id);
-        let entity_option = self.ctx.host_exports.store_get_where(
+        let entities = self.ctx.host_exports.store_get_where(
             &mut self.ctx.state,
             entity_type.clone(),
             field.clone(),
             id.clone(),
             gas,
         )?;
-        Ok(AscPtr::null())
+
+        let entities: Vec<Vec<(String, Value)>> = entities.iter().map(|entity| entity.clone().sorted()).collect();
+        // .map(|name| asc_new(self, &*name, gas))
+        // ..collect();
+        let ret = asc_new(self, &entities, gas)?;
+        Ok(ret)
     }
 
     /// function typeConversion.bytesToString(bytes: Bytes): string
