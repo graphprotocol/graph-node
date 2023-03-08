@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
-use graph::components::store::{EntityDerived, EntityKey};
+use graph::components::store::{DerivedEntityQuery, EntityKey};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -1673,7 +1673,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
-    key: &'a EntityDerived,
+    key: &'a DerivedEntityQuery,
     block: BlockNumber,
 }
 
@@ -1681,10 +1681,10 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let EntityDerived {
+        let DerivedEntityQuery {
             entity_type: _,
             entity_field,
-            entity_id,
+            value: entity_id,
             causality_region,
         } = self.key;
 

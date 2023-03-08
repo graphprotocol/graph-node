@@ -1122,7 +1122,7 @@ impl DeploymentStore {
     pub(crate) fn get_derived(
         &self,
         site: Arc<Site>,
-        key: &EntityDerived,
+        key: &DerivedEntityQuery,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, StoreError> {
         let conn = self.get_conn()?;

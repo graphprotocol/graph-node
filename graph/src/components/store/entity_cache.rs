@@ -7,7 +7,7 @@ use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOpe
 use crate::prelude::{Schema, ENV_VARS};
 use crate::util::lfu_cache::LfuCache;
 
-use super::{EntityDerived, EntityType};
+use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest};
 
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
@@ -115,13 +115,16 @@ impl EntityCache {
         Ok(entity)
     }
 
-    pub fn load_related(&mut self, eref: &EntityDerived) -> Result<Vec<Entity>, anyhow::Error> {
+    pub fn load_related(
+        &mut self,
+        eref: &LoadRelatedRequest,
+    ) -> Result<Vec<Entity>, anyhow::Error> {
         let (base_type, field) = self.schema.get_type_for_field(eref)?;
 
-        let key = EntityDerived {
-            entity_id: eref.entity_id.clone(),
-            entity_field: field.into(),
+        let key = DerivedEntityQuery {
             entity_type: EntityType::new(base_type.to_string()),
+            entity_field: field.into(),
+            value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
         };
 

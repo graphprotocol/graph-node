@@ -138,14 +138,31 @@ pub struct EntityKey {
     pub causality_region: CausalityRegion,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityDerived {
+#[derive(Debug, Clone)]
+pub struct LoadRelatedRequest {
     /// Name of the entity type.
     pub entity_type: EntityType,
     /// ID of the individual entity.
     pub entity_id: Word,
-
+    /// Field the shall be loaded
     pub entity_field: Word,
+
+    /// This is the causality region of the data source that created the entity.
+    ///
+    /// In the case of an entity lookup, this is the causality region of the data source that is
+    /// doing the lookup. So if the entity exists but was created on a different causality region,
+    /// the lookup will return empty.
+    pub causality_region: CausalityRegion,
+}
+
+#[derive(Debug)]
+pub struct DerivedEntityQuery {
+    /// Name of the entity to search
+    pub entity_type: EntityType,
+    /// The field to check
+    pub entity_field: Word,
+    /// The value to compare against
+    pub value: Word,
 
     /// This is the causality region of the data source that created the entity.
     ///
@@ -166,8 +183,8 @@ impl EntityKey {
         }
     }
 
-    pub fn from(id: &String, entity_derived: &EntityDerived) -> Self {
-        let clone = entity_derived.clone();
+    pub fn from(id: &String, load_related_request: &LoadRelatedRequest) -> Self {
+        let clone = load_related_request.clone();
         Self {
             entity_id: id.clone().into(),
             entity_type: clone.entity_type,
@@ -1153,7 +1170,7 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn get_derived(&self, _query: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, _query: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         Ok(vec![])
     }
 

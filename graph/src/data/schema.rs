@@ -1,5 +1,5 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityDerived, EntityKey, EntityType, SubgraphStore};
+use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest, SubgraphStore};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
@@ -539,7 +539,7 @@ impl Schema {
         }
     }
 
-    pub fn get_type_for_field(&self, key: &EntityDerived) -> Result<(&str, &str), Error> {
+    pub fn get_type_for_field(&self, key: &LoadRelatedRequest) -> Result<(&str, &str), Error> {
         let field = self
             .document
             .get_object_type_definition(key.entity_type.as_str())
