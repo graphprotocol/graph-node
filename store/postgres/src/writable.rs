@@ -256,7 +256,8 @@ impl SyncStore {
         block: BlockNumber,
     ) -> Result<Vec<Entity>, StoreError> {
         retry::forever(&self.logger, "get_where", || {
-            self.writable.get_where(self.site.cheap_clone(), key, block)
+            self.writable
+                .get_derived(self.site.cheap_clone(), key, block)
         })
     }
 

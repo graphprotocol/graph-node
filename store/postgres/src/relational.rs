@@ -41,7 +41,7 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindPossibleDeletionsQuery, FindDerivedQuery};
+use crate::relational_queries::{FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -566,7 +566,7 @@ impl Layout {
     ) -> Result<Vec<Entity>, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
         let query = FindDerivedQuery::new(table, key, block);
-        
+
         let mut entities = Vec::new();
 
         for data in query.load::<EntityData>(conn)? {

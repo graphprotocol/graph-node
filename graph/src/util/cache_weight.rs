@@ -138,8 +138,8 @@ impl CacheWeight for EntityDerived {
 impl CacheWeight for EntityMultiKey {
     fn indirect_weight(&self) -> usize {
         match self {
-            EntityMultiKey::All(derived) => derived.indirect_weight(),
-            EntityMultiKey::Equal(key) => key.indirect_weight(),
+            EntityMultiKey::Derived(derived) => derived.indirect_weight(),
+            EntityMultiKey::Single(key) => key.indirect_weight(),
         }
     }
 }

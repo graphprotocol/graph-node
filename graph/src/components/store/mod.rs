@@ -159,10 +159,10 @@ pub struct EntityDerived {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EntityMultiKey {
     /// A filter that matches all entities of a given type.
-    All(EntityDerived),
+    Derived(EntityDerived),
 
     /// A filter that matches a specific entity.
-    Equal(EntityKey),
+    Single(EntityKey),
 }
 
 impl EntityKey {
@@ -1163,10 +1163,7 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn get_derived(
-        &self,
-        _query: &EntityDerived,
-    ) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, _query: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
         Ok(vec![])
     }
 

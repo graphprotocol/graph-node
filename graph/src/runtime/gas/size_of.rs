@@ -179,8 +179,8 @@ impl GasSizeOf for EntityDerived {
 impl GasSizeOf for EntityMultiKey {
     fn gas_size_of(&self) -> Gas {
         match self {
-            EntityMultiKey::Equal(key) => key.gas_size_of(),
-            EntityMultiKey::All(key) => key.gas_size_of(),
+            EntityMultiKey::Single(key) => key.gas_size_of(),
+            EntityMultiKey::Derived(key) => key.gas_size_of(),
         }
     }
 }
