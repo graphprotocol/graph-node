@@ -9,7 +9,7 @@ use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::blockchain::Blockchain;
-use graph::components::store::{EnsLookup, EntityDerived};
+use graph::components::store::{EnsLookup, LoadRelatedRequest};
 use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
@@ -247,7 +247,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_field: String,
         gas: &GasCounter,
     ) -> Result<Vec<Entity>, anyhow::Error> {
-        let store_key = EntityDerived {
+        let store_key = LoadRelatedRequest {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
             entity_field: entity_field.into(),

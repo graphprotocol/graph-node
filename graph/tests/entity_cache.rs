@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use graph::components::store::{
-    DeploymentCursorTracker, EntityDerived, EntityKey, EntityType, ReadStore,
+    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, ReadStore,
     StoredDynamicDataSource, WritableStore,
 };
 use graph::{
@@ -60,7 +60,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn get_derived(&self, _key: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, _key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         let values: Vec<Entity> = self
             .get_many_res
             .clone()

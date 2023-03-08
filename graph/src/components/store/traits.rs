@@ -187,7 +187,7 @@ pub trait ReadStore: Send + Sync + 'static {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
     /// Reverse lookup
-    fn get_derived(&self, entity_derived: &EntityDerived) -> Result<Vec<Entity>, StoreError>;
+    fn get_derived(&self, entity_derived: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;
 }
@@ -205,7 +205,7 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_many(keys)
     }
 
-    fn get_derived(&self, entity_derived: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, entity_derived: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         (**self).get_derived(entity_derived)
     }
 

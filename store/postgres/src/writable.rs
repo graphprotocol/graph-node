@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{DeploymentCursorTracker, EntityDerived, EntityKey, ReadStore};
+use graph::components::store::{DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore};
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -252,7 +252,7 @@ impl SyncStore {
 
     fn get_derived(
         &self,
-        key: &EntityDerived,
+        key: &DerivedEntityQuery,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, StoreError> {
         retry::forever(&self.logger, "get_where", || {
@@ -756,7 +756,7 @@ impl Queue {
         Ok(map)
     }
 
-    fn get_derived(&self, key: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         let tracker = BlockTracker::new();
         // TODO implement the whole async
         self.store.get_derived(key, tracker.query_block())
@@ -920,7 +920,7 @@ impl Writer {
         }
     }
 
-    fn get_derived(&self, key: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX),
             Writer::Async(queue) => queue.get_derived(key),
@@ -1016,7 +1016,7 @@ impl ReadStore for WritableStore {
         self.writer.get_many(keys)
     }
 
-    fn get_derived(&self, key: &EntityDerived) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
         self.writer.get_derived(key)
     }
 
