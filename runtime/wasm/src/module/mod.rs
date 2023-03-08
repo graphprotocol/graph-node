@@ -1086,7 +1086,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             gas,
         )?;
 
-        let entities: Vec<Vec<(String, Value)>> = entities.iter().map(|entity| entity.clone().sorted()).collect();
+        let entities: Vec<Vec<(String, Value)>> = entities
+            .iter()
+            .map(|entity| entity.clone().sorted())
+            .collect();
         let ret = asc_new(self, &entities, gas)?;
         Ok(ret)
     }
