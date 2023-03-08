@@ -731,7 +731,6 @@ impl Layout {
             query.query_id,
             &self.site,
         )?;
-        println!("{}", debug_query(&query).to_string());
 
         let query_clone = query.clone();
 
