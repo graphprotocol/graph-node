@@ -333,6 +333,19 @@ impl ToAscObj<AscEntity> for Vec<(String, store::Value)> {
     }
 }
 
+impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(String, store::Value)>> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Array<AscPtr<AscEntity>>, DeterministicHostError>
+    {
+        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &x, gas)).collect();
+        let content = content?;
+        Array::new(&content, heap, gas)
+    }
+}
+
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
