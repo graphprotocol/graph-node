@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
-use graph::components::store::EntityKey;
+use graph::components::store::{EntityKey, EntityDerived};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -1667,6 +1667,62 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindManyQuery<'a> {
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
+
+/// A query that finds an entity by key. Used during indexing.
+/// See also `FindManyQuery`.
+#[derive(Debug, Clone, Constructor)]
+pub struct FindDerivedQuery<'a> {
+    table: &'a Table,
+    key: &'a EntityDerived,
+    block: BlockNumber,
+}
+
+impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
+    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+
+        let EntityDerived {
+            entity_type: _,
+            entity_field,
+            entity_id,
+            causality_region,
+        } = self.key;
+
+        // Generate
+        //    select '..' as entity, to_jsonb(e.*) as data
+        //      from schema.table e where id = $1
+        out.push_sql("select ");
+        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_sql(" as entity, to_jsonb(e.*) as data\n");
+        out.push_sql("  from ");
+        out.push_sql(self.table.qualified_name.as_str());
+        out.push_sql(" e\n where ");
+        out.push_identifier(entity_field.as_str())?;
+        out.push_sql(" = ");
+        out.push_bind_param::<Text, _>(&entity_id.as_str())?;
+        out.push_sql(" and ");
+        if self.table.has_causality_region {
+            out.push_sql("causality_region = ");
+            out.push_bind_param::<Integer, _>(causality_region)?;
+            out.push_sql(" and ");
+        }
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+    }
+}
+
+impl<'a> QueryId for FindDerivedQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+impl<'a> LoadQuery<PgConnection, EntityData> for FindDerivedQuery<'a> {
+    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<EntityData>> {
+        conn.query_by_name(&self)
+    }
+}
+
+impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
