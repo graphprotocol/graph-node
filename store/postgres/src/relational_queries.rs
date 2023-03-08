@@ -1690,7 +1690,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
 
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
-        //      from schema.table e where id = $1
+        //      from schema.table e where field = $1
         out.push_sql("select ");
         out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
