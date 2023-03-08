@@ -564,8 +564,15 @@ impl Layout {
         key: &EntityDerived,
         block: BlockNumber,
     ) -> Result<Vec<Entity>, StoreError> {
-        let entities = Vec::new();
-        println!("find_where: {:?} {:?}", key, block);
+        let table = self.table_for_entity(&key.entity_type)?;
+        let query = FindDerivedQuery::new(table, key, block);
+        
+        let mut entities = Vec::new();
+
+        for data in query.load::<EntityData>(conn)? {
+            let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
+            entities.push(entity_data);
+        }
         Ok(entities)
     }
 
