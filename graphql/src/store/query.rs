@@ -176,29 +176,23 @@ fn build_filter(
 ) -> Result<Option<EntityFilter>, QueryExecutionError> {
     let where_filter = match field.argument_value("where") {
         Some(r::Value::Object(object)) => match build_filter_from_object(entity, object, schema) {
-            Ok(filter) => Ok(Some(filter)),
+            Ok(filter) => Ok(Some(EntityFilter::And(filter))),
             Err(e) => Err(e),
         },
         Some(r::Value::Null) | None => Ok(None),
         _ => Err(QueryExecutionError::InvalidFilterError),
-    };
+    }?;
 
     let text_filter = match field.argument_value("text") {
         Some(r::Value::Object(filter)) => build_fulltext_filter_from_object(filter),
         None => Ok(None),
         _ => Err(QueryExecutionError::InvalidFilterError),
-    };
-    let mut entity_filter: Vec<EntityFilter> = vec![];
-    if let Some(filter) = text_filter? {
-        entity_filter.push(filter);
-    }
-    if let Some(filter) = where_filter? {
-        entity_filter.extend(filter);
-    }
+    }?;
 
-    match entity_filter.len() {
-        0 => Ok(None),
-        _ => Ok(Some(EntityFilter::And(entity_filter))),
+    match (where_filter, text_filter) {
+        (None, None) => Ok(None),
+        (Some(f), None) | (None, Some(f)) => Ok(Some(f)),
+        (Some(w), Some(t)) => Ok(Some(EntityFilter::And(vec![t, w]))),
     }
 }
 
