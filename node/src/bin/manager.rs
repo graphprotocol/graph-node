@@ -820,7 +820,7 @@ impl Context {
             &self.node_id,
             &self.config,
             self.fork_base,
-            self.registry,
+            self.registry.clone(),
         );
 
         for pool in pools.values() {
@@ -833,6 +833,7 @@ impl Context {
             subgraph_store,
             HashMap::default(),
             vec![],
+            self.registry,
         );
 
         (store, pools)
