@@ -43,12 +43,6 @@ pub struct EnvVarsStore {
     /// only as an emergency setting for the hosted service. Remove after
     /// 2022-07-01 if hosted service had no issues with it being `true`
     pub order_by_block_range: bool,
-    /// When the flag is present, `ORDER BY` clauses are changed so that `asc`
-    /// and `desc` ordering produces reverse orders. Setting the flag turns the
-    /// new, correct behavior off.
-    ///
-    /// Set by the flag `REVERSIBLE_ORDER_BY_OFF`.
-    pub reversible_order_by_off: bool,
     /// Whether to disable the notifications that feed GraphQL
     /// subscriptions. When the flag is set, no updates
     /// about entity changes will be sent to query nodes.
@@ -120,7 +114,6 @@ impl From<InnerStore> for EnvVarsStore {
             typea_batch_size: x.typea_batch_size,
             typed_children_set_size: x.typed_children_set_size,
             order_by_block_range: x.order_by_block_range.0,
-            reversible_order_by_off: x.reversible_order_by_off.0,
             disable_subscription_notifications: x.disable_subscription_notifications.0,
             connection_try_always: x.connection_try_always.0,
             remove_unused_interval: chrono::Duration::minutes(
@@ -154,8 +147,6 @@ pub struct InnerStore {
     typed_children_set_size: usize,
     #[envconfig(from = "ORDER_BY_BLOCK_RANGE", default = "true")]
     order_by_block_range: EnvVarBoolean,
-    #[envconfig(from = "REVERSIBLE_ORDER_BY_OFF", default = "false")]
-    reversible_order_by_off: EnvVarBoolean,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
