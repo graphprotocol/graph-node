@@ -1,7 +1,0 @@
-[package]
-name = "graph-mock"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-graph = { path = "../graph" }

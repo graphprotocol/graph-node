@@ -19,7 +19,7 @@ use graph_chain_ethereum::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
 };
 use graph_chain_ethereum::{Chain, ENV_VARS};
-use graph_mock::MockMetricsRegistry;
+use graph_core::MetricsRegistry;
 
 pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,
@@ -31,7 +31,7 @@ pub async fn chain(
         x: PhantomData,
     }));
     let logger = graph::log::logger(true);
-    let mock_registry = Arc::new(MockMetricsRegistry::new());
+    let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 
