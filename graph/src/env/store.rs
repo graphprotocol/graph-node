@@ -50,13 +50,6 @@ pub struct EnvVarsStore {
     /// Set by the flag `GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS`. Not set
     /// by default.
     pub disable_subscription_notifications: bool,
-    /// A fallback in case the logic to remember database availability goes
-    /// wrong; when this is set, we always try to get a connection and never
-    /// use the availability state we remembered.
-    ///
-    /// Set by the flag `GRAPH_STORE_CONNECTION_TRY_ALWAYS`. Disabled by
-    /// default.
-    pub connection_try_always: bool,
     /// Set by the environment variable `GRAPH_REMOVE_UNUSED_INTERVAL`
     /// (expressed in minutes). The default value is 360 minutes.
     pub remove_unused_interval: chrono::Duration,
@@ -115,7 +108,6 @@ impl From<InnerStore> for EnvVarsStore {
             typed_children_set_size: x.typed_children_set_size,
             order_by_block_range: x.order_by_block_range.0,
             disable_subscription_notifications: x.disable_subscription_notifications.0,
-            connection_try_always: x.connection_try_always.0,
             remove_unused_interval: chrono::Duration::minutes(
                 x.remove_unused_interval_in_minutes as i64,
             ),
@@ -149,8 +141,6 @@ pub struct InnerStore {
     order_by_block_range: EnvVarBoolean,
     #[envconfig(from = "GRAPH_DISABLE_SUBSCRIPTION_NOTIFICATIONS", default = "false")]
     disable_subscription_notifications: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_STORE_CONNECTION_TRY_ALWAYS", default = "false")]
-    connection_try_always: EnvVarBoolean,
     #[envconfig(from = "GRAPH_REMOVE_UNUSED_INTERVAL", default = "360")]
     remove_unused_interval_in_minutes: u64,
     #[envconfig(from = "GRAPH_STORE_RECENT_BLOCKS_CACHE_CAPACITY", default = "10")]
