@@ -64,7 +64,7 @@ async fn test_valid_module_and_store_with_timeout(
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
     let store = STORE.clone();
-    let metrics_registry = Arc::new(MetricsRegistry::mock_new());
+    let metrics_registry = Arc::new(MetricsRegistry::mock());
     let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
     let deployment = test_store::create_test_subgraph(
         &deployment_id,

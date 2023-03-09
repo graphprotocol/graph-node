@@ -288,7 +288,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
     };
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock_new());
+    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
@@ -330,7 +330,7 @@ pub async fn setup<C: Blockchain>(
     });
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock_new());
+    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 

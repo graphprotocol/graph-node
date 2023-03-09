@@ -102,7 +102,7 @@ mod test {
         runtime
             .block_on(async {
                 let logger = Logger::root(slog::Discard, o!());
-                let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock_new()));
+                let logger_factory = LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
                 let id = USERS.clone();
                 let query_runner = Arc::new(TestGraphQlRunner);
                 let node_id = NodeId::new("test").unwrap();
@@ -144,7 +144,7 @@ mod test {
         runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock_new()));
+                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
@@ -225,7 +225,7 @@ mod test {
         runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock_new()));
+                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();
@@ -271,7 +271,7 @@ mod test {
         let _ = runtime.block_on(async {
             let logger = Logger::root(slog::Discard, o!());
             let logger_factory =
-                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock_new()));
+                LoggerFactory::new(logger, None, Arc::new(MetricsRegistry::mock()));
             let id = USERS.clone();
             let query_runner = Arc::new(TestGraphQlRunner);
             let node_id = NodeId::new("test").unwrap();

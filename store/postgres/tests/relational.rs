@@ -197,7 +197,7 @@ lazy_static! {
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
         "test",
-        Arc::new(MetricsRegistry::mock_new()),
+        Arc::new(MetricsRegistry::mock()),
     );
 }
 

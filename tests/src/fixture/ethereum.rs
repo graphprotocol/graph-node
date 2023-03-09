@@ -31,7 +31,7 @@ pub async fn chain(
         x: PhantomData,
     }));
     let logger = graph::log::logger(true);
-    let mock_registry = Arc::new(MetricsRegistry::mock_new());
+    let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 

@@ -1546,7 +1546,7 @@ fn handle_large_string_with_index() {
         let long_text = "Quo usque tandem".repeat(62500);
         let other_text = long_text.clone() + "X";
 
-        let metrics_registry = Arc::new(MetricsRegistry::mock_new());
+        let metrics_registry = Arc::new(MetricsRegistry::mock());
         let stopwatch_metrics = StopwatchMetrics::new(
             Logger::root(slog::Discard, o!()),
             deployment.hash.clone(),
@@ -1642,7 +1642,7 @@ fn handle_large_bytea_with_index() {
         };
         let long_bytea = scalar::Bytes::from(long_bytea.as_slice());
 
-        let metrics_registry = Arc::new(MetricsRegistry::mock_new());
+        let metrics_registry = Arc::new(MetricsRegistry::mock());
         let stopwatch_metrics = StopwatchMetrics::new(
             Logger::root(slog::Discard, o!()),
             deployment.hash.clone(),

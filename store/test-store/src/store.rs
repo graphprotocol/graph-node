@@ -50,7 +50,7 @@ lazy_static! {
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
     pub static ref STORE_RUNTIME: Runtime =
         Builder::new_multi_thread().enable_all().build().unwrap();
-    pub static ref METRICS_REGISTRY: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock_new());
+    pub static ref METRICS_REGISTRY: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &LOGGER,
         Vec::new(),
@@ -217,7 +217,7 @@ pub async fn transact_errors(
     block_ptr_to: BlockPtr,
     errs: Vec<SubgraphError>,
 ) -> Result<(), StoreError> {
-    let metrics_registry = Arc::new(MetricsRegistry::mock_new());
+    let metrics_registry = Arc::new(MetricsRegistry::mock());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment.hash.clone(),
@@ -295,7 +295,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
         .as_modifications()
         .expect("failed to convert to modifications")
         .modifications;
-    let metrics_registry = Arc::new(MetricsRegistry::mock_new());
+    let metrics_registry = Arc::new(MetricsRegistry::mock());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         deployment.hash.clone(),
@@ -546,7 +546,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
 
     let config = Config::load(&LOGGER, &opt)
         .unwrap_or_else(|_| panic!("config is not valid (file={:?})", &opt.config));
-    let registry = Arc::new(MetricsRegistry::mock_new());
+    let registry = Arc::new(MetricsRegistry::mock());
     std::thread::spawn(move || {
         STORE_RUNTIME.handle().block_on(async {
             let builder = StoreBuilder::new(&LOGGER, &NODE_ID, &config, None, registry).await;

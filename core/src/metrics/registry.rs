@@ -42,7 +42,7 @@ impl MetricsRegistry {
         }
     }
 
-    pub fn mock_new() -> Self {
+    pub fn mock() -> Self {
         MetricsRegistry::new(Logger::root(slog::Discard, o!()), Arc::new(Registry::new()))
     }
 
