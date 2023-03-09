@@ -69,23 +69,7 @@ pub enum CosmosTrigger {
     Message(Arc<codec::MessageData>),
 }
 
-impl CheapClone for CosmosTrigger {
-    fn cheap_clone(&self) -> CosmosTrigger {
-        match self {
-            CosmosTrigger::Block(block) => CosmosTrigger::Block(block.cheap_clone()),
-            CosmosTrigger::Event { event_data, origin } => CosmosTrigger::Event {
-                event_data: event_data.cheap_clone(),
-                origin: *origin,
-            },
-            CosmosTrigger::Transaction(transaction_data) => {
-                CosmosTrigger::Transaction(transaction_data.cheap_clone())
-            }
-            CosmosTrigger::Message(message_data) => {
-                CosmosTrigger::Message(message_data.cheap_clone())
-            }
-        }
-    }
-}
+impl CheapClone for CosmosTrigger {}
 
 impl PartialEq for CosmosTrigger {
     fn eq(&self, other: &Self) -> bool {
