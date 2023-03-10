@@ -51,8 +51,8 @@ impl EndpointMetrics {
         }
     }
 
-    pub fn success(&self, host: Host) {
-        match self.hosts.get(&host) {
+    pub fn success(&self, host: &Host) {
+        match self.hosts.get(host) {
             Some(count) => {
                 count.store(0, Ordering::Relaxed);
             }
@@ -60,8 +60,8 @@ impl EndpointMetrics {
         }
     }
 
-    pub fn failure(&self, host: Host) {
-        match self.hosts.get(&host) {
+    pub fn failure(&self, host: &Host) {
+        match self.hosts.get(host) {
             Some(count) => {
                 count.fetch_add(1, Ordering::Relaxed);
             }
@@ -93,11 +93,11 @@ mod test {
 
         let metrics = EndpointMetrics::new(logger, hosts);
 
-        metrics.success(a.clone());
-        metrics.failure(a.clone());
-        metrics.failure(b.clone());
-        metrics.failure(b.clone());
-        metrics.success(c.clone());
+        metrics.success(&a);
+        metrics.failure(&a);
+        metrics.failure(&b);
+        metrics.failure(&b);
+        metrics.success(&c);
 
         assert_eq!(metrics.get_count(&a), 1);
         assert_eq!(metrics.get_count(&b), 2);

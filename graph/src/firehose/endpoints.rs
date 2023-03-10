@@ -16,7 +16,7 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
 use tonic::codegen::InterceptedService;
 use tonic::{
     codegen::CompressionEncoding,
@@ -30,6 +30,10 @@ use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::
 /// which the grpc connections start to hang.
 /// For more details see: https://github.com/graphprotocol/graph-node/issues/3879
 pub const SUBGRAPHS_PER_CONN: usize = 100;
+
+const LOW_VALUE_THRESHOLD: usize = 10;
+const LOW_VALUE_USED_PERCENTAGE: usize = 50;
+const HIGH_VALUE_USED_PERCENTAGE: usize = 80;
 
 #[derive(Debug)]
 pub struct FirehoseEndpoint {
@@ -63,7 +67,28 @@ impl SubgraphLimit {
         match self {
             // Limit(0) should probably be Disabled but just in case
             SubgraphLimit::Disabled | SubgraphLimit::Limit(0) => AvailableCapacity::Unavailable,
-            SubgraphLimit::Limit(total) if current * 100 / total <= 20 => AvailableCapacity::Low,
+            SubgraphLimit::Limit(total) => {
+                let total = *total;
+                if current >= total {
+                    return AvailableCapacity::Unavailable
+                }
+
+                let used_percent = current * 100 / total;
+
+                // If total is low it can vary very quickly so we can consider 50% as the low threshold
+                // to make selection more reliable
+                let threshold_percent = if total <= LOW_VALUE_THRESHOLD {
+                    LOW_VALUE_USED_PERCENTAGE
+                } else {
+                    HIGH_VALUE_USED_PERCENTAGE
+                };
+
+                if used_percent < threshold_percent {
+                    return AvailableCapacity::High;
+                }
+
+                AvailableCapacity::Low
+            }
             _ => AvailableCapacity::High,
         }
     }
@@ -156,17 +181,12 @@ impl FirehoseEndpoint {
         self.endpoint_metrics.get_count(&self.host)
     }
 
+    // we need to -1 because there will always be a reference
+    // inside FirehoseEndpoints that is not used (is always cloned).
     pub fn get_capacity(self: &Arc<Self>) -> AvailableCapacity {
         self.subgraph_limit
             .get_capacity(Arc::strong_count(self).saturating_sub(1))
-    }
-
-    // we need to -1 because there will always be a reference
-    // inside FirehoseEndpoints that is not used (is always cloned).
-    pub fn has_subgraph_capacity(self: &Arc<Self>) -> bool {
-        self.subgraph_limit
-            .has_capacity(Arc::strong_count(self).saturating_sub(1))
-    }
+   }
 
     fn new_client(
         &self,
@@ -392,23 +412,30 @@ impl FirehoseEndpoints {
         self.0.len()
     }
 
-    // selects the FirehoseEndpoint with the least amount of references, which will help with spliting
-    // the load naively across the entire list.
-    pub fn random(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
-        // This isn't really efficient, we could prolly find a better way
-        // since we have repeated endpoints which usually boil down to
-        // a handful of different hosts, perhaps a map here would be
-        // better.
-        let endpoint = self
-            .0
-            .iter()
-            .sorted_by_key(|x| x.current_error_count())
-            .find_or_first(|x| x.get_capacity() == AvailableCapacity::High)
-            .ok_or(anyhow!("unable to get a connection: {} connections in use, increase the firehose conn_pool_size or limit for the node", self.0.len()))?;
-
-        // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
-        // which could cause a high number of endpoints to be given away before accounting for them.
-        Ok(endpoint.clone())
+    /// This function will attempt to grab an endpoint based on the following priority:
+    /// 1. Lowest error count with high capacity available.
+    /// 2. Lowest error count that has any capacity
+    /// If an adapter cannot be found `endpoint` will return an error.
+    pub fn endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
+        let endpoint = self.0.iter().sorted_by_key(|x| x.current_error_count()).try_fold(None,|acc,adapter| {
+            match adapter.get_capacity() {
+                AvailableCapacity::Unavailable => ControlFlow::Continue(acc),
+                AvailableCapacity::Low => match acc {
+                    Some(_) => ControlFlow::Continue(acc),
+                    None => ControlFlow::Continue(Some(adapter)),
+                }
+                // This means that if all adapters with low/no errors are low capacity
+                // we will retry the high capacity that has errors, at this point 
+                // any other available with no errors are almost at their limit.
+                AvailableCapacity::High => ControlFlow::Break(Some(adapter)),
+            }
+        });
+        
+        match endpoint {
+            ControlFlow::Continue(adapter)|ControlFlow::Break(adapter) => 
+        adapter.cloned().ok_or(anyhow!("unable to get a connection, increase the firehose conn_pool_size or limit for the node"))
+        }
+        
     }
 
     pub fn remove(&mut self, provider: &str) {
@@ -473,6 +500,8 @@ impl FirehoseNetworks {
 mod test {
     use std::{mem, sync::Arc};
 
+    use slog::{o, Discard, Logger};
+
     use crate::{endpoint::EndpointMetrics, firehose::SubgraphLimit};
 
     use super::{AvailableCapacity, FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
@@ -493,19 +522,19 @@ mod test {
 
         let mut keep = vec![];
         for _i in 0..SUBGRAPHS_PER_CONN {
-            keep.push(endpoints.random().unwrap());
+            keep.push(endpoints.endpoint().unwrap());
         }
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         mem::drop(keep);
-        endpoints.random().unwrap();
+        endpoints.endpoint().unwrap();
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("unable to get a connection"));
     }
 
@@ -525,19 +554,19 @@ mod test {
 
         let mut keep = vec![];
         for _ in 0..2 {
-            keep.push(endpoints.random().unwrap());
+            keep.push(endpoints.endpoint().unwrap());
         }
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         mem::drop(keep);
-        endpoints.random().unwrap();
+        endpoints.endpoint().unwrap();
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("unable to get a connection"));
     }
 
@@ -555,14 +584,89 @@ mod test {
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("unable to get a connection"));
+    }
+
+    #[tokio::test]
+    async fn firehose_endpoint_selection() {
+        let logger = Logger::root(Discard, o!());
+        let endpoint_metrics = Arc::new(EndpointMetrics::new(
+            logger,
+            &[
+                "http://127.0.0.1/",
+                "http://127.0.0.2/",
+                "http://127.0.0.3/",
+            ],
+        ));
+
+        let high_error_adapter1 = Arc::new(FirehoseEndpoint::new(
+            "high_error1".to_string(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+        let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
+            "high_error2".to_string(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+        let low_availability = Arc::new(FirehoseEndpoint::new(
+            "low availability".to_string(),
+            "http://127.0.0.2".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Limit(2),
+            endpoint_metrics.clone(),
+        ));
+        let high_availability = Arc::new(FirehoseEndpoint::new(
+            "high availability".to_string(),
+            "http://127.0.0.3".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+
+        endpoint_metrics.failure(&high_error_adapter1.host);
+
+        let mut endpoints = FirehoseEndpoints::from(vec![
+            high_error_adapter1.clone(),
+            high_error_adapter2,
+            low_availability.clone(),
+            high_availability.clone(),
+        ]);
+
+
+        let res = endpoints.endpoint().unwrap();
+        assert_eq!(res.provider, high_availability.provider);
+
+        // Removing high availability without errors should fallback to low availability
+        endpoints.remove(&high_availability.provider);
+
+        // Ensure we're in a low capacity situation
+        assert_eq!(low_availability.get_capacity(), AvailableCapacity::Low);
+
+        // In the scenario where the only high level adapter has errors we keep trying that
+        // because the others will be low or unavailable
+        let res = endpoints.endpoint().unwrap();
+        // This will match both high error adapters
+        assert_eq!(res.host, high_error_adapter1.host);
     }
 
     #[test]
@@ -592,13 +696,33 @@ mod test {
             },
             Case {
                 limit: SubgraphLimit::Limit(100),
-                current: 20,
+                current: 80,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(2),
+                current: 1,
                 capacity: AvailableCapacity::Low,
             },
             Case {
                 limit: SubgraphLimit::Limit(100),
                 current: 19,
                 capacity: AvailableCapacity::High,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 100,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 99,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 101,
+                capacity: AvailableCapacity::Unavailable,
             },
             Case {
                 limit: SubgraphLimit::Unlimited,
@@ -616,5 +740,18 @@ mod test {
             let res = c.limit.get_capacity(c.current);
             assert_eq!(res, c.capacity, "{:#?}", c);
         }
+    }
+
+    #[test]
+    fn available_capacity_ordering() {
+        assert_eq!(
+            AvailableCapacity::Unavailable < AvailableCapacity::Low,
+            true
+        );
+        assert_eq!(
+            AvailableCapacity::Unavailable < AvailableCapacity::High,
+            true
+        );
+        assert_eq!(AvailableCapacity::Low < AvailableCapacity::High, true);
     }
 }

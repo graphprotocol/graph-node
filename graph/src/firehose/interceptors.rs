@@ -67,9 +67,9 @@ where
         let res = async move {
             let res = fut.await;
             if res.is_ok() {
-                metrics.success(host);
+                metrics.success(&host);
             } else {
-                metrics.failure(host);
+                metrics.failure(&host);
             }
             res
         };
