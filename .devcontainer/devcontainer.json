@@ -2,17 +2,18 @@
 // README at: https://github.com/devcontainers/templates/tree/main/src/rust
 {
 	"name": "Rust",
-	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "devcontainer",
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
 	"features": {
-		"ghcr.io/devcontainers/features/rust:1": {}
+		"ghcr.io/devcontainers/features/rust:1": {
+			"version": "1.66.0"
+		}
 	},
 	"customizations": {
 		"vscode": {
 		  "extensions": [
-			"rust-lang.rust-analyzer", // rust analyser
+			"rust-lang.rust-analyzer@prerelease", // rust analyser, pre-release has less bugs 
 			"cschleiden.vscode-github-actions", // github actions
 			"serayuzgur.crates", // crates
 			"vadimcn.vscode-lldb" //debug
@@ -32,23 +33,10 @@
 	// 		"type": "volume"
 	// 	}
 	// ]
-
-	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
-
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	"forwardPorts": [
 		8000, // GraphiQL on node-port
 		8020, // create and deploy subgraphs
 		5001 //ipfs
 	]
 
-	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "rustc --version",
-
-	// Configure tool-specific properties.
-	// "customizations": {},
-
-	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-	// "remoteUser": "root"
 }

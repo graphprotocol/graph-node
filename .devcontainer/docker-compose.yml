@@ -2,9 +2,7 @@ version: '3'
 
 services:
   devcontainer:
-    build: 
-      context: .
-      dockerfile: Dockerfile
+    image: mcr.microsoft.com/vscode/devcontainers/rust:bullseye
     volumes:
       - ../..:/workspaces:cached
     network_mode: service:database
