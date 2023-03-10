@@ -302,28 +302,39 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<(Schema, bool), StoreE
         .map(|schema| (schema, use_bytea_prefix))
 }
 
-pub fn manifest_info(
-    conn: &PgConnection,
-    site: &Site,
-) -> Result<(Schema, Option<String>, Option<String>, String), StoreError> {
-    use subgraph_manifest as sm;
-    let (s, description, repository, spec_version): (
-        String,
-        Option<String>,
-        Option<String>,
-        String,
-    ) = sm::table
-        .select((
-            sm::schema,
-            sm::description,
-            sm::repository,
-            sm::spec_version,
-        ))
-        .filter(sm::id.eq(site.id))
-        .first(conn)?;
-    Schema::parse(s.as_str(), site.deployment.clone())
-        .map_err(StoreError::Unknown)
-        .map(|schema| (schema, description, repository, spec_version))
+pub struct ManifestInfo {
+    pub input_schema: Schema,
+    pub description: Option<String>,
+    pub repository: Option<String>,
+    pub spec_version: String,
+}
+
+impl ManifestInfo {
+    pub fn load(conn: &PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
+        use subgraph_manifest as sm;
+        let (s, description, repository, spec_version): (
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+        ) = sm::table
+            .select((
+                sm::schema,
+                sm::description,
+                sm::repository,
+                sm::spec_version,
+            ))
+            .filter(sm::id.eq(site.id))
+            .first(conn)?;
+        let input_schema = Schema::parse(s.as_str(), site.deployment.clone())?;
+
+        Ok(ManifestInfo {
+            input_schema,
+            description,
+            repository,
+            spec_version,
+        })
+    }
 }
 
 #[allow(dead_code)]

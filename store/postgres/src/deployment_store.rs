@@ -553,8 +553,7 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let (input_schema, description, repository, spec_version) =
-            deployment::manifest_info(conn, site)?;
+        let manifest_info = deployment::ManifestInfo::load(conn, site)?;
 
         let graft_block =
             deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number);
@@ -567,14 +566,15 @@ impl DeploymentStore {
 
         for version in VERSIONS.iter() {
             let api_version = ApiVersion::from_version(version).expect("Invalid API version");
-            let mut schema = input_schema.clone();
+            let mut schema = manifest_info.input_schema.clone();
             schema.document =
                 api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
             schema.add_subgraph_id_directives(site.deployment.clone());
             api.insert(api_version, Arc::new(ApiSchema::from_api_schema(schema)?));
         }
 
-        let spec_version = Version::from_str(&spec_version).map_err(anyhow::Error::from)?;
+        let spec_version =
+            Version::from_str(&manifest_info.spec_version).map_err(anyhow::Error::from)?;
         let poi_version = if spec_version.ge(&SPEC_VERSION_0_0_6) {
             ProofOfIndexingVersion::Fast
         } else {
@@ -582,12 +582,12 @@ impl DeploymentStore {
         };
 
         let info = SubgraphInfo {
-            input: Arc::new(input_schema),
+            input: Arc::new(manifest_info.input_schema),
             api,
             graft_block,
             debug_fork,
-            description,
-            repository,
+            description: manifest_info.description,
+            repository: manifest_info.repository,
             poi_version,
         };
 
