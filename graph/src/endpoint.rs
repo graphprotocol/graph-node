@@ -36,10 +36,7 @@ impl EndpointMetrics {
                 .map(|h| (Host::from(h.as_ref()), AtomicU64::new(0))),
         ));
 
-        Self {
-            logger: logger.clone(),
-            hosts: hosts.clone(),
-        }
+        Self { logger, hosts }
     }
 
     /// This should only be used for testing.

@@ -70,7 +70,7 @@ impl SubgraphLimit {
             SubgraphLimit::Limit(total) => {
                 let total = *total;
                 if current >= total {
-                    return AvailableCapacity::Unavailable
+                    return AvailableCapacity::Unavailable;
                 }
 
                 let used_percent = current * 100 / total;
@@ -186,7 +186,7 @@ impl FirehoseEndpoint {
     pub fn get_capacity(self: &Arc<Self>) -> AvailableCapacity {
         self.subgraph_limit
             .get_capacity(Arc::strong_count(self).saturating_sub(1))
-   }
+    }
 
     fn new_client(
         &self,
@@ -412,30 +412,33 @@ impl FirehoseEndpoints {
         self.0.len()
     }
 
-    /// This function will attempt to grab an endpoint based on the following priority:
-    /// 1. Lowest error count with high capacity available.
-    /// 2. Lowest error count that has any capacity
-    /// If an adapter cannot be found `endpoint` will return an error.
+    /// This function will attempt to grab an endpoint based on the Lowest error count
+    //  with high capacity available. If an adapter cannot be found `endpoint` will
+    // return an error.
     pub fn endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
-        let endpoint = self.0.iter().sorted_by_key(|x| x.current_error_count()).try_fold(None,|acc,adapter| {
-            match adapter.get_capacity() {
-                AvailableCapacity::Unavailable => ControlFlow::Continue(acc),
-                AvailableCapacity::Low => match acc {
-                    Some(_) => ControlFlow::Continue(acc),
-                    None => ControlFlow::Continue(Some(adapter)),
+        let endpoint = self
+            .0
+            .iter()
+            .sorted_by_key(|x| x.current_error_count())
+            .try_fold(None, |acc, adapter| {
+                match adapter.get_capacity() {
+                    AvailableCapacity::Unavailable => ControlFlow::Continue(acc),
+                    AvailableCapacity::Low => match acc {
+                        Some(_) => ControlFlow::Continue(acc),
+                        None => ControlFlow::Continue(Some(adapter)),
+                    },
+                    // This means that if all adapters with low/no errors are low capacity
+                    // we will retry the high capacity that has errors, at this point
+                    // any other available with no errors are almost at their limit.
+                    AvailableCapacity::High => ControlFlow::Break(Some(adapter)),
                 }
-                // This means that if all adapters with low/no errors are low capacity
-                // we will retry the high capacity that has errors, at this point 
-                // any other available with no errors are almost at their limit.
-                AvailableCapacity::High => ControlFlow::Break(Some(adapter)),
-            }
-        });
-        
+            });
+
         match endpoint {
-            ControlFlow::Continue(adapter)|ControlFlow::Break(adapter) => 
-        adapter.cloned().ok_or(anyhow!("unable to get a connection, increase the firehose conn_pool_size or limit for the node"))
+            ControlFlow::Continue(adapter)
+            | ControlFlow::Break(adapter) =>
+            adapter.cloned().ok_or(anyhow!("unable to get a connection, increase the firehose conn_pool_size or limit for the node"))
         }
-        
     }
 
     pub fn remove(&mut self, provider: &str) {
@@ -651,7 +654,6 @@ mod test {
             low_availability.clone(),
             high_availability.clone(),
         ]);
-
 
         let res = endpoints.endpoint().unwrap();
         assert_eq!(res.provider, high_availability.provider);
