@@ -47,7 +47,7 @@ pub async fn chain(
         true,
         false,
         SubgraphLimit::Unlimited,
-        Arc::new(EndpointMetrics::noop()),
+        Arc::new(EndpointMetrics::mock()),
     ))]
     .into();
 

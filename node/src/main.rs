@@ -9,7 +9,7 @@ use graph::blockchain::{
 };
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
-use graph::endpoint::EndpointMetricsProcessor;
+use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
@@ -228,10 +228,10 @@ async fn main() {
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
-    let (metrics_processor, endpoint_metrics) =
-        EndpointMetricsProcessor::new(logger.clone(), &config.chains.provider_urls());
-    let endpoint_metrics = Arc::new(endpoint_metrics);
-    tokio::spawn(metrics_processor.run());
+    let endpoint_metrics = Arc::new(EndpointMetrics::new(
+        logger.clone(),
+        &config.chains.provider_urls(),
+    ));
 
     // Ethereum clients; query nodes ignore all ethereum clients and never
     // connect to them directly

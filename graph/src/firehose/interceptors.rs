@@ -18,8 +18,8 @@ pub struct AuthInterceptor {
 impl std::fmt::Debug for AuthInterceptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.token {
-            Some(_) => f.write_str("xxxxxxxx"),
-            None => f.write_str("no_token"),
+            Some(_) => f.write_str("token_redacted"),
+            None => f.write_str("no_token_configured"),
         }
     }
 }
@@ -67,9 +67,9 @@ where
         let res = async move {
             let res = fut.await;
             if res.is_ok() {
-                metrics.success(host).unwrap_or_default();
+                metrics.success(host);
             } else {
-                metrics.failure(host).unwrap_or_default();
+                metrics.failure(host);
             }
             res
         };

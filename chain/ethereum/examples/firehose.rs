@@ -1,6 +1,6 @@
 use anyhow::Error;
 use graph::{
-    endpoint::EndpointMetricsProcessor,
+    endpoint::EndpointMetrics,
     env::env_var,
     firehose::SubgraphLimit,
     log::logger,
@@ -24,10 +24,7 @@ async fn main() -> Result<(), Error> {
 
     let logger = logger(false);
     let host = "https://api.streamingfast.io:443".to_string();
-    let metrics = Arc::new(EndpointMetricsProcessor::tokio_spawn(
-        logger,
-        &[host.clone()],
-    ));
+    let metrics = Arc::new(EndpointMetrics::new(logger, &[host.clone()]));
 
     let firehose = Arc::new(FirehoseEndpoint::new(
         "firehose",

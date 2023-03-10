@@ -43,6 +43,13 @@ pub struct FirehoseEndpoint {
     channel: Channel,
 }
 
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
+pub enum AvailableCapacity {
+    Unavailable,
+    Low,
+    High,
+}
+
 // TODO: Find a new home for this type.
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum SubgraphLimit {
@@ -52,6 +59,15 @@ pub enum SubgraphLimit {
 }
 
 impl SubgraphLimit {
+    pub fn get_capacity(&self, current: usize) -> AvailableCapacity {
+        match self {
+            // Limit(0) should probably be Disabled but just in case
+            SubgraphLimit::Disabled | SubgraphLimit::Limit(0) => AvailableCapacity::Unavailable,
+            SubgraphLimit::Limit(total) if current * 100 / total <= 20 => AvailableCapacity::Low,
+            _ => AvailableCapacity::High,
+        }
+    }
+
     pub fn has_capacity(&self, current: usize) -> bool {
         match self {
             SubgraphLimit::Unlimited => true,
@@ -138,6 +154,11 @@ impl FirehoseEndpoint {
 
     pub fn current_error_count(&self) -> u64 {
         self.endpoint_metrics.get_count(&self.host)
+    }
+
+    pub fn get_capacity(self: &Arc<Self>) -> AvailableCapacity {
+        self.subgraph_limit
+            .get_capacity(Arc::strong_count(self).saturating_sub(1))
     }
 
     // we need to -1 because there will always be a reference
@@ -381,9 +402,8 @@ impl FirehoseEndpoints {
         let endpoint = self
             .0
             .iter()
-            .filter(|x| x.has_subgraph_capacity())
             .sorted_by_key(|x| x.current_error_count())
-            .find(|x| x.has_subgraph_capacity())
+            .find_or_first(|x| x.get_capacity() == AvailableCapacity::High)
             .ok_or(anyhow!("unable to get a connection: {} connections in use, increase the firehose conn_pool_size or limit for the node", self.0.len()))?;
 
         // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
@@ -455,7 +475,7 @@ mod test {
 
     use crate::{endpoint::EndpointMetrics, firehose::SubgraphLimit};
 
-    use super::{FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
+    use super::{AvailableCapacity, FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
 
     #[tokio::test]
     async fn firehose_endpoint_errors() {
@@ -466,7 +486,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Unlimited,
-            Arc::new(EndpointMetrics::noop()),
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
@@ -498,7 +518,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Limit(2),
-            Arc::new(EndpointMetrics::noop()),
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
@@ -530,7 +550,7 @@ mod test {
             false,
             false,
             SubgraphLimit::Disabled,
-            Arc::new(EndpointMetrics::noop()),
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
@@ -543,5 +563,58 @@ mod test {
 
         let err = endpoints.random().unwrap_err();
         assert!(err.to_string().contains("unable to get a connection"));
+    }
+
+    #[test]
+    fn subgraph_limit_calculates_availability() {
+        #[derive(Debug)]
+        struct Case {
+            limit: SubgraphLimit,
+            current: usize,
+            capacity: AvailableCapacity,
+        }
+
+        let cases = vec![
+            Case {
+                limit: SubgraphLimit::Disabled,
+                current: 20,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(0),
+                current: 20,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(0),
+                current: 0,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 20,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 19,
+                capacity: AvailableCapacity::High,
+            },
+            Case {
+                limit: SubgraphLimit::Unlimited,
+                current: 1000,
+                capacity: AvailableCapacity::High,
+            },
+            Case {
+                limit: SubgraphLimit::Unlimited,
+                current: 0,
+                capacity: AvailableCapacity::High,
+            },
+        ];
+
+        for c in cases {
+            let res = c.limit.get_capacity(c.current);
+            assert_eq!(res, c.capacity, "{:#?}", c);
+        }
     }
 }
