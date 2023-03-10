@@ -156,15 +156,15 @@ impl From<TransactionTraceStatus> for web3::types::U64 {
     }
 }
 
-impl Into<Option<web3::types::U64>> for TransactionTraceStatus {
-    fn into(self) -> Option<web3::types::U64> {
-        match self {
-            Self::Unknown => {
+impl From<TransactionTraceStatus> for Option<web3::types::U64> {
+    fn from(value: TransactionTraceStatus) -> Self {
+        match value {
+            TransactionTraceStatus::Unknown => {
                 panic!("Got a transaction trace with status UNKNOWN, datasource is broken")
             }
-            Self::Succeeded => Some(web3::types::U64::from(1)),
-            Self::Failed => Some(web3::types::U64::from(0)),
-            Self::Reverted => Some(web3::types::U64::from(0)),
+            TransactionTraceStatus::Succeeded => Some(web3::types::U64::from(1)),
+            TransactionTraceStatus::Failed => Some(web3::types::U64::from(0)),
+            TransactionTraceStatus::Reverted => Some(web3::types::U64::from(0)),
         }
     }
 }

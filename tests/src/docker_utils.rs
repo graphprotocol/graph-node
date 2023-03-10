@@ -238,7 +238,7 @@ impl ServiceContainer {
 
             // 2. Start Exec
             let mut stream = docker.client.start_exec(&message.id, None);
-            while let Some(_) = stream.next().await { /* consume stream */ }
+            while stream.next().await.is_some() { /* consume stream */ }
 
             // 3. Inspect exec
             let inspect = docker.client.inspect_exec(&message.id).await?;

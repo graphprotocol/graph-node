@@ -138,7 +138,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             ChainClient::Rpc(adapter) => {
                 adapter
                     .cheapest()
-                    .ok_or(anyhow!("unable to get eth adapter for chan_id call"))?
+                    .ok_or_else(|| anyhow!("unable to get eth adapter for chan_id call"))?
                     .chain_id()
                     .await?
             }
@@ -659,7 +659,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         self.chain_client
             .rpc()?
             .cheapest()
-            .ok_or(anyhow!("unable to get adapter for is_on_main_chain"))?
+            .ok_or_else(|| anyhow!("unable to get adapter for is_on_main_chain"))?
             .is_on_main_chain(&self.logger, ptr.clone())
             .await
     }

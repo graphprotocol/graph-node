@@ -424,7 +424,7 @@ impl ChainSection {
     fn parse_networks(
         chains: &mut BTreeMap<String, Chain>,
         transport: Transport,
-        args: &Vec<String>,
+        args: &[String],
     ) -> Result<()> {
         for (nr, arg) in args.iter().enumerate() {
             if arg.starts_with("wss://")

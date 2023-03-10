@@ -25,7 +25,11 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
         Ok(rows
             .into_iter()
             .map(|(datname, all_txn, write_txn)| {
-                (datname.unwrap_or("none".to_string()), all_txn, write_txn)
+                (
+                    datname.unwrap_or_else(|| "none".to_string()),
+                    all_txn,
+                    write_txn,
+                )
             })
             .collect())
     }

@@ -1132,13 +1132,7 @@ impl Column {
     }
 
     pub fn is_nullable(&self) -> bool {
-        fn is_nullable(field_type: &q::Type) -> bool {
-            match field_type {
-                q::Type::NonNullType(_) => false,
-                _ => true,
-            }
-        }
-        is_nullable(&self.field_type)
+        !matches!(self.field_type, q::Type::NonNullType(_))
     }
 
     pub fn is_list(&self) -> bool {
@@ -1291,10 +1285,7 @@ impl Table {
     pub fn column(&self, name: &SqlName) -> Option<&Column> {
         self.columns
             .iter()
-            .filter(|column| match column.column_type {
-                ColumnType::TSVector(_) => false,
-                _ => true,
-            })
+            .filter(|column| !matches!(column.column_type, ColumnType::TSVector(_)))
             .find(|column| &column.name == name)
     }
 

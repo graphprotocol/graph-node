@@ -119,7 +119,7 @@ impl EthereumNetworkAdapters {
             .call_only_adapters
             .iter()
             .min_by_key(|x| Arc::strong_count(&x.adapter))
-            .ok_or(anyhow!("no available call only endpoints"))?;
+            .ok_or_else(|| anyhow!("no available call only endpoints"))?;
 
         // TODO: This will probably blow up a lot sooner than [limit] amount of
         // subgraphs, since we probably use a few instances.
@@ -136,18 +136,12 @@ impl EthereumNetworkAdapters {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct EthereumNetworks {
     pub networks: HashMap<String, EthereumNetworkAdapters>,
 }
 
 impl EthereumNetworks {
-    pub fn new() -> EthereumNetworks {
-        EthereumNetworks {
-            networks: HashMap::new(),
-        }
-    }
-
     pub fn insert(
         &mut self,
         name: String,
@@ -212,7 +206,7 @@ impl EthereumNetworks {
     ) -> Result<Arc<EthereumAdapter>, Error> {
         self.networks
             .get(&network_name)
-            .ok_or(anyhow!("network not supported: {}", &network_name))
+            .ok_or_else(|| anyhow!("network not supported: {}", &network_name))
             .and_then(|adapters| adapters.cheapest_with(requirements))
     }
 }
@@ -321,7 +315,7 @@ mod tests {
         );
 
         let mut adapters = {
-            let mut ethereum_networks = EthereumNetworks::new();
+            let mut ethereum_networks = EthereumNetworks::default();
             ethereum_networks.insert(
                 chain.clone(),
                 NodeCapabilities {
@@ -424,7 +418,7 @@ mod tests {
         );
 
         let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new();
+            let mut ethereum_networks = EthereumNetworks::default();
             ethereum_networks.insert(
                 chain.clone(),
                 NodeCapabilities {
@@ -492,7 +486,7 @@ mod tests {
         );
 
         let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new();
+            let mut ethereum_networks = EthereumNetworks::default();
             ethereum_networks.insert(
                 chain.clone(),
                 NodeCapabilities {
@@ -545,7 +539,7 @@ mod tests {
         );
 
         let adapters = {
-            let mut ethereum_networks = EthereumNetworks::new();
+            let mut ethereum_networks = EthereumNetworks::default();
             ethereum_networks.insert(
                 chain.clone(),
                 NodeCapabilities {

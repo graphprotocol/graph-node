@@ -894,10 +894,12 @@ impl Context {
             .networks
             .get(chain_name)
             .and_then(|adapters| adapters.cheapest())
-            .ok_or(anyhow::anyhow!(
-                "Failed to obtain an Ethereum adapter for chain '{}'",
-                chain_name
-            ))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to obtain an Ethereum adapter for chain '{}'",
+                    chain_name
+                )
+            })?;
         Ok((chain_store, ethereum_adapter))
     }
 }

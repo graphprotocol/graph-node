@@ -62,10 +62,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_successful_connection(&self, time: &mut Instant, provider: &str) {
         self.restarts
-            .with_label_values(&[&self.deployment, &provider, "true"])
+            .with_label_values(&[&self.deployment, provider, "true"])
             .inc();
         self.connect_duration
-            .with_label_values(&[&self.deployment, &provider])
+            .with_label_values(&[&self.deployment, provider])
             .set(time.elapsed().as_secs_f64());
 
         // Reset last connection timestamp
@@ -74,10 +74,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_failed_connection(&self, time: &mut Instant, provider: &str) {
         self.restarts
-            .with_label_values(&[&self.deployment, &provider, "false"])
+            .with_label_values(&[&self.deployment, provider, "false"])
             .inc();
         self.connect_duration
-            .with_label_values(&[&self.deployment, &provider])
+            .with_label_values(&[&self.deployment, provider])
             .set(time.elapsed().as_secs_f64());
 
         // Reset last connection timestamp
@@ -86,10 +86,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_response(&self, kind: &str, time: &mut Instant, provider: &str) {
         self.time_between_responses
-            .with_label_values(&[&self.deployment, &provider])
+            .with_label_values(&[&self.deployment, provider])
             .observe(time.elapsed().as_secs_f64());
         self.responses
-            .with_label_values(&[&self.deployment, &provider, kind])
+            .with_label_values(&[&self.deployment, provider, kind])
             .inc();
 
         // Reset last response timestamp
@@ -464,48 +464,64 @@ mod tests {
 
         // Nothing
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &no_current_block, &no_cursor, 10),
-            false,
-        );
+        assert!(!must_check_subgraph_continuity(
+            &logger,
+            &no_current_block,
+            &no_cursor,
+            10
+        ));
 
         // No cursor, subgraph current block ptr <, ==, > than manifest start block num
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(9), &no_cursor, 10),
-            false,
-        );
+        assert!(!must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(9),
+            &no_cursor,
+            10
+        ));
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(10), &no_cursor, 10),
-            true,
-        );
+        assert!(must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(10),
+            &no_cursor,
+            10
+        ));
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(11), &no_cursor, 10),
-            true,
-        );
+        assert!(must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(11),
+            &no_cursor,
+            10
+        ));
 
         // Some cursor, subgraph current block ptr <, ==, > than manifest start block num
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &no_current_block, &some_cursor, 10),
-            false,
-        );
+        assert!(!must_check_subgraph_continuity(
+            &logger,
+            &no_current_block,
+            &some_cursor,
+            10
+        ),);
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(9), &some_cursor, 10),
-            false,
-        );
+        assert!(must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(9),
+            &some_cursor,
+            10
+        ));
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(10), &some_cursor, 10),
-            false,
-        );
+        assert!(!must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(10),
+            &some_cursor,
+            10
+        ));
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(11), &some_cursor, 10),
-            false,
-        );
+        assert!(!must_check_subgraph_continuity(
+            &logger,
+            &some_current_block(11),
+            &some_cursor,
+            10
+        ));
     }
 }

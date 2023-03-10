@@ -3357,11 +3357,8 @@ impl<'a> SortKey<'a> {
                 ));
             }
 
-            match column.column_type {
-                ColumnType::TSVector(_) => {
-                    return Err(constraint_violation!("TSVector is not supported"));
-                }
-                _ => {}
+            if let ColumnType::TSVector(_) = column.column_type {
+                return Err(constraint_violation!("TSVector is not supported"));
             }
         }
 
@@ -3493,8 +3490,8 @@ impl<'a> SortKey<'a> {
             Ok(())
         }
 
-        match self {
-            SortKey::ChildKey(nested) => match nested {
+        if let SortKey::ChildKey(nested) = self {
+            match nested {
                 ChildKey::Single(child) => {
                     add(
                         block,
@@ -3539,9 +3536,9 @@ impl<'a> SortKey<'a> {
                         out,
                     )?;
                 }
-            },
-            _ => {}
+            }
         }
+
         Ok(())
     }
 }

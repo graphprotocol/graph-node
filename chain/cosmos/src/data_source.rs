@@ -180,7 +180,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             let origins = event_types
                 .entry(&event_handler.event)
                 // 3 is the maximum number of valid handlers for an event type (1 for each origin)
-                .or_insert(HashSet::with_capacity(3));
+                .or_insert_with(|| HashSet::with_capacity(3));
 
             // insert returns false if value was already in the set
             if !origins.insert(event_handler.origin) {

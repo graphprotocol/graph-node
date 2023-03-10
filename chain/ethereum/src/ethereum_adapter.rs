@@ -565,7 +565,7 @@ impl EthereumAdapter {
                                             .and_then(|payload| {
                                                 as_solidity_revert_with_reason(&payload)
                                             })
-                                            .unwrap_or("no reason".to_owned())
+                                            .unwrap_or_else(|| "no reason".to_owned())
                                     };
                                     Err(EthereumContractCallError::Revert(reason))
                                 }
@@ -790,7 +790,7 @@ impl EthereumAdapter {
         // all the traces for the block, we need to ensure that the
         // block hash for the traces is equal to the desired block hash.
         // Assume all traces are for the same block.
-        if traces.iter().nth(0).unwrap().block_hash != block_hash {
+        if traces[0].block_hash != block_hash {
             return Err(anyhow!(
                 "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
@@ -1661,9 +1661,7 @@ async fn filter_call_triggers_from_unsuccessful_transactions(
             _ => None,
         })
         .collect::<Option<BTreeSet<H256>>>()
-        .ok_or(anyhow!(
-            "failed to obtain transaction hash from call triggers"
-        ))?;
+        .ok_or_else(|| anyhow!("failed to obtain transaction hash from call triggers"))?;
 
     // Return early if there are no transaction hashes
     if transaction_hashes.is_empty() {

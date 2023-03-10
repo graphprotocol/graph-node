@@ -1524,7 +1524,7 @@ impl ChainStoreTrait for ChainStore {
                         Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
                     };
 
-                    match chain_store
+                    if let Some(missing) = chain_store
                         .storage
                         .missing_parent(
                             conn,
@@ -1535,10 +1535,9 @@ impl ChainStoreTrait for ChainStore {
                         )
                         .map_err(CancelableError::from)?
                     {
-                        Some(missing) => {
-                            return Ok((Some(missing), None));
-                        }
-                        None => { /* we have a complete chain, no missing parents */ }
+                        return Ok((Some(missing), None));
+                    } else {
+                        // we have a complete chain, no missing parents
                     }
 
                     let hash = ptr.hash_hex();

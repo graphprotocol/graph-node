@@ -35,21 +35,17 @@ pub enum ProviderNetworkStatus {
 /// continue regardless.
 const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
 
-pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
+pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &[String]) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument
-    let ipfs_addresses: Vec<_> = ipfs_addresses
-        .iter()
-        .map(|uri| {
-            if uri.starts_with("http://") || uri.starts_with("https://") {
-                String::from(uri)
-            } else {
-                format!("http://{}", uri)
-            }
-        })
-        .collect();
+    let ipfs_addresses = ipfs_addresses.iter().map(|uri| {
+        if uri.starts_with("http://") || uri.starts_with("https://") {
+            String::from(uri)
+        } else {
+            format!("http://{}", uri)
+        }
+    });
 
     ipfs_addresses
-        .into_iter()
         .map(|ipfs_address| {
             info!(
                 logger,
@@ -400,7 +396,7 @@ pub async fn create_all_ethereum_networks(
             a.extend(b);
             a
         })
-        .unwrap_or_else(EthereumNetworks::new))
+        .unwrap_or_else(EthereumNetworks::default))
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -410,7 +406,7 @@ pub async fn create_ethereum_networks_for_chain(
     config: &Config,
     network_name: &str,
 ) -> anyhow::Result<EthereumNetworks> {
-    let mut parsed_networks = EthereumNetworks::new();
+    let mut parsed_networks = EthereumNetworks::default();
     let chain = config
         .chains
         .chains

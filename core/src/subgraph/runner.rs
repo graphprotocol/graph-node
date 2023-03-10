@@ -293,17 +293,19 @@ where
 
             let triggers = block_with_triggers.trigger_data;
 
-            if triggers.len() == 1 {
-                info!(
+            match triggers.len() {
+                1 => info!(
                     &logger,
                     "1 trigger found in this block for the new data sources"
-                );
-            } else if triggers.len() > 1 {
-                info!(
-                    &logger,
-                    "{} triggers found in this block for the new data sources",
-                    triggers.len()
-                );
+                ),
+                n if n > 1 => {
+                    info!(
+                        &logger,
+                        "{} triggers found in this block for the new data sources",
+                        triggers.len()
+                    );
+                }
+                _ => {}
             }
 
             // Add entity operations for the new data sources to the block state
@@ -566,7 +568,7 @@ where
                         "name" => &data_source.name(),
                         "address" => &data_source.address()
                         .map(hex::encode)
-                        .unwrap_or("none".to_string()),
+                        .unwrap_or_else(|| "none".to_string()),
                     )
                 }
             }
@@ -595,7 +597,7 @@ where
                 self.logger,
                 "Persisting data_source";
                 "name" => &data_source.name(),
-                "address" => &data_source.address().map(hex::encode).unwrap_or("none".to_string()),
+                "address" => &data_source.address().map(hex::encode).unwrap_or_else(|| "none".to_string()),
             );
             block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }

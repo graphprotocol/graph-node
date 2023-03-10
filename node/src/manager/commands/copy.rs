@@ -242,7 +242,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         let start = *start;
         let end = *end;
 
-        let end = end.unwrap_or(UtcDateTime::from(SystemTime::now()));
+        let end = end.unwrap_or_else(|| UtcDateTime::from(SystemTime::now()));
         let duration = end - start;
 
         human_duration(duration)

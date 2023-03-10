@@ -1013,7 +1013,7 @@ impl PoolInner {
 
         // Locale check
         if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
-            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
+            if self.shard == *PRIMARY_SHARD && primary::is_empty(&conn)? {
                 die(
                     &pool.logger,
                     "Database does not use C locale. \
@@ -1074,12 +1074,12 @@ impl PoolInner {
     // to remap anything that we are importing via fdw to make sure we are
     // using this updated schema
     pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
-        if &server.shard == &*PRIMARY_SHARD {
+        if server.shard == *PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let conn = self.get()?;
             conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))?;
         }
-        if &server.shard != &self.shard {
+        if server.shard != self.shard {
             info!(
                 &self.logger,
                 "Mapping metadata from {}",

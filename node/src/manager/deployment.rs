@@ -205,9 +205,7 @@ impl Deployment {
         let mut list = List::new(rows);
 
         for deployment in deployments {
-            let status = statuses
-                .iter()
-                .find(|status| &status.id.0 == &deployment.id);
+            let status = statuses.iter().find(|status| status.id.0 == deployment.id);
 
             let mut rows = vec![
                 deployment.name,
@@ -217,7 +215,7 @@ impl Deployment {
                 deployment.shard,
                 deployment.active.to_string(),
                 deployment.chain,
-                deployment.node_id.unwrap_or("---".to_string()),
+                deployment.node_id.unwrap_or_else(|| "---".to_string()),
             ];
             if let Some(status) = status {
                 let chain = &status.chains[0];
@@ -228,12 +226,12 @@ impl Deployment {
                         .latest_block
                         .as_ref()
                         .map(|b| b.number().to_string())
-                        .unwrap_or("-".to_string()),
+                        .unwrap_or_else(|| "-".to_string()),
                     chain
                         .chain_head_block
                         .as_ref()
                         .map(|b| b.number().to_string())
-                        .unwrap_or("-".to_string()),
+                        .unwrap_or_else(|| "-".to_string()),
                 ])
             }
             list.append(rows);

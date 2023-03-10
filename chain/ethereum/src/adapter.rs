@@ -586,9 +586,10 @@ pub(crate) struct EthereumBlockFilter {
     pub trigger_every_block: bool,
 }
 
-impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
-    fn into(self) -> Vec<CallToFilter> {
-        self.contract_addresses
+impl From<EthereumBlockFilter> for Vec<CallToFilter> {
+    fn from(value: EthereumBlockFilter) -> Self {
+        value
+            .contract_addresses
             .into_iter()
             .map(|(_, addr)| addr)
             .sorted()
@@ -622,10 +623,7 @@ impl EthereumBlockFilter {
                     .block_handlers
                     .clone()
                     .into_iter()
-                    .any(|block_handler| match block_handler.filter {
-                        Some(ref filter) if *filter == BlockHandlerFilter::Call => true,
-                        _ => false,
-                    });
+                    .any(|block_handler| matches!(block_handler.filter, Some(ref filter) if *filter == BlockHandlerFilter::Call));
 
                 let has_block_handler_without_filter = data_source
                     .mapping

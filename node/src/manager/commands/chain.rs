@@ -40,7 +40,7 @@ pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(),
                 .chain_head_ptr()
                 .await?
                 .map(|ptr| ptr.number.to_string())
-                .unwrap_or("none".to_string()),
+                .unwrap_or_else(|| "none".to_string()),
         };
         println!(
             "{:<20} | {:<10} | {:<10} | {:>7} | {:>10}",

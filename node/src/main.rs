@@ -230,7 +230,7 @@ async fn main() {
     // Ethereum clients; query nodes ignore all ethereum clients and never
     // connect to them directly
     let eth_networks = if query_only {
-        EthereumNetworks::new()
+        EthereumNetworks::default()
     } else {
         create_all_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
             .await

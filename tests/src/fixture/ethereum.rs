@@ -26,10 +26,12 @@ pub async fn chain(
     stores: &Stores,
     triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
 ) -> TestChain<Chain> {
-    let triggers_adapter = triggers_adapter.unwrap_or(Arc::new(NoopAdapterSelector {
-        triggers_in_block_sleep: Duration::ZERO,
-        x: PhantomData,
-    }));
+    let triggers_adapter = triggers_adapter.unwrap_or_else(|| {
+        Arc::new(NoopAdapterSelector {
+            triggers_in_block_sleep: Duration::ZERO,
+            x: PhantomData,
+        })
+    });
     let logger = graph::log::logger(true);
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());

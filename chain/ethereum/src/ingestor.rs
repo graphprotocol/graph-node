@@ -205,15 +205,12 @@ impl PollingBlockIngestor {
 impl BlockIngestor for PollingBlockIngestor {
     async fn run(self: Box<Self>) {
         loop {
-            match self.do_poll().await {
+            if let Err(err) = self.do_poll().await {
                 // Some polls will fail due to transient issues
-                Err(err) => {
-                    error!(
-                        self.logger,
-                        "Trying again after block polling failed: {}", err
-                    );
-                }
-                Ok(()) => (),
+                error!(
+                    self.logger,
+                    "Trying again after block polling failed: {}", err
+                );
             }
 
             if ENV_VARS.cleanup_blocks {

@@ -38,7 +38,7 @@ impl Display for Method {
 
 impl Method {
     fn parse(method: String) -> Self {
-        method.parse().unwrap_or_else(|()| Method::Unknown(method))
+        method.parse().unwrap_or(Method::Unknown(method))
     }
 }
 
