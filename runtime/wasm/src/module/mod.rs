@@ -9,6 +9,7 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Error;
+use graph::slog::SendSyncRefUnwindSafeKV;
 use never::Never;
 use semver::Version;
 use wasmtime::{Memory, Trap};
@@ -171,8 +172,9 @@ impl<C: Blockchain> WasmInstance<C> {
     {
         let handler_name = trigger.handler_name().to_owned();
         let gas = self.gas.clone();
+        let logging_extras = trigger.logging_extras().cheap_clone();
         let asc_trigger = trigger.to_asc_ptr(self.instance_ctx_mut().deref_mut(), &gas)?;
-        self.invoke_handler(&handler_name, asc_trigger)
+        self.invoke_handler(&handler_name, asc_trigger, logging_extras)
     }
 
     pub fn take_ctx(&mut self) -> WasmInstanceContext<C> {
@@ -201,6 +203,7 @@ impl<C: Blockchain> WasmInstance<C> {
         &mut self,
         handler: &str,
         arg: AscPtr<T>,
+        logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
     ) -> Result<(BlockState<C>, Gas), MappingError> {
         let func = self
             .instance
@@ -260,6 +263,7 @@ impl<C: Blockchain> WasmInstance<C> {
                 "Handler skipped due to execution failure";
                 "handler" => handler,
                 "error" => &message,
+                logging_extras
             );
             let subgraph_error = SubgraphError {
                 subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
