@@ -152,6 +152,22 @@ async fn setup(
 
 fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
     const SCHEMA: &str = "
+
+    type _Schema_
+        @fulltext(
+            name: \"bandReviewSearch\"
+            language: en
+            algorithm: proximityRank
+            include: [
+                {
+                    entity: \"BandReview\"
+                    fields: [
+                        { name: \"body\" }
+                    ]
+                }
+            ]
+        )
+
     type Musician @entity {
         id: ID!
         name: String!
@@ -687,6 +703,30 @@ fn can_query_many_to_many_relationship() {
     })
 }
 
+#[test]
+fn can_query_with_fulltext_search() {
+    const QUERY: &str = "
+    query {
+        bandReviewSearch(text: \"musicians\") {
+            id
+            body
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            bandReviewSearch: vec![
+                object! { id: "r1", body: "Bad musicians", author: object! { name: "Baden" } },
+                object! { id: "r5", body: "Very Bad musicians", author: object! { name: "Anonymous 3" } },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
 #[test]
 fn can_query_with_sorting_by_child_entity() {
     const QUERY: &str = "
