@@ -16,4 +16,3 @@ rand = "0.8.5"
 
 [dev-dependencies]
 test-store = { path = "../../store/test-store" }
-graph-mock = { path = "../../mock" }

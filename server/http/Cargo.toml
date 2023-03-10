@@ -13,4 +13,4 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 
 [dev-dependencies]
-graph-mock = { path = "../../mock" }
+graph-core = { path = "../../core" }

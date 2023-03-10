@@ -26,17 +26,16 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    LoggerFactory, MetricsRegistry, NodeId, QueryError, SubgraphAssignmentProvider,
-    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
-    SubgraphVersionSwitchingMode, TriggerProcessor,
+    LoggerFactory, MetricsRegistry as MetricsRegistryTrait, NodeId, QueryError,
+    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
+    SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::slog::crit;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
-    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
-use graph_mock::MockMetricsRegistry;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -289,7 +288,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
     };
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
+    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
@@ -331,7 +330,7 @@ pub async fn setup<C: Blockchain>(
     });
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistry> = Arc::new(MockMetricsRegistry::new());
+    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 

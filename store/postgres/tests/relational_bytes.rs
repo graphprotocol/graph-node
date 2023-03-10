@@ -5,7 +5,7 @@ use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
 use graph::prelude::EntityQuery;
-use graph_mock::MockMetricsRegistry;
+use graph_core::MetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
@@ -78,7 +78,7 @@ lazy_static! {
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
         "test",
-        Arc::new(MockMetricsRegistry::new()),
+        Arc::new(MetricsRegistry::mock()),
     );
 }
 

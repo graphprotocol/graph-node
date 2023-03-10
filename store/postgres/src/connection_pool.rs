@@ -360,12 +360,11 @@ impl ConnectionPool {
     /// `StoreError::DatabaseUnavailable`
     fn get_ready(&self) -> Result<Arc<PoolInner>, StoreError> {
         let mut guard = self.inner.lock(&self.logger);
-        if !self.state_tracker.is_available() && !ENV_VARS.store.connection_try_always {
+        if !self.state_tracker.is_available() {
             // We know that trying to use this pool is pointless since the
             // database is not available, and will only lead to other
             // operations having to wait until the connection timeout is
-            // reached. `TRY_ALWAYS` allows users to force us to try
-            // regardless.
+            // reached.
             return Err(StoreError::DatabaseUnavailable);
         }
 
