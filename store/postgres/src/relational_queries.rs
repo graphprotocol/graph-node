@@ -1405,7 +1405,9 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
             NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
             NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
 
-            Equal(attr, value) | Fulltext(attr, value) => self.equals(attr, value, c::Equal, out)?,
+            Equal(attr, value) | Fulltext(attr, value) => {
+                self.equals(attr, value, c::Equal, out)?
+            }
             Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
 
             GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,
@@ -2785,6 +2787,20 @@ impl<'a> SortKey<'a> {
         block: BlockNumber,
         layout: &'a Layout,
     ) -> Result<Self, QueryExecutionError> {
+        fn sort_key_from_value<'a>(
+            column: &'a Column,
+            value: &'a Value,
+            direction: &'static str,
+        ) -> Result<SortKey<'a>, QueryExecutionError> {
+            let sort_value = value.as_str();
+
+            Ok(SortKey::Key {
+                column,
+                value: sort_value,
+                direction,
+            })
+        }
+
         fn with_key<'a>(
             table: &'a Table,
             attribute: String,
@@ -2795,15 +2811,15 @@ impl<'a> SortKey<'a> {
             let column = table.column_for_field(&attribute)?;
             if column.is_fulltext() {
                 match filter {
-                    Some(EntityFilter::Equal(_, value)) => {
-                        let sort_value = value.as_str();
-
-                        Ok(SortKey::Key {
-                            column,
-                            value: sort_value,
-                            direction,
-                        })
+                    Some(EntityFilter::Fulltext(_, value)) => {
+                        sort_key_from_value(column, value, direction)
                     }
+                    Some(EntityFilter::And(vec)) => match vec.first() {
+                        Some(EntityFilter::Fulltext(_, value)) => {
+                            sort_key_from_value(column, value, direction)
+                        }
+                        _ => unreachable!(),
+                    },
                     _ => unreachable!(),
                 }
             } else if column.is_primary_key() {
