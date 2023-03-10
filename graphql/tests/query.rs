@@ -727,6 +727,31 @@ fn can_query_with_fulltext_search() {
         assert_eq!(data, exp);
     })
 }
+
+#[test]
+fn can_query_with_fulltext_search_filter() {
+    const QUERY: &str = "
+    query {
+        bandReviewSearch(text: \"musicians\", where: { author_: { name: \"Anonymous 3\" } }) {
+            id
+            body
+            author {
+                name
+            }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            bandReviewSearch: vec![
+                object! { id: "r5", body: "Very Bad musicians", author: object! { name: "Anonymous 3" } },
+            ]
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
+}
+
 #[test]
 fn can_query_with_sorting_by_child_entity() {
     const QUERY: &str = "
