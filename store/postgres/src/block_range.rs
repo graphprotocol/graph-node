@@ -2,7 +2,6 @@ use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, QueryFragment};
 use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
-use diesel::serialize::ToSql;
 use diesel::sql_types::{Integer, Range};
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
@@ -40,7 +39,7 @@ pub(crate) const BLOCK_COLUMN: &str = "block$";
 
 /// The range of blocks for which an entity is valid. We need this struct
 /// to bind ranges into Diesel queries.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
 impl BlockRange {
@@ -66,16 +65,6 @@ impl From<(Bound<BlockNumber>, Bound<BlockNumber>)> for BlockRange {
 impl From<RangeFrom<BlockNumber>> for BlockRange {
     fn from(range: RangeFrom<BlockNumber>) -> BlockRange {
         BlockRange(range.start_bound().cloned(), range.end_bound().cloned())
-    }
-}
-
-impl ToSql<Range<Integer>, Pg> for BlockRange {
-    fn to_sql<'b>(
-        &'b self,
-        out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-    ) -> diesel::serialize::Result {
-        let pair = (self.0, self.1);
-        ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
     }
 }
 
@@ -132,6 +121,8 @@ pub struct BlockRangeColumn<'a> {
     table: &'a Table,
     table_prefix: &'a str,
     block: BlockNumber,
+    // The range (block, ..) in a form that we can serialize with Diesel
+    block_range: (Bound<BlockNumber>, Bound<BlockNumber>),
 }
 
 impl<'a> BlockRangeColumn<'a> {
@@ -140,6 +131,7 @@ impl<'a> BlockRangeColumn<'a> {
             table,
             table_prefix,
             block,
+            block_range: (Bound::Included(block), Bound::Unbounded),
         }
     }
 }
@@ -151,8 +143,9 @@ impl<'a> BlockRangeColumn<'a> {
 
         let Self {
             table,
-            table_prefix,
+            table_prefix: _,
             block,
+            block_range: _,
         } = self;
 
         if self.is_immutable() {
@@ -217,8 +210,7 @@ impl<'a> BlockRangeColumn<'a> {
         if self.is_immutable() {
             out.push_bind_param::<Integer, _>(&self.block)
         } else {
-            let block_range: BlockRange = (self.block..).into();
-            out.push_bind_param::<Range<Integer>, _>(&block_range)
+            out.push_bind_param::<Range<Integer>, _>(&self.block_range)
         }
     }
 
