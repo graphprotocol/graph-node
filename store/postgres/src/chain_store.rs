@@ -304,7 +304,11 @@ mod data {
             &'b self,
             out: &mut Output<'b, '_, diesel::pg::Pg>,
         ) -> diesel::serialize::Result {
-            <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
+            let name = match self {
+                Self::Shared => Self::PUBLIC,
+                Self::Private(Schema { name, .. }) => name,
+            };
+            <str as ToSql<Text, Pg>>::to_sql(name, out)
         }
     }
 
@@ -1474,7 +1478,7 @@ impl ChainStoreTrait for ChainStore {
                     let number = ptr.number as i64;
 
                     conn.transaction(
-                        |_| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                        |conn| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
                             update(n::table.filter(n::name.eq(&chain_store.chain)))
                                 .set((
                                     n::head_block_hash.eq(&hash),
