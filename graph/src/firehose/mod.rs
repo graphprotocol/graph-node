@@ -1,6 +1,7 @@
 mod codec;
 mod endpoints;
 mod helpers;
+mod interceptors;
 
 pub use codec::*;
 pub use endpoints::*;

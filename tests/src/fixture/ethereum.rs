@@ -9,6 +9,7 @@ use super::{
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
+use graph::endpoint::EndpointMetrics;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
@@ -37,7 +38,7 @@ pub async fn chain(
 
     let chain_store = stores.chain_store.cheap_clone();
 
-    // This is needed bacause the stream builder only works for firehose and this will only be called if there
+    // This is needed because the stream builder only works for firehose and this will only be called if there
     // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
     let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
         "",
@@ -46,6 +47,7 @@ pub async fn chain(
         true,
         false,
         SubgraphLimit::Unlimited,
+        Arc::new(EndpointMetrics::mock()),
     ))]
     .into();
 

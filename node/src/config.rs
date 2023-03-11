@@ -421,6 +421,19 @@ impl ChainSection {
         Ok(Self { ingestor, chains })
     }
 
+    pub fn provider_urls(&self) -> Vec<String> {
+        self.chains
+            .values()
+            .flat_map(|chain| {
+                chain
+                    .providers
+                    .iter()
+                    .map(|p| p.details.url())
+                    .collect::<Vec<String>>()
+            })
+            .collect()
+    }
+
     fn parse_networks(
         chains: &mut BTreeMap<String, Chain>,
         transport: Transport,
@@ -548,6 +561,21 @@ pub enum ProviderDetails {
     Web3(Web3Provider),
     Substreams(FirehoseProvider),
     Web3Call(Web3Provider),
+}
+
+impl ProviderDetails {
+    pub fn url(&self) -> String {
+        let url = match self {
+            ProviderDetails::Substreams(firehose) | ProviderDetails::Firehose(firehose) => {
+                firehose.url.clone()
+            }
+            ProviderDetails::Web3(web3) | ProviderDetails::Web3Call(web3) => web3.url.to_string(),
+        };
+
+        // parsing and printing here normalizes the urls so we don't have
+        // mismatches later on.
+        url.parse::<Url>().expect("failed to parse url").to_string()
+    }
 }
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";

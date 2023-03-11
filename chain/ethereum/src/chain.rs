@@ -399,7 +399,7 @@ impl Blockchain for Chain {
     ) -> Result<BlockPtr, IngestorError> {
         match self.client.as_ref() {
             ChainClient::Firehose(endpoints) => endpoints
-                .random()?
+                .endpoint()?
                 .block_ptr_for_number::<HeaderOnlyBlock>(logger, number)
                 .await
                 .map_err(IngestorError::Unknown),

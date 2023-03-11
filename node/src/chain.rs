@@ -5,6 +5,7 @@ use futures::TryFutureExt;
 use graph::anyhow::{bail, Error};
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
+use graph::endpoint::EndpointMetrics;
 use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::{anyhow, tokio};
@@ -105,6 +106,7 @@ pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec
 pub fn create_substreams_networks(
     logger: Logger,
     config: &Config,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> BTreeMap<BlockchainKind, FirehoseNetworks> {
     debug!(
         logger,
@@ -138,6 +140,7 @@ pub fn create_substreams_networks(
                             firehose.filters_enabled(),
                             firehose.compression_enabled(),
                             SubgraphLimit::Unlimited,
+                            endpoint_metrics.clone(),
                         )),
                     );
                 }
@@ -151,6 +154,7 @@ pub fn create_substreams_networks(
 pub fn create_firehose_networks(
     logger: Logger,
     config: &Config,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> BTreeMap<BlockchainKind, FirehoseNetworks> {
     debug!(
         logger,
@@ -190,6 +194,7 @@ pub fn create_firehose_networks(
                             firehose.filters_enabled(),
                             firehose.compression_enabled(),
                             firehose.limit_for(&config.node),
+                            endpoint_metrics.cheap_clone(),
                         )),
                     );
                 }

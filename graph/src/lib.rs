@@ -28,6 +28,8 @@ pub mod firehose;
 
 pub mod substreams;
 
+pub mod endpoint;
+
 /// Helpers for parsing environment variables.
 pub mod env;
 

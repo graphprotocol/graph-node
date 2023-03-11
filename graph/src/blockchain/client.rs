@@ -25,7 +25,7 @@ impl<C: Blockchain> ChainClient<C> {
         // adapter limits in the configuration can effectively disable firehose
         // by setting a limit to 0.
         // In this case we should fallback to an rpc client.
-        let firehose_available = firehose_endpoints.random().is_ok();
+        let firehose_available = firehose_endpoints.endpoint().is_ok();
 
         match firehose_available {
             true => Self::Firehose(firehose_endpoints),
@@ -42,7 +42,7 @@ impl<C: Blockchain> ChainClient<C> {
 
     pub fn firehose_endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
         match self {
-            ChainClient::Firehose(endpoints) => endpoints.random(),
+            ChainClient::Firehose(endpoints) => endpoints.endpoint(),
             _ => Err(anyhow!("firehose endpoint requested on rpc chain client")),
         }
     }

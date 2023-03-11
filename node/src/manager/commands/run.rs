@@ -17,6 +17,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockchainKind, BlockchainMap};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore as _, DeploymentLocator};
+use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{
@@ -71,6 +72,11 @@ pub async fn run(
         env_vars.mappings.ipfs_request_limit,
     );
 
+    let endpoint_metrics = Arc::new(EndpointMetrics::new(
+        logger.clone(),
+        &config.chains.provider_urls(),
+    ));
+
     // Convert the clients into a link resolver. Since we want to get past
     // possible temporary DNS failures, make the resolver retry
     let link_resolver = Arc::new(LinkResolver::new(ipfs_clients, env_vars.cheap_clone()));
@@ -80,7 +86,8 @@ pub async fn run(
         create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, &config, &network_name)
             .await
             .expect("Failed to parse Ethereum networks");
-    let firehose_networks_by_kind = create_firehose_networks(logger.clone(), &config);
+    let firehose_networks_by_kind =
+        create_firehose_networks(logger.clone(), &config, endpoint_metrics);
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);
     let firehose_endpoints = firehose_networks
         .and_then(|v| v.networks.get(&network_name))

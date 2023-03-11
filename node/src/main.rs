@@ -9,6 +9,7 @@ use graph::blockchain::{
 };
 use graph::components::store::BlockStore;
 use graph::data::graphql::effort::LoadManager;
+use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};
 use graph::log::logger;
@@ -227,6 +228,11 @@ async fn main() {
     let mut metrics_server =
         PrometheusMetricsServer::new(&logger_factory, prometheus_registry.clone());
 
+    let endpoint_metrics = Arc::new(EndpointMetrics::new(
+        logger.clone(),
+        &config.chains.provider_urls(),
+    ));
+
     // Ethereum clients; query nodes ignore all ethereum clients and never
     // connect to them directly
     let eth_networks = if query_only {
@@ -240,13 +246,13 @@ async fn main() {
     let mut firehose_networks_by_kind = if query_only {
         BTreeMap::new()
     } else {
-        create_firehose_networks(logger.clone(), &config)
+        create_firehose_networks(logger.clone(), &config, endpoint_metrics.cheap_clone())
     };
 
     let substreams_networks_by_kind = if query_only {
         BTreeMap::new()
     } else {
-        create_substreams_networks(logger.clone(), &config)
+        create_substreams_networks(logger.clone(), &config, endpoint_metrics.clone())
     };
 
     let graphql_metrics_registry = metrics_registry.clone();

@@ -4,38 +4,54 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
+    endpoint::{EndpointMetrics, Host},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
 };
 
-use anyhow::bail;
+use crate::firehose::fetch_client::FetchClient;
+use crate::firehose::interceptors::AuthInterceptor;
 use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
+use itertools::Itertools;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
+use tonic::codegen::InterceptedService;
 use tonic::{
     codegen::CompressionEncoding,
-    metadata::MetadataValue,
+    metadata::{Ascii, MetadataValue},
     transport::{Channel, ClientTlsConfig},
-    Request,
 };
 
-use super::codec as firehose;
+use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
 
 /// This is constant because we found this magic number of connections after
 /// which the grpc connections start to hang.
 /// For more details see: https://github.com/graphprotocol/graph-node/issues/3879
 pub const SUBGRAPHS_PER_CONN: usize = 100;
 
-#[derive(Clone, Debug)]
+const LOW_VALUE_THRESHOLD: usize = 10;
+const LOW_VALUE_USED_PERCENTAGE: usize = 50;
+const HIGH_VALUE_USED_PERCENTAGE: usize = 80;
+
+#[derive(Debug)]
 pub struct FirehoseEndpoint {
     pub provider: String,
-    pub token: Option<String>,
+    pub host: Host,
+    pub auth: AuthInterceptor,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
     pub subgraph_limit: SubgraphLimit,
+    endpoint_metrics: Arc<EndpointMetrics>,
     channel: Channel,
+}
+
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
+pub enum AvailableCapacity {
+    Unavailable,
+    Low,
+    High,
 }
 
 // TODO: Find a new home for this type.
@@ -47,6 +63,36 @@ pub enum SubgraphLimit {
 }
 
 impl SubgraphLimit {
+    pub fn get_capacity(&self, current: usize) -> AvailableCapacity {
+        match self {
+            // Limit(0) should probably be Disabled but just in case
+            SubgraphLimit::Disabled | SubgraphLimit::Limit(0) => AvailableCapacity::Unavailable,
+            SubgraphLimit::Limit(total) => {
+                let total = *total;
+                if current >= total {
+                    return AvailableCapacity::Unavailable;
+                }
+
+                let used_percent = current * 100 / total;
+
+                // If total is low it can vary very quickly so we can consider 50% as the low threshold
+                // to make selection more reliable
+                let threshold_percent = if total <= LOW_VALUE_THRESHOLD {
+                    LOW_VALUE_USED_PERCENTAGE
+                } else {
+                    HIGH_VALUE_USED_PERCENTAGE
+                };
+
+                if used_percent < threshold_percent {
+                    return AvailableCapacity::High;
+                }
+
+                AvailableCapacity::Low
+            }
+            _ => AvailableCapacity::High,
+        }
+    }
+
     pub fn has_capacity(&self, current: usize) -> bool {
         match self {
             SubgraphLimit::Unlimited => true,
@@ -70,11 +116,13 @@ impl FirehoseEndpoint {
         filters_enabled: bool,
         compression_enabled: bool,
         subgraph_limit: SubgraphLimit,
+        endpoint_metrics: Arc<EndpointMetrics>,
     ) -> Self {
         let uri = url
             .as_ref()
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
+        let host = Host::from(uri.to_string());
 
         let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
@@ -83,6 +131,13 @@ impl FirehoseEndpoint {
                 .expect("TLS config on this host is invalid"),
             _ => panic!("invalid uri scheme for firehose endpoint"),
         };
+
+        // These tokens come from the config so they have to be ascii.
+        let token: Option<MetadataValue<Ascii>> = token
+            .map_or(Ok(None), |token| {
+                token.parse::<MetadataValue<Ascii>>().map(Some)
+            })
+            .expect("Firehose token is invalid");
 
         // Note on the connection window size: We run multiple block streams on a same connection,
         // and a problematic subgraph with a stalled block stream might consume the entire window
@@ -113,18 +168,90 @@ impl FirehoseEndpoint {
         FirehoseEndpoint {
             provider: provider.as_ref().to_string(),
             channel: endpoint.connect_lazy(),
-            token,
+            auth: AuthInterceptor { token },
             filters_enabled,
             compression_enabled,
             subgraph_limit,
+            endpoint_metrics,
+            host,
         }
+    }
+
+    pub fn current_error_count(&self) -> u64 {
+        self.endpoint_metrics.get_count(&self.host)
     }
 
     // we need to -1 because there will always be a reference
     // inside FirehoseEndpoints that is not used (is always cloned).
-    pub fn has_subgraph_capacity(self: &Arc<Self>) -> bool {
+    pub fn get_capacity(self: &Arc<Self>) -> AvailableCapacity {
         self.subgraph_limit
-            .has_capacity(Arc::strong_count(self).saturating_sub(1))
+            .get_capacity(Arc::strong_count(self).saturating_sub(1))
+    }
+
+    fn new_client(
+        &self,
+    ) -> FetchClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client: FetchClient<
+            InterceptedService<MetricsInterceptor<Channel>, AuthInterceptor>,
+        > = FetchClient::with_interceptor(metrics, self.auth.clone())
+            .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
+    }
+
+    fn new_stream_client(
+        &self,
+    ) -> StreamClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client = StreamClient::with_interceptor(metrics, self.auth.clone())
+            .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
+    }
+
+    fn new_substreams_client(
+        &self,
+    ) -> substreams::stream_client::StreamClient<
+        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
+    > {
+        let metrics = MetricsInterceptor {
+            metrics: self.endpoint_metrics.cheap_clone(),
+            service: self.channel.cheap_clone(),
+            host: self.host.clone(),
+        };
+
+        let mut client =
+            substreams::stream_client::StreamClient::with_interceptor(metrics, self.auth.clone())
+                .accept_compressed(CompressionEncoding::Gzip);
+
+        if self.compression_enabled {
+            client = client.send_compressed(CompressionEncoding::Gzip);
+        }
+
+        client
     }
 
     pub async fn get_block<M>(
@@ -135,27 +262,6 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::fetch_client::FetchClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
         debug!(
             logger,
             "Connecting to firehose to retrieve block for cursor {}", cursor
@@ -169,9 +275,9 @@ impl FirehoseEndpoint {
                 },
             )),
         };
-        let resp = client.block(req);
 
-        match resp.await {
+        let mut client = self.new_client();
+        match client.block(req).await {
             Ok(v) => Ok(M::decode(
                 v.get_ref().block.as_ref().unwrap().value.as_ref(),
             )?),
@@ -200,31 +306,12 @@ impl FirehoseEndpoint {
     where
         M: prost::Message + BlockchainBlock + Default + 'static,
     {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
         debug!(
             logger,
             "Connecting to firehose to retrieve block for number {}", number
         );
+
+        let mut client = self.new_stream_client();
 
         // The trick is the following.
         //
@@ -294,26 +381,7 @@ impl FirehoseEndpoint {
         self: Arc<Self>,
         request: firehose::Request,
     ) -> Result<tonic::Streaming<firehose::Response>, anyhow::Error> {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = firehose::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
+        let mut client = self.new_stream_client();
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -324,22 +392,7 @@ impl FirehoseEndpoint {
         self: Arc<Self>,
         request: substreams::Request,
     ) -> Result<tonic::Streaming<substreams::Response>, anyhow::Error> {
-        let token_metadata = match self.token.clone() {
-            Some(token) => Some(MetadataValue::try_from(token.as_str())?),
-            None => None,
-        };
-
-        let mut client = substreams::stream_client::StreamClient::with_interceptor(
-            self.channel.cheap_clone(),
-            move |mut r: Request<()>| {
-                if let Some(ref t) = token_metadata {
-                    r.metadata_mut().insert("authorization", t.clone());
-                }
-
-                Ok(r)
-            },
-        );
-
+        let mut client = self.new_substreams_client();
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
 
@@ -359,21 +412,33 @@ impl FirehoseEndpoints {
         self.0.len()
     }
 
-    // selects the FirehoseEndpoint with the least amount of references, which will help with spliting
-    // the load naively across the entire list.
-    pub fn random(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
+    /// This function will attempt to grab an endpoint based on the Lowest error count
+    //  with high capacity available. If an adapter cannot be found `endpoint` will
+    // return an error.
+    pub fn endpoint(&self) -> anyhow::Result<Arc<FirehoseEndpoint>> {
         let endpoint = self
             .0
             .iter()
-            .min_by_key(|x| Arc::strong_count(x))
-            .ok_or(anyhow!("no available firehose endpoints"))?;
-        if !endpoint.has_subgraph_capacity() {
-            bail!("all connections saturated with {} connections, increase the firehose conn_pool_size or limit for the node", SUBGRAPHS_PER_CONN);
-        }
+            .sorted_by_key(|x| x.current_error_count())
+            .try_fold(None, |acc, adapter| {
+                match adapter.get_capacity() {
+                    AvailableCapacity::Unavailable => ControlFlow::Continue(acc),
+                    AvailableCapacity::Low => match acc {
+                        Some(_) => ControlFlow::Continue(acc),
+                        None => ControlFlow::Continue(Some(adapter)),
+                    },
+                    // This means that if all adapters with low/no errors are low capacity
+                    // we will retry the high capacity that has errors, at this point
+                    // any other available with no errors are almost at their limit.
+                    AvailableCapacity::High => ControlFlow::Break(Some(adapter)),
+                }
+            });
 
-        // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
-        // which could cause a high number of endpoints to be given away before accounting for them.
-        Ok(endpoint.clone())
+        match endpoint {
+            ControlFlow::Continue(adapter)
+            | ControlFlow::Break(adapter) =>
+            adapter.cloned().ok_or(anyhow!("unable to get a connection, increase the firehose conn_pool_size or limit for the node"))
+        }
     }
 
     pub fn remove(&mut self, provider: &str) {
@@ -438,9 +503,11 @@ impl FirehoseNetworks {
 mod test {
     use std::{mem, sync::Arc};
 
-    use crate::firehose::SubgraphLimit;
+    use slog::{o, Discard, Logger};
 
-    use super::{FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
+    use crate::{endpoint::EndpointMetrics, firehose::SubgraphLimit};
+
+    use super::{AvailableCapacity, FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
 
     #[tokio::test]
     async fn firehose_endpoint_errors() {
@@ -451,26 +518,27 @@ mod test {
             false,
             false,
             SubgraphLimit::Unlimited,
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
 
         let mut keep = vec![];
         for _i in 0..SUBGRAPHS_PER_CONN {
-            keep.push(endpoints.random().unwrap());
+            keep.push(endpoints.endpoint().unwrap());
         }
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         mem::drop(keep);
-        endpoints.random().unwrap();
+        endpoints.endpoint().unwrap();
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        let err = endpoints.endpoint().unwrap_err();
+        assert!(err.to_string().contains("unable to get a connection"));
     }
 
     #[tokio::test]
@@ -482,26 +550,27 @@ mod test {
             false,
             false,
             SubgraphLimit::Limit(2),
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
 
         let mut keep = vec![];
         for _ in 0..2 {
-            keep.push(endpoints.random().unwrap());
+            keep.push(endpoints.endpoint().unwrap());
         }
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         mem::drop(keep);
-        endpoints.random().unwrap();
+        endpoints.endpoint().unwrap();
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        let err = endpoints.endpoint().unwrap_err();
+        assert!(err.to_string().contains("unable to get a connection"));
     }
 
     #[tokio::test]
@@ -513,17 +582,178 @@ mod test {
             false,
             false,
             SubgraphLimit::Disabled,
+            Arc::new(EndpointMetrics::mock()),
         ))];
 
         let mut endpoints = FirehoseEndpoints::from(endpoint);
 
-        let err = endpoints.random().unwrap_err();
+        let err = endpoints.endpoint().unwrap_err();
         assert!(err.to_string().contains("conn_pool_size"));
 
         // Fails when empty too
         endpoints.remove("");
 
-        let err = endpoints.random().unwrap_err();
-        assert!(err.to_string().contains("no available firehose endpoints"));
+        let err = endpoints.endpoint().unwrap_err();
+        assert!(err.to_string().contains("unable to get a connection"));
+    }
+
+    #[tokio::test]
+    async fn firehose_endpoint_selection() {
+        let logger = Logger::root(Discard, o!());
+        let endpoint_metrics = Arc::new(EndpointMetrics::new(
+            logger,
+            &[
+                "http://127.0.0.1/",
+                "http://127.0.0.2/",
+                "http://127.0.0.3/",
+            ],
+        ));
+
+        let high_error_adapter1 = Arc::new(FirehoseEndpoint::new(
+            "high_error1".to_string(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+        let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
+            "high_error2".to_string(),
+            "http://127.0.0.1".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+        let low_availability = Arc::new(FirehoseEndpoint::new(
+            "low availability".to_string(),
+            "http://127.0.0.2".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Limit(2),
+            endpoint_metrics.clone(),
+        ));
+        let high_availability = Arc::new(FirehoseEndpoint::new(
+            "high availability".to_string(),
+            "http://127.0.0.3".to_string(),
+            None,
+            false,
+            false,
+            SubgraphLimit::Unlimited,
+            endpoint_metrics.clone(),
+        ));
+
+        endpoint_metrics.failure(&high_error_adapter1.host);
+
+        let mut endpoints = FirehoseEndpoints::from(vec![
+            high_error_adapter1.clone(),
+            high_error_adapter2,
+            low_availability.clone(),
+            high_availability.clone(),
+        ]);
+
+        let res = endpoints.endpoint().unwrap();
+        assert_eq!(res.provider, high_availability.provider);
+
+        // Removing high availability without errors should fallback to low availability
+        endpoints.remove(&high_availability.provider);
+
+        // Ensure we're in a low capacity situation
+        assert_eq!(low_availability.get_capacity(), AvailableCapacity::Low);
+
+        // In the scenario where the only high level adapter has errors we keep trying that
+        // because the others will be low or unavailable
+        let res = endpoints.endpoint().unwrap();
+        // This will match both high error adapters
+        assert_eq!(res.host, high_error_adapter1.host);
+    }
+
+    #[test]
+    fn subgraph_limit_calculates_availability() {
+        #[derive(Debug)]
+        struct Case {
+            limit: SubgraphLimit,
+            current: usize,
+            capacity: AvailableCapacity,
+        }
+
+        let cases = vec![
+            Case {
+                limit: SubgraphLimit::Disabled,
+                current: 20,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(0),
+                current: 20,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(0),
+                current: 0,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 80,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(2),
+                current: 1,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 19,
+                capacity: AvailableCapacity::High,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 100,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 99,
+                capacity: AvailableCapacity::Low,
+            },
+            Case {
+                limit: SubgraphLimit::Limit(100),
+                current: 101,
+                capacity: AvailableCapacity::Unavailable,
+            },
+            Case {
+                limit: SubgraphLimit::Unlimited,
+                current: 1000,
+                capacity: AvailableCapacity::High,
+            },
+            Case {
+                limit: SubgraphLimit::Unlimited,
+                current: 0,
+                capacity: AvailableCapacity::High,
+            },
+        ];
+
+        for c in cases {
+            let res = c.limit.get_capacity(c.current);
+            assert_eq!(res, c.capacity, "{:#?}", c);
+        }
+    }
+
+    #[test]
+    fn available_capacity_ordering() {
+        assert_eq!(
+            AvailableCapacity::Unavailable < AvailableCapacity::Low,
+            true
+        );
+        assert_eq!(
+            AvailableCapacity::Unavailable < AvailableCapacity::High,
+            true
+        );
+        assert_eq!(AvailableCapacity::Low < AvailableCapacity::High, true);
     }
 }
