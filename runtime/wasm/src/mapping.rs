@@ -126,6 +126,8 @@ pub struct MappingContext<C: Blockchain> {
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
     /// Logger for messages coming from mappings
     pub mapping_logger: Logger,
+    /// Whether to log details about host fn execution
+    pub instrument: bool,
 }
 
 impl<C: Blockchain> MappingContext<C> {
@@ -139,6 +141,7 @@ impl<C: Blockchain> MappingContext<C> {
             host_fns: self.host_fns.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),
             mapping_logger: Logger::new(&self.logger, o!("component" => "UserMapping")),
+            instrument: self.instrument,
         }
     }
 }

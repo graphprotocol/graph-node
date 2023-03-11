@@ -93,6 +93,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError> {
         self.process_trigger_in_hosts(
             logger,
@@ -104,6 +105,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             causality_region,
             debug_fork,
             subgraph_metrics,
+            instrument,
         )
         .await
     }
@@ -119,6 +121,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError> {
         self.trigger_processor
             .process_trigger(
@@ -131,6 +134,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
                 causality_region,
                 debug_fork,
                 subgraph_metrics,
+                instrument,
             )
             .await
     }

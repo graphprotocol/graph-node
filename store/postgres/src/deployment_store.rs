@@ -80,6 +80,7 @@ pub(crate) struct SubgraphInfo {
     pub(crate) description: Option<String>,
     pub(crate) repository: Option<String>,
     pub(crate) poi_version: ProofOfIndexingVersion,
+    pub(crate) instrument: bool,
 }
 
 pub struct StoreInner {
@@ -589,6 +590,7 @@ impl DeploymentStore {
             description: manifest_info.description,
             repository: manifest_info.repository,
             poi_version,
+            instrument: manifest_info.instrument,
         };
 
         // Insert the schema into the cache.

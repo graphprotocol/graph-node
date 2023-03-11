@@ -159,6 +159,7 @@ where
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError> {
         let handler = trigger.handler_name().to_string();
 
@@ -186,6 +187,7 @@ where
                     host_fns: self.host_fns.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(&logger, o!("component" => "UserMapping")),
+                    instrument,
                 },
                 trigger,
                 result_sender,
@@ -240,6 +242,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError> {
         self.send_mapping_request(
             logger,
@@ -248,6 +251,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             block_ptr,
             proof_of_indexing,
             debug_fork,
+            instrument,
         )
         .await
     }

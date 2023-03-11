@@ -1416,4 +1416,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         let (store, site) = self.store(hash)?;
         store.set_manifest_raw_yaml(site, raw_yaml).await
     }
+
+    fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        let store = self.for_site(&site)?;
+
+        let info = store.subgraph_info(&site)?;
+        Ok(info.instrument)
+    }
 }

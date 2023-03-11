@@ -403,6 +403,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let causality_region_seq =
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
+        let instrument = self.subgraph_store.instrument(&deployment)?;
         let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
@@ -427,6 +428,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             manifest_idx_and_name,
             poi_version,
             network,
+            instrument,
         };
 
         // The subgraph state tracks the state of the subgraph instance over time

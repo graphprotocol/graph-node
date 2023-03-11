@@ -63,6 +63,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError>;
 
     /// Block number in which this host was created.

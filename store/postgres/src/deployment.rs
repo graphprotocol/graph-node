@@ -307,32 +307,41 @@ pub struct ManifestInfo {
     pub description: Option<String>,
     pub repository: Option<String>,
     pub spec_version: String,
+    pub instrument: bool,
 }
 
 impl ManifestInfo {
     pub fn load(conn: &PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
         use subgraph_manifest as sm;
-        let (s, description, repository, spec_version): (
+        let (s, description, repository, spec_version, features): (
             String,
             Option<String>,
             Option<String>,
             String,
+            Vec<String>,
         ) = sm::table
             .select((
                 sm::schema,
                 sm::description,
                 sm::repository,
                 sm::spec_version,
+                sm::features,
             ))
             .filter(sm::id.eq(site.id))
             .first(conn)?;
         let input_schema = Schema::parse(s.as_str(), site.deployment.clone())?;
+
+        // Using the features field to store the instrument flag is a bit
+        // backhanded, but since this will be used very rarely, should not
+        // cause any headaches
+        let instrument = features.iter().any(|s| s == "instrument");
 
         Ok(ManifestInfo {
             input_schema,
             description,
             repository,
             spec_version,
+            instrument,
         })
     }
 }

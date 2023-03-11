@@ -325,6 +325,7 @@ where
                         &causality_region,
                         &self.inputs.debug_fork,
                         &self.metrics.subgraph,
+                        self.inputs.instrument,
                     )
                     .await
                     .map_err(|e| {
@@ -504,6 +505,7 @@ where
                     causality_region,
                     &self.inputs.debug_fork,
                     &self.metrics.subgraph,
+                    self.inputs.instrument,
                 )
                 .await
                 .map_err(move |mut e| {
@@ -666,6 +668,7 @@ where
                     causality_region,
                     &self.inputs.debug_fork,
                     &self.metrics.subgraph,
+                    self.inputs.instrument,
                 )
                 .await
                 .map_err(move |err| {

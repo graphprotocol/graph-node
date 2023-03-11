@@ -172,6 +172,7 @@ where
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
+        _instrument: bool,
     ) -> Result<BlockState<Chain>, MappingError> {
         for entity_change in block.changes.entity_changes.iter() {
             match entity_change.operation() {

@@ -30,6 +30,7 @@ where
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        instrument: bool,
     ) -> Result<BlockState<C>, MappingError> {
         let error_count = state.deterministic_errors.len();
 
@@ -71,6 +72,7 @@ where
                     state,
                     proof_of_indexing.cheap_clone(),
                     debug_fork,
+                    instrument,
                 )
                 .await?;
             let elapsed = start.elapsed().as_secs_f64();

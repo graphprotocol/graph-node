@@ -28,4 +28,8 @@ pub struct IndexingInputs<C: Blockchain> {
 
     // Correspondence between data source or template position in the manifest and name.
     pub manifest_idx_and_name: Vec<(u32, String)>,
+
+    /// Whether to instrument trigger processing and log additional,
+    /// possibly expensive and noisy, information
+    pub instrument: bool,
 }

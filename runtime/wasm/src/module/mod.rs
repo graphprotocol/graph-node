@@ -925,9 +925,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let stopwatch = &self.host_metrics.stopwatch;
         stopwatch.start_section("host_export_store_set__wasm_instance_context_store_set");
 
-        let entity = asc_get(self, entity_ptr, gas)?;
-        let id = asc_get(self, id_ptr, gas)?;
+        let entity: String = asc_get(self, entity_ptr, gas)?;
+        let id: String = asc_get(self, id_ptr, gas)?;
         let data = asc_get(self, data_ptr, gas)?;
+
+        if self.ctx.instrument {
+            debug!(self.ctx.logger, "store_set";
+                    "type" => &entity,
+                    "id" => &id);
+        }
 
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
@@ -950,8 +956,13 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<(), HostExportError> {
-        let entity = asc_get(self, entity_ptr, gas)?;
-        let id = asc_get(self, id_ptr, gas)?;
+        let entity: String = asc_get(self, entity_ptr, gas)?;
+        let id: String = asc_get(self, id_ptr, gas)?;
+        if self.ctx.instrument {
+            debug!(self.ctx.logger, "store_remove";
+                    "type" => &entity,
+                    "id" => &id);
+        }
         self.ctx.host_exports.store_remove(
             &self.ctx.logger,
             &mut self.ctx.state,
@@ -982,7 +993,12 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             id.clone(),
             gas,
         )?;
-
+        if self.ctx.instrument {
+            debug!(self.ctx.logger, "store_get";
+                    "type" => &entity_type,
+                    "id" => &id,
+                    "found" => entity_option.is_some());
+        }
         let ret = match entity_option {
             Some(entity) => {
                 let _section = self
