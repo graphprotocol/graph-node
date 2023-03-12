@@ -579,7 +579,7 @@ pub struct Connection {
     /// The connection pool for the shard that will contain the destination
     /// of the copy
     logger: Logger,
-    conn: PooledConnection<ConnectionManager<PgConnection>>,
+    pool: ConnectionPool,
     src: Arc<Layout>,
     dst: Arc<Layout>,
     target_block: BlockPtr,
@@ -609,34 +609,35 @@ impl Connection {
             )));
         }
 
-        let mut last_log = Instant::now();
-        let conn = pool.get_fdw(&logger, || {
-            if last_log.elapsed() > LOG_INTERVAL {
-                info!(&logger, "waiting for other copy operations to finish");
-                last_log = Instant::now();
-            }
-            false
-        })?;
         Ok(Self {
             logger,
-            conn,
+            pool,
             src,
             dst,
             target_block,
         })
     }
 
-    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
-    where
-        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
-    {
-        self.conn.transaction(|conn| f(&mut self.conn))
+    fn conn(&mut self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        let mut last_log = Instant::now();
+        let conn = self.pool.get_fdw(&self.logger, || {
+            if last_log.elapsed() > LOG_INTERVAL {
+                info!(&self.logger, "waiting for other copy operations to finish");
+                last_log = Instant::now();
+            }
+            false
+        })?;
+        Ok(conn)
     }
 
-    fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
+    fn copy_private_data_sources(
+        &self,
+        conn: &mut PgConnection,
+        state: &CopyState,
+    ) -> Result<(), StoreError> {
         if state.src.site.schema_version.private_data_sources() {
             DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                &mut self.conn,
+                conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
             )?;
@@ -644,8 +645,8 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
-        let mut state = self.transaction(|conn| {
+    pub fn copy_data_internal(&self, conn: &mut PgConnection) -> Result<Status, StoreError> {
+        let mut state = conn.transaction(|conn| {
             CopyState::new(
                 conn,
                 self.src.clone(),
@@ -662,10 +663,10 @@ impl Connection {
                 // It is important that this check happens outside the write
                 // transaction so that we do not hold on to locks acquired
                 // by the check
-                if table.is_cancelled(&mut self.conn)? {
+                if table.is_cancelled(conn)? {
                     return Ok(Status::Cancelled);
                 }
-                let status = self.transaction(|conn| table.copy_batch(conn))?;
+                let status = conn.transaction(|conn| table.copy_batch(conn))?;
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
@@ -674,9 +675,9 @@ impl Connection {
             progress.table_finished(table);
         }
 
-        self.copy_private_data_sources(&state)?;
+        self.copy_private_data_sources(conn, &state)?;
 
-        self.transaction(|conn| state.finished(conn))?;
+        conn.transaction(|conn| state.finished(conn))?;
         progress.finished();
 
         Ok(Status::Finished)
@@ -709,9 +710,18 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
-        advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
-        let res = self.copy_data_internal();
-        advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
+        // Since connections for copying are very limited, we hang on to the
+        // connection for the entire time we are copying to avoid multiple
+        // copy operations to fight over a connection where each gets only
+        // done part way. We want that once a copy starts it can finish as
+        // fast as possible, even if that meansthat other operations need to
+        // wait, possibly for a very long time
+        let mut connection = self.conn()?;
+        let conn = &mut connection;
+
+        advisory_lock::lock_copying(conn, self.dst.site.as_ref())?;
+        let res = self.copy_data_internal(conn);
+        advisory_lock::unlock_copying(conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }
