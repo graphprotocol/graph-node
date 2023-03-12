@@ -732,31 +732,34 @@ struct PrefixComparison<'a> {
     kind: PrefixType<'a>,
     column: &'a Column,
     text: &'a Value,
+    query_value: QueryValue<'a>,
 }
 
 impl<'a> PrefixComparison<'a> {
     fn new(op: Comparison, column: &'a Column, text: &'a Value) -> QueryResult<Self> {
         let kind = PrefixType::new(column)?;
+        let query_value = QueryValue(text, &column.column_type);
         Ok(Self {
             op,
             kind,
             column,
             text,
+            query_value,
         })
     }
 
     fn push_value_prefix<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.kind {
-            PrefixType::String(column) => {
+            PrefixType::String(_) => {
                 out.push_sql("left(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.query_value.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(column) => {
+            PrefixType::Bytes(_) => {
                 out.push_sql("substring(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.query_value.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
                 out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
                 out.push_sql(")");
@@ -782,7 +785,7 @@ impl<'a> PrefixComparison<'a> {
     ) -> QueryResult<()> {
         out.push_identifier(self.column.name.as_str())?;
         out.push_sql(op.as_str());
-        QueryValue(self.text, &self.column.column_type).walk_ast(out)
+        self.query_value.walk_ast(out)
     }
 }
 
