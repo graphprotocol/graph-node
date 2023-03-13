@@ -38,7 +38,7 @@ graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
 serde = { version = "1.0.126", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
-toml = "0.7.1"
+toml = "0.7.3"
 shellexpand = "2.1.0"
 termcolor = "1.2.0"
 diesel = "1.4.8"
