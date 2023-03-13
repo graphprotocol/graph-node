@@ -5,11 +5,12 @@ use futures::TryFutureExt;
 use graph::anyhow::{bail, Error};
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
+use graph::prelude::prost;
 use graph::prelude::{anyhow, tokio};
-use graph::prelude::{prost, MetricsRegistry as MetricsRegistryTrait};
 use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
@@ -480,10 +481,9 @@ mod test {
     use crate::chain::create_all_ethereum_networks;
     use crate::config::{Config, Opt};
     use graph::log::logger;
-    use graph::prelude::tokio;
+    use graph::prelude::{tokio, MetricsRegistry};
     use graph::prometheus::Registry;
     use graph_chain_ethereum::NodeCapabilities;
-    use graph_core::MetricsRegistry;
     use std::sync::Arc;
 
     #[tokio::test]

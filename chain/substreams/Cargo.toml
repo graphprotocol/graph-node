@@ -28,5 +28,4 @@ base64 = "0.20.0"
 itertools = "0.10.5"
 
 [dev-dependencies]
-graph-core = { path = "../../core" }
 tokio = { version = "1", features = ["full"] }

@@ -3,7 +3,6 @@ use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph_chain_ethereum::{Mapping, MappingABI};
-use graph_core::MetricsRegistry;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::time::Duration;

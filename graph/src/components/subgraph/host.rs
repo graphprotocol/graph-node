@@ -6,6 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::components::metrics::MetricsRegistryTrait;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
@@ -87,7 +88,7 @@ pub struct HostMetrics {
 
 impl HostMetrics {
     pub fn new(
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         subgraph: &str,
         stopwatch: StopwatchMetrics,
     ) -> Self {

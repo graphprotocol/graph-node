@@ -3,7 +3,7 @@ use std::sync::Arc;
 use prometheus::Counter;
 use slog::*;
 
-use crate::components::metrics::MetricsRegistry;
+use crate::components::metrics::MetricsRegistryTrait;
 use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
 use crate::log::split::*;
@@ -24,7 +24,7 @@ pub struct ComponentLoggerConfig {
 pub struct LoggerFactory {
     parent: Logger,
     elastic_config: Option<ElasticLoggingConfig>,
-    metrics_registry: Arc<dyn MetricsRegistry>,
+    metrics_registry: Arc<dyn MetricsRegistryTrait>,
 }
 
 impl LoggerFactory {
@@ -32,7 +32,7 @@ impl LoggerFactory {
     pub fn new(
         logger: Logger,
         elastic_config: Option<ElasticLoggingConfig>,
-        metrics_registry: Arc<dyn MetricsRegistry>,
+        metrics_registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self {
         Self {
             parent: logger,

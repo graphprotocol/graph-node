@@ -3,6 +3,7 @@ use super::client::ChainClient;
 use super::{Blockchain, TriggersAdapter};
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
+use crate::components::metrics::MetricsRegistryTrait;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
@@ -22,7 +23,7 @@ struct FirehoseBlockStreamMetrics {
 }
 
 impl FirehoseBlockStreamMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>, deployment: DeploymentHash) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>, deployment: DeploymentHash) -> Self {
         Self {
             deployment,
 
@@ -115,7 +116,7 @@ where
         filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self
     where
         F: FirehoseMapper<C> + 'static,

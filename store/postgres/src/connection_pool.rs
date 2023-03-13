@@ -7,6 +7,7 @@ use diesel::{
 use diesel::{sql_query, RunQueryDsl};
 
 use graph::cheap_clone::CheapClone;
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::constraint_violation;
 use graph::prelude::tokio;
 use graph::prelude::tokio::time::Instant;
@@ -18,7 +19,7 @@ use graph::{
         crit, debug, error, info, o,
         tokio::sync::Semaphore,
         CancelGuard, CancelHandle, CancelToken as _, CancelableError, Counter, Gauge, Logger,
-        MetricsRegistry, MovingStats, PoolWaitStats, StoreError, ENV_VARS,
+        MovingStats, PoolWaitStats, StoreError, ENV_VARS,
     },
     util::security::SafeDisplay,
 };
@@ -309,7 +310,7 @@ impl ConnectionPool {
         pool_size: u32,
         fdw_pool_size: Option<u32>,
         logger: &Logger,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
         let state_tracker = PoolStateTracker::new();
@@ -592,7 +593,7 @@ struct EventHandler {
 impl EventHandler {
     fn new(
         logger: Logger,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         wait_stats: PoolWaitStats,
         const_labels: HashMap<String, String>,
         state_tracker: PoolStateTracker,
@@ -710,7 +711,7 @@ impl PoolInner {
         pool_size: u32,
         fdw_pool_size: Option<u32>,
         logger: &Logger,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         state_tracker: PoolStateTracker,
     ) -> PoolInner {
         let logger_store = logger.new(o!("component" => "Store"));
@@ -1156,7 +1157,7 @@ impl PoolCoordinator {
         postgres_url: String,
         pool_size: u32,
         fdw_pool_size: Option<u32>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> ConnectionPool {
         let is_writable = !pool_name.is_replica();
 

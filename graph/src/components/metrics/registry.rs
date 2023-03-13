@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use graph::components::metrics::{counter_with_labels, gauge_with_labels};
-use graph::prelude::{Collector, MetricsRegistry as MetricsRegistryTrait};
-use graph::prometheus::{
+use crate::components::metrics::{counter_with_labels, gauge_with_labels};
+use crate::prelude::Collector;
+use crate::prometheus::{
     Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, HistogramOpts, HistogramVec,
     Opts, Registry,
 };
-use graph::slog::{self, error, o, Logger};
+use crate::slog::{self, error, o, Logger};
+
+use super::MetricsRegistryTrait;
 
 #[derive(Clone)]
 pub struct MetricsRegistry {
@@ -289,7 +291,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
 
 #[test]
 fn global_counters_are_shared() {
-    use graph::log;
+    use crate::log;
 
     let logger = log::logger(false);
     let prom_reg = Arc::new(Registry::new());

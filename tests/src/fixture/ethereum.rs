@@ -13,14 +13,15 @@ use graph::endpoint::EndpointMetrics;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, NodeId};
+use graph::prelude::{
+    ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, MetricsRegistry, NodeId,
+};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
 use graph_chain_ethereum::{
     chain::BlockFinality,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
 };
 use graph_chain_ethereum::{Chain, ENV_VARS};
-use graph_core::MetricsRegistry;
 
 pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,

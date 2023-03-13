@@ -3,7 +3,11 @@ pub use prometheus::{
     labels, Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, Histogram,
     HistogramOpts, HistogramVec, Opts, Registry,
 };
+
+pub mod registry;
 pub mod subgraph;
+
+pub use registry::MetricsRegistry;
 
 use std::collections::HashMap;
 
@@ -34,7 +38,7 @@ pub fn gauge_with_labels(
     Gauge::with_opts(opts)
 }
 
-pub trait MetricsRegistry: Send + Sync + 'static {
+pub trait MetricsRegistryTrait: Send + Sync + 'static {
     fn register(&self, name: &str, c: Box<dyn Collector>);
 
     fn unregister(&self, metric: Box<dyn Collector>);

@@ -38,5 +38,7 @@ graphql-parser = "0.4.0"
 pretty_assertions = "1.3.0"
 anyhow = "1.0"
 ipfs-api-backend-hyper = "0.6"
-ipfs-api = { version = "0.17.0", features = ["with-hyper-rustls"], default-features = false }
+ipfs-api = { version = "0.17.0", features = [
+    "with-hyper-rustls",
+], default-features = false }
 uuid = { version = "1.3.0", features = ["v4"] }

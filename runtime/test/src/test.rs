@@ -6,7 +6,6 @@ use graph::runtime::{AscIndexId, AscType};
 use graph::runtime::{AscPtr, ToAscObj};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph_chain_ethereum::{Chain, DataSource};
-use graph_core::MetricsRegistry;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 

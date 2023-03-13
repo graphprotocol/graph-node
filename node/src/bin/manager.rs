@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
-use graph::prelude::BLOCK_NUMBER_MAX;
+use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     log::logger,
@@ -13,7 +13,6 @@ use graph::{
     url::Url,
 };
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
-use graph_core::MetricsRegistry;
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
 use graph_node::manager::color::Terminal;

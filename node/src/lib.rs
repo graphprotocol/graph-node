@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use graph::prometheus::Registry;
-use graph_core::MetricsRegistry;
+use graph::{prelude::MetricsRegistry, prometheus::Registry};
 
 #[macro_use]
 extern crate diesel;

@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use graph::{
-    prelude::{DeploymentHash, MetricsRegistry},
+    components::metrics::MetricsRegistryTrait,
+    prelude::DeploymentHash,
     prometheus::{Counter, Gauge},
 };
 
@@ -13,7 +14,7 @@ pub struct PollingMonitorMetrics {
 }
 
 impl PollingMonitorMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &DeploymentHash) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>, subgraph_hash: &DeploymentHash) -> Self {
         let requests = registry
             .new_deployment_counter(
                 "polling_monitor_requests",

@@ -3,6 +3,7 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -26,7 +27,7 @@ use graph::{
     firehose,
     prelude::{
         async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Future01CompatExt, Logger, LoggerFactory, MetricsRegistry, NodeId,
+        Future01CompatExt, Logger, LoggerFactory, NodeId,
     },
 };
 use prost::Message;
@@ -191,7 +192,7 @@ impl BlockRefetcher<Chain> for EthereumBlockRefetcher {
 pub struct EthereumAdapterSelector {
     logger_factory: LoggerFactory,
     client: Arc<ChainClient<Chain>>,
-    registry: Arc<dyn MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
     chain_store: Arc<dyn ChainStore>,
 }
 
@@ -199,7 +200,7 @@ impl EthereumAdapterSelector {
     pub fn new(
         logger_factory: LoggerFactory,
         client: Arc<ChainClient<Chain>>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         chain_store: Arc<dyn ChainStore>,
     ) -> Self {
         Self {
@@ -241,7 +242,7 @@ pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
     node_id: NodeId,
-    registry: Arc<dyn MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
@@ -267,7 +268,7 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         node_id: NodeId,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
         client: Arc<ChainClient<Self>>,

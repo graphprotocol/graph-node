@@ -1,11 +1,12 @@
 use prometheus::Counter;
 
 use crate::blockchain::block_stream::BlockStreamMetrics;
-use crate::prelude::{Gauge, Histogram, HostMetrics, MetricsRegistry};
+use crate::prelude::{Gauge, Histogram, HostMetrics};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::stopwatch::StopwatchMetrics;
+use super::MetricsRegistryTrait;
 
 pub struct SubgraphInstanceMetrics {
     pub block_trigger_count: Box<Histogram>,
@@ -19,7 +20,7 @@ pub struct SubgraphInstanceMetrics {
 
 impl SubgraphInstanceMetrics {
     pub fn new(
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         subgraph_hash: &str,
         stopwatch: StopwatchMetrics,
     ) -> Self {
@@ -78,7 +79,7 @@ impl SubgraphInstanceMetrics {
         self.trigger_processing_duration.observe(duration);
     }
 
-    pub fn unregister(&self, registry: Arc<dyn MetricsRegistry>) {
+    pub fn unregister(&self, registry: Arc<dyn MetricsRegistryTrait>) {
         registry.unregister(self.block_processing_duration.clone());
         registry.unregister(self.block_trigger_count.clone());
         registry.unregister(self.trigger_processing_duration.clone());
@@ -93,7 +94,7 @@ pub struct SubgraphCountMetric {
 }
 
 impl SubgraphCountMetric {
-    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
         let running_count = registry
             .new_gauge(
                 "deployment_running_count",

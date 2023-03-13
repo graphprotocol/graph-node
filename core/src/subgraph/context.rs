@@ -6,14 +6,15 @@ use bytes::Bytes;
 use graph::{
     blockchain::Blockchain,
     components::{
+        metrics::MetricsRegistryTrait,
         store::{DeploymentId, SubgraphFork},
         subgraph::{MappingError, SharedProofOfIndexing},
     },
     data_source::{offchain, CausalityRegion, DataSource, TriggerData},
     ipfs_client::CidFile,
     prelude::{
-        BlockNumber, BlockState, CancelGuard, CheapClone, DeploymentHash, MetricsRegistry,
-        RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics, TriggerProcessor,
+        BlockNumber, BlockState, CancelGuard, CheapClone, DeploymentHash, RuntimeHostBuilder,
+        SubgraphCountMetric, SubgraphInstanceMetrics, TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -191,7 +192,7 @@ pub struct OffchainMonitor {
 impl OffchainMonitor {
     pub fn new(
         logger: Logger,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         subgraph_hash: &DeploymentHash,
         ipfs_service: IpfsService,
     ) -> Self {

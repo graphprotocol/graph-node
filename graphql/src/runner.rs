@@ -5,7 +5,7 @@ use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver, SubscriptionExecutionOptions};
 use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
-use graph::prelude::MetricsRegistry;
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::{
     components::store::SubscriptionManager,
     prelude::{
@@ -46,7 +46,7 @@ where
         store: Arc<S>,
         subscription_manager: Arc<SM>,
         load_manager: Arc<LoadManager>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
         let graphql_metrics = Arc::new(GraphQLMetrics::new(registry));

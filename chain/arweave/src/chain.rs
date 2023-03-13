@@ -6,10 +6,10 @@ use graph::blockchain::{
     EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::MetricsRegistry;
 use graph::{
     blockchain::{
         block_stream::{
@@ -40,7 +40,7 @@ pub struct Chain {
     name: String,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
-    metrics_registry: Arc<dyn MetricsRegistry>,
+    metrics_registry: Arc<dyn MetricsRegistryTrait>,
 }
 
 impl std::fmt::Debug for Chain {

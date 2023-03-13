@@ -4,12 +4,11 @@ use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::entity;
-use graph::prelude::BlockNumber;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityOrder, EntityQuery, Logger, Schema, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
-use graph_core::MetricsRegistry;
+use graph::prelude::{BlockNumber, MetricsRegistry};
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;

@@ -220,9 +220,9 @@ impl EthereumNetworks {
 #[cfg(test)]
 mod tests {
     use graph::{
-        firehose::SubgraphLimit, prelude::MetricsRegistry as MetricsRegistryTrait, tokio, url::Url,
+        components::metrics::MetricsRegistryTrait, firehose::SubgraphLimit,
+        prelude::MetricsRegistry, tokio, url::Url,
     };
-    use graph_core::MetricsRegistry;
     use http::HeaderMap;
     use std::sync::Arc;
 

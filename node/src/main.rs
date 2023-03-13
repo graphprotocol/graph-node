@@ -23,7 +23,7 @@ use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBl
 use graph_chain_substreams as substreams;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
-    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;

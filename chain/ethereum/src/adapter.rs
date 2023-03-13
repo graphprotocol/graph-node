@@ -2,6 +2,7 @@ use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
 use futures::Future;
 use graph::blockchain::ChainIdentifier;
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
@@ -731,7 +732,7 @@ pub struct ProviderEthRpcMetrics {
 }
 
 impl ProviderEthRpcMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
         let request_duration = registry
             .new_histogram_vec(
                 "eth_rpc_request_duration",
@@ -787,7 +788,7 @@ pub struct SubgraphEthRpcMetrics {
 }
 
 impl SubgraphEthRpcMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>, subgraph_hash: &str) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>, subgraph_hash: &str) -> Self {
         let request_duration = registry
             .global_gauge_vec(
                 "deployment_eth_rpc_request_duration",

@@ -3,7 +3,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use futures::future::join_all;
 use graph::blockchain::ChainIdentifier;
-use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::components::metrics::MetricsRegistryTrait;
+use graph::prelude::{o, NodeId};
 use graph::url::Url;
 use graph::{
     prelude::{info, CheapClone, Logger},
@@ -40,7 +41,7 @@ impl StoreBuilder {
         node: &NodeId,
         config: &Config,
         fork_base: Option<Url>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self {
         let primary_shard = config.primary_store().clone();
 
@@ -95,7 +96,7 @@ impl StoreBuilder {
         node: &NodeId,
         config: &Config,
         fork_base: Option<Url>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> (
         Arc<SubgraphStore>,
         HashMap<ShardName, ConnectionPool>,
@@ -199,7 +200,7 @@ impl StoreBuilder {
         node: &NodeId,
         name: &str,
         shard: &Shard,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
         let logger = logger.new(o!("pool" => "main"));
@@ -235,7 +236,7 @@ impl StoreBuilder {
         node: &NodeId,
         name: &str,
         shard: &Shard,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
         coord: Arc<PoolCoordinator>,
     ) -> (Vec<ConnectionPool>, Vec<usize>) {
         let mut weights: Vec<_> = vec![shard.weight];

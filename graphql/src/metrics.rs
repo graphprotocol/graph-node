@@ -3,8 +3,9 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use graph::components::metrics::MetricsRegistryTrait;
 use graph::data::query::QueryResults;
-use graph::prelude::{DeploymentHash, GraphQLMetrics as GraphQLMetricsTrait, MetricsRegistry};
+use graph::prelude::{DeploymentHash, GraphQLMetrics as GraphQLMetricsTrait};
 use graph::prometheus::{CounterVec, Gauge, Histogram, HistogramVec};
 
 pub struct GraphQLMetrics {
@@ -76,7 +77,7 @@ impl GraphQLMetricsTrait for GraphQLMetrics {
 }
 
 impl GraphQLMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
         let query_execution_time = registry
             .new_histogram_vec(
                 "query_execution_time",
@@ -140,7 +141,7 @@ impl GraphQLMetrics {
 
     // Tests need to construct one of these, but normal code doesn't
     #[cfg(debug_assertions)]
-    pub fn make(registry: Arc<dyn MetricsRegistry>) -> Self {
+    pub fn make(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
         Self::new(registry)
     }
 

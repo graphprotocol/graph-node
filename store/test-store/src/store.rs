@@ -13,7 +13,6 @@ use graph::{
     components::store::EntityType, components::store::StatusStore,
     components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
-use graph_core::MetricsRegistry;
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };

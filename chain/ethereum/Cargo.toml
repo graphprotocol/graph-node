@@ -25,7 +25,6 @@ graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
-graph-core = { path = "../../core" }
 test-store = { path = "../../store/test-store" }
 base64 = "0.20.0"
 

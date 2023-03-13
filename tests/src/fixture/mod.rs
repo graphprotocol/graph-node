@@ -16,6 +16,7 @@ use graph::blockchain::{
     TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
+use graph::components::metrics::{MetricsRegistry, MetricsRegistryTrait};
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -26,14 +27,14 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    LoggerFactory, MetricsRegistry as MetricsRegistryTrait, NodeId, QueryError,
-    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
-    SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
+    LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphCountMetric,
+    SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
+    TriggerProcessor,
 };
 use graph::slog::crit;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
-    LinkResolver, MetricsRegistry, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
+    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
 use graph_node::manager::PanicSubscriptionManager;

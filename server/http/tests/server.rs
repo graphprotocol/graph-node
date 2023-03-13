@@ -90,7 +90,6 @@ impl GraphQlRunner for TestGraphQlRunner {
 #[cfg(test)]
 mod test {
     use super::*;
-    use graph_core::MetricsRegistry;
 
     lazy_static! {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();

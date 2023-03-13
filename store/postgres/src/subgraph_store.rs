@@ -14,6 +14,7 @@ use std::{iter::FromIterator, time::Duration};
 use graph::{
     cheap_clone::CheapClone,
     components::{
+        metrics::MetricsRegistryTrait,
         server::index_node::VersionInfo,
         store::{
             self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
@@ -27,8 +28,8 @@ use graph::{
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
         ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphDeploymentEntity,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        NodeId, PartialBlockPtr, Schema, StoreError, SubgraphDeploymentEntity, SubgraphName,
+        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
     url::Url,
     util::timed_cache::TimedCache,
@@ -218,7 +219,7 @@ impl SubgraphStore {
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
         fork_base: Option<Url>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self {
         Self {
             inner: Arc::new(SubgraphStoreInner::new(
@@ -274,7 +275,7 @@ pub struct SubgraphStoreInner {
     placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
     sender: Arc<NotificationSender>,
     writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
-    registry: Arc<dyn MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
 }
 
 impl SubgraphStoreInner {
@@ -297,7 +298,7 @@ impl SubgraphStoreInner {
         stores: Vec<(Shard, ConnectionPool, Vec<ConnectionPool>, Vec<usize>)>,
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
-        registry: Arc<dyn MetricsRegistry>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Self {
         let mirror = {
             let pools = HashMap::from_iter(

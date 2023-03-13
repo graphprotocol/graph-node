@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::{
     anyhow::bail,
-    components::metrics::MetricsRegistry,
+    components::metrics::MetricsRegistryTrait,
     itertools::Itertools,
     prelude::{
         anyhow::{anyhow, Error},
@@ -100,7 +100,7 @@ pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Err
 pub async fn provider(
     logger: Logger,
     config: &Config,
-    registry: Arc<dyn MetricsRegistry>,
+    registry: Arc<dyn MetricsRegistryTrait>,
     features: String,
     network: String,
 ) -> Result<(), Error> {
