@@ -20,7 +20,7 @@ graph-chain-cosmos = { path = "../chain/cosmos" }
 graph-chain-substreams = { path = "../chain/substreams" }
 lazy_static = "1.2.0"
 lru_time_cache = "0.11"
-semver = "1.0.16"
+semver = "1.0.17"
 serde = "1.0"
 serde_json = "1.0"
 serde_yaml = "0.8"

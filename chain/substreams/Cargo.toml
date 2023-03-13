@@ -22,7 +22,7 @@ dirs-next = "2.0"
 anyhow = "1.0"
 tiny-keccak = "1.5.0"
 hex = "0.4.3"
-semver = "1.0.16"
+semver = "1.0.17"
 base64 = "0.20.0"
 
 itertools = "0.10.5"

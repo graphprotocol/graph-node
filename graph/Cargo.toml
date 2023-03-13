@@ -29,7 +29,7 @@ num_cpus = "1.15.0"
 num-traits = "0.2.15"
 rand = "0.8.4"
 regex = "1.5.4"
-semver = { version = "1.0.16", features = ["serde"] }
+semver = { version = "1.0.17", features = ["serde"] }
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
