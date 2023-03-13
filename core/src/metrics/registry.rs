@@ -2,7 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use graph::components::metrics::{counter_with_labels, gauge_with_labels};
-use graph::prelude::{MetricsRegistry as MetricsRegistryTrait, *};
+use graph::prelude::{Collector, MetricsRegistry as MetricsRegistryTrait};
+use graph::prometheus::{
+    Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, HistogramOpts, HistogramVec,
+    Opts, Registry,
+};
+use graph::slog::{self, error, o, Logger};
 
 #[derive(Clone)]
 pub struct MetricsRegistry {
