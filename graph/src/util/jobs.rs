@@ -95,8 +95,15 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lazy_static::lazy_static;
     use std::sync::{Arc, Mutex};
-    use test_store::LOGGER;
+
+    lazy_static! {
+        pub static ref LOGGER: Logger = match crate::env::ENV_VARS.log_levels {
+            Some(_) => crate::log::logger(false),
+            None => Logger::root(slog::Discard, o!()),
+        };
+    }
 
     struct CounterJob {
         count: Arc<Mutex<usize>>,
