@@ -551,7 +551,7 @@ impl fmt::Debug for Bytes {
 impl_stable_hash!(Bytes(transparent: AsBytes));
 
 impl Bytes {
-    pub fn as_slice(&self) -> &[u8] {
+    pub fn as_slice<'a>(&'a self) -> &'a [u8] {
         &self.0
     }
 }

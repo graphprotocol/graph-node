@@ -10,6 +10,7 @@ use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::methods::SingleValueDsl;
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
+use diesel::serialize::ToSql;
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, SingleValue, Text, Untyped};
 use diesel::Connection;
 
@@ -118,6 +119,51 @@ impl IdType {
     }
 }
 
+enum StringOrBytes<'a> {
+    String(&'a str),
+    Bytes(scalar::Bytes),
+}
+
+impl<'a> StringOrBytes<'a> {
+    fn new(id_type: IdType, value: &'a str) -> QueryResult<Self> {
+        use StringOrBytes::*;
+
+        match id_type {
+            IdType::String => Ok(String(value)),
+            IdType::Bytes => Ok(Bytes(str_as_bytes(value)?)),
+        }
+    }
+}
+
+struct IdValue<'a> {
+    column: &'a Column,
+    value: StringOrBytes<'a>,
+}
+
+impl<'a> IdValue<'a> {
+    fn new(column: &'a Column, value: &'a str) -> QueryResult<Self> {
+        Ok(Self {
+            column,
+            value: StringOrBytes::new(column.column_type().id_type(), value)?,
+        })
+    }
+}
+
+impl<'a> QueryFragment<Pg> for IdValue<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        use StringOrBytes::*;
+
+        match &self.value {
+            String(ref s) => out.push_bind_param::<Text, _>(s)?,
+            Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice())?,
+        }
+        // Generate '::text' or '::bytea'
+        out.push_sql("::");
+        out.push_sql(self.column.column_type().sql_type());
+        Ok(())
+    }
+}
+
 /// Conveniences for handling foreign keys depending on whether we are using
 /// `IdType::Bytes` or `IdType::String` as the primary key
 ///
@@ -145,7 +191,7 @@ trait ForeignKeyClauses {
     }
 
     /// Add `ids`  as a bind variable to `out`, using the right SQL type
-    fn bind_ids<'b, S>(&self, ids: &'b [S], out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>
+    fn bind_ids<'b, S>(&'b self, ids: &'b [S], out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
@@ -154,7 +200,7 @@ trait ForeignKeyClauses {
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
     /// into `out`
-    fn eq<'b>(&self, id: &'b str, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+    fn eq<'b>(&self, id: &'b &str, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql(self.name());
         out.push_sql(" = ");
         self.bind_id(id, out)
@@ -1502,7 +1548,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(self.id, &mut out)?;
+        self.table.primary_key().eq(&self.id, &mut out)?;
         out.push_sql(" and ");
         BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
     }
