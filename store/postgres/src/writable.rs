@@ -254,8 +254,8 @@ impl SyncStore {
         &self,
         key: &DerivedEntityQuery,
         block: BlockNumber,
-    ) -> Result<Vec<Entity>, StoreError> {
-        retry::forever(&self.logger, "get_where", || {
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        self.retry("get_derived", || {
             self.writable
                 .get_derived(self.site.cheap_clone(), key, block)
         })
@@ -756,10 +756,51 @@ impl Queue {
         Ok(map)
     }
 
-    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
-        let tracker = BlockTracker::new();
-        // TODO implement the whole async
-        self.store.get_derived(key, tracker.query_block())
+    fn get_derived(
+        &self,
+        key_derived: &DerivedEntityQuery,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        let mut tracker = BlockTracker::new();
+
+        // Get entities from entries in the queue
+        let (mut entities_in_queue, entities_removed) = self.queue.fold(
+            (BTreeMap::new(), Vec::new()),
+            |(mut map, mut remove_list): (BTreeMap<EntityKey, Entity>, Vec<EntityKey>), req| {
+                tracker.update(req.as_ref());
+                match req.as_ref() {
+                    Request::Write {
+                        block_ptr, mods, ..
+                    } => {
+                        if tracker.visible(block_ptr) {
+                            for emod in mods {
+                                let key = emod.entity_ref();
+                                // The key must be removed to avoid overwriting it with a stale value.
+                                if key_derived.entity_type == key.entity_type {
+                                    match emod.entity() {
+                                        Some(entity) => {
+                                            map.insert(key.clone(), entity.clone());
+                                        }
+                                        None => {
+                                            remove_list.push(key.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
+                }
+                (map, remove_list)
+            },
+        );
+        let mut items_from_database = self.store.get_derived(key_derived, tracker.query_block())?;
+        // Remove any entities that were removed in the queue
+        items_from_database.retain(|key, _item| !entities_removed.contains(key));
+
+        // Extend the store results with the entities from the queue.
+        entities_in_queue.extend(items_from_database);
+
+        Ok(entities_in_queue)
     }
 
     /// Load dynamic data sources by looking at both the queue and the store
@@ -920,7 +961,10 @@ impl Writer {
         }
     }
 
-    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(
+        &self,
+        key: &DerivedEntityQuery,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX),
             Writer::Async(queue) => queue.get_derived(key),
@@ -1016,7 +1060,10 @@ impl ReadStore for WritableStore {
         self.writer.get_many(keys)
     }
 
-    fn get_derived(&self, key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
+    fn get_derived(
+        &self,
+        key: &DerivedEntityQuery,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         self.writer.get_derived(key)
     }
 
