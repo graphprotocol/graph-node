@@ -58,7 +58,7 @@ impl ToSql<Text, Pg> for SqlValue {
 impl ToSql<Binary, Pg> for SqlValue {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
         match &self.0 {
-            Value::Bytes(h) => <_ as ToSql<Binary, Pg>>::to_sql(&h.as_slice(), out),
+            Value::Bytes(h) => <_ as ToSql<Binary, Pg>>::to_sql(h.as_slice(), out),
             Value::String(s) => {
                 <_ as ToSql<Binary, Pg>>::to_sql(scalar::Bytes::from_str(s)?.as_slice(), out)
             }

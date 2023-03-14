@@ -155,7 +155,7 @@ impl<'a> QueryFragment<Pg> for IdValue<'a> {
 
         match &self.value {
             String(ref s) => out.push_bind_param::<Text, _>(s)?,
-            Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice())?,
+            Bytes(b) => out.push_bind_param::<Binary, _>(b.as_slice())?,
         }
         // Generate '::text' or '::bytea'
         out.push_sql("::");
@@ -612,7 +612,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 ColumnType::Bytes => {
                     let bytes = scalar::Bytes::from_str(s)
                         .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
-                    out.push_bind_param::<Binary, _>(&bytes.as_slice())
+                    out.push_bind_param::<Binary, _>(bytes.as_slice())
                 }
                 _ => unreachable!(
                     "only string, enum and tsvector columns have values of type string"
@@ -656,11 +656,9 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                                     out.push_sql(") || ");
                                 }
                                 out.push_sql("to_tsvector(");
-                                out.push_bind_param::<Text, _>(
-                                    &config.language.as_str().to_string(),
-                                )?;
+                                out.push_bind_param::<Text, _>(config.language.as_str())?;
                                 out.push_sql("::regconfig, ");
-                                out.push_bind_param::<Text, _>(&value)?;
+                                out.push_bind_param::<Text, _>(value)?;
                             }
                             out.push_sql("))");
                         }
@@ -673,7 +671,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 out.push_sql("null");
                 Ok(())
             }
-            Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Value::Bytes(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
             Value::BigInt(i) => {
                 out.push_bind_param::<Text, _>(&i.to_string())?;
                 out.push_sql("::numeric");
@@ -1543,7 +1541,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1575,7 +1573,7 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
@@ -1613,7 +1611,7 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, e.id\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
@@ -1846,7 +1844,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
@@ -3024,7 +3022,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql(" c,");
             out.push_sql(" matches m");
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
         }
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
