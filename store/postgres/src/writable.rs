@@ -763,7 +763,7 @@ impl Queue {
         let mut tracker = BlockTracker::new();
 
         // Get entities from entries in the queue
-        let (mut entities_in_queue, entities_removed) = self.queue.fold(
+        let (entities_in_queue, entities_removed) = self.queue.fold(
             (BTreeMap::new(), Vec::new()),
             |(mut map, mut remove_list): (BTreeMap<EntityKey, Entity>, Vec<EntityKey>), req| {
                 tracker.update(req.as_ref());
