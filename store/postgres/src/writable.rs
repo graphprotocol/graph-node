@@ -793,14 +793,16 @@ impl Queue {
                 (map, remove_list)
             },
         );
+        // We should filter this in the future to only get the entities that are needed
         let mut items_from_database = self.store.get_derived(key_derived, tracker.query_block())?;
         // Remove any entities that were removed in the queue
         items_from_database.retain(|key, _item| !entities_removed.contains(key));
 
         // Extend the store results with the entities from the queue.
-        entities_in_queue.extend(items_from_database);
+        // This overwrites any entitiy from the database with the same key from queue
+        items_from_database.extend(entities_in_queue);
 
-        Ok(entities_in_queue)
+        Ok(items_from_database)
     }
 
     /// Load dynamic data sources by looking at both the queue and the store
