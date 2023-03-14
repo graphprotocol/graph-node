@@ -60,14 +60,11 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn get_derived(&self, _key: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
-        let values: Vec<Entity> = self
-            .get_many_res
-            .clone()
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect();
-        Ok(values)
+    fn get_derived(
+        &self,
+        _key: &DerivedEntityQuery,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        Ok(self.get_many_res.clone())
     }
 
     fn input_schema(&self) -> Arc<Schema> {
