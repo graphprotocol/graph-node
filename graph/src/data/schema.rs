@@ -612,13 +612,6 @@ impl Schema {
         Schema::new(id, document).map_err(Into::into)
     }
 
-    pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
-        directive
-            .argument("name")
-            .expect("fulltext directive must have name argument")
-            .clone()
-    }
-
     /// Returned map has one an entry for each interface in the schema.
     pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
         &self.types_for_interface
