@@ -33,7 +33,7 @@ use crate::{
     data::{
         graphql::TryFromValue,
         query::QueryExecutionError,
-        schema::{Schema, SchemaImportError, SchemaValidationError},
+        schema::{Schema, SchemaValidationError},
         store::Entity,
         subgraph::features::validate_subgraph_features,
     },
@@ -315,12 +315,6 @@ impl From<::diesel::result::Error> for SubgraphAssignmentProviderError {
 }
 
 #[derive(Error, Debug)]
-pub enum SubgraphManifestValidationWarning {
-    #[error("schema validation produced warnings: {0:?}")]
-    SchemaValidationWarning(SchemaImportError),
-}
-
-#[derive(Error, Debug)]
 pub enum SubgraphManifestValidationError {
     #[error("subgraph has no data sources")]
     NoDataSources,
@@ -332,8 +326,6 @@ pub enum SubgraphManifestValidationError {
     EthereumNetworkRequired,
     #[error("the specified block must exist on the Ethereum network")]
     BlockNotFound(String),
-    #[error("imported schema(s) are invalid: {0:?}")]
-    SchemaImportError(Vec<SchemaImportError>),
     #[error("schema validation failed: {0:?}")]
     SchemaValidationError(Vec<SchemaValidationError>),
     #[error("the graft base is invalid: {0}")]
@@ -534,8 +526,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         store: Arc<S>,
         validate_graft_base: bool,
     ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
-        let (schemas, _) = self.0.schema.resolve_schema_references(store.clone());
-
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
         // Validate that the manifest has at least one data source
@@ -570,7 +560,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
         self.0
             .schema
-            .validate(&schemas)
+            .validate()
             .err()
             .into_iter()
             .for_each(|schema_errors| {

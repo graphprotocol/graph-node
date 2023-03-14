@@ -1,9 +1,9 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, SubgraphStore};
+use crate::components::store::{EntityKey, EntityType};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};
-use crate::data::subgraph::{DeploymentHash, SubgraphName};
+use crate::data::subgraph::DeploymentHash;
 use crate::prelude::{
     anyhow, lazy_static,
     q::Value,
@@ -20,7 +20,6 @@ use thiserror::Error;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
-use std::hash::Hash;
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -64,21 +63,11 @@ pub enum SchemaValidationError {
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
     #[error("The following type names are reserved: `{0}`")]
     UsageOfReservedTypes(Strings),
-    #[error("_Schema_ type is only for @imports and must not have any fields")]
+    #[error("_Schema_ type is only for @fulltext and must not have any fields")]
     SchemaTypeWithFields,
-    #[error("Imported subgraph name `{0}` is invalid")]
-    ImportedSubgraphNameInvalid(String),
-    #[error("Imported subgraph id `{0}` is invalid")]
-    ImportedSubgraphIdInvalid(String),
-    #[error("The _Schema_ type only allows @import directives")]
+    #[error("The _Schema_ type only allows @fulltext directives")]
     InvalidSchemaTypeDirectives,
-    #[error(
-        r#"@import directives must have the form \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ name: "org/subgraph"}}) or \
-@import(types: ["A", {{ name: "B", as: "C"}}], from: {{ id: "Qm..."}})"#
-    )]
-    ImportDirectiveInvalid,
-    #[error("Type `{0}`, field `{1}`: type `{2}` is neither defined nor imported")]
+    #[error("Type `{0}`, field `{1}`: type `{2}` is not defined")]
     FieldTypeUnknown(String, String, String), // (type_name, field_name, field_type)
     #[error("Imported type `{0}` does not exist in the `{1}` schema")]
     ImportedTypeUndefined(String, String), // (type_name, schema)
@@ -260,99 +249,6 @@ impl From<&s::Directive> for FulltextDefinition {
             },
             included_fields,
             name: name.into(),
-        }
-    }
-}
-#[derive(Debug, Error, PartialEq, Eq, Clone)]
-pub enum SchemaImportError {
-    #[error("Schema for imported subgraph `{0}` was not found")]
-    ImportedSchemaNotFound(SchemaReference),
-    #[error("Subgraph for imported schema `{0}` is not deployed")]
-    ImportedSubgraphNotFound(SchemaReference),
-}
-
-/// The representation of a single type from an import statement. This
-/// corresponds either to a string `"Thing"` or an object
-/// `{name: "Thing", as: "Stuff"}`. The first form is equivalent to
-/// `{name: "Thing", as: "Thing"}`
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImportedType {
-    /// The 'name'
-    name: String,
-    /// The 'as' alias or a copy of `name` if the user did not specify an alias
-    alias: String,
-    /// Whether the alias was explicitly given or is just a copy of the name
-    explicit: bool,
-}
-
-impl fmt::Display for ImportedType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        if self.explicit {
-            write!(f, "name: {}, as: {}", self.name, self.alias)
-        } else {
-            write!(f, "{}", self.name)
-        }
-    }
-}
-
-impl ImportedType {
-    fn parse(type_import: &Value) -> Option<Self> {
-        match type_import {
-            Value::String(type_name) => Some(ImportedType {
-                name: type_name.to_string(),
-                alias: type_name.to_string(),
-                explicit: false,
-            }),
-            Value::Object(type_name_as) => {
-                match (type_name_as.get("name"), type_name_as.get("as")) {
-                    (Some(name), Some(az)) => Some(ImportedType {
-                        name: name.to_string(),
-                        alias: az.to_string(),
-                        explicit: true,
-                    }),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SchemaReference {
-    subgraph: DeploymentHash,
-}
-
-impl fmt::Display for SchemaReference {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}", self.subgraph)
-    }
-}
-
-impl SchemaReference {
-    fn new(subgraph: DeploymentHash) -> Self {
-        SchemaReference { subgraph }
-    }
-
-    pub fn resolve<S: SubgraphStore>(
-        &self,
-        store: Arc<S>,
-    ) -> Result<Arc<Schema>, SchemaImportError> {
-        store
-            .input_schema(&self.subgraph)
-            .map_err(|_| SchemaImportError::ImportedSchemaNotFound(self.clone()))
-    }
-
-    fn parse(value: &Value) -> Option<Self> {
-        match value {
-            Value::Object(map) => match map.get("id") {
-                Some(Value::String(id)) => match DeploymentHash::new(id) {
-                    Ok(id) => Some(SchemaReference::new(id)),
-                    _ => None,
-                },
-                _ => None,
-            },
-            _ => None,
         }
     }
 }
@@ -647,50 +543,6 @@ impl Schema {
         self.immutable_types.contains(entity_type)
     }
 
-    pub fn resolve_schema_references<S: SubgraphStore>(
-        &self,
-        store: Arc<S>,
-    ) -> (
-        HashMap<SchemaReference, Arc<Schema>>,
-        Vec<SchemaImportError>,
-    ) {
-        let mut schemas = HashMap::new();
-        let mut visit_log = HashSet::new();
-        let import_errors = self.resolve_import_graph(store, &mut schemas, &mut visit_log);
-        (schemas, import_errors)
-    }
-
-    fn resolve_import_graph<S: SubgraphStore>(
-        &self,
-        store: Arc<S>,
-        schemas: &mut HashMap<SchemaReference, Arc<Schema>>,
-        visit_log: &mut HashSet<DeploymentHash>,
-    ) -> Vec<SchemaImportError> {
-        // Use the visit log to detect cycles in the import graph
-        self.imported_schemas()
-            .into_iter()
-            .fold(vec![], |mut errors, schema_ref| {
-                match schema_ref.resolve(store.clone()) {
-                    Ok(schema) => {
-                        schemas.insert(schema_ref, schema.clone());
-                        // If this node in the graph has already been visited stop traversing
-                        if !visit_log.contains(&schema.id) {
-                            visit_log.insert(schema.id.clone());
-                            errors.extend(schema.resolve_import_graph(
-                                store.clone(),
-                                schemas,
-                                visit_log,
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        errors.push(err);
-                    }
-                }
-                errors
-            })
-    }
-
     fn collect_interfaces(
         document: &s::Document,
     ) -> Result<
@@ -760,48 +612,6 @@ impl Schema {
         Schema::new(id, document).map_err(Into::into)
     }
 
-    fn imported_types(&self) -> HashMap<ImportedType, SchemaReference> {
-        fn parse_types(import: &Directive) -> Vec<ImportedType> {
-            import
-                .argument("types")
-                .map_or(vec![], |value| match value {
-                    Value::List(types) => types.iter().filter_map(ImportedType::parse).collect(),
-                    _ => vec![],
-                })
-        }
-
-        self.subgraph_schema_object_type()
-            .map_or(HashMap::new(), |object| {
-                object
-                    .directives
-                    .iter()
-                    .filter(|directive| directive.name.eq("import"))
-                    .flat_map(|import| {
-                        import.argument("from").map_or(vec![], |from| {
-                            SchemaReference::parse(from).map_or(vec![], |schema_ref| {
-                                parse_types(import)
-                                    .into_iter()
-                                    .map(|imported_type| (imported_type, schema_ref.clone()))
-                                    .collect()
-                            })
-                        })
-                    })
-                    .collect::<HashMap<ImportedType, SchemaReference>>()
-            })
-    }
-
-    pub fn imported_schemas(&self) -> Vec<SchemaReference> {
-        self.subgraph_schema_object_type().map_or(vec![], |object| {
-            object
-                .directives
-                .iter()
-                .filter(|directive| directive.name.eq("import"))
-                .filter_map(|directive| directive.argument("from"))
-                .filter_map(SchemaReference::parse)
-                .collect()
-        })
-    }
-
     pub fn name_argument_value_from_directive(directive: &Directive) -> Value {
         directive
             .argument("name")
@@ -861,10 +671,7 @@ impl Schema {
         }
     }
 
-    pub fn validate(
-        &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Result<(), Vec<SchemaValidationError>> {
+    pub fn validate(&self) -> Result<(), Vec<SchemaValidationError>> {
         let mut errors: Vec<SchemaValidationError> = [
             self.validate_schema_types(),
             self.validate_derived_from(),
@@ -880,9 +687,7 @@ impl Schema {
         .collect();
 
         errors.append(&mut self.validate_fields());
-        errors.append(&mut self.validate_import_directives());
         errors.append(&mut self.validate_fulltext_directives());
-        errors.append(&mut self.validate_imported_types(schemas));
 
         if errors.is_empty() {
             Ok(())
@@ -913,9 +718,7 @@ impl Schema {
                 if subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| {
-                        !directive.name.eq("import") && !directive.name.eq("fulltext")
-                    })
+                    .filter(|directive| !directive.name.eq("fulltext"))
                     .next()
                     .is_some()
                 {
@@ -927,80 +730,6 @@ impl Schema {
             Some(err) => Err(err),
             None => Ok(()),
         }
-    }
-
-    /// Check the syntax of a single `@import` directive
-    fn validate_import_directive_arguments(import: &Directive) -> Option<SchemaValidationError> {
-        fn validate_import_type(typ: &Value) -> Result<(), ()> {
-            match typ {
-                Value::String(_) => Ok(()),
-                Value::Object(typ) => match (typ.get("name"), typ.get("as")) {
-                    (Some(Value::String(_)), Some(Value::String(_))) => Ok(()),
-                    _ => Err(()),
-                },
-                _ => Err(()),
-            }
-        }
-
-        fn types_are_valid(types: Option<&Value>) -> bool {
-            // All of the elements in the `types` field are valid: either
-            // a string or an object with keys `name` and `as` which are strings
-            if let Some(Value::List(types)) = types {
-                types
-                    .iter()
-                    .try_for_each(validate_import_type)
-                    .err()
-                    .is_none()
-            } else {
-                false
-            }
-        }
-
-        fn from_is_valid(from: Option<&Value>) -> bool {
-            if let Some(Value::Object(from)) = from {
-                let has_id = matches!(from.get("id"), Some(Value::String(_)));
-
-                let has_name = matches!(from.get("name"), Some(Value::String(_)));
-                has_id ^ has_name
-            } else {
-                false
-            }
-        }
-
-        if from_is_valid(import.argument("from")) && types_are_valid(import.argument("types")) {
-            None
-        } else {
-            Some(SchemaValidationError::ImportDirectiveInvalid)
-        }
-    }
-
-    fn validate_import_directive_schema_reference_parses(
-        directive: &Directive,
-    ) -> Option<SchemaValidationError> {
-        directive.argument("from").and_then(|from| match from {
-            Value::Object(from) => {
-                let id_parse_error = match from.get("id") {
-                    Some(Value::String(id)) => match DeploymentHash::new(id) {
-                        Err(_) => {
-                            Some(SchemaValidationError::ImportedSubgraphIdInvalid(id.clone()))
-                        }
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                let name_parse_error = match from.get("name") {
-                    Some(Value::String(name)) => match SubgraphName::new(name) {
-                        Err(_) => Some(SchemaValidationError::ImportedSubgraphNameInvalid(
-                            name.clone(),
-                        )),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                id_parse_error.or(name_parse_error)
-            }
-            _ => None,
-        })
     }
 
     fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
@@ -1182,64 +911,6 @@ impl Schema {
         vec![]
     }
 
-    fn validate_import_directives(&self) -> Vec<SchemaValidationError> {
-        self.subgraph_schema_object_type()
-            .map_or(vec![], |subgraph_schema_type| {
-                subgraph_schema_type
-                    .directives
-                    .iter()
-                    .filter(|directives| directives.name.eq("import"))
-                    .fold(vec![], |mut errors, import| {
-                        Self::validate_import_directive_arguments(import)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
-                        Self::validate_import_directive_schema_reference_parses(import)
-                            .into_iter()
-                            .for_each(|err| errors.push(err));
-                        errors
-                    })
-            })
-    }
-
-    fn validate_imported_types(
-        &self,
-        schemas: &HashMap<SchemaReference, Arc<Schema>>,
-    ) -> Vec<SchemaValidationError> {
-        self.imported_types()
-            .iter()
-            .fold(vec![], |mut errors, (imported_type, schema_ref)| {
-                schemas
-                    .get(schema_ref)
-                    .and_then(|schema| {
-                        let local_types = schema.document.get_object_type_definitions();
-                        let imported_types = schema.imported_types();
-
-                        // Ensure that the imported type is either local to
-                        // the respective schema or is itself imported
-                        // If the imported type is itself imported, do not
-                        // recursively check the schema
-                        let schema_handle = schema_ref.subgraph.to_string();
-                        let name = imported_type.name.as_str();
-
-                        let is_local = local_types.iter().any(|object| object.name == name);
-                        let is_imported = imported_types
-                            .iter()
-                            .any(|(import, _)| name == import.alias);
-                        if !is_local && !is_imported {
-                            Some(SchemaValidationError::ImportedTypeUndefined(
-                                name.to_string(),
-                                schema_handle,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .into_iter()
-                    .for_each(|err| errors.push(err));
-                errors
-            })
-    }
-
     fn validate_fields(&self) -> Vec<SchemaValidationError> {
         let local_types = self.document.get_object_and_interface_type_fields();
         let local_enums = self
@@ -1248,7 +919,6 @@ impl Schema {
             .iter()
             .map(|enu| enu.name.clone())
             .collect::<Vec<String>>();
-        let imported_types = self.imported_types();
         local_types
             .iter()
             .fold(vec![], |errors, (type_name, fields)| {
@@ -1258,12 +928,6 @@ impl Schema {
                         return errors;
                     }
                     if local_types.contains_key(base) {
-                        return errors;
-                    }
-                    if imported_types
-                        .iter()
-                        .any(|(imported_type, _)| &imported_type.alias == base)
-                    {
                         return errors;
                     }
                     if local_enums.iter().any(|enu| enu.eq(base)) {
@@ -1628,7 +1292,7 @@ fn interface_implementations_id_type() {
             }}"
         );
         let schema = Schema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
-        let res = schema.validate(&HashMap::new());
+        let res = schema.validate();
         if ok {
             assert!(matches!(res, Ok(_)));
         } else {
@@ -1744,25 +1408,6 @@ type _Schema_ @illegal";
 }
 
 #[test]
-fn test_imports_directive_from_argument() {
-    const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T", "A", "C"])"#;
-
-    let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-    match schema
-        .validate_import_directives()
-        .into_iter()
-        .find(|err| *err == SchemaValidationError::ImportDirectiveInvalid) {
-            None => panic!(
-                "Expected validation for `{}` to fail due to an @imports directive without a `from` argument",
-                ROOT_SCHEMA,
-            ),
-            _ => (),
-    }
-}
-
-#[test]
 fn test_enums_pass_field_validation() {
     const ROOT_SCHEMA: &str = r#"
 enum Color {
@@ -1778,79 +1423,6 @@ type A @entity {
     let document = graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
     let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
     assert_eq!(schema.validate_fields().len(), 0);
-}
-
-#[test]
-fn test_recursively_imported_type_validates() {
-    const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { id: "c1id" })"#;
-    const CHILD_1_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { id: "c2id" })"#;
-    const CHILD_2_SCHEMA: &str = r#"
-type T @entity { id: ID! }
-"#;
-
-    let root_document =
-        graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let child_1_document =
-        graphql_parser::parse_schema(CHILD_1_SCHEMA).expect("Failed to parse child 1 schema");
-    let child_2_document =
-        graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
-
-    let c1id = DeploymentHash::new("c1id").unwrap();
-    let c2id = DeploymentHash::new("c2id").unwrap();
-    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document).unwrap();
-    let child_1_schema = Schema::new(c1id.clone(), child_1_document).unwrap();
-    let child_2_schema = Schema::new(c2id.clone(), child_2_document).unwrap();
-
-    let mut schemas = HashMap::new();
-    schemas.insert(SchemaReference::new(c1id), Arc::new(child_1_schema));
-    schemas.insert(SchemaReference::new(c2id), Arc::new(child_2_schema));
-
-    match root_schema.validate_imported_types(&schemas).is_empty() {
-        false => panic!(
-            "Expected imported types validation for `{}` to suceed",
-            ROOT_SCHEMA,
-        ),
-        true => (),
-    }
-}
-
-#[test]
-fn test_recursively_imported_type_which_dne_fails_validation() {
-    const ROOT_SCHEMA: &str = r#"
-type _Schema_ @import(types: ["T"], from: { id:"c1id"})"#;
-    const CHILD_1_SCHEMA: &str = r#"
-type _Schema_ @import(types: [{name: "T", as: "A"}], from: { id:"c2id"})"#;
-    const CHILD_2_SCHEMA: &str = r#"
-type T @entity { id: ID! }
-"#;
-    let root_document =
-        graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-    let child_1_document =
-        graphql_parser::parse_schema(CHILD_1_SCHEMA).expect("Failed to parse child 1 schema");
-    let child_2_document =
-        graphql_parser::parse_schema(CHILD_2_SCHEMA).expect("Failed to parse child 2 schema");
-
-    let c1id = DeploymentHash::new("c1id").unwrap();
-    let c2id = DeploymentHash::new("c2id").unwrap();
-    let root_schema = Schema::new(DeploymentHash::new("rid").unwrap(), root_document).unwrap();
-    let child_1_schema = Schema::new(c1id.clone(), child_1_document).unwrap();
-    let child_2_schema = Schema::new(c2id.clone(), child_2_document).unwrap();
-
-    let mut schemas = HashMap::new();
-    schemas.insert(SchemaReference::new(c1id), Arc::new(child_1_schema));
-    schemas.insert(SchemaReference::new(c2id), Arc::new(child_2_schema));
-
-    match root_schema.validate_imported_types(&schemas).into_iter().find(|err| match err {
-        SchemaValidationError::ImportedTypeUndefined(_, _) => true,
-        _ => false,
-    }) {
-        None => panic!(
-            "Expected imported types validation to fail because an imported type was missing in the target schema",
-        ),
-        _ => (),
-    }
 }
 
 #[test]
@@ -1876,7 +1448,7 @@ fn test_reserved_types_validation() {
 
         let schema = Schema::parse(&schema, dummy_hash.clone()).unwrap();
 
-        let errors = schema.validate(&HashMap::new()).unwrap_err();
+        let errors = schema.validate().unwrap_err();
         for error in errors {
             assert!(matches!(
                 error,
@@ -1904,7 +1476,7 @@ fn test_reserved_filter_and_group_by_types_validation() {
 
     let schema = Schema::parse(SCHEMA, dummy_hash).unwrap();
 
-    let errors = schema.validate(&HashMap::new()).unwrap_err();
+    let errors = schema.validate().unwrap_err();
 
     // The only problem in the schema is the usage of reserved types
     assert_eq!(errors.len(), 1);
