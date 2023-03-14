@@ -1170,8 +1170,11 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn get_derived(&self, _query: &DerivedEntityQuery) -> Result<Vec<Entity>, StoreError> {
-        Ok(vec![])
+    fn get_derived(
+        &self,
+        _query: &DerivedEntityQuery,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+        Ok(BTreeMap::new())
     }
 
     fn input_schema(&self) -> Arc<Schema> {

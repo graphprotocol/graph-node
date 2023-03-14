@@ -129,13 +129,10 @@ impl EntityCache {
         };
 
         let entities = self.store.get_derived(&key)?;
-        entities
-            .iter()
-            .filter(|e| e.contains_key("id"))
-            .for_each(|e| {
-                let key = EntityKey::from(&e.id().unwrap().into(), eref);
-                self.current.insert(key, Some(e.clone()));
-            });
+        entities.iter().for_each(|(key, e)| {
+            self.current.insert(key.clone(), Some(e.clone()));
+        });
+        let entities: Vec<Entity> = entities.values().cloned().collect();
         Ok(entities)
     }
 

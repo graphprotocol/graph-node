@@ -563,15 +563,22 @@ impl Layout {
         conn: &PgConnection,
         key: &DerivedEntityQuery,
         block: BlockNumber,
-    ) -> Result<Vec<Entity>, StoreError> {
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let table = self.table_for_entity(&key.entity_type)?;
         let query = FindDerivedQuery::new(table, key, block);
 
-        let mut entities = Vec::new();
+        let mut entities = BTreeMap::new();
 
         for data in query.load::<EntityData>(conn)? {
+            let entity_type = data.entity_type();
             let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
-            entities.push(entity_data);
+            let key = EntityKey {
+                entity_type,
+                entity_id: entity_data.id()?.into(),
+                causality_region: CausalityRegion::from_entity(&entity_data),
+            };
+
+            entities.insert(key, entity_data);
         }
         Ok(entities)
     }
