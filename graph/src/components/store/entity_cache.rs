@@ -121,14 +121,14 @@ impl EntityCache {
     ) -> Result<Vec<Entity>, anyhow::Error> {
         let (base_type, field) = self.schema.get_type_for_field(eref)?;
 
-        let key = DerivedEntityQuery {
+        let query = DerivedEntityQuery {
             entity_type: EntityType::new(base_type.to_string()),
             entity_field: field.into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
         };
 
-        let entities = self.store.get_derived(&key)?;
+        let entities = self.store.get_derived(&query)?;
         entities.iter().for_each(|(key, e)| {
             self.current.insert(key.clone(), Some(e.clone()));
         });

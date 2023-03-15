@@ -189,7 +189,7 @@ pub trait ReadStore: Send + Sync + 'static {
     /// Reverse lookup
     fn get_derived(
         &self,
-        entity_derived: &DerivedEntityQuery,
+        query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
     fn input_schema(&self) -> Arc<Schema>;

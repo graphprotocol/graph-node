@@ -561,11 +561,12 @@ impl Layout {
     pub fn find_derived(
         &self,
         conn: &PgConnection,
-        key: &DerivedEntityQuery,
+        derived_query: &DerivedEntityQuery,
         block: BlockNumber,
+        excluded_keys: &Option<Vec<EntityKey>>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let table = self.table_for_entity(&key.entity_type)?;
-        let query = FindDerivedQuery::new(table, key, block);
+        let table = self.table_for_entity(&derived_query.entity_type)?;
+        let query = FindDerivedQuery::new(table, derived_query, block, excluded_keys);
 
         let mut entities = BTreeMap::new();
 

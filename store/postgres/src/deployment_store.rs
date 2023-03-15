@@ -1122,12 +1122,13 @@ impl DeploymentStore {
     pub(crate) fn get_derived(
         &self,
         site: Arc<Site>,
-        key: &DerivedEntityQuery,
+        derived_query: &DerivedEntityQuery,
         block: BlockNumber,
+        excluded_keys: &Option<Vec<EntityKey>>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let conn = self.get_conn()?;
         let layout = self.layout(&conn, site)?;
-        layout.find_derived(&conn, key, block)
+        layout.find_derived(&conn, derived_query, block, excluded_keys)
     }
 
     pub(crate) fn get_changes(
