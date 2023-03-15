@@ -42,7 +42,12 @@ pub fn register(
     runner.register(
         Arc::new(UnusedJob::new(store.subgraph_store())),
         2 * ONE_HOUR,
-    )
+    );
+
+    runner.register(
+        Arc::new(RefreshMaterializedView::new(store.subgraph_store())),
+        6 * ONE_HOUR,
+    );
 }
 
 /// A job that vacuums `subgraphs.subgraph_deployment`. With a large number
@@ -149,6 +154,27 @@ impl Job for MirrorPrimary {
 
     async fn run(&self, logger: &Logger) {
         self.store.mirror_primary_tables(logger).await;
+    }
+}
+
+struct RefreshMaterializedView {
+    store: Arc<SubgraphStore>,
+}
+
+impl RefreshMaterializedView {
+    fn new(store: Arc<SubgraphStore>) -> Self {
+        Self { store }
+    }
+}
+
+#[async_trait]
+impl Job for RefreshMaterializedView {
+    fn name(&self) -> &str {
+        "Refresh materialized views"
+    }
+
+    async fn run(&self, logger: &Logger) {
+        self.store.refresh_materialized_views(logger).await;
     }
 }
 

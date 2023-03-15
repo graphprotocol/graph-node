@@ -1658,6 +1658,35 @@ impl DeploymentStore {
         });
     }
 
+    pub(crate) async fn refresh_materialized_views(&self, logger: &Logger) {
+        async fn run(store: &DeploymentStore) -> Result<(), StoreError> {
+            // We hardcode our materialized views, but could also use
+            // pg_matviews to list all of them, though that might inadvertently
+            // refresh materialized views that operators created themselves
+            const VIEWS: [&str; 3] = [
+                "info.table_sizes",
+                "info.subgraph_sizes",
+                "info.chain_sizes",
+            ];
+            store
+                .with_conn(|conn, cancel| {
+                    for view in VIEWS {
+                        let query = format!("refresh materialized view {}", view);
+                        diesel::sql_query(&query).execute(conn)?;
+                        cancel.check_cancel()?;
+                    }
+                    Ok(())
+                })
+                .await
+        }
+
+        run(self).await.unwrap_or_else(|e| {
+            warn!(logger, "Refreshing materialized views failed. We will try again in a few hours";
+                  "error" => e.to_string(),
+                  "shard" => self.pool.shard.as_str())
+        });
+    }
+
     pub(crate) async fn health(
         &self,
         site: &Site,

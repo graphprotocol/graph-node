@@ -1029,6 +1029,15 @@ impl SubgraphStoreInner {
         .await;
     }
 
+    pub async fn refresh_materialized_views(&self, logger: &Logger) {
+        join_all(
+            self.stores
+                .values()
+                .map(|store| store.refresh_materialized_views(logger)),
+        )
+        .await;
+    }
+
     pub fn analyze(
         &self,
         deployment: &DeploymentLocator,
