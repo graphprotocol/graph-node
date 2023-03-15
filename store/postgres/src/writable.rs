@@ -759,7 +759,7 @@ impl Queue {
 
     fn get_derived(
         &self,
-        key_derived: &DerivedEntityQuery,
+        derived_query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut tracker = BlockTracker::new();
 
@@ -775,8 +775,8 @@ impl Queue {
                         if tracker.visible(block_ptr) {
                             for emod in mods {
                                 let key = emod.entity_ref();
-                                // we only select only the entities that match the query
-                                if key_derived.entity_type == key.entity_type {
+                                // we select just the entities that match the query
+                                if derived_query.entity_type == key.entity_type {
                                     map.insert(key.clone(), emod.entity().cloned());
                                 }
                             }
@@ -793,7 +793,7 @@ impl Queue {
         // We filter to exclude the entities ids that we already have from the queue
         let mut items_from_database =
             self.store
-                .get_derived(key_derived, tracker.query_block(), Some(excluded_keys))?;
+                .get_derived(derived_query, tracker.query_block(), Some(excluded_keys))?;
 
         // Extend the store results with the entities from the queue.
         // This overwrites any entitiy from the database with the same key from queue
