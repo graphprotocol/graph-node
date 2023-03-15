@@ -1673,8 +1673,9 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 #[derive(Debug, Clone, Constructor)]
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
-    key: &'a DerivedEntityQuery,
+    derived_query: &'a DerivedEntityQuery,
     block: BlockNumber,
+    excluded_keys: &'a Option<Vec<EntityKey>>,
 }
 
 impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
@@ -1686,7 +1687,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             entity_field,
             value: entity_id,
             causality_region,
-        } = self.key;
+        } = self.derived_query;
 
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
@@ -1697,6 +1698,19 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
+
+        if let Some(keys) = self.excluded_keys {
+            let primary_key = self.table.primary_key();
+            out.push_identifier(primary_key.name.as_str())?;
+            out.push_sql(" not in (");
+            for (i, value) in keys.iter().enumerate() {
+                if i > 0 {
+                    out.push_sql(", ");
+                }
+                out.push_bind_param::<Text, _>(&value.entity_id.as_str())?;
+            }
+            out.push_sql(") and ");
+        }
         out.push_identifier(entity_field.as_str())?;
         out.push_sql(" = ");
         out.push_bind_param::<Text, _>(&entity_id.as_str())?;
