@@ -20,25 +20,28 @@ pub fn register(
     primary_pool: ConnectionPool,
     registry: Arc<dyn MetricsRegistryTrait>,
 ) {
+    const ONE_MINUTE: Duration = Duration::from_secs(60);
+    const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
+
     runner.register(
         Arc::new(VacuumDeploymentsJob::new(store.subgraph_store())),
-        Duration::from_secs(60),
+        ONE_MINUTE,
     );
 
     runner.register(
         Arc::new(NotificationQueueUsage::new(primary_pool, registry)),
-        Duration::from_secs(60),
+        ONE_MINUTE,
     );
 
     runner.register(
         Arc::new(MirrorPrimary::new(store.subgraph_store())),
-        Duration::from_secs(15 * 60),
+        15 * ONE_MINUTE,
     );
 
     // Remove unused deployments every 2 hours
     runner.register(
         Arc::new(UnusedJob::new(store.subgraph_store())),
-        Duration::from_secs(2 * 60 * 60),
+        2 * ONE_HOUR,
     )
 }
 
