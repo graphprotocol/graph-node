@@ -32,6 +32,10 @@ pub mod factory;
 pub mod split;
 
 pub fn logger(show_debug: bool) -> Logger {
+    logger_with_levels(show_debug, ENV_VARS.log_levels.as_deref())
+}
+
+pub fn logger_with_levels(show_debug: bool, levels: Option<&str>) -> Logger {
     let use_color = isatty::stdout_isatty();
     let decorator = slog_term::TermDecorator::new().build();
     let drain = CustomFormat::new(decorator, use_color).fuse();
@@ -44,7 +48,7 @@ pub fn logger(show_debug: bool) -> Logger {
                 FilterLevel::Info
             },
         )
-        .parse(ENV_VARS.log_levels.as_deref().unwrap_or(""))
+        .parse(levels.unwrap_or(""))
         .build();
     let drain = slog_async::Async::new(drain)
         .chan_size(20000)
