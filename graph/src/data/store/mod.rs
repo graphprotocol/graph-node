@@ -14,10 +14,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-};
+use std::{borrow::Cow, collections::HashMap};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
@@ -819,18 +816,6 @@ impl Entity {
             }
         }
         Ok(())
-    }
-}
-
-impl From<Entity> for BTreeMap<String, q::Value> {
-    fn from(entity: Entity) -> BTreeMap<String, q::Value> {
-        entity.0.into_iter().map(|(k, v)| (k, v.into())).collect()
-    }
-}
-
-impl From<Entity> for q::Value {
-    fn from(entity: Entity) -> q::Value {
-        q::Value::Object(entity.into())
     }
 }
 
