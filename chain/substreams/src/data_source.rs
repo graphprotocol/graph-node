@@ -273,16 +273,10 @@ mod test {
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
     };
+    use prost::Message;
 
     use crate::{DataSource, Mapping, UnresolvedDataSource, UnresolvedMapping, SUBSTREAMS_KIND};
 
-    const EMPTY_PACKAGE: graph::substreams::Package = graph::substreams::Package {
-        proto_files: vec![],
-        version: 0,
-        modules: None,
-        module_meta: vec![],
-        package_meta: vec![],
-    };
 
     #[test]
     fn parse_data_source() {
@@ -319,14 +313,14 @@ mod test {
             name: "Uniswap".into(),
             source: crate::Source {
                 module_name: "output".into(),
-                package: EMPTY_PACKAGE,
+                package: gen_package(),
             },
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
             },
             context: Arc::new(None),
-            initial_block: None,
+            initial_block: Some(123),
         };
         assert_eq!(ds, expected);
     }
@@ -353,6 +347,27 @@ mod test {
         );
     }
 
+    fn gen_package() -> graph::substreams::Package {
+        graph::substreams::Package {
+            proto_files: vec![],
+            version: 0,
+            modules: Some(graph::substreams::Modules {
+                modules: vec![graph::substreams::Module {
+                    name: "output".into(),
+                    initial_block: 123,
+                    binary_entrypoint: "entry".into(),
+                    binary_index: 0,
+                    kind: None,
+                    inputs: vec![],
+                    output: None,
+                }],
+                binaries: vec![],
+            }),
+            module_meta: vec![],
+            package_meta: vec![],
+        }
+    }
+
     fn gen_data_source() -> DataSource {
         DataSource {
             kind: SUBSTREAMS_KIND.into(),
@@ -360,7 +375,7 @@ mod test {
             name: "Uniswap".into(),
             source: crate::Source {
                 module_name: "".to_string(),
-                package: EMPTY_PACKAGE,
+                package: gen_package(),
             },
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
@@ -400,7 +415,7 @@ mod test {
         }
 
         async fn cat(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {
-            Ok(vec![])
+            Ok(gen_package().encode_to_vec())
         }
 
         async fn get_block(&self, _logger: &Logger, _link: &Link) -> Result<Vec<u8>, Error> {

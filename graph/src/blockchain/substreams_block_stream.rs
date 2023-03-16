@@ -6,7 +6,7 @@ use crate::firehose::FirehoseEndpoint;
 use crate::prelude::*;
 use crate::substreams::response::Message;
 use crate::substreams::ForkStep::{StepNew, StepUndo};
-use crate::substreams::{Modules, Request, Response};
+use crate::substreams::{Modules, Request, Response, module_progress};
 use crate::util::backoff::ExponentialBackoff;
 use async_stream::try_stream;
 use futures03::{Stream, StreamExt};
@@ -313,11 +313,76 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
                 None => Ok(None),
             }
         }
+        Some(Message::Progress(modules_progress)) => {
+            for module_progress in modules_progress.modules.iter() {
+                match module_progress.r#type.clone() {
+                    Some(module_progress::Type::ProcessedRanges(processed_range)) => {
+                        for processed_range in processed_range.processed_ranges.iter() {
+                            if processed_range.end_block % 1000 == 0 {
+                                debug!(
+                                    logger,
+                                    "Range progress for module: {}, Range: {}-{}",
+                                    module_progress.name,
+                                    processed_range.start_block,
+                                    processed_range.end_block
+                                );
+                            }
+                        }
+                    }
+                    Some(module_progress::Type::InitialState(initial_state)) => {
+                        debug!(
+                            &logger,
+                            "State progress for module: {}, InitialState: {:?}",
+                            module_progress.name,
+                            initial_state
+                        );
+                    }
+                    Some(module_progress::Type::ProcessedBytes(processed_bytes)) => {
+                        debug!(
+                            &logger,
+                            "Bytes progress for module: {}, ProcessedBytes: {:?}",
+                            module_progress.name,
+                            processed_bytes
+                        );
+                    }
+                    Some(module_progress::Type::Failed(failed)) => {
+                        error!(
+                            &logger,
+                            "ModuleProgress failed. Reason: {}. Logs: {:?}. Logs truncated: {}",
+                            failed.reason,
+                            failed.logs,
+                            failed.logs_truncated,
+                        );
+                    }
+                    None => {
+                        warn!(&logger, "Received an empty ModuleProgress");
+                    }
+                }
+            }
+            Ok(None)
+        }
+        Some(Message::Session(session_init)) => {
+            debug!(&logger, "Session trace_id: {}", session_init.trace_id,);
+            Ok(None)
+        }
+        Some(Message::SnapshotData(snapshort_data)) => {
+            debug!(
+                &logger,
+                "SnapshotData for module {}: keys: {}/{}",
+                snapshort_data.module_name,
+                snapshort_data.sent_keys,
+                snapshort_data.total_keys,
+            );
+            Ok(None)
+        }
+        Some(Message::SnapshotComplete(snapshort_data)) => {
+            debug!(&logger, "SnapshotComplete cursor {}", snapshort_data.cursor,);
+            Ok(None)
+        }
         None => {
             warn!(&logger, "Got None on substream message");
             Ok(None)
-        }
-        _ => Ok(None),
+        } // _ => Ok(None),
     }
 }
 
