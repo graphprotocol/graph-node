@@ -172,9 +172,14 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 
         let package = graph::substreams::Package::decode(content.as_ref())?;
 
-        let initial_block: Option<u64> = match package.modules {
-            Some(ref modules) => modules.modules.iter().map(|x| x.initial_block).min(),
+        let module = match package.modules {
+            Some(ref modules) => modules.modules.iter().find(|module| module.name == self.source.package.module_name),
             None => None,
+        };
+
+        let initial_block: Option<u64> = match module {
+            Some(module) => Some(module.initial_block),
+            None => return Err(anyhow!("Substreams module {} does not exist", self.source.package.module_name)),
         };
 
         let initial_block: Option<i32> = initial_block
