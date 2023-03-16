@@ -4,6 +4,9 @@
 
 - the materialized views in the `info` schema (`table_sizes`, `subgraph_sizes`, and `chain_sizes`) that provide information about the size of various database objects are now automatically refreshed every 6 hours. [#4461](https://github.com/graphprotocol/graph-node/pull/4461)
 
+### Fixes
+- fulltext searches now support additional `where` filters making it possible to narrow the results of a fulltext search with other criteria [#1823](https://github.com/graphprotocol/graph-node/issues/1823)
+
 
 ## v0.30.0
 
