@@ -2,13 +2,13 @@ use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
+use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
-    log::logger,
     prelude::{
         anyhow::{self, Context as AnyhowContextTrait},
-        info, o, slog, tokio, Logger, NodeId, ENV_VARS,
+        info, tokio, Logger, NodeId,
     },
     url::Url,
 };
@@ -47,6 +47,13 @@ lazy_static! {
     version = RENDERED_TESTAMENT.as_str()
 )]
 pub struct Opt {
+    #[clap(
+        long,
+        default_value = "off",
+        env = "GRAPHMAN_LOG",
+        help = "level for log output in slog format"
+    )]
+    pub log_level: String,
     #[clap(
         long,
         default_value = "auto",
@@ -910,10 +917,7 @@ async fn main() -> anyhow::Result<()> {
 
     let version_label = opt.version_label.clone();
     // Set up logger
-    let logger = match ENV_VARS.log_levels {
-        Some(_) => logger(false),
-        None => Logger::root(slog::Discard, o!()),
-    };
+    let logger = logger_with_levels(false, Some(&opt.log_level));
 
     // Log version information
     info!(
