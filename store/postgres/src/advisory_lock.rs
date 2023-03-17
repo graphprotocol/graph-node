@@ -19,9 +19,56 @@ use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::prelude::StoreError;
 
 use crate::command_support::catalog::Site;
+use crate::primary::DeploymentId;
 
-/// Get a lock for running migrations. Blocks until we get
-/// the lock.
+/// A locking scope for a particular deployment. We use different scopes for
+/// different purposes, and in each scope we use an advisory lock for each
+/// deployment.
+struct Scope {
+    id: i32,
+}
+
+impl Scope {
+    /// Try to lock the deployment in this scope with the given id. Return
+    /// `true` if we got the lock, and `false` if it is already locked.
+    fn try_lock(&self, conn: &PgConnection, id: DeploymentId) -> Result<bool, StoreError> {
+        #[derive(QueryableByName)]
+        struct Locked {
+            #[sql_type = "Bool"]
+            locked: bool,
+        }
+
+        sql_query(format!(
+            "select pg_try_advisory_lock({}, {id}) as locked",
+            self.id
+        ))
+        .get_result::<Locked>(conn)
+        .map(|res| res.locked)
+        .map_err(StoreError::from)
+    }
+
+    /// Lock the deployment in this scope with the given id. Blocks until we
+    /// can get the lock
+    fn lock(&self, conn: &PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+        sql_query(format!("select pg_advisory_lock({}, {id})", self.id))
+            .execute(conn)
+            .map(|_| ())
+            .map_err(StoreError::from)
+    }
+
+    /// Unlock the deployment in this scope with the given id.
+    fn unlock(&self, conn: &PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+        sql_query(format!("select pg_advisory_unlock({}, {id})", self.id))
+            .execute(conn)
+            .map(|_| ())
+            .map_err(StoreError::from)
+    }
+}
+
+const COPY: Scope = Scope { id: 1 };
+const WRITE: Scope = Scope { id: 2 };
+
+/// Get a lock for running migrations. Blocks until we get the lock.
 pub(crate) fn lock_migration(conn: &PgConnection) -> Result<(), StoreError> {
     sql_query("select pg_advisory_lock(1)").execute(conn)?;
 
@@ -34,40 +81,26 @@ pub(crate) fn unlock_migration(conn: &PgConnection) -> Result<(), StoreError> {
     Ok(())
 }
 
+/// Take the lock used to keep two copy operations to run simultaneously on
+/// the same deployment. Block until we can get the lock
 pub(crate) fn lock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
-    sql_query(format!("select pg_advisory_lock(1, {})", dst.id))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(StoreError::from)
+    COPY.lock(conn, dst.id)
 }
 
+/// Release the lock acquired with `lock_copying`.
 pub(crate) fn unlock_copying(conn: &PgConnection, dst: &Site) -> Result<(), StoreError> {
-    sql_query(format!("select pg_advisory_unlock(1, {})", dst.id))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(StoreError::from)
+    COPY.unlock(conn, dst.id)
 }
 
-/// Try to lock deployment `site` with a session lock. Return `true` if we
-/// got the lock, and `false` if we did not. You don't want to use this
-/// directly. Instead, use `deployment::with_lock`
+/// Take the lock used to keep two operations from writing to the deployment
+/// simultaneously. Return `true` if we got the lock, and `false` if we did
+/// not. You don't want to use this directly. Instead, use
+/// `deployment::with_lock`
 pub(crate) fn lock_deployment_session(
     conn: &PgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
-    #[derive(QueryableByName)]
-    struct Locked {
-        #[sql_type = "Bool"]
-        locked: bool,
-    }
-
-    sql_query(format!(
-        "select pg_try_advisory_lock(2, {}) as locked",
-        site.id
-    ))
-    .get_result::<Locked>(conn)
-    .map(|res| res.locked)
-    .map_err(StoreError::from)
+    WRITE.try_lock(conn, site.id)
 }
 
 /// Release the lock acquired with `lock_deployment_session`.
@@ -75,8 +108,5 @@ pub(crate) fn unlock_deployment_session(
     conn: &PgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
-    sql_query(format!("select pg_advisory_unlock(2, {})", site.id))
-        .execute(conn)
-        .map(|_| ())
-        .map_err(StoreError::from)
+    WRITE.unlock(conn, site.id)
 }
