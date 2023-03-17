@@ -15,7 +15,7 @@ use graph_store_postgres::connection_pool::{
 };
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
+    ChainStoreMetrics, NotificationSender, Shard as ShardName, Store as DieselStore, SubgraphStore,
     SubscriptionManager, PRIMARY_SHARD,
 };
 
@@ -30,6 +30,7 @@ pub struct StoreBuilder {
     /// Map network names to the shards where they are/should be stored
     chains: HashMap<String, ShardName>,
     pub coord: Arc<PoolCoordinator>,
+    registry: Arc<dyn MetricsRegistryTrait>,
 }
 
 impl StoreBuilder {
@@ -85,6 +86,7 @@ impl StoreBuilder {
             chain_head_update_listener,
             chains,
             coord,
+            registry,
         }
     }
 
@@ -166,6 +168,7 @@ impl StoreBuilder {
         subgraph_store: Arc<SubgraphStore>,
         chains: HashMap<String, ShardName>,
         networks: Vec<(String, Vec<ChainIdentifier>)>,
+        registry: Arc<dyn MetricsRegistryTrait>,
     ) -> Arc<DieselStore> {
         let networks = networks
             .into_iter()
@@ -177,12 +180,14 @@ impl StoreBuilder {
 
         let logger = logger.new(o!("component" => "BlockStore"));
 
+        let chain_store_metrics = Arc::new(ChainStoreMetrics::new(registry));
         let block_store = Arc::new(
             DieselBlockStore::new(
                 logger,
                 networks,
                 pools,
                 subgraph_store.notification_sender(),
+                chain_store_metrics,
             )
             .expect("Creating the BlockStore works"),
         );
@@ -283,6 +288,7 @@ impl StoreBuilder {
             self.subgraph_store,
             self.chains,
             networks,
+            self.registry,
         )
     }
 
