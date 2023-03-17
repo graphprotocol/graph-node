@@ -1392,6 +1392,20 @@ impl ChainStoreMetrics {
             .with_label_values(&[network])
             .dec();
     }
+
+    pub fn record_cache_hit(&self, network: &str) {
+        self.chain_head_cache_hits
+            .get_metric_with_label_values(&[network])
+            .unwrap()
+            .inc();
+    }
+
+    pub fn record_cache_miss(&self, network: &str) {
+        self.chain_head_cache_misses
+            .get_metric_with_label_values(&[network])
+            .unwrap()
+            .inc();
+    }
 }
 
 pub struct ChainStore {
@@ -1954,22 +1968,6 @@ mod recent_blocks_cache {
             }
         }
 
-        fn record_cache_hit(&self) {
-            self.metrics
-                .chain_head_cache_hits
-                .get_metric_with_label_values(&[&self.network])
-                .unwrap()
-                .inc();
-        }
-
-        fn record_cache_miss(&self) {
-            self.metrics
-                .chain_head_cache_misses
-                .get_metric_with_label_values(&[&self.network])
-                .unwrap()
-                .inc();
-        }
-
         fn update_write_metrics(&self) {
             self.metrics
                 .chain_head_cache_size
@@ -1987,7 +1985,7 @@ mod recent_blocks_cache {
                 .chain_head_cache_latest_block_num
                 .get_metric_with_label_values(&[&self.network])
                 .unwrap()
-                .set(self.earliest_block().map(|b| b.ptr.number).unwrap_or(0) as f64);
+                .set(self.chain_head().map(|b| b.number).unwrap_or(0) as f64);
         }
 
         fn insert_block(
@@ -2081,10 +2079,11 @@ mod recent_blocks_cache {
                 .get_block(child, offset)
                 .map(|b| (b.0.clone(), b.1.cloned()));
 
+            let inner = self.inner.read();
             if block_opt.is_some() {
-                self.inner.read().record_cache_hit();
+                inner.metrics.record_cache_hit(&inner.network);
             } else {
-                self.inner.read().record_cache_miss();
+                inner.metrics.record_cache_miss(&inner.network);
             }
 
             block_opt
