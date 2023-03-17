@@ -8,7 +8,6 @@ use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
-use lazy_static::lazy_static;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
@@ -29,11 +28,7 @@ use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
-lazy_static! {
-    static ref ARG_FIRST: String = String::from("first");
-    static ref ARG_SKIP: String = String::from("skip");
-    static ref ARG_ID: String = String::from("id");
-}
+pub const ARG_ID: &str = "id";
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -685,7 +680,7 @@ fn fetch(
     }
 
     query.logger = Some(ctx.logger.cheap_clone());
-    if let Some(r::Value::String(id)) = field.argument_value(ARG_ID.as_str()) {
+    if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
         query.filter = Some(
             EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
                 .and_maybe(query.filter),
