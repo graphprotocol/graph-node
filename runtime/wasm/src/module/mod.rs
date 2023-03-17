@@ -55,7 +55,7 @@ pub trait ToAscPtr {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError>;
+    ) -> Result<AscPtr<()>, HostExportError>;
 }
 
 impl ToAscPtr for offchain::TriggerData {
@@ -63,7 +63,7 @@ impl ToAscPtr for offchain::TriggerData {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         asc_new(heap, self.data.as_ref() as &[u8], gas).map(|ptr| ptr.erase())
     }
 }
@@ -76,7 +76,7 @@ where
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         match self {
             MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
             MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
@@ -89,7 +89,7 @@ impl<T: ToAscPtr> ToAscPtr for TriggerWithHandler<T> {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         self.trigger.to_asc_ptr(heap, gas)
     }
 }
@@ -125,10 +125,7 @@ impl<C: Blockchain> WasmInstance<C> {
         asc_get(self.instance_ctx().deref(), asc_ptr, &self.gas)
     }
 
-    pub fn asc_new<P, T: ?Sized>(
-        &mut self,
-        rust_obj: &T,
-    ) -> Result<AscPtr<P>, DeterministicHostError>
+    pub fn asc_new<P, T: ?Sized>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
     where
         P: AscType + AscIndexId,
         T: ToAscObj<P>,
@@ -1067,7 +1064,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let string = self.ctx.host_exports.bytes_to_string(
             &self.ctx.logger,
             asc_get(self, bytes_ptr, gas)?,
@@ -1085,7 +1082,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
 
@@ -1100,7 +1097,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         big_int_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
         gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &n))?;
         asc_new(self, &n.to_string(), gas)
@@ -1111,7 +1108,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         string_ptr: AscPtr<AscString>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self
             .ctx
             .host_exports
@@ -1124,7 +1121,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         big_int_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
         let hex = self.ctx.host_exports.big_int_to_hex(n, gas)?;
         asc_new(self, &hex, gas)
@@ -1135,7 +1132,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         str_ptr: AscPtr<AscString>,
-    ) -> Result<AscPtr<AscH160>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscH160>, HostExportError> {
         let s: String = asc_get(self, str_ptr, gas)?;
         let h160 = self.ctx.host_exports.string_to_h160(&s, gas)?;
         asc_new(self, &h160, gas)
@@ -1146,7 +1143,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscEnum<JsonValueKind>>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
         let result = self
             .ctx
@@ -1167,8 +1164,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, DeterministicHostError>
-    {
+    ) -> Result<AscPtr<AscResult<AscPtr<AscEnum<JsonValueKind>>, bool>>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
         let result = self
             .ctx
@@ -1346,7 +1342,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         json_ptr: AscPtr<AscString>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let big_int = self
             .ctx
             .host_exports
@@ -1359,7 +1355,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         input_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+    ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         let input = self
             .ctx
             .host_exports
@@ -1373,7 +1369,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_plus(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1388,7 +1384,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_minus(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1403,7 +1399,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_times(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1418,7 +1414,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_divided_by(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1433,7 +1429,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let x = BigDecimal::new(asc_get(self, x_ptr, gas)?, 0);
         let result =
             self.ctx
@@ -1448,7 +1444,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_mod(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1463,7 +1459,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         exp: u32,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let exp = u8::try_from(exp).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result = self
             .ctx
@@ -1478,7 +1474,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_bit_or(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1493,7 +1489,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         y_ptr: AscPtr<AscBigInt>,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let result = self.ctx.host_exports.big_int_bit_and(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1508,7 +1504,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result =
             self.ctx
@@ -1523,7 +1519,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigInt>,
         bits: u32,
-    ) -> Result<AscPtr<AscBigInt>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigInt>, HostExportError> {
         let bits = u8::try_from(bits).map_err(|e| DeterministicHostError::from(Error::from(e)))?;
         let result =
             self.ctx
@@ -1537,7 +1533,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         bytes_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let result = self
             .ctx
             .host_exports
@@ -1550,7 +1546,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         big_decimal_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         let result = self
             .ctx
             .host_exports
@@ -1563,7 +1559,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         string_ptr: AscPtr<AscString>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let result = self
             .ctx
             .host_exports
@@ -1577,7 +1573,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let result = self.ctx.host_exports.big_decimal_plus(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1592,7 +1588,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let result = self.ctx.host_exports.big_decimal_minus(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1607,7 +1603,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let result = self.ctx.host_exports.big_decimal_times(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1622,7 +1618,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<AscPtr<AscBigDecimal>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscBigDecimal>, HostExportError> {
         let result = self.ctx.host_exports.big_decimal_divided_by(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1637,7 +1633,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         x_ptr: AscPtr<AscBigDecimal>,
         y_ptr: AscPtr<AscBigDecimal>,
-    ) -> Result<bool, DeterministicHostError> {
+    ) -> Result<bool, HostExportError> {
         self.ctx.host_exports.big_decimal_equals(
             asc_get(self, x_ptr, gas)?,
             asc_get(self, y_ptr, gas)?,
@@ -1691,7 +1687,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     pub fn data_source_address(
         &mut self,
         gas: &GasCounter,
-    ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+    ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         asc_new(
             self,
             self.ctx.host_exports.data_source_address(gas)?.as_slice(),
@@ -1703,7 +1699,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     pub fn data_source_network(
         &mut self,
         gas: &GasCounter,
-    ) -> Result<AscPtr<AscString>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscString>, HostExportError> {
         asc_new(self, &self.ctx.host_exports.data_source_network(gas)?, gas)
     }
 
@@ -1711,7 +1707,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     pub fn data_source_context(
         &mut self,
         gas: &GasCounter,
-    ) -> Result<AscPtr<AscEntity>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscEntity>, HostExportError> {
         asc_new(
             self,
             &self.ctx.host_exports.data_source_context(gas)?.sorted(),
@@ -1764,7 +1760,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         &mut self,
         gas: &GasCounter,
         token_ptr: AscPtr<AscEnum<EthereumValueKind>>,
-    ) -> Result<AscPtr<Uint8Array>, DeterministicHostError> {
+    ) -> Result<AscPtr<Uint8Array>, HostExportError> {
         let data = self
             .ctx
             .host_exports
@@ -1781,7 +1777,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         gas: &GasCounter,
         types_ptr: AscPtr<AscString>,
         data_ptr: AscPtr<Uint8Array>,
-    ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, DeterministicHostError> {
+    ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, HostExportError> {
         let result = self.ctx.host_exports.ethereum_decode(
             asc_get(self, types_ptr, gas)?,
             asc_get(self, data_ptr, gas)?,

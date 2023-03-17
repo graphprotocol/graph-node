@@ -7,7 +7,7 @@ use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::AscHeap;
 use graph::runtime::AscPtr;
-use graph::runtime::DeterministicHostError;
+use graph::runtime::HostExportError;
 use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -38,7 +38,7 @@ impl ToAscPtr for ArweaveTrigger {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
             ArweaveTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
             ArweaveTrigger::Transaction(tx) => asc_new(heap, tx.as_ref(), gas)?.erase(),

@@ -4,7 +4,8 @@ use graph::cheap_clone::CheapClone;
 use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
-use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
+use graph::runtime::HostExportError;
+use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
 use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -40,7 +41,7 @@ impl ToAscPtr for NearTrigger {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
             NearTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
             NearTrigger::Receipt(receipt) => asc_new(heap, receipt.as_ref(), gas)?.erase(),
@@ -150,7 +151,7 @@ mod tests {
         anyhow::anyhow,
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
-        runtime::gas::GasCounter,
+        runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
         util::mem::init_slice,
     };
 
@@ -495,7 +496,7 @@ mod tests {
         fn asc_type_id(
             &mut self,
             type_id_index: graph::runtime::IndexForAscTypeId,
-        ) -> Result<u32, DeterministicHostError> {
+        ) -> Result<u32, HostExportError> {
             // Not totally clear what is the purpose of this method, why not a default implementation here?
             Ok(type_id_index as u32)
         }

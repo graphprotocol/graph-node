@@ -11,8 +11,8 @@ use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
 use crate::prelude::*;
+use crate::runtime::HostExportError;
 use crate::{blockchain::Blockchain, components::subgraph::SharedProofOfIndexing};
-use crate::{components::metrics::HistogramVec, runtime::DeterministicHostError};
 
 #[derive(Debug)]
 pub enum MappingError {
@@ -27,9 +27,14 @@ impl From<anyhow::Error> for MappingError {
     }
 }
 
-impl From<DeterministicHostError> for MappingError {
-    fn from(value: DeterministicHostError) -> MappingError {
-        MappingError::Unknown(value.inner())
+impl From<HostExportError> for MappingError {
+    fn from(value: HostExportError) -> MappingError {
+        match value {
+            HostExportError::PossibleReorg(e) => MappingError::PossibleReorg(e.into()),
+            HostExportError::Deterministic(e) | HostExportError::Unknown(e) => {
+                MappingError::Unknown(e.into())
+            }
+        }
     }
 }
 

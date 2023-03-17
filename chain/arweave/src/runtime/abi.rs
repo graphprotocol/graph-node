@@ -1,7 +1,7 @@
 use crate::codec;
 use crate::trigger::TransactionWithBlockPtr;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
+use graph::runtime::{asc_new, AscHeap, AscPtr, HostExportError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, Uint8Array};
 
 pub(crate) use super::generated::*;
@@ -11,7 +11,7 @@ impl ToAscObj<AscTag> for codec::Tag {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTag, DeterministicHostError> {
+    ) -> Result<AscTag, HostExportError> {
         Ok(AscTag {
             name: asc_new(heap, self.name.as_slice(), gas)?,
             value: asc_new(heap, self.value.as_slice(), gas)?,
@@ -24,7 +24,7 @@ impl ToAscObj<AscTransactionArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTransactionArray, DeterministicHostError> {
+    ) -> Result<AscTransactionArray, HostExportError> {
         let content = self
             .iter()
             .map(|x| asc_new(heap, x.as_slice(), gas))
@@ -38,7 +38,7 @@ impl ToAscObj<AscTagArray> for Vec<codec::Tag> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTagArray, DeterministicHostError> {
+    ) -> Result<AscTagArray, HostExportError> {
         let content = self
             .iter()
             .map(|x| asc_new(heap, x, gas))
@@ -52,7 +52,7 @@ impl ToAscObj<AscProofOfAccess> for codec::ProofOfAccess {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscProofOfAccess, DeterministicHostError> {
+    ) -> Result<AscProofOfAccess, HostExportError> {
         Ok(AscProofOfAccess {
             option: asc_new(heap, &self.option, gas)?,
             tx_path: asc_new(heap, self.tx_path.as_slice(), gas)?,
@@ -67,7 +67,7 @@ impl ToAscObj<AscTransaction> for codec::Transaction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTransaction, DeterministicHostError> {
+    ) -> Result<AscTransaction, HostExportError> {
         Ok(AscTransaction {
             format: self.format,
             id: asc_new(heap, self.id.as_slice(), gas)?,
@@ -108,7 +108,7 @@ impl ToAscObj<AscBlock> for codec::Block {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBlock, DeterministicHostError> {
+    ) -> Result<AscBlock, HostExportError> {
         Ok(AscBlock {
             indep_hash: asc_new(heap, self.indep_hash.as_slice(), gas)?,
             nonce: asc_new(heap, self.nonce.as_slice(), gas)?,
@@ -182,7 +182,7 @@ impl ToAscObj<AscTransactionWithBlockPtr> for TransactionWithBlockPtr {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTransactionWithBlockPtr, DeterministicHostError> {
+    ) -> Result<AscTransactionWithBlockPtr, HostExportError> {
         Ok(AscTransactionWithBlockPtr {
             tx: asc_new(heap, &self.tx.as_ref(), gas)?,
             block: asc_new(heap, self.block.as_ref(), gas)?,

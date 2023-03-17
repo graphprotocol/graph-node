@@ -5,7 +5,9 @@ use anyhow::anyhow;
 use semver::Version;
 
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE};
+use graph::runtime::{
+    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError, HEADER_SIZE,
+};
 use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class;
@@ -116,7 +118,7 @@ impl<T: AscValue> TypedArray<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let byte_length = content.len() as u32;
         let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
@@ -266,7 +268,7 @@ impl<T: AscValue> Array<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let buffer = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
         let buffer_data_length = buffer.read_len(heap, gas)?;

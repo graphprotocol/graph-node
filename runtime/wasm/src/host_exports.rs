@@ -601,7 +601,7 @@ impl<C: Blockchain> HostExports<C> {
         x: BigDecimal,
         y: BigDecimal,
         gas: &GasCounter,
-    ) -> Result<bool, DeterministicHostError> {
+    ) -> Result<bool, HostExportError> {
         gas.consume_host_fn(gas::BIG_MATH_GAS_OP.with_args(complexity::Min, (&x, &y)))?;
         Ok(x == y)
     }

@@ -50,7 +50,7 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
                 &self,
                 heap: &mut H,
                 gas: &graph::runtime::gas::GasCounter,
-            ) -> Result<#asc_name_array, graph::runtime::DeterministicHostError> {
+            ) -> Result<#asc_name_array, graph::runtime::HostExportError> {
                 let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
 
                 Ok(#asc_name_array(graph_runtime_wasm::asc_abi::class::Array::new(&content?, heap, gas)?))

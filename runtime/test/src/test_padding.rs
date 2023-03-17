@@ -109,6 +109,7 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    use graph::runtime::HostExportError;
     pub use graph::runtime::{
         asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
         DeterministicHostError, IndexForAscTypeId, ToAscObj,
@@ -119,7 +120,7 @@ pub mod data {
             &self,
             heap: &mut H,
             gas: &GasCounter,
-        ) -> Result<AscBad, DeterministicHostError> {
+        ) -> Result<AscBad, HostExportError> {
             Ok(AscBad {
                 nonce: self.nonce,
                 str_suff: asc_new(heap, &self.str_suff, gas)?,
@@ -178,7 +179,7 @@ pub mod data {
             &self,
             heap: &mut H,
             gas: &GasCounter,
-        ) -> Result<AscBadFixed, DeterministicHostError> {
+        ) -> Result<AscBadFixed, HostExportError> {
             Ok(AscBadFixed {
                 nonce: self.nonce,
                 str_suff: asc_new(heap, &self.str_suff, gas)?,
