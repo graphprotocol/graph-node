@@ -32,6 +32,7 @@ mod primary;
 pub mod query_store;
 mod relational;
 mod relational_queries;
+mod retry;
 mod sql_value;
 mod store;
 mod store_events;
