@@ -530,7 +530,7 @@ impl<C: Blockchain> WasmInstance<C> {
         link!(
             "store.loadRelated",
             store_load_related,
-            "host_export_store_get_derived",
+            "host_export_store_load_related",
             entity,
             id,
             field
@@ -1086,10 +1086,8 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             gas,
         )?;
 
-        let entities: Vec<Vec<(String, Value)>> = entities
-            .iter()
-            .map(|entity| entity.clone().sorted())
-            .collect();
+        let entities: Vec<Vec<(String, Value)>> =
+            entities.into_iter().map(|entity| entity.sorted()).collect();
         let ret = asc_new(self, &entities, gas)?;
         Ok(ret)
     }

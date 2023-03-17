@@ -1675,7 +1675,7 @@ pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
     block: BlockNumber,
-    excluded_keys: &'a Option<Vec<EntityKey>>,
+    excluded_keys: &'a Vec<EntityKey>,
 }
 
 impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
@@ -1699,11 +1699,11 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
 
-        if let Some(keys) = self.excluded_keys.as_ref().filter(|keys| keys.len() > 0) {
+        if self.excluded_keys.len() > 0 {
             let primary_key = self.table.primary_key();
             out.push_identifier(primary_key.name.as_str())?;
             out.push_sql(" not in (");
-            for (i, value) in keys.iter().enumerate() {
+            for (i, value) in self.excluded_keys.iter().enumerate() {
                 if i > 0 {
                     out.push_sql(", ");
                 }
