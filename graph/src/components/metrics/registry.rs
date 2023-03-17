@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use prometheus::{labels, Histogram};
+
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
 use crate::prelude::Collector;
 use crate::prometheus::{
@@ -8,8 +10,6 @@ use crate::prometheus::{
     Opts, Registry,
 };
 use crate::slog::{self, error, o, Logger};
-
-use super::MetricsRegistryTrait;
 
 pub struct MetricsRegistry {
     logger: Logger,
@@ -119,10 +119,8 @@ impl MetricsRegistry {
             Ok(counters)
         }
     }
-}
 
-impl MetricsRegistryTrait for MetricsRegistry {
-    fn register(&self, name: &str, c: Box<dyn Collector>) {
+    pub fn register(&self, name: &str, c: Box<dyn Collector>) {
         let err = match self.registry.register(c).err() {
             None => {
                 self.registered_metrics.inc();
@@ -170,7 +168,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         };
     }
 
-    fn global_counter(
+    pub fn global_counter(
         &self,
         name: &str,
         help: &str,
@@ -191,7 +189,16 @@ impl MetricsRegistryTrait for MetricsRegistry {
         }
     }
 
-    fn global_counter_vec(
+    pub fn global_deployment_counter(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+    ) -> Result<Counter, PrometheusError> {
+        self.global_counter(name, help, deployment_labels(subgraph))
+    }
+
+    pub fn global_counter_vec(
         &self,
         name: &str,
         help: &str,
@@ -200,7 +207,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         self.global_counter_vec_internal(name, help, None, variable_labels)
     }
 
-    fn global_deployment_counter_vec(
+    pub fn global_deployment_counter_vec(
         &self,
         name: &str,
         help: &str,
@@ -210,7 +217,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         self.global_counter_vec_internal(name, help, Some(subgraph), variable_labels)
     }
 
-    fn global_gauge(
+    pub fn global_gauge(
         &self,
         name: &str,
         help: &str,
@@ -231,7 +238,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         }
     }
 
-    fn global_gauge_vec(
+    pub fn global_gauge_vec(
         &self,
         name: &str,
         help: &str,
@@ -253,7 +260,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         }
     }
 
-    fn global_histogram_vec(
+    pub fn global_histogram_vec(
         &self,
         name: &str,
         help: &str,
@@ -275,7 +282,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         }
     }
 
-    fn unregister(&self, metric: Box<dyn Collector>) {
+    pub fn unregister(&self, metric: Box<dyn Collector>) {
         match self.registry.unregister(metric) {
             Ok(_) => {
                 self.registered_metrics.dec();
@@ -286,6 +293,215 @@ impl MetricsRegistryTrait for MetricsRegistry {
             }
         };
     }
+
+    pub fn new_gauge(
+        &self,
+        name: &str,
+        help: &str,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Box<Gauge>, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(const_labels);
+        let gauge = Box::new(Gauge::with_opts(opts)?);
+        self.register(name, gauge.clone());
+        Ok(gauge)
+    }
+
+    pub fn new_deployment_gauge(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+    ) -> Result<Gauge, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
+        let gauge = Gauge::with_opts(opts)?;
+        self.register(name, Box::new(gauge.clone()));
+        Ok(gauge)
+    }
+
+    pub fn new_gauge_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: Vec<String>,
+    ) -> Result<Box<GaugeVec>, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let gauges = Box::new(GaugeVec::new(
+            opts,
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, gauges.clone());
+        Ok(gauges)
+    }
+
+    pub fn new_deployment_gauge_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: Vec<String>,
+    ) -> Result<Box<GaugeVec>, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
+        let gauges = Box::new(GaugeVec::new(
+            opts,
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, gauges.clone());
+        Ok(gauges)
+    }
+
+    pub fn new_counter(&self, name: &str, help: &str) -> Result<Box<Counter>, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let counter = Box::new(Counter::with_opts(opts)?);
+        self.register(name, counter.clone());
+        Ok(counter)
+    }
+
+    pub fn new_counter_with_labels(
+        &self,
+        name: &str,
+        help: &str,
+        const_labels: HashMap<String, String>,
+    ) -> Result<Box<Counter>, PrometheusError> {
+        let counter = Box::new(counter_with_labels(name, help, const_labels)?);
+        self.register(name, counter.clone());
+        Ok(counter)
+    }
+
+    pub fn new_deployment_counter(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+    ) -> Result<Counter, PrometheusError> {
+        let counter = counter_with_labels(name, help, deployment_labels(subgraph))?;
+        self.register(name, Box::new(counter.clone()));
+        Ok(counter)
+    }
+
+    pub fn new_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: Vec<String>,
+    ) -> Result<Box<CounterVec>, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let counters = Box::new(CounterVec::new(
+            opts,
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, counters.clone());
+        Ok(counters)
+    }
+
+    pub fn new_deployment_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: Vec<String>,
+    ) -> Result<Box<CounterVec>, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
+        let counters = Box::new(CounterVec::new(
+            opts,
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, counters.clone());
+        Ok(counters)
+    }
+
+    pub fn new_deployment_histogram(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        buckets: Vec<f64>,
+    ) -> Result<Box<Histogram>, PrometheusError> {
+        let opts = HistogramOpts::new(name, help)
+            .const_labels(deployment_labels(subgraph))
+            .buckets(buckets);
+        let histogram = Box::new(Histogram::with_opts(opts)?);
+        self.register(name, histogram.clone());
+        Ok(histogram)
+    }
+
+    pub fn new_histogram(
+        &self,
+        name: &str,
+        help: &str,
+        buckets: Vec<f64>,
+    ) -> Result<Box<Histogram>, PrometheusError> {
+        let opts = HistogramOpts::new(name, help).buckets(buckets);
+        let histogram = Box::new(Histogram::with_opts(opts)?);
+        self.register(name, histogram.clone());
+        Ok(histogram)
+    }
+
+    pub fn new_histogram_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: Vec<String>,
+        buckets: Vec<f64>,
+    ) -> Result<Box<HistogramVec>, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let histograms = Box::new(HistogramVec::new(
+            HistogramOpts {
+                common_opts: opts,
+                buckets,
+            },
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, histograms.clone());
+        Ok(histograms)
+    }
+
+    pub fn new_deployment_histogram_vec(
+        &self,
+        name: &str,
+        help: &str,
+        subgraph: &str,
+        variable_labels: Vec<String>,
+        buckets: Vec<f64>,
+    ) -> Result<Box<HistogramVec>, PrometheusError> {
+        let opts = Opts::new(name, help).const_labels(deployment_labels(subgraph));
+        let histograms = Box::new(HistogramVec::new(
+            HistogramOpts {
+                common_opts: opts,
+                buckets,
+            },
+            variable_labels
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        )?);
+        self.register(name, histograms.clone());
+        Ok(histograms)
+    }
+}
+
+fn deployment_labels(subgraph: &str) -> HashMap<String, String> {
+    labels! { String::from("deployment") => String::from(subgraph), }
 }
 
 #[test]

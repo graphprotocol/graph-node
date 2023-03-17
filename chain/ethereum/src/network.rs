@@ -219,10 +219,7 @@ impl EthereumNetworks {
 
 #[cfg(test)]
 mod tests {
-    use graph::{
-        components::metrics::MetricsRegistryTrait, firehose::SubgraphLimit,
-        prelude::MetricsRegistry, tokio, url::Url,
-    };
+    use graph::{firehose::SubgraphLimit, prelude::MetricsRegistry, tokio, url::Url};
     use http::HeaderMap;
     use std::sync::Arc;
 
@@ -289,7 +286,7 @@ mod tests {
     async fn adapter_selector_selects_eth_call() {
         let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
-        let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+        let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
         let transport =
             Transport::new_rpc(Url::parse("http://127.0.0.1").unwrap(), HeaderMap::new());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
@@ -392,7 +389,7 @@ mod tests {
     async fn adapter_selector_unlimited() {
         let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
-        let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+        let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
         let transport =
             Transport::new_rpc(Url::parse("http://127.0.0.1").unwrap(), HeaderMap::new());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
@@ -460,7 +457,7 @@ mod tests {
     async fn adapter_selector_disable_call_only_fallback() {
         let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
-        let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+        let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
         let transport =
             Transport::new_rpc(Url::parse("http://127.0.0.1").unwrap(), HeaderMap::new());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
@@ -526,7 +523,7 @@ mod tests {
     async fn adapter_selector_no_call_only_fallback() {
         let chain = "mainnet".to_string();
         let logger = graph::log::logger(true);
-        let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+        let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
         let transport =
             Transport::new_rpc(Url::parse("http://127.0.0.1").unwrap(), HeaderMap::new());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));

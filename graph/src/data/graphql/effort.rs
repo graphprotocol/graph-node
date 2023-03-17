@@ -7,7 +7,7 @@ use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use crate::components::metrics::{Counter, Gauge, MetricsRegistryTrait};
+use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
@@ -207,7 +207,7 @@ impl LoadManager {
     pub fn new(
         logger: &Logger,
         blocked_queries: Vec<Arc<q::Document>>,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
     ) -> Self {
         let logger = logger.new(o!("component" => "LoadManager"));
         let blocked_queries = blocked_queries

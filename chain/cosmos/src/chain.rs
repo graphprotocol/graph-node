@@ -1,6 +1,6 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::BlockIngestor;
-use graph::components::metrics::MetricsRegistryTrait;
+use graph::prelude::MetricsRegistry;
 use std::sync::Arc;
 
 use graph::blockchain::block_stream::FirehoseCursor;
@@ -36,7 +36,7 @@ pub struct Chain {
     name: String,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
-    metrics_registry: Arc<dyn MetricsRegistryTrait>,
+    metrics_registry: Arc<MetricsRegistry>,
 }
 
 impl std::fmt::Debug for Chain {

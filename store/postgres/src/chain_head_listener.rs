@@ -1,9 +1,8 @@
 use graph::{
     blockchain::ChainHeadUpdateStream,
-    components::metrics::MetricsRegistryTrait,
     prelude::{
         futures03::{self, FutureExt},
-        tokio, StoreError,
+        tokio, MetricsRegistry, StoreError,
     },
     prometheus::{CounterVec, GaugeVec},
     util::timed_rw_lock::TimedRwLock,
@@ -56,7 +55,7 @@ pub struct BlockIngestorMetrics {
 }
 
 impl BlockIngestorMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
+    pub fn new(registry: Arc<MetricsRegistry>) -> Self {
         Self {
             chain_head_number: registry
                 .new_gauge_vec(
@@ -97,11 +96,7 @@ pub(crate) struct ChainHeadUpdateSender {
 }
 
 impl ChainHeadUpdateListener {
-    pub fn new(
-        logger: &Logger,
-        registry: Arc<dyn MetricsRegistryTrait>,
-        postgres_url: String,
-    ) -> Self {
+    pub fn new(logger: &Logger, registry: Arc<MetricsRegistry>, postgres_url: String) -> Self {
         let logger = logger.new(o!("component" => "ChainHeadUpdateListener"));
         let ingestor_metrics = Arc::new(BlockIngestorMetrics::new(registry.clone()));
         let counter = registry

@@ -5,12 +5,11 @@ use futures::TryFutureExt;
 use graph::anyhow::{bail, Error};
 use graph::blockchain::{Block as BlockchainBlock, BlockchainKind, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::endpoint::EndpointMetrics;
 use graph::firehose::{FirehoseEndpoint, FirehoseNetworks, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
-use graph::prelude::prost;
 use graph::prelude::{anyhow, tokio};
+use graph::prelude::{prost, MetricsRegistry};
 use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
@@ -386,7 +385,7 @@ where
 /// `EthereumAdapter`.
 pub async fn create_all_ethereum_networks(
     logger: Logger,
-    registry: Arc<dyn MetricsRegistryTrait>,
+    registry: Arc<MetricsRegistry>,
     config: &Config,
 ) -> anyhow::Result<EthereumNetworks> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));

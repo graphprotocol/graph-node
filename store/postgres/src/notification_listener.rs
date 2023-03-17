@@ -1,7 +1,6 @@
 use diesel::pg::PgConnection;
 use diesel::select;
 use diesel::sql_types::Text;
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
 use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
@@ -397,7 +396,7 @@ pub struct NotificationSender {
 }
 
 impl NotificationSender {
-    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
+    pub fn new(registry: Arc<MetricsRegistry>) -> Self {
         let sent_counter = registry
             .global_counter_vec(
                 "notification_queue_sent",

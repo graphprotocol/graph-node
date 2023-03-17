@@ -2,8 +2,6 @@ use crate::prelude::*;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Mutex};
 use std::time::Instant;
 
-use super::MetricsRegistryTrait;
-
 /// This is a "section guard", that closes the section on drop.
 pub struct Section {
     id: String,
@@ -47,7 +45,7 @@ impl StopwatchMetrics {
         logger: Logger,
         subgraph_id: DeploymentHash,
         stage: &str,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
     ) -> Self {
         let stage = stage.to_owned();
         let mut inner = StopwatchInner {

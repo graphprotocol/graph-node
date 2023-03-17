@@ -3,8 +3,8 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::parking_lot::RwLock;
+use graph::prelude::MetricsRegistry;
 use graph::prometheus::{CounterVec, GaugeVec};
 
 use std::{
@@ -1334,7 +1334,7 @@ pub struct ChainStoreMetrics {
 }
 
 impl ChainStoreMetrics {
-    pub fn new(registry: Arc<dyn MetricsRegistryTrait>) -> Self {
+    pub fn new(registry: Arc<MetricsRegistry>) -> Self {
         let chain_head_cache_size = registry
             .new_gauge_vec(
                 "chain_head_cache_num_blocks",

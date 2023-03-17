@@ -8,7 +8,6 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::{Block, BlockPtr, Blockchain};
 use crate::anyhow::Result;
-use crate::components::metrics::MetricsRegistryTrait;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
@@ -387,7 +386,7 @@ pub struct BlockStreamMetrics {
 
 impl BlockStreamMetrics {
     pub fn new(
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
         deployment_id: &DeploymentHash,
         network: String,
         shard: String,

@@ -3,13 +3,12 @@ use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
 use graph::prelude::{
     BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
-    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt,
+    EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::{
     blockchain::{
@@ -192,7 +191,7 @@ impl BlockRefetcher<Chain> for EthereumBlockRefetcher {
 pub struct EthereumAdapterSelector {
     logger_factory: LoggerFactory,
     client: Arc<ChainClient<Chain>>,
-    registry: Arc<dyn MetricsRegistryTrait>,
+    registry: Arc<MetricsRegistry>,
     chain_store: Arc<dyn ChainStore>,
 }
 
@@ -200,7 +199,7 @@ impl EthereumAdapterSelector {
     pub fn new(
         logger_factory: LoggerFactory,
         client: Arc<ChainClient<Chain>>,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
     ) -> Self {
         Self {
@@ -242,7 +241,7 @@ pub struct Chain {
     logger_factory: LoggerFactory,
     name: String,
     node_id: NodeId,
-    registry: Arc<dyn MetricsRegistryTrait>,
+    registry: Arc<MetricsRegistry>,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
     call_cache: Arc<dyn EthereumCallCache>,
@@ -268,7 +267,7 @@ impl Chain {
         logger_factory: LoggerFactory,
         name: String,
         node_id: NodeId,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         call_cache: Arc<dyn EthereumCallCache>,
         client: Arc<ChainClient<Self>>,
