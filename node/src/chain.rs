@@ -387,6 +387,7 @@ pub async fn create_all_ethereum_networks(
     logger: Logger,
     registry: Arc<MetricsRegistry>,
     config: &Config,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> anyhow::Result<EthereumNetworks> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let eth_networks_futures = config
@@ -395,7 +396,13 @@ pub async fn create_all_ethereum_networks(
         .iter()
         .filter(|(_, chain)| chain.protocol == BlockchainKind::Ethereum)
         .map(|(name, _)| {
-            create_ethereum_networks_for_chain(&logger, eth_rpc_metrics.clone(), config, name)
+            create_ethereum_networks_for_chain(
+                &logger,
+                eth_rpc_metrics.clone(),
+                config,
+                name,
+                endpoint_metrics.cheap_clone(),
+            )
         });
 
     Ok(try_join_all(eth_networks_futures)
@@ -405,7 +412,7 @@ pub async fn create_all_ethereum_networks(
             a.extend(b);
             a
         })
-        .unwrap_or_else(EthereumNetworks::new))
+        .unwrap_or_else(|| EthereumNetworks::new(endpoint_metrics)))
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -414,8 +421,9 @@ pub async fn create_ethereum_networks_for_chain(
     eth_rpc_metrics: Arc<ProviderEthRpcMetrics>,
     config: &Config,
     network_name: &str,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> anyhow::Result<EthereumNetworks> {
-    let mut parsed_networks = EthereumNetworks::new();
+    let mut parsed_networks = EthereumNetworks::new(endpoint_metrics.cheap_clone());
     let chain = config
         .chains
         .chains
@@ -445,7 +453,11 @@ pub async fn create_ethereum_networks_for_chain(
         use crate::config::Transport::*;
 
         let transport = match web3.transport {
-            Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
+            Rpc => Transport::new_rpc(
+                Url::parse(&web3.url)?,
+                web3.headers.clone(),
+                endpoint_metrics.cheap_clone(),
+            ),
             Ipc => Transport::new_ipc(&web3.url).await,
             Ws => Transport::new_ws(&web3.url).await,
         };
@@ -479,6 +491,7 @@ pub async fn create_ethereum_networks_for_chain(
 mod test {
     use crate::chain::create_all_ethereum_networks;
     use crate::config::{Config, Opt};
+    use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
     use graph::prometheus::Registry;
@@ -508,6 +521,7 @@ mod test {
             unsafe_config: false,
         };
 
+        let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
         let prometheus_registry = Arc::new(Registry::new());
         let metrics_registry = Arc::new(MetricsRegistry::new(
@@ -515,9 +529,10 @@ mod test {
             prometheus_registry.clone(),
         ));
 
-        let ethereum_networks = create_all_ethereum_networks(logger, metrics_registry, &config)
-            .await
-            .expect("Correctly parse Ethereum network args");
+        let ethereum_networks =
+            create_all_ethereum_networks(logger, metrics_registry, &config, metrics)
+                .await
+                .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
         network_names.sort();
 

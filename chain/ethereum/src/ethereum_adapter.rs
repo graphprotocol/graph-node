@@ -10,6 +10,7 @@ use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
+use graph::url::Url;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -60,7 +61,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
-    url_hostname: Arc<String>,
+    pub(crate) url: Url,
     /// The label for the provider from the configuration
     provider: String,
     web3: Arc<Web3<Transport>>,
@@ -84,7 +85,7 @@ impl CheapClone for EthereumAdapter {
         Self {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
-            url_hostname: self.url_hostname.cheap_clone(),
+            url: self.url.clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
@@ -108,11 +109,7 @@ impl EthereumAdapter {
         call_only: bool,
     ) -> Self {
         // Unwrap: The transport was constructed with this url, so it is valid and has a host.
-        let hostname = graph::url::Url::parse(url)
-            .unwrap()
-            .host_str()
-            .unwrap()
-            .to_string();
+        let url = graph::url::Url::parse(url).unwrap();
 
         let web3 = Arc::new(Web3::new(transport));
 
@@ -128,7 +125,7 @@ impl EthereumAdapter {
         EthereumAdapter {
             logger,
             provider,
-            url_hostname: Arc::new(hostname),
+            url,
             web3,
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,
@@ -841,7 +838,7 @@ impl EthereumAdapter {
 #[async_trait]
 impl EthereumAdapterTrait for EthereumAdapter {
     fn url_hostname(&self) -> &str {
-        &self.url_hostname
+        &self.url.host_str().unwrap()
     }
 
     fn provider(&self) -> &str {

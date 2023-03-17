@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use config::PoolSize;
 use git_testament::{git_testament, render_testament};
 use graph::bail;
+use graph::endpoint::EndpointMetrics;
 use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
@@ -897,7 +898,8 @@ impl Context {
     async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
         let logger = self.logger.clone();
         let registry = self.metrics_registry();
-        create_all_ethereum_networks(logger, registry, &self.config).await
+        let metrics = Arc::new(EndpointMetrics::mock());
+        create_all_ethereum_networks(logger, registry, &self.config, metrics).await
     }
 
     fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
