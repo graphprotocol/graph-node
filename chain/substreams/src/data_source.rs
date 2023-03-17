@@ -277,7 +277,6 @@ mod test {
 
     use crate::{DataSource, Mapping, UnresolvedDataSource, UnresolvedMapping, SUBSTREAMS_KIND};
 
-
     #[test]
     fn parse_data_source() {
         let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
