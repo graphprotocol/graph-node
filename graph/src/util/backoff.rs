@@ -8,6 +8,7 @@ pub struct ExponentialBackoff {
     pub attempt: u64,
     base: Duration,
     ceiling: Duration,
+    jitter: f64,
 }
 
 impl ExponentialBackoff {
@@ -16,6 +17,19 @@ impl ExponentialBackoff {
             attempt: 0,
             base,
             ceiling,
+            jitter: 0.0,
+        }
+    }
+
+    // Create ExponentialBackoff with jitter
+    // jitter is a value between 0.0 and 1.0. Sleep delay will be randomized
+    // within `jitter` of the normal sleep delay
+    pub fn with_jitter(base: Duration, ceiling: Duration, jitter: f64) -> Self {
+        ExponentialBackoff {
+            attempt: 0,
+            base,
+            ceiling,
+            jitter: jitter.clamp(0.0, 1.0),
         }
     }
 
@@ -37,7 +51,8 @@ impl ExponentialBackoff {
         if delay > self.ceiling {
             delay = self.ceiling;
         }
-        delay
+        let jitter = rand::Rng::gen_range(&mut rand::thread_rng(), -self.jitter..=self.jitter);
+        delay.mul_f64(1.0 + jitter)
     }
 
     fn next_attempt(&mut self) -> Duration {
@@ -78,6 +93,29 @@ mod tests {
 
         // Eighth delay should also be ceiling (5s)
         assert_eq!(backoff.next_attempt(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_delay_with_jitter() {
+        let mut backoff = ExponentialBackoff::with_jitter(
+            Duration::from_millis(1000),
+            Duration::from_secs(5),
+            0.1,
+        );
+
+        // Delay should be between 0.5s and 1.5s
+        let delay1 = backoff.delay();
+        assert!(delay1 > Duration::from_millis(900) && delay1 <= Duration::from_millis(1100));
+        let delay2 = backoff.delay();
+        assert!(delay2 > Duration::from_millis(900) && delay2 <= Duration::from_millis(1100));
+
+        // Delays should be random and different
+        assert_ne!(delay1, delay2);
+
+        // Test ceiling
+        backoff.attempt = 123456;
+        let delay = backoff.delay();
+        assert!(delay > Duration::from_millis(4500) && delay <= Duration::from_millis(5500));
     }
 
     #[test]
