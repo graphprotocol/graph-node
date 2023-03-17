@@ -280,6 +280,8 @@ mod test {
         components::link_resolver::LinkResolver,
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
+        substreams::module::{Kind, KindMap, KindStore},
+        substreams::{Module, Modules, Package},
     };
     use prost::Message;
 
@@ -354,20 +356,47 @@ mod test {
         );
     }
 
-    fn gen_package() -> graph::substreams::Package {
-        graph::substreams::Package {
+    fn gen_package() -> Package {
+        Package {
             proto_files: vec![],
             version: 0,
-            modules: Some(graph::substreams::Modules {
-                modules: vec![graph::substreams::Module {
-                    name: "output".into(),
-                    initial_block: 123,
-                    binary_entrypoint: "entry".into(),
-                    binary_index: 0,
-                    kind: None,
-                    inputs: vec![],
-                    output: None,
-                }],
+            modules: Some(Modules {
+                modules: vec![
+                    Module {
+                        name: "output".into(),
+                        initial_block: 123,
+                        binary_entrypoint: "output".into(),
+                        binary_index: 0,
+                        kind: Some(Kind::KindMap(KindMap {
+                            output_type: "proto".into(),
+                        })),
+                        inputs: vec![],
+                        output: None,
+                    },
+                    Module {
+                        name: "store_mod".into(),
+                        initial_block: 0,
+                        binary_entrypoint: "store_mod".into(),
+                        binary_index: 0,
+                        kind: Some(Kind::KindStore(KindStore {
+                            update_policy: 1,
+                            value_type: "proto1".into(),
+                        })),
+                        inputs: vec![],
+                        output: None,
+                    },
+                    Module {
+                        name: "map_mod".into(),
+                        initial_block: 123456,
+                        binary_entrypoint: "other2".into(),
+                        binary_index: 0,
+                        kind: Some(Kind::KindMap(KindMap {
+                            output_type: "proto2".into(),
+                        })),
+                        inputs: vec![],
+                        output: None,
+                    },
+                ],
                 binaries: vec![],
             }),
             module_meta: vec![],
