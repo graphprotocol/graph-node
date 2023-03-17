@@ -137,6 +137,28 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 }
 
+fn is_trap_deterministic(trap: &Trap) -> bool {
+    use wasmtime::TrapCode::*;
+
+    // We try to be exhaustive, even though `TrapCode` is non-exhaustive.
+    match trap.trap_code() {
+        Some(MemoryOutOfBounds)
+        | Some(HeapMisaligned)
+        | Some(TableOutOfBounds)
+        | Some(IndirectCallToNull)
+        | Some(BadSignature)
+        | Some(IntegerOverflow)
+        | Some(IntegerDivisionByZero)
+        | Some(BadConversionToInteger)
+        | Some(UnreachableCodeReached) => true,
+
+        // `Interrupt`: Can be a timeout, at least as wasmtime currently implements it.
+        // `StackOverflow`: We may want to have a configurable stack size.
+        // `None`: A host trap, so we need to check the `deterministic_host_trap` flag in the context.
+        Some(Interrupt) | Some(StackOverflow) | None | _ => false,
+    }
+}
+
 impl<C: Blockchain> WasmInstance<C> {
     pub(crate) fn handle_json_callback(
         mut self,
@@ -228,6 +250,8 @@ impl<C: Blockchain> WasmInstance<C> {
                 self.instance_ctx_mut().ctx.state.exit_handler();
                 return Err(MappingError::PossibleReorg(trap.into()));
             }
+
+            // Treat as a special case to have a better error message.
             Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
                 self.instance_ctx_mut().ctx.state.exit_handler();
                 return Err(MappingError::Unknown(Error::from(trap).context(format!(
@@ -237,21 +261,12 @@ impl<C: Blockchain> WasmInstance<C> {
                 ))));
             }
             Err(trap) => {
-                use wasmtime::TrapCode::*;
-                let trap_code = trap.trap_code();
+                let trap_is_deterministic =
+                    is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
                 let e = Error::from(trap);
-                match trap_code {
-                    Some(MemoryOutOfBounds)
-                    | Some(HeapMisaligned)
-                    | Some(TableOutOfBounds)
-                    | Some(IndirectCallToNull)
-                    | Some(BadSignature)
-                    | Some(IntegerOverflow)
-                    | Some(IntegerDivisionByZero)
-                    | Some(BadConversionToInteger)
-                    | Some(UnreachableCodeReached) => Some(e),
-                    _ if self.instance_ctx().deterministic_host_trap => Some(e),
-                    _ => {
+                match trap_is_deterministic {
+                    true => Some(Error::from(e)),
+                    false => {
                         self.instance_ctx_mut().ctx.state.exit_handler();
                         return Err(MappingError::Unknown(e));
                     }
@@ -662,6 +677,15 @@ impl<C: Blockchain> WasmInstance<C> {
     }
 }
 
+fn host_export_error_from_trap(trap: Trap, context: String) -> HostExportError {
+    let trap_is_deterministic = is_trap_deterministic(&trap);
+    let e = Error::from(trap).context(context);
+    match trap_is_deterministic {
+        true => HostExportError::Deterministic(e),
+        false => HostExportError::Unknown(e),
+    }
+}
+
 impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
@@ -758,18 +782,17 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
         self.ctx.host_exports.api_version.clone()
     }
 
-    fn asc_type_id(
-        &mut self,
-        type_id_index: IndexForAscTypeId,
-    ) -> Result<u32, DeterministicHostError> {
-        let type_id = self
-            .id_of_type
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
+        self.id_of_type
             .as_ref()
             .unwrap() // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
             .call(type_id_index as u32)
-            .with_context(|| format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index))
-            .map_err(DeterministicHostError::from)?;
-        Ok(type_id)
+            .map_err(|trap| {
+                host_export_error_from_trap(
+                    trap,
+                    format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index),
+                )
+            })
     }
 }
 
