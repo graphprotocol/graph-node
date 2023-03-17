@@ -18,6 +18,7 @@ use graph::prelude::{
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
+use graph::tokio::task::{JoinError, JoinHandle};
 use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -45,7 +46,6 @@ use graph_graphql::prelude::api_schema;
 use web3::types::Address;
 
 use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-use crate::catalog;
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
@@ -53,6 +53,7 @@ use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
+use crate::{catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
@@ -87,6 +88,8 @@ pub(crate) struct SubgraphInfo {
     pub(crate) instrument: bool,
 }
 
+type PruneHandle = JoinHandle<Result<(), StoreError>>;
+
 pub struct StoreInner {
     logger: Logger,
 
@@ -108,6 +111,8 @@ pub struct StoreInner {
     /// hosts this because it lives long enough, but it is managed from
     /// the entities module
     pub(crate) layout_cache: LayoutCache,
+
+    prune_handles: Mutex<HashMap<DeploymentId, PruneHandle>>,
 }
 
 /// Storage of the data for individual deployments. Each `DeploymentStore`
@@ -163,6 +168,7 @@ impl DeploymentStore {
             conn_round_robin_counter: AtomicUsize::new(0),
             subgraph_cache: Mutex::new(LruCache::with_capacity(100)),
             layout_cache: LayoutCache::new(ENV_VARS.store.query_stats_refresh_interval),
+            prune_handles: Mutex::new(HashMap::new()),
         };
 
         DeploymentStore(Arc::new(store))
@@ -1191,23 +1197,100 @@ impl DeploymentStore {
             > earliest_block as f64
                 + layout.history_blocks as f64 * ENV_VARS.store.history_slack_factor
         {
+            // This only measures how long it takes to spawn pruning, not
+            // how long pruning itself takes
             let _section = stopwatch.start_section("transact_blocks_prune");
 
-            let this = self.clone();
-            let reporter = OngoingPruneReporter::new(logger.cheap_clone());
-
-            let req = PruneRequest::new(
-                &site.as_ref().into(),
+            self.spawn_prune(
+                logger,
+                site,
                 layout.history_blocks,
-                ENV_VARS.reorg_threshold,
                 earliest_block,
                 block_ptr_to.number,
             )?;
-
-            graph::block_on(this.prune(reporter, site, req))?;
         }
 
         Ok(event)
+    }
+
+    fn spawn_prune(
+        self: &Arc<Self>,
+        logger: &Logger,
+        site: Arc<Site>,
+        history_blocks: BlockNumber,
+        earliest_block: BlockNumber,
+        latest_block: BlockNumber,
+    ) -> Result<(), StoreError> {
+        fn prune_in_progress(store: &DeploymentStore, site: &Site) -> Result<bool, StoreError> {
+            async fn reap(handle: PruneHandle) -> Result<Result<(), StoreError>, JoinError> {
+                handle.await.map(|join| join.map(|_| ()))
+            }
+
+            let finished = store
+                .prune_handles
+                .lock()
+                .unwrap()
+                .get(&site.id)
+                .map(|handle| handle.is_finished());
+            match finished {
+                Some(true) => {
+                    // A previous prune has finished
+                    let handle = store
+                        .prune_handles
+                        .lock()
+                        .unwrap()
+                        .remove(&site.id)
+                        .unwrap();
+                    match graph::block_on(reap(handle)) {
+                        Ok(Ok(())) => Ok(false),
+                        Ok(Err(err)) => Err(StoreError::PruneFailure(err.to_string())),
+                        Err(join_err) => Err(StoreError::PruneFailure(join_err.to_string())),
+                    }
+                }
+                Some(false) => {
+                    // A previous prune is still in progress
+                    Ok(true)
+                }
+                None => {
+                    // There is no prune in progress
+                    Ok(false)
+                }
+            }
+        }
+
+        async fn run(
+            logger: Logger,
+            store: Arc<DeploymentStore>,
+            site: Arc<Site>,
+            req: PruneRequest,
+        ) -> Result<(), StoreError> {
+            let logger = logger.cheap_clone();
+            retry::forever_async(&logger, "prune", move || {
+                let store = store.cheap_clone();
+                let reporter = OngoingPruneReporter::new(store.logger.cheap_clone());
+                let site = site.cheap_clone();
+                async move { store.prune(reporter, site, req).await.map(|_| ()) }
+            })
+            .await
+        }
+
+        if !prune_in_progress(&self, &site)? {
+            let req = PruneRequest::new(
+                &site.as_ref().into(),
+                history_blocks,
+                ENV_VARS.reorg_threshold,
+                earliest_block,
+                latest_block,
+            )?;
+
+            let deployment_id = site.id;
+            let handle = graph::spawn(run(logger.cheap_clone(), self.clone(), site, req));
+            self.prune_handles
+                .lock()
+                .unwrap()
+                .insert(deployment_id, handle);
+        }
+        Ok(())
     }
 
     fn rewind_with_conn(

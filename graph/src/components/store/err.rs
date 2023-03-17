@@ -58,6 +58,8 @@ pub enum StoreError {
         DeploymentSchemaVersion::LATEST
     )]
     UnsupportedDeploymentSchemaVersion(i32),
+    #[error("pruning failed: {0}")]
+    PruneFailure(String),
 }
 
 // Convenience to report a constraint violation

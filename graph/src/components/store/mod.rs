@@ -1204,6 +1204,7 @@ pub enum PruningStrategy {
     Delete,
 }
 
+#[derive(Copy, Clone)]
 /// A request to prune a deployment. This struct encapsulates decision
 /// making around the best strategy for pruning (deleting historical
 /// entities or copying current ones) It needs to be filled with accurate
