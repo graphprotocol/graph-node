@@ -67,6 +67,7 @@ impl Scope {
 
 const COPY: Scope = Scope { id: 1 };
 const WRITE: Scope = Scope { id: 2 };
+const PRUNE: Scope = Scope { id: 3 };
 
 /// Get a lock for running migrations. Blocks until we get the lock.
 pub(crate) fn lock_migration(conn: &PgConnection) -> Result<(), StoreError> {
@@ -109,4 +110,14 @@ pub(crate) fn unlock_deployment_session(
     site: &Site,
 ) -> Result<(), StoreError> {
     WRITE.unlock(conn, site.id)
+}
+
+/// Try to take the lock used to prevent two prune operations from running at the
+/// same time. Return `true` if we got the lock, and `false` otherwise.
+pub(crate) fn try_lock_pruning(conn: &PgConnection, site: &Site) -> Result<bool, StoreError> {
+    PRUNE.try_lock(conn, site.id)
+}
+
+pub(crate) fn unlock_pruning(conn: &PgConnection, site: &Site) -> Result<(), StoreError> {
+    PRUNE.unlock(conn, site.id)
 }

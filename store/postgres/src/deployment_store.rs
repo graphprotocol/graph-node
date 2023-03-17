@@ -53,7 +53,7 @@ use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, Method};
 use crate::relational::{Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{catalog, retry};
+use crate::{advisory_lock, catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
@@ -904,12 +904,18 @@ impl DeploymentStore {
 
     pub(crate) async fn prune(
         self: &Arc<Self>,
-        mut reporter: Box<dyn PruneReporter>,
+        reporter: Box<dyn PruneReporter>,
         site: Arc<Site>,
         req: PruneRequest,
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
-        let store = self.clone();
-        self.with_conn(move |conn, cancel| {
+        fn do_prune(
+            store: Arc<DeploymentStore>,
+            conn: &PooledConnection<ConnectionManager<PgConnection>>,
+            site: Arc<Site>,
+            cancel: &CancelHandle,
+            req: PruneRequest,
+            mut reporter: Box<dyn PruneReporter>,
+        ) -> Result<Box<dyn PruneReporter>, CancelableError<StoreError>> {
             let layout = store.layout(conn, site.clone())?;
             cancel.check_cancel()?;
             let state = deployment::state(conn, site.deployment.clone())?;
@@ -933,6 +939,20 @@ impl DeploymentStore {
 
             layout.prune(&store.logger, reporter.as_mut(), conn, &req, cancel)?;
             Ok(reporter)
+        }
+
+        let store = self.clone();
+        self.with_conn(move |conn, cancel| {
+            // We lock pruning for this deployment to make sure that if the
+            // deployment is reassigned to another node, that node won't
+            // kick off a pruning run while this node might still be pruning
+            if advisory_lock::try_lock_pruning(conn, &site)? {
+                let res = do_prune(store, conn, site.cheap_clone(), cancel, req, reporter);
+                advisory_lock::unlock_pruning(conn, &site)?;
+                res
+            } else {
+                Ok(reporter)
+            }
         })
         .await
     }
