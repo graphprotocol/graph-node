@@ -181,7 +181,15 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
         };
 
         let initial_block: Option<u64> = match module {
-            Some(module) => Some(module.initial_block),
+            Some(module) => match &module.kind {
+                Some(graph::substreams::module::Kind::KindMap(_)) => Some(module.initial_block),
+                _ => {
+                    return Err(anyhow!(
+                        "Substreams module {} must be of 'map' kind",
+                        module.name
+                    ))
+                }
+            },
             None => {
                 return Err(anyhow!(
                     "Substreams module {} does not exist",
