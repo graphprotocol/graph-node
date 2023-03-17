@@ -11,7 +11,6 @@ use crate::slog::{self, error, o, Logger};
 
 use super::MetricsRegistryTrait;
 
-#[derive(Clone)]
 pub struct MetricsRegistry {
     logger: Logger,
     registry: Arc<Registry>,
@@ -21,11 +20,11 @@ pub struct MetricsRegistry {
 
     /// Global metrics are lazily initialized and identified by
     /// the `Desc.id` that hashes the name and const label values
-    global_counters: Arc<RwLock<HashMap<u64, Counter>>>,
-    global_counter_vecs: Arc<RwLock<HashMap<u64, CounterVec>>>,
-    global_gauges: Arc<RwLock<HashMap<u64, Gauge>>>,
-    global_gauge_vecs: Arc<RwLock<HashMap<u64, GaugeVec>>>,
-    global_histogram_vecs: Arc<RwLock<HashMap<u64, HistogramVec>>>,
+    global_counters: RwLock<HashMap<u64, Counter>>,
+    global_counter_vecs: RwLock<HashMap<u64, CounterVec>>,
+    global_gauges: RwLock<HashMap<u64, Gauge>>,
+    global_gauge_vecs: RwLock<HashMap<u64, GaugeVec>>,
+    global_histogram_vecs: RwLock<HashMap<u64, HistogramVec>>,
 }
 
 impl MetricsRegistry {
@@ -41,11 +40,11 @@ impl MetricsRegistry {
             register_errors,
             unregister_errors,
             registered_metrics,
-            global_counters: Arc::new(RwLock::new(HashMap::new())),
-            global_counter_vecs: Arc::new(RwLock::new(HashMap::new())),
-            global_gauges: Arc::new(RwLock::new(HashMap::new())),
-            global_gauge_vecs: Arc::new(RwLock::new(HashMap::new())),
-            global_histogram_vecs: Arc::new(RwLock::new(HashMap::new())),
+            global_counters: RwLock::new(HashMap::new()),
+            global_counter_vecs: RwLock::new(HashMap::new()),
+            global_gauges: RwLock::new(HashMap::new()),
+            global_gauge_vecs: RwLock::new(HashMap::new()),
+            global_histogram_vecs: RwLock::new(HashMap::new()),
         }
     }
 
