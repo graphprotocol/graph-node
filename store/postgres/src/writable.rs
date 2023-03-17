@@ -254,7 +254,7 @@ impl SyncStore {
         &self,
         key: &DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: Option<Vec<EntityKey>>,
+        excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         self.retry("get_derived", || {
             self.writable
@@ -776,7 +776,9 @@ impl Queue {
                             for emod in mods {
                                 let key = emod.entity_ref();
                                 // we select just the entities that match the query
-                                if derived_query.entity_type == key.entity_type {
+                                if derived_query.entity_type == key.entity_type
+                                    && derived_query.value == key.entity_id
+                                {
                                     map.insert(key.clone(), emod.entity().cloned());
                                 }
                             }
@@ -793,7 +795,7 @@ impl Queue {
         // We filter to exclude the entities ids that we already have from the queue
         let mut items_from_database =
             self.store
-                .get_derived(derived_query, tracker.query_block(), Some(excluded_keys))?;
+                .get_derived(derived_query, tracker.query_block(), excluded_keys)?;
 
         // Extend the store results with the entities from the queue.
         // This overwrites any entitiy from the database with the same key from queue
@@ -969,7 +971,7 @@ impl Writer {
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, None),
+            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]),
             Writer::Async(queue) => queue.get_derived(key),
         }
     }

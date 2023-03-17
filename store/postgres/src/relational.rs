@@ -563,7 +563,7 @@ impl Layout {
         conn: &PgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: &Option<Vec<EntityKey>>,
+        excluded_keys: &Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let table = self.table_for_entity(&derived_query.entity_type)?;
         let query = FindDerivedQuery::new(table, derived_query, block, excluded_keys);

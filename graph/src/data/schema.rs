@@ -539,7 +539,22 @@ impl Schema {
         }
     }
 
-    pub fn get_type_for_field(&self, key: &LoadRelatedRequest) -> Result<(&str, &str), Error> {
+    /// Returns the field that has the relationship with the key requested
+    /// This works as a reverse search for the Field related to the query
+    ///
+    /// example:
+    ///
+    /// type Account @entity {
+    ///     wallets: [Wallet!]! @derivedFrom("account")
+    /// }
+    /// type Wallet {
+    ///     account: Account!
+    ///     balance: Int!
+    /// }
+    ///
+    /// When asked to load the related entities from "Account" in the field "wallets"
+    /// This function will return the type "Wallet" with the field "account"
+    pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &Field), Error> {
         let field = self
             .document
             .get_object_type_definition(key.entity_type.as_str())
@@ -561,11 +576,32 @@ impl Schema {
                 )
             })?;
         if field.is_derived() {
-            let derived_from = field.find_directive("derivedFrom").unwrap();
+            let derived_from = field.find_directive("derivedfrom").unwrap();
             let base_type = field.field_type.get_base_type();
-            let field = derived_from.argument("field").unwrap();
+            let field_name = derived_from.argument("field").unwrap();
 
-            Ok((base_type, field.as_str().unwrap()))
+            let field = self
+                .document
+                .get_object_type_definition(base_type)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Entity {}[{}]: unknown entity type `{}`",
+                        key.entity_type,
+                        key.entity_id,
+                        key.entity_type,
+                    )
+                })?
+                .field(field_name.as_str().unwrap())
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Entity {}[{}]: unknown field `{}`",
+                        key.entity_type,
+                        key.entity_id,
+                        key.entity_field,
+                    )
+                })?;
+
+            Ok((base_type, field))
         } else {
             Err(anyhow!(
                 "Entity {}[{}]: field `{}` is not derived",
