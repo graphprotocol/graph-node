@@ -561,7 +561,7 @@ async fn main() {
     // Periodically check for contention in the tokio threadpool. First spawn a
     // task that simply responds to "ping" requests. Then spawn a separate
     // thread to periodically ping it and check responsiveness.
-    let (ping_send, mut ping_receive) = mpsc::channel::<crossbeam_channel::Sender<()>>(1);
+    let (ping_send, mut ping_receive) = mpsc::channel::<std::sync::mpsc::SyncSender<()>>(1);
     graph::spawn(async move {
         while let Some(pong_send) = ping_receive.recv().await {
             let _ = pong_send.clone().send(());
@@ -570,14 +570,13 @@ async fn main() {
     });
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(1));
-        let (pong_send, pong_receive) = crossbeam_channel::bounded(1);
+        let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
         if futures::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
             debug!(contention_logger, "Shutting down contention checker thread");
             break;
         }
         let mut timeout = Duration::from_millis(10);
-        while pong_receive.recv_timeout(timeout)
-            == Err(crossbeam_channel::RecvTimeoutError::Timeout)
+        while pong_receive.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
         {
             debug!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),

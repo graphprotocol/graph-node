@@ -20,7 +20,6 @@ graphql-parser = "0.4.0"
 futures = { version = "0.3.1", features = ["compat"] }
 lazy_static = "1.2.0"
 url = "2.3.1"
-crossbeam-channel = "0.5.7"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-arweave = { path = "../chain/arweave" }
