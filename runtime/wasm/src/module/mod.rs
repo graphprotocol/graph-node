@@ -219,7 +219,11 @@ impl<C: Blockchain> WasmInstance<C> {
 
         // This `match` will return early if there was a non-deterministic trap.
         let deterministic_error: Option<Error> = match func.call(arg.wasm_ptr()) {
-            Ok(()) => None,
+            Ok(()) => {
+                assert!(self.instance_ctx().possible_reorg == false);
+                assert!(self.instance_ctx().deterministic_host_trap == false);
+                None
+            }
             Err(trap) if self.instance_ctx().possible_reorg => {
                 self.instance_ctx_mut().ctx.state.exit_handler();
                 return Err(MappingError::PossibleReorg(trap.into()));
