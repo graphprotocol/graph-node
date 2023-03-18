@@ -14,6 +14,7 @@ use graph::prelude::{
     BLOCK_NUMBER_MAX,
 };
 use graph::slog::info;
+use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -587,7 +588,7 @@ impl Queue {
         store: Arc<SyncStore>,
         capacity: usize,
         registry: Arc<MetricsRegistry>,
-    ) -> Arc<Self> {
+    ) -> (Arc<Self>, JoinHandle<()>) {
         async fn start_writer(queue: Arc<Queue>, logger: Logger) {
             loop {
                 #[cfg(debug_assertions)]
@@ -658,9 +659,9 @@ impl Queue {
         };
         let queue = Arc::new(queue);
 
-        graph::spawn(start_writer(queue.cheap_clone(), logger));
+        let join_handle = graph::spawn(start_writer(queue.cheap_clone(), logger));
 
-        queue
+        (queue, join_handle)
     }
 
     /// Add a write request to the queue
@@ -847,7 +848,10 @@ impl Queue {
 /// A shim to allow bypassing any pipelined store handling if need be
 enum Writer {
     Sync(Arc<SyncStore>),
-    Async(Arc<Queue>),
+    Async {
+        queue: Arc<Queue>,
+        join_handle: JoinHandle<()>,
+    },
 }
 
 impl Writer {
@@ -861,7 +865,8 @@ impl Writer {
         if capacity == 0 {
             Self::Sync(store)
         } else {
-            Self::Async(Queue::start(logger, store, capacity, registry))
+            let (queue, join_handle) = Queue::start(logger, store, capacity, registry);
+            Self::Async { queue, join_handle }
         }
     }
 
@@ -887,7 +892,7 @@ impl Writer {
                 &manifest_idx_and_name,
                 &processed_data_sources,
             ),
-            Writer::Async(queue) => {
+            Writer::Async { queue, .. } => {
                 let req = Request::Write {
                     store: queue.store.cheap_clone(),
                     stopwatch: queue.stopwatch.cheap_clone(),
@@ -911,7 +916,7 @@ impl Writer {
     ) -> Result<(), StoreError> {
         match self {
             Writer::Sync(store) => store.revert_block_operations(block_ptr_to, &firehose_cursor),
-            Writer::Async(queue) => {
+            Writer::Async { queue, .. } => {
                 let req = Request::RevertTo {
                     store: queue.store.cheap_clone(),
                     block_ptr: block_ptr_to,
@@ -925,14 +930,14 @@ impl Writer {
     async fn flush(&self) -> Result<(), StoreError> {
         match self {
             Writer::Sync { .. } => Ok(()),
-            Writer::Async(queue) => queue.flush().await,
+            Writer::Async { queue, .. } => queue.flush().await,
         }
     }
 
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX),
-            Writer::Async(queue) => queue.get(key),
+            Writer::Async { queue, .. } => queue.get(key),
         }
     }
 
@@ -942,7 +947,7 @@ impl Writer {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_many(keys, BLOCK_NUMBER_MAX),
-            Writer::Async(queue) => queue.get_many(keys),
+            Writer::Async { queue, .. } => queue.get_many(keys),
         }
     }
 
@@ -956,21 +961,35 @@ impl Writer {
                     .load_dynamic_data_sources(BLOCK_NUMBER_MAX, manifest_idx_and_name)
                     .await
             }
-            Writer::Async(queue) => queue.load_dynamic_data_sources(manifest_idx_and_name).await,
+            Writer::Async { queue, .. } => {
+                queue.load_dynamic_data_sources(manifest_idx_and_name).await
+            }
         }
     }
 
     fn poisoned(&self) -> bool {
         match self {
             Writer::Sync(_) => false,
-            Writer::Async(queue) => queue.poisoned(),
+            Writer::Async { queue, .. } => queue.poisoned(),
         }
     }
 
     async fn stop(&self) -> Result<(), StoreError> {
         match self {
             Writer::Sync(_) => Ok(()),
-            Writer::Async(queue) => queue.stop().await,
+            Writer::Async { queue, .. } => queue.stop().await,
+        }
+    }
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        match self {
+            Writer::Sync(_) => (),
+            Writer::Async { join_handle, .. } => {
+                // Kill the background writer
+                join_handle.abort();
+            }
         }
     }
 }
