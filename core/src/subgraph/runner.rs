@@ -60,9 +60,10 @@ where
                 should_try_unfail_non_deterministic: true,
                 synced: false,
                 skip_ptr_updates_timer: Instant::now(),
-                backoff: ExponentialBackoff::new(
+                backoff: ExponentialBackoff::with_jitter(
                     (MINUTE * 2).min(env_vars.subgraph_error_retry_ceil),
                     env_vars.subgraph_error_retry_ceil,
+                    env_vars.subgraph_error_retry_jitter,
                 ),
                 entity_lfu_cache: LfuCache::new(),
             },
