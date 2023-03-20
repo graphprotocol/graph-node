@@ -133,7 +133,7 @@ pub struct EnvVars {
     /// Ceiling for the backoff retry of non-deterministic errors.
     ///
     /// Set by the environment variable `GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS`
-    /// (expressed in seconds). The default value is 1800s (30 minutes).
+    /// (expressed in seconds). The default value is 3600s (60 minutes).
     pub subgraph_error_retry_ceil: Duration,
     /// Jitter factor for the backoff retry of non-deterministic errors.
     ///
@@ -319,7 +319,7 @@ struct Inner {
     subgraph_max_data_sources: NoUnderscores<usize>,
     #[envconfig(from = "GRAPH_DISABLE_FAIL_FAST", default = "false")]
     disable_fail_fast: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "1800")]
+    #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_CEIL_SECS", default = "3600")]
     subgraph_error_retry_ceil_in_secs: u64,
     #[envconfig(from = "GRAPH_SUBGRAPH_ERROR_RETRY_JITTER", default = "0.2")]
     subgraph_error_retry_jitter: f64,
