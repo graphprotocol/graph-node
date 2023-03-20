@@ -562,22 +562,47 @@ fn build_order_by(
                     })
             }
             OrderByValue::Child(parent_field_name, child_field_name) => {
-                if entity.is_interface() {
-                    return Err(QueryExecutionError::OrderByNotSupportedError(
-                        entity.name().to_owned(),
-                        parent_field_name,
-                    ));
-                }
+                // Finds the field that connects the parent entity with the child entity.
+                // In the case of an interface, we need to find the field on one of the types that implement the interface,
+                // as the `@derivedFrom` directive is only allowed on object types.
+                let field = match entity {
+                    ObjectOrInterface::Object(_) => {
+                        sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
+                            QueryExecutionError::EntityFieldError(
+                                entity.name().to_owned(),
+                                parent_field_name.clone(),
+                            )
+                        })?
+                    }
+                    ObjectOrInterface::Interface(_) => {
+                        let object_types = schema
+                            .types_for_interface()
+                            .get(&EntityType::new(entity.name().to_string()))
+                            .ok_or(QueryExecutionError::EntityFieldError(
+                                entity.name().to_owned(),
+                                parent_field_name.clone(),
+                            ))?;
 
-                let field =
-                    sast::get_field(entity, parent_field_name.as_str()).ok_or_else(|| {
-                        QueryExecutionError::EntityFieldError(
-                            entity.name().to_owned(),
-                            parent_field_name.clone(),
-                        )
-                    })?;
+                        if let Some(first_entity) = object_types.first() {
+                            sast::get_field(first_entity, parent_field_name.as_str()).ok_or_else(
+                                || {
+                                    QueryExecutionError::EntityFieldError(
+                                        entity.name().to_owned(),
+                                        parent_field_name.clone(),
+                                    )
+                                },
+                            )?
+                        } else {
+                            Err(QueryExecutionError::EntityFieldError(
+                                entity.name().to_owned(),
+                                parent_field_name.clone(),
+                            ))?
+                        }
+                    }
+                };
                 let derived = field.is_derived();
                 let base_type = field.field_type.get_base_type();
+
                 let child_entity = schema
                     .object_or_interface(base_type)
                     .ok_or_else(|| QueryExecutionError::NamedTypeError(base_type.into()))?;

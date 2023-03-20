@@ -53,6 +53,16 @@ const BASE_SQL_COLUMNS: [&str; 2] = ["id", "vid"];
 /// The maximum number of bind variables that can be used in a query
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
+const SORT_KEY_COLUMN: &str = "sort_key$";
+
+/// Describes at what level a `SELECT` statement is used.
+enum SelectStatementLevel {
+    // A `SELECT` statement that is nested inside another `SELECT` statement
+    InnerStatement,
+    // The top-level `SELECT` statement
+    OuterStatement,
+}
+
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
@@ -2159,7 +2169,7 @@ impl<'a> ParentLimit<'a> {
     fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
-            sort_key.order_by(out)?;
+            sort_key.order_by(out, false)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -2525,7 +2535,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
         out.push_sql("' as entity, c.id, c.vid, p.id::text as g$parent_id");
-        sort_key.select(&mut out)?;
+        sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
         self.children(ParentLimit::Outer, block, out)
     }
 
@@ -3153,12 +3163,12 @@ impl<'a> SortKey<'a> {
                                 direction,
                             )?
                             .iter()
-                            .map(|asd| ChildIdDetails {
-                                parent_table: asd.parent_table,
-                                child_table: asd.child_table,
-                                parent_join_column: asd.parent_join_column,
-                                child_join_column: asd.child_join_column,
-                                prefix: asd.prefix.clone(),
+                            .map(|details| ChildIdDetails {
+                                parent_table: details.parent_table,
+                                child_table: details.child_table,
+                                parent_join_column: details.parent_join_column,
+                                child_join_column: details.child_join_column,
+                                prefix: details.prefix.clone(),
                             })
                             .collect(),
                             br_column,
@@ -3173,12 +3183,12 @@ impl<'a> SortKey<'a> {
                                 direction,
                             )?
                             .iter()
-                            .map(|asd| ChildIdDetails {
-                                parent_table: asd.parent_table,
-                                child_table: asd.child_table,
-                                parent_join_column: asd.parent_join_column,
-                                child_join_column: asd.child_join_column,
-                                prefix: asd.prefix.clone(),
+                            .map(|details| ChildIdDetails {
+                                parent_table: details.parent_table,
+                                child_table: details.child_table,
+                                parent_join_column: details.parent_join_column,
+                                child_join_column: details.child_join_column,
+                                prefix: details.prefix.clone(),
                             })
                             .collect(),
                             br_column,
@@ -3188,14 +3198,14 @@ impl<'a> SortKey<'a> {
                     Ok(SortKey::ChildKey(ChildKey::Many(
                         build_children_vec(layout, parent_table, entity_types, child, direction)?
                             .iter()
-                            .map(|asd| ChildKeyDetails {
-                                parent_table: asd.parent_table,
-                                parent_join_column: asd.parent_join_column,
-                                child_table: asd.child_table,
-                                child_join_column: asd.child_join_column,
-                                sort_by_column: asd.sort_by_column,
-                                prefix: asd.prefix.clone(),
-                                direction: asd.direction,
+                            .map(|details| ChildKeyDetails {
+                                parent_table: details.parent_table,
+                                parent_join_column: details.parent_join_column,
+                                child_table: details.child_table,
+                                child_join_column: details.child_join_column,
+                                sort_by_column: details.sort_by_column,
+                                prefix: details.prefix.clone(),
+                                direction: details.direction,
                             })
                             .collect(),
                     )))
@@ -3256,15 +3266,26 @@ impl<'a> SortKey<'a> {
     }
 
     /// Generate selecting the sort key if it is needed
-    fn select(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn select(
+        &self,
+        out: &mut AstPass<Pg>,
+        select_statement_level: SelectStatementLevel,
+    ) -> QueryResult<()> {
         match self {
-            SortKey::None => Ok(()),
+            SortKey::None => {}
             SortKey::IdAsc(br_column) | SortKey::IdDesc(br_column) => {
                 if let Some(br_column) = br_column {
                     out.push_sql(", ");
-                    br_column.name(out);
+
+                    match select_statement_level {
+                        SelectStatementLevel::InnerStatement => {
+                            br_column.name(out);
+                            out.push_sql(" as ");
+                            out.push_sql(SORT_KEY_COLUMN);
+                        }
+                        SelectStatementLevel::OuterStatement => out.push_sql(SORT_KEY_COLUMN),
+                    }
                 }
-                Ok(())
             }
             SortKey::Key {
                 column,
@@ -3274,9 +3295,19 @@ impl<'a> SortKey<'a> {
                 if column.is_primary_key() {
                     return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                 }
-                out.push_sql(", c.");
-                out.push_identifier(column.name.as_str())?;
-                Ok(())
+
+                match select_statement_level {
+                    SelectStatementLevel::InnerStatement => {
+                        out.push_sql(", c.");
+                        out.push_identifier(column.name.as_str())?;
+                        out.push_sql(" as ");
+                        out.push_sql(SORT_KEY_COLUMN);
+                    }
+                    SelectStatementLevel::OuterStatement => {
+                        out.push_sql(", ");
+                        out.push_sql(SORT_KEY_COLUMN);
+                    }
+                }
             }
             SortKey::ChildKey(nested) => {
                 match nested {
@@ -3284,10 +3315,19 @@ impl<'a> SortKey<'a> {
                         if child.sort_by_column.is_primary_key() {
                             return Err(constraint_violation!("SortKey::Key never uses 'id'"));
                         }
-                        out.push_sql(", ");
-                        out.push_sql(child.prefix.as_str());
-                        out.push_sql(".");
-                        out.push_identifier(child.sort_by_column.name.as_str())?;
+
+                        match select_statement_level {
+                            SelectStatementLevel::InnerStatement => {
+                                out.push_sql(", ");
+                                out.push_sql(child.prefix.as_str());
+                                out.push_sql(".");
+                                out.push_identifier(child.sort_by_column.name.as_str())?;
+                            }
+                            SelectStatementLevel::OuterStatement => {
+                                out.push_sql(", ");
+                                out.push_sql(SORT_KEY_COLUMN);
+                            }
+                        }
                     }
                     ChildKey::Many(children) => {
                         for child in children.iter() {
@@ -3321,22 +3361,31 @@ impl<'a> SortKey<'a> {
                     }
                 }
 
-                Ok(())
+                if let SelectStatementLevel::InnerStatement = select_statement_level {
+                    out.push_sql(" as ");
+                    out.push_sql(SORT_KEY_COLUMN);
+                }
             }
         }
+        Ok(())
     }
 
     /// Generate
     ///   order by [name direction], id
-    fn order_by(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn order_by(&self, out: &mut AstPass<Pg>, use_sort_key_alias: bool) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(br_column) => {
                 out.push_sql("order by ");
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 if let Some(br_column) = br_column {
-                    out.push_sql(", ");
-                    br_column.bare_name(out);
+                    if use_sort_key_alias {
+                        out.push_sql(", ");
+                        out.push_sql(SORT_KEY_COLUMN);
+                    } else {
+                        out.push_sql(", ");
+                        br_column.bare_name(out);
+                    }
                 }
                 Ok(())
             }
@@ -3345,8 +3394,13 @@ impl<'a> SortKey<'a> {
                 out.push_identifier(PRIMARY_KEY_COLUMN)?;
                 out.push_sql(" desc");
                 if let Some(br_column) = br_column {
-                    out.push_sql(", ");
-                    br_column.bare_name(out);
+                    if use_sort_key_alias {
+                        out.push_sql(", ");
+                        out.push_sql(SORT_KEY_COLUMN);
+                    } else {
+                        out.push_sql(", ");
+                        br_column.bare_name(out);
+                    }
                     out.push_sql(" desc");
                 }
                 Ok(())
@@ -3357,7 +3411,15 @@ impl<'a> SortKey<'a> {
                 direction,
             } => {
                 out.push_sql("order by ");
-                SortKey::sort_expr(column, value, direction, None, None, out)
+                SortKey::sort_expr(
+                    column,
+                    value,
+                    direction,
+                    None,
+                    None,
+                    use_sort_key_alias,
+                    out,
+                )
             }
             SortKey::ChildKey(child) => {
                 out.push_sql("order by ");
@@ -3368,6 +3430,7 @@ impl<'a> SortKey<'a> {
                         child.direction,
                         Some(&child.prefix),
                         Some("c"),
+                        use_sort_key_alias,
                         out,
                     ),
                     ChildKey::Many(children) => {
@@ -3427,7 +3490,10 @@ impl<'a> SortKey<'a> {
 
     /// Generate
     ///   order by g$parent_id, [name direction], id
-    fn order_by_parent(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    /// TODO: Let's think how to detect if we need to use sort_key$ alias or not
+    /// A boolean (use_sort_key_alias) is not a good idea and prone to errors.
+    /// We could make it the standard and always use sort_key$ alias.
+    fn order_by_parent(&self, out: &mut AstPass<Pg>, use_sort_key_alias: bool) -> QueryResult<()> {
         match self {
             SortKey::None => Ok(()),
             SortKey::IdAsc(_) => {
@@ -3446,7 +3512,15 @@ impl<'a> SortKey<'a> {
                 direction,
             } => {
                 out.push_sql("order by g$parent_id, ");
-                SortKey::sort_expr(column, value, direction, None, None, out)
+                SortKey::sort_expr(
+                    column,
+                    value,
+                    direction,
+                    None,
+                    None,
+                    use_sort_key_alias,
+                    out,
+                )
             }
             SortKey::ChildKey(_) => Err(diesel::result::Error::QueryBuilderError(
                 "SortKey::ChildKey cannot be used for parent ordering (yet)".into(),
@@ -3462,6 +3536,7 @@ impl<'a> SortKey<'a> {
         direction: &str,
         column_prefix: Option<&str>,
         rest_prefix: Option<&str>,
+        use_sort_key_alias: bool,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
         if column.is_primary_key() {
@@ -3485,24 +3560,35 @@ impl<'a> SortKey<'a> {
                     FulltextAlgorithm::ProximityRank => "ts_rank_cd(",
                 };
                 out.push_sql(algorithm);
-                let name = column.name.as_str();
-                push_prefix(column_prefix, out);
-                out.push_identifier(name)?;
+                if use_sort_key_alias {
+                    out.push_sql(SORT_KEY_COLUMN);
+                } else {
+                    let name = column.name.as_str();
+                    push_prefix(column_prefix, out);
+                    out.push_identifier(name)?;
+                }
+
                 out.push_sql(", to_tsquery(");
 
                 out.push_bind_param::<Text, _>(&value.unwrap())?;
                 out.push_sql("))");
             }
             _ => {
-                let name = column.name.as_str();
-                push_prefix(column_prefix, out);
-                out.push_identifier(name)?;
+                if use_sort_key_alias {
+                    out.push_sql(SORT_KEY_COLUMN);
+                } else {
+                    let name = column.name.as_str();
+                    push_prefix(column_prefix, out);
+                    out.push_identifier(name)?;
+                }
             }
         }
         out.push_sql(" ");
         out.push_sql(direction);
         out.push_sql(", ");
-        push_prefix(rest_prefix, out);
+        if !use_sort_key_alias {
+            push_prefix(rest_prefix, out);
+        }
         out.push_identifier(PRIMARY_KEY_COLUMN)?;
         out.push_sql(" ");
         out.push_sql(direction);
@@ -3859,7 +3945,7 @@ impl<'a> FilterQuery<'a> {
         write_column_names(column_names, table, Some("c."), &mut out)?;
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, false)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
@@ -3887,7 +3973,7 @@ impl<'a> FilterQuery<'a> {
         )?;
         out.push_sql(") c");
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(&mut out)
+        self.sort_key.order_by_parent(&mut out, false)
     }
 
     /// No windowing, but multiple entity types
@@ -3934,11 +4020,12 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("select '");
             out.push_sql(table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
-            self.sort_key.select(&mut out)?;
+            self.sort_key
+                .select(&mut out, SelectStatementLevel::InnerStatement)?; // here
             self.filtered_rows(table, filter, out.reborrow())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, true)?;
         self.range.walk_ast(out.reborrow())?;
 
         out.push_sql(")\n");
@@ -3951,7 +4038,8 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("select m.entity, ");
             jsonb_build_object(column_names, "c", table, &mut out)?;
             out.push_sql(" as data, c.id");
-            self.sort_key.select(&mut out)?;
+            self.sort_key
+                .select(&mut out, SelectStatementLevel::OuterStatement)?;
             out.push_sql("\n  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" c,");
@@ -3960,7 +4048,7 @@ impl<'a> FilterQuery<'a> {
             out.push_bind_param::<Text, _>(&table.object.as_str())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, true)?;
         Ok(())
     }
 
@@ -4011,7 +4099,7 @@ impl<'a> FilterQuery<'a> {
             window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
         }
         out.push_sql("\n");
-        self.sort_key.order_by(&mut out)?;
+        self.sort_key.order_by(&mut out, true)?;
         self.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
 
@@ -4048,7 +4136,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("'");
         }
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(&mut out)
+        self.sort_key.order_by_parent(&mut out, true)
     }
 }
 
