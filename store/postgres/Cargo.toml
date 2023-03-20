@@ -29,7 +29,7 @@ serde = "1.0"
 uuid = { version = "1.3.0", features = ["v4"] }
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 diesel_derives = "1.4.1"
-anyhow = "1.0.69"
+anyhow = "1.0.70"
 git-testament = "0.2.4"
 itertools = "0.10.5"
 pin-utils = "0.1"
