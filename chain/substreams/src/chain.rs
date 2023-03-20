@@ -2,10 +2,9 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter};
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::store::DeploymentCursorTracker;
 use graph::firehose::FirehoseEndpoints;
-use graph::prelude::{BlockHash, LoggerFactory};
+use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
 use graph::{
     blockchain::{
         self,
@@ -45,14 +44,14 @@ pub struct Chain {
 
     pub(crate) logger_factory: LoggerFactory,
     pub(crate) client: Arc<ChainClient<Self>>,
-    pub(crate) metrics_registry: Arc<dyn MetricsRegistryTrait>,
+    pub(crate) metrics_registry: Arc<MetricsRegistry>,
 }
 
 impl Chain {
     pub fn new(
         logger_factory: LoggerFactory,
         firehose_endpoints: FirehoseEndpoints,
-        metrics_registry: Arc<dyn MetricsRegistryTrait>,
+        metrics_registry: Arc<MetricsRegistry>,
         chain_store: Arc<dyn ChainStore>,
         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     ) -> Self {

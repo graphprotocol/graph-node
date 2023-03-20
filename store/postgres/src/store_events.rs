@@ -1,5 +1,4 @@
 use futures03::TryStreamExt;
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::parking_lot::Mutex;
 use graph::tokio_stream::wrappers::ReceiverStream;
 use std::collections::BTreeSet;
@@ -22,7 +21,7 @@ impl StoreEventListener {
     pub fn new(
         logger: Logger,
         postgres_url: String,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
     ) -> (Self, Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>) {
         let channel = SafeChannelName::i_promise_this_is_safe("store_events");
         let (notification_listener, receiver) =
@@ -133,11 +132,7 @@ pub struct SubscriptionManager {
 }
 
 impl SubscriptionManager {
-    pub fn new(
-        logger: Logger,
-        postgres_url: String,
-        registry: Arc<dyn MetricsRegistryTrait>,
-    ) -> Self {
+    pub fn new(logger: Logger, postgres_url: String, registry: Arc<MetricsRegistry>) -> Self {
         let (listener, store_events) = StoreEventListener::new(logger, postgres_url, registry);
 
         let mut manager = SubscriptionManager {

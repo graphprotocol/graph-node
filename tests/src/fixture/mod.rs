@@ -16,7 +16,7 @@ use graph::blockchain::{
     TriggersAdapter, TriggersAdapterSelector,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::metrics::{MetricsRegistry, MetricsRegistryTrait};
+use graph::components::metrics::MetricsRegistry;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::{Query, QueryTarget};
@@ -289,7 +289,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
     };
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+    let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
         StoreBuilder::new(&logger, &node_id, &config, None, mock_registry.clone()).await;
@@ -331,7 +331,7 @@ pub async fn setup<C: Blockchain>(
     });
 
     let logger = graph::log::logger(true);
-    let mock_registry: Arc<dyn MetricsRegistryTrait> = Arc::new(MetricsRegistry::mock());
+    let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
 

@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use diesel::{prelude::RunQueryDsl, sql_query, sql_types::Double};
 
-use graph::components::metrics::MetricsRegistryTrait;
-use graph::prelude::{error, Logger, StoreError, ENV_VARS};
+use graph::prelude::{error, Logger, MetricsRegistry, StoreError, ENV_VARS};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};
 
@@ -18,7 +17,7 @@ pub fn register(
     runner: &mut Runner,
     store: Arc<Store>,
     primary_pool: ConnectionPool,
-    registry: Arc<dyn MetricsRegistryTrait>,
+    registry: Arc<MetricsRegistry>,
 ) {
     const ONE_MINUTE: Duration = Duration::from_secs(60);
     const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
@@ -88,7 +87,7 @@ struct NotificationQueueUsage {
 }
 
 impl NotificationQueueUsage {
-    fn new(primary: ConnectionPool, registry: Arc<dyn MetricsRegistryTrait>) -> Self {
+    fn new(primary: ConnectionPool, registry: Arc<MetricsRegistry>) -> Self {
         let usage_gauge = registry
             .new_gauge(
                 "notification_queue_usage",

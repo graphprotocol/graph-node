@@ -1,8 +1,7 @@
 use super::Blockchain;
 use crate::{
-    components::{metrics::MetricsRegistryTrait, store::ChainStore},
-    firehose::FirehoseEndpoints,
-    prelude::LoggerFactory,
+    components::store::ChainStore, firehose::FirehoseEndpoints, prelude::LoggerFactory,
+    prelude::MetricsRegistry,
 };
 use std::sync::Arc;
 
@@ -13,7 +12,7 @@ pub struct BasicBlockchainBuilder {
     pub name: String,
     pub chain_store: Arc<dyn ChainStore>,
     pub firehose_endpoints: FirehoseEndpoints,
-    pub metrics_registry: Arc<dyn MetricsRegistryTrait>,
+    pub metrics_registry: Arc<MetricsRegistry>,
 }
 
 /// Something that can build a [`Blockchain`].

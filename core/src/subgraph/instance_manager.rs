@@ -8,7 +8,6 @@ use graph::blockchain::block_stream::BlockStreamMetrics;
 use graph::blockchain::Blockchain;
 use graph::blockchain::NodeCapabilities;
 use graph::blockchain::{BlockchainKind, TriggerFilter};
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data_source::causality_region::CausalityRegionSeq;
@@ -27,7 +26,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
-    metrics_registry: Arc<dyn MetricsRegistryTrait>,
+    metrics_registry: Arc<MetricsRegistry>,
     instances: SubgraphKeepAlive,
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
@@ -163,7 +162,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         subgraph_store: Arc<S>,
         chains: Arc<BlockchainMap>,
         sg_metrics: Arc<SubgraphCountMetric>,
-        metrics_registry: Arc<dyn MetricsRegistryTrait>,
+        metrics_registry: Arc<MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
         static_filters: bool,

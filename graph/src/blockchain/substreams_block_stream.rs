@@ -1,7 +1,6 @@
 use super::block_stream::SubstreamsMapper;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
-use crate::components::metrics::MetricsRegistryTrait;
 use crate::firehose::FirehoseEndpoint;
 use crate::prelude::*;
 use crate::substreams::response::Message;
@@ -26,7 +25,7 @@ struct SubstreamsBlockStreamMetrics {
 
 impl SubstreamsBlockStreamMetrics {
     pub fn new(
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
         deployment: DeploymentHash,
         provider: String,
     ) -> Self {
@@ -126,7 +125,7 @@ where
         start_blocks: Vec<BlockNumber>,
         end_blocks: Vec<BlockNumber>,
         logger: Logger,
-        registry: Arc<dyn MetricsRegistryTrait>,
+        registry: Arc<MetricsRegistry>,
     ) -> Self
     where
         F: SubstreamsMapper<C> + 'static,

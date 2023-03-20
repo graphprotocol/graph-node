@@ -5,11 +5,10 @@ use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopRuntimeAdapter,
 };
 use graph::cheap_clone::CheapClone;
-use graph::components::metrics::MetricsRegistryTrait;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::FirehoseEndpoint;
-use graph::prelude::TryFutureExt;
+use graph::prelude::{MetricsRegistry, TryFutureExt};
 use graph::{
     anyhow::Result,
     blockchain::{
@@ -98,7 +97,7 @@ pub struct Chain {
     name: String,
     client: Arc<ChainClient<Self>>,
     chain_store: Arc<dyn ChainStore>,
-    metrics_registry: Arc<dyn MetricsRegistryTrait>,
+    metrics_registry: Arc<MetricsRegistry>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
 }
 
