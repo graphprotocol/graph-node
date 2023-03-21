@@ -1,22 +1,28 @@
 use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::blockchain::BlockPtr;
-use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
-use graph::data_source::CausalityRegion;
-use graph::prelude::{Schema, StopwatchMetrics, StoreError, UnfailOutcome};
-use lazy_static::lazy_static;
-use slog::Logger;
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
-
 use graph::components::store::{
-    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, ReadStore,
-    StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, LoadRelatedRequest,
+    ReadStore, StoredDynamicDataSource, WritableStore,
 };
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
+use graph::data_source::CausalityRegion;
+use graph::prelude::*;
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
 };
+use hex_literal::hex;
+
+use graph::semver::Version;
+use lazy_static::lazy_static;
+use slog::Logger;
+use std::collections::{BTreeMap, BTreeSet};
+use std::marker::PhantomData;
+use std::sync::Arc;
+use web3::types::H256;
+
+use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
+use test_store::*;
 
 lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
@@ -357,4 +363,393 @@ fn consecutive_modifications() {
             ]),
         },])
     );
+}
+
+const ACCOUNT_GQL: &str = "
+    type Account @entity {
+        id: ID!
+        name: String!
+        email: String!
+        age: Int!
+        wallets: [Wallet!]! @derivedFrom(field: \"account\")
+    }
+
+    type Wallet @entity {
+        id: ID!
+        balance: Int!
+        account: Account!
+    }
+";
+
+const ACCOUNT: &str = "Account";
+const WALLET: &str = "Wallet";
+
+lazy_static! {
+    static ref LOAD_RELATED_ID_STRING: String = String::from("loadrelatedsubgraph");
+    static ref LOAD_RELATED_ID: DeploymentHash =
+        DeploymentHash::new(LOAD_RELATED_ID_STRING.as_str()).unwrap();
+    static ref LOAD_RELATED_SUBGRAPH: Schema =
+        Schema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_BLOCK_1_PTR: BlockPtr = (
+        H256::from(hex!(
+            "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
+        )),
+        1u64
+    )
+        .into();
+}
+
+fn remove_test_data(store: Arc<DieselSubgraphStore>) {
+    store
+        .delete_all_entities_for_test_use_only()
+        .expect("deleting test entities succeeds");
+}
+
+fn run_store_test<R, F>(test: F)
+where
+    F: FnOnce(
+            EntityCache,
+            Arc<DieselSubgraphStore>,
+            DeploymentLocator,
+            Arc<dyn WritableStore>,
+        ) -> R
+        + Send
+        + 'static,
+    R: std::future::Future<Output = ()> + Send + 'static,
+{
+    run_test_sequentially(|store| async move {
+        let subgraph_store = store.subgraph_store();
+        // Reset state before starting
+        remove_test_data(subgraph_store.clone());
+
+        // Seed database with test data
+        let deployment = insert_test_data(subgraph_store.clone()).await;
+        let writable = store
+            .subgraph_store()
+            .writable(LOGGER.clone(), deployment.id)
+            .await
+            .expect("we can get a writable store");
+
+        // we send the information to the database
+        writable.flush().await.unwrap();
+
+        let read_store = Arc::new(writable.clone());
+
+        let cache = EntityCache::new(read_store);
+        // Run test and wait for the background writer to finish its work so
+        // it won't conflict with the next test
+        test(cache, subgraph_store.clone(), deployment, writable.clone()).await;
+        writable.flush().await.unwrap();
+    });
+}
+
+async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator {
+    let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+        id: LOAD_RELATED_ID.clone(),
+        spec_version: Version::new(1, 0, 0),
+        features: Default::default(),
+        description: None,
+        repository: None,
+        schema: LOAD_RELATED_SUBGRAPH.clone(),
+        data_sources: vec![],
+        graft: None,
+        templates: vec![],
+        chain: PhantomData,
+    };
+
+    // Create SubgraphDeploymentEntity
+    let deployment = DeploymentCreate::new(String::new(), &manifest, None);
+    let name = SubgraphName::new("test/store").unwrap();
+    let node_id = NodeId::new("test").unwrap();
+    let deployment = store
+        .create_subgraph_deployment(
+            name,
+            &LOAD_RELATED_SUBGRAPH,
+            deployment,
+            node_id,
+            NETWORK_NAME.to_string(),
+            SubgraphVersionSwitchingMode::Instant,
+        )
+        .unwrap();
+
+    // 1 account 3 wallets
+    let test_entity_1 = create_account_entity("1", "Johnton", "tonofjohn@email.com", 67_i32);
+    let wallet_entity_1 = create_wallet_operation("1", "1", 67_i32);
+    let wallet_entity_2 = create_wallet_operation("2", "1", 92_i32);
+    let wallet_entity_3 = create_wallet_operation("3", "1", 192_i32);
+    // 1 account 1 wallet
+    let test_entity_2 = create_account_entity("2", "Cindini", "dinici@email.com", 42_i32);
+    let wallet_entity_4 = create_wallet_operation("4", "2", 32_i32);
+    // 1 account 0 wallets
+    let test_entity_3 = create_account_entity("3", "Shaqueeena", "queensha@email.com", 28_i32);
+    transact_entity_operations(
+        &store,
+        &deployment,
+        GENESIS_PTR.clone(),
+        vec![
+            test_entity_1,
+            test_entity_2,
+            test_entity_3,
+            wallet_entity_1,
+            wallet_entity_2,
+            wallet_entity_3,
+            wallet_entity_4,
+        ],
+    )
+    .await
+    .unwrap();
+    deployment
+}
+
+fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityOperation {
+    let mut test_entity = Entity::new();
+
+    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
+    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
+    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
+    test_entity.insert("age".to_owned(), Value::Int(age));
+
+    EntityOperation::Set {
+        key: EntityKey::data(ACCOUNT.to_owned(), id.to_owned()),
+        data: test_entity,
+    }
+}
+
+fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
+    let mut test_wallet = Entity::new();
+
+    test_wallet.insert("id".to_owned(), Value::String(id.to_owned()));
+    test_wallet.insert("account".to_owned(), Value::String(account_id.to_owned()));
+    test_wallet.insert("balance".to_owned(), Value::Int(balance));
+    test_wallet
+}
+fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
+    let test_wallet = create_wallet_entity(id, account_id, balance);
+    EntityOperation::Set {
+        key: EntityKey::data(WALLET.to_owned(), id.to_owned()),
+        data: test_wallet,
+    }
+}
+
+#[test]
+fn check_for_account_with_multiple_wallets() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let account_id = "1";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_1 = create_wallet_entity("1", account_id, 67_i32);
+        let wallet_2 = create_wallet_entity("2", account_id, 92_i32);
+        let wallet_3 = create_wallet_entity("3", account_id, 192_i32);
+        let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_account_with_single_wallet() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let account_id = "2";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_1 = create_wallet_entity("4", account_id, 32_i32);
+        let expeted_vec = vec![wallet_1];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_account_with_no_wallet() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let account_id = "3";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let expeted_vec = vec![];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_account_that_doesnt_exist() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let account_id = "4";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let expeted_vec = vec![];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_non_existent_field() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let account_id = "1";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "friends".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap_err();
+        let expected = format!(
+            "Entity {}[{}]: unknown field `{}`",
+            request.entity_type, request.entity_id, request.entity_field,
+        );
+
+        assert_eq!(format!("{}", result), expected);
+    });
+}
+
+#[test]
+fn check_for_insert_async_store() {
+    run_store_test(|mut cache, store, deployment, _writable| async move {
+        let account_id = "2";
+        // insert a new wallet
+        let wallet_entity_5 = create_wallet_operation("5", account_id, 79_i32);
+        let wallet_entity_6 = create_wallet_operation("6", account_id, 200_i32);
+
+        transact_entity_operations(
+            &store,
+            &deployment,
+            TEST_BLOCK_1_PTR.clone(),
+            vec![wallet_entity_5, wallet_entity_6],
+        )
+        .await
+        .unwrap();
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_1 = create_wallet_entity("4", account_id, 32_i32);
+        let wallet_2 = create_wallet_entity("5", account_id, 79_i32);
+        let wallet_3 = create_wallet_entity("6", account_id, 200_i32);
+        let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+#[test]
+fn check_for_insert_async_not_related() {
+    run_store_test(|mut cache, store, deployment, _writable| async move {
+        let account_id = "2";
+        // insert a new wallet
+        let wallet_entity_5 = create_wallet_operation("5", account_id, 79_i32);
+        let wallet_entity_6 = create_wallet_operation("6", account_id, 200_i32);
+
+        transact_entity_operations(
+            &store,
+            &deployment,
+            TEST_BLOCK_1_PTR.clone(),
+            vec![wallet_entity_5, wallet_entity_6],
+        )
+        .await
+        .unwrap();
+        let account_id = "1";
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_1 = create_wallet_entity("1", account_id, 67_i32);
+        let wallet_2 = create_wallet_entity("2", account_id, 92_i32);
+        let wallet_3 = create_wallet_entity("3", account_id, 192_i32);
+        let expeted_vec = vec![wallet_1, wallet_2, wallet_3];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_update_async_related() {
+    run_store_test(|mut cache, store, deployment, writable| async move {
+        let account_id = "1";
+        let entity_key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let wallet_entity_update = create_wallet_operation("1", account_id, 79_i32);
+
+        let new_data = match wallet_entity_update {
+            EntityOperation::Set { ref data, .. } => data.clone(),
+            _ => unreachable!(),
+        };
+        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        // insert a new wallet
+        transact_entity_operations(
+            &store,
+            &deployment,
+            TEST_BLOCK_1_PTR.clone(),
+            vec![wallet_entity_update],
+        )
+        .await
+        .unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_2 = create_wallet_entity("2", account_id, 92_i32);
+        let wallet_3 = create_wallet_entity("3", account_id, 192_i32);
+        let expeted_vec = vec![new_data, wallet_2, wallet_3];
+
+        assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn check_for_delete_async_related() {
+    run_store_test(|mut cache, store, deployment, _writable| async move {
+        let account_id = "1";
+        let del_key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        // delete wallet
+        transact_entity_operations(
+            &store,
+            &deployment,
+            TEST_BLOCK_1_PTR.clone(),
+            vec![EntityOperation::Remove { key: del_key }],
+        )
+        .await
+        .unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_field: "wallets".into(),
+            entity_id: account_id.into(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).unwrap();
+        let wallet_2 = create_wallet_entity("2", account_id, 92_i32);
+        let wallet_3 = create_wallet_entity("3", account_id, 192_i32);
+        let expeted_vec = vec![wallet_2, wallet_3];
+
+        assert_eq!(result, expeted_vec);
+    });
 }
