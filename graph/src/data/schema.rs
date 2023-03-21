@@ -1,5 +1,5 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest, SubgraphStore};
+use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{self, ValueType};

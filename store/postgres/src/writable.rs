@@ -256,7 +256,7 @@ impl SyncStore {
         block: BlockNumber,
         excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        self.retry("get_derived", || {
+        retry::forever(&self.logger, "get_derived", || {
             self.writable
                 .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
         })
