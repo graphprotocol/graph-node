@@ -1580,6 +1580,7 @@ dependencies = [
  "stable-hash 0.4.2",
  "strum",
  "strum_macros",
+ "test-store",
  "thiserror",
  "tiny-keccak 1.5.0",
  "tokio",

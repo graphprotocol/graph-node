@@ -6,8 +6,8 @@ use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    EntityDerived, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
-    StoredDynamicDataSource, VersionStats,
+    DerivedEntityQuery, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest,
+    PruningStrategy, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
