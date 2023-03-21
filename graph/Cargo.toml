@@ -66,8 +66,12 @@ web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-pat
 serde_plain = "1.0.1"
 
 [dev-dependencies]
+test-store = { path = "../store/test-store" }
+graph-store-postgres = { path = "../store/postgres" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
 clap = { version = "3.2.23", features = ["derive", "env"] }
 maplit = "1.0.2"
+hex-literal = "0.3"
 
 [build-dependencies]
 tonic-build = { workspace = true }

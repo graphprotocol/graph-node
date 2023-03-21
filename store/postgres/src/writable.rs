@@ -776,10 +776,23 @@ impl Queue {
                             for emod in mods {
                                 let key = emod.entity_ref();
                                 // we select just the entities that match the query
-                                if derived_query.entity_type == key.entity_type
-                                    && derived_query.value == key.entity_id
-                                {
-                                    map.insert(key.clone(), emod.entity().cloned());
+                                if derived_query.entity_type == key.entity_type {
+                                    if let Some(entity) = emod.entity().cloned() {
+                                        if let Some(related_id) =
+                                            entity.get(derived_query.entity_field.as_str())
+                                        {
+                                            // we check only the field agains the value
+                                            if related_id.to_string()
+                                                == derived_query.value.to_string()
+                                            {
+                                                map.insert(key.clone(), Some(entity));
+                                            }
+                                        }
+                                    } else {
+                                        // if the entity was deleted, we add here with no checks
+                                        // just for removing from the query
+                                        map.insert(key.clone(), emod.entity().cloned());
+                                    }
                                 }
                             }
                         }
