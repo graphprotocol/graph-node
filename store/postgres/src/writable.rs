@@ -842,6 +842,10 @@ impl Queue {
     fn poisoned(&self) -> bool {
         self.poisoned.load(Ordering::SeqCst)
     }
+
+    fn deployment_synced(&self) {
+        self.stopwatch.disable()
+    }
 }
 
 /// A shim to allow bypassing any pipelined store handling if need be
@@ -971,6 +975,13 @@ impl Writer {
         match self {
             Writer::Sync(_) => Ok(()),
             Writer::Async(queue) => queue.stop().await,
+        }
+    }
+
+    fn deployment_synced(&self) {
+        match self {
+            Writer::Sync(_) => {}
+            Writer::Async(queue) => queue.deployment_synced(),
         }
     }
 }
@@ -1136,6 +1147,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     fn deployment_synced(&self) -> Result<(), StoreError> {
+        self.writer.deployment_synced();
         self.store.deployment_synced()
     }
 
