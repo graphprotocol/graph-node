@@ -1,4 +1,5 @@
 use crate::protobuf::*;
+use graph::runtime::HostExportError;
 pub use graph::semver::Version;
 
 pub use graph::runtime::{
@@ -16,7 +17,7 @@ impl ToAscObj<AscBytesArray> for Vec<Vec<u8>> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBytesArray, DeterministicHostError> {
+    ) -> Result<AscBytesArray, HostExportError> {
         let content: Result<Vec<_>, _> = self
             .iter()
             .map(|x| asc_new(heap, &graph_runtime_wasm::asc_abi::class::Bytes(x), gas))
@@ -52,7 +53,7 @@ impl ToAscObj<AscAny> for prost_types::Any {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscAny, DeterministicHostError> {
+    ) -> Result<AscAny, HostExportError> {
         Ok(AscAny {
             type_url: asc_new(heap, &self.type_url, gas)?,
             value: asc_new(
@@ -71,7 +72,7 @@ impl ToAscObj<AscAnyArray> for Vec<prost_types::Any> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscAnyArray, DeterministicHostError> {
+    ) -> Result<AscAnyArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
 
         Ok(AscAnyArray(Array::new(&content?, heap, gas)?))

@@ -5,7 +5,7 @@ use std::iter::FromIterator;
 
 use graph::runtime::{
     asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-    DeterministicHostError, FromAscObj, ToAscObj,
+    DeterministicHostError, FromAscObj, HostExportError, ToAscObj,
 };
 
 use crate::asc_abi::class::*;
@@ -19,7 +19,7 @@ impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<TypedArray<T>, DeterministicHostError> {
+    ) -> Result<TypedArray<T>, HostExportError> {
         TypedArray::new(self, heap, gas)
     }
 }
@@ -52,8 +52,11 @@ impl ToAscObj<AscString> for str {
         &self,
         heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<AscString, DeterministicHostError> {
-        AscString::new(&self.encode_utf16().collect::<Vec<_>>(), heap.api_version())
+    ) -> Result<AscString, HostExportError> {
+        Ok(AscString::new(
+            &self.encode_utf16().collect::<Vec<_>>(),
+            heap.api_version(),
+        )?)
     }
 }
 
@@ -62,7 +65,7 @@ impl ToAscObj<AscString> for String {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscString, DeterministicHostError> {
+    ) -> Result<AscString, HostExportError> {
         self.as_str().to_asc_obj(heap, gas)
     }
 }
@@ -89,7 +92,7 @@ impl<C: AscType + AscIndexId, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T]
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Array<AscPtr<C>>, DeterministicHostError> {
+    ) -> Result<Array<AscPtr<C>>, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Array::new(&content, heap, gas)
@@ -132,7 +135,7 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: ToAscObj<K>, U: ToAscO
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTypedMapEntry<K, V>, DeterministicHostError> {
+    ) -> Result<AscTypedMapEntry<K, V>, HostExportError> {
         Ok(AscTypedMapEntry {
             key: asc_new(heap, &self.0, gas)?,
             value: asc_new(heap, &self.1, gas)?,

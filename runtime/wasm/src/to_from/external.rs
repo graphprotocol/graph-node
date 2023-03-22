@@ -2,7 +2,9 @@ use ethabi;
 
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, ToAscObj};
+use graph::runtime::{
+    asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
+};
 use graph::{data::store, runtime::DeterministicHostError};
 use graph::{prelude::serde_json, runtime::FromAscObj};
 use graph::{prelude::web3::types as web3, runtime::AscHeap};
@@ -14,7 +16,7 @@ impl ToAscObj<Uint8Array> for web3::H160 {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Uint8Array, DeterministicHostError> {
+    ) -> Result<Uint8Array, HostExportError> {
         self.0.to_asc_obj(heap, gas)
     }
 }
@@ -46,7 +48,7 @@ impl ToAscObj<Uint8Array> for web3::H256 {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Uint8Array, DeterministicHostError> {
+    ) -> Result<Uint8Array, HostExportError> {
         self.0.to_asc_obj(heap, gas)
     }
 }
@@ -56,7 +58,7 @@ impl ToAscObj<AscBigInt> for web3::U128 {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBigInt, DeterministicHostError> {
+    ) -> Result<AscBigInt, HostExportError> {
         let mut bytes: [u8; 16] = [0; 16];
         self.to_little_endian(&mut bytes);
         bytes.to_asc_obj(heap, gas)
@@ -68,7 +70,7 @@ impl ToAscObj<AscBigInt> for BigInt {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBigInt, DeterministicHostError> {
+    ) -> Result<AscBigInt, HostExportError> {
         let bytes = self.to_signed_bytes_le();
         bytes.to_asc_obj(heap, gas)
     }
@@ -90,7 +92,7 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBigDecimal, DeterministicHostError> {
+    ) -> Result<AscBigDecimal, HostExportError> {
         // From the docs: "Note that a positive exponent indicates a negative power of 10",
         // so "exponent" is the opposite of what you'd expect.
         let (digits, negative_exp) = self.as_bigint_and_exponent();
@@ -137,7 +139,7 @@ impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Array<AscPtr<AscString>>, DeterministicHostError> {
+    ) -> Result<Array<AscPtr<AscString>>, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Array::new(&content, heap, gas)
@@ -149,7 +151,7 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEnum<EthereumValueKind>, DeterministicHostError> {
+    ) -> Result<AscEnum<EthereumValueKind>, HostExportError> {
         use ethabi::Token::*;
 
         let kind = EthereumValueKind::get_kind(self);
@@ -277,7 +279,7 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEnum<StoreValueKind>, DeterministicHostError> {
+    ) -> Result<AscEnum<StoreValueKind>, HostExportError> {
         use self::store::Value;
 
         let payload = match self {
@@ -311,7 +313,7 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscJson, DeterministicHostError> {
+    ) -> Result<AscJson, HostExportError> {
         Ok(AscTypedMap {
             entries: asc_new(heap, &*self.iter().collect::<Vec<_>>(), gas)?,
         })
@@ -324,7 +326,7 @@ impl ToAscObj<AscEntity> for Vec<(String, store::Value)> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEntity, DeterministicHostError> {
+    ) -> Result<AscEntity, HostExportError> {
         Ok(AscTypedMap {
             entries: asc_new(heap, self.as_slice(), gas)?,
         })
@@ -336,7 +338,7 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscEnum<JsonValueKind>, DeterministicHostError> {
+    ) -> Result<AscEnum<JsonValueKind>, HostExportError> {
         use serde_json::Value;
 
         let payload = match self {
@@ -374,7 +376,7 @@ impl<T: AscValue> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<AscWrapped<T>, DeterministicHostError> {
+    ) -> Result<AscWrapped<T>, HostExportError> {
         Ok(*self)
     }
 }
@@ -389,7 +391,7 @@ where
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscResult<AscPtr<VAsc>, bool>, DeterministicHostError> {
+    ) -> Result<AscResult<AscPtr<VAsc>, bool>, HostExportError> {
         Ok(match self {
             Ok(value) => AscResult {
                 value: {

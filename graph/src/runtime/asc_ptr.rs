@@ -1,5 +1,5 @@
 use super::gas::GasCounter;
-use super::{padding_to_16, DeterministicHostError};
+use super::{padding_to_16, DeterministicHostError, HostExportError};
 
 use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
@@ -86,7 +86,7 @@ impl<C: AscType> AscPtr<C> {
         asc_obj: C,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<C>, DeterministicHostError>
+    ) -> Result<AscPtr<C>, HostExportError>
     where
         C: AscIndexId,
     {
@@ -143,7 +143,7 @@ impl<C: AscType> AscPtr<C> {
         type_id_index: IndexForAscTypeId,
         content_length: usize,
         full_length: usize,
-    ) -> Result<Vec<u8>, DeterministicHostError> {
+    ) -> Result<Vec<u8>, HostExportError> {
         let mut header: Vec<u8> = Vec::with_capacity(20);
 
         let gc_info: [u8; 4] = (0u32).to_le_bytes();

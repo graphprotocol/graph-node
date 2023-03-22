@@ -56,7 +56,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
         quote! {
             let #fld_name = self.#fld_name.as_ref()
-                .ok_or_else(||  graph::runtime::DeterministicHostError::from(anyhow::anyhow!("{} missing {}", #type_nm, #fld_nm)))?;
+                .ok_or_else(||  graph::runtime::HostExportError::from(graph::runtime::DeterministicHostError::from(anyhow::anyhow!("{} missing {}", #type_nm, #fld_nm))))?;
             }
     });
 
@@ -148,7 +148,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     &self,
                     heap: &mut H,
                     gas: &graph::runtime::gas::GasCounter,
-                ) -> Result<#asc_name, graph::runtime::DeterministicHostError> {
+                ) -> Result<#asc_name, graph::runtime::HostExportError> {
 
                     #(#enum_validation)*
 

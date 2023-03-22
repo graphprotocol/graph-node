@@ -2,7 +2,7 @@ use crate::codec;
 use crate::trigger::ReceiptWithOutcome;
 use graph::anyhow::anyhow;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, ToAscObj};
+use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj};
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
@@ -12,7 +12,7 @@ impl ToAscObj<AscBlock> for codec::Block {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBlock, DeterministicHostError> {
+    ) -> Result<AscBlock, HostExportError> {
         Ok(AscBlock {
             author: asc_new(heap, &self.author, gas)?,
             header: asc_new(heap, self.header(), gas)?,
@@ -26,7 +26,7 @@ impl ToAscObj<AscBlockHeader> for codec::BlockHeader {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscBlockHeader, DeterministicHostError> {
+    ) -> Result<AscBlockHeader, HostExportError> {
         let chunk_mask = Array::new(self.chunk_mask.as_ref(), heap, gas)?;
 
         Ok(AscBlockHeader {
@@ -68,7 +68,7 @@ impl ToAscObj<AscChunkHeader> for codec::ChunkHeader {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscChunkHeader, DeterministicHostError> {
+    ) -> Result<AscChunkHeader, HostExportError> {
         Ok(AscChunkHeader {
             chunk_hash: asc_new(heap, self.chunk_hash.as_slice(), gas)?,
             signature: asc_new(heap, &self.signature.as_ref().unwrap(), gas)?,
@@ -96,7 +96,7 @@ impl ToAscObj<AscChunkHeaderArray> for Vec<codec::ChunkHeader> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscChunkHeaderArray, DeterministicHostError> {
+    ) -> Result<AscChunkHeaderArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscChunkHeaderArray(Array::new(&content, heap, gas)?))
@@ -108,7 +108,7 @@ impl ToAscObj<AscReceiptWithOutcome> for ReceiptWithOutcome {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscReceiptWithOutcome, DeterministicHostError> {
+    ) -> Result<AscReceiptWithOutcome, HostExportError> {
         Ok(AscReceiptWithOutcome {
             outcome: asc_new(heap, &self.outcome, gas)?,
             receipt: asc_new(heap, &self.receipt, gas)?,
@@ -122,13 +122,13 @@ impl ToAscObj<AscActionReceipt> for codec::Receipt {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscActionReceipt, DeterministicHostError> {
+    ) -> Result<AscActionReceipt, HostExportError> {
         let action = match self.receipt.as_ref().unwrap() {
             codec::receipt::Receipt::Action(action) => action,
             codec::receipt::Receipt::Data(_) => {
-                return Err(DeterministicHostError::from(anyhow!(
-                    "Data receipt are now allowed"
-                )));
+                return Err(
+                    DeterministicHostError::from(anyhow!("Data receipt are now allowed")).into(),
+                );
             }
         };
 
@@ -151,7 +151,7 @@ impl ToAscObj<AscActionEnum> for codec::Action {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscActionEnum, DeterministicHostError> {
+    ) -> Result<AscActionEnum, HostExportError> {
         let (kind, payload) = match self.action.as_ref().unwrap() {
             codec::action::Action::CreateAccount(action) => (
                 AscActionKind::CreateAccount,
@@ -200,7 +200,7 @@ impl ToAscObj<AscActionEnumArray> for Vec<codec::Action> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscActionEnumArray, DeterministicHostError> {
+    ) -> Result<AscActionEnumArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscActionEnumArray(Array::new(&content, heap, gas)?))
@@ -212,7 +212,7 @@ impl ToAscObj<AscCreateAccountAction> for codec::CreateAccountAction {
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<AscCreateAccountAction, DeterministicHostError> {
+    ) -> Result<AscCreateAccountAction, HostExportError> {
         Ok(AscCreateAccountAction {})
     }
 }
@@ -222,7 +222,7 @@ impl ToAscObj<AscDeployContractAction> for codec::DeployContractAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscDeployContractAction, DeterministicHostError> {
+    ) -> Result<AscDeployContractAction, HostExportError> {
         Ok(AscDeployContractAction {
             code: asc_new(heap, self.code.as_slice(), gas)?,
         })
@@ -234,7 +234,7 @@ impl ToAscObj<AscFunctionCallAction> for codec::FunctionCallAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscFunctionCallAction, DeterministicHostError> {
+    ) -> Result<AscFunctionCallAction, HostExportError> {
         Ok(AscFunctionCallAction {
             method_name: asc_new(heap, &self.method_name, gas)?,
             args: asc_new(heap, self.args.as_slice(), gas)?,
@@ -250,7 +250,7 @@ impl ToAscObj<AscTransferAction> for codec::TransferAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscTransferAction, DeterministicHostError> {
+    ) -> Result<AscTransferAction, HostExportError> {
         Ok(AscTransferAction {
             deposit: asc_new(heap, self.deposit.as_ref().unwrap(), gas)?,
         })
@@ -262,7 +262,7 @@ impl ToAscObj<AscStakeAction> for codec::StakeAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscStakeAction, DeterministicHostError> {
+    ) -> Result<AscStakeAction, HostExportError> {
         Ok(AscStakeAction {
             stake: asc_new(heap, self.stake.as_ref().unwrap(), gas)?,
             public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
@@ -275,7 +275,7 @@ impl ToAscObj<AscAddKeyAction> for codec::AddKeyAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscAddKeyAction, DeterministicHostError> {
+    ) -> Result<AscAddKeyAction, HostExportError> {
         Ok(AscAddKeyAction {
             public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
             access_key: asc_new(heap, self.access_key.as_ref().unwrap(), gas)?,
@@ -288,7 +288,7 @@ impl ToAscObj<AscAccessKey> for codec::AccessKey {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscAccessKey, DeterministicHostError> {
+    ) -> Result<AscAccessKey, HostExportError> {
         Ok(AscAccessKey {
             nonce: self.nonce,
             permission: asc_new(heap, self.permission.as_ref().unwrap(), gas)?,
@@ -302,7 +302,7 @@ impl ToAscObj<AscAccessKeyPermissionEnum> for codec::AccessKeyPermission {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscAccessKeyPermissionEnum, DeterministicHostError> {
+    ) -> Result<AscAccessKeyPermissionEnum, HostExportError> {
         let (kind, payload) = match self.permission.as_ref().unwrap() {
             codec::access_key_permission::Permission::FunctionCall(permission) => (
                 AscAccessKeyPermissionKind::FunctionCall,
@@ -327,7 +327,7 @@ impl ToAscObj<AscFunctionCallPermission> for codec::FunctionCallPermission {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscFunctionCallPermission, DeterministicHostError> {
+    ) -> Result<AscFunctionCallPermission, HostExportError> {
         Ok(AscFunctionCallPermission {
             // The `allowance` field is one of the few fields that can actually be None for real
             allowance: match self.allowance.as_ref() {
@@ -345,7 +345,7 @@ impl ToAscObj<AscFullAccessPermission> for codec::FullAccessPermission {
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<AscFullAccessPermission, DeterministicHostError> {
+    ) -> Result<AscFullAccessPermission, HostExportError> {
         Ok(AscFullAccessPermission {})
     }
 }
@@ -355,7 +355,7 @@ impl ToAscObj<AscDeleteKeyAction> for codec::DeleteKeyAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscDeleteKeyAction, DeterministicHostError> {
+    ) -> Result<AscDeleteKeyAction, HostExportError> {
         Ok(AscDeleteKeyAction {
             public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
         })
@@ -367,7 +367,7 @@ impl ToAscObj<AscDeleteAccountAction> for codec::DeleteAccountAction {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscDeleteAccountAction, DeterministicHostError> {
+    ) -> Result<AscDeleteAccountAction, HostExportError> {
         Ok(AscDeleteAccountAction {
             beneficiary_id: asc_new(heap, &self.beneficiary_id, gas)?,
         })
@@ -379,7 +379,7 @@ impl ToAscObj<AscDataReceiver> for codec::DataReceiver {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscDataReceiver, DeterministicHostError> {
+    ) -> Result<AscDataReceiver, HostExportError> {
         Ok(AscDataReceiver {
             data_id: asc_new(heap, self.data_id.as_ref().unwrap(), gas)?,
             receiver_id: asc_new(heap, &self.receiver_id, gas)?,
@@ -392,7 +392,7 @@ impl ToAscObj<AscDataReceiverArray> for Vec<codec::DataReceiver> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscDataReceiverArray, DeterministicHostError> {
+    ) -> Result<AscDataReceiverArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscDataReceiverArray(Array::new(&content, heap, gas)?))
@@ -404,7 +404,7 @@ impl ToAscObj<AscExecutionOutcome> for codec::ExecutionOutcomeWithId {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscExecutionOutcome, DeterministicHostError> {
+    ) -> Result<AscExecutionOutcome, HostExportError> {
         let outcome = self.outcome.as_ref().unwrap();
 
         Ok(AscExecutionOutcome {
@@ -426,7 +426,7 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscSuccessStatusEnum, DeterministicHostError> {
+    ) -> Result<AscSuccessStatusEnum, HostExportError> {
         let (kind, payload) = match self {
             codec::execution_outcome::Status::SuccessValue(value) => {
                 let bytes = &value.value;
@@ -443,12 +443,14 @@ impl ToAscObj<AscSuccessStatusEnum> for codec::execution_outcome::Status {
             codec::execution_outcome::Status::Failure(_) => {
                 return Err(DeterministicHostError::from(anyhow!(
                     "Failure execution status are not allowed"
-                )));
+                ))
+                .into());
             }
             codec::execution_outcome::Status::Unknown(_) => {
                 return Err(DeterministicHostError::from(anyhow!(
                     "Unknown execution status are not allowed"
-                )));
+                ))
+                .into());
             }
         };
 
@@ -465,7 +467,7 @@ impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscMerklePathItem, DeterministicHostError> {
+    ) -> Result<AscMerklePathItem, HostExportError> {
         Ok(AscMerklePathItem {
             hash: asc_new(heap, self.hash.as_ref().unwrap(), gas)?,
             direction: match self.direction {
@@ -475,7 +477,8 @@ impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
                     return Err(DeterministicHostError::from(anyhow!(
                         "Invalid direction value {}",
                         x
-                    )))
+                    ))
+                    .into())
                 }
             },
         })
@@ -487,7 +490,7 @@ impl ToAscObj<AscMerklePathItemArray> for Vec<codec::MerklePathItem> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscMerklePathItemArray, DeterministicHostError> {
+    ) -> Result<AscMerklePathItemArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscMerklePathItemArray(Array::new(&content, heap, gas)?))
@@ -499,7 +502,7 @@ impl ToAscObj<AscSignature> for codec::Signature {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscSignature, DeterministicHostError> {
+    ) -> Result<AscSignature, HostExportError> {
         Ok(AscSignature {
             kind: match self.r#type {
                 0 => 0,
@@ -508,7 +511,8 @@ impl ToAscObj<AscSignature> for codec::Signature {
                     return Err(DeterministicHostError::from(anyhow!(
                         "Invalid signature type {}",
                         value,
-                    )))
+                    ))
+                    .into())
                 }
             },
             bytes: asc_new(heap, self.bytes.as_slice(), gas)?,
@@ -521,7 +525,7 @@ impl ToAscObj<AscSignatureArray> for Vec<codec::Signature> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscSignatureArray, DeterministicHostError> {
+    ) -> Result<AscSignatureArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscSignatureArray(Array::new(&content, heap, gas)?))
@@ -533,7 +537,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPublicKey, DeterministicHostError> {
+    ) -> Result<AscPublicKey, HostExportError> {
         Ok(AscPublicKey {
             kind: match self.r#type {
                 0 => 0,
@@ -542,7 +546,8 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
                     return Err(DeterministicHostError::from(anyhow!(
                         "Invalid public key type {}",
                         value,
-                    )))
+                    ))
+                    .into())
                 }
             },
             bytes: asc_new(heap, self.bytes.as_slice(), gas)?,
@@ -555,7 +560,7 @@ impl ToAscObj<AscValidatorStake> for codec::ValidatorStake {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscValidatorStake, DeterministicHostError> {
+    ) -> Result<AscValidatorStake, HostExportError> {
         Ok(AscValidatorStake {
             account_id: asc_new(heap, &self.account_id, gas)?,
             public_key: asc_new(heap, self.public_key.as_ref().unwrap(), gas)?,
@@ -569,7 +574,7 @@ impl ToAscObj<AscValidatorStakeArray> for Vec<codec::ValidatorStake> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscValidatorStakeArray, DeterministicHostError> {
+    ) -> Result<AscValidatorStakeArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscValidatorStakeArray(Array::new(&content, heap, gas)?))
@@ -581,7 +586,7 @@ impl ToAscObj<AscSlashedValidator> for codec::SlashedValidator {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscSlashedValidator, DeterministicHostError> {
+    ) -> Result<AscSlashedValidator, HostExportError> {
         Ok(AscSlashedValidator {
             account_id: asc_new(heap, &self.account_id, gas)?,
             is_double_sign: self.is_double_sign,
@@ -594,7 +599,7 @@ impl ToAscObj<AscSlashedValidatorArray> for Vec<codec::SlashedValidator> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscSlashedValidatorArray, DeterministicHostError> {
+    ) -> Result<AscSlashedValidatorArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscSlashedValidatorArray(Array::new(&content, heap, gas)?))
@@ -606,7 +611,7 @@ impl ToAscObj<Uint8Array> for codec::CryptoHash {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscCryptoHash, DeterministicHostError> {
+    ) -> Result<AscCryptoHash, HostExportError> {
         self.bytes.to_asc_obj(heap, gas)
     }
 }
@@ -616,7 +621,7 @@ impl ToAscObj<AscCryptoHashArray> for Vec<codec::CryptoHash> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscCryptoHashArray, DeterministicHostError> {
+    ) -> Result<AscCryptoHashArray, HostExportError> {
         let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
         let content = content?;
         Ok(AscCryptoHashArray(Array::new(&content, heap, gas)?))
@@ -628,7 +633,7 @@ impl ToAscObj<Uint8Array> for codec::BigInt {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Uint8Array, DeterministicHostError> {
+    ) -> Result<Uint8Array, HostExportError> {
         // Bytes are reversed to align with BigInt bytes endianess
         let reversed: Vec<u8> = self.bytes.iter().rev().copied().collect();
 

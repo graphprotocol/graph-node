@@ -385,7 +385,7 @@ impl ToAscObj<u32> for IndexForAscTypeId {
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<u32, DeterministicHostError> {
+    ) -> Result<u32, HostExportError> {
         Ok(*self as u32)
     }
 }

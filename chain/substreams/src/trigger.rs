@@ -38,7 +38,7 @@ impl ToAscPtr for TriggerData {
         self,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,
-    ) -> Result<graph::runtime::AscPtr<()>, graph::runtime::DeterministicHostError> {
+    ) -> Result<graph::runtime::AscPtr<()>, graph::runtime::HostExportError> {
         unimplemented!()
     }
 }

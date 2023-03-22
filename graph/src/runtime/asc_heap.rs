@@ -3,7 +3,8 @@ use std::mem::MaybeUninit;
 use semver::Version;
 
 use super::{
-    gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, IndexForAscTypeId,
+    gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError,
+    IndexForAscTypeId,
 };
 /// A type that can read and write to the Asc heap. Call `asc_new` and `asc_get`
 /// for reading and writing Rust structs from and to Asc.
@@ -24,10 +25,7 @@ pub trait AscHeap {
 
     fn api_version(&self) -> Version;
 
-    fn asc_type_id(
-        &mut self,
-        type_id_index: IndexForAscTypeId,
-    ) -> Result<u32, DeterministicHostError>;
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError>;
 }
 
 /// Instantiate `rust_obj` as an Asc object of class `C`.
@@ -39,7 +37,7 @@ pub fn asc_new<C, T: ?Sized, H: AscHeap + ?Sized>(
     heap: &mut H,
     rust_obj: &T,
     gas: &GasCounter,
-) -> Result<AscPtr<C>, DeterministicHostError>
+) -> Result<AscPtr<C>, HostExportError>
 where
     C: AscType + AscIndexId,
     T: ToAscObj<C>,
@@ -55,7 +53,7 @@ pub fn asc_new_or_missing<H, O, A>(
     gas: &GasCounter,
     type_name: &str,
     field_name: &str,
-) -> Result<AscPtr<A>, DeterministicHostError>
+) -> Result<AscPtr<A>, HostExportError>
 where
     H: AscHeap + ?Sized,
     O: ToAscObj<A>,
@@ -72,7 +70,7 @@ pub fn asc_new_or_null<H, O, A>(
     heap: &mut H,
     object: &Option<O>,
     gas: &GasCounter,
-) -> Result<AscPtr<A>, DeterministicHostError>
+) -> Result<AscPtr<A>, HostExportError>
 where
     H: AscHeap + ?Sized,
     O: ToAscObj<A>,
@@ -85,8 +83,8 @@ where
 }
 
 /// Create an error for a missing field in a type.
-fn missing_field_error(type_name: &str, field_name: &str) -> DeterministicHostError {
-    DeterministicHostError::from(anyhow::anyhow!("{} missing {}", type_name, field_name))
+fn missing_field_error(type_name: &str, field_name: &str) -> HostExportError {
+    DeterministicHostError::from(anyhow::anyhow!("{} missing {}", type_name, field_name)).into()
 }
 
 ///  Read the rust representation of an Asc object of class `C`.
@@ -111,7 +109,7 @@ pub trait ToAscObj<C: AscType> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<C, DeterministicHostError>;
+    ) -> Result<C, HostExportError>;
 }
 
 impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
@@ -119,7 +117,7 @@ impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<C, DeterministicHostError> {
+    ) -> Result<C, HostExportError> {
         (*self).to_asc_obj(heap, gas)
     }
 }
@@ -129,7 +127,7 @@ impl ToAscObj<bool> for bool {
         &self,
         _heap: &mut H,
         _gas: &GasCounter,
-    ) -> Result<bool, DeterministicHostError> {
+    ) -> Result<bool, HostExportError> {
         Ok(*self)
     }
 }

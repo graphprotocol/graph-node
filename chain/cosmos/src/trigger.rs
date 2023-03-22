@@ -3,7 +3,8 @@ use std::{cmp::Ordering, sync::Arc};
 use graph::blockchain::{Block, BlockHash, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::{BlockNumber, Error};
-use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr, DeterministicHostError};
+use graph::runtime::HostExportError;
+use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
 use graph_runtime_wasm::module::ToAscPtr;
 
 use crate::codec;
@@ -42,7 +43,7 @@ impl ToAscPtr for CosmosTrigger {
         self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<AscPtr<()>, DeterministicHostError> {
+    ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
             CosmosTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
             CosmosTrigger::Event { event_data, .. } => {

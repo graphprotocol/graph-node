@@ -6,7 +6,7 @@ use std::mem::{size_of, size_of_val};
 use anyhow::anyhow;
 use semver::Version;
 
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError};
+use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError};
 use graph_runtime_derive::AscType;
 
 use crate::asc_abi::class;
@@ -153,7 +153,7 @@ impl<T: AscValue> TypedArray<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let buffer_byte_length = if let class::ArrayBuffer::ApiVersion0_0_4(ref a) = buffer {
             a.byte_length
@@ -307,7 +307,7 @@ impl<T: AscValue> Array<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
         let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
         Ok(Array {

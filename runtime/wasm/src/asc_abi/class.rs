@@ -4,7 +4,8 @@ use semver::Version;
 use graph::{
     data::store,
     runtime::{
-        gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, IndexForAscTypeId, ToAscObj,
+        gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, HostExportError,
+        IndexForAscTypeId, ToAscObj,
     },
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
@@ -92,7 +93,7 @@ impl<T: AscValue> TypedArray<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
                 v0_0_4::TypedArray::new(content, heap, gas)?,
@@ -147,7 +148,7 @@ impl ToAscObj<Uint8Array> for Bytes<'_> {
         &self,
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Uint8Array, DeterministicHostError> {
+    ) -> Result<Uint8Array, HostExportError> {
         self.0.to_asc_obj(heap, gas)
     }
 }
@@ -272,7 +273,7 @@ impl<T: AscValue> Array<T> {
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
-    ) -> Result<Self, DeterministicHostError> {
+    ) -> Result<Self, HostExportError> {
         match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => Ok(Self::ApiVersion0_0_4(
                 v0_0_4::Array::new(content, heap, gas)?,
