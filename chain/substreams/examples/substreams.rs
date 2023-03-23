@@ -41,7 +41,11 @@ async fn main() -> Result<(), Error> {
         prometheus_registry.clone(),
     ));
 
-    let endpoint_metrics = EndpointMetrics::new(logger.clone(), &[endpoint.clone()]);
+    let endpoint_metrics = EndpointMetrics::new(
+        logger.clone(),
+        &[endpoint.clone()],
+        Arc::new(MetricsRegistry::mock()),
+    );
 
     let firehose = Arc::new(FirehoseEndpoint::new(
         "substreams",

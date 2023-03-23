@@ -4,7 +4,7 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
-    endpoint::{EndpointMetrics, Host},
+    endpoint::{ConnectionType, EndpointMetrics, Host, RequestLabels},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
@@ -196,7 +196,11 @@ impl FirehoseEndpoint {
         let metrics = MetricsInterceptor {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
-            host: self.host.clone(),
+            labels: RequestLabels {
+                host: self.host.clone(),
+                req_type: "unknown".into(),
+                conn_type: ConnectionType::Firehose,
+            },
         };
 
         let mut client: FetchClient<
@@ -219,7 +223,11 @@ impl FirehoseEndpoint {
         let metrics = MetricsInterceptor {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
-            host: self.host.clone(),
+            labels: RequestLabels {
+                host: self.host.clone(),
+                req_type: "unknown".into(),
+                conn_type: ConnectionType::Firehose,
+            },
         };
 
         let mut client = StreamClient::with_interceptor(metrics, self.auth.clone())
@@ -240,7 +248,11 @@ impl FirehoseEndpoint {
         let metrics = MetricsInterceptor {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
-            host: self.host.clone(),
+            labels: RequestLabels {
+                host: self.host.clone(),
+                req_type: "unknown".into(),
+                conn_type: ConnectionType::Substreams,
+            },
         };
 
         let mut client =
@@ -505,7 +517,9 @@ mod test {
 
     use slog::{o, Discard, Logger};
 
-    use crate::{endpoint::EndpointMetrics, firehose::SubgraphLimit};
+    use crate::{
+        components::metrics::MetricsRegistry, endpoint::EndpointMetrics, firehose::SubgraphLimit,
+    };
 
     use super::{AvailableCapacity, FirehoseEndpoint, FirehoseEndpoints, SUBGRAPHS_PER_CONN};
 
@@ -607,6 +621,7 @@ mod test {
                 "http://127.0.0.2/",
                 "http://127.0.0.3/",
             ],
+            Arc::new(MetricsRegistry::mock()),
         ));
 
         let high_error_adapter1 = Arc::new(FirehoseEndpoint::new(
@@ -646,7 +661,7 @@ mod test {
             endpoint_metrics.clone(),
         ));
 
-        endpoint_metrics.failure(&high_error_adapter1.host);
+        endpoint_metrics.report_for_test(&high_error_adapter1.host, false);
 
         let mut endpoints = FirehoseEndpoints::from(vec![
             high_error_adapter1.clone(),

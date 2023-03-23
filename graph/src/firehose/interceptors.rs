@@ -8,7 +8,7 @@ use tonic::{
     service::Interceptor,
 };
 
-use crate::endpoint::{EndpointMetrics, Host};
+use crate::endpoint::{EndpointMetrics, RequestLabels};
 
 #[derive(Clone)]
 pub struct AuthInterceptor {
@@ -37,7 +37,7 @@ impl Interceptor for AuthInterceptor {
 pub struct MetricsInterceptor<S> {
     pub(crate) metrics: Arc<EndpointMetrics>,
     pub(crate) service: S,
-    pub(crate) host: Host,
+    pub(crate) labels: RequestLabels,
 }
 
 impl<S, Request> Service<Request> for MetricsInterceptor<S>
@@ -60,16 +60,16 @@ where
     }
 
     fn call(&mut self, req: Request) -> Self::Future {
-        let host = self.host.clone();
+        let labels = self.labels.clone();
         let metrics = self.metrics.clone();
 
         let fut = self.service.call(req);
         let res = async move {
             let res = fut.await;
             if res.is_ok() {
-                metrics.success(&host);
+                metrics.success(&labels);
             } else {
-                metrics.failure(&host);
+                metrics.failure(&labels);
             }
             res
         };

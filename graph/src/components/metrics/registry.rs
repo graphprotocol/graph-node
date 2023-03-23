@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use prometheus::{labels, Histogram};
+use prometheus::{labels, Histogram, IntCounterVec};
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
 use crate::prelude::Collector;
@@ -384,6 +384,18 @@ impl MetricsRegistry {
         let counter = counter_with_labels(name, help, deployment_labels(subgraph))?;
         self.register(name, Box::new(counter.clone()));
         Ok(counter)
+    }
+
+    pub fn new_int_counter_vec(
+        &self,
+        name: &str,
+        help: &str,
+        variable_labels: &[&str],
+    ) -> Result<Box<IntCounterVec>, PrometheusError> {
+        let opts = Opts::new(name, help);
+        let counters = Box::new(IntCounterVec::new(opts, &variable_labels)?);
+        self.register(name, counters.clone());
+        Ok(counters)
     }
 
     pub fn new_counter_vec(
