@@ -1146,6 +1146,11 @@ pub fn set_entity_count(
     Ok(())
 }
 
+/// Set the earliest block of `site` to the larger of `earliest_block` and
+/// the current value. This means that the `earliest_block_number` can never
+/// go backwards, only forward. This is important so that copying into
+/// `site` can not move the earliest block backwards if `site` was also
+/// pruned while the copy was running.
 pub fn set_earliest_block(
     conn: &PgConnection,
     site: &Site,
@@ -1155,6 +1160,7 @@ pub fn set_earliest_block(
 
     update(d::table.filter(d::id.eq(site.id)))
         .set(d::earliest_block_number.eq(earliest_block))
+        .filter(d::earliest_block_number.lt(earliest_block))
         .execute(conn)?;
     Ok(())
 }
