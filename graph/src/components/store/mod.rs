@@ -1255,12 +1255,12 @@ impl PruneRequest {
                 "the delete threshold must be between 0 and 1 but is {delete_threshold}"
             ));
         }
-        if history_blocks < reorg_threshold {
+        if history_blocks <= reorg_threshold {
             return Err(constraint_violation!(
                 "the deployment {} needs to keep at least {} blocks \
                    of history and can't be pruned to only {} blocks of history",
                 deployment,
-                reorg_threshold,
+                reorg_threshold + 1,
                 history_blocks
             ));
         }

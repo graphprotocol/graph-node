@@ -888,12 +888,6 @@ impl DeploymentStore {
             ));
         }
 
-        if history_blocks <= 0 {
-            return Err(constraint_violation!(
-                "history_blocks must be a positive number"
-            ));
-        }
-
         // Invalidate the layout cache for this site so that the next access
         // will use the updated value
         self.layout_cache.remove(site);
