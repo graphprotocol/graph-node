@@ -180,6 +180,7 @@ pub struct SubgraphManifestEntity {
     pub schema: String,
     pub raw_yaml: Option<String>,
     pub entities_with_causality_region: Vec<EntityType>,
+    pub history_blocks: BlockNumber,
 }
 
 impl SubgraphManifestEntity {
@@ -196,6 +197,7 @@ impl SubgraphManifestEntity {
             schema: manifest.schema.document.clone().to_string(),
             raw_yaml: Some(raw_yaml),
             entities_with_causality_region,
+            history_blocks: BLOCK_NUMBER_MAX,
         }
     }
 

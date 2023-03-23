@@ -1583,6 +1583,12 @@ impl DeploymentStore {
                     src_deployment.earliest_block_number,
                 )?;
 
+                deployment::set_history_blocks(
+                    &conn,
+                    &dst.site,
+                    src_deployment.manifest.history_blocks,
+                )?;
+
                 // Analyze all tables for this deployment
                 for entity_name in dst.tables.keys() {
                     self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;

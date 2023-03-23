@@ -1047,6 +1047,7 @@ pub fn create_deployment(
                 schema,
                 raw_yaml,
                 entities_with_causality_region,
+                history_blocks,
             },
         start_block,
         graft_base,
@@ -1091,6 +1092,7 @@ pub fn create_deployment(
         m::start_block_number.eq(start_block.as_ref().map(|ptr| ptr.number)),
         m::raw_yaml.eq(raw_yaml),
         m::entities_with_causality_region.eq(entities_with_causality_region),
+        m::history_blocks.eq(history_blocks),
     );
 
     if exists && replace {

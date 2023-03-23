@@ -354,6 +354,7 @@ impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
             schema: value.schema,
             raw_yaml: value.raw_yaml,
             entities_with_causality_region: value.entities_with_causality_region,
+            history_blocks: value.history_blocks,
         }
     }
 }
