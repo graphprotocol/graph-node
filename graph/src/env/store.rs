@@ -182,7 +182,7 @@ pub struct InnerStore {
     batch_target_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_COPY_THRESHOLD", default = "0.5")]
     copy_threshold: ZeroToOneF64,
-    #[envconfig(from = "GRAPH_STORE_HISTORY_COPY_THRESHOLD", default = "0.05")]
+    #[envconfig(from = "GRAPH_STORE_HISTORY_DELETE_THRESHOLD", default = "0.05")]
     delete_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_SLACK_FACTOR", default = "1.2")]
     history_slack_factor: HistorySlackF64,
