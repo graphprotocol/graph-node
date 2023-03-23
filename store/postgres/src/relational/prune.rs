@@ -134,7 +134,7 @@ impl TablePair {
                 // The conditions on `block_range` are expressed redundantly
                 // to make more indexes useable
                 sql_query(format!(
-                    "/* controller=prune,phase=final,start_vid={next_vid},next_vid={batch_size} */ \
+                    "/* controller=prune,phase=final,start_vid={next_vid},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
                       where lower(block_range) <= $2 \
@@ -197,7 +197,7 @@ impl TablePair {
                 // The conditions on `block_range` are expressed redundantly
                 // to make more indexes useable
                 sql_query(format!(
-                    "/* controller=prune,phase=nonfinal,start_vid={next_vid},next_vid={batch_size} */ \
+                    "/* controller=prune,phase=nonfinal,start_vid={next_vid},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
                       where coalesce(upper(block_range), 2147483647) > $1 \
@@ -458,7 +458,7 @@ impl Layout {
                     while next_vid <= max_vid {
                         let start = Instant::now();
                         let rows = sql_query(format!(
-                            "/* controller=prune,phase=delete,next_vid={next_vid},batch_size={batch_size} */ \
+                            "/* controller=prune,phase=delete,start_vid={next_vid},batch_size={batch_size} */ \
                              delete from {qname} \
                                           where coalesce(upper(block_range), 2147483647) <= $1 \
                                             and vid >= $2 and vid < $2 + $3",
