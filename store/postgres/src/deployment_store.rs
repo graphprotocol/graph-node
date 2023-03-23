@@ -13,12 +13,13 @@ use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
+use graph::prelude::futures03::FutureExt;
 use graph::prelude::{
     tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
-use graph::tokio::task::{JoinError, JoinHandle};
+use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
@@ -1236,10 +1237,6 @@ impl DeploymentStore {
         latest_block: BlockNumber,
     ) -> Result<(), StoreError> {
         fn prune_in_progress(store: &DeploymentStore, site: &Site) -> Result<bool, StoreError> {
-            async fn reap(handle: PruneHandle) -> Result<Result<(), StoreError>, JoinError> {
-                handle.await.map(|join| join.map(|_| ()))
-            }
-
             let finished = store
                 .prune_handles
                 .lock()
@@ -1255,10 +1252,13 @@ impl DeploymentStore {
                         .unwrap()
                         .remove(&site.id)
                         .unwrap();
-                    match graph::block_on(reap(handle)) {
-                        Ok(Ok(())) => Ok(false),
-                        Ok(Err(err)) => Err(StoreError::PruneFailure(err.to_string())),
-                        Err(join_err) => Err(StoreError::PruneFailure(join_err.to_string())),
+                    match FutureExt::now_or_never(handle) {
+                        Some(Ok(Ok(()))) => Ok(false),
+                        Some(Ok(Err(err))) => Err(StoreError::PruneFailure(err.to_string())),
+                        Some(Err(join_err)) => Err(StoreError::PruneFailure(join_err.to_string())),
+                        None => Err(constraint_violation!(
+                            "prune handle is finished but not ready"
+                        )),
                     }
                 }
                 Some(false) => {
