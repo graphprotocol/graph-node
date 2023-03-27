@@ -38,7 +38,7 @@ graph-store-postgres = { path = "../store/postgres" }
 serde = { version = "1.0.126", features = ["derive", "rc"] }
 serde_regex = "1.1.0"
 toml = "0.7.1"
-shellexpand = "2.1.0"
+shellexpand = "3.1.0"
 termcolor = "1.2.0"
 diesel = "1.4.8"
 http = "0.2.5" # must be compatible with the version rust-web3 uses
