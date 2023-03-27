@@ -39,8 +39,7 @@ impl EthereumNetworkAdapter {
     }
 
     pub fn current_error_count(&self) -> u64 {
-        self.endpoint_metrics
-            .get_count(&self.adapter.url.as_str().into())
+        self.endpoint_metrics.get_count(&self.provider().into())
     }
     pub fn provider(&self) -> &str {
         self.adapter.provider()

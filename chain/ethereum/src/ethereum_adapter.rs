@@ -837,10 +837,6 @@ impl EthereumAdapter {
 
 #[async_trait]
 impl EthereumAdapterTrait for EthereumAdapter {
-    fn url_hostname(&self) -> &str {
-        &self.url.host_str().unwrap()
-    }
-
     fn provider(&self) -> &str {
         &self.provider
     }
@@ -1419,7 +1415,7 @@ pub(crate) async fn blocks_with_triggers(
             None => {
                 warn!(logger,
                       "Ethereum endpoint is behind";
-                      "url" => eth.url_hostname()
+                      "url" => eth.provider()
                 );
                 bail!("Block {} not found in the chain", to)
             }
