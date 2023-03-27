@@ -231,6 +231,7 @@ async fn main() {
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
         &config.chains.provider_urls(),
+        metrics_registry.cheap_clone(),
     ));
 
     // Ethereum clients; query nodes ignore all ethereum clients and never

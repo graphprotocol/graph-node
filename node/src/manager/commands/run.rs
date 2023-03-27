@@ -75,6 +75,7 @@ pub async fn run(
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
         &config.chains.provider_urls(),
+        metrics_registry.cheap_clone(),
     ));
 
     // Convert the clients into a link resolver. Since we want to get past
