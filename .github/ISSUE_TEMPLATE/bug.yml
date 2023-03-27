@@ -12,7 +12,6 @@ body:
     attributes:
       label: Bug report
       description: Please provide a detailed overview of the expected behavior, and what happens instead. The more details, the better. You can use Markdown.
-      render: Markdown
   - type: textarea
     id: graph-node-logs
     attributes:

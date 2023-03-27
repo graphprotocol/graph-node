@@ -4,16 +4,14 @@ title: "[Feature] "
 labels: ["enhancement"]
 body:
   - type: textarea
-    id: bug-report
+    id: feature-description
     attributes:
       label: Description
       description: Please provide a detailed overview of the desired feature or improvement, along with any examples or useful information. You can use Markdown.
-      render: Markdown
   - type: textarea
     id: blockers
     attributes:
       label: Are you aware of any blockers that must be resolved before implementing this feature? If so, which? Link to any relevant GitHub issues.
-      render: Markdown
     validations:
       required: false
   - type: checkboxes
