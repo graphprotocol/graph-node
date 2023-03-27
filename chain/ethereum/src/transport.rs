@@ -1,4 +1,4 @@
-use graph::endpoint::{EndpointMetrics, Host};
+use graph::endpoint::{EndpointMetrics, Host, RequestLabels};
 use jsonrpc_core::types::Call;
 use jsonrpc_core::Value;
 
@@ -83,13 +83,22 @@ impl web3::Transport for Transport {
             } => {
                 let metrics = metrics.cheap_clone();
                 let client = client.clone();
-                let host = host.clone();
+                let method = match request {
+                    Call::MethodCall(ref m) => m.method.as_str(),
+                    _ => "unknown",
+                };
+
+                let labels = RequestLabels {
+                    host: host.clone(),
+                    req_type: method.into(),
+                    conn_type: graph::endpoint::ConnectionType::Rpc,
+                };
                 let out = async move {
-                    let host = host.clone();
+                    let labels = labels;
                     let out = client.send(id, request).await;
                     match out {
-                        Ok(_) => metrics.success(&host),
-                        Err(_) => metrics.failure(&host),
+                        Ok(_) => metrics.success(&labels),
+                        Err(_) => metrics.failure(&labels),
                     }
 
                     out

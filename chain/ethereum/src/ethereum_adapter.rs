@@ -10,7 +10,6 @@ use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::prelude::ethabi::ParamType;
 use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
-use graph::url::Url;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -61,8 +60,6 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct EthereumAdapter {
     logger: Logger,
-    pub(crate) url: Url,
-    /// The label for the provider from the configuration
     provider: String,
     web3: Arc<Web3<Transport>>,
     metrics: Arc<ProviderEthRpcMetrics>,
@@ -85,7 +82,6 @@ impl CheapClone for EthereumAdapter {
         Self {
             logger: self.logger.clone(),
             provider: self.provider.clone(),
-            url: self.url.clone(),
             web3: self.web3.cheap_clone(),
             metrics: self.metrics.cheap_clone(),
             supports_eip_1898: self.supports_eip_1898,
@@ -102,15 +98,11 @@ impl EthereumAdapter {
     pub async fn new(
         logger: Logger,
         provider: String,
-        url: &str,
         transport: Transport,
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
         call_only: bool,
     ) -> Self {
-        // Unwrap: The transport was constructed with this url, so it is valid and has a host.
-        let url = graph::url::Url::parse(url).unwrap();
-
         let web3 = Arc::new(Web3::new(transport));
 
         // Use the client version to check if it is ganache. For compatibility with unit tests, be
@@ -125,7 +117,6 @@ impl EthereumAdapter {
         EthereumAdapter {
             logger,
             provider,
-            url,
             web3,
             metrics: provider_metrics,
             supports_eip_1898: supports_eip_1898 && !is_ganache,

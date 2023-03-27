@@ -428,7 +428,7 @@ impl ChainSection {
                 chain
                     .providers
                     .iter()
-                    .map(|p| p.details.url())
+                    .map(|p| p.url())
                     .collect::<Vec<String>>()
             })
             .collect()
@@ -554,6 +554,24 @@ pub struct Provider {
     pub details: ProviderDetails,
 }
 
+impl Provider {
+    /// url returns the necessary information to uniquely identify adapters.
+    /// for firehose this is the url (multiple adapter are generated from a single config)
+    /// rpc this is the provider label
+    pub fn url(&self) -> String {
+        let url = match &self.details {
+            ProviderDetails::Substreams(firehose) | ProviderDetails::Firehose(firehose) => {
+                firehose.url.clone()
+            }
+            ProviderDetails::Web3(_) | ProviderDetails::Web3Call(_) => self.label.clone(),
+        };
+
+        // parsing and printing here normalizes the urls so we don't have
+        // mismatches later on.
+        url.parse::<Url>().expect("failed to parse url").to_string()
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum ProviderDetails {
@@ -561,21 +579,6 @@ pub enum ProviderDetails {
     Web3(Web3Provider),
     Substreams(FirehoseProvider),
     Web3Call(Web3Provider),
-}
-
-impl ProviderDetails {
-    pub fn url(&self) -> String {
-        let url = match self {
-            ProviderDetails::Substreams(firehose) | ProviderDetails::Firehose(firehose) => {
-                firehose.url.clone()
-            }
-            ProviderDetails::Web3(web3) | ProviderDetails::Web3Call(web3) => web3.url.to_string(),
-        };
-
-        // parsing and printing here normalizes the urls so we don't have
-        // mismatches later on.
-        url.parse::<Url>().expect("failed to parse url").to_string()
-    }
 }
 
 const FIREHOSE_FILTER_FEATURE: &str = "filters";

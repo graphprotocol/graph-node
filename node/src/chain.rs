@@ -471,7 +471,6 @@ pub async fn create_ethereum_networks_for_chain(
                 graph_chain_ethereum::EthereumAdapter::new(
                     logger,
                     provider.label.clone(),
-                    &web3.url,
                     transport,
                     eth_rpc_metrics.clone(),
                     supports_eip_1898,

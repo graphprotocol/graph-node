@@ -21,7 +21,7 @@ pub const DEFAULT_ADAPTER_ERROR_RETEST_PERCENT: f64 = 0.2;
 pub struct EthereumNetworkAdapter {
     endpoint_metrics: Arc<EndpointMetrics>,
     pub capabilities: NodeCapabilities,
-    pub adapter: Arc<EthereumAdapter>,
+    adapter: Arc<EthereumAdapter>,
     /// The maximum number of times this adapter can be used. We use the
     /// strong_count on `adapter` to determine whether the adapter is above
     /// that limit. That's a somewhat imprecise but convenient way to
@@ -275,8 +275,11 @@ mod tests {
     };
     use http::HeaderMap;
     use std::sync::Arc;
+    use uuid::Uuid;
 
-    use crate::{EthereumAdapter, EthereumNetworks, ProviderEthRpcMetrics, Transport};
+    use crate::{
+        EthereumAdapter, EthereumAdapterTrait, EthereumNetworks, ProviderEthRpcMetrics, Transport,
+    };
 
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
 
@@ -352,7 +355,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -365,7 +367,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -459,7 +460,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -472,7 +472,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -531,7 +530,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -544,7 +542,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -601,7 +598,6 @@ mod tests {
             EthereumAdapter::new(
                 logger.clone(),
                 String::new(),
-                "http://127.0.0.1",
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
@@ -634,38 +630,36 @@ mod tests {
     #[tokio::test]
     async fn eth_adapter_selection_multiple_adapters() {
         let logger = Logger::root(Discard, o!());
-        let unavailable_host = "http://127.0.0.1/unavailable";
-        let error_host = "http://127.0.0.1/error";
-        let no_error_host = "http://127.0.0.1/no_error";
+        let unavailable_provider = Uuid::new_v4().to_string();
+        let error_provider = Uuid::new_v4().to_string();
+        let no_error_provider = Uuid::new_v4().to_string();
 
+        let mock_registry = Arc::new(MetricsRegistry::mock());
         let metrics = Arc::new(EndpointMetrics::new(
             logger,
-            &[unavailable_host, error_host, no_error_host],
+            &[
+                unavailable_provider.clone(),
+                error_provider.clone(),
+                no_error_provider.clone(),
+            ],
+            mock_registry.clone(),
         ));
         let logger = graph::log::logger(true);
-        let mock_registry = Arc::new(MetricsRegistry::mock());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
         let adapters = vec![
             fake_adapter(
                 &logger,
-                &unavailable_host.into(),
+                &unavailable_provider,
                 &provider_metrics,
                 &metrics,
                 false,
             )
             .await,
+            fake_adapter(&logger, &error_provider, &provider_metrics, &metrics, false).await,
             fake_adapter(
                 &logger,
-                &error_host.into(),
-                &provider_metrics,
-                &metrics,
-                false,
-            )
-            .await,
-            fake_adapter(
-                &logger,
-                &no_error_host.into(),
+                &no_error_provider,
                 &provider_metrics,
                 &metrics,
                 false,
@@ -674,12 +668,12 @@ mod tests {
         ];
 
         // Set errors
-        metrics.failure(&error_host.into());
+        metrics.report_for_test(&Host::from(error_provider.clone()), false);
 
         let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
         let mut always_retest_adapters = EthereumNetworkAdapters::new(Some(1f64));
         adapters.iter().cloned().for_each(|adapter| {
-            let limit = if adapter.url.as_str() == unavailable_host {
+            let limit = if adapter.provider() == unavailable_provider {
                 SubgraphLimit::Disabled
             } else {
                 SubgraphLimit::Unlimited
@@ -714,9 +708,8 @@ mod tests {
                     traces: false,
                 })
                 .unwrap()
-                .url
-                .as_str(),
-            no_error_host
+                .provider(),
+            no_error_provider
         );
         assert_eq!(
             always_retest_adapters
@@ -725,29 +718,33 @@ mod tests {
                     traces: false,
                 })
                 .unwrap()
-                .url
-                .as_str(),
-            error_host
+                .provider(),
+            error_provider
         );
     }
 
     #[tokio::test]
     async fn eth_adapter_selection_single_adapter() {
         let logger = Logger::root(Discard, o!());
-        let unavailable_host = "http://127.0.0.1/";
-        let error_host = "http://127.0.0.1/error";
-        let no_error_host = "http://127.0.0.1/no_error";
+        let unavailable_provider = Uuid::new_v4().to_string();
+        let error_provider = Uuid::new_v4().to_string();
+        let no_error_provider = Uuid::new_v4().to_string();
 
+        let mock_registry = Arc::new(MetricsRegistry::mock());
         let metrics = Arc::new(EndpointMetrics::new(
             logger,
-            &[unavailable_host, error_host, no_error_host],
+            &[
+                unavailable_provider,
+                error_provider.clone(),
+                no_error_provider.clone(),
+            ],
+            mock_registry.clone(),
         ));
         let logger = graph::log::logger(true);
-        let mock_registry = Arc::new(MetricsRegistry::mock());
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
         // Set errors
-        metrics.failure(&error_host.into());
+        metrics.report_for_test(&Host::from(error_provider.clone()), false);
 
         let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
         no_retest_adapters.adapters.push(EthereumNetworkAdapter {
@@ -756,14 +753,8 @@ mod tests {
                 archive: true,
                 traces: false,
             },
-            adapter: fake_adapter(
-                &logger,
-                &error_host.into(),
-                &provider_metrics,
-                &metrics,
-                false,
-            )
-            .await,
+            adapter: fake_adapter(&logger, &error_provider, &provider_metrics, &metrics, false)
+                .await,
             limit: SubgraphLimit::Unlimited,
         });
         assert_eq!(
@@ -773,9 +764,8 @@ mod tests {
                     traces: false,
                 })
                 .unwrap()
-                .url
-                .as_str(),
-            error_host
+                .provider(),
+            error_provider
         );
 
         let mut always_retest_adapters = EthereumNetworkAdapters::new(Some(1f64));
@@ -789,7 +779,7 @@ mod tests {
                 },
                 adapter: fake_adapter(
                     &logger,
-                    &no_error_host.into(),
+                    &no_error_provider,
                     &provider_metrics,
                     &metrics,
                     false,
@@ -804,9 +794,8 @@ mod tests {
                     traces: false,
                 })
                 .unwrap()
-                .url
-                .as_str(),
-            no_error_host
+                .provider(),
+            no_error_provider
         );
 
         let mut no_available_adapter = EthereumNetworkAdapters::default();
@@ -818,7 +807,7 @@ mod tests {
             },
             adapter: fake_adapter(
                 &logger,
-                &no_error_host.into(),
+                &no_error_provider,
                 &provider_metrics,
                 &metrics,
                 false,
@@ -835,13 +824,13 @@ mod tests {
 
     async fn fake_adapter(
         logger: &Logger,
-        host: &Host,
+        provider: &str,
         provider_metrics: &Arc<ProviderEthRpcMetrics>,
         endpoint_metrics: &Arc<EndpointMetrics>,
         call_only: bool,
     ) -> Arc<EthereumAdapter> {
         let transport = Transport::new_rpc(
-            Url::parse(&host.to_string()).unwrap(),
+            Url::parse(&"http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             endpoint_metrics.clone(),
         );
@@ -849,8 +838,7 @@ mod tests {
         Arc::new(
             EthereumAdapter::new(
                 logger.clone(),
-                String::new(),
-                &host,
+                provider.to_string(),
                 transport.clone(),
                 provider_metrics.clone(),
                 true,
