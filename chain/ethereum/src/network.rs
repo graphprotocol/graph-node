@@ -266,7 +266,7 @@ impl EthereumNetworks {
 #[cfg(test)]
 mod tests {
     use graph::{
-        endpoint::{EndpointMetrics, Host},
+        endpoint::{EndpointMetrics, Provider},
         firehose::SubgraphLimit,
         prelude::MetricsRegistry,
         slog::{o, Discard, Logger},
@@ -348,6 +348,7 @@ mod tests {
             Url::parse("http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             metrics.clone(),
+            "",
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -453,6 +454,7 @@ mod tests {
             Url::parse("http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             metrics.clone(),
+            "",
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -523,6 +525,7 @@ mod tests {
             Url::parse("http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             metrics.clone(),
+            "",
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -591,6 +594,7 @@ mod tests {
             Url::parse("http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             metrics.clone(),
+            "",
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -668,7 +672,7 @@ mod tests {
         ];
 
         // Set errors
-        metrics.report_for_test(&Host::from(error_provider.clone()), false);
+        metrics.report_for_test(&Provider::from(error_provider.clone()), false);
 
         let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
         let mut always_retest_adapters = EthereumNetworkAdapters::new(Some(1f64));
@@ -744,7 +748,7 @@ mod tests {
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
         // Set errors
-        metrics.report_for_test(&Host::from(error_provider.clone()), false);
+        metrics.report_for_test(&Provider::from(error_provider.clone()), false);
 
         let mut no_retest_adapters = EthereumNetworkAdapters::new(Some(0f64));
         no_retest_adapters.adapters.push(EthereumNetworkAdapter {
@@ -833,6 +837,7 @@ mod tests {
             Url::parse(&"http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             endpoint_metrics.clone(),
+            "",
         );
 
         Arc::new(

@@ -461,6 +461,7 @@ pub async fn create_ethereum_networks_for_chain(
                 Url::parse(&web3.url)?,
                 web3.headers.clone(),
                 endpoint_metrics.cheap_clone(),
+                &provider.label,
             ),
             Ipc => Transport::new_ipc(&web3.url).await,
             Ws => Transport::new_ws(&web3.url).await,
