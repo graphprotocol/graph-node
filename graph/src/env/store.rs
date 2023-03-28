@@ -85,11 +85,11 @@ pub struct EnvVarsStore {
     pub batch_target_duration: Duration,
 
     /// Prune tables where we will remove at least this fraction of entity
-    /// versions by copying. Set by `GRAPH_STORE_HISTORY_COPY_THRESHOLD`.
-    /// The default is 0.5
-    pub copy_threshold: f64,
+    /// versions by rebuilding the table. Set by
+    /// `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD`. The default is 0.5
+    pub rebuild_threshold: f64,
     /// Prune tables where we will remove at least this fraction of entity
-    /// versions, but fewer than `copy_threshold`, by deleting. Set by
+    /// versions, but fewer than `rebuild_threshold`, by deleting. Set by
     /// `GRAPH_STORE_HISTORY_DELETE_THRESHOLD`. The default is 0.05
     pub delete_threshold: f64,
     /// How much history a subgraph with limited history can accumulate
@@ -134,7 +134,7 @@ impl From<InnerStore> for EnvVarsStore {
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
             batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
-            copy_threshold: x.copy_threshold.0,
+            rebuild_threshold: x.rebuild_threshold.0,
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
         }
@@ -180,8 +180,8 @@ pub struct InnerStore {
     write_queue_size: usize,
     #[envconfig(from = "GRAPH_STORE_BATCH_TARGET_DURATION", default = "180")]
     batch_target_duration_in_secs: u64,
-    #[envconfig(from = "GRAPH_STORE_HISTORY_COPY_THRESHOLD", default = "0.5")]
-    copy_threshold: ZeroToOneF64,
+    #[envconfig(from = "GRAPH_STORE_HISTORY_REBUILD_THRESHOLD", default = "0.5")]
+    rebuild_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_DELETE_THRESHOLD", default = "0.05")]
     delete_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_SLACK_FACTOR", default = "1.2")]

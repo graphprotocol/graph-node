@@ -161,7 +161,7 @@ pub async fn run(
     primary_pool: ConnectionPool,
     search: DeploymentSearch,
     history: usize,
-    copy_threshold: Option<f64>,
+    rebuild_threshold: Option<f64>,
     delete_threshold: Option<f64>,
     once: bool,
 ) -> Result<(), anyhow::Error> {
@@ -198,8 +198,8 @@ pub async fn run(
         status.earliest_block_number,
         latest,
     )?;
-    if let Some(copy_threshold) = copy_threshold {
-        req.copy_threshold = copy_threshold;
+    if let Some(rebuild_threshold) = rebuild_threshold {
+        req.rebuild_threshold = rebuild_threshold;
     }
     if let Some(delete_threshold) = delete_threshold {
         req.delete_threshold = delete_threshold;

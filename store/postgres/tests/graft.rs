@@ -613,11 +613,11 @@ fn prune() {
             // Change the thresholds so that we select the desired strategy
             match strategy {
                 PruningStrategy::Rebuild => {
-                    req.copy_threshold = 0.0;
+                    req.rebuild_threshold = 0.0;
                     req.delete_threshold = 0.0;
                 }
                 PruningStrategy::Delete => {
-                    req.copy_threshold = 1.0;
+                    req.rebuild_threshold = 1.0;
                     req.delete_threshold = 0.0;
                 }
             }

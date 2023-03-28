@@ -1270,12 +1270,12 @@ pub struct PruneRequest {
     pub final_block: BlockNumber,
     /// The latest block, i.e., the subgraph head
     pub latest_block: BlockNumber,
-    /// Use the copy strategy when removing more than this fraction of
-    /// history. Initialized from `ENV_VARS.store.copy_threshold`, but can
-    /// be modified after construction
-    pub copy_threshold: f64,
+    /// Use the rebuild strategy when removing more than this fraction of
+    /// history. Initialized from `ENV_VARS.store.rebuild_threshold`, but
+    /// can be modified after construction
+    pub rebuild_threshold: f64,
     /// Use the delete strategy when removing more than this fraction of
-    /// history but less than `copy_threshold`. Initialized from
+    /// history but less than `rebuild_threshold`. Initialized from
     /// `ENV_VARS.store.delete_threshold`, but can be modified after
     /// construction
     pub delete_threshold: f64,
@@ -1293,11 +1293,11 @@ impl PruneRequest {
         first_block: BlockNumber,
         latest_block: BlockNumber,
     ) -> Result<Self, StoreError> {
-        let copy_threshold = ENV_VARS.store.copy_threshold;
+        let rebuild_threshold = ENV_VARS.store.rebuild_threshold;
         let delete_threshold = ENV_VARS.store.delete_threshold;
-        if copy_threshold < 0.0 || copy_threshold > 1.0 {
+        if rebuild_threshold < 0.0 || rebuild_threshold > 1.0 {
             return Err(constraint_violation!(
-                "the copy threshold must be between 0 and 1 but is {copy_threshold}"
+                "the copy threshold must be between 0 and 1 but is {rebuild_threshold}"
             ));
         }
         if delete_threshold < 0.0 || delete_threshold > 1.0 {
@@ -1331,19 +1331,20 @@ impl PruneRequest {
             earliest_block,
             final_block,
             latest_block,
-            copy_threshold,
+            rebuild_threshold,
             delete_threshold,
         })
     }
 
     /// Determine what strategy to use for pruning
     ///
-    /// We are pruning `history_pct` of the blocks from a table that has a ratio
-    /// of `version_ratio` entities to versions. If we are removing more than
-    /// `copy_threshold` percent of the versions, we prune by copying, and if we
-    /// are removing more than `delete_threshold` percent of the versions, we
-    /// prune by deleting. If we would remove less than `delete_threshold`
-    /// percent of the versions, we don't prune.
+    /// We are pruning `history_pct` of the blocks from a table that has a
+    /// ratio of `version_ratio` entities to versions. If we are removing
+    /// more than `rebuild_threshold` percent of the versions, we prune by
+    /// rebuilding, and if we are removing more than `delete_threshold`
+    /// percent of the versions, we prune by deleting. If we would remove
+    /// less than `delete_threshold` percent of the versions, we don't
+    /// prune.
     pub fn strategy(&self, stats: &VersionStats) -> Option<PruningStrategy> {
         // If the deployment doesn't have enough history to cover the reorg
         // threshold, do not prune
@@ -1356,7 +1357,7 @@ impl PruneRequest {
         // that `history_pct` will tell us how much of that data pruning
         // will remove.
         let removal_ratio = self.history_pct(stats) * (1.0 - stats.ratio);
-        if removal_ratio >= self.copy_threshold {
+        if removal_ratio >= self.rebuild_threshold {
             Some(PruningStrategy::Rebuild)
         } else if removal_ratio >= self.delete_threshold {
             Some(PruningStrategy::Delete)
