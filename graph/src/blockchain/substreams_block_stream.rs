@@ -135,7 +135,7 @@ where
         let manifest_end_block_num = end_blocks.into_iter().min().unwrap_or(0);
 
         let metrics =
-            SubstreamsBlockStreamMetrics::new(registry, deployment, endpoint.provider.clone());
+            SubstreamsBlockStreamMetrics::new(registry, deployment, endpoint.provider.to_string());
 
         SubstreamsBlockStream {
             stream: Box::pin(stream_blocks(

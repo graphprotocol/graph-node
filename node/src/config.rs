@@ -421,14 +421,14 @@ impl ChainSection {
         Ok(Self { ingestor, chains })
     }
 
-    pub fn provider_urls(&self) -> Vec<String> {
+    pub fn providers(&self) -> Vec<String> {
         self.chains
             .values()
             .flat_map(|chain| {
                 chain
                     .providers
                     .iter()
-                    .map(|p| p.url())
+                    .map(|p| p.label.clone())
                     .collect::<Vec<String>>()
             })
             .collect()
@@ -552,24 +552,6 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
 pub struct Provider {
     pub label: String,
     pub details: ProviderDetails,
-}
-
-impl Provider {
-    /// url returns the necessary information to uniquely identify adapters.
-    /// for firehose this is the url (multiple adapter are generated from a single config)
-    /// rpc this is the provider label
-    pub fn url(&self) -> String {
-        let url = match &self.details {
-            ProviderDetails::Substreams(firehose) | ProviderDetails::Firehose(firehose) => {
-                firehose.url.clone()
-            }
-            ProviderDetails::Web3(_) | ProviderDetails::Web3Call(_) => self.label.clone(),
-        };
-
-        // parsing and printing here normalizes the urls so we don't have
-        // mismatches later on.
-        url.parse::<Url>().expect("failed to parse url").to_string()
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

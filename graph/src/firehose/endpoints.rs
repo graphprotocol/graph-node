@@ -37,8 +37,7 @@ const HIGH_VALUE_USED_PERCENTAGE: usize = 80;
 
 #[derive(Debug)]
 pub struct FirehoseEndpoint {
-    pub provider: String,
-    pub host: Host,
+    pub provider: Host,
     pub auth: AuthInterceptor,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
@@ -122,7 +121,6 @@ impl FirehoseEndpoint {
             .as_ref()
             .parse::<Uri>()
             .expect("the url should have been validated by now, so it is a valid Uri");
-        let host = Host::from(uri.to_string());
 
         let endpoint_builder = match uri.scheme().unwrap_or(&Scheme::HTTP).as_str() {
             "http" => Channel::builder(uri),
@@ -166,19 +164,18 @@ impl FirehoseEndpoint {
         };
 
         FirehoseEndpoint {
-            provider: provider.as_ref().to_string(),
+            provider: provider.as_ref().into(),
             channel: endpoint.connect_lazy(),
             auth: AuthInterceptor { token },
             filters_enabled,
             compression_enabled,
             subgraph_limit,
             endpoint_metrics,
-            host,
         }
     }
 
     pub fn current_error_count(&self) -> u64 {
-        self.endpoint_metrics.get_count(&self.host)
+        self.endpoint_metrics.get_count(&self.provider)
     }
 
     // we need to -1 because there will always be a reference
@@ -197,7 +194,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.host.clone(),
+                host: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Firehose,
             },
@@ -224,7 +221,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.host.clone(),
+                host: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Firehose,
             },
@@ -249,7 +246,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.host.clone(),
+                host: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Substreams,
             },
@@ -455,7 +452,7 @@ impl FirehoseEndpoints {
 
     pub fn remove(&mut self, provider: &str) {
         self.0
-            .retain(|network_endpoint| network_endpoint.provider != provider);
+            .retain(|network_endpoint| network_endpoint.provider.as_str() != provider);
     }
 }
 
@@ -616,16 +613,12 @@ mod test {
         let logger = Logger::root(Discard, o!());
         let endpoint_metrics = Arc::new(EndpointMetrics::new(
             logger,
-            &[
-                "http://127.0.0.1/",
-                "http://127.0.0.2/",
-                "http://127.0.0.3/",
-            ],
+            &["high_error", "low availability", "high availability"],
             Arc::new(MetricsRegistry::mock()),
         ));
 
         let high_error_adapter1 = Arc::new(FirehoseEndpoint::new(
-            "high_error1".to_string(),
+            "high_error".to_string(),
             "http://127.0.0.1".to_string(),
             None,
             false,
@@ -634,7 +627,7 @@ mod test {
             endpoint_metrics.clone(),
         ));
         let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
-            "high_error2".to_string(),
+            "high_error".to_string(),
             "http://127.0.0.1".to_string(),
             None,
             false,
@@ -661,7 +654,7 @@ mod test {
             endpoint_metrics.clone(),
         ));
 
-        endpoint_metrics.report_for_test(&high_error_adapter1.host, false);
+        endpoint_metrics.report_for_test(&high_error_adapter1.provider, false);
 
         let mut endpoints = FirehoseEndpoints::from(vec![
             high_error_adapter1.clone(),
@@ -683,7 +676,7 @@ mod test {
         // because the others will be low or unavailable
         let res = endpoints.endpoint().unwrap();
         // This will match both high error adapters
-        assert_eq!(res.host, high_error_adapter1.host);
+        assert_eq!(res.provider, high_error_adapter1.provider);
     }
 
     #[test]

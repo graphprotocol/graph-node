@@ -130,11 +130,13 @@ pub fn create_substreams_networks(
                     .entry(chain.protocol)
                     .or_insert_with(FirehoseNetworks::new);
 
-                for i in 0..firehose.conn_pool_size {
+                for _ in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
                         name.to_string(),
                         Arc::new(FirehoseEndpoint::new(
-                            &format!("{}-{}", provider.label, i),
+                            // This label needs to be the original label so that the metrics
+                            // can be deduped.
+                            &provider.label,
                             &firehose.url,
                             firehose.token.clone(),
                             firehose.filters_enabled(),
@@ -184,11 +186,13 @@ pub fn create_firehose_networks(
                 // eg: pool_size = 3 and sg_limit 2 will result in 3 separate instances
                 // of FirehoseEndpoint and each of those instance can be used in 2 different
                 // SubgraphInstances.
-                for i in 0..firehose.conn_pool_size {
+                for _ in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
                         name.to_string(),
                         Arc::new(FirehoseEndpoint::new(
-                            &format!("{}-{}", provider.label, i),
+                            // This label needs to be the original label so that the metrics
+                            // can be deduped.
+                            &provider.label,
                             &firehose.url,
                             firehose.token.clone(),
                             firehose.filters_enabled(),
@@ -310,7 +314,7 @@ where
                 let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
                 info!(
                     logger, "Connecting to Firehose to get chain identifier";
-                    "provider" => &endpoint.provider,
+                    "provider" => &endpoint.provider.to_string(),
                 );
                 match tokio::time::timeout(
                     NET_VERSION_WAIT_TIME,
@@ -333,7 +337,7 @@ where
                         info!(
                             logger,
                             "Connected to Firehose";
-                            "provider" => &endpoint.provider,
+                            "provider" => &endpoint.provider.to_string(),
                             "genesis_block" => format_args!("{}", &ptr),
                         );
 

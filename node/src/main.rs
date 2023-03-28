@@ -230,7 +230,7 @@ async fn main() {
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
-        &config.chains.provider_urls(),
+        &config.chains.providers(),
         metrics_registry.cheap_clone(),
     ));
 
