@@ -1163,6 +1163,26 @@ pub fn set_earliest_block(
     Ok(())
 }
 
+/// Copy the `earliest_block` attribute from `src` to `dst`. The copy might
+/// go across shards and use the metadata tables mapped into the shard for
+/// `conn` which must be the shard for `dst`
+pub fn copy_earliest_block(conn: &PgConnection, src: &Site, dst: &Site) -> Result<(), StoreError> {
+    use subgraph_deployment as d;
+
+    let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
+
+    let query = format!(
+        "(select earliest_block_number from {src_nsp}.subgraph_deployment where id = {})",
+        src.id
+    );
+
+    update(d::table.filter(d::id.eq(dst.id)))
+        .set(d::earliest_block_number.eq(sql(&query)))
+        .execute(conn)?;
+
+    Ok(())
+}
+
 pub fn on_sync(conn: &PgConnection, id: impl Into<DeploymentId>) -> Result<OnSync, StoreError> {
     use subgraph_manifest as m;
 

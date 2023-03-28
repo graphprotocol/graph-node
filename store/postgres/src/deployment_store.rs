@@ -1577,12 +1577,6 @@ impl DeploymentStore {
                 info!(logger, "Counted the entities";
                       "time_ms" => start.elapsed().as_millis());
 
-                deployment::set_earliest_block(
-                    &conn,
-                    &dst.site,
-                    src_deployment.earliest_block_number,
-                )?;
-
                 deployment::set_history_blocks(
                     &conn,
                     &dst.site,
@@ -1593,6 +1587,15 @@ impl DeploymentStore {
                 for entity_name in dst.tables.keys() {
                     self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), &conn)?;
                 }
+
+                // The `earliest_block` for `src` might have changed while
+                // we did the copy if `src` was pruned while we copied;
+                // adjusting it very late in the copy process ensures that
+                // we truly do have all the data starting at
+                // `earliest_block` and do not inadvertently expose data
+                // that might be incomplete because a prune on the source
+                // removed data just before we copied it
+                deployment::copy_earliest_block(&conn, &src.site, &dst.site)?;
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
