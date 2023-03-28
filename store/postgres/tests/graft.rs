@@ -569,7 +569,7 @@ fn prune() {
         );
     }
 
-    for strategy in [PruningStrategy::Copy, PruningStrategy::Delete] {
+    for strategy in [PruningStrategy::Rebuild, PruningStrategy::Delete] {
         run_test(move |store, src| async move {
             store
                 .set_history_blocks(&src, -3, 10)
@@ -612,7 +612,7 @@ fn prune() {
             let mut req = PruneRequest::new(&src, 3, 1, 0, 6)?;
             // Change the thresholds so that we select the desired strategy
             match strategy {
-                PruningStrategy::Copy => {
+                PruningStrategy::Rebuild => {
                     req.copy_threshold = 0.0;
                     req.delete_threshold = 0.0;
                 }

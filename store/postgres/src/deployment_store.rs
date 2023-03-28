@@ -1969,7 +1969,7 @@ impl PruneReporter for OngoingPruneReporter {
 
     fn prune_batch(&mut self, _table: &str, rows: usize, phase: PrunePhase, _finished: bool) {
         match phase.strategy() {
-            PruningStrategy::Copy => self.rows_copied += rows,
+            PruningStrategy::Rebuild => self.rows_copied += rows,
             PruningStrategy::Delete => self.rows_deleted += rows,
         }
     }

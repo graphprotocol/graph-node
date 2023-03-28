@@ -414,7 +414,7 @@ impl Layout {
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
             match strat {
-                PruningStrategy::Copy => {
+                PruningStrategy::Rebuild => {
                     if recreate_dst_nsp {
                         catalog::recreate_schema(conn, dst_nsp.as_str())?;
                         recreate_dst_nsp = false;

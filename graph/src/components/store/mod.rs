@@ -1208,7 +1208,7 @@ pub enum PrunePhase {
 impl PrunePhase {
     pub fn strategy(&self) -> PruningStrategy {
         match self {
-            PrunePhase::CopyFinal | PrunePhase::CopyNonfinal => PruningStrategy::Copy,
+            PrunePhase::CopyFinal | PrunePhase::CopyNonfinal => PruningStrategy::Rebuild,
             PrunePhase::Delete => PruningStrategy::Delete,
         }
     }
@@ -1247,9 +1247,9 @@ pub trait PruneReporter: Send + 'static {
 /// Select how pruning should be done
 #[derive(Clone, Copy, Debug, Display, PartialEq)]
 pub enum PruningStrategy {
-    /// Copy the data we want to keep to new tables and swap them out for
-    /// the existing tables
-    Copy,
+    /// Rebuild by copying the data we want to keep to new tables and swap
+    /// them out for the existing tables
+    Rebuild,
     /// Delete unneeded data from the existing tables
     Delete,
 }
@@ -1357,7 +1357,7 @@ impl PruneRequest {
         // will remove.
         let removal_ratio = self.history_pct(stats) * (1.0 - stats.ratio);
         if removal_ratio >= self.copy_threshold {
-            Some(PruningStrategy::Copy)
+            Some(PruningStrategy::Rebuild)
         } else if removal_ratio >= self.delete_threshold {
             Some(PruningStrategy::Delete)
         } else {
