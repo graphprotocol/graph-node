@@ -345,30 +345,29 @@ impl Layout {
 
     /// Remove all data from the underlying deployment that is not needed to
     /// respond to queries before block `earliest_block`. The `req` is used
-    /// to determine which strategy should be used for pruning, copy or
+    /// to determine which strategy should be used for pruning, rebuild or
     /// delete.
     ///
     /// Blocks before `req.final_block` are considered final and it is
     /// assumed that they will not be modified in any way while pruning is
     /// running.
     ///
-    /// The copy strategy implemented here works well for situations in
+    /// The rebuild strategy implemented here works well for situations in
     /// which pruning will remove a large amount of data from the subgraph
     /// (say, at least 50%)
     ///
-    /// The strategy for `prune_by_copying` is to copy all data that is
-    /// needed to respond to queries at block heights at or after
-    /// `earliest_block` to a new table and then to replace the existing
-    /// tables with these new tables atomically in a transaction. Copying
-    /// happens in two stages that are performed for each table in turn: we
-    /// first copy data for final blocks without blocking writes, and then
-    /// copy data for nonfinal blocks. The latter blocks writes by taking a
-    /// lock on the row for the deployment in `subgraph_deployment` (via
-    /// `deployment::lock`) The process for switching to the new tables
-    /// needs to take the naming of various database objects that Postgres
-    /// creates automatically into account so that they all have the same
-    /// names as the original objects to ensure that pruning can be done
-    /// again without risking name clashes.
+    /// The strategy for rebuilding is to copy all data that is needed to
+    /// respond to queries at block heights at or after `earliest_block` to
+    /// a new table and then to replace the existing tables with these new
+    /// tables atomically in a transaction. Rebuilding happens in two stages
+    /// that are performed for each table in turn: we first copy data for
+    /// final blocks without blocking writes, and then copy data for
+    /// nonfinal blocks. The latter blocks writes by taking an advisory lock
+    /// on the deployment (via `deployment::lock`) The process for switching
+    /// to the new tables needs to take the naming of various database
+    /// objects that Postgres creates automatically into account so that
+    /// they all have the same names as the original objects to ensure that
+    /// pruning can be done again without risking name clashes.
     ///
     /// The reason this strategy works well when a lot (or even the
     /// majority) of the data needs to be removed is that in the more
@@ -380,8 +379,8 @@ impl Layout {
     /// tables. But a full vacuum takes an `access exclusive` lock which
     /// prevents both reads and writes to the table, which means it would
     /// also block queries to the deployment, often for extended periods of
-    /// time. The `prune_by_copying` strategy never blocks reads, it only
-    /// ever blocks writes.
+    /// time. The rebuild strategy never blocks reads, it only ever blocks
+    /// writes.
     pub fn prune(
         &self,
         logger: &Logger,
