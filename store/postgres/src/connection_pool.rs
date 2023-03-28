@@ -54,10 +54,22 @@ impl ForeignServer {
         format!("shard_{}", shard.as_str())
     }
 
-    /// The name of the schema under which the `subgraphs` schema for `shard`
-    /// is accessible in shards that are not `shard`
+    /// The name of the schema under which the `subgraphs` schema for
+    /// `shard` is accessible in shards that are not `shard`. In most cases
+    /// you actually want to use `metadata_schema_in`
     pub fn metadata_schema(shard: &Shard) -> String {
         format!("{}_subgraphs", Self::name(shard))
+    }
+
+    /// The name of the schema under which the `subgraphs` schema for
+    /// `shard` is accessible in the shard `current`. It is permissible for
+    /// `shard` and `current` to be the same.
+    pub fn metadata_schema_in(shard: &Shard, current: &Shard) -> String {
+        if shard == current {
+            "subgraphs".to_string()
+        } else {
+            Self::metadata_schema(&shard)
+        }
     }
 
     pub fn new_from_raw(shard: String, postgres_url: &str) -> Result<Self, anyhow::Error> {

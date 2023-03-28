@@ -944,11 +944,7 @@ pub(crate) fn copy_errors(
 ) -> Result<usize, StoreError> {
     use subgraph_error as e;
 
-    let src_nsp = if src.shard == dst.shard {
-        "subgraphs".to_string()
-    } else {
-        ForeignServer::metadata_schema(&src.shard)
-    };
+    let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
 
     // Check whether there are any errors for dst which indicates we already
     // did copy

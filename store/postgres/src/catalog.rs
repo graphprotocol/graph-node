@@ -441,11 +441,7 @@ pub fn set_account_like(
 }
 
 pub fn copy_account_like(conn: &PgConnection, src: &Site, dst: &Site) -> Result<usize, StoreError> {
-    let src_nsp = if src.shard == dst.shard {
-        "subgraphs".to_string()
-    } else {
-        ForeignServer::metadata_schema(&src.shard)
-    };
+    let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
     let query = format!(
         "insert into subgraphs.table_stats(deployment, table_name, is_account_like, last_pruned_block)
          select $2 as deployment, ts.table_name, ts.is_account_like, ts.last_pruned_block

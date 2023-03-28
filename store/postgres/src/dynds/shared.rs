@@ -183,11 +183,7 @@ pub(crate) fn copy(
         return Ok(0);
     }
 
-    let src_nsp = if src.shard == dst.shard {
-        "subgraphs".to_string()
-    } else {
-        ForeignServer::metadata_schema(&src.shard)
-    };
+    let src_nsp = ForeignServer::metadata_schema_in(&src.shard, &dst.shard);
 
     // Check whether there are any dynamic data sources for dst which
     // indicates we already did copy
