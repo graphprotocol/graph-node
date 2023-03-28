@@ -202,6 +202,8 @@ impl ForeignServer {
             "subgraph_deployment_assignment",
             "subgraph",
             "subgraph_version",
+            "subgraph_deployment",
+            "subgraph_manifest",
         ] {
             let create_stmt =
                 catalog::create_foreign_table(conn, "subgraphs", table_name, &nsp, &self.name)?;
