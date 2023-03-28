@@ -1,12 +1,15 @@
 ## Pruning deployments
 
-Pruning is an operation that deletes data from a deployment that is only
-needed to respond to queries at block heights before a certain block. In
-GraphQL, those are only queries with a constraint `block { number: <n> } }`
-or a similar constraint by block hash where `n` is before the block to
-which the deployment is pruned. Queries that are run at a block height
-greater than that are not affected by pruning, and there is no difference
-between running these queries against an unpruned and a pruned deployment.
+Subgraphs, by default, store a full version history for entities, allowing
+consumers to query the subgraph as of any historical block. Pruning is an
+operation that deletes entity versions from a deployment older than a
+certain block, so it is no longer possible to query the deployment as of
+prior blocks. In GraphQL, those are only queries with a constraint `block {
+number: <n> } }` or a similar constraint by block hash where `n` is before
+the block to which the deployment is pruned. Queries that are run at a
+block height greater than that are not affected by pruning, and there is no
+difference between running these queries against an unpruned and a pruned
+deployment.
 
 Because pruning reduces the amount of data in a deployment, it reduces the
 amount of storage needed for that deployment, and is beneficial for both
@@ -54,14 +57,28 @@ existing tables into new tables and then replaces the existing tables with
 these much smaller tables. Which strategy to use is determined for each
 table individually, and governed by the settings for
 `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD` and
-`GRAPH_STORE_HISTORY_DELETE_THRESHOLD`: if we estimate that we will remove
-more than `REBUILD_THRESHOLD` of the table, the table will be rebuilt. If
-we estimate that we will remove a fraction between `REBUILD_THRESHOLD` and
-`DELETE_THRESHOLD` of the table, unneeded entity versions will be
-deleted. If we estimate to remove less than `DELETE_THRESHOLD`, the table
-is not changed at all. With both strategies, operations are broken into
-batches that should each take `GRAPH_STORE_BATCH_TARGET_DURATION` seconds
-to avoid causing very long-running transactions.
+`GRAPH_STORE_HISTORY_DELETE_THRESHOLD`, both numbers between 0 and 1: if we
+estimate that we will remove more than `REBUILD_THRESHOLD` of the table,
+the table will be rebuilt. If we estimate that we will remove a fraction
+between `REBUILD_THRESHOLD` and `DELETE_THRESHOLD` of the table, unneeded
+entity versions will be deleted. If we estimate to remove less than
+`DELETE_THRESHOLD`, the table is not changed at all. With both strategies,
+operations are broken into batches that should each take
+`GRAPH_STORE_BATCH_TARGET_DURATION` seconds to avoid causing very
+long-running transactions.
+
+Pruning, in most cases, runs in parallel with indexing and does not block
+it. When the rebuild strategy is used, pruning does block indexing while it
+copies non-final entities from the existing table to the new table.
+
+The initial prune started by `graphman prune` prints a progress report on
+the console. For the ongoing prune runs that are periodically performed,
+the following information is logged: a message `Start pruning historical
+entities` which includes the earliest and latest block, a message `Analyzed
+N tables`, and a message `Finished pruning entities` with details about how
+much was deleted or copied and how long that took. Pruning analyzes tables,
+if that seems necessary, because its estimates of how much of a table is
+likely not needed are based on Postgres statistics.
 
 ### Caveats
 
