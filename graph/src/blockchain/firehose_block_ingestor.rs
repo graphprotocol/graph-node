@@ -182,7 +182,7 @@ where
             };
 
             let logger = self.logger.new(
-                o!("provider" => endpoint.provider.clone(), "network_name"=> self.network_name()),
+                o!("provider" => endpoint.provider.to_string(), "network_name"=> self.network_name()),
             );
 
             info!(

@@ -230,18 +230,23 @@ async fn main() {
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
-        &config.chains.provider_urls(),
+        &config.chains.providers(),
         metrics_registry.cheap_clone(),
     ));
 
     // Ethereum clients; query nodes ignore all ethereum clients and never
     // connect to them directly
     let eth_networks = if query_only {
-        EthereumNetworks::new()
+        EthereumNetworks::new(endpoint_metrics.cheap_clone())
     } else {
-        create_all_ethereum_networks(logger.clone(), metrics_registry.clone(), &config)
-            .await
-            .expect("Failed to parse Ethereum networks")
+        create_all_ethereum_networks(
+            logger.clone(),
+            metrics_registry.clone(),
+            &config,
+            endpoint_metrics.cheap_clone(),
+        )
+        .await
+        .expect("Failed to parse Ethereum networks")
     };
 
     let mut firehose_networks_by_kind = if query_only {

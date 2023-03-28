@@ -130,11 +130,13 @@ pub fn create_substreams_networks(
                     .entry(chain.protocol)
                     .or_insert_with(FirehoseNetworks::new);
 
-                for i in 0..firehose.conn_pool_size {
+                for _ in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
                         name.to_string(),
                         Arc::new(FirehoseEndpoint::new(
-                            &format!("{}-{}", provider.label, i),
+                            // This label needs to be the original label so that the metrics
+                            // can be deduped.
+                            &provider.label,
                             &firehose.url,
                             firehose.token.clone(),
                             firehose.filters_enabled(),
@@ -184,11 +186,13 @@ pub fn create_firehose_networks(
                 // eg: pool_size = 3 and sg_limit 2 will result in 3 separate instances
                 // of FirehoseEndpoint and each of those instance can be used in 2 different
                 // SubgraphInstances.
-                for i in 0..firehose.conn_pool_size {
+                for _ in 0..firehose.conn_pool_size {
                     parsed_networks.insert(
                         name.to_string(),
                         Arc::new(FirehoseEndpoint::new(
-                            &format!("{}-{}", provider.label, i),
+                            // This label needs to be the original label so that the metrics
+                            // can be deduped.
+                            &provider.label,
                             &firehose.url,
                             firehose.token.clone(),
                             firehose.filters_enabled(),
@@ -310,7 +314,7 @@ where
                 let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
                 info!(
                     logger, "Connecting to Firehose to get chain identifier";
-                    "provider" => &endpoint.provider,
+                    "provider" => &endpoint.provider.to_string(),
                 );
                 match tokio::time::timeout(
                     NET_VERSION_WAIT_TIME,
@@ -333,7 +337,7 @@ where
                         info!(
                             logger,
                             "Connected to Firehose";
-                            "provider" => &endpoint.provider,
+                            "provider" => &endpoint.provider.to_string(),
                             "genesis_block" => format_args!("{}", &ptr),
                         );
 
@@ -387,6 +391,7 @@ pub async fn create_all_ethereum_networks(
     logger: Logger,
     registry: Arc<MetricsRegistry>,
     config: &Config,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> anyhow::Result<EthereumNetworks> {
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let eth_networks_futures = config
@@ -395,7 +400,13 @@ pub async fn create_all_ethereum_networks(
         .iter()
         .filter(|(_, chain)| chain.protocol == BlockchainKind::Ethereum)
         .map(|(name, _)| {
-            create_ethereum_networks_for_chain(&logger, eth_rpc_metrics.clone(), config, name)
+            create_ethereum_networks_for_chain(
+                &logger,
+                eth_rpc_metrics.clone(),
+                config,
+                name,
+                endpoint_metrics.cheap_clone(),
+            )
         });
 
     Ok(try_join_all(eth_networks_futures)
@@ -405,7 +416,7 @@ pub async fn create_all_ethereum_networks(
             a.extend(b);
             a
         })
-        .unwrap_or_else(EthereumNetworks::new))
+        .unwrap_or_else(|| EthereumNetworks::new(endpoint_metrics)))
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -414,8 +425,9 @@ pub async fn create_ethereum_networks_for_chain(
     eth_rpc_metrics: Arc<ProviderEthRpcMetrics>,
     config: &Config,
     network_name: &str,
+    endpoint_metrics: Arc<EndpointMetrics>,
 ) -> anyhow::Result<EthereumNetworks> {
-    let mut parsed_networks = EthereumNetworks::new();
+    let mut parsed_networks = EthereumNetworks::new(endpoint_metrics.cheap_clone());
     let chain = config
         .chains
         .chains
@@ -445,7 +457,11 @@ pub async fn create_ethereum_networks_for_chain(
         use crate::config::Transport::*;
 
         let transport = match web3.transport {
-            Rpc => Transport::new_rpc(Url::parse(&web3.url)?, web3.headers.clone()),
+            Rpc => Transport::new_rpc(
+                Url::parse(&web3.url)?,
+                web3.headers.clone(),
+                endpoint_metrics.cheap_clone(),
+            ),
             Ipc => Transport::new_ipc(&web3.url).await,
             Ws => Transport::new_ws(&web3.url).await,
         };
@@ -459,7 +475,6 @@ pub async fn create_ethereum_networks_for_chain(
                 graph_chain_ethereum::EthereumAdapter::new(
                     logger,
                     provider.label.clone(),
-                    &web3.url,
                     transport,
                     eth_rpc_metrics.clone(),
                     supports_eip_1898,
@@ -479,6 +494,7 @@ pub async fn create_ethereum_networks_for_chain(
 mod test {
     use crate::chain::create_all_ethereum_networks;
     use crate::config::{Config, Opt};
+    use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};
     use graph::prometheus::Registry;
@@ -508,6 +524,7 @@ mod test {
             unsafe_config: false,
         };
 
+        let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
         let prometheus_registry = Arc::new(Registry::new());
         let metrics_registry = Arc::new(MetricsRegistry::new(
@@ -515,9 +532,10 @@ mod test {
             prometheus_registry.clone(),
         ));
 
-        let ethereum_networks = create_all_ethereum_networks(logger, metrics_registry, &config)
-            .await
-            .expect("Correctly parse Ethereum network args");
+        let ethereum_networks =
+            create_all_ethereum_networks(logger, metrics_registry, &config, metrics)
+                .await
+                .expect("Correctly parse Ethereum network args");
         let mut network_names = ethereum_networks.networks.keys().collect::<Vec<&String>>();
         network_names.sort();
 

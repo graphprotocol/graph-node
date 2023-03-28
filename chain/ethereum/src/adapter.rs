@@ -828,8 +828,6 @@ impl SubgraphEthRpcMetrics {
 /// or a remote node over RPC.
 #[async_trait]
 pub trait EthereumAdapter: Send + Sync + 'static {
-    fn url_hostname(&self) -> &str;
-
     /// The `provider.label` from the adapter's configuration
     fn provider(&self) -> &str;
 

@@ -74,7 +74,7 @@ pub async fn run(
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
         logger.clone(),
-        &config.chains.provider_urls(),
+        &config.chains.providers(),
         metrics_registry.cheap_clone(),
     ));
 
@@ -83,10 +83,15 @@ pub async fn run(
     let link_resolver = Arc::new(LinkResolver::new(ipfs_clients, env_vars.cheap_clone()));
 
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(metrics_registry.clone()));
-    let eth_networks =
-        create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, &config, &network_name)
-            .await
-            .expect("Failed to parse Ethereum networks");
+    let eth_networks = create_ethereum_networks_for_chain(
+        &logger,
+        eth_rpc_metrics,
+        &config,
+        &network_name,
+        endpoint_metrics.cheap_clone(),
+    )
+    .await
+    .expect("Failed to parse Ethereum networks");
     let firehose_networks_by_kind =
         create_firehose_networks(logger.clone(), &config, endpoint_metrics);
     let firehose_networks = firehose_networks_by_kind.get(&BlockchainKind::Ethereum);

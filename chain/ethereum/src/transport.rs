@@ -1,3 +1,4 @@
+use graph::endpoint::{EndpointMetrics, Host, RequestLabels};
 use jsonrpc_core::types::Call;
 use jsonrpc_core::Value;
 
@@ -11,7 +12,11 @@ use std::future::Future;
 /// Abstraction over the different web3 transports.
 #[derive(Clone, Debug)]
 pub enum Transport {
-    RPC(http::Http),
+    RPC {
+        client: http::Http,
+        metrics: Arc<EndpointMetrics>,
+        host: Host,
+    },
     IPC(ipc::Ipc),
     WS(ws::WebSocket),
 }
@@ -38,22 +43,32 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: Url, headers: ::http::HeaderMap) -> Self {
+    pub fn new_rpc(rpc: Url, headers: ::http::HeaderMap, metrics: Arc<EndpointMetrics>) -> Self {
         // Unwrap: This only fails if something is wrong with the system's TLS config.
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
             .unwrap();
-        Transport::RPC(http::Http::with_client(client, rpc))
+
+        let host = rpc.to_string();
+        Transport::RPC {
+            client: http::Http::with_client(client, rpc),
+            metrics,
+            host: host.into(),
+        }
     }
 }
 
 impl web3::Transport for Transport {
-    type Out = Box<dyn Future<Output = Result<Value, web3::error::Error>> + Send + Unpin>;
+    type Out = Pin<Box<dyn Future<Output = Result<Value, web3::error::Error>> + Send + 'static>>;
 
     fn prepare(&self, method: &str, params: Vec<Value>) -> (RequestId, Call) {
         match self {
-            Transport::RPC(http) => http.prepare(method, params),
+            Transport::RPC {
+                client,
+                metrics: _,
+                host: _,
+            } => client.prepare(method, params),
             Transport::IPC(ipc) => ipc.prepare(method, params),
             Transport::WS(ws) => ws.prepare(method, params),
         }
@@ -61,9 +76,38 @@ impl web3::Transport for Transport {
 
     fn send(&self, id: RequestId, request: Call) -> Self::Out {
         match self {
-            Transport::RPC(http) => Box::new(http.send(id, request)),
-            Transport::IPC(ipc) => Box::new(ipc.send(id, request)),
-            Transport::WS(ws) => Box::new(ws.send(id, request)),
+            Transport::RPC {
+                client,
+                metrics,
+                host,
+            } => {
+                let metrics = metrics.cheap_clone();
+                let client = client.clone();
+                let method = match request {
+                    Call::MethodCall(ref m) => m.method.as_str(),
+                    _ => "unknown",
+                };
+
+                let labels = RequestLabels {
+                    host: host.clone(),
+                    req_type: method.into(),
+                    conn_type: graph::endpoint::ConnectionType::Rpc,
+                };
+                let out = async move {
+                    let labels = labels;
+                    let out = client.send(id, request).await;
+                    match out {
+                        Ok(_) => metrics.success(&labels),
+                        Err(_) => metrics.failure(&labels),
+                    }
+
+                    out
+                };
+
+                Box::pin(out)
+            }
+            Transport::IPC(ipc) => Box::pin(ipc.send(id, request)),
+            Transport::WS(ws) => Box::pin(ws.send(id, request)),
         }
     }
 }
@@ -80,7 +124,11 @@ impl web3::BatchTransport for Transport {
         T: IntoIterator<Item = (RequestId, Call)>,
     {
         match self {
-            Transport::RPC(http) => Box::new(http.send_batch(requests)),
+            Transport::RPC {
+                client,
+                metrics: _,
+                host: _,
+            } => Box::new(client.send_batch(requests)),
             Transport::IPC(ipc) => Box::new(ipc.send_batch(requests)),
             Transport::WS(ws) => Box::new(ws.send_batch(requests)),
         }

@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::{
     anyhow::bail,
+    endpoint::EndpointMetrics,
     itertools::Itertools,
     prelude::{
         anyhow::{anyhow, Error},
@@ -9,7 +10,7 @@ use graph::{
     },
     slog::Logger,
 };
-use graph_chain_ethereum::{EthereumAdapterTrait, NodeCapabilities, ProviderEthRpcMetrics};
+use graph_chain_ethereum::{NodeCapabilities, ProviderEthRpcMetrics};
 use graph_store_postgres::DeploymentPlacer;
 
 use crate::{chain::create_ethereum_networks_for_chain, config::Config};
@@ -119,10 +120,12 @@ pub async fn provider(
         Ok(caps)
     }
 
+    let metrics = Arc::new(EndpointMetrics::mock());
     let caps = caps_from_features(features)?;
     let eth_rpc_metrics = Arc::new(ProviderEthRpcMetrics::new(registry));
     let networks =
-        create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, config, &network).await?;
+        create_ethereum_networks_for_chain(&logger, eth_rpc_metrics, config, &network, metrics)
+            .await?;
     let adapters = networks
         .networks
         .get(&network)
