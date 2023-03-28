@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- the behavior for `graphman prune` has changed: running just `graphman
+  prune` will mark the subgraph for ongoing pruning in addition to
+  performing an initial pruning. To avoid ongoing pruning, use `graphman
+  prune --once` ([docs](./docs/implementation/pruning.md))
 - the materialized views in the `info` schema (`table_sizes`, `subgraph_sizes`, and `chain_sizes`) that provide information about the size of various database objects are now automatically refreshed every 6 hours. [#4461](https://github.com/graphprotocol/graph-node/pull/4461)
 
 ### Fixes
