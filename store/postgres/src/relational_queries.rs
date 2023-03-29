@@ -3468,19 +3468,11 @@ impl<'a> SortKey<'a> {
 
         SortKey::sort_keys_by_col_type(column, value, direction, &column_prefix, out)?;
 
-        if ENV_VARS.store.reversible_order_by_off {
-            // Old behavior
-            out.push_sql(" nulls last");
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-        } else {
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-            out.push_sql(" ");
-            out.push_sql(direction);
-        }
+        out.push_sql(", ");
+        SortKey::push_prefix(&rest_prefix, out);
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" ");
+        out.push_sql(direction);
         Ok(())
     }
 
@@ -3513,18 +3505,9 @@ impl<'a> SortKey<'a> {
 
         // out.push_sql(") ");
 
-        if ENV_VARS.store.reversible_order_by_off {
-            // Old behavior
-            out.push_sql(" nulls last");
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-        } else {
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-            out.push_sql(" ");
-        }
+        out.push_sql(", ");
+        SortKey::push_prefix(&rest_prefix, out);
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
         Ok(())
     }
 
@@ -3566,21 +3549,12 @@ impl<'a> SortKey<'a> {
 
         out.push_sql(") ");
 
-        if ENV_VARS.store.reversible_order_by_off {
-            // Old behavior
-            out.push_sql(direction);
-            out.push_sql(" nulls last");
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-        } else {
-            out.push_sql(direction);
-            out.push_sql(", ");
-            SortKey::push_prefix(&rest_prefix, out);
-            out.push_identifier(PRIMARY_KEY_COLUMN)?;
-            out.push_sql(" ");
-            out.push_sql(direction);
-        }
+        out.push_sql(direction);
+        out.push_sql(", ");
+        SortKey::push_prefix(&rest_prefix, out);
+        out.push_identifier(PRIMARY_KEY_COLUMN)?;
+        out.push_sql(" ");
+        out.push_sql(direction);
         Ok(())
     }
 
