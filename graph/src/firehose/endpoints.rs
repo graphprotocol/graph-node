@@ -4,7 +4,7 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
-    endpoint::{ConnectionType, EndpointMetrics, Host, RequestLabels},
+    endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
     substreams,
@@ -37,7 +37,7 @@ const HIGH_VALUE_USED_PERCENTAGE: usize = 80;
 
 #[derive(Debug)]
 pub struct FirehoseEndpoint {
-    pub provider: Host,
+    pub provider: Provider,
     pub auth: AuthInterceptor,
     pub filters_enabled: bool,
     pub compression_enabled: bool,
@@ -194,7 +194,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.provider.clone().into(),
+                provider: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Firehose,
             },
@@ -221,7 +221,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.provider.clone().into(),
+                provider: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Firehose,
             },
@@ -246,7 +246,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                host: self.provider.clone().into(),
+                provider: self.provider.clone().into(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Substreams,
             },

@@ -11,22 +11,20 @@ use slog::{warn, Logger};
 
 use crate::{components::metrics::MetricsRegistry, data::value::Word};
 
-/// HostCount is the underlying structure to keep the count,
+/// ProviderCount is the underlying structure to keep the count,
 /// we require that all the hosts are known ahead of time, this way we can
 /// avoid locking since we don't need to modify the entire struture.
-type HostCount = Arc<HashMap<Host, AtomicU64>>;
+type ProviderCount = Arc<HashMap<Provider, AtomicU64>>;
 
-/// Host represents the normalized (parse::<Url>().to_string()) of the
-/// underlying endpoint. This allows us to track errors across multiple
-/// adapters if they share the same endpoint.
-pub type Host = Word;
+/// Provider represents label of the underlying endpoint.
+pub type Provider = Word;
 
 /// This struct represents all the current labels except for the result
 /// which is added separately. If any new labels are necessary they should
 /// remain in the same order as added in [`EndpointMetrics::new`]
 #[derive(Clone)]
 pub struct RequestLabels {
-    pub host: Host,
+    pub provider: Provider,
     pub req_type: Word,
     pub conn_type: ConnectionType,
 }
@@ -54,7 +52,7 @@ impl RequestLabels {
         Box::new([
             (&self.conn_type).into(),
             self.req_type.as_str(),
-            self.host.as_str(),
+            self.provider.as_str(),
             match is_success {
                 true => "success",
                 false => "failure",
@@ -67,35 +65,39 @@ impl RequestLabels {
 /// a success call to a host will clear the error count.
 pub struct EndpointMetrics {
     logger: Logger,
-    hosts: HostCount,
+    providers: ProviderCount,
     counter: Box<IntCounterVec>,
 }
 
 impl std::fmt::Debug for EndpointMetrics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:?}", self.hosts))
+        f.write_fmt(format_args!("{:?}", self.providers))
     }
 }
 
 impl EndpointMetrics {
-    pub fn new(logger: Logger, hosts: &[impl AsRef<str>], registry: Arc<MetricsRegistry>) -> Self {
-        let hosts = Arc::new(HashMap::from_iter(
-            hosts
+    pub fn new(
+        logger: Logger,
+        providers: &[impl AsRef<str>],
+        registry: Arc<MetricsRegistry>,
+    ) -> Self {
+        let providers = Arc::new(HashMap::from_iter(
+            providers
                 .iter()
-                .map(|h| (Host::from(h.as_ref()), AtomicU64::new(0))),
+                .map(|h| (Provider::from(h.as_ref()), AtomicU64::new(0))),
         ));
 
         let counter = registry
             .new_int_counter_vec(
                 "endpoint_request",
                 "successfull request",
-                &["conn_type", "req_type", "host", "result"],
+                &["conn_type", "req_type", "provider", "result"],
             )
             .expect("unable to create endpoint_request counter_vec");
 
         Self {
             logger,
-            hosts,
+            providers,
             counter,
         }
     }
@@ -103,24 +105,24 @@ impl EndpointMetrics {
     /// This should only be used for testing.
     pub fn mock() -> Self {
         use slog::{o, Discard};
-        let hosts: &[&str] = &[];
+        let providers: &[&str] = &[];
         Self::new(
             Logger::root(Discard, o!()),
-            hosts,
+            providers,
             Arc::new(MetricsRegistry::mock()),
         )
     }
 
     #[cfg(debug_assertions)]
-    pub fn report_for_test(&self, host: &Host, success: bool) {
+    pub fn report_for_test(&self, provider: &Provider, success: bool) {
         match success {
             true => self.success(&RequestLabels {
-                host: host.clone(),
+                provider: provider.clone(),
                 req_type: "".into(),
                 conn_type: ConnectionType::Firehose,
             }),
             false => self.failure(&RequestLabels {
-                host: host.clone(),
+                provider: provider.clone(),
                 req_type: "".into(),
                 conn_type: ConnectionType::Firehose,
             }),
@@ -128,13 +130,13 @@ impl EndpointMetrics {
     }
 
     pub fn success(&self, labels: &RequestLabels) {
-        match self.hosts.get(&labels.host) {
+        match self.providers.get(&labels.provider) {
             Some(count) => {
                 count.store(0, Ordering::Relaxed);
             }
             None => warn!(
                 &self.logger,
-                "metrics not available for host {}", labels.host
+                "metrics not available for host {}", labels.provider
             ),
         };
 
@@ -142,13 +144,13 @@ impl EndpointMetrics {
     }
 
     pub fn failure(&self, labels: &RequestLabels) {
-        match self.hosts.get(&labels.host) {
+        match self.providers.get(&labels.provider) {
             Some(count) => {
                 count.fetch_add(1, Ordering::Relaxed);
             }
             None => warn!(
                 &self.logger,
-                "metrics not available for host {}", &labels.host
+                "metrics not available for host {}", &labels.provider
             ),
         };
 
@@ -159,9 +161,9 @@ impl EndpointMetrics {
 
     /// Returns the current error count of a host or 0 if the host
     /// doesn't have a value on the map.
-    pub fn get_count(&self, host: &Host) -> u64 {
-        self.hosts
-            .get(host)
+    pub fn get_count(&self, provider: &Provider) -> u64 {
+        self.providers
+            .get(provider)
             .map(|c| c.load(Ordering::Relaxed))
             .unwrap_or(0)
     }
@@ -175,12 +177,12 @@ mod test {
 
     use crate::{
         components::metrics::MetricsRegistry,
-        endpoint::{EndpointMetrics, Host},
+        endpoint::{EndpointMetrics, Provider},
     };
 
     #[tokio::test]
     async fn should_increment_and_reset() {
-        let (a, b, c): (Host, Host, Host) = ("a".into(), "b".into(), "c".into());
+        let (a, b, c): (Provider, Provider, Provider) = ("a".into(), "b".into(), "c".into());
         let hosts: &[&str] = &[&a, &b, &c];
         let logger = Logger::root(Discard, o!());
 

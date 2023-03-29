@@ -1,4 +1,4 @@
-use graph::endpoint::{EndpointMetrics, Host, RequestLabels};
+use graph::endpoint::{EndpointMetrics, Provider, RequestLabels};
 use jsonrpc_core::types::Call;
 use jsonrpc_core::Value;
 
@@ -15,7 +15,7 @@ pub enum Transport {
     RPC {
         client: http::Http,
         metrics: Arc<EndpointMetrics>,
-        host: Host,
+        provider: Provider,
     },
     IPC(ipc::Ipc),
     WS(ws::WebSocket),
@@ -43,18 +43,22 @@ impl Transport {
     ///
     /// Note: JSON-RPC over HTTP doesn't always support subscribing to new
     /// blocks (one such example is Infura's HTTP endpoint).
-    pub fn new_rpc(rpc: Url, headers: ::http::HeaderMap, metrics: Arc<EndpointMetrics>) -> Self {
+    pub fn new_rpc(
+        rpc: Url,
+        headers: ::http::HeaderMap,
+        metrics: Arc<EndpointMetrics>,
+        provider: impl AsRef<str>,
+    ) -> Self {
         // Unwrap: This only fails if something is wrong with the system's TLS config.
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
             .unwrap();
 
-        let host = rpc.to_string();
         Transport::RPC {
             client: http::Http::with_client(client, rpc),
             metrics,
-            host: host.into(),
+            provider: provider.as_ref().into(),
         }
     }
 }
@@ -67,7 +71,7 @@ impl web3::Transport for Transport {
             Transport::RPC {
                 client,
                 metrics: _,
-                host: _,
+                provider: _,
             } => client.prepare(method, params),
             Transport::IPC(ipc) => ipc.prepare(method, params),
             Transport::WS(ws) => ws.prepare(method, params),
@@ -79,7 +83,7 @@ impl web3::Transport for Transport {
             Transport::RPC {
                 client,
                 metrics,
-                host,
+                provider,
             } => {
                 let metrics = metrics.cheap_clone();
                 let client = client.clone();
@@ -89,7 +93,7 @@ impl web3::Transport for Transport {
                 };
 
                 let labels = RequestLabels {
-                    host: host.clone(),
+                    provider: provider.clone(),
                     req_type: method.into(),
                     conn_type: graph::endpoint::ConnectionType::Rpc,
                 };
@@ -127,7 +131,7 @@ impl web3::BatchTransport for Transport {
             Transport::RPC {
                 client,
                 metrics: _,
-                host: _,
+                provider: _,
             } => Box::new(client.send_batch(requests)),
             Transport::IPC(ipc) => Box::new(ipc.send_batch(requests)),
             Transport::WS(ws) => Box::new(ws.send_batch(requests)),
