@@ -4,6 +4,8 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Instant;
 
+use graph::prelude::serde_json;
+use graph::prelude::serde_json::json;
 use graph::prelude::*;
 use graph::semver::VersionReq;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
@@ -62,14 +64,17 @@ where
     }
 
     async fn index(self) -> GraphQLServiceResult {
+        let response_obj = json!({
+            "message": "Access deployed subgraphs by deployment ID at \
+                        /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>"
+        });
+        let response_str = serde_json::to_string(&response_obj).unwrap();
+
         Ok(Response::builder()
             .status(200)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(CONTENT_TYPE, "text/plain")
-            .body(Body::from(String::from(
-                "Access deployed subgraphs by deployment ID at \
-                /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
-            )))
+            .header(CONTENT_TYPE, "application/json")
+            .body(Body::from(response_str))
             .unwrap())
     }
 
@@ -79,7 +84,7 @@ where
             Ok(Response::builder()
                 .status(200)
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .header(CONTENT_TYPE, "text/html")
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
                 .body(Body::from(contents))
                 .unwrap())
         }
@@ -202,7 +207,7 @@ where
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
                 .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
-                .header(CONTENT_TYPE, "text/html")
+                .header(CONTENT_TYPE, "text/html; charset=utf-8")
                 .body(Body::from(""))
                 .unwrap())
         }
@@ -220,7 +225,7 @@ where
                     .status(StatusCode::FOUND)
                     .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                     .header(LOCATION, loc_header_val)
-                    .header(CONTENT_TYPE, "text/plain")
+                    .header(CONTENT_TYPE, "text/plain; charset=utf-8")
                     .body(Body::from("Redirecting..."))
                     .unwrap()
             })
@@ -229,11 +234,16 @@ where
     /// Handles 404s.
     fn handle_not_found(&self) -> GraphQLServiceResponse {
         async {
+            let response_obj = json!({
+                "message": "Not found"
+            });
+            let response_str = serde_json::to_string(&response_obj).unwrap();
+
             Ok(Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header(CONTENT_TYPE, "text/plain")
+                .status(200)
+                .header(CONTENT_TYPE, "application/json")
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .body(Body::from("Not found"))
+                .body(Body::from(response_str))
                 .unwrap())
         }
         .boxed()
@@ -316,22 +326,35 @@ where
         // Instead, we generate a Response with an error code and return Ok
         Box::pin(async move {
             let result = service.handle_call(req).await;
+
             match result {
                 Ok(response) => Ok(response),
-                Err(err @ GraphQLServerError::ClientError(_)) => Ok(Response::builder()
-                    .status(400)
-                    .header(CONTENT_TYPE, "text/plain")
-                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                    .body(Body::from(err.to_string()))
-                    .unwrap()),
+                Err(err @ GraphQLServerError::ClientError(_)) => {
+                    let response_obj = json!({
+                        "error": err.to_string()
+                    });
+                    let response_str = serde_json::to_string(&response_obj).unwrap();
+
+                    Ok(Response::builder()
+                        .status(200)
+                        .header(CONTENT_TYPE, "application/json")
+                        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                        .body(Body::from(response_str))
+                        .unwrap())
+                }
                 Err(err @ GraphQLServerError::QueryError(_)) => {
                     error!(logger, "GraphQLService call failed: {}", err);
 
+                    let response_obj = json!({
+                        "QueryError": err.to_string()
+                    });
+                    let response_str = serde_json::to_string(&response_obj).unwrap();
+
                     Ok(Response::builder()
-                        .status(400)
-                        .header(CONTENT_TYPE, "text/plain")
+                        .status(200)
+                        .header(CONTENT_TYPE, "application/json")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                        .body(Body::from(format!("Query error: {}", err)))
+                        .body(Body::from(response_str))
                         .unwrap())
                 }
                 Err(err @ GraphQLServerError::InternalError(_)) => {
@@ -339,7 +362,7 @@ where
 
                     Ok(Response::builder()
                         .status(500)
-                        .header(CONTENT_TYPE, "text/plain")
+                        .header(CONTENT_TYPE, "text/plain; charset=utf-8")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(format!("Internal server error: {}", err)))
                         .unwrap())
@@ -352,7 +375,9 @@ where
 #[cfg(test)]
 mod tests {
     use graph::data::value::{Object, Word};
+    use http::header::CONTENT_TYPE;
     use http::status::StatusCode;
+    use hyper::body::HttpBody;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
 
@@ -419,6 +444,39 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn querying_not_found_routes_responds_correctly() {
+        let logger = Logger::root(slog::Discard, o!());
+        let graphql_runner = Arc::new(TestGraphQlRunner);
+
+        let node_id = NodeId::new("test").unwrap();
+        let mut service = GraphQLService::new(logger, graphql_runner, 8001, node_id);
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+            .uri("http://localhost:8000/not_found_route".to_string())
+            .body(Body::from("{}"))
+            .unwrap();
+
+        let response =
+            futures03::executor::block_on(service.call(request)).expect("Should return a response");
+
+        let content_type_header = response.status();
+        assert_eq!(content_type_header, StatusCode::OK);
+
+        let content_type_header = response.headers().get(CONTENT_TYPE).unwrap();
+        assert_eq!(content_type_header, "application/json");
+
+        let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
+        let json: serde_json::Result<serde_json::Value> =
+            serde_json::from_str(String::from_utf8(body_bytes.to_vec()).unwrap().as_str());
+
+        assert!(json.is_ok(), "Response body is not valid JSON");
+
+        assert_eq!(json.unwrap(), serde_json::json!({"message": "Not found"}));
+    }
+
     #[test]
     fn posting_invalid_query_yields_error_response() {
         let logger = Logger::root(slog::Discard, o!());
@@ -430,6 +488,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
+            .header(CONTENT_TYPE, "text/plain; charset=utf-8")
             .uri(format!(
                 "http://localhost:8000/subgraphs/id/{}",
                 subgraph_id
@@ -460,6 +519,7 @@ mod tests {
 
         let request = Request::builder()
             .method(Method::POST)
+            .header(CONTENT_TYPE, "text/plain; charset=utf-8")
             .uri(format!(
                 "http://localhost:8000/subgraphs/id/{}",
                 subgraph_id

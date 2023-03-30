@@ -1,11 +1,12 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use hyper::service::make_service_fn;
-use hyper::Server;
+use futures::future::{ok, Future};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use thiserror::Error;
 
 use crate::service::GraphQLService;
-use graph::prelude::{GraphQLServer as GraphQLServerTrait, *};
-use thiserror::Error;
+use graph::prelude::{GraphQLServer as GraphQLServerTrait, GraphQlRunner, *};
 
 /// Errors that may occur when starting the server.
 #[derive(Debug, Error)]
@@ -66,12 +67,27 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
-            futures03::future::ok::<_, Error>(GraphQLService::new(
-                logger_for_service.clone(),
-                graphql_runner.clone(),
-                ws_port,
-                node_id.clone(),
-            ))
+            ok::<_, Error>(service_fn(move |req: Request<Body>| {
+                match (
+                    req.method(),
+                    req.headers().get(hyper::header::CONTENT_LENGTH),
+                ) {
+                    (&Method::POST, Some(length)) if length == "0" => {
+                        let mut res = Response::new(Body::empty());
+                        *res.status_mut() = StatusCode::BAD_REQUEST;
+                        ok::<_, Error>(res)
+                    }
+                    _ => {
+                        let service = GraphQLService::new(
+                            logger_for_service.clone(),
+                            graphql_runner.clone(),
+                            ws_port,
+                            node_id.clone(),
+                        );
+                        futures03::future::ok::<_, Error>(service)
+                    }
+                }
+            }))
         });
 
         // Create a task to run the server and handle HTTP requests
