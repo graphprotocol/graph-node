@@ -193,6 +193,10 @@ impl EthereumNetworks {
         }
     }
 
+    pub fn insert_empty(&mut self, name: String) {
+        self.networks.entry(name).or_default();
+    }
+
     pub fn insert(
         &mut self,
         name: String,

@@ -43,15 +43,17 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
     fn host_fns(&self, ds: &DataSource) -> Result<Vec<HostFn>, Error> {
         let abis = ds.mapping.abis.clone();
         let call_cache = self.call_cache.cheap_clone();
-        // Ethereum calls should prioritise call-only adapters if one is available.
-        let eth_adapter = self.eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
-            archive: ds.mapping.requires_archive()?,
-            traces: false,
-        }))?;
+        let eth_adapters = self.eth_adapters.cheap_clone();
+        let archive = ds.mapping.requires_archive()?;
 
         let ethereum_call = HostFn {
             name: "ethereum.call",
             func: Arc::new(move |ctx, wasm_ptr| {
+                // Ethereum calls should prioritise call-only adapters if one is available.
+                let eth_adapter = eth_adapters.call_or_cheapest(Some(&NodeCapabilities {
+                    archive,
+                    traces: false,
+                }))?;
                 ethereum_call(&eth_adapter, call_cache.cheap_clone(), ctx, wasm_ptr, &abis)
                     .map(|ptr| ptr.wasm_ptr())
             }),
