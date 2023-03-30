@@ -438,7 +438,10 @@ pub async fn create_ethereum_networks_for_chain(
         let (web3, call_only) = match &provider.details {
             ProviderDetails::Web3Call(web3) => (web3, true),
             ProviderDetails::Web3(web3) => (web3, false),
-            _ => continue,
+            _ => {
+                parsed_networks.insert_empty(network_name.to_string());
+                continue;
+            }
         };
 
         let capabilities = web3.node_capabilities();
