@@ -1928,7 +1928,6 @@ dependencies = [
  "futures 0.3.16",
  "git-testament",
  "graph",
- "graph-chain-ethereum",
  "graph-core",
  "graph-graphql",
  "graphql-parser",
@@ -1946,7 +1945,6 @@ dependencies = [
  "rand",
  "serde",
  "stable-hash 0.3.3",
- "test-store",
  "uuid",
 ]
 
@@ -4362,6 +4360,7 @@ dependencies = [
  "graph-node",
  "graph-store-postgres",
  "graphql-parser",
+ "hex",
  "hex-literal",
  "lazy_static",
  "pretty_assertions",

@@ -1,7 +1,7 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
-use futures::executor;
+use graph::prelude::futures03::executor;
 use std::future::Future;
 use std::sync::Arc;
 
