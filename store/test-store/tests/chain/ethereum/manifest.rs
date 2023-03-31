@@ -18,8 +18,8 @@ use graph::{
     data::subgraph::SubgraphFeature,
 };
 
+use graph::semver::Version;
 use graph_chain_ethereum::{Chain, NodeCapabilities};
-use semver::Version;
 use test_store::LOGGER;
 
 const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
