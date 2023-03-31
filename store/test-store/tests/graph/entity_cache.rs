@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, LoadRelatedRequest,
