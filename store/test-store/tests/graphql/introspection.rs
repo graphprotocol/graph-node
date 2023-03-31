@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate pretty_assertions;
-
 use std::sync::Arc;
 
 use graph::data::graphql::{object, object_value, ObjectOrInterface};

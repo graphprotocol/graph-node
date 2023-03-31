@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate pretty_assertions;
-
 use graph::components::store::EntityKey;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
