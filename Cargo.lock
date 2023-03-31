@@ -1729,7 +1729,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "test-store",
  "tower 0.4.12",
  "tower-test",
  "uuid",
@@ -4367,6 +4366,7 @@ dependencies = [
  "graphql-parser",
  "hex-literal",
  "lazy_static",
+ "pretty_assertions",
  "prost-types",
  "serde",
 ]
