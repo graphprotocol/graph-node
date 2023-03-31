@@ -5,6 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore};
+use graph::constraint_violation;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -12,6 +13,7 @@ use graph::prelude::{
     BLOCK_NUMBER_MAX,
 };
 use graph::slog::info;
+use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -448,6 +450,29 @@ enum Request {
     Stop,
 }
 
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Write {
+                block_ptr,
+                mods,
+                store,
+                ..
+            } => write!(
+                f,
+                "write[{}, {:p}, {} entities]",
+                block_ptr.number,
+                store.as_ref(),
+                mods.len()
+            ),
+            Self::RevertTo {
+                block_ptr, store, ..
+            } => write!(f, "revert[{}, {:p}]", block_ptr.number, store.as_ref()),
+            Self::Stop => write!(f, "stop"),
+        }
+    }
+}
+
 enum ExecResult {
     Continue,
     Stop,
@@ -520,28 +545,56 @@ struct Queue {
 /// allowed to process as many requests as it can
 #[cfg(debug_assertions)]
 pub(crate) mod test_support {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::{
+        collections::HashMap,
+        sync::{Arc, Mutex},
+    };
 
-    use graph::{prelude::lazy_static, util::bounded_queue::BoundedQueue};
+    use graph::{
+        components::store::{DeploymentId, DeploymentLocator},
+        prelude::lazy_static,
+        util::bounded_queue::BoundedQueue,
+    };
 
     lazy_static! {
-        static ref DO_STEP: AtomicBool = AtomicBool::new(false);
-        static ref ALLOWED_STEPS: BoundedQueue<()> = BoundedQueue::with_capacity(1_000);
+        static ref STEPS: Mutex<HashMap<DeploymentId, Arc<BoundedQueue<()>>>> =
+            Mutex::new(HashMap::new());
     }
 
-    pub(super) async fn take_step() {
-        if DO_STEP.load(Ordering::SeqCst) {
-            ALLOWED_STEPS.pop().await
+    pub(super) async fn take_step(deployment: &DeploymentLocator) {
+        let steps = STEPS.lock().unwrap().get(&deployment.id).cloned();
+        if let Some(steps) = steps {
+            steps.pop().await;
         }
     }
 
     /// Allow the writer to process `steps` requests. After calling this,
     /// the writer will only process the number of requests it is allowed to
-    pub async fn allow_steps(steps: usize) {
+    pub async fn allow_steps(deployment: &DeploymentLocator, steps: usize) {
+        let queue = {
+            let mut map = STEPS.lock().unwrap();
+            map.entry(deployment.id)
+                .or_insert_with(|| Arc::new(BoundedQueue::with_capacity(1_000)))
+                .clone()
+        };
         for _ in 0..steps {
-            ALLOWED_STEPS.push(()).await
+            queue.push(()).await
         }
-        DO_STEP.store(true, Ordering::SeqCst);
+    }
+}
+
+impl std::fmt::Debug for Queue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let reqs = self.queue.fold(vec![], |mut reqs, req| {
+            reqs.push(req.clone());
+            reqs
+        });
+
+        write!(f, "reqs[{} : ", self.store.site)?;
+        for req in reqs {
+            write!(f, " {:?}", req)?;
+        }
+        writeln!(f, "]")
     }
 }
 
@@ -552,11 +605,11 @@ impl Queue {
         store: Arc<SyncStore>,
         capacity: usize,
         registry: Arc<MetricsRegistry>,
-    ) -> Arc<Self> {
+    ) -> (Arc<Self>, JoinHandle<()>) {
         async fn start_writer(queue: Arc<Queue>, logger: Logger) {
             loop {
                 #[cfg(debug_assertions)]
-                test_support::take_step().await;
+                test_support::take_step(&queue.store.site.as_ref().into()).await;
 
                 // We peek at the front of the queue, rather than pop it
                 // right away, so that query methods like `get` have access
@@ -623,9 +676,9 @@ impl Queue {
         };
         let queue = Arc::new(queue);
 
-        graph::spawn(start_writer(queue.cheap_clone(), logger));
+        let handle = graph::spawn(start_writer(queue.cheap_clone(), logger));
 
-        queue
+        (queue, handle)
     }
 
     /// Add a write request to the queue
@@ -637,6 +690,7 @@ impl Queue {
 
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
+        self.check_err()?;
         self.queue.wait_empty().await;
         self.check_err()
     }
@@ -880,7 +934,10 @@ impl Queue {
 /// A shim to allow bypassing any pipelined store handling if need be
 enum Writer {
     Sync(Arc<SyncStore>),
-    Async(Arc<Queue>),
+    Async {
+        queue: Arc<Queue>,
+        join_handle: JoinHandle<()>,
+    },
 }
 
 impl Writer {
@@ -894,7 +951,24 @@ impl Writer {
         if capacity == 0 {
             Self::Sync(store)
         } else {
-            Self::Async(Queue::start(logger, store, capacity, registry))
+            let (queue, join_handle) = Queue::start(logger, store.clone(), capacity, registry);
+            Self::Async { queue, join_handle }
+        }
+    }
+
+    fn check_queue_running(&self) -> Result<(), StoreError> {
+        match self {
+            Writer::Sync(_) => Ok(()),
+            Writer::Async { join_handle, queue } => {
+                if join_handle.is_finished() {
+                    Err(constraint_violation!(
+                        "Subgraph writer for {} is not running",
+                        queue.store.site
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -920,7 +994,8 @@ impl Writer {
                 &manifest_idx_and_name,
                 &processed_data_sources,
             ),
-            Writer::Async(queue) => {
+            Writer::Async { queue, .. } => {
+                self.check_queue_running()?;
                 let req = Request::Write {
                     store: queue.store.cheap_clone(),
                     stopwatch: queue.stopwatch.cheap_clone(),
@@ -944,7 +1019,8 @@ impl Writer {
     ) -> Result<(), StoreError> {
         match self {
             Writer::Sync(store) => store.revert_block_operations(block_ptr_to, &firehose_cursor),
-            Writer::Async(queue) => {
+            Writer::Async { queue, .. } => {
+                self.check_queue_running()?;
                 let req = Request::RevertTo {
                     store: queue.store.cheap_clone(),
                     block_ptr: block_ptr_to,
@@ -958,14 +1034,17 @@ impl Writer {
     async fn flush(&self) -> Result<(), StoreError> {
         match self {
             Writer::Sync { .. } => Ok(()),
-            Writer::Async(queue) => queue.flush().await,
+            Writer::Async { queue, .. } => {
+                self.check_queue_running()?;
+                queue.flush().await
+            }
         }
     }
 
     fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX),
-            Writer::Async(queue) => queue.get(key),
+            Writer::Async { queue, .. } => queue.get(key),
         }
     }
 
@@ -975,7 +1054,7 @@ impl Writer {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_many(keys, BLOCK_NUMBER_MAX),
-            Writer::Async(queue) => queue.get_many(keys),
+            Writer::Async { queue, .. } => queue.get_many(keys),
         }
     }
 
@@ -985,7 +1064,7 @@ impl Writer {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
             Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]),
-            Writer::Async(queue) => queue.get_derived(key),
+            Writer::Async { queue, .. } => queue.get_derived(key),
         }
     }
 
@@ -999,28 +1078,30 @@ impl Writer {
                     .load_dynamic_data_sources(BLOCK_NUMBER_MAX, manifest_idx_and_name)
                     .await
             }
-            Writer::Async(queue) => queue.load_dynamic_data_sources(manifest_idx_and_name).await,
+            Writer::Async { queue, .. } => {
+                queue.load_dynamic_data_sources(manifest_idx_and_name).await
+            }
         }
     }
 
     fn poisoned(&self) -> bool {
         match self {
             Writer::Sync(_) => false,
-            Writer::Async(queue) => queue.poisoned(),
+            Writer::Async { queue, .. } => queue.poisoned(),
         }
     }
 
     async fn stop(&self) -> Result<(), StoreError> {
         match self {
             Writer::Sync(_) => Ok(()),
-            Writer::Async(queue) => queue.stop().await,
+            Writer::Async { queue, .. } => queue.stop().await,
         }
     }
 
     fn deployment_synced(&self) {
         match self {
             Writer::Sync(_) => {}
-            Writer::Async(queue) => queue.deployment_synced(),
+            Writer::Async { queue, .. } => queue.deployment_synced(),
         }
     }
 }
