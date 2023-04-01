@@ -1718,13 +1718,10 @@ dependencies = [
  "graph-chain-near",
  "graph-chain-substreams",
  "graph-runtime-wasm",
- "graphql-parser",
- "hex",
  "ipfs-api",
  "ipfs-api-backend-hyper",
  "lazy_static",
  "lru_time_cache",
- "pretty_assertions",
  "semver",
  "serde",
  "serde_json",
@@ -1749,7 +1746,6 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "parking_lot 0.12.1",
- "pretty_assertions",
  "stable-hash 0.3.3",
  "stable-hash 0.4.2",
 ]
@@ -1925,14 +1921,12 @@ dependencies = [
  "diesel_derives",
  "diesel_migrations",
  "fallible-iterator",
- "futures 0.3.16",
  "git-testament",
  "graph",
  "graph-core",
  "graph-graphql",
  "graphql-parser",
  "hex",
- "hex-literal",
  "itertools",
  "lazy_static",
  "lru_time_cache",
@@ -2209,9 +2203,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.23.0"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d87c48c02e0dc5e3b849a2041db3029fd066650f8f717c07bf8ed78ccb895cac"
+checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
 dependencies = [
  "http",
  "hyper",
@@ -2769,13 +2763,14 @@ checksum = "0debeb9fcf88823ea64d64e4a815ab1643f33127d995978e099942ce38f25238"
 
 [[package]]
 name = "multiaddr"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b53e0cc5907a5c216ba6584bf74be8ab47d6d6289f72793b2dddbf15dc3bf8c"
+checksum = "2b36f567c7099511fa8612bbbb52dda2419ce0bdbacf31714e3a5ffdb766d3bd"
 dependencies = [
  "arrayref",
  "byteorder",
  "data-encoding",
+ "log",
  "multibase",
  "multihash 0.17.0",
  "percent-encoding",
@@ -5048,12 +5043,11 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "walkdir"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "808cf2735cd4b6866113f648b791c6adc5714537bc222d9347bb203386ffda56"
+checksum = "36df944cda56c7d8d8b7496af378e6b16de9284591917d307c9b4d313c44e698"
 dependencies = [
  "same-file",
- "winapi",
  "winapi-util",
 ]
 
