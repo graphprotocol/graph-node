@@ -1934,7 +1934,6 @@ dependencies = [
  "fallible-iterator",
  "git-testament",
  "graph",
- "graph-core",
  "graphql-parser",
  "hex",
  "itertools",
