@@ -19,12 +19,13 @@ use graph::prelude::{
     info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
     TryFromValue, ENV_VARS,
 };
+use graph::schema::api::ErrorPolicy;
+use graph::schema::ast::{self as sast};
 
 use crate::execution::ast as a;
+use crate::execution::get_field;
 use crate::query::{ast as qast, ext::BlockConstraint};
-use crate::schema::ast::{self as sast};
 use crate::values::coercion;
-use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan =

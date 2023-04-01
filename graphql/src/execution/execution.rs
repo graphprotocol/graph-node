@@ -15,13 +15,13 @@ use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
 use graph::env::CachedSubgraphIds;
 use graph::prelude::*;
+use graph::schema::ast as sast;
 use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
 use crate::execution::ast as a;
 use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
-use crate::schema::ast as sast;
 
 lazy_static! {
     // Sharded query results cache for recent blocks by network.
@@ -288,7 +288,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
             execute_selection_set_to_map(
                 &ictx,
                 ctx.query.selection_set.as_ref(),
-                &INTROSPECTION_QUERY_TYPE,
+                &*INTROSPECTION_QUERY_TYPE,
                 None,
             )
             .await?,

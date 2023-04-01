@@ -2,14 +2,13 @@ use std::result::Result;
 use std::time::{Duration, Instant};
 
 use graph::components::store::UnitStream;
-use graph::{components::store::SubscriptionManager, prelude::*};
+use graph::{components::store::SubscriptionManager, prelude::*, schema::api::ErrorPolicy};
 
 use crate::metrics::GraphQLMetrics;
 use crate::{
     execution::ast as a,
     execution::*,
     prelude::{BlockConstraint, StoreResolver},
-    schema::api::ErrorPolicy,
 };
 
 /// Options available for subscription execution.

@@ -43,7 +43,7 @@ use graph::prelude::{
     Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome,
     Value, ENV_VARS,
 };
-use graph_graphql::prelude::api_schema;
+use graph::schema::api_schema;
 use web3::types::Address;
 
 use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};

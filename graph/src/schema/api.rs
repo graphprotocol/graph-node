@@ -6,12 +6,12 @@ use lazy_static::lazy_static;
 
 use crate::schema::ast;
 
-use graph::data::{
+use crate::data::{
     graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
     schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME},
 };
-use graph::prelude::s::{Value, *};
-use graph::prelude::*;
+use crate::prelude::s::{Value, *};
+use crate::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -867,7 +867,7 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
-    use graph::data::graphql::DocumentExt;
+    use crate::data::graphql::DocumentExt;
     use graphql_parser::schema::*;
 
     use super::api_schema;

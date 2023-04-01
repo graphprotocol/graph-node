@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
+use graph::schema::ast as sast;
 use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
@@ -24,7 +25,6 @@ use graph::{
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
 use crate::metrics::GraphQLMetrics;
-use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 

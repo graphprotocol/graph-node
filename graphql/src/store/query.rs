@@ -6,10 +6,10 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::*;
+use graph::schema::ast::{self as sast, FilterOp};
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
-use crate::schema::ast::{self as sast, FilterOp};
 
 use super::prefetch::SelectedAttributes;
 

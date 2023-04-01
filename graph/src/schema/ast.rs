@@ -1,18 +1,16 @@
-use graph::cheap_clone::CheapClone;
 use graphql_parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use graph::data::graphql::ext::DirectiveFinder;
-use graph::data::graphql::{DocumentExt, ObjectOrInterface};
-use graph::prelude::anyhow::anyhow;
-use graph::prelude::{s, Error, ValueType};
+use crate::cheap_clone::CheapClone;
+use crate::data::graphql::ext::DirectiveFinder;
+use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectOrInterface};
+use crate::prelude::anyhow::anyhow;
+use crate::prelude::{s, Error, ValueType};
 
-use crate::query::ast as qast;
-
-pub(crate) enum FilterOp {
+pub enum FilterOp {
     Not,
     GreaterThan,
     LessThan,
@@ -39,7 +37,7 @@ pub(crate) enum FilterOp {
 }
 
 /// Split a "name_eq" style name into an attribute ("name") and a filter op (`Equal`).
-pub(crate) fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
+pub fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
     let (suffix, op) = match key {
         k if k.ends_with("_not") => ("_not", FilterOp::Not),
         k if k.ends_with("_gt") => ("_gt", FilterOp::GreaterThan),
@@ -389,7 +387,7 @@ pub fn get_derived_from_field<'a>(
     field_definition: &'a s::Field,
 ) -> Option<&'a s::Field> {
     get_derived_from_directive(field_definition)
-        .and_then(|directive| qast::get_argument_value(&directive.arguments, "field"))
+        .and_then(|directive| directive.argument("field"))
         .and_then(|value| match value {
             s::Value::String(s) => Some(s),
             _ => None,
@@ -407,9 +405,9 @@ pub fn is_list(field_type: &s::Type) -> bool {
 
 #[test]
 fn entity_validation() {
-    use graph::components::store::EntityKey;
-    use graph::data::store;
-    use graph::prelude::{DeploymentHash, Entity};
+    use crate::components::store::EntityKey;
+    use crate::data::store;
+    use crate::prelude::{DeploymentHash, Entity};
 
     fn make_thing(name: &str) -> Entity {
         let mut thing = Entity::new();
@@ -441,7 +439,7 @@ fn entity_validation() {
       }";
         let subgraph = DeploymentHash::new("doesntmatter").unwrap();
         let schema =
-            graph::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 

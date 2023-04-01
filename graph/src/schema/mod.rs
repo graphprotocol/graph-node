@@ -4,4 +4,4 @@ pub mod api;
 /// Utilities for working with GraphQL schema ASTs.
 pub mod ast;
 
-pub use self::api::{api_schema, APISchemaError};
+pub use api::{api_schema, APISchemaError};

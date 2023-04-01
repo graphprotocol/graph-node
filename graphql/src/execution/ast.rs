@@ -4,10 +4,9 @@ use graph::{
     components::store::EntityType,
     data::graphql::ObjectOrInterface,
     prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap},
+    schema::ast::ObjectType,
 };
 use graphql_parser::Pos;
-
-use crate::schema::ast::ObjectType;
 
 /// A selection set is a table that maps object types to the fields that
 /// should be selected for objects of that type. The types are always

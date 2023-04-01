@@ -30,6 +30,8 @@ pub mod substreams;
 
 pub mod endpoint;
 
+pub mod schema;
+
 /// Helpers for parsing environment variables.
 pub mod env;
 

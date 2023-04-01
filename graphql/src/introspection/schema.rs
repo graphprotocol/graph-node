@@ -8,7 +8,7 @@ use graph::prelude::s::Document;
 
 use lazy_static::lazy_static;
 
-use crate::schema::ast as sast;
+use graph::schema::ast as sast;
 
 const INTROSPECTION_SCHEMA: &str = "
 scalar Boolean

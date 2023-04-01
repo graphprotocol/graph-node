@@ -6,9 +6,10 @@ use graph::prelude::{
     async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
     QueryExecutionError, QueryResult, Schema,
 };
+use graph::schema::api_schema;
+
 use graph_graphql::prelude::{
-    a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
-    Resolver,
+    a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
 use test_store::graphql_metrics;
 use test_store::LOAD_MANAGER;
