@@ -39,6 +39,7 @@ pub const INTEGRATION_TEST_DIRS: &[&str] = &[
     "poi-for-failed-subgraph",
     "remove-then-update",
     "value-roundtrip",
+    "int8",
 ];
 
 #[derive(Debug, Clone)]

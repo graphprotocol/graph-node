@@ -15,6 +15,14 @@ export function value_from_int(int: i32): Value {
     return value
 }
 
+export function value_from_int8(int: i64): Value {
+    let value = new Value();
+    value.kind = ValueKind.INT8;
+    value.data = int as i64
+    return value
+}
+
+
 export function value_from_big_decimal(float: BigInt): Value {
     let value = new Value();
     value.kind = ValueKind.BIG_DECIMAL;

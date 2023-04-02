@@ -15,6 +15,7 @@ impl GasSizeOf for Value {
             Value::Null => Gas(1),
             Value::List(list) => list.gas_size_of(),
             Value::Int(int) => int.gas_size_of(),
+            Value::Int8(int) => int.gas_size_of(),
             Value::Bytes(bytes) => bytes.gas_size_of(),
             Value::Bool(bool) => bool.gas_size_of(),
             Value::BigInt(big_int) => big_int.gas_size_of(),

@@ -42,6 +42,10 @@ impl MaybeCoercible<ScalarType> for q::Value {
                     Err(q::Value::Int(num))
                 }
             }
+            ("Int8", q::Value::Int(num)) => {
+                let n = num.as_i64().ok_or_else(|| q::Value::Int(num.clone()))?;
+                Ok(r::Value::Int(n))
+            }
             ("String", q::Value::String(s)) => Ok(r::Value::String(s)),
             ("ID", q::Value::String(s)) => Ok(r::Value::String(s)),
             ("ID", q::Value::Int(n)) => Ok(r::Value::String(
@@ -385,6 +389,21 @@ mod tests {
         );
 
         // And also from Value::Int
+        assert_eq!(
+            coerce_to_definition(Value::Int(1234.into()), "", &resolver),
+            Ok(Value::String("1234".to_string()))
+        );
+        assert_eq!(
+            coerce_to_definition(Value::Int((-1234_i32).into()), "", &resolver,),
+            Ok(Value::String("-1234".to_string()))
+        );
+    }
+
+    #[test]
+    fn coerce_int8_scalar() {
+        let int8_type = TypeDefinition::Scalar(ScalarType::new("Int8".to_string()));
+        let resolver = |_: &str| Some(&int8_type);
+
         assert_eq!(
             coerce_to_definition(Value::Int(1234.into()), "", &resolver),
             Ok(Value::String("1234".to_string()))

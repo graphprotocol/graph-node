@@ -257,6 +257,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
                 Value::String(asc_get(heap, ptr, gas, depth)?)
             }
             StoreValueKind::Int => Value::Int(i32::from(payload)),
+            StoreValueKind::Int8 => Value::Int8(i64::from(payload)),
             StoreValueKind::BigDecimal => {
                 let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
                 Value::BigDecimal(asc_get(heap, ptr, gas, depth)?)
@@ -292,6 +293,7 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
         let payload = match self {
             Value::String(string) => asc_new(heap, string.as_str(), gas)?.into(),
             Value::Int(n) => EnumPayload::from(*n),
+            Value::Int8(n) => EnumPayload::from(*n),
             Value::BigDecimal(n) => asc_new(heap, n, gas)?.into(),
             Value::Bool(b) => EnumPayload::from(*b),
             Value::List(array) => asc_new(heap, array.as_slice(), gas)?.into(),

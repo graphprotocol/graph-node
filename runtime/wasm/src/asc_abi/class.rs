@@ -428,6 +428,12 @@ impl From<EnumPayload> for f64 {
     }
 }
 
+impl From<EnumPayload> for i64 {
+    fn from(payload: EnumPayload) -> i64 {
+        payload.0 as i64
+    }
+}
+
 impl From<EnumPayload> for bool {
     fn from(payload: EnumPayload) -> bool {
         payload.0 != 0
@@ -546,6 +552,7 @@ pub enum StoreValueKind {
     Null,
     Bytes,
     BigInt,
+    Int8,
 }
 
 impl StoreValueKind {
@@ -555,6 +562,7 @@ impl StoreValueKind {
         match value {
             Value::String(_) => StoreValueKind::String,
             Value::Int(_) => StoreValueKind::Int,
+            Value::Int8(_) => StoreValueKind::Int8,
             Value::BigDecimal(_) => StoreValueKind::BigDecimal,
             Value::Bool(_) => StoreValueKind::Bool,
             Value::List(_) => StoreValueKind::Array,

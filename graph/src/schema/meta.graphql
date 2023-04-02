@@ -1,6 +1,7 @@
 # GraphQL core functionality
 scalar Boolean
 scalar ID
+""" 4 bytes signed integer """
 scalar Int
 scalar Float
 scalar String
@@ -19,9 +20,12 @@ directive @subgraphId(id: String!) on OBJECT
 "creates a virtual field on the entity that may be queried but cannot be set manually through the mappings API."
 directive @derivedFrom(field: String!) on FIELD_DEFINITION
 
+# Additional scalar types
 scalar BigDecimal
 scalar Bytes
 scalar BigInt
+""" 8 bytes signed integer """
+scalar Int8
 
 # The type names are purposely awkward to minimize the risk of them
 # colliding with user-supplied types

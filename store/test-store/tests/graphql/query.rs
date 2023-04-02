@@ -172,6 +172,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         mainBand: Band
         bands: [Band!]!
         writtenSongs: [Song!]! @derivedFrom(field: \"writtenBy\")
+        favoriteCount: Int8!
     }
 
     type Band @entity {
@@ -341,8 +342,8 @@ async fn insert_test_entities(
         (
             "Musician",
             vec![
-                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
-                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
+                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"], favoriteCount: 10 },
+                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100 },
             ],
         ),
         ("Publisher", vec![entity! { is => id: "0xb1" }]),
@@ -437,8 +438,8 @@ async fn insert_test_entities(
     let entities1 = vec![(
         "Musician",
         vec![
-            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"] },
-            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new() },
+            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5 },
+            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20 },
         ],
     )];
     let entities1 = insert_ops(entities1);
@@ -642,6 +643,7 @@ fn can_query_one_to_one_relationship() {
             mainBand {
                 name
             }
+            favoriteCount
         }
         songStats(first: 100, orderBy: id) {
             id
@@ -658,10 +660,10 @@ fn can_query_one_to_one_relationship() {
         let s = id_type.songs();
         let exp = object! {
             musicians: vec![
-                object! { name: "John", mainBand: object! { name: "The Musicians" } },
-                object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
-                object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
-                object! { name: "Valerie", mainBand: r::Value::Null }
+                object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: "10" },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: "100" },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: "5" },
+                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20" }
             ],
             songStats: vec![
                 object! {
