@@ -1,8 +1,8 @@
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
+use crate::components::store::EntityType;
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
-use crate::data::store::{self, ValueType};
+use crate::data::store::ValueType;
 use crate::data::subgraph::DeploymentHash;
 use crate::prelude::{
     anyhow, lazy_static,
@@ -25,7 +25,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use super::graphql::ObjectOrInterface;
-use super::store::scalar;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
@@ -478,8 +477,6 @@ pub struct Schema {
 
     // Maps an interface name to the list of entities that implement it.
     pub types_for_interface: BTreeMap<EntityType, Vec<ObjectType>>,
-
-    immutable_types: HashSet<EntityType>,
 }
 
 impl Schema {
@@ -491,129 +488,17 @@ impl Schema {
     // `Schema` is always fully valid
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
-        let immutable_types = Self::collect_immutable_types(&document);
 
         let mut schema = Schema {
             id: id.clone(),
             document,
             interfaces_for_type,
             types_for_interface,
-            immutable_types,
         };
 
         schema.add_subgraph_id_directives(id);
 
         Ok(schema)
-    }
-
-    /// Construct a value for the entity type's id attribute
-    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
-        let base_type = self
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type
-                )
-            })?
-            .field("id")
-            .unwrap()
-            .field_type
-            .get_base_type();
-
-        match base_type {
-            "ID" | "String" => Ok(store::Value::String(key.entity_id.to_string())),
-            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
-                &key.entity_id,
-            )?)),
-            s => {
-                return Err(anyhow!(
-                    "Entity type {} uses illegal type {} for id column",
-                    key.entity_type,
-                    s
-                ))
-            }
-        }
-    }
-
-    /// Returns the field that has the relationship with the key requested
-    /// This works as a reverse search for the Field related to the query
-    ///
-    /// example:
-    ///
-    /// type Account @entity {
-    ///     wallets: [Wallet!]! @derivedFrom(field: "account")
-    /// }
-    /// type Wallet {
-    ///     account: Account!
-    ///     balance: Int!
-    /// }
-    ///
-    /// When asked to load the related entities from "Account" in the field "wallets"
-    /// This function will return the type "Wallet" with the field "account"
-    pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &Field), Error> {
-        let field = self
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type,
-                )
-            })?
-            .field(&key.entity_field)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown field `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_field,
-                )
-            })?;
-        if field.is_derived() {
-            let derived_from = field.find_directive("derivedFrom").unwrap();
-            let base_type = field.field_type.get_base_type();
-            let field_name = derived_from.argument("field").unwrap();
-
-            let field = self
-                .document
-                .get_object_type_definition(base_type)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown entity type `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_type,
-                    )
-                })?
-                .field(field_name.as_str().unwrap())
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown field `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_field,
-                    )
-                })?;
-
-            Ok((base_type, field))
-        } else {
-            Err(anyhow!(
-                "Entity {}[{}]: field `{}` is not derived",
-                key.entity_type,
-                key.entity_id,
-                key.entity_field,
-            ))
-        }
-    }
-
-    pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
-        self.immutable_types.contains(entity_type)
     }
 
     fn collect_interfaces(
@@ -667,16 +552,6 @@ impl Schema {
         }
 
         Ok((interfaces_for_type, types_for_interface))
-    }
-
-    fn collect_immutable_types(document: &s::Document) -> HashSet<EntityType> {
-        HashSet::from_iter(
-            document
-                .get_object_type_definitions()
-                .into_iter()
-                .filter(|obj_type| obj_type.is_immutable())
-                .map(Into::into),
-        )
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
@@ -1280,31 +1155,6 @@ impl Schema {
             .get_object_type_definitions()
             .into_iter()
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
-    }
-
-    pub fn entity_fulltext_definitions(
-        entity: &str,
-        document: &Document,
-    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
-        Ok(document
-            .get_fulltext_directives()?
-            .into_iter()
-            .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if !includes.is_empty() => {
-                    includes.iter().any(|include| match include {
-                        Value::Object(include) => match include.get("entity") {
-                            Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
-                                true
-                            }
-                            _ => false,
-                        },
-                        _ => false,
-                    })
-                }
-                _ => false,
-            })
-            .map(FulltextDefinition::from)
-            .collect())
     }
 }
 
