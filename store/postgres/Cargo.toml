@@ -41,5 +41,5 @@ futures = "0.3"
 clap = "3.2.23"
 graphql-parser = "0.4.0"
 test-store = { path = "../test-store" }
-hex-literal = "0.3"
+hex-literal = "0.4"
 graph-chain-ethereum = { path = "../../chain/ethereum" }
