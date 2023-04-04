@@ -135,24 +135,23 @@ impl<C: Blockchain> WasmInstance<C> {
 }
 
 fn is_trap_deterministic(trap: &Trap) -> bool {
-    use wasmtime::TrapCode::*;
+    use wasmtime::Trap::*;
 
     // We try to be exhaustive, even though `TrapCode` is non-exhaustive.
-    match trap.trap_code() {
-        Some(MemoryOutOfBounds)
-        | Some(HeapMisaligned)
-        | Some(TableOutOfBounds)
-        | Some(IndirectCallToNull)
-        | Some(BadSignature)
-        | Some(IntegerOverflow)
-        | Some(IntegerDivisionByZero)
-        | Some(BadConversionToInteger)
-        | Some(UnreachableCodeReached) => true,
-
+    match trap {
+        MemoryOutOfBounds
+        | HeapMisaligned
+        | TableOutOfBounds
+        | IndirectCallToNull
+        | BadSignature
+        | IntegerOverflow
+        | IntegerDivisionByZero
+        | BadConversionToInteger
+        | UnreachableCodeReached => true,
         // `Interrupt`: Can be a timeout, at least as wasmtime currently implements it.
         // `StackOverflow`: We may want to have a configurable stack size.
-        // `None`: A host trap, so we need to check the `deterministic_host_trap` flag in the context.
-        Some(Interrupt) | Some(StackOverflow) | None | _ => false,
+        // `None`: A host trap, so we need to check the `deterministic_host_trap` flag in the context. TODO FIXME
+        Interrupt | StackOverflow | _ => false,
     }
 }
 
