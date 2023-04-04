@@ -1,5 +1,4 @@
 use never::Never;
-use wasmtime::Trap;
 
 use graph::runtime::AscPtr;
 
@@ -63,16 +62,5 @@ impl<C> IntoWasmRet for AscPtr<C> {
     type Ret = u32;
     fn into_wasm_ret(self) -> u32 {
         self.wasm_ptr()
-    }
-}
-
-impl<T> IntoWasmRet for Result<T, Trap>
-where
-    T: IntoWasmRet,
-    T::Ret: wasmtime::WasmTy,
-{
-    type Ret = Result<T::Ret, Trap>;
-    fn into_wasm_ret(self) -> Self::Ret {
-        self.map(|x| x.into_wasm_ret())
     }
 }

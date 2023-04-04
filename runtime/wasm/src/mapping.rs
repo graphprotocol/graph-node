@@ -191,13 +191,11 @@ impl ValidModule {
         // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
         // turn off optional optimizations to be conservative.
         let mut config = wasmtime::Config::new();
-        config.strategy(wasmtime::Strategy::Cranelift).unwrap();
-        config.interruptable(true); // For timeouts.
+        config.strategy(wasmtime::Strategy::Cranelift);
+        config.epoch_interruption(true); // For timeouts.
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
-        config
-            .max_wasm_stack(ENV_VARS.mappings.max_stack_size)
-            .unwrap(); // Safe because this only panics if size passed is 0.
+        config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
 
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;
@@ -207,7 +205,7 @@ impl ValidModule {
         // Unwrap: Module linking is disabled.
         for (name, module) in module
             .imports()
-            .map(|import| (import.name().unwrap(), import.module()))
+            .map(|import| (import.name(), import.module()))
         {
             import_name_to_modules
                 .entry(name.to_string())

@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 
 use never::Never;
 use semver::Version;
-use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::blockchain::Blockchain;
@@ -24,8 +23,8 @@ use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
 
+use crate::error::{DeterminismLevel, GetDeterminismLevel};
 use crate::module::{WasmInstance, WasmInstanceContext};
-use crate::{error::DeterminismLevel, module::IntoTrap};
 
 fn write_poi_event(
     proof_of_indexing: &SharedProofOfIndexing,
@@ -39,19 +38,12 @@ fn write_poi_event(
     }
 }
 
-impl IntoTrap for HostExportError {
+impl GetDeterminismLevel for HostExportError {
     fn determinism_level(&self) -> DeterminismLevel {
         match self {
             HostExportError::Deterministic(_) => DeterminismLevel::Deterministic,
             HostExportError::Unknown(_) => DeterminismLevel::Unimplemented,
             HostExportError::PossibleReorg(_) => DeterminismLevel::PossibleReorg,
-        }
-    }
-    fn into_trap(self) -> Trap {
-        match self {
-            HostExportError::Unknown(e)
-            | HostExportError::PossibleReorg(e)
-            | HostExportError::Deterministic(e) => Trap::from(e),
         }
     }
 }
