@@ -221,7 +221,7 @@ impl<C: Blockchain> WasmInstance<C> {
         self.instance_ctx.lock().unwrap().take().unwrap()
     }
 
-    pub(crate) fn instance_ctx(&self) -> WasmInstanceCtxRef<C> {
+    pub fn instance_ctx(&self) -> WasmInstanceCtxRef<C> {
         WasmInstanceCtxRef {
             guard: self.instance_ctx.lock().unwrap(),
         }

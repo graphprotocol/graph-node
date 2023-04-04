@@ -135,12 +135,8 @@ pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInsta
 }
 
 pub trait WasmInstanceExt {
-    fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap>;
-    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
-        &self,
-        f: &str,
-        v: V,
-    ) -> Result<(), wasmtime::Trap>;
+    fn invoke_export0_void(&self, f: &str) -> wasmtime::Result<()>;
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(&self, f: &str, v: V) -> wasmtime::Result<()>;
     fn invoke_export0<R>(&self, f: &str) -> AscPtr<R>;
     fn invoke_export1<C, T, R>(&mut self, f: &str, arg: &T) -> AscPtr<R>
     where
@@ -157,7 +153,7 @@ pub trait WasmInstanceExt {
         f: &str,
         arg0: &T1,
         arg1: &T2,
-    ) -> Result<(), wasmtime::Trap>
+    ) -> wasmtime::Result<()>
     where
         C1: AscType + AscIndexId,
         C2: AscType + AscIndexId,
@@ -173,20 +169,20 @@ pub trait WasmInstanceExt {
 }
 
 impl WasmInstanceExt for WasmInstance<Chain> {
-    fn invoke_export0_void(&self, f: &str) -> Result<(), wasmtime::Trap> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        func.call(())
+    fn invoke_export0_void(&self, f: &str) -> wasmtime::Result<()> {
+        let func = self.get_func(f).typed(&self.store).unwrap().clone();
+        func.call(&mut self.store, ())
     }
 
     fn invoke_export0<R>(&self, f: &str) -> AscPtr<R> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        let ptr: u32 = func.call(()).unwrap();
+        let func = self.get_func(f).typed(&self.store).unwrap().clone();
+        let ptr: u32 = func.call(&mut self.store, ()).unwrap();
         ptr.into()
     }
 
     fn takes_ptr_returns_ptr<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        let ptr: u32 = func.call(arg.wasm_ptr()).unwrap();
+        let func = self.get_func(f).typed(&self.store).unwrap().clone();
+        let ptr: u32 = func.call(&mut self.store, arg.wasm_ptr()).unwrap();
         ptr.into()
     }
 
@@ -195,19 +191,15 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self.get_func(f).typed(&mut self.store).unwrap().clone();
         let ptr = self.asc_new(arg).unwrap();
-        let ptr: u32 = func.call(ptr.wasm_ptr()).unwrap();
+        let ptr: u32 = func.call(&mut self.store, ptr.wasm_ptr()).unwrap();
         ptr.into()
     }
 
-    fn invoke_export1_val_void<V: wasmtime::WasmTy>(
-        &self,
-        f: &str,
-        v: V,
-    ) -> Result<(), wasmtime::Trap> {
-        let func = self.get_func(f).typed().unwrap().clone();
-        func.call(v)?;
+    fn invoke_export1_val_void<V: wasmtime::WasmTy>(&self, f: &str, v: V) -> wasmtime::Result<()> {
+        let func = self.get_func(f).typed(&self.store).unwrap().clone();
+        func.call(&mut self.store, v)?;
         Ok(())
     }
 
@@ -218,10 +210,12 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self.get_func(f).typed(&self.store).unwrap().clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
-        let ptr: u32 = func.call((arg0.wasm_ptr(), arg1.wasm_ptr())).unwrap();
+        let ptr: u32 = func
+            .call(&mut self.store, (arg0.wasm_ptr(), arg1.wasm_ptr()))
+            .unwrap();
         ptr.into()
     }
 
@@ -230,22 +224,22 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         f: &str,
         arg0: &T1,
         arg1: &T2,
-    ) -> Result<(), wasmtime::Trap>
+    ) -> wasmtime::Result<()>
     where
         C1: AscType + AscIndexId,
         C2: AscType + AscIndexId,
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed().unwrap().clone();
+        let func = self.get_func(f).typed(self.store).unwrap().clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
-        func.call((arg0.wasm_ptr(), arg1.wasm_ptr()))
+        func.call(&mut self.store, (arg0.wasm_ptr(), arg1.wasm_ptr()))
     }
 
     fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V {
-        let func = self.get_func(func).typed().unwrap().clone();
-        func.call(()).unwrap()
+        let func = self.get_func(func).typed(self.store).unwrap().clone();
+        func.call(&mut self.store, ()).unwrap()
     }
 
     fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
@@ -253,14 +247,14 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(func).typed().unwrap().clone();
+        let func = self.get_func(func).typed(&self.store).unwrap().clone();
         let ptr = self.asc_new(v).unwrap();
-        func.call(ptr.wasm_ptr()).unwrap()
+        func.call(&mut self.store, ptr.wasm_ptr()).unwrap()
     }
 
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
-        let func = self.get_func(fn_name).typed().unwrap().clone();
-        let ptr: u32 = func.call(val).unwrap();
+        let func = self.get_func(fn_name).typed(&self.store).unwrap().clone();
+        let ptr: u32 = func.call(&mut self.store, val).unwrap();
         ptr.into()
     }
 }
@@ -462,8 +456,12 @@ async fn run_ipfs_map(
         let user_data = module.asc_new(USER_DATA).unwrap();
 
         // Invoke the callback
-        let func = module.get_func("ipfsMap").typed().unwrap().clone();
-        func.call((value.wasm_ptr(), user_data.wasm_ptr()))?;
+        let func = module
+            .get_func("ipfsMap")
+            .typed(&module.store)
+            .unwrap()
+            .clone();
+        func.call(&mut module.store, (value.wasm_ptr(), user_data.wasm_ptr()))?;
         let mut mods = module
             .take_ctx()
             .ctx
@@ -756,7 +754,7 @@ async fn big_int_arithmetic_v0_0_5() {
 }
 
 async fn test_abort(api_version: Version, error_msg: &str) {
-    let module = test_module(
+    let mut module = test_module(
         "abort",
         mock_data_source(
             &wasm_file_path("abort.wasm", api_version.clone()),
@@ -765,7 +763,11 @@ async fn test_abort(api_version: Version, error_msg: &str) {
         api_version,
     )
     .await;
-    let res: Result<(), _> = module.get_func("abort").typed().unwrap().call(());
+    let res: Result<(), _> = module
+        .get_func("abort")
+        .typed(&module.store)
+        .unwrap()
+        .call(&mut module.store, ());
     assert!(res.unwrap_err().to_string().contains(error_msg));
 }
 
@@ -849,7 +851,7 @@ async fn run_data_source_create(
     params: Vec<String>,
     api_version: Version,
     gas_used: u64,
-) -> Result<Vec<DataSourceTemplateInfo<Chain>>, wasmtime::Trap> {
+) -> wasmtime::Result<Vec<DataSourceTemplateInfo<Chain>>> {
     let mut module = test_module(
         "DataSourceCreate",
         mock_data_source(
@@ -860,9 +862,9 @@ async fn run_data_source_create(
     )
     .await;
 
-    module.instance_ctx_mut().ctx.state.enter_handler();
+    module.instance_ctx().ctx.state.enter_handler();
     module.invoke_export2_void("dataSourceCreate", &name, &params)?;
-    module.instance_ctx_mut().ctx.state.exit_handler();
+    module.instance_ctx().ctx.state.exit_handler();
 
     assert_eq!(module.gas_used(), gas_used);
 
@@ -968,7 +970,7 @@ async fn test_entity_store(api_version: Version) {
     // We need to empty the cache for the next test
     let writable = store.writable(LOGGER.clone(), deployment.id).await.unwrap();
     let cache = std::mem::replace(
-        &mut module.instance_ctx_mut().ctx.state.entity_cache,
+        &mut module.instance_ctx().ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
     let mut mods = cache.as_modifications().unwrap().modifications;
