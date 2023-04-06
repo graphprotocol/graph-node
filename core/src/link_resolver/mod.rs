@@ -1,127 +1,36 @@
-use std::sync::{Arc, Mutex};
+mod cache;
+
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
+use cache::LinkResolverCache;
 use futures01::{stream::poll_fn, try_ready};
 use futures03::stream::FuturesUnordered;
 use graph::env::EnvVars;
 use graph::util::futures::RetryConfigNoTimeout;
-use lru_time_cache::LruCache;
-use serde_json::Value;
-
 use graph::{
     ipfs_client::{IpfsClient, StatApi},
     prelude::{LinkResolver as LinkResolverTrait, *},
 };
-
-fn retry_policy<I: Send + Sync>(
-    always_retry: bool,
-    op: &'static str,
-    logger: &Logger,
-) -> RetryConfigNoTimeout<I, graph::prelude::reqwest::Error> {
-    // Even if retries were not requested, networking errors are still retried until we either get
-    // a valid HTTP response or a timeout.
-    if always_retry {
-        retry(op, logger).no_limit()
-    } else {
-        retry(op, logger)
-            .no_limit()
-            .when(|res: &Result<_, reqwest::Error>| match res {
-                Ok(_) => false,
-                Err(e) => !(e.is_status() || e.is_timeout()),
-            })
-    }
-    .no_timeout() // The timeout should be set in the internal future.
-}
-
-/// The IPFS APIs don't have a quick "do you have the file" function. Instead, we
-/// just rely on whether an API times out. That makes sense for IPFS, but not for
-/// our application. We want to be able to quickly select from a potential list
-/// of clients where hopefully one already has the file, and just get the file
-/// from that.
-///
-/// The strategy here then is to use a stat API as a proxy for "do you have the
-/// file". Whichever client has or gets the file first wins. This API is a good
-/// choice, because it doesn't involve us actually starting to download the file
-/// from each client, which would be wasteful of bandwidth and memory in the
-/// case multiple clients respond in a timely manner. In addition, we may make
-/// good use of the stat returned.
-async fn select_fastest_client_with_stat(
-    clients: Arc<Vec<Arc<IpfsClient>>>,
-    logger: Logger,
-    api: StatApi,
-    path: String,
-    timeout: Duration,
-    do_retry: bool,
-) -> Result<(u64, Arc<IpfsClient>), Error> {
-    let mut err: Option<Error> = None;
-
-    let mut stats: FuturesUnordered<_> = clients
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            let c = c.cheap_clone();
-            let path = path.clone();
-            retry_policy(do_retry, "IPFS stat", &logger).run(move || {
-                let path = path.clone();
-                let c = c.cheap_clone();
-                async move {
-                    c.stat_size(api, path, timeout)
-                        .map_ok(move |s| (s, i))
-                        .await
-                }
-            })
-        })
-        .collect();
-
-    while let Some(result) = stats.next().await {
-        match result {
-            Ok((stat, index)) => {
-                return Ok((stat, clients[index].cheap_clone()));
-            }
-            Err(e) => err = Some(e.into()),
-        }
-    }
-
-    Err(err.unwrap_or_else(|| {
-        anyhow!(
-            "No IPFS clients were supplied to handle the call to object.stat. File: {}",
-            path
-        )
-    }))
-}
-
-// Returns an error if the stat is bigger than `max_file_bytes`
-fn restrict_file_size(path: &str, size: u64, max_file_bytes: usize) -> Result<(), Error> {
-    if size > max_file_bytes as u64 {
-        return Err(anyhow!(
-            "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
-            path,
-            max_file_bytes,
-            size
-        ));
-    }
-    Ok(())
-}
+use serde_json::Value;
 
 #[derive(Clone)]
 pub struct LinkResolver {
-    clients: Arc<Vec<Arc<IpfsClient>>>,
-    cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
+    clients: Vec<IpfsClient>,
+    cache: LinkResolverCache,
+    env_vars: Arc<EnvVars>,
     timeout: Duration,
     retry: bool,
-    env_vars: Arc<EnvVars>,
 }
 
 impl LinkResolver {
     pub fn new(clients: Vec<IpfsClient>, env_vars: Arc<EnvVars>) -> Self {
         Self {
-            clients: Arc::new(clients.into_iter().map(Arc::new).collect()),
-            cache: Arc::new(Mutex::new(LruCache::with_capacity(
-                env_vars.mappings.max_ipfs_cache_size as usize,
-            ))),
+            clients,
+            cache: LinkResolverCache::new(env_vars.mappings.max_ipfs_cache_size as usize),
             timeout: env_vars.mappings.ipfs_timeout,
             retry: false,
             env_vars,
@@ -139,11 +48,7 @@ impl Debug for LinkResolver {
     }
 }
 
-impl CheapClone for LinkResolver {
-    fn cheap_clone(&self) -> Self {
-        self.clone()
-    }
-}
+impl CheapClone for LinkResolver {}
 
 #[async_trait]
 impl LinkResolverTrait for LinkResolver {
@@ -164,14 +69,14 @@ impl LinkResolverTrait for LinkResolver {
         // Discard the `/ipfs/` prefix (if present) to get the hash.
         let path = link.link.trim_start_matches("/ipfs/").to_owned();
 
-        if let Some(data) = self.cache.lock().unwrap().get(&path) {
+        if let Some(data) = self.cache.get(&path) {
             trace!(logger, "IPFS cache hit"; "hash" => &path);
             return Ok(data.clone());
         }
         trace!(logger, "IPFS cache miss"; "hash" => &path);
 
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &*self.clients,
             logger.cheap_clone(),
             StatApi::Files,
             path.clone(),
@@ -199,9 +104,8 @@ impl LinkResolverTrait for LinkResolver {
 
         // Only cache files if they are not too large
         if data.len() <= max_cache_file_size {
-            let mut cache = self.cache.lock().unwrap();
-            if !cache.contains_key(&path) {
-                cache.insert(path.clone(), data.clone());
+            if !self.cache.contains(&path) {
+                self.cache.insert(path.clone(), data.clone());
             }
         } else {
             debug!(logger, "File too large for cache";
@@ -216,7 +120,7 @@ impl LinkResolverTrait for LinkResolver {
     async fn get_block(&self, logger: &Logger, link: &Link) -> Result<Vec<u8>, Error> {
         trace!(logger, "IPFS block get"; "hash" => &link.link);
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &*self.clients,
             logger.cheap_clone(),
             StatApi::Block,
             link.link.clone(),
@@ -248,7 +152,7 @@ impl LinkResolverTrait for LinkResolver {
         let path = link.link.trim_start_matches("/ipfs/");
 
         let (size, client) = select_fastest_client_with_stat(
-            self.clients.cheap_clone(),
+            &*self.clients,
             logger.cheap_clone(),
             StatApi::Files,
             path.to_string(),
@@ -321,6 +225,96 @@ impl LinkResolverTrait for LinkResolver {
 
         Ok(stream)
     }
+}
+
+fn retry_policy<I: Send + Sync>(
+    always_retry: bool,
+    op: &'static str,
+    logger: &Logger,
+) -> RetryConfigNoTimeout<I, graph::prelude::reqwest::Error> {
+    // Even if retries were not requested, networking errors are still retried until we either get
+    // a valid HTTP response or a timeout.
+    if always_retry {
+        retry(op, logger).no_limit()
+    } else {
+        retry(op, logger)
+            .no_limit()
+            .when(|res: &Result<_, reqwest::Error>| match res {
+                Ok(_) => false,
+                Err(e) => !(e.is_status() || e.is_timeout()),
+            })
+    }
+    .no_timeout() // The timeout should be set in the internal future.
+}
+
+/// The IPFS APIs don't have a quick "do you have the file" function. Instead, we
+/// just rely on whether an API times out. That makes sense for IPFS, but not for
+/// our application. We want to be able to quickly select from a potential list
+/// of clients where hopefully one already has the file, and just get the file
+/// from that.
+///
+/// The strategy here then is to use a stat API as a proxy for "do you have the
+/// file". Whichever client has or gets the file first wins. This API is a good
+/// choice, because it doesn't involve us actually starting to download the file
+/// from each client, which would be wasteful of bandwidth and memory in the
+/// case multiple clients respond in a timely manner. In addition, we may make
+/// good use of the stat returned.
+async fn select_fastest_client_with_stat(
+    clients: &[IpfsClient],
+    logger: Logger,
+    api: StatApi,
+    path: String,
+    timeout: Duration,
+    do_retry: bool,
+) -> Result<(u64, IpfsClient), Error> {
+    let mut err: Option<Error> = None;
+
+    let mut stats: FuturesUnordered<_> = clients
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let c = c.cheap_clone();
+            let path = path.clone();
+            retry_policy(do_retry, "IPFS stat", &logger).run(move || {
+                let c = c.cheap_clone();
+                let path = path.clone();
+                async move {
+                    c.stat_size(api, path, timeout)
+                        .map_ok(move |s| (s, i))
+                        .await
+                }
+            })
+        })
+        .collect();
+
+    while let Some(result) = stats.next().await {
+        match result {
+            Ok((stat, index)) => {
+                return Ok((stat, clients[index].cheap_clone()));
+            }
+            Err(e) => err = Some(e.into()),
+        }
+    }
+
+    Err(err.unwrap_or_else(|| {
+        anyhow!(
+            "No IPFS clients were supplied to handle the call to object.stat. File: {}",
+            path
+        )
+    }))
+}
+
+// Returns an error if the stat is bigger than `max_file_bytes`
+fn restrict_file_size(path: &str, size: u64, max_file_bytes: usize) -> Result<(), Error> {
+    if size > max_file_bytes as u64 {
+        return Err(anyhow!(
+            "IPFS file {} is too large. It can be at most {} bytes but is {} bytes",
+            path,
+            max_file_bytes,
+            size
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]

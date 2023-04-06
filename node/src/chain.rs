@@ -36,13 +36,13 @@ pub enum ProviderNetworkStatus {
 /// continue regardless.
 const NET_VERSION_WAIT_TIME: Duration = Duration::from_secs(30);
 
-pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &Vec<String>) -> Vec<IpfsClient> {
+pub fn create_ipfs_clients(logger: &Logger, ipfs_addresses: &[String]) -> Vec<IpfsClient> {
     // Parse the IPFS URL from the `--ipfs` command line argument
     let ipfs_addresses: Vec<_> = ipfs_addresses
         .iter()
         .map(|uri| {
             if uri.starts_with("http://") || uri.starts_with("https://") {
-                String::from(uri)
+                uri.to_string()
             } else {
                 format!("http://{}", uri)
             }

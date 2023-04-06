@@ -28,10 +28,10 @@ pub struct EnvVarsMapping {
     pub max_stack_size: usize,
 
     /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_FILE_SIZE`
-    /// (expressed in bytes). The default value is 1MiB.
+    /// (expressed in bytes). The default value is 2MiB.
     pub max_ipfs_cache_file_size: usize,
     /// Set by the environment variable `GRAPH_MAX_IPFS_CACHE_SIZE`. The default
-    /// value is 50 items.
+    /// value is 150 items.
     pub max_ipfs_cache_size: u64,
     /// The timeout for all IPFS requests.
     ///
@@ -102,8 +102,8 @@ pub struct InnerMappingHandlers {
 
     // IPFS.
     #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_FILE_SIZE", default = "")]
-    max_ipfs_cache_file_size: WithDefaultUsize<usize, { 1024 * 1024 }>,
-    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "50")]
+    max_ipfs_cache_file_size: WithDefaultUsize<usize, { 2 * 1024 * 1024 }>,
+    #[envconfig(from = "GRAPH_MAX_IPFS_CACHE_SIZE", default = "150")]
     max_ipfs_cache_size: u64,
     #[envconfig(from = "GRAPH_IPFS_TIMEOUT", default = "60")]
     ipfs_timeout_in_secs: u64,
