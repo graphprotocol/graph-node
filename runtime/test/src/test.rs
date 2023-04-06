@@ -11,6 +11,7 @@ use graph_runtime_wasm::{ExperimentalFeatures, ValidModule, WasmInstance};
 
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
 use web3::types::H160;
@@ -170,19 +171,31 @@ pub trait WasmInstanceExt {
 
 impl WasmInstanceExt for WasmInstance<Chain> {
     fn invoke_export0_void(&self, f: &str) -> wasmtime::Result<()> {
-        let func = self.get_func(f).typed(&self.store).unwrap().clone();
-        func.call(&mut self.store, ())
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        func.call(self.store().deref_mut(), ())
     }
 
     fn invoke_export0<R>(&self, f: &str) -> AscPtr<R> {
-        let func = self.get_func(f).typed(&self.store).unwrap().clone();
-        let ptr: u32 = func.call(&mut self.store, ()).unwrap();
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func.call(self.store().deref_mut(), ()).unwrap();
         ptr.into()
     }
 
     fn takes_ptr_returns_ptr<C, R>(&self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
-        let func = self.get_func(f).typed(&self.store).unwrap().clone();
-        let ptr: u32 = func.call(&mut self.store, arg.wasm_ptr()).unwrap();
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func.call(self.store().deref_mut(), arg.wasm_ptr()).unwrap();
         ptr.into()
     }
 
@@ -191,15 +204,23 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(f).typed(&mut self.store).unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref_mut())
+            .unwrap()
+            .clone();
         let ptr = self.asc_new(arg).unwrap();
-        let ptr: u32 = func.call(&mut self.store, ptr.wasm_ptr()).unwrap();
+        let ptr: u32 = func.call(self.store().deref_mut(), ptr.wasm_ptr()).unwrap();
         ptr.into()
     }
 
     fn invoke_export1_val_void<V: wasmtime::WasmTy>(&self, f: &str, v: V) -> wasmtime::Result<()> {
-        let func = self.get_func(f).typed(&self.store).unwrap().clone();
-        func.call(&mut self.store, v)?;
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        func.call(self.store().deref_mut(), v)?;
         Ok(())
     }
 
@@ -210,11 +231,15 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed(&self.store).unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
         let ptr: u32 = func
-            .call(&mut self.store, (arg0.wasm_ptr(), arg1.wasm_ptr()))
+            .call(self.store().deref_mut(), (arg0.wasm_ptr(), arg1.wasm_ptr()))
             .unwrap();
         ptr.into()
     }
@@ -231,15 +256,23 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         T1: ToAscObj<C1> + ?Sized,
         T2: ToAscObj<C2> + ?Sized,
     {
-        let func = self.get_func(f).typed(self.store).unwrap().clone();
+        let func = self
+            .get_func(f)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
         let arg0 = self.asc_new(arg0).unwrap();
         let arg1 = self.asc_new(arg1).unwrap();
-        func.call(&mut self.store, (arg0.wasm_ptr(), arg1.wasm_ptr()))
+        func.call(self.store().deref_mut(), (arg0.wasm_ptr(), arg1.wasm_ptr()))
     }
 
     fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V {
-        let func = self.get_func(func).typed(self.store).unwrap().clone();
-        func.call(&mut self.store, ()).unwrap()
+        let func = self
+            .get_func(func)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        func.call(self.store().deref_mut(), ()).unwrap()
     }
 
     fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
@@ -247,14 +280,22 @@ impl WasmInstanceExt for WasmInstance<Chain> {
         C: AscType + AscIndexId,
         T: ToAscObj<C> + ?Sized,
     {
-        let func = self.get_func(func).typed(&self.store).unwrap().clone();
+        let func = self
+            .get_func(func)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
         let ptr = self.asc_new(v).unwrap();
-        func.call(&mut self.store, ptr.wasm_ptr()).unwrap()
+        func.call(self.store().deref_mut(), ptr.wasm_ptr()).unwrap()
     }
 
     fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl wasmtime::WasmTy) -> AscPtr<P> {
-        let func = self.get_func(fn_name).typed(&self.store).unwrap().clone();
-        let ptr: u32 = func.call(&mut self.store, val).unwrap();
+        let func = self
+            .get_func(fn_name)
+            .typed(self.store().deref())
+            .unwrap()
+            .clone();
+        let ptr: u32 = func.call(self.store().deref_mut(), val).unwrap();
         ptr.into()
     }
 }
@@ -458,10 +499,13 @@ async fn run_ipfs_map(
         // Invoke the callback
         let func = module
             .get_func("ipfsMap")
-            .typed(&module.store)
+            .typed(module.store().deref())
             .unwrap()
             .clone();
-        func.call(&mut module.store, (value.wasm_ptr(), user_data.wasm_ptr()))?;
+        func.call(
+            module.store().deref_mut(),
+            (value.wasm_ptr(), user_data.wasm_ptr()),
+        )?;
         let mut mods = module
             .take_ctx()
             .ctx

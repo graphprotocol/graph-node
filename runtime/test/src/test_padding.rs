@@ -1,3 +1,5 @@
+use std::ops::DerefMut;
+
 use crate::protobuf;
 use graph::prelude::tokio;
 
@@ -271,11 +273,11 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
 
     let func = module
         .get_func("test_padding_manual")
-        .typed()
+        .typed(module.store().deref_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(
         res.is_err(),
@@ -304,11 +306,11 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
 
     let func = module
         .get_func("test_padding_manual")
-        .typed()
+        .typed(module.store().deref_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
@@ -336,11 +338,11 @@ async fn bool_padding_ok(api_version: semver::Version) {
 
     let func = module
         .get_func("test_padding_bool")
-        .typed()
+        .typed(module.store().deref_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
@@ -366,9 +368,13 @@ async fn i8_padding_ok(api_version: semver::Version) {
 
     let new_obj = module.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i8").typed().unwrap().clone();
+    let func = module
+        .get_func("test_padding_i8")
+        .typed(module.store().deref_mut())
+        .unwrap()
+        .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
@@ -394,9 +400,13 @@ async fn u16_padding_ok(api_version: semver::Version) {
 
     let new_obj = module.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i16").typed().unwrap().clone();
+    let func = module
+        .get_func("test_padding_i16")
+        .typed(module.store().deref_mut())
+        .unwrap()
+        .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
@@ -422,9 +432,12 @@ async fn u32_padding_ok(api_version: semver::Version) {
 
     let new_obj = module.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i32").typed().unwrap().clone();
+    let func = module
+        .get_func("test_padding_i32")
+        .typed(module.store().deref_mut())
+        .unwrap();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(module.store().deref_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
