@@ -93,6 +93,10 @@ impl Entry {
 pub struct Object(Box<[Entry]>);
 
 impl Object {
+    pub fn empty() -> Object {
+        Object(Box::new([]))
+    }
+
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.0
             .iter()
@@ -118,9 +122,26 @@ impl Object {
         self.0.len()
     }
 
-    pub fn extend(&mut self, other: Object) {
+    /// Add the entries from an object to `self`. Note that if `self` and
+    /// `object` have entries with identical keys, the entry in `self` wins.
+    pub fn append(&mut self, other: Object) {
         let mut entries = std::mem::replace(&mut self.0, Box::new([])).into_vec();
         entries.extend(other.0.into_vec());
+        self.0 = entries.into_boxed_slice();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Extend<(Word, Value)> for Object {
+    /// Add the entries from the iterator to an object. Note that if the
+    /// iterator produces a key that is already set in the object, it will
+    /// not be overwritten, and the previous value wins.
+    fn extend<T: IntoIterator<Item = (Word, Value)>>(&mut self, iter: T) {
+        let mut entries = std::mem::replace(&mut self.0, Box::new([])).into_vec();
+        entries.extend(iter.into_iter().map(|(key, value)| Entry::new(key, value)));
         self.0 = entries.into_boxed_slice();
     }
 }

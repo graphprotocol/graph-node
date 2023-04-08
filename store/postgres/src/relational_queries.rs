@@ -13,7 +13,7 @@ use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
 use graph::components::store::{DerivedEntityQuery, EntityKey};
-use graph::data::value::Word;
+use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
     anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
@@ -260,17 +260,17 @@ impl FromEntityData for Entity {
     }
 }
 
-impl FromEntityData for BTreeMap<Word, r::Value> {
+// TODO: This implementation is not very efficient; we will address that by
+// making deserialize_with_layout return an iterator
+impl FromEntityData for Object {
     type Value = r::Value;
 
     fn new_entity(typename: String) -> Self {
-        let mut map = BTreeMap::new();
-        map.insert("__typename".into(), Self::Value::from_string(typename));
-        map
+        Object::from_iter([("__typename".into(), Self::Value::from_string(typename))])
     }
 
     fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.insert(Word::from(key), v);
+        self.extend([(Word::from(key), v)])
     }
 }
 

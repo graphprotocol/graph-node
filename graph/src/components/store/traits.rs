@@ -7,7 +7,7 @@ use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
 use crate::data::subgraph::status;
-use crate::data::value::Word;
+use crate::data::value::Object;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::schema::{ApiSchema, InputSchema};
 
@@ -487,7 +487,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), QueryExecutionError>;
+    ) -> Result<(Vec<Object>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

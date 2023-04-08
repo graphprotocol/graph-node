@@ -285,7 +285,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
     if !intro_set.is_empty() {
         let ictx = ctx.as_introspection_context();
 
-        values.extend(
+        values.append(
             execute_selection_set_to_map(
                 &ictx,
                 ctx.query.selection_set.as_ref(),

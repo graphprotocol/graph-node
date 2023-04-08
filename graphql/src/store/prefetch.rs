@@ -40,7 +40,7 @@ struct Node {
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
 
-    entity: BTreeMap<Word, r::Value>,
+    entity: Object,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -84,8 +84,8 @@ struct Node {
     children: BTreeMap<Word, Vec<Rc<Node>>>,
 }
 
-impl From<BTreeMap<Word, r::Value>> for Node {
-    fn from(entity: BTreeMap<Word, r::Value>) -> Self {
+impl From<Object> for Node {
+    fn from(entity: Object) -> Self {
         Node {
             children_weight: entity.weight(),
             entity,
@@ -130,7 +130,7 @@ fn is_root_node<'a>(mut nodes: impl Iterator<Item = &'a Node>) -> bool {
 }
 
 fn make_root_node() -> Vec<Node> {
-    let entity = BTreeMap::new();
+    let entity = Object::empty();
     vec![Node {
         children_weight: entity.weight(),
         entity,
@@ -145,13 +145,14 @@ fn make_root_node() -> Vec<Node> {
 impl From<Node> for r::Value {
     fn from(node: Node) -> Self {
         let mut map = node.entity;
-        for (key, nodes) in node.children.into_iter() {
-            map.insert(
+        let entries = node.children.into_iter().map(|(key, nodes)| {
+            (
                 format!("prefetch:{}", key).into(),
                 node_list_as_value(nodes),
-            );
-        }
-        r::Value::object(map)
+            )
+        });
+        map.extend(entries);
+        r::Value::Object(map)
     }
 }
 
@@ -178,7 +179,7 @@ impl Node {
     }
 
     fn get(&self, key: &str) -> Option<&r::Value> {
-        self.entity.get(&key.into())
+        self.entity.get(key)
     }
 
     fn typename(&self) -> &str {
@@ -699,12 +700,7 @@ fn fetch(
     resolver
         .store
         .find_query_values(query)
-        .map(|(values, trace)| {
-            (
-                values.into_iter().map(|entity| entity.into()).collect(),
-                trace,
-            )
-        })
+        .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
 }
 
 #[derive(Debug, Default, Clone)]
