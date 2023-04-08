@@ -6,11 +6,13 @@ use anyhow::{anyhow, Error};
 use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
-use crate::data::schema::{FulltextDefinition, Schema, SchemaValidationError};
+use crate::data::schema::{Schema, SchemaValidationError};
 use crate::data::store::{self, scalar};
 use crate::prelude::q::Value;
 use crate::prelude::{s, ApiSchema, DeploymentHash};
 use crate::schema::api_schema;
+
+use super::fulltext::FulltextDefinition;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {

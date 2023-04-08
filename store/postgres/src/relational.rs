@@ -30,7 +30,7 @@ use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
-use graph::schema::InputSchema;
+use graph::schema::{FulltextConfig, FulltextDefinition, InputSchema};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -52,7 +52,7 @@ use crate::{
 };
 use graph::components::store::{DerivedEntityQuery, EntityKey, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
-use graph::data::schema::{FulltextConfig, FulltextDefinition, SCHEMA_TYPE_NAME};
+use graph::data::schema::SCHEMA_TYPE_NAME;
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{

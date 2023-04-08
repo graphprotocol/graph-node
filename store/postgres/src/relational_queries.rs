@@ -20,9 +20,10 @@ use graph::prelude::{
     EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
     EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
+use graph::schema::FulltextAlgorithm;
 use graph::{
     components::store::{AttributeNames, EntityType},
-    data::{schema::FulltextAlgorithm, store::scalar},
+    data::store::scalar,
 };
 use itertools::Itertools;
 use std::borrow::Cow;
