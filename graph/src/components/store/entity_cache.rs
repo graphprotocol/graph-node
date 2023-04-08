@@ -290,12 +290,11 @@ impl EntityCache {
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
-                (None, EntityOp::Update(updates)) | (None, EntityOp::Overwrite(updates)) => {
-                    // Merging with an empty entity removes null fields.
-                    let mut data = Entity::new();
-                    data.merge_remove_null_fields(updates);
-                    self.current.insert(key.clone(), Some(data.clone()));
-                    Some(Insert { key, data })
+                (None, EntityOp::Update(mut updates))
+                | (None, EntityOp::Overwrite(mut updates)) => {
+                    updates.remove_null_fields();
+                    self.current.insert(key.clone(), Some(updates.clone()));
+                    Some(Insert { key, data: updates })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
