@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use graph::{
     components::store::EntityType,
     data::graphql::ObjectOrInterface,
-    prelude::{anyhow, q, r, s, ApiSchema, QueryExecutionError, ValueMap},
-    schema::ast::ObjectType,
+    prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
+    schema::{ast::ObjectType, ApiSchema},
 };
 use graphql_parser::Pos;
 

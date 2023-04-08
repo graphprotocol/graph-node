@@ -25,12 +25,12 @@ use graph::{
     data::subgraph::{schema::DeploymentCreate, status},
     prelude::StoreEvent,
     prelude::{
-        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
+        BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
         MetricsRegistry, NodeId, PartialBlockPtr, StoreError, SubgraphDeploymentEntity,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
-    schema::InputSchema,
+    schema::{ApiSchema, InputSchema},
     url::Url,
     util::timed_cache::TimedCache,
 };

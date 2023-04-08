@@ -7,6 +7,7 @@ use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::*;
 use graph::schema::ast::{self as sast, FilterOp};
+use graph::schema::ApiSchema;
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
@@ -749,13 +750,14 @@ mod tests {
         components::store::EntityType,
         data::value::Object,
         prelude::{
-            r, ApiSchema, AttributeNames, DeploymentHash, EntityCollection, EntityFilter,
-            EntityRange, Schema, Value, ValueType, BLOCK_NUMBER_MAX,
+            r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Schema,
+            Value, ValueType, BLOCK_NUMBER_MAX,
         },
         prelude::{
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
             EntityOrder,
         },
+        schema::ApiSchema,
     };
     use graphql_parser::Pos;
     use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};

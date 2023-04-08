@@ -9,10 +9,11 @@ use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, Va
 use crate::data::schema::{Schema, SchemaValidationError};
 use crate::data::store::{self, scalar};
 use crate::prelude::q::Value;
-use crate::prelude::{s, ApiSchema, DeploymentHash};
+use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
 
 use super::fulltext::FulltextDefinition;
+use super::ApiSchema;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {

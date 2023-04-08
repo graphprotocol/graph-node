@@ -1,5 +1,6 @@
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::Object;
+use graph::schema::ApiSchema;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
@@ -14,13 +15,12 @@ use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
-use graph::data::schema::ApiSchema;
 use graph::prelude::{
     info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
     TryFromValue, ENV_VARS,
 };
-use graph::schema::api::ErrorPolicy;
 use graph::schema::ast::{self as sast};
+use graph::schema::ErrorPolicy;
 
 use crate::execution::ast as a;
 use crate::execution::get_field;

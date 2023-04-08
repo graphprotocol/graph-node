@@ -9,7 +9,7 @@ use crate::data::query::Trace;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
-use crate::schema::InputSchema;
+use crate::schema::{ApiSchema, InputSchema};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.

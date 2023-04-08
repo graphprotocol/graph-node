@@ -5,6 +5,7 @@ use graph::components::store::QueryStore as QueryStoreTrait;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::prelude::*;
+use graph::schema::ApiSchema;
 
 use crate::primary::Site;
 

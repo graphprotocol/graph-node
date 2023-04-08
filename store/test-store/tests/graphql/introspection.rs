@@ -3,10 +3,10 @@ use std::sync::Arc;
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
-    async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
-    QueryExecutionError, QueryResult, Schema,
+    async_trait, o, r, s, slog, tokio, DeploymentHash, Logger, Query, QueryExecutionError,
+    QueryResult, Schema,
 };
-use graph::schema::api_schema;
+use graph::schema::{api_schema, ApiSchema};
 
 use graph_graphql::prelude::{
     a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,

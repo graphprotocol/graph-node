@@ -38,12 +38,11 @@ use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersio
 use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
-    anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
-    CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value,
-    ENV_VARS,
+    anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
+    DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error, Logger,
+    QueryExecutionError, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value, ENV_VARS,
 };
-use graph::schema::InputSchema;
+use graph::schema::{ApiSchema, InputSchema};
 use web3::types::Address;
 
 use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};

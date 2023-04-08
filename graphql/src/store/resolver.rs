@@ -9,8 +9,8 @@ use graph::data::{
     schema::META_FIELD_TYPE,
 };
 use graph::prelude::*;
-use graph::schema::api::ErrorPolicy;
-use graph::schema::ast as sast;
+use graph::schema::ErrorPolicy;
+use graph::schema::{ast as sast, ApiSchema};
 use graph::{components::store::*, data::schema::BLOCK_FIELD_TYPE};
 
 use crate::execution::ast as a;

@@ -2,7 +2,8 @@ use std::result::Result;
 use std::time::{Duration, Instant};
 
 use graph::components::store::UnitStream;
-use graph::{components::store::SubscriptionManager, prelude::*, schema::api::ErrorPolicy};
+use graph::schema::ApiSchema;
+use graph::{components::store::SubscriptionManager, prelude::*, schema::ErrorPolicy};
 
 use crate::metrics::GraphQLMetrics;
 use crate::{

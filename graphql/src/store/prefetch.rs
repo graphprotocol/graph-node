@@ -12,13 +12,13 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::schema::ast as sast;
+use graph::schema::{ast as sast, ApiSchema};
 use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
-        s, ApiSchema, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter,
-        EntityLink, EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
+        s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
+        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
         Value as StoreValue, WindowAttribute, ENV_VARS,
     },
 };
