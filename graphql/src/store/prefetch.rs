@@ -481,9 +481,12 @@ pub fn run(
     execute_root_selection_set(resolver, ctx, selection_set).map(|(nodes, trace)| {
         graphql_metrics.observe_query_result_size(nodes.weight());
         let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
-            node.children
-                .into_iter()
-                .map(|(key, nodes)| (format!("prefetch:{}", key), node_list_as_value(nodes)))
+            node.children.into_iter().map(|(key, nodes)| {
+                (
+                    Word::from(format!("prefetch:{}", key)),
+                    node_list_as_value(nodes),
+                )
+            })
         }));
         (r::Value::Object(obj), trace)
     })

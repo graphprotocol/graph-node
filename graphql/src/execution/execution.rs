@@ -2,7 +2,10 @@ use super::cache::{QueryBlockCache, QueryCache};
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::{query::Trace, value::Object},
+    data::{
+        query::Trace,
+        value::{Object, Word},
+    },
     prelude::{s, CheapClone},
     schema::META_FIELD_NAME,
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
@@ -539,7 +542,7 @@ async fn execute_selection_set_to_map<'a>(
     }
 
     if errors.is_empty() {
-        let obj = Object::from_iter(results.into_iter().map(|(k, v)| (k.to_owned(), v)));
+        let obj = Object::from_iter(results.into_iter().map(|(k, v)| (Word::from(k), v)));
         Ok(obj)
     } else {
         Err(errors)

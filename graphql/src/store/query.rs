@@ -1152,7 +1152,7 @@ mod tests {
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
-                "name_ends_with".to_string(),
+                "name_ends_with".into(),
                 r::Value::String("ello".to_string()),
             )])),
         );
@@ -1185,9 +1185,9 @@ mod tests {
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
-                "_change_block".to_string(),
+                "_change_block".into(),
                 r::Value::Object(Object::from_iter(vec![(
-                    "number_gte".to_string(),
+                    "number_gte".into(),
                     r::Value::Int(10),
                 )])),
             )])),

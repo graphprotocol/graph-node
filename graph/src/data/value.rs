@@ -146,11 +146,11 @@ impl Extend<(Word, Value)> for Object {
     }
 }
 
-impl FromIterator<(String, Value)> for Object {
-    fn from_iter<T: IntoIterator<Item = (String, Value)>>(iter: T) -> Self {
+impl FromIterator<(Word, Value)> for Object {
+    fn from_iter<T: IntoIterator<Item = (Word, Value)>>(iter: T) -> Self {
         let mut items: Vec<_> = Vec::new();
         for (key, value) in iter {
-            items.push(Entry::new(key.into(), value))
+            items.push(Entry::new(key, value))
         }
         Object(items.into_boxed_slice())
     }
@@ -428,8 +428,10 @@ impl From<serde_json::Value> for Value {
                 Value::List(vals)
             }
             serde_json::Value::Object(map) => {
-                let obj =
-                    Object::from_iter(map.into_iter().map(|(key, val)| (key, Value::from(val))));
+                let obj = Object::from_iter(
+                    map.into_iter()
+                        .map(|(key, val)| (Word::from(key), Value::from(val))),
+                );
                 Value::Object(obj)
             }
         }

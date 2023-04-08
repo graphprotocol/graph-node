@@ -5,7 +5,7 @@ use std::sync::Arc;
 use graph::components::store::*;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::Trace;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph::schema::{ast as sast, ApiSchema, META_FIELD_TYPE};
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
@@ -377,7 +377,9 @@ impl Resolver for StoreResolver {
                 let data = result.take_data();
                 let meta =
                     data.and_then(|mut d| d.remove("_meta").map(|m| ("_meta".to_string(), m)));
-                result.set_data(meta.map(|m| Object::from_iter(Some(m))));
+                result.set_data(
+                    meta.map(|(key, value)| Object::from_iter(Some((Word::from(key), value)))),
+                );
             }
             ErrorPolicy::Allow => (),
         }

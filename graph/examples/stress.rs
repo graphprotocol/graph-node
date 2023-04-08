@@ -324,7 +324,10 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
             7 => {
                 let mut obj = Vec::new();
                 for j in 0..(i % 51) {
-                    obj.push((format!("key{}", j), r::Value::String(format!("value{}", j))));
+                    obj.push((
+                        Word::from(format!("key{}", j)),
+                        r::Value::String(format!("value{}", j)),
+                    ));
                 }
                 r::Value::Object(Object::from_iter(obj))
             }
@@ -332,7 +335,7 @@ fn make_object(size: usize, mut rng: Option<&mut SmallRng>) -> Object {
         };
 
         let key = rng.as_deref_mut().map(|rng| rng.gen()).unwrap_or(i) % modulus;
-        obj.push((format!("val{}", key), value));
+        obj.push((Word::from(format!("val{}", key)), value));
     }
     Object::from_iter(obj)
 }
@@ -346,7 +349,7 @@ fn make_domains(size: usize, _rng: Option<&mut SmallRng>) -> Object {
     };
 
     let domains: Vec<_> = (0..size).map(|_| owner.clone()).collect();
-    Object::from_iter([("domains".to_string(), r::Value::List(domains))])
+    Object::from_iter([("domains".into(), r::Value::List(domains))])
 }
 
 /// Template for testing caching of `Object`
@@ -362,7 +365,7 @@ impl Template for Object {
             Box::new(Object::from_iter(
                 self.iter()
                     .take(size)
-                    .map(|(k, v)| (k.to_owned(), v.clone())),
+                    .map(|(k, v)| (Word::from(k), v.clone())),
             ))
         } else {
             Box::new(make_object(size, rng))
@@ -385,7 +388,7 @@ impl Template for QueryResult {
                     .unwrap()
                     .iter()
                     .take(size)
-                    .map(|(k, v)| (k.to_owned(), v.clone())),
+                    .map(|(k, v)| (Word::from(k), v.clone())),
             )))
         } else {
             Box::new(QueryResult::new(make_domains(size, rng)))

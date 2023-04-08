@@ -19,7 +19,10 @@ use std::{borrow::Cow, collections::HashMap};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
-use super::graphql::{ext::DirectiveFinder, TypeExt as _};
+use super::{
+    graphql::{ext::DirectiveFinder, TypeExt as _},
+    value::Word,
+};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -834,6 +837,15 @@ impl<'a> From<Vec<(&'a str, Value)>> for Entity {
     fn from(entries: Vec<(&'a str, Value)>) -> Entity {
         Entity::from(HashMap::from_iter(
             entries.into_iter().map(|(k, v)| (String::from(k), v)),
+        ))
+    }
+}
+
+impl FromIterator<(Word, Value)> for Entity {
+    fn from_iter<T: IntoIterator<Item = (Word, Value)>>(iter: T) -> Self {
+        Entity(HashMap::from_iter(
+            iter.into_iter()
+                .map(|(key, value)| (String::from(key), value)),
         ))
     }
 }

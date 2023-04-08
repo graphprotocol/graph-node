@@ -238,39 +238,31 @@ impl ForeignKeyClauses for Column {
     }
 }
 
-pub trait FromEntityData: std::fmt::Debug + std::default::Default {
+pub trait FromEntityData: Sized {
     type Value: FromColumnValue;
 
-    fn new_entity(typename: String) -> Self;
-
-    fn insert_entity_data(&mut self, key: String, v: Self::Value);
+    fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        iter: I,
+    ) -> Result<Self, StoreError>;
 }
 
 impl FromEntityData for Entity {
     type Value = graph::prelude::Value;
 
-    fn new_entity(typename: String) -> Self {
-        let mut entity = Entity::new();
-        entity.insert("__typename".to_string(), Self::Value::String(typename));
-        entity
-    }
-
-    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.insert(key, v);
+    fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        iter: I,
+    ) -> Result<Self, StoreError> {
+        <Result<Entity, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
     }
 }
 
-// TODO: This implementation is not very efficient; we will address that by
-// making deserialize_with_layout return an iterator
 impl FromEntityData for Object {
     type Value = r::Value;
 
-    fn new_entity(typename: String) -> Self {
-        Object::from_iter([("__typename".into(), Self::Value::from_string(typename))])
-    }
-
-    fn insert_entity_data(&mut self, key: String, v: Self::Value) {
-        self.extend([(Word::from(key), v)])
+    fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        iter: I,
+    ) -> Result<Self, StoreError> {
+        <Result<Object, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
     }
 }
 
@@ -492,18 +484,20 @@ impl EntityData {
         parent_type: Option<&ColumnType>,
         remove_typename: bool,
     ) -> Result<T, StoreError> {
-        let entity_type = EntityType::new(self.entity);
+        let entity_type = EntityType::new(self.entity.clone());
         let table = layout.table_for_entity(&entity_type)?;
 
         use serde_json::Value as j;
         match self.data {
             j::Object(map) => {
-                let mut out = if !remove_typename {
-                    T::new_entity(entity_type.into_string())
-                } else {
-                    T::default()
-                };
-                for (key, json) in map {
+                let typname = std::iter::once(self.entity).filter_map(move |e| {
+                    if remove_typename {
+                        None
+                    } else {
+                        Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
+                    }
+                });
+                let entries = map.into_iter().filter_map(move |(key, json)| {
                     // Simply ignore keys that do not have an underlying table
                     // column; those will be things like the block_range that
                     // is used internally for versioning
@@ -513,23 +507,26 @@ impl EntityData {
                                 // A query that does not have parents
                                 // somehow returned parent ids. We have no
                                 // idea how to deserialize that
-                                return Err(graph::constraint_violation!(
+                                Some(Err(graph::constraint_violation!(
                                     "query unexpectedly produces parent ids"
-                                ));
+                                )))
                             }
-                            Some(parent_type) => {
-                                let value = T::Value::from_column_value(parent_type, json)?;
-                                out.insert_entity_data("g$parent_id".to_owned(), value);
-                            }
+                            Some(parent_type) => Some(
+                                T::Value::from_column_value(parent_type, json)
+                                    .map(|value| (Word::from("g$parent_id"), value)),
+                            ),
                         }
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
-                        let value = T::Value::from_column_value(&column.column_type, json)?;
-                        if !value.is_null() {
-                            out.insert_entity_data(column.field.clone(), value);
+                        match T::Value::from_column_value(&column.column_type, json) {
+                            Ok(value) if value.is_null() => None,
+                            Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),
+                            Err(e) => Some(Err(e)),
                         }
+                    } else {
+                        None
                     }
-                }
-                Ok(out)
+                });
+                T::from_data(typname.chain(entries))
             }
             _ => unreachable!(
                 "we use `to_json` in our queries, and will therefore always get an object back"

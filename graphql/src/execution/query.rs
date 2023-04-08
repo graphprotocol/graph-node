@@ -1,5 +1,5 @@
 use graph::data::graphql::DocumentExt as _;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
@@ -850,7 +850,7 @@ impl Transform {
             ) {
                 Ok(Some(value)) => {
                     let value = if argument_def.name == *"text" {
-                        r::Value::Object(Object::from_iter(vec![(field_name.to_string(), value)]))
+                        r::Value::Object(Object::from_iter(vec![(Word::from(field_name), value)]))
                     } else {
                         value
                     };
