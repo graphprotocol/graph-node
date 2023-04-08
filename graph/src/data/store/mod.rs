@@ -584,7 +584,7 @@ where
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Attribute, Value>);
 
 impl stable_hash_legacy::StableHash for Entity {
@@ -626,7 +626,7 @@ macro_rules! entity {
 impl Entity {
     /// Creates a new entity with no attributes set.
     pub fn new() -> Self {
-        Default::default()
+        Entity(HashMap::new())
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {

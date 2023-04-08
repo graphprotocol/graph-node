@@ -1774,7 +1774,12 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
         asc_new(
             self,
-            &self.ctx.host_exports.data_source_context(gas)?.sorted(),
+            &self
+                .ctx
+                .host_exports
+                .data_source_context(gas)?
+                .map(|e| e.sorted())
+                .unwrap_or(vec![]),
             gas,
         )
     }

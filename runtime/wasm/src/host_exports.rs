@@ -752,13 +752,9 @@ impl<C: Blockchain> HostExports<C> {
     pub(crate) fn data_source_context(
         &self,
         gas: &GasCounter,
-    ) -> Result<Entity, DeterministicHostError> {
+    ) -> Result<Option<Entity>, DeterministicHostError> {
         gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
-        Ok(self
-            .data_source_context
-            .as_ref()
-            .clone()
-            .unwrap_or_default())
+        Ok(self.data_source_context.as_ref().clone())
     }
 
     pub(crate) fn json_from_bytes(
