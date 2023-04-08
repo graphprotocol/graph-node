@@ -1,10 +1,10 @@
 use super::ObjectOrInterface;
-use crate::data::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
 use crate::prelude::ENV_VARS;
+use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use std::collections::{BTreeMap, HashMap};
 
 pub trait ObjectTypeExt {

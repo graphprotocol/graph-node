@@ -4,9 +4,9 @@ use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
     async_trait, o, r, s, slog, tokio, DeploymentHash, Logger, Query, QueryExecutionError,
-    QueryResult, Schema,
+    QueryResult,
 };
-use graph::schema::{api_schema, ApiSchema};
+use graph::schema::{api_schema, ApiSchema, Schema};
 
 use graph_graphql::prelude::{
     a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,

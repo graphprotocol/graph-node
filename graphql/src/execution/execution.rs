@@ -2,8 +2,9 @@ use super::cache::{QueryBlockCache, QueryCache};
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::{query::Trace, schema::META_FIELD_NAME, value::Object},
+    data::{query::Trace, value::Object},
     prelude::{s, CheapClone},
+    schema::META_FIELD_NAME,
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;

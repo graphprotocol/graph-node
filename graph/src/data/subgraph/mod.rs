@@ -31,8 +31,8 @@ use crate::{
         store::{StoreError, SubgraphStore},
     },
     data::{
-        graphql::TryFromValue, query::QueryExecutionError, schema::SchemaValidationError,
-        store::Entity, subgraph::features::validate_subgraph_features,
+        graphql::TryFromValue, query::QueryExecutionError, store::Entity,
+        subgraph::features::validate_subgraph_features,
     },
     data_source::{
         offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
@@ -40,7 +40,7 @@ use crate::{
     },
     ensure,
     prelude::{r, CheapClone, ENV_VARS},
-    schema::InputSchema,
+    schema::{InputSchema, SchemaValidationError},
 };
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};

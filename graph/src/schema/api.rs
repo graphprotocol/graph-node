@@ -7,15 +7,14 @@ use lazy_static::lazy_static;
 
 use crate::components::store::EntityType;
 use crate::data::graphql::ObjectOrInterface;
-use crate::schema::ast;
+use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
-use crate::data::{
-    graphql::ext::{DirectiveExt, DocumentExt, ValueExt},
-    schema::{META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME},
-};
+use crate::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
 use crate::prelude::*;
 use thiserror::Error;
+
+use super::{Schema, SCHEMA_TYPE_NAME};
 
 #[derive(Error, Debug)]
 pub enum APISchemaError {

@@ -750,14 +750,14 @@ mod tests {
         components::store::EntityType,
         data::value::Object,
         prelude::{
-            r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Schema,
-            Value, ValueType, BLOCK_NUMBER_MAX,
+            r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Value,
+            ValueType, BLOCK_NUMBER_MAX,
         },
         prelude::{
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
             EntityOrder,
         },
-        schema::ApiSchema,
+        schema::{ApiSchema, Schema},
     };
     use graphql_parser::Pos;
     use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};

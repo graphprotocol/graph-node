@@ -8,7 +8,7 @@ use graph::prelude::*;
 
 use crate::execution::ast as a;
 use crate::prelude::*;
-use graph::schema::ast as sast;
+use graph::schema::{ast as sast, Schema};
 
 type TypeObjectsMap = BTreeMap<String, r::Value>;
 
