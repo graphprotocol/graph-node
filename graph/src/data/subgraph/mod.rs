@@ -218,6 +218,12 @@ impl SubgraphName {
         Ok(SubgraphName(s))
     }
 
+    /// Tests are allowed to create arbitrary subgraph names
+    #[cfg(debug_assertions)]
+    pub fn new_unchecked(s: impl Into<String>) -> Self {
+        SubgraphName(s.into())
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }

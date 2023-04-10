@@ -170,11 +170,7 @@ pub async fn create_subgraph(
     yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
     let yaml = serde_yaml::to_string(&yaml).unwrap();
     let deployment = DeploymentCreate::new(yaml, &manifest, None).graft(base);
-    let name = {
-        let mut name = subgraph_id.to_string();
-        name.truncate(32);
-        SubgraphName::new(name).unwrap()
-    };
+    let name = SubgraphName::new_unchecked(subgraph_id.to_string());
     let deployment = SUBGRAPH_STORE.create_deployment_replace(
         name,
         &schema,
@@ -198,14 +194,14 @@ pub async fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) ->
 }
 
 pub fn remove_subgraph(id: &DeploymentHash) {
-    let name = {
-        let mut name = id.to_string();
-        name.truncate(32);
-        SubgraphName::new(name).unwrap()
-    };
+    let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).unwrap();
-    for detail in SUBGRAPH_STORE.record_unused_deployments().unwrap() {
-        SUBGRAPH_STORE.remove_deployment(detail.id).unwrap();
+    let locs = SUBGRAPH_STORE.locators(id.as_str()).unwrap();
+    let conn = primary_connection();
+    for loc in locs {
+        let site = conn.locate_site(loc.clone()).unwrap().unwrap();
+        conn.unassign_subgraph(&site).unwrap();
+        SUBGRAPH_STORE.remove_deployment(site.id).unwrap();
     }
 }
 
