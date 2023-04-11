@@ -169,6 +169,10 @@ impl WritableStore for MockStore {
     async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
         unimplemented!()
     }
+
+    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStore>, StoreError> {
+        unimplemented!()
+    }
 }
 
 fn make_band_key(id: &'static str) -> EntityKey {

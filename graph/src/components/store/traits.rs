@@ -324,6 +324,17 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;
+
+    /// Restart the `WritableStore`. This will clear any errors that have
+    /// been encountered. Code that calls this must not make any assumptions
+    /// about what has been written already, as the write queue might
+    /// contain unprocessed write requests that will be discarded by this
+    /// call.
+    ///
+    /// After this call, `self` should not be used anymore, as it will
+    /// continue to produce errors for any write requests, and instead, the
+    /// returned `WritableStore` should be used.
+    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStore>, StoreError>;
 }
 
 #[async_trait]

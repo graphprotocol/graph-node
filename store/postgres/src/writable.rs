@@ -13,7 +13,7 @@ use graph::prelude::{
     BLOCK_NUMBER_MAX,
 };
 use graph::schema::InputSchema;
-use graph::slog::info;
+use graph::slog::{info, warn};
 use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
@@ -1312,5 +1312,18 @@ impl WritableStoreTrait for WritableStore {
 
     async fn flush(&self) -> Result<(), StoreError> {
         self.writer.flush().await
+    }
+
+    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
+        if self.poisoned() {
+            let logger = self.store.logger.clone();
+            if let Err(e) = self.stop().await {
+                warn!(logger, "Writable had error when stopping, it is safe to ignore this error"; "error" => e.to_string());
+            }
+            let store = Arc::new(self.store.store.0.clone());
+            store.writable(logger, self.store.site.id.into()).await
+        } else {
+            Ok(self)
+        }
     }
 }

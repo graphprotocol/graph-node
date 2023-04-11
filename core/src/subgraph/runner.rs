@@ -179,7 +179,19 @@ where
                         self.inputs.store.flush().await?;
                         return Ok(self);
                     }
-                    Action::Restart => break,
+                    Action::Restart => {
+                        // Restart the store to clear any errors that it
+                        // might have encountered and use that from now on
+                        let store = self.inputs.store.cheap_clone();
+                        let store = store.restart().await?;
+                        self.inputs = Arc::new(self.inputs.with_store(store));
+                        // Also clear the entity cache since we might have
+                        // entries in there that never made it to the
+                        // database
+                        self.state.entity_lfu_cache = LfuCache::new();
+                        self.state.synced = self.inputs.store.is_deployment_synced().await?;
+                        break;
+                    }
                 };
             }
         }
