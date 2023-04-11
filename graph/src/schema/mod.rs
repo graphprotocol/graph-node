@@ -41,6 +41,10 @@ pub use input_schema::InputSchema;
 #[derive(Clone, Debug, PartialEq)]
 pub struct AtomPool;
 
+impl AtomPool {
+    pub fn intern(&mut self, _s: &str) {}
+}
+
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";

@@ -298,12 +298,23 @@ fn insert_user_entity(
     drinks: Option<Vec<&str>>,
     block: BlockNumber,
 ) {
-    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
+    let user = make_user(
+        &layout.input_schema,
+        id,
+        name,
+        email,
+        age,
+        weight,
+        coffee,
+        favorite_color,
+        drinks,
+    );
 
     insert_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
 fn make_user(
+    schema: &InputSchema,
     id: &str,
     name: &str,
     email: &str,
@@ -317,7 +328,7 @@ fn make_user(
         .map(|s| Value::String(s.to_owned()))
         .unwrap_or(Value::Null);
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    let mut user = entity! {
+    let mut user = entity! { schema =>
         id: id,
         name: name,
         bin_name: bin_name,
@@ -393,7 +404,17 @@ fn update_user_entity(
     drinks: Option<Vec<&str>>,
     block: BlockNumber,
 ) {
-    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
+    let user = make_user(
+        &layout.input_schema,
+        id,
+        name,
+        email,
+        age,
+        weight,
+        coffee,
+        favorite_color,
+        drinks,
+    );
     update_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
@@ -845,9 +866,7 @@ fn conflicting_entity() {
         let dog = EntityType::from(dog);
         let ferret = EntityType::from(ferret);
 
-        let mut fred = Entity::new();
-        fred.set("id", id.clone());
-        fred.set("name", Value::String(id.to_string()));
+        let fred = entity! { id:  id.clone(), name: id.clone() };
         insert_entity(conn, layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:

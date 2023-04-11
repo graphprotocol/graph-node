@@ -246,8 +246,8 @@ fn overwrite_modifications() {
     // every set operation as an overwrite.
     let store = {
         let entities = vec![
-            entity! { id: "mogwai", name: "Mogwai" },
-            entity! { id: "sigurros", name: "Sigur Ros" },
+            entity! { id: "mogwai", name: "Mogwai"; founded },
+            entity! { id: "sigurros", name: "Sigur Ros"; founded },
         ];
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -287,7 +287,7 @@ fn consecutive_modifications() {
     // `Value::Null`.
     let store = {
         let entities =
-            vec![entity! { id: "mogwai", name: "Mogwai", label: "Chemikal Underground" }];
+            vec![entity! { id: "mogwai", name: "Mogwai", label: "Chemikal Underground"; founded }];
 
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -455,12 +455,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 }
 
 fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityOperation {
-    let mut test_entity = Entity::new();
-
-    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
-    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
-    test_entity.insert("age".to_owned(), Value::Int(age));
+    let test_entity = entity! { id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
         key: EntityKey::data(ACCOUNT.to_owned(), id.to_owned()),
@@ -469,12 +464,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityO
 }
 
 fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
-    let mut test_wallet = Entity::new();
-
-    test_wallet.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_wallet.insert("account".to_owned(), Value::String(account_id.to_owned()));
-    test_wallet.insert("balance".to_owned(), Value::Int(balance));
-    test_wallet
+    entity! { id: id, account: account_id, balance: balance }
 }
 fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
     let test_wallet = create_wallet_entity(id, account_id, balance);

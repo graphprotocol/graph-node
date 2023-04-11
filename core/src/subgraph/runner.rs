@@ -1043,6 +1043,7 @@ async fn update_proof_of_indexing(
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
         let new_poi_entity = entity! {
+            entity_cache.schema =>
             id: entity_key.entity_id.to_string(),
             digest: updated_proof_of_indexing,
         };

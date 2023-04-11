@@ -407,17 +407,12 @@ pub fn is_list(field_type: &s::Type) -> bool {
 fn entity_validation() {
     use crate::components::store::EntityKey;
     use crate::data::store;
+    use crate::entity;
     use crate::prelude::{DeploymentHash, Entity};
     use crate::schema::InputSchema;
 
     fn make_thing(name: &str) -> Entity {
-        let mut thing = Entity::new();
-        thing.set("id", name);
-        thing.set("name", name);
-        thing.set("stuff", "less");
-        thing.set("favorite_color", "red");
-        thing.set("things", store::Value::List(vec![]));
-        thing
+        entity! { id: name, name: name, stuff: "less", favorite_color: "red", things: store::Value::List(vec![]); cruft}
     }
 
     fn check(thing: Entity, errmsg: &str) {

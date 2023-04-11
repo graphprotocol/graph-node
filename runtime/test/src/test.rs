@@ -419,10 +419,7 @@ async fn test_ipfs_block() {
 const USER_DATA: &str = "user_data";
 
 fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
-    let mut data = Entity::new();
-    data.set("id", id);
-    data.set("value", value);
-    data.set("extra", USER_DATA);
+    let data = entity! { id: id, value: value, extra: USER_DATA };
     let key = EntityKey::data("Thing".to_string(), id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
@@ -926,12 +923,8 @@ async fn test_entity_store(api_version: Version) {
 
     let schema = store.input_schema(&deployment.hash).unwrap();
 
-    let mut alex = Entity::new();
-    alex.set("id", "alex");
-    alex.set("name", "Alex");
-    let mut steve = Entity::new();
-    steve.set("id", "steve");
-    steve.set("name", "Steve");
+    let alex = entity! { id: "alex", name: "Alex" };
+    let steve = entity! { id: "steve", name: "Steve" };
     let user_type = EntityType::from("User");
     test_store::insert_entities(
         &deployment,

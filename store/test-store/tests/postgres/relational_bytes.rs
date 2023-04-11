@@ -4,6 +4,7 @@ use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
+use graph::entity;
 use graph::prelude::{EntityQuery, MetricsRegistry};
 use graph::schema::InputSchema;
 use hex_literal::hex;
@@ -15,7 +16,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
     o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
-    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics, Value,
+    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics,
     WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph::{
@@ -38,21 +39,6 @@ const THINGS_GQL: &str = "
         children: [Thing!]
     }
 ";
-
-macro_rules! entity {
-    ($($name:ident: $value:expr,)*) => {
-        {
-            let mut result = ::graph::prelude::Entity::new();
-            $(
-                result.insert(stringify!($name).to_string(), Value::from($value));
-            )*
-            result
-        }
-    };
-    ($($name:ident: $value:expr),*) => {
-        entity! {$($name: $value,)*}
-    };
-}
 
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
@@ -111,7 +97,7 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
         conn,
         layout,
         "Thing",
-        entity! {
+        entity! { layout.input_schema =>
             id: id,
             name: name
         },
@@ -134,10 +120,8 @@ fn create_schema(conn: &PgConnection) -> Layout {
 }
 
 fn scrub(entity: &Entity) -> Entity {
-    let mut scrubbed = Entity::new();
-    // merge has the sideffect of removing any attribute
-    // that is Value::Null
-    scrubbed.merge(entity.clone());
+    let mut scrubbed = entity.clone();
+    scrubbed.remove_null_fields();
     scrubbed
 }
 
@@ -383,29 +367,29 @@ const GRANDCHILD2: &str = "0xfafa02";
 ///          +- grandchild2
 ///
 fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
-    let root = entity! {
+    let root = entity! { layout.input_schema =>
         id: ROOT,
         name: "root",
         children: vec!["babe01", "babe02"]
     };
-    let child1 = entity! {
+    let child1 = entity! { layout.input_schema =>
         id: CHILD1,
         name: "child1",
         parent: "dead00",
         children: vec![GRANDCHILD1]
     };
-    let child2 = entity! {
+    let child2 = entity! { layout.input_schema =>
         id: CHILD2,
         name: "child2",
         parent: "dead00",
         children: vec![GRANDCHILD1]
     };
-    let grand_child1 = entity! {
+    let grand_child1 = entity! { layout.input_schema =>
         id: GRANDCHILD1,
         name: "grandchild1",
         parent: CHILD1
     };
-    let grand_child2 = entity! {
+    let grand_child2 = entity! { layout.input_schema =>
         id: GRANDCHILD2,
         name: "grandchild2",
         parent: CHILD2

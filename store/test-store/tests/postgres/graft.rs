@@ -241,26 +241,18 @@ fn create_test_entity(
     coffee: bool,
     favorite_color: Option<&str>,
 ) -> EntityOperation {
-    let mut test_entity = Entity::new();
-
-    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
-    test_entity.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
-    test_entity.insert("age".to_owned(), Value::Int(age));
-    test_entity.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
-    test_entity.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
+    let test_entity = entity! {
+        id: id,
+        name: name,
+        bin_name: bin_name,
+        email: email,
+        age: age,
+        seconds_age: age * 31557600,
+        weight: Value::BigDecimal(weight.into()),
+        coffee: coffee,
+        favorite_color: favorite_color
+    };
 
     EntityOperation::Set {
         key: EntityKey::data(entity_type.to_string(), id),

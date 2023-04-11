@@ -619,19 +619,106 @@ impl StableHash for Entity {
     }
 }
 
+/// The `entity!` macro is a convenient way to create entities. It comes in
+/// two forms, one where a schema is provided and one where it is not. The
+/// schema-less form can only be used in tests, since it creates an
+/// `AtomPool` just for this entity behind the scenes.
+///
+/// Production code should always use the form with the schema
+/// ```
+///   use graph::entity;
+///   use graph::schema::InputSchema;
+///   use graph::data::subgraph::DeploymentHash;
+///
+///   let id = DeploymentHash::new("Qm123").unwrap();
+///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
+///
+///   let entity = entity! { schema => id: "1", name: "John Doe" };
+/// ```
+///
+/// Test code which often doesn't have access to an `InputSchema` can use
+/// the form without the schema
+/// ```
+///   use graph::entity;
+///   let entity = entity! { id: "1", name: "John Doe" };
+/// ```
+///
+/// In the test form, it is also possible to provide additional names after
+/// a `;` that should be put into the `AtomPool` so that they can be set
+/// later in the test
+/// ```
+///   use graph::entity;
+///   let entity = entity! { id: "1", name: "John Doe"; phone, email };
+/// ```
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! entity {
+    () => {
+        {
+            let pairs = Vec::new();
+            let pool = $crate::schema::AtomPool;
+            Entity::make(pool, pairs)
+        }
+    };
     ($($name:ident: $value:expr,)*) => {
         {
-            let mut result = $crate::data::store::Entity::new();
+            let mut pairs = Vec::new();
+            let mut pool = $crate::schema::AtomPool;
             $(
-                result.set(stringify!($name), $crate::data::store::Value::from($value));
+                pool.intern(stringify!($name));
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
             )*
-            result
+            $crate::data::store::Entity::make(pool, pairs)
         }
     };
     ($($name:ident: $value:expr),*) => {
         entity! {$($name: $value,)*}
+    };
+    ($($name:ident: $value:expr,)*; $($extra:ident,)*) => {
+        {
+            let mut pairs = Vec::new();
+            let mut pool = $crate::schema::AtomPool;
+            $(
+                pool.intern(stringify!($name));
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $(
+                pool.intern(stringify!($extra));
+            )*
+            $crate::data::store::Entity::make(pool, pairs)
+        }
+    };
+    ($($name:ident: $value:expr),*; $($extra:ident),*) => {
+        entity! {$($name: $value,)*; $($extra,)*}
+    };
+    ($schema:expr => $($name:ident: $value:expr,)*) => {
+        {
+            let mut result = Vec::new();
+            $(
+                result.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $schema.make_entity(result)
+        }
+    };
+    ($schema:expr => $($name:ident: $value:expr),*) => {
+        entity! {$schema => $($name: $value,)*}
+    };
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! entity {
+    ($schema:expr => $($name:ident: $value:expr,)*) => {
+        {
+            let mut pairs = Vec::new();
+            $(
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $schema.make_entity(pairs)
+        }
+    };
+    ($schema:expr => $($name:ident: $value:expr),*) => {
+        entity! {$schema => $($name: $value,)*}
     };
 }
 
@@ -643,11 +730,6 @@ impl Entity {
     pub fn try_make<E, I: TryIntoEntityIterator<E>>(_pool: AtomPool, iter: I) -> Result<Entity, E> {
         let map: HashMap<_, _> = iter.into_iter().collect::<Result<_, E>>()?;
         Ok(Entity(map))
-    }
-
-    /// Creates a new entity with no attributes set.
-    pub fn new() -> Self {
-        Entity(HashMap::new())
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -900,13 +982,7 @@ fn value_bigint() {
 #[test]
 fn entity_validation() {
     fn make_thing(name: &str) -> Entity {
-        let mut thing = Entity::new();
-        thing.set("id", name);
-        thing.set("name", name);
-        thing.set("stuff", "less");
-        thing.set("favorite_color", "red");
-        thing.set("things", Value::List(vec![]));
-        thing
+        entity! { id: name, name: name, stuff: "less", favorite_color: "red", things: Value::List(vec![]); cruft }
     }
 
     fn check(thing: Entity, errmsg: &str) {

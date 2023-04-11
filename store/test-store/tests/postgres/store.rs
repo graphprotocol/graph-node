@@ -266,26 +266,18 @@ fn create_test_entity(
     coffee: bool,
     favorite_color: Option<&str>,
 ) -> EntityOperation {
-    let mut test_entity = Entity::new();
-
-    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
-    test_entity.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
-    test_entity.insert("age".to_owned(), Value::Int(age));
-    test_entity.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
-    test_entity.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
+    let test_entity = entity! {
+        id: id,
+        name: name,
+        bin_name: bin_name,
+        email: email,
+        age: age,
+        seconds_age: Value::BigInt(BigInt::from(age) * 31557600.into()),
+        weight: Value::BigDecimal(weight.into()),
+        coffee: coffee,
+        favorite_color: favorite_color,
+    };
 
     EntityOperation::Set {
         key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
@@ -341,22 +333,17 @@ fn get_entity_1() {
         let key = EntityKey::data(USER.to_owned(), "1".to_owned());
         let result = writable.get(&key).unwrap();
 
-        let mut expected_entity = Entity::new();
-
-        expected_entity.insert("id".to_owned(), "1".into());
-        expected_entity.insert("name".to_owned(), "Johnton".into());
-        expected_entity.insert(
-            "bin_name".to_owned(),
-            Value::Bytes("Johnton".as_bytes().into()),
-        );
-        expected_entity.insert("email".to_owned(), "tonofjohn@email.com".into());
-        expected_entity.insert("age".to_owned(), Value::Int(67_i32));
-        expected_entity.insert(
-            "seconds_age".to_owned(),
-            Value::BigInt(BigInt::from(2114359200)),
-        );
-        expected_entity.insert("weight".to_owned(), Value::BigDecimal(184.4.into()));
-        expected_entity.insert("coffee".to_owned(), Value::Bool(false));
+        let bin_name = Value::Bytes("Johnton".as_bytes().into());
+        let expected_entity = entity! {
+            id: "1",
+            name: "Johnton",
+            bin_name: bin_name,
+            email: "tonofjohn@email.com",
+            age: 67_i32,
+            seconds_age: Value::BigInt(BigInt::from(2114359200)),
+            weight: Value::BigDecimal(184.4.into()),
+            coffee: false,
+        };
         // "favorite_color" was set to `Null` earlier and should be absent
 
         // Check that the expected entity was returned
@@ -371,22 +358,16 @@ fn get_entity_3() {
         let key = EntityKey::data(USER.to_owned(), "3".to_owned());
         let result = writable.get(&key).unwrap();
 
-        let mut expected_entity = Entity::new();
-
-        expected_entity.insert("id".to_owned(), "3".into());
-        expected_entity.insert("name".to_owned(), "Shaqueeena".into());
-        expected_entity.insert(
-            "bin_name".to_owned(),
-            Value::Bytes("Shaqueeena".as_bytes().into()),
-        );
-        expected_entity.insert("email".to_owned(), "teeko@email.com".into());
-        expected_entity.insert("age".to_owned(), Value::Int(28_i32));
-        expected_entity.insert(
-            "seconds_age".to_owned(),
-            Value::BigInt(BigInt::from(883612800)),
-        );
-        expected_entity.insert("weight".to_owned(), Value::BigDecimal(111.7.into()));
-        expected_entity.insert("coffee".to_owned(), Value::Bool(false));
+        let expected_entity = entity! {
+           id: "3",
+           name: "Shaqueeena",
+           bin_name: Value::Bytes("Shaqueeena".as_bytes().into()),
+           email: "teeko@email.com",
+           age: 28_i32,
+           seconds_age: Value::BigInt(BigInt::from(883612800)),
+           weight: Value::BigDecimal(111.7.into()),
+           coffee: false,
+        };
         // "favorite_color" was set to `Null` earlier and should be absent
 
         // Check that the expected entity was returned
@@ -1503,9 +1484,7 @@ fn handle_large_string_with_index() {
     const TWO: &str = "large_string_two";
 
     fn make_insert_op(id: &str, name: &str) -> EntityModification {
-        let mut data = Entity::new();
-        data.set("id", id);
-        data.set(NAME, name);
+        let data = entity! { id: id, name: name };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
@@ -1594,9 +1573,7 @@ fn handle_large_bytea_with_index() {
     const TWO: &str = "large_string_two";
 
     fn make_insert_op(id: &str, name: &[u8]) -> EntityModification {
-        let mut data = Entity::new();
-        data.set("id", id);
-        data.set(NAME, scalar::Bytes::from(name));
+        let data = entity! { id: id, bin_name: scalar::Bytes::from(name) };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
@@ -1794,11 +1771,8 @@ impl WindowQuery {
 #[test]
 fn window() {
     fn make_color_end_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
-        let mut entity = Entity::new();
+        let entity = entity! { id: id, age: age, favorite_color: color };
 
-        entity.set("id", id.to_owned());
-        entity.set("age", age);
-        entity.set("favorite_color", color);
         EntityOperation::Set {
             key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
             data: entity,
