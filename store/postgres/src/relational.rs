@@ -249,6 +249,8 @@ pub struct Layout {
     pub count_query: String,
     /// How many blocks of history the subgraph should keep
     pub history_blocks: BlockNumber,
+
+    pub input_schema: InputSchema,
 }
 
 impl Layout {
@@ -380,6 +382,7 @@ impl Layout {
             enums,
             count_query,
             history_blocks: i32::MAX,
+            input_schema: schema.cheap_clone(),
         })
     }
 
