@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
 use store::Entity;
 
+use crate::cheap_clone::CheapClone;
 use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
@@ -17,9 +19,30 @@ use super::{ApiSchema, AtomPool, Schema, SchemaValidationError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Inner {
     schema: Schema,
     immutable_types: HashSet<EntityType>,
     pool: AtomPool,
+}
+
+impl std::ops::Deref for InputSchema {
+    type Target = Inner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl CheapClone for InputSchema {
+    fn cheap_clone(&self) -> Self {
+        InputSchema {
+            inner: self.inner.cheap_clone(),
+        }
+    }
 }
 
 impl InputSchema {
@@ -34,9 +57,11 @@ impl InputSchema {
         );
         let pool = AtomPool;
         Self {
-            schema,
-            immutable_types,
-            pool,
+            inner: Arc::new(Inner {
+                schema,
+                immutable_types,
+                pool,
+            }),
         }
     }
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
@@ -49,7 +74,9 @@ impl InputSchema {
 
         Ok(Self::create(schema))
     }
+}
 
+impl Inner {
     pub fn api_schema(&self) -> Result<ApiSchema, anyhow::Error> {
         let mut schema = self.schema.clone();
         schema.document = api_schema(&self.schema.document)?;
