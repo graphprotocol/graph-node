@@ -105,8 +105,8 @@ where
         self.run_inner(break_on_restart).await
     }
 
-    pub async fn run(self) -> Result<Self, Error> {
-        self.run_inner(false).await
+    pub async fn run(self) -> Result<(), Error> {
+        self.run_inner(false).await.map(|_| ())
     }
 
     async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
