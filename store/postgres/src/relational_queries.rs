@@ -20,7 +20,7 @@ use graph::prelude::{
     EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
     EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::FulltextAlgorithm;
+use graph::schema::{FulltextAlgorithm, InputSchema};
 use graph::{
     components::store::{AttributeNames, EntityType},
     data::store::scalar,
@@ -242,6 +242,7 @@ pub trait FromEntityData: Sized {
     type Value: FromColumnValue;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        schema: &InputSchema,
         iter: I,
     ) -> Result<Self, StoreError>;
 }
@@ -250,9 +251,10 @@ impl FromEntityData for Entity {
     type Value = graph::prelude::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        schema: &InputSchema,
         iter: I,
     ) -> Result<Self, StoreError> {
-        <Result<Entity, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
+        schema.try_make_entity(iter)
     }
 }
 
@@ -260,6 +262,7 @@ impl FromEntityData for Object {
     type Value = r::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
+        _schema: &InputSchema,
         iter: I,
     ) -> Result<Self, StoreError> {
         <Result<Object, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
@@ -526,7 +529,7 @@ impl EntityData {
                         None
                     }
                 });
-                T::from_data(typname.chain(entries))
+                T::from_data(&layout.input_schema, typname.chain(entries))
             }
             _ => unreachable!(
                 "we use `to_json` in our queries, and will therefore always get an object back"

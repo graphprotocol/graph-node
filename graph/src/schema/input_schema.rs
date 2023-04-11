@@ -9,7 +9,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
-use crate::data::store::{self, scalar, IntoEntityIterator};
+use crate::data::store::{self, scalar, IntoEntityIterator, TryIntoEntityIterator};
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
@@ -276,5 +276,9 @@ impl Inner {
 
     pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Entity {
         Entity::make(self.pool.clone(), iter)
+    }
+
+    pub fn try_make_entity<E, I: TryIntoEntityIterator<E>>(&self, iter: I) -> Result<Entity, E> {
+        Entity::try_make(self.pool.clone(), iter)
     }
 }
