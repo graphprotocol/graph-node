@@ -961,6 +961,8 @@ impl Writer {
         match self {
             Writer::Sync(_) => Ok(()),
             Writer::Async { join_handle, queue } => {
+                // If there was an error, report that instead of a naked 'writer not running'
+                queue.check_err()?;
                 if join_handle.is_finished() {
                     Err(constraint_violation!(
                         "Subgraph writer for {} is not running",
