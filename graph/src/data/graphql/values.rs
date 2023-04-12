@@ -5,7 +5,7 @@ use std::str::FromStr;
 
 use crate::blockchain::BlockHash;
 use crate::data::value::Object;
-use crate::prelude::{r, BigInt, Entity};
+use crate::prelude::{r, BigInt};
 use web3::types::H160;
 
 pub trait TryFromValue: Sized {
@@ -123,19 +123,6 @@ where
                 Ok(values)
             }),
             _ => Err(anyhow!("Cannot parse value into a vector: {:?}", value)),
-        }
-    }
-}
-
-/// Assumes the entity is stored as a JSON string.
-impl TryFromValue for Entity {
-    fn try_from_value(value: &r::Value) -> Result<Self, Error> {
-        match value {
-            r::Value::String(s) => serde_json::from_str(s).map_err(Into::into),
-            _ => Err(anyhow!(
-                "Cannot parse entity, value is not a string: {:?}",
-                value
-            )),
         }
     }
 }
