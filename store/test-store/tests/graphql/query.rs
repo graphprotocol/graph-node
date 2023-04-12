@@ -2,6 +2,7 @@ use graph::components::store::EntityKey;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
+use graph::schema::InputSchema;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -24,7 +25,7 @@ use graph::{
         futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
         DeploymentHash, Entity, EntityOperation, FutureExtension, GraphQlRunner as _, Logger,
         NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
-        QueryVariables, Schema, SubgraphManifest, SubgraphName, SubgraphStore,
+        QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
         SubgraphVersionSwitchingMode, Subscription, SubscriptionError,
     },
     semver::Version,
@@ -147,7 +148,7 @@ async fn setup(
     }
 }
 
-fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
+fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
     const SCHEMA: &str = "
 
     type _Schema_
@@ -288,7 +289,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> Schema {
     }
     ";
 
-    Schema::parse(&SCHEMA.replace("@ID@", id_type.as_str()), id).expect("Test schema invalid")
+    InputSchema::parse(&SCHEMA.replace("@ID@", id_type.as_str()), id).expect("Test schema invalid")
 }
 
 async fn insert_test_entities(

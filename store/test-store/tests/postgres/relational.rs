@@ -6,9 +6,10 @@ use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityOrder, EntityQuery, Logger, Schema, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
+use graph::schema::InputSchema;
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
@@ -417,7 +418,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
         NAMESPACE.clone(),

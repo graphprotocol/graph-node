@@ -31,11 +31,8 @@ use crate::{
         store::{StoreError, SubgraphStore},
     },
     data::{
-        graphql::TryFromValue,
-        query::QueryExecutionError,
-        schema::{Schema, SchemaValidationError},
-        store::Entity,
-        subgraph::features::validate_subgraph_features,
+        graphql::TryFromValue, query::QueryExecutionError, schema::SchemaValidationError,
+        store::Entity, subgraph::features::validate_subgraph_features,
     },
     data_source::{
         offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
@@ -43,6 +40,7 @@ use crate::{
     },
     ensure,
     prelude::{r, CheapClone, ENV_VARS},
+    schema::InputSchema,
 };
 
 use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
@@ -385,12 +383,12 @@ impl UnresolvedSchema {
         id: DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
-    ) -> Result<Schema, anyhow::Error> {
+    ) -> Result<InputSchema, anyhow::Error> {
         let schema_bytes = resolver
             .cat(logger, &self.file)
             .await
             .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
-        Schema::parse(&String::from_utf8(schema_bytes)?, id)
+        InputSchema::parse(&String::from_utf8(schema_bytes)?, id)
     }
 }
 
@@ -503,7 +501,7 @@ pub type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
 
 /// SubgraphManifest validated with IPFS links resolved
 pub type SubgraphManifest<C> =
-    BaseSubgraphManifest<C, Schema, DataSource<C>, DataSourceTemplate<C>>;
+    BaseSubgraphManifest<C, InputSchema, DataSource<C>, DataSourceTemplate<C>>;
 
 /// Unvalidated SubgraphManifest
 pub struct UnvalidatedSubgraphManifest<C: Blockchain>(SubgraphManifest<C>);

@@ -40,10 +40,10 @@ use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT}
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, ApiSchema, AttributeNames, BlockNumber, BlockPtr,
     CheapClone, DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error,
-    Logger, QueryExecutionError, Schema, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome,
-    Value, ENV_VARS,
+    Logger, QueryExecutionError, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value,
+    ENV_VARS,
 };
-use graph::schema::api_schema;
+use graph::schema::InputSchema;
 use web3::types::Address;
 
 use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -74,7 +74,7 @@ pub enum ReplicaId {
 #[derive(Clone)]
 pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
-    pub(crate) input: Arc<Schema>,
+    pub(crate) input: Arc<InputSchema>,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     pub(crate) api: HashMap<ApiVersion, Arc<ApiSchema>>,
     /// The block number at which this subgraph was grafted onto
@@ -177,7 +177,7 @@ impl DeploymentStore {
 
     pub(crate) fn create_deployment(
         &self,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         site: Arc<Site>,
         graft_base: Option<Arc<Layout>>,
@@ -578,11 +578,8 @@ impl DeploymentStore {
 
         for version in VERSIONS.iter() {
             let api_version = ApiVersion::from_version(version).expect("Invalid API version");
-            let mut schema = manifest_info.input_schema.clone();
-            schema.document =
-                api_schema(&schema.document).map_err(|e| StoreError::Unknown(e.into()))?;
-            schema.add_subgraph_id_directives(site.deployment.clone());
-            api.insert(api_version, Arc::new(ApiSchema::from_api_schema(schema)?));
+            let schema = manifest_info.input_schema.api_schema()?;
+            api.insert(api_version, Arc::new(schema));
         }
 
         let spec_version =

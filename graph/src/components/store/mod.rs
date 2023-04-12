@@ -28,6 +28,7 @@ use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
+use crate::schema::InputSchema;
 use crate::{constraint_violation, prelude::*};
 
 /// The type name of an entity. This is the string that is used in the
@@ -1152,11 +1153,11 @@ impl fmt::Display for DeploymentSchemaVersion {
 
 /// A `ReadStore` that is always empty.
 pub struct EmptyStore {
-    schema: Arc<Schema>,
+    schema: Arc<InputSchema>,
 }
 
 impl EmptyStore {
-    pub fn new(schema: Arc<Schema>) -> Self {
+    pub fn new(schema: Arc<InputSchema>) -> Self {
         EmptyStore { schema }
     }
 }
@@ -1177,7 +1178,7 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         self.schema.cheap_clone()
     }
 }

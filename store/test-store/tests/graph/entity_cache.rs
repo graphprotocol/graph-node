@@ -6,6 +6,7 @@ use graph::components::store::{
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::prelude::*;
+use graph::schema::InputSchema;
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
@@ -27,8 +28,8 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
-    static ref SCHEMA: Arc<Schema> = Arc::new(
-        Schema::parse(
+    static ref SCHEMA: Arc<InputSchema> = Arc::new(
+        InputSchema::parse(
             "
             type Band @entity {
                 id: ID!
@@ -72,7 +73,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         SCHEMA.clone()
     }
 }
@@ -387,8 +388,9 @@ lazy_static! {
     static ref LOAD_RELATED_ID_STRING: String = String::from("loadrelatedsubgraph");
     static ref LOAD_RELATED_ID: DeploymentHash =
         DeploymentHash::new(LOAD_RELATED_ID_STRING.as_str()).unwrap();
-    static ref LOAD_RELATED_SUBGRAPH: Schema =
-        Schema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone()).expect("Failed to parse user schema");
+    static ref LOAD_RELATED_SUBGRAPH: InputSchema =
+        InputSchema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
+            .expect("Failed to parse user schema");
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
         H256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"

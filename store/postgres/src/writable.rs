@@ -9,9 +9,10 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
+    BlockNumber, Entity, MetricsRegistry, SubgraphDeploymentEntity, SubgraphStore as _,
     BLOCK_NUMBER_MAX,
 };
+use graph::schema::InputSchema;
 use graph::slog::info;
 use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
@@ -69,7 +70,7 @@ struct SyncStore {
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
-    input_schema: Arc<Schema>,
+    input_schema: Arc<InputSchema>,
 }
 
 impl SyncStore {
@@ -367,7 +368,7 @@ impl SyncStore {
         .await
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         self.input_schema.clone()
     }
 }
@@ -1166,7 +1167,7 @@ impl ReadStore for WritableStore {
         self.writer.get_derived(key)
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         self.store.input_schema()
     }
 }

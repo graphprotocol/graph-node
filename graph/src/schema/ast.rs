@@ -408,6 +408,7 @@ fn entity_validation() {
     use crate::components::store::EntityKey;
     use crate::data::store;
     use crate::prelude::{DeploymentHash, Entity};
+    use crate::schema::InputSchema;
 
     fn make_thing(name: &str) -> Entity {
         let mut thing = Entity::new();
@@ -438,8 +439,7 @@ fn entity_validation() {
           cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
         let subgraph = DeploymentHash::new("doesntmatter").unwrap();
-        let schema =
-            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let schema = InputSchema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 

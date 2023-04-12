@@ -4,17 +4,18 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use graph::schema::InputSchema;
 use graph::{
     block_on,
-    components::store::SubgraphFork as SubgraphForkTrait,
+    components::store::{EntityType, SubgraphFork as SubgraphForkTrait},
     data::graphql::ext::DirectiveFinder,
     prelude::{
         info,
         r::Value as RValue,
         reqwest,
-        s::{Definition, Field, ObjectType, TypeDefinition},
-        serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize, StoreError,
-        Value, ValueType,
+        s::{Field, ObjectType},
+        serde_json, Attribute, DeploymentHash, Entity, Logger, Serialize, StoreError, Value,
+        ValueType,
     },
     url::Url,
 };
@@ -41,7 +42,7 @@ struct Variables {
 pub(crate) struct SubgraphFork {
     client: reqwest::Client,
     endpoint: Url,
-    schema: Arc<Schema>,
+    schema: Arc<InputSchema>,
     fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
 }
@@ -91,7 +92,7 @@ impl SubgraphFork {
     pub(crate) fn new(
         base: Url,
         id: DeploymentHash,
-        schema: Arc<Schema>,
+        schema: Arc<InputSchema>,
         logger: Logger,
     ) -> Result<Self, StoreError> {
         Ok(Self {
@@ -130,19 +131,8 @@ impl SubgraphFork {
     }
 
     fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
-        let entity: Option<&ObjectType> =
-            self.schema
-                .document
-                .definitions
-                .iter()
-                .find_map(|def| match def {
-                    Definition::TypeDefinition(TypeDefinition::Object(o))
-                        if o.name == entity_type =>
-                    {
-                        Some(o)
-                    }
-                    _ => None,
-                });
+        let entity_type = EntityType::new(entity_type.to_string());
+        let entity: Option<&ObjectType> = self.schema.find_object_type(&entity_type);
 
         if entity.is_none() {
             return Err(StoreError::ForkFailure(format!(
@@ -255,8 +245,8 @@ mod tests {
         DeploymentHash::new("test").unwrap()
     }
 
-    fn test_schema() -> Arc<Schema> {
-        let schema = Schema::new(
+    fn test_schema() -> Arc<InputSchema> {
+        let schema = InputSchema::new(
             DeploymentHash::new("test").unwrap(),
             parse_schema::<String>(
                 r#"type Gravatar @entity {

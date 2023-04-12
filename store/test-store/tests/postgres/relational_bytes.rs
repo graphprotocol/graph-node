@@ -5,6 +5,7 @@ use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{EntityQuery, MetricsRegistry};
+use graph::schema::InputSchema;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::borrow::Cow;
@@ -14,8 +15,8 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::prelude::{
     o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
-    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, Schema, StopwatchMetrics,
-    Value, WindowAttribute, BLOCK_NUMBER_MAX,
+    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics, Value,
+    WindowAttribute, BLOCK_NUMBER_MAX,
 };
 use graph::{
     components::store::EntityType,
@@ -118,7 +119,7 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).unwrap();

@@ -194,7 +194,7 @@ impl SubgraphManifestEntity {
             description: manifest.description.clone(),
             repository: manifest.repository.clone(),
             features: manifest.features.iter().map(|f| f.to_string()).collect(),
-            schema: manifest.schema.document.clone().to_string(),
+            schema: manifest.schema.document_string(),
             raw_yaml: Some(raw_yaml),
             entities_with_causality_region,
             history_blocks: BLOCK_NUMBER_MAX,

@@ -4,7 +4,8 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
-use crate::prelude::{Schema, ENV_VARS};
+use crate::prelude::ENV_VARS;
+use crate::schema::InputSchema;
 use crate::util::lfu_cache::LfuCache;
 
 use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest};
@@ -41,7 +42,7 @@ pub struct EntityCache {
     /// The store is only used to read entities.
     pub store: Arc<dyn s::ReadStore>,
 
-    schema: Arc<Schema>,
+    schema: Arc<InputSchema>,
 }
 
 impl Debug for EntityCache {

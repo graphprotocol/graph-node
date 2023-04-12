@@ -9,6 +9,7 @@ use crate::data::query::Trace;
 use crate::data::subgraph::status;
 use crate::data::value::Word;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
+use crate::schema::InputSchema;
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
@@ -67,7 +68,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         node_id: NodeId,
         network: String,
@@ -111,7 +112,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
@@ -192,7 +193,7 @@ pub trait ReadStore: Send + Sync + 'static {
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    fn input_schema(&self) -> Arc<Schema>;
+    fn input_schema(&self) -> Arc<InputSchema>;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
@@ -215,7 +216,7 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_derived(entity_derived)
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         (**self).input_schema()
     }
 }

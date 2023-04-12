@@ -2,6 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::schema::InputSchema;
 use graph_chain_ethereum::{Mapping, MappingABI};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -64,8 +65,9 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("testsubgraph");
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
+        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+            .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
         H256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -1269,7 +1271,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store, _, _| async move {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
         let schema =
-            Schema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
+            InputSchema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
             spec_version: Version::new(1, 0, 0),

@@ -6,6 +6,7 @@ use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data_source::CausalityRegion;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
+use graph::schema::InputSchema;
 use graph::semver::Version;
 use graph::{
     blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
@@ -151,7 +152,7 @@ pub async fn create_subgraph(
     schema: &str,
     base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
-    let schema = Schema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
 
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),

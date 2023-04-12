@@ -18,8 +18,9 @@ use graph::{
     components::store::EntityType,
     prelude::{
         anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-        DeploymentHash, DeploymentState, Schema, StoreError,
+        DeploymentHash, DeploymentState, StoreError,
     },
+    schema::InputSchema,
 };
 use graph::{
     data::subgraph::{
@@ -294,19 +295,19 @@ pub fn debug_fork(
     }
 }
 
-pub fn schema(conn: &PgConnection, site: &Site) -> Result<(Schema, bool), StoreError> {
+pub fn schema(conn: &PgConnection, site: &Site) -> Result<(InputSchema, bool), StoreError> {
     use subgraph_manifest as sm;
     let (s, use_bytea_prefix) = sm::table
         .select((sm::schema, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
         .first::<(String, bool)>(conn)?;
-    Schema::parse(s.as_str(), site.deployment.clone())
+    InputSchema::parse(s.as_str(), site.deployment.clone())
         .map_err(StoreError::Unknown)
         .map(|schema| (schema, use_bytea_prefix))
 }
 
 pub struct ManifestInfo {
-    pub input_schema: Schema,
+    pub input_schema: InputSchema,
     pub description: Option<String>,
     pub repository: Option<String>,
     pub spec_version: String,
@@ -332,7 +333,7 @@ impl ManifestInfo {
             ))
             .filter(sm::id.eq(site.id))
             .first(conn)?;
-        let input_schema = Schema::parse(s.as_str(), site.deployment.clone())?;
+        let input_schema = InputSchema::parse(s.as_str(), site.deployment.clone())?;
 
         // Using the features field to store the instrument flag is a bit
         // backhanded, but since this will be used very rarely, should not

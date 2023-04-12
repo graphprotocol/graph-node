@@ -1,8 +1,9 @@
 use crate::{
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError, Schema},
+    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
+    schema::InputSchema,
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -18,7 +19,7 @@ use std::{borrow::Cow, collections::HashMap};
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
-use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
+use super::graphql::{ext::DirectiveFinder, TypeExt as _};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -694,12 +695,12 @@ impl Entity {
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
-    pub fn validate(&self, schema: &Schema, key: &EntityKey) -> Result<(), anyhow::Error> {
-        fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
+    pub fn validate(&self, schema: &InputSchema, key: &EntityKey) -> Result<(), anyhow::Error> {
+        fn scalar_value_type(schema: &InputSchema, field_type: &s::Type) -> ValueType {
             use s::TypeDefinition as t;
             match field_type {
                 s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
-                    match schema.document.get_named_type(name) {
+                    match schema.get_named_type(name) {
                         Some(t::Object(obj_type)) => {
                             let id = obj_type.field("id").expect("all object types have an id");
                             scalar_value_type(schema, &id.field_type)
@@ -710,8 +711,7 @@ impl Entity {
                             // therefore enough to use the id type of one of
                             // the implementors
                             match schema
-                                .types_for_interface()
-                                .get(&EntityType::new(intf.name.clone()))
+                                .types_for_interface(intf)
                                 .expect("interface type names are known")
                                 .first()
                             {
@@ -745,16 +745,12 @@ impl Entity {
             // type for them, and validation would therefore fail
             return Ok(());
         }
-        let object_type_definitions = schema.document.get_object_type_definitions();
-        let object_type = object_type_definitions
-            .iter()
-            .find(|object_type| key.entity_type.as_str() == object_type.name)
-            .with_context(|| {
-                format!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type, key.entity_id, key.entity_type
-                )
-            })?;
+        let object_type = schema.find_object_type(&key.entity_type).with_context(|| {
+            format!(
+                "Entity {}[{}]: unknown entity type `{}`",
+                key.entity_type, key.entity_id, key.entity_type
+            )
+        })?;
 
         for field in &object_type.fields {
             let is_derived = field.is_derived();
@@ -917,8 +913,7 @@ fn entity_validation() {
           cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
         let subgraph = DeploymentHash::new("doesntmatter").unwrap();
-        let schema =
-            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let schema = InputSchema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 

@@ -1,5 +1,6 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::schema::InputSchema;
 use lazy_static::lazy_static;
 use std::marker::PhantomData;
 use test_store::*;
@@ -25,8 +26,9 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("writableSubgraph");
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
+        InputSchema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
+            .expect("Failed to parse user schema");
 }
 
 /// Inserts test data into the store.

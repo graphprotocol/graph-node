@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::schema::InputSchema;
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
@@ -76,8 +77,9 @@ const USER: &str = "User";
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("testsubgraph").unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
+        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+            .expect("Failed to parse user schema");
     static ref BLOCKS: Vec<BlockPtr> = vec![
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
