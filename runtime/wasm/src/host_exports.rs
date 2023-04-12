@@ -756,7 +756,7 @@ impl<C: Blockchain> HostExports<C> {
     pub(crate) fn data_source_context(
         &self,
         gas: &GasCounter,
-    ) -> Result<Option<Entity>, DeterministicHostError> {
+    ) -> Result<Option<DataSourceContext>, DeterministicHostError> {
         gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
         Ok(self.data_source_context.as_ref().clone())
     }

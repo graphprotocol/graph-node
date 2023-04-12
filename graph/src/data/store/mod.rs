@@ -588,7 +588,7 @@ where
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Entity(HashMap<Word, Value>);
 
 pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}

@@ -1737,8 +1737,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let name: String = asc_get(self, name_ptr, gas)?;
         let params: Vec<String> = asc_get(self, params_ptr, gas)?;
         let context: HashMap<_, _> = asc_get(self, context_ptr, gas)?;
-
-        let context = self.ctx.state.entity_cache.make_entity(context);
+        let context = DataSourceContext::from(context);
 
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,

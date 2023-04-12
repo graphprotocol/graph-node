@@ -18,7 +18,10 @@ use serde_yaml;
 use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{
+    collections::{BTreeSet, HashMap},
+    marker::PhantomData,
+};
 use thiserror::Error;
 use wasmparser;
 use web3::types::Address;
@@ -31,7 +34,7 @@ use crate::{
         store::{StoreError, SubgraphStore},
     },
     data::{
-        graphql::TryFromValue, query::QueryExecutionError, store::Entity,
+        graphql::TryFromValue, query::QueryExecutionError,
         subgraph::features::validate_subgraph_features,
     },
     data_source::{
@@ -39,7 +42,7 @@ use crate::{
         UnresolvedDataSourceTemplate,
     },
     ensure,
-    prelude::{r, CheapClone, ENV_VARS},
+    prelude::{r, CheapClone, Value, ENV_VARS},
     schema::{InputSchema, SchemaValidationError},
 };
 
@@ -49,6 +52,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
+
+use super::value::Word;
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -354,8 +359,27 @@ pub enum SubgraphManifestResolveError {
     ResolveError(#[from] anyhow::Error),
 }
 
-/// Data source contexts are conveniently represented as entities.
-pub type DataSourceContext = Entity;
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DataSourceContext(HashMap<Word, Value>);
+
+impl DataSourceContext {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    // This collects the entries into an ordered vector so that it can be iterated deterministically.
+    pub fn sorted(self) -> Vec<(Word, Value)> {
+        let mut v: Vec<_> = self.0.into_iter().collect();
+        v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        v
+    }
+}
+
+impl From<HashMap<Word, Value>> for DataSourceContext {
+    fn from(map: HashMap<Word, Value>) -> Self {
+        Self(map)
+    }
+}
 
 /// IPLD link.
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
