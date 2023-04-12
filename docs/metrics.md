@@ -27,7 +27,7 @@ Track the **last reverted block** for a subgraph deployment
 - `deployment_sync_secs`
 total **time spent syncing**
 - `deployment_transact_block_operations_duration`
-Measures **duration of commiting all the entity operations** in a block and **updating the subgraph pointer**
+Measures **duration of committing all the entity operations** in a block and **updating the subgraph pointer**
 - `deployment_trigger_processing_duration`
 Measures **duration of trigger processing** for a subgraph deployment
 - `eth_rpc_errors`

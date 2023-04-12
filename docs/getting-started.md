@@ -62,7 +62,7 @@ Below, we outline the required steps to build a subgraph from scratch, which wil
 
     2. [Create the Postgres database](#22-create-the-postgres-db)
 
-    3. [Start the Graph Node and Connect to an Etheruem node](#23-starting-the-graph-node-and-connecting-to-an-etheruem-node)
+    3. [Start the Graph Node and Connect to an Ethereum node](#23-starting-the-graph-node-and-connecting-to-an-ethereum-node)
 
     4. [Deploy the subgraph](#24-deploying-the-subgraph)
 3. Query the subgraph

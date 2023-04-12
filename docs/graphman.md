@@ -52,7 +52,7 @@ By default, it shows the following attributes for the deployment:
 -   **name**
 -   **status** *(`pending` or `current`)*
 -   **id** *(the `Qm...` identifier for the deployment's subgraph)*
--   **namespace** *(The database schema which contain's that deployment data tables)*
+-   **namespace** *(The database schema which contains that deployment data tables)*
 -   **shard**
 -   **active** *(If there are multiple entries for the same subgraph, only one of them will be active. That's the one we use for querying)*
 -   **chain**
@@ -169,7 +169,7 @@ primary shard.
 
 No indexed data is lost as a result of this command.
 
-This sub-command is used as previus step towards removing all data from unused subgraphs, followed by
+This sub-command is used as previous step towards removing all data from unused subgraphs, followed by
 `graphman unused remove`.
 
 A deployment is unused if it fulfills all of these criteria:
@@ -236,7 +236,7 @@ Remove a specific unused deployment
 
 ### SYNOPSIS
 
-    Delete a deployment and all it's indexed data
+    Delete a deployment and all its indexed data
 
     The deployment can be specified as either a subgraph name, an IPFS hash `Qm..`, or the database
     namespace `sgdNNN`. Since the same IPFS hash can be deployed in multiple shards, it is possible to
@@ -322,7 +322,7 @@ is useful to diagnose the integrity of cached blocks and eventually fix them.
 
 ### OPTIONS
 
-Blocks can be selected by different methods. The `check-blocks` command let's you use the block hash, a single
+Blocks can be selected by different methods. The `check-blocks` command lets you use the block hash, a single
 number or a number range to refer to which blocks it should verify:
 
 #### `by-hash`
@@ -338,7 +338,7 @@ number or a number range to refer to which blocks it should verify:
     graphman --config <config> chain check-blocks <chain-name> by-range [-f|--from <block-number>] [-t|--to <block-number>] [--delete-duplicates]
 
 The `by-range` method lets you scan for numeric block ranges and offers the `--from` and `--to` options for
-you to define the search bounds. If one of those options is ommited, `graphman` will consider an open bound
+you to define the search bounds. If one of those options is omitted, `graphman` will consider an open bound
 and will scan all blocks up to or after that number.
 
 Over time, it can happen that a JSON RPC provider offers different blocks for the same block number. In those
