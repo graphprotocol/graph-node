@@ -171,15 +171,12 @@ impl WritableStore for MockStore {
     }
 }
 
-fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
-    (
-        EntityKey {
-            entity_type: EntityType::new("Band".to_string()),
-            entity_id: id.into(),
-            causality_region: CausalityRegion::ONCHAIN,
-        },
-        Entity::from(data),
-    )
+fn make_band_key(id: &'static str) -> EntityKey {
+    EntityKey {
+        entity_type: EntityType::new("Band".to_string()),
+        entity_id: id.into(),
+        causality_region: CausalityRegion::ONCHAIN,
+    }
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
@@ -204,16 +201,12 @@ fn insert_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let (mogwai_key, mogwai_data) = make_band(
-        "mogwai",
-        vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-    );
+    let mogwai_data = entity! { id: "mogwai", name: "Mogwai" };
+    let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let (sigurros_key, sigurros_data) = make_band(
-        "sigurros",
-        vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-    );
+    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros" };
+    let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
@@ -253,16 +246,8 @@ fn overwrite_modifications() {
     // every set operation as an overwrite.
     let store = {
         let entities = vec![
-            make_band(
-                "mogwai",
-                vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-            )
-            .1,
-            make_band(
-                "sigurros",
-                vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-            )
-            .1,
+            entity! { id: "mogwai", name: "Mogwai" },
+            entity! { id: "sigurros", name: "Sigur Ros" },
         ];
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -270,24 +255,12 @@ fn overwrite_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let (mogwai_key, mogwai_data) = make_band(
-        "mogwai",
-        vec![
-            ("id", "mogwai".into()),
-            ("name", "Mogwai".into()),
-            ("founded", 1995.into()),
-        ],
-    );
+    let mogwai_data = entity! { id: "mogwai", name: "Mogwai", founded: 1995 };
+    let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let (sigurros_key, sigurros_data) = make_band(
-        "sigurros",
-        vec![
-            ("id", "sigurros".into()),
-            ("name", "Sigur Ros".into()),
-            ("founded", 1994.into()),
-        ],
-    );
+    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros", founded: 1994 };
+    let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
@@ -313,17 +286,8 @@ fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     let store = {
-        let entities = vec![
-            make_band(
-                "mogwai",
-                vec![
-                    ("id", "mogwai".into()),
-                    ("name", "Mogwai".into()),
-                    ("label", "Chemikal Underground".into()),
-                ],
-            )
-            .1,
-        ];
+        let entities =
+            vec![entity! { id: "mogwai", name: "Mogwai", label: "Chemikal Underground" }];
 
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -332,21 +296,13 @@ fn consecutive_modifications() {
     let mut cache = EntityCache::new(store);
 
     // First, add "founded" and change the "label".
-    let (update_key, update_data) = make_band(
-        "mogwai",
-        vec![
-            ("id", "mogwai".into()),
-            ("founded", 1995.into()),
-            ("label", "Rock Action Records".into()),
-        ],
-    );
+    let update_data = entity! { id: "mogwai", founded: 1995, label: "Rock Action Records" };
+    let update_key = make_band_key("mogwai");
     cache.set(update_key, update_data).unwrap();
 
     // Then, just reset the "label".
-    let (update_key, update_data) = make_band(
-        "mogwai",
-        vec![("id", "mogwai".into()), ("label", Value::Null)],
-    );
+    let update_data = entity! { id: "mogwai", label: Value::Null };
+    let update_key = make_band_key("mogwai");
     cache.set(update_key.clone(), update_data).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
@@ -356,12 +312,8 @@ fn consecutive_modifications() {
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {
             key: update_key,
-            data: Entity::from(vec![
-                ("id", "mogwai".into()),
-                ("name", "Mogwai".into()),
-                ("founded", 1995.into()),
-            ]),
-        },])
+            data: entity! { id: "mogwai", name: "Mogwai", founded: 1995 }
+        }])
     );
 }
 

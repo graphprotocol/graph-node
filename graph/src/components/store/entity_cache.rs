@@ -4,6 +4,7 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
+use crate::data::store::IntoEntityIterator;
 use crate::prelude::ENV_VARS;
 use crate::schema::InputSchema;
 use crate::util::lfu_cache::LfuCache;
@@ -69,6 +70,11 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
         }
+    }
+
+    /// Make a new entity. The entity is not part of the cache
+    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Entity {
+        self.schema.make_entity(iter)
     }
 
     pub fn with_current(

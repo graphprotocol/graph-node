@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use graph::data::value::Word;
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
@@ -155,7 +156,7 @@ impl<C: Blockchain> HostExports<C> {
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
-        data: HashMap<String, Value>,
+        data: HashMap<Word, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
@@ -181,7 +182,10 @@ impl<C: Blockchain> HostExports<C> {
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
 
-        let entity = Entity::from(data);
+        let entity = state
+            .entity_cache
+            .make_entity(data.into_iter().map(|(key, value)| (key, value)));
+
         state.entity_cache.set(key, entity)?;
 
         Ok(())

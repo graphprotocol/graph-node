@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use graph::schema::InputSchema;
 use graph::{
     block_on,
     components::store::{EntityType, SubgraphFork as SubgraphForkTrait},
@@ -14,11 +13,11 @@ use graph::{
         r::Value as RValue,
         reqwest,
         s::{Field, ObjectType},
-        serde_json, Attribute, DeploymentHash, Entity, Logger, Serialize, StoreError, Value,
-        ValueType,
+        serde_json, DeploymentHash, Entity, Logger, Serialize, StoreError, Value, ValueType,
     },
     url::Url,
 };
+use graph::{data::value::Word, schema::InputSchema};
 use inflector::Inflector;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -83,7 +82,7 @@ impl SubgraphForkTrait for SubgraphFork {
             )));
         }
 
-        let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
+        let entity = SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type, fields)?;
         Ok(entity)
     }
 }
@@ -172,6 +171,7 @@ query Query ($id: String) {{
     }
 
     fn extract_entity(
+        schema: &InputSchema,
         raw_json: &str,
         entity_type: &str,
         fields: &[Field],
@@ -183,7 +183,7 @@ query Query ($id: String) {{
             return Ok(None);
         }
 
-        let map: HashMap<Attribute, Value> = {
+        let map: HashMap<Word, Value> = {
             let mut map = HashMap::new();
             for f in fields {
                 if f.is_derived() {
@@ -215,18 +215,18 @@ query Query ($id: String) {{
                         e
                     ))
                 })?;
-                map.insert(f.name.clone(), value);
+                map.insert(Word::from(f.name.clone()), value);
             }
             map
         };
 
-        Ok(Some(Entity::from(map)))
+        Ok(Some(schema.make_entity(map)))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{iter::FromIterator, str::FromStr};
+    use std::str::FromStr;
 
     use super::*;
 
@@ -348,7 +348,9 @@ mod tests {
 
     #[test]
     fn test_extract_entity() {
+        let schema = test_schema();
         let entity = SubgraphFork::extract_entity(
+            &schema,
             r#"{
     "data": {
         "gravatar": {
@@ -366,21 +368,18 @@ mod tests {
 
         assert_eq!(
             entity.unwrap(),
-            Entity::from(HashMap::from_iter(
-                vec![
-                    ("id".to_string(), Value::String("0x00".to_string())),
-                    (
-                        "owner".to_string(),
-                        Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
-                    ),
-                    ("displayName".to_string(), Value::String("test".to_string())),
-                    (
-                        "imageUrl".to_string(),
-                        Value::String("http://example.com/image.png".to_string())
-                    ),
-                ]
-                .into_iter()
-            ))
+            schema.make_entity(vec![
+                ("id".into(), Value::String("0x00".to_string())),
+                (
+                    "owner".into(),
+                    Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
+                ),
+                ("displayName".into(), Value::String("test".to_string())),
+                (
+                    "imageUrl".into(),
+                    Value::String("http://example.com/image.png".to_string())
+                ),
+            ])
         );
     }
 }

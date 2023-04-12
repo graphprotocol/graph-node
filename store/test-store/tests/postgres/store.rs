@@ -475,11 +475,7 @@ fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
         let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
 
-        let partial_entity = Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("Johnny Boy")),
-            ("email", Value::Null),
-        ]);
+        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable
             .get(&entity_key)
@@ -1088,11 +1084,7 @@ fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
         let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
 
-        let partial_entity = Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("Johnny Boy")),
-            ("email", Value::Null),
-        ]);
+        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
@@ -1185,11 +1177,7 @@ fn revert_block_with_dynamic_data_source_operations() {
 
         // Create operations to add a user
         let user_key = EntityKey::data(USER.to_owned(), "1".to_owned());
-        let partial_entity = Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("Johnny Boy")),
-            ("email", Value::Null),
-        ]);
+        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
         let original_user = writable.get(&user_key).unwrap().expect("missing entity");
@@ -1305,20 +1293,8 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         // Add two entities to the store
         let added_entities = vec![
-            (
-                "1".to_owned(),
-                Entity::from(vec![
-                    ("id", Value::from("1")),
-                    ("name", Value::from("Johnny Boy")),
-                ]),
-            ),
-            (
-                "2".to_owned(),
-                Entity::from(vec![
-                    ("id", Value::from("2")),
-                    ("name", Value::from("Tessa")),
-                ]),
-            ),
+            ("1".to_owned(), entity! { id: "1", name: "Johnny Boy" }),
+            ("2".to_owned(), entity! { id: "2", name: "Tessa" }),
         ];
         transact_entity_operations(
             &store.subgraph_store(),
@@ -1336,10 +1312,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // Update an entity in the store
-        let updated_entity = Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("Johnny")),
-        ]);
+        let updated_entity = entity! { id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
             key: EntityKey::data(USER.to_owned(), "1".to_owned()),
             data: updated_entity.clone(),

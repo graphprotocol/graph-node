@@ -7,10 +7,10 @@ use graph::{
         store::{DeploymentLocator, EntityKey, EntityType, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
-    data::store::scalar::Bytes,
+    data::{store::scalar::Bytes, value::Word},
     data_source::{self, CausalityRegion},
     prelude::{
-        anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState, Entity,
+        anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState,
         RuntimeHostBuilder, Value,
     },
     slog::Logger,
@@ -189,7 +189,7 @@ where
                         entity_id: entity_id.clone().into(),
                         causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
                     };
-                    let mut data: HashMap<String, Value> = HashMap::from_iter(vec![]);
+                    let mut data: HashMap<Word, Value> = HashMap::from_iter(vec![]);
 
                     for field in entity_change.fields.iter() {
                         let new_value: &codec::value::Typed = match &field.new_value {
@@ -200,7 +200,9 @@ where
                         };
 
                         let value: Value = decode_value(new_value)?;
-                        *data.entry(field.name.clone()).or_insert(Value::Null) = value;
+                        *data
+                            .entry(Word::from(field.name.clone()))
+                            .or_insert(Value::Null) = value;
                     }
 
                     write_poi_event(
@@ -208,13 +210,15 @@ where
                         &ProofOfIndexingEvent::SetEntity {
                             entity_type,
                             id: &entity_id,
+                            // TODO: This should be an entity so we do not have to build the intermediate HashMap
                             data: &data,
                         },
                         causality_region,
                         logger,
                     );
 
-                    state.entity_cache.set(key, Entity::from(data))?;
+                    let entity = state.entity_cache.make_entity(data);
+                    state.entity_cache.set(key, entity)?;
                 }
                 Operation::Delete => {
                     let entity_type: &str = &entity_change.entity;

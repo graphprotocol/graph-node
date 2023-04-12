@@ -1,4 +1,5 @@
 use crate::prelude::{q, s, CacheWeight};
+use crate::runtime::gas::{Gas, GasSizeOf, SaturatingInto};
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -64,6 +65,29 @@ impl<'de> serde::Deserialize<'de> for Word {
         D: serde::Deserializer<'de>,
     {
         String::deserialize(deserializer).map(Into::into)
+    }
+}
+
+impl stable_hash_legacy::StableHash for Word {
+    #[inline]
+    fn stable_hash<H: stable_hash_legacy::StableHasher>(
+        &self,
+        sequence_number: H::Seq,
+        state: &mut H,
+    ) {
+        self.as_str().stable_hash(sequence_number, state)
+    }
+}
+
+impl stable_hash::StableHash for Word {
+    fn stable_hash<H: stable_hash::StableHasher>(&self, field_address: H::Addr, state: &mut H) {
+        self.as_str().stable_hash(field_address, state)
+    }
+}
+
+impl GasSizeOf for Word {
+    fn gas_size_of(&self) -> Gas {
+        self.0.len().saturating_into()
     }
 }
 

@@ -10,6 +10,7 @@ use std::time::Instant;
 use anyhow::anyhow;
 use anyhow::Error;
 use graph::components::store::GetScope;
+use graph::data::value::Word;
 use graph::slog::SendSyncRefUnwindSafeKV;
 use never::Never;
 use semver::Version;
@@ -1117,7 +1118,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             gas,
         )?;
 
-        let entities: Vec<Vec<(String, Value)>> =
+        let entities: Vec<Vec<(Word, Value)>> =
             entities.into_iter().map(|entity| entity.sorted()).collect();
         let ret = asc_new(self, &entities, gas)?;
         Ok(ret)
@@ -1736,12 +1737,15 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let name: String = asc_get(self, name_ptr, gas)?;
         let params: Vec<String> = asc_get(self, params_ptr, gas)?;
         let context: HashMap<_, _> = asc_get(self, context_ptr, gas)?;
+
+        let context = self.ctx.state.entity_cache.make_entity(context);
+
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
             name,
             params,
-            Some(context.into()),
+            Some(context),
             self.ctx.block_ptr.number,
             gas,
         )

@@ -66,10 +66,7 @@ async fn one_interface_one_entity() {
     let schema = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
 
-    let entity = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
-    );
+    let entity = ("Animal", entity! { id: "1", legs: 3 });
 
     // Collection query.
     let query = "query { leggeds(first: 100) { legs } }";
@@ -96,10 +93,7 @@ async fn one_interface_one_entity_typename() {
     let schema = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
 
-    let entity = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
-    );
+    let entity = ("Animal", entity! { id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { __typename } }";
 
@@ -119,14 +113,8 @@ async fn one_interface_multiple_entities() {
                   type Furniture implements Legged @entity { id: ID!, legs: Int }
                   ";
 
-    let animal = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
-    );
-    let furniture = (
-        "Furniture",
-        Entity::from(vec![("id", Value::from("2")), ("legs", Value::from(4))]),
-    );
+    let animal = ("Animal", entity! { id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { id: "2", legs: 4 });
 
     let query = "query { leggeds(first: 100, orderBy: legs) { legs } }";
 
@@ -156,11 +144,8 @@ async fn reference_interface() {
 
     let query = "query { leggeds(first: 100) { leg { id } } }";
 
-    let leg = ("Leg", Entity::from(vec![("id", Value::from("1"))]));
-    let animal = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("leg", Value::from("1"))]),
-    );
+    let leg = ("Leg", entity! { id: "1" });
+    let animal = ("Animal", entity! { id: "1", leg: 1 });
 
     let res = insert_and_query(subgraph_id, schema, vec![leg, animal], query)
         .await
@@ -209,20 +194,13 @@ async fn reference_interface_derived() {
 
     let query = "query { events { id transaction { id } } }";
 
-    let buy = ("BuyEvent", Entity::from(vec![("id", "buy".into())]));
-    let sell1 = ("SellEvent", Entity::from(vec![("id", "sell1".into())]));
-    let sell2 = ("SellEvent", Entity::from(vec![("id", "sell2".into())]));
-    let gift = (
-        "GiftEvent",
-        Entity::from(vec![("id", "gift".into()), ("transaction", "txn".into())]),
-    );
+    let buy = ("BuyEvent", entity! { id: "buy" });
+    let sell1 = ("SellEvent", entity! { id: "sell1" });
+    let sell2 = ("SellEvent", entity! { id: "sell2" });
+    let gift = ("GiftEvent", entity! { id: "gift", transaction: "txn" });
     let txn = (
         "Transaction",
-        Entity::from(vec![
-            ("id", "txn".into()),
-            ("buyEvent", "buy".into()),
-            ("sellEvents", vec!["sell1", "sell2"].into()),
-        ]),
+        entity! {id: "txn", buyEvent: "buy", sellEvents: vec!["sell1", "sell2"] },
     );
 
     let entities = vec![buy, sell1, sell2, gift, txn];
@@ -289,20 +267,9 @@ async fn follow_interface_reference() {
 
     let parent = (
         "Animal",
-        Entity::from(vec![
-            ("id", Value::from("parent")),
-            ("legs", Value::from(4)),
-            ("parent", Value::Null),
-        ]),
+        entity! { id: "parent", legs: 4, parent: Value::Null },
     );
-    let child = (
-        "Animal",
-        Entity::from(vec![
-            ("id", Value::from("child")),
-            ("legs", Value::from(3)),
-            ("parent", Value::String("parent".into())),
-        ]),
-    );
+    let child = ("Animal", entity! { id: "child", legs: 3, parent: "parent" });
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
         .await
@@ -323,14 +290,8 @@ async fn conflicting_implementors_id() {
                   type Furniture implements Legged @entity { id: ID!, legs: Int }
                   ";
 
-    let animal = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
-    );
-    let furniture = (
-        "Furniture",
-        Entity::from(vec![("id", Value::from("1")), ("legs", Value::from(3))]),
-    );
+    let animal = ("Animal", entity! { id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { legs } }";
 
@@ -357,11 +318,8 @@ async fn derived_interface_relationship() {
                   type Forest @entity { id: ID!, dwellers: [ForestDweller]! @derivedFrom(field: \"forest\") }
                   ";
 
-    let forest = ("Forest", Entity::from(vec![("id", Value::from("1"))]));
-    let animal = (
-        "Animal",
-        Entity::from(vec![("id", Value::from("1")), ("forest", Value::from("1"))]),
-    );
+    let forest = ("Forest", entity! { id: "1" });
+    let animal = ("Animal", entity! { id: "1", forest: "1" });
 
     let query = "query { forests(first: 100) { dwellers(first: 100) { id } } }";
 
@@ -387,22 +345,9 @@ async fn two_interfaces() {
                   type AB implements IFoo & IBar @entity { id: ID!, foo: String!, bar: Int! }
                   ";
 
-    let a = (
-        "A",
-        Entity::from(vec![("id", Value::from("1")), ("foo", Value::from("bla"))]),
-    );
-    let b = (
-        "B",
-        Entity::from(vec![("id", Value::from("1")), ("bar", Value::from(100))]),
-    );
-    let ab = (
-        "AB",
-        Entity::from(vec![
-            ("id", Value::from("2")),
-            ("foo", Value::from("ble")),
-            ("bar", Value::from(200)),
-        ]),
-    );
+    let a = ("A", entity! { id: "1", foo: "bla" });
+    let b = ("B", entity! { id: "1", bar: 100 });
+    let ab = ("AB", entity! { id: "2", foo: "ble", bar: 200 });
 
     let query = "query {
                     ibars(first: 100, orderBy: bar) { bar }
@@ -425,14 +370,7 @@ async fn interface_non_inline_fragment() {
     let schema = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, name: String, legs: Int }";
 
-    let entity = (
-        "Animal",
-        Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("cow")),
-            ("legs", Value::from(3)),
-        ]),
-    );
+    let entity = ("Animal", entity! { id: "1", name: "cow", legs: 3 });
 
     // Query only the fragment.
     let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
@@ -460,22 +398,8 @@ async fn interface_inline_fragment() {
                   type Animal implements Legged @entity { id: ID!, name: String, legs: Int }
                   type Bird implements Legged @entity { id: ID!, airspeed: Int, legs: Int }";
 
-    let animal = (
-        "Animal",
-        Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("cow")),
-            ("legs", Value::from(4)),
-        ]),
-    );
-    let bird = (
-        "Bird",
-        Entity::from(vec![
-            ("id", Value::from("2")),
-            ("airspeed", Value::from(24)),
-            ("legs", Value::from(2)),
-        ]),
-    );
+    let animal = ("Animal", entity! { id: "1", name: "cow", legs: 4 });
+    let bird = ("Bird", entity! { id: "2", airspeed: 24, legs: 2 });
 
     let query =
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
@@ -509,32 +433,16 @@ async fn interface_inline_fragment_with_subquery() {
         }
     ";
 
-    let mama_cow = (
-        "Parent",
-        Entity::from(vec![("id", Value::from("mama_cow"))]),
-    );
+    let mama_cow = ("Parent", entity! { id: "mama_cow" });
     let cow = (
         "Animal",
-        Entity::from(vec![
-            ("id", Value::from("1")),
-            ("name", Value::from("cow")),
-            ("legs", Value::from(4)),
-            ("parent", Value::from("mama_cow")),
-        ]),
+        entity! { id: "1", name: "cow", legs: 4, parent: "mama_cow" },
     );
 
-    let mama_bird = (
-        "Parent",
-        Entity::from(vec![("id", Value::from("mama_bird"))]),
-    );
+    let mama_bird = ("Parent", entity! { id: "mama_bird" });
     let bird = (
         "Bird",
-        Entity::from(vec![
-            ("id", Value::from("2")),
-            ("airspeed", Value::from(5)),
-            ("legs", Value::from(2)),
-            ("parent", Value::from("mama_bird")),
-        ]),
+        entity! { id: "2", airspeed: 5, legs: 2, parent: "mama_bird" },
     );
 
     let query = "query { leggeds(orderBy: legs) { legs ... on Bird { airspeed parent { id } } } }";
@@ -610,20 +518,9 @@ async fn alias() {
 
     let parent = (
         "Animal",
-        Entity::from(vec![
-            ("id", Value::from("parent")),
-            ("legs", Value::from(4)),
-            ("parent", Value::Null),
-        ]),
+        entity! { id: "parent", legs: 4, parent: Value::Null },
     );
-    let child = (
-        "Animal",
-        Entity::from(vec![
-            ("id", Value::from("child")),
-            ("legs", Value::from(3)),
-            ("parent", Value::String("parent".into())),
-        ]),
-    );
+    let child = ("Animal", entity! { id: "child", legs: 3, parent: "parent" });
 
     let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
         .await
@@ -1244,19 +1141,11 @@ async fn enums() {
     let entities = vec![
         (
             "Trajectory",
-            Entity::from(vec![
-                ("id", Value::from("1")),
-                ("direction", Value::from("EAST")),
-                ("meters", Value::from(10)),
-            ]),
+            entity! { id: "1", direction: "EAST", meters: 10 },
         ),
         (
             "Trajectory",
-            Entity::from(vec![
-                ("id", Value::from("2")),
-                ("direction", Value::from("NORTH")),
-                ("meters", Value::from(15)),
-            ]),
+            entity! { id: "2", direction: "NORTH", meters: 15 },
         ),
     ];
     let query = "query { trajectories { id, direction, meters } }";
@@ -1304,27 +1193,15 @@ async fn enum_list_filters() {
     let entities = vec![
         (
             "Trajectory",
-            Entity::from(vec![
-                ("id", Value::from("1")),
-                ("direction", Value::from("EAST")),
-                ("meters", Value::from(10)),
-            ]),
+            entity! { id: "1", direction: "EAST", meters: 10 },
         ),
         (
             "Trajectory",
-            Entity::from(vec![
-                ("id", Value::from("2")),
-                ("direction", Value::from("NORTH")),
-                ("meters", Value::from(15)),
-            ]),
+            entity! { id: "2", direction: "NORTH", meters: 15 },
         ),
         (
             "Trajectory",
-            Entity::from(vec![
-                ("id", Value::from("3")),
-                ("direction", Value::from("WEST")),
-                ("meters", Value::from(20)),
-            ]),
+            entity! { id: "3", direction: "WEST", meters: 20 },
         ),
     ];
 

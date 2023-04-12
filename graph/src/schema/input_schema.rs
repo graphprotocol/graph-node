@@ -2,22 +2,24 @@ use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 
 use anyhow::{anyhow, Error};
+use store::Entity;
 
 use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
-use crate::data::store::{self, scalar};
+use crate::data::store::{self, scalar, IntoEntityIterator};
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, Schema, SchemaValidationError};
+use super::{ApiSchema, AtomPool, Schema, SchemaValidationError};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {
     schema: Schema,
     immutable_types: HashSet<EntityType>,
+    pool: AtomPool,
 }
 
 impl InputSchema {
@@ -30,9 +32,11 @@ impl InputSchema {
                 .filter(|obj_type| obj_type.is_immutable())
                 .map(Into::into),
         );
+        let pool = AtomPool;
         Self {
             schema,
             immutable_types,
+            pool,
         }
     }
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
@@ -241,5 +245,9 @@ impl InputSchema {
 
     pub(crate) fn validate(&self) -> Result<(), Vec<SchemaValidationError>> {
         self.schema.validate()
+    }
+
+    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Entity {
+        Entity::make(self.pool.clone(), iter)
     }
 }

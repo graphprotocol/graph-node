@@ -131,12 +131,12 @@ mod tests {
     #[test]
     fn online_vs_reference() {
         let data = hashmap! {
-            "val".to_owned() => Value::Int(1)
+            "val".into() => Value::Int(1)
         };
         let data_empty = hashmap! {};
         let data2 = hashmap! {
-            "key".to_owned() => Value::String("s".to_owned()),
-            "null".to_owned() => Value::Null,
+            "key".into() => Value::String("s".to_owned()),
+            "null".into() => Value::Null,
         };
 
         let mut cases = vec![

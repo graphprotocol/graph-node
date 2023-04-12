@@ -3,7 +3,7 @@ use crate::{
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
-    schema::InputSchema,
+    schema::{AtomPool, InputSchema},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -589,7 +589,11 @@ where
 
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct Entity(HashMap<Attribute, Value>);
+pub struct Entity(HashMap<Word, Value>);
+
+pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}
+
+impl<T: IntoIterator<Item = (Word, Value)>> IntoEntityIterator for T {}
 
 impl stable_hash_legacy::StableHash for Entity {
     #[inline]
@@ -628,29 +632,33 @@ macro_rules! entity {
 }
 
 impl Entity {
+    pub fn make<I: IntoEntityIterator>(_pool: AtomPool, iter: I) -> Entity {
+        Entity(HashMap::from_iter(iter))
+    }
+
     /// Creates a new entity with no attributes set.
     pub fn new() -> Self {
         Entity(HashMap::new())
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
+        self.0.get(&Word::from(key))
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        self.0.insert(key, value)
+        self.0.insert(Word::from(key), value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
-        self.0.remove(key)
+        self.0.remove(&Word::from(key))
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
-        self.0.contains_key(key)
+        self.0.contains_key(&Word::from(key))
     }
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
-    pub fn sorted(self) -> Vec<(String, Value)> {
+    pub fn sorted(self) -> Vec<(Word, Value)> {
         let mut v: Vec<_> = self.0.into_iter().collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
@@ -671,7 +679,7 @@ impl Entity {
 
     /// Convenience method to save having to `.into()` the arguments.
     pub fn set(&mut self, name: impl Into<Attribute>, value: impl Into<Value>) -> Option<Value> {
-        self.0.insert(name.into(), value.into())
+        self.0.insert(Word::from(name.into()), value.into())
     }
 
     /// Merges an entity update `update` into this entity.
@@ -681,7 +689,7 @@ impl Entity {
     /// If a key is set to `Value::Null` in `update`, the key/value pair is set to `Value::Null`.
     pub fn merge(&mut self, update: Entity) {
         for (key, value) in update.0.into_iter() {
-            self.insert(key, value);
+            self.insert(key.to_string(), value);
         }
     }
 
@@ -694,7 +702,7 @@ impl Entity {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                _ => self.insert(key, value),
+                _ => self.insert(key.to_string(), value),
             };
         }
     }
@@ -830,32 +838,15 @@ impl Entity {
     }
 }
 
-impl From<HashMap<Attribute, Value>> for Entity {
-    fn from(m: HashMap<Attribute, Value>) -> Entity {
-        Entity(m)
-    }
-}
-
 impl<'a> From<&'a Entity> for Cow<'a, Entity> {
     fn from(entity: &'a Entity) -> Self {
         Cow::Borrowed(entity)
     }
 }
 
-impl<'a> From<Vec<(&'a str, Value)>> for Entity {
-    fn from(entries: Vec<(&'a str, Value)>) -> Entity {
-        Entity::from(HashMap::from_iter(
-            entries.into_iter().map(|(k, v)| (String::from(k), v)),
-        ))
-    }
-}
-
 impl FromIterator<(Word, Value)> for Entity {
     fn from_iter<T: IntoIterator<Item = (Word, Value)>>(iter: T) -> Self {
-        Entity(HashMap::from_iter(
-            iter.into_iter()
-                .map(|(key, value)| (String::from(key), value)),
-        ))
+        Entity(HashMap::from_iter(iter))
     }
 }
 
