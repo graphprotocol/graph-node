@@ -217,7 +217,7 @@ where
                         logger,
                     );
 
-                    let entity = state.entity_cache.make_entity(data);
+                    let entity = state.entity_cache.make_entity(data)?;
                     state.entity_cache.set(key, entity)?;
                 }
                 Operation::Delete => {

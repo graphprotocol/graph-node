@@ -612,6 +612,10 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 /// schema-less form can only be used in tests, since it creates an
 /// `AtomPool` just for this entity behind the scenes.
 ///
+/// The form with schema returns a `Result<Entity, Error>` since it can be
+/// used in production code. The schemaless form returns an `Entity` because
+/// it unwraps the `Result` for you.
+///
 /// Production code should always use the form with the schema
 /// ```
 ///   use graph::entity;
@@ -621,7 +625,7 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 ///   let id = DeploymentHash::new("Qm123").unwrap();
 ///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
 ///
-///   let entity = entity! { schema => id: "1", name: "John Doe" };
+///   let entity = entity! { schema => id: "1", name: "John Doe" }.unwrap();
 /// ```
 ///
 /// Test code which often doesn't have access to an `InputSchema` can use
@@ -656,7 +660,7 @@ macro_rules! entity {
                 pool.intern(stringify!($name));
                 pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
             )*
-            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs)
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
         }
     };
     ($($name:ident: $value:expr),*) => {
@@ -673,7 +677,7 @@ macro_rules! entity {
             $(
                 pool.intern(stringify!($extra));
             )*
-            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs)
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
         }
     };
     ($($name:ident: $value:expr),*; $($extra:ident),*) => {
@@ -711,12 +715,17 @@ macro_rules! entity {
 }
 
 impl Entity {
-    pub fn make<I: IntoEntityIterator>(pool: Arc<AtomPool>, iter: I) -> Entity {
+    pub fn make<I: IntoEntityIterator>(pool: Arc<AtomPool>, iter: I) -> Result<Entity, Error> {
         let mut obj = Object::new(pool);
         for (key, value) in iter {
-            obj.insert(key, value).expect("key is in AtomPool");
+            obj.insert(key, value).map_err(|e| {
+                anyhow!(
+                    "Unknown key `{}`. It probably is not part of the schema",
+                    e.not_interned()
+                )
+            })?;
         }
-        Entity(obj)
+        Ok(Entity(obj))
     }
 
     pub fn try_make<E, I: TryIntoEntityIterator<E>>(

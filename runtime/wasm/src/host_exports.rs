@@ -184,7 +184,7 @@ impl<C: Blockchain> HostExports<C> {
 
         let entity = state
             .entity_cache
-            .make_entity(data.into_iter().map(|(key, value)| (key, value)));
+            .make_entity(data.into_iter().map(|(key, value)| (key, value)))?;
 
         state.entity_cache.set(key, entity)?;
 

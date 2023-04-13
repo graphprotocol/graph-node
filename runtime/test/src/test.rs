@@ -939,11 +939,13 @@ async fn test_entity_store(api_version: Version) {
             None
         } else {
             Some(
-                schema.make_entity(
-                    module
-                        .asc_get::<HashMap<Word, Value>, _>(entity_ptr)
-                        .unwrap(),
-                ),
+                schema
+                    .make_entity(
+                        module
+                            .asc_get::<HashMap<Word, Value>, _>(entity_ptr)
+                            .unwrap(),
+                    )
+                    .unwrap(),
             )
         }
     };

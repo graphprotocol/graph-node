@@ -51,6 +51,14 @@ pub enum Error {
     NotInterned(String),
 }
 
+impl Error {
+    pub fn not_interned(&self) -> &str {
+        match self {
+            Error::NotInterned(s) => s,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 /// A pool of interned strings. Pools can be organized hierarchically with
 /// lookups in child pools also considering the parent pool. The chain of

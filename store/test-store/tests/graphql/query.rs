@@ -344,12 +344,12 @@ async fn insert_test_entities(
         entity! { is => __typename: "Album", id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] },
         entity! { is => __typename: "Single", id: "rl2",  title: "Rock",           songs: vec![s[2]] },
         entity! { is => __typename: "Single", id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
-    ];
+    ].into_iter().collect::<Result<_,_>>().unwrap();
 
     let entities1 = vec![
         entity! { is => __typename: "Musician", id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"] },
         entity! { is => __typename: "Musician", id: "m4", name: "Valerie", bands: Vec::<String>::new() },
-    ];
+    ].into_iter().collect::<Result<_,_>>().unwrap();
 
     async fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
         let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {

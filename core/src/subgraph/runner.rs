@@ -1046,7 +1046,7 @@ async fn update_proof_of_indexing(
             entity_cache.schema =>
             id: entity_key.entity_id.to_string(),
             digest: updated_proof_of_indexing,
-        };
+        }?;
 
         entity_cache.set(entity_key, new_poi_entity)?;
     }

@@ -283,7 +283,7 @@ impl Inner {
         self.schema.validate()
     }
 
-    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Entity {
+    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Result<Entity, Error> {
         Entity::make(self.pool.clone(), iter)
     }
 

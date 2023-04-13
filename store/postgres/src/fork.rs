@@ -220,7 +220,7 @@ query Query ($id: String) {{
             map
         };
 
-        Ok(Some(schema.make_entity(map)))
+        Ok(Some(schema.make_entity(map)?))
     }
 }
 
@@ -368,18 +368,20 @@ mod tests {
 
         assert_eq!(
             entity.unwrap(),
-            schema.make_entity(vec![
-                ("id".into(), Value::String("0x00".to_string())),
-                (
-                    "owner".into(),
-                    Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
-                ),
-                ("displayName".into(), Value::String("test".to_string())),
-                (
-                    "imageUrl".into(),
-                    Value::String("http://example.com/image.png".to_string())
-                ),
-            ])
+            schema
+                .make_entity(vec![
+                    ("id".into(), Value::String("0x00".to_string())),
+                    (
+                        "owner".into(),
+                        Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
+                    ),
+                    ("displayName".into(), Value::String("test".to_string())),
+                    (
+                        "imageUrl".into(),
+                        Value::String("http://example.com/image.png".to_string())
+                    ),
+                ])
+                .unwrap()
         );
     }
 }

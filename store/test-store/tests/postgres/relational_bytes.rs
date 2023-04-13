@@ -100,7 +100,8 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
         entity! { layout.input_schema =>
             id: id,
             name: name
-        },
+        }
+        .unwrap(),
     );
 }
 
@@ -371,29 +372,34 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
         id: ROOT,
         name: "root",
         children: vec!["babe01", "babe02"]
-    };
+    }
+    .unwrap();
     let child1 = entity! { layout.input_schema =>
         id: CHILD1,
         name: "child1",
         parent: "dead00",
         children: vec![GRANDCHILD1]
-    };
+    }
+    .unwrap();
     let child2 = entity! { layout.input_schema =>
         id: CHILD2,
         name: "child2",
         parent: "dead00",
         children: vec![GRANDCHILD1]
-    };
+    }
+    .unwrap();
     let grand_child1 = entity! { layout.input_schema =>
         id: GRANDCHILD1,
         name: "grandchild1",
         parent: CHILD1
-    };
+    }
+    .unwrap();
     let grand_child2 = entity! { layout.input_schema =>
         id: GRANDCHILD2,
         name: "grandchild2",
         parent: CHILD2
-    };
+    }
+    .unwrap();
 
     insert_entity(conn, layout, "Thing", root.clone());
     insert_entity(conn, layout, "Thing", child1.clone());

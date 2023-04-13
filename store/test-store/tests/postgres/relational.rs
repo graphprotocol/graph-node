@@ -338,7 +338,8 @@ fn make_user(
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color
-    };
+    }
+    .unwrap();
     if let Some(drinks) = drinks {
         user.insert("drinks", drinks.into());
     }
