@@ -5,6 +5,7 @@ use crate::{
     runtime::gas::{Gas, GasSizeOf},
     schema::InputSchema,
     util::intern::AtomPool,
+    util::intern::{NullValue, Object},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -12,11 +13,11 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
+use std::borrow::Cow;
+use std::convert::TryFrom;
 use std::fmt;
-use std::iter::FromIterator;
 use std::str::FromStr;
-use std::{borrow::Cow, collections::HashMap};
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
@@ -276,6 +277,12 @@ impl StableHash for Value {
         };
 
         state.write(field_address, &[variant])
+    }
+}
+
+impl NullValue for Value {
+    fn null() -> Self {
+        Value::Null
     }
 }
 
@@ -590,7 +597,7 @@ where
 
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct Entity(HashMap<Word, Value>);
+pub struct Entity(Object<Value>);
 
 pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}
 
@@ -704,16 +711,24 @@ macro_rules! entity {
 }
 
 impl Entity {
-    pub fn make<I: IntoEntityIterator>(_pool: Arc<AtomPool>, iter: I) -> Entity {
-        Entity(HashMap::from_iter(iter))
+    pub fn make<I: IntoEntityIterator>(pool: Arc<AtomPool>, iter: I) -> Entity {
+        let mut obj = Object::new(pool);
+        for (key, value) in iter {
+            obj.insert(key, value).expect("key is in AtomPool");
+        }
+        Entity(obj)
     }
 
     pub fn try_make<E, I: TryIntoEntityIterator<E>>(
-        _pool: Arc<AtomPool>,
+        pool: Arc<AtomPool>,
         iter: I,
     ) -> Result<Entity, E> {
-        let map: HashMap<_, _> = iter.into_iter().collect::<Result<_, E>>()?;
-        Ok(Entity(map))
+        let mut obj = Object::new(pool);
+        for pair in iter {
+            let (key, value) = pair?;
+            obj.insert(key, value).expect("key is in AtomPool");
+        }
+        Ok(Entity(obj))
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -721,7 +736,7 @@ impl Entity {
     }
 
     pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        self.0.insert(Word::from(key), value)
+        self.0.insert(&key, value).expect("key is in AtomPool")
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
@@ -734,7 +749,7 @@ impl Entity {
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
     pub fn sorted(self) -> Vec<(Word, Value)> {
-        let mut v: Vec<_> = self.0.into_iter().collect();
+        let mut v: Vec<_> = self.0.into_iter().map(|(k, v)| (k, v)).collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
     }
@@ -754,7 +769,9 @@ impl Entity {
 
     /// Convenience method to save having to `.into()` the arguments.
     pub fn set(&mut self, name: impl Into<Attribute>, value: impl Into<Value>) -> Option<Value> {
-        self.0.insert(Word::from(name.into()), value.into())
+        self.0
+            .insert(Word::from(name.into()), value.into())
+            .expect("key is in AtomPool")
     }
 
     /// Merges an entity update `update` into this entity.
@@ -763,9 +780,7 @@ impl Entity {
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is set to `Value::Null`.
     pub fn merge(&mut self, update: Entity) {
-        for (key, value) in update.0.into_iter() {
-            self.insert(key.to_string(), value);
-        }
+        self.0.merge(update.0);
     }
 
     /// Merges an entity update `update` into this entity, removing `Value::Null` values.
