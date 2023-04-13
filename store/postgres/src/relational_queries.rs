@@ -1762,7 +1762,7 @@ impl<'a> InsertQuery<'a> {
                     if !fulltext_field_values.is_empty() {
                         entity
                             .to_mut()
-                            .insert(column.field.to_string(), Value::List(fulltext_field_values));
+                            .insert(&column.field, Value::List(fulltext_field_values));
                     }
                 }
                 if !column.is_nullable() && !entity.contains_key(&column.field) {

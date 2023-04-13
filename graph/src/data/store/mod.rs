@@ -735,8 +735,8 @@ impl Entity {
         self.0.get(&Word::from(key))
     }
 
-    pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
-        self.0.insert(&key, value).expect("key is in AtomPool")
+    pub fn insert(&mut self, key: &str, value: Value) -> Option<Value> {
+        self.0.insert(key, value).expect("key is in AtomPool")
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
@@ -792,7 +792,7 @@ impl Entity {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                _ => self.insert(key.to_string(), value),
+                _ => self.insert(&key, value),
             };
         }
     }

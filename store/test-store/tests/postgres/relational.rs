@@ -340,7 +340,7 @@ fn make_user(
         favorite_color: favorite_color
     };
     if let Some(drinks) = drinks {
-        user.insert("drinks".to_owned(), drinks.into());
+        user.insert("drinks", drinks.into());
     }
     user
 }
