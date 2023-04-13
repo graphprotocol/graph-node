@@ -287,7 +287,13 @@ impl Inner {
         Entity::make(self.pool.clone(), iter)
     }
 
-    pub fn try_make_entity<E, I: TryIntoEntityIterator<E>>(&self, iter: I) -> Result<Entity, E> {
+    pub fn try_make_entity<
+        E: std::error::Error + Send + Sync + 'static,
+        I: TryIntoEntityIterator<E>,
+    >(
+        &self,
+        iter: I,
+    ) -> Result<Entity, Error> {
         Entity::try_make(self.pool.clone(), iter)
     }
 }

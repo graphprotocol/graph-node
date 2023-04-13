@@ -254,7 +254,7 @@ impl FromEntityData for Entity {
         schema: &InputSchema,
         iter: I,
     ) -> Result<Self, StoreError> {
-        schema.try_make_entity(iter)
+        schema.try_make_entity(iter).map_err(StoreError::from)
     }
 }
 

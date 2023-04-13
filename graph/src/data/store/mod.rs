@@ -728,14 +728,15 @@ impl Entity {
         Ok(Entity(obj))
     }
 
-    pub fn try_make<E, I: TryIntoEntityIterator<E>>(
+    pub fn try_make<E: std::error::Error + Send + Sync + 'static, I: TryIntoEntityIterator<E>>(
         pool: Arc<AtomPool>,
         iter: I,
-    ) -> Result<Entity, E> {
+    ) -> Result<Entity, Error> {
         let mut obj = Object::new(pool);
         for pair in iter {
             let (key, value) = pair?;
-            obj.insert(key, value).expect("key is in AtomPool");
+            obj.insert(key, value)
+                .map_err(|e| anyhow!("unknown attribute {}", e.not_interned()))?;
         }
         Ok(Entity(obj))
     }
