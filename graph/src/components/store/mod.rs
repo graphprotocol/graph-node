@@ -29,6 +29,7 @@ use crate::data::store::*;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::schema::InputSchema;
+use crate::util::intern::{self, Error as InternError};
 use crate::{constraint_violation, prelude::*};
 
 /// The type name of an entity. This is the string that is used in the
@@ -137,6 +138,12 @@ pub struct EntityKey {
     /// doing the lookup. So if the entity exists but was created on a different causality region,
     /// the lookup will return empty.
     pub causality_region: CausalityRegion,
+}
+
+impl EntityKey {
+    pub fn unknown_attribute(&self, err: intern::Error) -> StoreError {
+        StoreError::UnknownAttribute(self.entity_type.to_string(), err.not_interned())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1008,14 +1015,14 @@ enum EntityOp {
 }
 
 impl EntityOp {
-    fn apply_to(self, entity: Option<Entity>) -> Option<Entity> {
+    fn apply_to(self, entity: Option<Entity>) -> Result<Option<Entity>, InternError> {
         use EntityOp::*;
         match (self, entity) {
-            (Remove, _) => None,
-            (Overwrite(new), _) | (Update(new), None) => Some(new),
+            (Remove, _) => Ok(None),
+            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new)),
             (Update(updates), Some(mut entity)) => {
-                entity.merge_remove_null_fields(updates);
-                Some(entity)
+                entity.merge_remove_null_fields(updates)?;
+                Ok(Some(entity))
             }
         }
     }

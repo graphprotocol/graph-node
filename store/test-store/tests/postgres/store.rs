@@ -446,7 +446,7 @@ fn update_existing() {
             _ => unreachable!(),
         };
 
-        new_data.insert("bin_name", Value::Bytes(bin_name));
+        new_data.insert("bin_name", Value::Bytes(bin_name)).unwrap();
         assert_eq!(writable.get(&entity_key).unwrap(), Some(new_data));
     })
 }

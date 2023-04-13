@@ -341,7 +341,7 @@ fn make_user(
     }
     .unwrap();
     if let Some(drinks) = drinks {
-        user.insert("drinks", drinks.into());
+        user.insert("drinks", drinks.into()).unwrap();
     }
     user
 }

@@ -52,7 +52,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn not_interned(&self) -> &str {
+    pub fn not_interned(self) -> String {
         match self {
             Error::NotInterned(s) => s,
         }

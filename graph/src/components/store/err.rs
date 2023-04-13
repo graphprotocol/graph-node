@@ -18,6 +18,8 @@ pub enum StoreError {
     UnknownField(String),
     #[error("unknown table '{0}'")]
     UnknownTable(String),
+    #[error("entity type '{0}' does not have an attribute '{0}'")]
+    UnknownAttribute(String, String),
     #[error("malformed directive '{0}'")]
     MalformedDirective(String),
     #[error("query execution failed: {0}")]

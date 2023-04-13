@@ -5,7 +5,7 @@ use crate::{
     runtime::gas::{Gas, GasSizeOf},
     schema::InputSchema,
     util::intern::AtomPool,
-    util::intern::{NullValue, Object},
+    util::intern::{Error as InternError, NullValue, Object},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -744,8 +744,8 @@ impl Entity {
         self.0.get(key)
     }
 
-    pub fn insert(&mut self, key: &str, value: Value) -> Option<Value> {
-        self.0.insert(key, value).expect("key is in AtomPool")
+    pub fn insert(&mut self, key: &str, value: Value) -> Result<Option<Value>, InternError> {
+        self.0.insert(key, value)
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
@@ -797,13 +797,14 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                _ => self.insert(&key, value),
+                _ => self.insert(&key, value)?,
             };
         }
+        Ok(())
     }
 
     /// Remove all entries with value `Value::Null` from `self`
