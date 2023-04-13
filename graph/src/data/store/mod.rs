@@ -599,26 +599,6 @@ pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>
 
 impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
 
-impl stable_hash_legacy::StableHash for Entity {
-    #[inline]
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        use stable_hash_legacy::SequenceNumber;
-        let Self(inner) = self;
-        stable_hash_legacy::StableHash::stable_hash(inner, sequence_number.next_child(), state);
-    }
-}
-
-impl StableHash for Entity {
-    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let Self(inner) = self;
-        StableHash::stable_hash(inner, field_address.child(0), state);
-    }
-}
-
 /// The `entity!` macro is a convenient way to create entities. It comes in
 /// two forms, one where a schema is provided and one where it is not. The
 /// schema-less form can only be used in tests, since it creates an
