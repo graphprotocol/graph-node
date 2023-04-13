@@ -732,7 +732,7 @@ impl Entity {
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(&Word::from(key))
+        self.0.get(key)
     }
 
     pub fn insert(&mut self, key: &str, value: Value) -> Option<Value> {
@@ -740,11 +740,11 @@ impl Entity {
     }
 
     pub fn remove(&mut self, key: &str) -> Option<Value> {
-        self.0.remove(&Word::from(key))
+        self.0.remove(key)
     }
 
     pub fn contains_key(&self, key: &str) -> bool {
-        self.0.contains_key(&Word::from(key))
+        self.0.contains_key(key)
     }
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
