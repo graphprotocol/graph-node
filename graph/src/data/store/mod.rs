@@ -768,9 +768,9 @@ impl Entity {
     }
 
     /// Convenience method to save having to `.into()` the arguments.
-    pub fn set(&mut self, name: impl Into<Attribute>, value: impl Into<Value>) -> Option<Value> {
+    pub fn set(&mut self, name: &str, value: impl Into<Value>) -> Option<Value> {
         self.0
-            .insert(Word::from(name.into()), value.into())
+            .insert(name, value.into())
             .expect("key is in AtomPool")
     }
 
