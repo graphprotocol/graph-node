@@ -727,7 +727,7 @@ fn scoped_get() {
         assert_eq!(None, act1);
         // But if it gets updated, it becomes visible with either scope
         let mut wallet1 = wallet1;
-        wallet1.set("balance", 70);
+        wallet1.set("balance", 70).unwrap();
         cache.set(key1.clone(), wallet1.clone()).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(Some(&wallet1), act1.as_ref());

@@ -192,7 +192,8 @@ impl EntityCache {
             }
             None => {
                 let value = self.schema.id_value(&key)?;
-                entity.set("id", value);
+                // unwrap: our AtomPool always has an id in it
+                entity.set("id", value).unwrap();
             }
         }
 

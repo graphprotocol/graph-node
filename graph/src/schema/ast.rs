@@ -457,7 +457,9 @@ fn entity_validation() {
     }
 
     let mut thing = make_thing("t1");
-    thing.set("things", store::Value::from(vec!["thing1", "thing2"]));
+    thing
+        .set("things", store::Value::from(vec!["thing1", "thing2"]))
+        .unwrap();
     check(thing, "");
 
     let thing = make_thing("t2");
@@ -478,7 +480,7 @@ fn entity_validation() {
     );
 
     let mut thing = make_thing("t5");
-    thing.set("name", store::Value::Int(32));
+    thing.set("name", store::Value::Int(32)).unwrap();
     check(
         thing,
         "Entity Thing[t5]: the value `32` for field `name` must \
@@ -486,10 +488,12 @@ fn entity_validation() {
     );
 
     let mut thing = make_thing("t6");
-    thing.set(
-        "things",
-        store::Value::List(vec!["thing1".into(), 17.into()]),
-    );
+    thing
+        .set(
+            "things",
+            store::Value::List(vec!["thing1".into(), 17.into()]),
+        )
+        .unwrap();
     check(
         thing,
         "Entity Thing[t6]: field `things` is of type [Thing!]!, \
@@ -502,7 +506,7 @@ fn entity_validation() {
     check(thing, "");
 
     let mut thing = make_thing("t8");
-    thing.set("cruft", "wat");
+    thing.set("cruft", "wat").unwrap();
     check(
         thing,
         "Entity Thing[t8]: field `cruft` is derived and can not be set",

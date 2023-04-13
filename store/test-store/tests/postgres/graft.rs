@@ -316,7 +316,7 @@ async fn check_graft(
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
 
     // Make our own entries for block 2
-    shaq.set("email", "shaq@gmail.com");
+    shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
         key: EntityKey::data(USER.to_owned(), "3"),
         data: shaq,

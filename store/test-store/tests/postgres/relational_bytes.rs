@@ -295,7 +295,7 @@ fn update() {
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
-        entity.set("name", "Moo");
+        entity.set("name", "Moo").unwrap();
         let key = EntityKey::data("Thing".to_owned(), entity.id().unwrap());
 
         let entity_id = entity.id().unwrap();
@@ -325,7 +325,7 @@ fn delete() {
 
         insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone());
         let mut two = BEEF_ENTITY.clone();
-        two.set("id", TWO_ID);
+        two.set("id", TWO_ID).unwrap();
         insert_entity(conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
