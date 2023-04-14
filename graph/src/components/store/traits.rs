@@ -331,10 +331,11 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     /// contain unprocessed write requests that will be discarded by this
     /// call.
     ///
-    /// After this call, `self` should not be used anymore, as it will
-    /// continue to produce errors for any write requests, and instead, the
-    /// returned `WritableStore` should be used.
-    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStore>, StoreError>;
+    /// This call returns `None` if a restart was not needed because `self`
+    /// had no errors. If it returns `Some`, `self` should not be used
+    /// anymore, as it will continue to produce errors for any write
+    /// requests, and instead, the returned `WritableStore` should be used.
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStore>>, StoreError>;
 }
 
 #[async_trait]

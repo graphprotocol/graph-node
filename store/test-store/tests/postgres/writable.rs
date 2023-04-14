@@ -192,7 +192,7 @@ fn restart() {
 
         // We now have a poisoned store. Restarting it gives us a new store
         // that works again
-        let writable = writable.restart().await.unwrap();
+        let writable = writable.restart().await.unwrap().unwrap();
         writable.flush().await.unwrap();
 
         // Retry our write with correct data

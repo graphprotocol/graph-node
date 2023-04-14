@@ -1316,16 +1316,19 @@ impl WritableStoreTrait for WritableStore {
         self.writer.flush().await
     }
 
-    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStoreTrait>, StoreError> {
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStoreTrait>>, StoreError> {
         if self.poisoned() {
             let logger = self.store.logger.clone();
             if let Err(e) = self.stop().await {
                 warn!(logger, "Writable had error when stopping, it is safe to ignore this error"; "error" => e.to_string());
             }
             let store = Arc::new(self.store.store.0.clone());
-            store.writable(logger, self.store.site.id.into()).await
+            store
+                .writable(logger, self.store.site.id.into())
+                .await
+                .map(|store| Some(store))
         } else {
-            Ok(self)
+            Ok(None)
         }
     }
 }

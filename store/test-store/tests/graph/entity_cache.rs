@@ -170,7 +170,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    async fn restart(self: Arc<Self>) -> Result<Arc<dyn WritableStore>, StoreError> {
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStore>>, StoreError> {
         unimplemented!()
     }
 }
