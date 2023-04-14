@@ -202,15 +202,9 @@ where
                 "block_hash" => format!("{}", block_ptr.hash)
         ));
 
-        if triggers.len() == 1 {
-            debug!(&logger, "1 candidate trigger in this block");
-        } else {
-            debug!(
-                &logger,
-                "{} candidate triggers in this block",
-                triggers.len()
-            );
-        }
+        debug!(logger, "Start processing block";
+               "triggers" => triggers.len(),
+               "cached_entities" => self.state.entity_lfu_cache.len());
 
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
