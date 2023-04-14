@@ -11,7 +11,7 @@ use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
-use crate::substreams::BlockScopedData;
+use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
 
 pub struct BufferedBlockStream<C: Blockchain> {
@@ -317,7 +317,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        response: &BlockScopedData,
+        response: Option<Message>,
         // adapter: &Arc<dyn TriggersAdapter<C>>,
         // filter: &C::TriggerFilter,
     ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError>;

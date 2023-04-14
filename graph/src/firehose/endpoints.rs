@@ -7,7 +7,7 @@ use crate::{
     endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
-    substreams,
+    substreams_rpc,
 };
 
 use crate::firehose::fetch_client::FetchClient;
@@ -239,7 +239,7 @@ impl FirehoseEndpoint {
 
     fn new_substreams_client(
         &self,
-    ) -> substreams::stream_client::StreamClient<
+    ) -> substreams_rpc::stream_client::StreamClient<
         InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
     > {
         let metrics = MetricsInterceptor {
@@ -252,9 +252,11 @@ impl FirehoseEndpoint {
             },
         };
 
-        let mut client =
-            substreams::stream_client::StreamClient::with_interceptor(metrics, self.auth.clone())
-                .accept_compressed(CompressionEncoding::Gzip);
+        let mut client = substreams_rpc::stream_client::StreamClient::with_interceptor(
+            metrics,
+            self.auth.clone(),
+        )
+        .accept_compressed(CompressionEncoding::Gzip);
 
         if self.compression_enabled {
             client = client.send_compressed(CompressionEncoding::Gzip);
@@ -399,8 +401,8 @@ impl FirehoseEndpoint {
 
     pub async fn substreams(
         self: Arc<Self>,
-        request: substreams::Request,
-    ) -> Result<tonic::Streaming<substreams::Response>, anyhow::Error> {
+        request: substreams_rpc::Request,
+    ) -> Result<tonic::Streaming<substreams_rpc::Response>, anyhow::Error> {
         let mut client = self.new_substreams_client();
         let response_stream = client.blocks(request).await?;
         let block_stream = response_stream.into_inner();
