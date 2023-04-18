@@ -413,7 +413,6 @@ mod tests {
     use graph::data::value::{Object, Word};
     use http::header::CONTENT_TYPE;
     use http::status::StatusCode;
-    use hyper::body::HttpBody;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
 
