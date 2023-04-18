@@ -6,7 +6,6 @@ use http::header::{
     CONTENT_TYPE,
 };
 use http::StatusCode;
-use hyper::{Body, Request};
 use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;

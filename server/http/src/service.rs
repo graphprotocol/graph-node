@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::Context;
@@ -7,10 +6,8 @@ use std::time::Instant;
 
 use graph::prelude::serde_json;
 use graph::prelude::serde_json::json;
-use graph::prelude::thiserror::private::DisplayAsDisplay;
 use graph::prelude::*;
 use graph::semver::VersionReq;
-use graph::url::Url;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use http::header::{
@@ -257,24 +254,6 @@ where
         async {
             let response_obj = json!({
                 "message": "Content-Type header is required"
-            });
-            let response_str = serde_json::to_string(&response_obj).unwrap();
-
-            Ok(Response::builder()
-                .status(400)
-                .header(CONTENT_TYPE, "application/json")
-                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .body(Body::from(response_str))
-                .unwrap())
-        }
-        .boxed()
-    }
-
-    /// Handles requests without query param.
-    async fn handle_requests_without_query_param(&self) -> GraphQLServiceResponse {
-        async {
-            let response_obj = json!({
-                "message": "`query` param has to be provided!"
             });
             let response_str = serde_json::to_string(&response_obj).unwrap();
 
