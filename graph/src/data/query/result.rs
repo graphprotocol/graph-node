@@ -5,7 +5,6 @@ use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
 };
-use http::StatusCode;
 use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;
