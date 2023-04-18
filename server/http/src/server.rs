@@ -67,27 +67,12 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
-            ok::<_, Error>(service_fn(move |req: Request<Body>| {
-                match (
-                    req.method(),
-                    req.headers().get(hyper::header::CONTENT_LENGTH),
-                ) {
-                    (&Method::POST, Some(length)) if length == "0" => {
-                        let mut res = Response::new(Body::empty());
-                        *res.status_mut() = StatusCode::BAD_REQUEST;
-                        ok::<_, Error>(res)
-                    }
-                    _ => {
-                        let service = GraphQLService::new(
-                            logger_for_service.clone(),
-                            graphql_runner.clone(),
-                            ws_port,
-                            node_id.clone(),
-                        );
-                        futures03::future::ok::<_, Error>(service)
-                    }
-                }
-            }))
+            futures03::future::ok::<_, Error>(GraphQLService::new(
+                logger_for_service.clone(),
+                graphql_runner.clone(),
+                ws_port,
+                node_id.clone(),
+            ))
         });
 
         // Create a task to run the server and handle HTTP requests
