@@ -1,8 +1,8 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
 
-use futures::future::{ok, Future};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
+use futures::future::Future;
+use hyper::service::make_service_fn;
+use hyper::Server;
 use thiserror::Error;
 
 use crate::service::GraphQLService;
