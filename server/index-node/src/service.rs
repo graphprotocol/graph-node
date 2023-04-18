@@ -223,6 +223,9 @@ where
             segments.collect::<Vec<_>>()
         };
 
+        let cloned_uri = &req.uri().clone();
+        let req_query: Option<&str> = cloned_uri.query().clone();
+
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => Ok(Self::index()),
             (Method::GET, ["graphiql.css"]) => Ok(Self::serve_file(

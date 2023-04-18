@@ -5,6 +5,8 @@ use http::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE,
 };
+use http::StatusCode;
+use hyper::{Body, Request};
 use serde::ser::*;
 use serde::Serialize;
 use std::convert::TryFrom;
@@ -188,12 +190,26 @@ impl QueryResults {
         self.results.push(other);
     }
 
+    fn has_query_parameter(&self, query: Option<&str>) -> bool {
+        if let Some(query_str) = query {
+            for param in query_str.split('&') {
+                let param_parts: Vec<&str> = param.splitn(2, '=').collect();
+                if param_parts.len() == 2 && param_parts[0] == "query" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
         let status_code = http::StatusCode::OK;
+
         let json =
             serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
+
         http::Response::builder()
-            .status(status_code)
+            .status(StatusCode::BAD_REQUEST)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
             .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")

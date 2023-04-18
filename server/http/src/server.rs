@@ -67,12 +67,14 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
-            futures03::future::ok::<_, Error>(GraphQLService::new(
+            let graphql_service = GraphQLService::new(
                 logger_for_service.clone(),
                 graphql_runner.clone(),
                 ws_port,
                 node_id.clone(),
-            ))
+            );
+
+            futures03::future::ok::<_, Error>(graphql_service)
         });
 
         // Create a task to run the server and handle HTTP requests

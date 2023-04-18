@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::Context;
@@ -6,8 +7,10 @@ use std::time::Instant;
 
 use graph::prelude::serde_json;
 use graph::prelude::serde_json::json;
+use graph::prelude::thiserror::private::DisplayAsDisplay;
 use graph::prelude::*;
 use graph::semver::VersionReq;
+use graph::url::Url;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use http::header::{
@@ -249,6 +252,53 @@ where
         .boxed()
     }
 
+    /// Handles requests without content type.
+    fn handle_requests_without_content_type(&self) -> GraphQLServiceResponse {
+        async {
+            let response_obj = json!({
+                "message": "Content-Type header is required"
+            });
+            let response_str = serde_json::to_string(&response_obj).unwrap();
+
+            Ok(Response::builder()
+                .status(400)
+                .header(CONTENT_TYPE, "application/json")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(Body::from(response_str))
+                .unwrap())
+        }
+        .boxed()
+    }
+
+    /// Handles requests without query param.
+    async fn handle_requests_without_query_param(&self) -> GraphQLServiceResponse {
+        async {
+            let response_obj = json!({
+                "message": "`query` param has to be provided!"
+            });
+            let response_str = serde_json::to_string(&response_obj).unwrap();
+
+            Ok(Response::builder()
+                .status(400)
+                .header(CONTENT_TYPE, "application/json")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(Body::from(response_str))
+                .unwrap())
+        }
+        .boxed()
+    }
+
+    fn has_request_body(&self, req: &Request<Body>) -> bool {
+        if let Some(length) = req.headers().get(hyper::header::CONTENT_LENGTH) {
+            if let Ok(length) = length.to_str() {
+                if let Ok(length) = length.parse::<usize>() {
+                    return length > 0;
+                }
+            }
+        }
+        false
+    }
+
     fn handle_call(self, req: Request<Body>) -> GraphQLServiceResponse {
         let method = req.method().clone();
 
@@ -261,6 +311,13 @@ where
 
             segments.collect::<Vec<_>>()
         };
+
+        let headers = req.headers();
+        let content_type = headers.get("content-type");
+
+        if method == Method::POST && (content_type.is_none() || !self.has_request_body(&req)) {
+            return self.handle_requests_without_content_type().boxed();
+        }
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
