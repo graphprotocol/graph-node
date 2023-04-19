@@ -905,11 +905,6 @@ impl GasSizeOf for Entity {
     }
 }
 
-/// A value that can (maybe) be converted to an `Entity`.
-pub trait TryIntoEntity {
-    fn try_into_entity(self) -> Result<Entity, Error>;
-}
-
 #[test]
 fn value_bytes() {
     let graphql_value = r::Value::String("0x8f494c66afc1d3f8ac1b45df21f02a46".to_owned());
