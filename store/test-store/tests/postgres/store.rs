@@ -1544,14 +1544,13 @@ fn handle_large_string_with_index() {
             ))
             .asc(NAME);
 
-        let ids = store
+        let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Found entities without an id");
+            .collect();
 
         assert_eq!(vec![ONE], ids);
 
@@ -1563,14 +1562,13 @@ fn handle_large_string_with_index() {
             .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
             .asc(NAME);
 
-        let ids = store
+        let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Found entities without an id");
+            .collect();
 
         // Users with name 'Cindini' and 'Johnton'
         assert_eq!(vec!["2", "1"], ids);
@@ -1640,14 +1638,13 @@ fn handle_large_bytea_with_index() {
             ))
             .asc(NAME);
 
-        let ids = store
+        let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Found entities without an id");
+            .collect();
 
         assert_eq!(vec![ONE], ids);
 
@@ -1658,14 +1655,13 @@ fn handle_large_bytea_with_index() {
             .filter(EntityFilter::LessOrEqual(NAME.to_owned(), prefix.into()))
             .asc(NAME);
 
-        let ids = store
+        let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Found entities without an id");
+            .collect();
 
         // Users with name 'Cindini' and 'Johnton'
         assert_eq!(vec!["2", "1"], ids);

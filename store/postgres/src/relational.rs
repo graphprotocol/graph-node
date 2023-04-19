@@ -553,7 +553,7 @@ impl Layout {
 
             let key = EntityKey {
                 entity_type,
-                entity_id: entity_data.id()?.into(),
+                entity_id: Word::from(entity_data.id()),
                 causality_region: CausalityRegion::from_entity(&entity_data),
             };
             let overwrite = entities.insert(key, entity_data).is_some();
@@ -581,7 +581,7 @@ impl Layout {
             let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
             let key = EntityKey {
                 entity_type,
-                entity_id: entity_data.id()?.into(),
+                entity_id: Word::from(entity_data.id()),
                 causality_region: CausalityRegion::from_entity(&entity_data),
             };
 
@@ -615,7 +615,7 @@ impl Layout {
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
             let data: Entity = entity_data.deserialize_with_layout(self, None, true)?;
-            let entity_id = Word::from(data.id().expect("Invalid ID for entity."));
+            let entity_id = Word::from(data.id());
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             changes.push(EntityOperation::Set {

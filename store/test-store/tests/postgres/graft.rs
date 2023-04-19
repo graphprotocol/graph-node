@@ -297,7 +297,7 @@ fn find_entities(
 
     let ids = entities
         .iter()
-        .map(|entity| entity.id().unwrap())
+        .map(|entity| entity.id())
         .collect::<Vec<_>>();
     (entities, ids)
 }
@@ -555,7 +555,7 @@ fn prune() {
             .find(query)
             .unwrap()
             .into_iter()
-            .map(|entity| entity.id().unwrap())
+            .map(|entity| entity.id())
             .collect();
         assert_eq!(
             act, exp,

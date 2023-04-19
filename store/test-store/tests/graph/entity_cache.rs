@@ -236,7 +236,7 @@ fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<Enti
     for entity in entities {
         let key = EntityKey {
             entity_type: EntityType::new(entity_type.to_string()),
-            entity_id: entity.id().unwrap().into(),
+            entity_id: entity.id().into(),
             causality_region: CausalityRegion::ONCHAIN,
         };
         map.insert(key, entity);

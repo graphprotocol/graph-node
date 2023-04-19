@@ -1061,7 +1061,7 @@ impl DeploymentStore {
         let mut by_causality_region = entities
             .into_iter()
             .map(|e| {
-                let causality_region = e.id()?;
+                let causality_region = e.id();
                 let digest = match e.get("digest") {
                     Some(Value::Bytes(b)) => Ok(b.clone()),
                     other => Err(anyhow::anyhow!(

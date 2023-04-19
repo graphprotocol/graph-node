@@ -439,7 +439,7 @@ fn entity_validation() {
     }
 
     fn check(thing: Entity, errmsg: &str) {
-        let id = thing.id().unwrap_or("none".to_owned());
+        let id = thing.id();
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&SCHEMA, &key);

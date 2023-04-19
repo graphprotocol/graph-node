@@ -713,12 +713,11 @@ impl Entity {
     /// string. If it is `Bytes`, return it as a hex string with a `0x`
     /// prefix. If the ID is not set or anything but a `String` or `Bytes`,
     /// return an error
-    pub fn id(&self) -> Result<String, Error> {
+    pub fn id(&self) -> String {
         match self.get("id") {
-            None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(Value::String(s)) => Ok(s.clone()),
-            Some(Value::Bytes(b)) => Ok(b.to_string()),
-            _ => Err(anyhow!("Entity has non-string `id` attribute")),
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Bytes(b)) => b.to_string(),
+            None | Some(_) => unreachable!("we checked the id when constructing this entity"),
         }
     }
 
@@ -967,7 +966,7 @@ fn entity_validation() {
     }
 
     fn check(thing: Entity, errmsg: &str) {
-        let id = thing.id().unwrap_or("none".to_owned());
+        let id = thing.id();
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
         let err = thing.validate(&SCHEMA, &key);

@@ -79,7 +79,7 @@ fn remove_test_data(conn: &PgConnection) {
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
+    let key = EntityKey::data(entity_type.to_owned(), entity.id());
 
     let entity_type = EntityType::from(entity_type);
     let mut entities = vec![(&key, Cow::from(&entity))];
@@ -298,9 +298,9 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo").unwrap();
-        let key = EntityKey::data("Thing".to_owned(), entity.id().unwrap());
+        let key = EntityKey::data("Thing".to_owned(), entity.id());
 
-        let entity_id = entity.id().unwrap();
+        let entity_id = entity.id();
         let entity_type = key.entity_type.clone();
         let mut entities = vec![(&key, Cow::from(&entity))];
         layout
@@ -416,7 +416,7 @@ fn query() {
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
-            .map(|e| e.id().expect("entities have an id"))
+            .map(|e| e.id())
             .collect::<Vec<_>>()
     }
 
