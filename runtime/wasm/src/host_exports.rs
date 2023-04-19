@@ -156,7 +156,7 @@ impl<C: Blockchain> HostExports<C> {
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
-        data: HashMap<Word, Value>,
+        mut data: HashMap<Word, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
@@ -181,6 +181,34 @@ impl<C: Blockchain> HostExports<C> {
         self.check_entity_type_access(&key.entity_type)?;
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
+
+        fn check_id(key: &EntityKey, prev_id: &str) -> Result<(), anyhow::Error> {
+            if prev_id != key.entity_id.as_str() {
+                Err(anyhow!(
+                    "Value of {} attribute 'id' conflicts with ID passed to `store.set()`: \
+                {} != {}",
+                    key.entity_type,
+                    prev_id,
+                    key.entity_id,
+                ))
+            } else {
+                Ok(())
+            }
+        }
+
+        // Set the id if there isn't one yet, and make sure that a
+        // previously set id agrees with the one in the `key`
+        match data.get(&store::ID) {
+            Some(Value::String(s)) => check_id(&key, s)?,
+            Some(Value::Bytes(b)) => check_id(&key, &b.to_string())?,
+            Some(_) => {
+                // The validation will catch the type mismatch
+            }
+            None => {
+                let value = state.entity_cache.schema.id_value(&key)?;
+                data.insert(store::ID.clone(), value);
+            }
+        }
 
         let entity = state
             .entity_cache

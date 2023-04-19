@@ -1,7 +1,7 @@
 use crate::{
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError},
+    prelude::{anyhow::Context, lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::InputSchema,
     util::intern::AtomPool,
@@ -135,7 +135,6 @@ impl AssignmentEvent {
 /// An entity attribute name is represented as a string.
 pub type Attribute = String;
 
-pub const ID: &str = "ID";
 pub const BYTES_SCALAR: &str = "Bytes";
 pub const BIG_INT_SCALAR: &str = "BigInt";
 pub const BIG_DECIMAL_SCALAR: &str = "BigDecimal";
@@ -595,6 +594,11 @@ where
             None => Value::Null,
         }
     }
+}
+
+lazy_static! {
+    /// The name of the id attribute, `"id"`
+    pub static ref ID: Word = Word::from("id");
 }
 
 /// An entity is represented as a map of attribute names to values.
