@@ -323,9 +323,6 @@ impl InputSchema {
 /// in the document and the names of all their fields
 fn atom_pool(document: &s::Document) -> AtomPool {
     let mut pool = AtomPool::new();
-    // These two entries are always required
-    pool.intern("g$parent_id"); // Used by queries
-    pool.intern("__typename"); // Mandated by GraphQL
     pool.intern("digest"); // Attribute of PoI object
     for definition in &document.definitions {
         match definition {
