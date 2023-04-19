@@ -297,6 +297,29 @@ async fn insert_test_entities(
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
     id_type: IdType,
 ) -> DeploymentLocator {
+    fn insert_ops(entities: Vec<(&str, Vec<Entity>)>) -> Vec<EntityOperation> {
+        entities
+            .into_iter()
+            .map(|(typename, entities)| {
+                entities.into_iter().map(|data| EntityOperation::Set {
+                    key: EntityKey::data(typename.to_string(), data.id()),
+                    data,
+                })
+            })
+            .flatten()
+            .collect()
+    }
+
+    async fn insert_at(
+        insert_ops: Vec<EntityOperation>,
+        deployment: &DeploymentLocator,
+        block_ptr: BlockPtr,
+    ) {
+        test_store::transact_and_wait(&STORE.subgraph_store(), deployment, block_ptr, insert_ops)
+            .await
+            .unwrap();
+    }
+
     let deployment = DeploymentCreate::new(String::new(), &manifest, None);
     let name = SubgraphName::new(manifest.id.as_str()).unwrap();
     let node_id = NodeId::new("test").unwrap();
@@ -315,60 +338,110 @@ async fn insert_test_entities(
     let md = id_type.medias();
     let is = &manifest.schema;
     let entities0 = vec![
-        entity! { is => __typename: "Musician", id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
-        entity! { is => __typename: "Musician", id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
-        entity! { is => __typename: "Publisher", id: "0xb1" },
-        entity! { is => __typename: "Band", id: "b1", name: "The Musicians", originalSongs: vec![s[1], s[2]] },
-        entity! { is => __typename: "Band", id: "b2", name: "The Amateurs",  originalSongs: vec![s[1], s[3], s[4]] },
-        entity! { is => __typename: "Song", id: s[1], sid: "s1", title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1", media: vec![md[1], md[2]] },
-        entity! { is => __typename: "Song", id: s[2], sid: "s2", title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2", media: vec![md[3], md[4]] },
-        entity! { is => __typename: "Song", id: s[3], sid: "s3", title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1", media: vec![md[5]] },
-        entity! { is => __typename: "Song", id: s[4], sid: "s4", title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
-        entity! { is => __typename: "SongStat", id: s[1], played: 10 },
-        entity! { is => __typename: "SongStat", id: s[2], played: 15 },
-        entity! { is => __typename: "BandReview", id: "r1", body: "Bad musicians",        band: "b1", author: "u1" },
-        entity! { is => __typename: "BandReview", id: "r2", body: "Good amateurs",        band: "b2", author: "u2" },
-        entity! { is => __typename: "BandReview", id: "r5", body: "Very Bad musicians",   band: "b1", author: "u3" },
-        entity! { is => __typename: "SongReview", id: "r3", body: "Bad",                  song: s[2], author: "u1" },
-        entity! { is => __typename: "SongReview", id: "r4", body: "Good",                 song: s[3], author: "u2" },
-        entity! { is => __typename: "SongReview", id: "r6", body: "Very Bad",             song: s[2], author: "u3" },
-        entity! { is => __typename: "User",           id: "u1", name: "Baden",        latestSongReview: "r3", latestBandReview: "r1", latestReview: "r1" },
-        entity! { is => __typename: "User",           id: "u2", name: "Goodwill",     latestSongReview: "r4", latestBandReview: "r2", latestReview: "r2" },
-        entity! { is => __typename: "AnonymousUser",  id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5" },
-        entity! { is => __typename: "Photo", id: md[1],   title: "Cheesy Tune Single Cover",  author: "u1" },
-        entity! { is => __typename: "Video", id: md[2],   title: "Cheesy Tune Music Video",   author: "u2" },
-        entity! { is => __typename: "Photo", id: md[3],   title: "Rock Tune Single Cover",    author: "u1" },
-        entity! { is => __typename: "Video", id: md[4],   title: "Rock Tune Music Video",     author: "u2" },
-        entity! { is => __typename: "Photo", id: md[5],   title: "Pop Tune Single Cover",     author: "u1" },
-        entity! { is => __typename: "Video", id: md[6],   title: "Folk Tune Music Video",     author: "u2" },
-        entity! { is => __typename: "Album", id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] },
-        entity! { is => __typename: "Single", id: "rl2",  title: "Rock",           songs: vec![s[2]] },
-        entity! { is => __typename: "Single", id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
+        (
+            "Musician",
+            vec![
+                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"] },
+                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"] },
+            ],
+        ),
+        ("Publisher", vec![entity! { is => id: "0xb1" }]),
+        (
+            "Band",
+            vec![
+                entity! { is => id: "b1", name: "The Musicians", originalSongs: vec![s[1], s[2]] },
+                entity! { is => id: "b2", name: "The Amateurs",  originalSongs: vec![s[1], s[3], s[4]] },
+            ],
+        ),
+        (
+            "Song",
+            vec![
+                entity! { is => id: s[1], sid: "s1", title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1", media: vec![md[1], md[2]] },
+                entity! { is => id: s[2], sid: "s2", title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2", media: vec![md[3], md[4]] },
+                entity! { is => id: s[3], sid: "s3", title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1", media: vec![md[5]] },
+                entity! { is => id: s[4], sid: "s4", title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
+            ],
+        ),
+        (
+            "User",
+            vec![
+                entity! { is => id: "u1", name: "User 1", latestSongReview: "r3", latestBandReview: "r1", latestReview: "r3" },
+            ],
+        ),
+        (
+            "SongStat",
+            vec![
+                entity! { is => id: s[1], played: 10 },
+                entity! { is => id: s[2], played: 15 },
+            ],
+        ),
+        (
+            "BandReview",
+            vec![
+                entity! { is => id: "r1", body: "Bad musicians",        band: "b1", author: "u1" },
+                entity! { is => id: "r2", body: "Good amateurs",        band: "b2", author: "u2" },
+                entity! { is => id: "r5", body: "Very Bad musicians",   band: "b1", author: "u3" },
+            ],
+        ),
+        (
+            "SongReview",
+            vec![
+                entity! { is => id: "r3", body: "Bad",                  song: s[2], author: "u1" },
+                entity! { is => id: "r4", body: "Good",                 song: s[3], author: "u2" },
+                entity! { is => id: "r6", body: "Very Bad",             song: s[2], author: "u3" },
+            ],
+        ),
+        (
+            "User",
+            vec![
+                entity! { is => id: "u1", name: "Baden",        latestSongReview: "r3", latestBandReview: "r1", latestReview: "r1" },
+                entity! { is => id: "u2", name: "Goodwill",     latestSongReview: "r4", latestBandReview: "r2", latestReview: "r2" },
+            ],
+        ),
+        (
+            "AnonymousUser",
+            vec![
+                entity! { is => id: "u3", name: "Anonymous 3",  latestSongReview: "r6", latestBandReview: "r5", latestReview: "r5" },
+            ],
+        ),
+        (
+            "Photo",
+            vec![
+                entity! { is => id: md[1],   title: "Cheesy Tune Single Cover",  author: "u1" },
+                entity! { is => id: md[3],   title: "Rock Tune Single Cover",    author: "u1" },
+                entity! { is => id: md[5],   title: "Pop Tune Single Cover",     author: "u1" },
+            ],
+        ),
+        (
+            "Video",
+            vec![
+                entity! { is => id: md[2],   title: "Cheesy Tune Music Video",   author: "u2" },
+                entity! { is => id: md[4],   title: "Rock Tune Music Video",     author: "u2" },
+                entity! { is => id: md[6],   title: "Folk Tune Music Video",     author: "u2" },
+            ],
+        ),
+        (
+            "Album",
+            vec![entity! { is => id: "rl1",   title: "Pop and Folk",    songs: vec![s[3], s[4]] }],
+        ),
+        (
+            "Single",
+            vec![
+                entity! { is => id: "rl2",  title: "Rock",           songs: vec![s[2]] },
+                entity! { is => id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
+            ],
+        ),
     ];
+    let entities0 = insert_ops(entities0);
 
-    let entities1 = vec![
-        entity! { is => __typename: "Musician", id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"] },
-        entity! { is => __typename: "Musician", id: "m4", name: "Valerie", bands: Vec::<String>::new() },
-    ];
-
-    async fn insert_at(entities: Vec<Entity>, deployment: &DeploymentLocator, block_ptr: BlockPtr) {
-        let insert_ops = entities.into_iter().map(|data| EntityOperation::Set {
-            key: EntityKey::data(
-                data.get("__typename").unwrap().clone().as_string().unwrap(),
-                data.get("id").unwrap().clone().as_string().unwrap(),
-            ),
-            data,
-        });
-
-        test_store::transact_and_wait(
-            &STORE.subgraph_store(),
-            deployment,
-            block_ptr,
-            insert_ops.collect::<Vec<_>>(),
-        )
-        .await
-        .unwrap();
-    }
+    let entities1 = vec![(
+        "Musician",
+        vec![
+            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"] },
+            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new() },
+        ],
+    )];
+    let entities1 = insert_ops(entities1);
 
     insert_at(entities0, &deployment, GENESIS_PTR.clone()).await;
     insert_at(entities1, &deployment, BLOCK_ONE.clone()).await;
