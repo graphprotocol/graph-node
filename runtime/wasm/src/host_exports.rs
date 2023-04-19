@@ -860,6 +860,64 @@ fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
     s.trim_end_matches('\u{0000}').to_string()
 }
 
+/// Expose some host functions for testing only
+#[cfg(debug_assertions)]
+pub mod test_support {
+    use std::{collections::HashMap, sync::Arc};
+
+    use graph::{
+        blockchain::Blockchain,
+        components::{store::GetScope, subgraph::SharedProofOfIndexing},
+        data::value::Word,
+        prelude::{BlockState, Entity, StopwatchMetrics, Value},
+        runtime::{gas::GasCounter, HostExportError},
+        slog::Logger,
+    };
+
+    use crate::MappingContext;
+
+    pub struct HostExports<C: Blockchain>(Arc<super::HostExports<C>>);
+
+    impl<C: Blockchain> HostExports<C> {
+        pub fn new(ctx: &MappingContext<C>) -> Self {
+            HostExports(ctx.host_exports.clone())
+        }
+
+        pub fn store_set(
+            &self,
+            logger: &Logger,
+            state: &mut BlockState<C>,
+            proof_of_indexing: &SharedProofOfIndexing,
+            entity_type: String,
+            entity_id: String,
+            data: HashMap<Word, Value>,
+            stopwatch: &StopwatchMetrics,
+            gas: &GasCounter,
+        ) -> Result<(), HostExportError> {
+            self.0.store_set(
+                logger,
+                state,
+                proof_of_indexing,
+                entity_type,
+                entity_id,
+                data,
+                stopwatch,
+                gas,
+            )
+        }
+
+        pub fn store_get(
+            &self,
+            state: &mut BlockState<C>,
+            entity_type: String,
+            entity_id: String,
+            gas: &GasCounter,
+        ) -> Result<Option<Entity>, anyhow::Error> {
+            self.0
+                .store_get(state, entity_type, entity_id, gas, GetScope::Store)
+        }
+    }
+}
 #[test]
 fn test_string_to_h160_with_0x() {
     assert_eq!(
