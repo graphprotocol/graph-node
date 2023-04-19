@@ -1329,6 +1329,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         self: Arc<Self>,
         logger: Logger,
         deployment: graph::components::store::DeploymentId,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn store::WritableStore>, StoreError> {
         let deployment = deployment.into();
         // We cache writables to make sure calls to this method are
@@ -1352,7 +1353,14 @@ impl SubgraphStoreTrait for SubgraphStore {
         .unwrap()?; // Propagate panics, there shouldn't be any.
 
         let writable = Arc::new(
-            WritableStore::new(self.as_ref().clone(), logger, site, self.registry.clone()).await?,
+            WritableStore::new(
+                self.as_ref().clone(),
+                logger,
+                site,
+                manifest_idx_and_name,
+                self.registry.clone(),
+            )
+            .await?,
         );
         self.writables
             .lock()

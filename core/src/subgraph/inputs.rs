@@ -26,9 +26,6 @@ pub struct IndexingInputs<C: Blockchain> {
     pub poi_version: ProofOfIndexingVersion,
     pub network: String,
 
-    // Correspondence between data source or template position in the manifest and name.
-    pub manifest_idx_and_name: Vec<(u32, String)>,
-
     /// Whether to instrument trigger processing and log additional,
     /// possibly expensive and noisy, information
     pub instrument: bool,
@@ -50,7 +47,6 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters,
             poi_version,
             network,
-            manifest_idx_and_name,
             instrument,
         } = self;
         IndexingInputs {
@@ -67,7 +63,6 @@ impl<C: Blockchain> IndexingInputs<C> {
             static_filters: *static_filters,
             poi_version: *poi_version,
             network: network.clone(),
-            manifest_idx_and_name: manifest_idx_and_name.clone(),
             instrument: *instrument,
         }
     }

@@ -139,10 +139,14 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// assumptions about the in-memory state of writing has been made; in
     /// particular, no assumptions about whether previous writes have
     /// actually been committed or not.
+    ///
+    /// The `manifest_idx_and_name` lists the correspondence between data
+    /// source or template position in the manifest and name.
     async fn writable(
         self: Arc<Self>,
         logger: Logger,
         deployment: DeploymentId,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Arc<dyn WritableStore>, StoreError>;
 
     /// Initiate a graceful shutdown of the writable that a previous call to
@@ -292,7 +296,6 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-        manifest_idx_and_name: Vec<(u32, String)>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError>;
 

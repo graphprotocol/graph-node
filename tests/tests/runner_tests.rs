@@ -196,7 +196,7 @@ async fn file_data_sources() {
 
     let store = ctx.store.cheap_clone();
     let writable = store
-        .writable(ctx.logger.clone(), ctx.deployment.id)
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
         .await
         .unwrap();
     let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
@@ -218,7 +218,7 @@ async fn file_data_sources() {
     let writable = ctx
         .store
         .clone()
-        .writable(ctx.logger.clone(), ctx.deployment.id)
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
         .await
         .unwrap();
     let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();

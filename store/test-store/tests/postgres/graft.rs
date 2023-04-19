@@ -121,7 +121,7 @@ where
 
         store
             .cheap_clone()
-            .writable(LOGGER.clone(), deployment.id)
+            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
             .await
             .unwrap()
             .flush()
@@ -326,7 +326,9 @@ async fn check_graft(
         .await
         .unwrap();
 
-    let writable = store.writable(LOGGER.clone(), deployment.id).await?;
+    let writable = store
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .await?;
     writable
         .revert_block_operations(BLOCKS[1].clone(), FirehoseCursor::None)
         .await
@@ -438,7 +440,7 @@ fn copy() {
 
             store
                 .cheap_clone()
-                .writable(LOGGER.clone(), deployment.id)
+                .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
                 .await?
                 .start_subgraph_deployment(&LOGGER)
                 .await?;
@@ -467,7 +469,10 @@ fn on_sync() {
                     on_sync,
                 )?;
 
-                let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
+                let writable = store
+                    .cheap_clone()
+                    .writable(LOGGER.clone(), dst.id, Arc::new(Vec::new()))
+                    .await?;
 
                 writable.start_subgraph_deployment(&LOGGER).await?;
                 writable.deployment_synced()?;
@@ -513,7 +518,10 @@ fn on_sync() {
                 OnSync::Replace,
             )?;
 
-            let writable = store.cheap_clone().writable(LOGGER.clone(), dst.id).await?;
+            let writable = store
+                .cheap_clone()
+                .writable(LOGGER.clone(), dst.id, Arc::new(Vec::new()))
+                .await?;
 
             // Perform the copy
             writable.start_subgraph_deployment(&LOGGER).await?;

@@ -183,7 +183,7 @@ pub async fn create_subgraph(
 
     SUBGRAPH_STORE
         .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id)
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await?
         .start_subgraph_deployment(&LOGGER)
         .await?;
@@ -222,7 +222,7 @@ pub async fn transact_errors(
     );
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment.id)
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await?
         .transact_block_operations(
             block_ptr_to,
@@ -231,7 +231,6 @@ pub async fn transact_errors(
             &stopwatch_metrics,
             Vec::new(),
             errs,
-            Vec::new(),
             Vec::new(),
         )
         .await?;
@@ -283,8 +282,11 @@ pub async fn transact_entities_and_dynamic_data_sources(
     ops: Vec<EntityOperation>,
     manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<(), StoreError> {
-    let store =
-        futures03::executor::block_on(store.cheap_clone().writable(LOGGER.clone(), deployment.id))?;
+    let store = futures03::executor::block_on(store.cheap_clone().writable(
+        LOGGER.clone(),
+        deployment.id,
+        Arc::new(manifest_idx_and_name),
+    ))?;
     let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
@@ -306,7 +308,6 @@ pub async fn transact_entities_and_dynamic_data_sources(
             &stopwatch_metrics,
             data_sources,
             Vec::new(),
-            manifest_idx_and_name,
             Vec::new(),
         )
         .await
@@ -316,7 +317,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
 pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, ptr: &BlockPtr) {
     store
         .subgraph_store()
-        .writable(LOGGER.clone(), deployment.id)
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await
         .expect("can get writable")
         .revert_block_operations(ptr.clone(), FirehoseCursor::None)
@@ -371,7 +372,7 @@ pub async fn insert_entities(
 pub async fn flush(deployment: &DeploymentLocator) -> Result<(), StoreError> {
     let writable = SUBGRAPH_STORE
         .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id)
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await
         .expect("we can get a writable");
     writable.flush().await

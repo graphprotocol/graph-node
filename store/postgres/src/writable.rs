@@ -71,6 +71,7 @@ struct SyncStore {
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
     input_schema: Arc<InputSchema>,
+    manifest_idx_and_name: Arc<Vec<(u32, String)>>,
 }
 
 impl SyncStore {
@@ -78,6 +79,7 @@ impl SyncStore {
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
@@ -88,6 +90,7 @@ impl SyncStore {
             writable,
             site,
             input_schema,
+            manifest_idx_and_name,
         })
     }
 
@@ -211,7 +214,6 @@ impl SyncStore {
         stopwatch: &StopwatchMetrics,
         data_sources: &[StoredDynamicDataSource],
         deterministic_errors: &[SubgraphError],
-        manifest_idx_and_name: &[(u32, String)],
         processed_data_sources: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         retry::forever(&self.logger, "transact_block_operations", move || {
@@ -224,7 +226,7 @@ impl SyncStore {
                 stopwatch,
                 data_sources,
                 deterministic_errors,
-                manifest_idx_and_name,
+                &self.manifest_idx_and_name,
                 processed_data_sources,
             )?;
 
@@ -439,7 +441,6 @@ enum Request {
         mods: Vec<EntityModification>,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-        manifest_idx_and_name: Vec<(u32, String)>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
     },
     RevertTo {
@@ -490,7 +491,6 @@ impl Request {
                 mods,
                 data_sources,
                 deterministic_errors,
-                manifest_idx_and_name,
                 processed_data_sources,
             } => store
                 .transact_block_operations(
@@ -500,7 +500,6 @@ impl Request {
                     stopwatch,
                     data_sources,
                     deterministic_errors,
-                    manifest_idx_and_name,
                     processed_data_sources,
                 )
                 .map(|()| ExecResult::Continue),
@@ -983,7 +982,6 @@ impl Writer {
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-        manifest_idx_and_name: Vec<(u32, String)>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         match self {
@@ -994,7 +992,6 @@ impl Writer {
                 stopwatch,
                 &data_sources,
                 &deterministic_errors,
-                &manifest_idx_and_name,
                 &processed_data_sources,
             ),
             Writer::Async { queue, .. } => {
@@ -1007,7 +1004,6 @@ impl Writer {
                     mods,
                     data_sources,
                     deterministic_errors,
-                    manifest_idx_and_name,
                     processed_data_sources,
                 };
                 queue.push(req).await
@@ -1121,9 +1117,15 @@ impl WritableStore {
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
+        manifest_idx_and_name: Arc<Vec<(u32, String)>>,
         registry: Arc<MetricsRegistry>,
     ) -> Result<Self, StoreError> {
-        let store = Arc::new(SyncStore::new(subgraph_store, logger.clone(), site)?);
+        let store = Arc::new(SyncStore::new(
+            subgraph_store,
+            logger.clone(),
+            site,
+            manifest_idx_and_name,
+        )?);
         let block_ptr = Mutex::new(store.block_ptr().await?);
         let block_cursor = Mutex::new(store.block_cursor().await?);
         let writer = Writer::new(
@@ -1254,7 +1256,6 @@ impl WritableStoreTrait for WritableStore {
         stopwatch: &StopwatchMetrics,
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
-        manifest_idx_and_name: Vec<(u32, String)>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         self.writer
@@ -1265,7 +1266,6 @@ impl WritableStoreTrait for WritableStore {
                 stopwatch,
                 data_sources,
                 deterministic_errors,
-                manifest_idx_and_name,
                 processed_data_sources,
             )
             .await?;
@@ -1336,8 +1336,9 @@ impl WritableStoreTrait for WritableStore {
                 }
             }
             let store = Arc::new(self.store.store.0.clone());
+            let manifest_idx_and_name = self.store.manifest_idx_and_name.cheap_clone();
             store
-                .writable(logger, self.store.site.id.into())
+                .writable(logger, self.store.site.id.into(), manifest_idx_and_name)
                 .await
                 .map(|store| Some(store))
         } else {
