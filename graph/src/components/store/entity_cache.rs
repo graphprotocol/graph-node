@@ -325,11 +325,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
     ) -> Result<Option<Entity>, s::QueryExecutionError> {
         match self.get(key) {
             None => {
-                let mut entity = store.get(key)?;
-                if let Some(entity) = &mut entity {
-                    // `__typename` is for queries not for mappings.
-                    entity.remove("__typename");
-                }
+                let entity = store.get(key)?;
                 self.insert(key.clone(), entity.clone());
                 Ok(entity)
             }
