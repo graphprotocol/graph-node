@@ -1,4 +1,5 @@
 use crate::{
+    bail,
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, lazy_static, q, r, s, CacheWeight, QueryExecutionError},
@@ -731,6 +732,9 @@ impl Entity {
                 )
             })?;
         }
+        if !obj.contains_key(&ID) {
+            bail!("internal error: no id attribute for entity `{obj:?}`");
+        }
         Ok(Entity(obj))
     }
 
@@ -743,6 +747,9 @@ impl Entity {
             let (key, value) = pair?;
             obj.insert(key, value)
                 .map_err(|e| anyhow!("unknown attribute {}", e.not_interned()))?;
+        }
+        if !obj.contains_key(&ID) {
+            bail!("internal error: no id attribute for entity `{obj:?}`");
         }
         Ok(Entity(obj))
     }
