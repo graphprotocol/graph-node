@@ -239,6 +239,9 @@ impl ForeignKeyClauses for Column {
 }
 
 pub trait FromEntityData: Sized {
+    /// Whether to include the internal keys `__typename` and `g$parent_id`.
+    const WITH_INTERNAL_KEYS: bool;
+
     type Value: FromColumnValue;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
@@ -248,6 +251,8 @@ pub trait FromEntityData: Sized {
 }
 
 impl FromEntityData for Entity {
+    const WITH_INTERNAL_KEYS: bool = false;
+
     type Value = graph::prelude::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
@@ -259,6 +264,8 @@ impl FromEntityData for Entity {
 }
 
 impl FromEntityData for Object {
+    const WITH_INTERNAL_KEYS: bool = true;
+
     type Value = r::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
@@ -485,7 +492,6 @@ impl EntityData {
         self,
         layout: &Layout,
         parent_type: Option<&ColumnType>,
-        remove_typename: bool,
     ) -> Result<T, StoreError> {
         let entity_type = EntityType::new(self.entity.clone());
         let table = layout.table_for_entity(&entity_type)?;
@@ -494,10 +500,10 @@ impl EntityData {
         match self.data {
             j::Object(map) => {
                 let typname = std::iter::once(self.entity).filter_map(move |e| {
-                    if remove_typename {
-                        None
-                    } else {
+                    if T::WITH_INTERNAL_KEYS {
                         Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
+                    } else {
+                        None
                     }
                 });
                 let entries = map.into_iter().filter_map(move |(key, json)| {
@@ -505,19 +511,23 @@ impl EntityData {
                     // column; those will be things like the block_range that
                     // is used internally for versioning
                     if key == "g$parent_id" {
-                        match &parent_type {
-                            None => {
-                                // A query that does not have parents
-                                // somehow returned parent ids. We have no
-                                // idea how to deserialize that
-                                Some(Err(graph::constraint_violation!(
-                                    "query unexpectedly produces parent ids"
-                                )))
+                        if T::WITH_INTERNAL_KEYS {
+                            match &parent_type {
+                                None => {
+                                    // A query that does not have parents
+                                    // somehow returned parent ids. We have no
+                                    // idea how to deserialize that
+                                    Some(Err(graph::constraint_violation!(
+                                        "query unexpectedly produces parent ids"
+                                    )))
+                                }
+                                Some(parent_type) => Some(
+                                    T::Value::from_column_value(parent_type, json)
+                                        .map(|value| (Word::from("g$parent_id"), value)),
+                                ),
                             }
-                            Some(parent_type) => Some(
-                                T::Value::from_column_value(parent_type, json)
-                                    .map(|value| (Word::from("g$parent_id"), value)),
-                            ),
+                        } else {
+                            None
                         }
                     } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {

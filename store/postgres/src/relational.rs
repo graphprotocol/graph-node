@@ -521,7 +521,7 @@ impl Layout {
         FindQuery::new(table.as_ref(), key, block)
             .get_result::<EntityData>(conn)
             .optional()?
-            .map(|entity_data| entity_data.deserialize_with_layout(self, None, true))
+            .map(|entity_data| entity_data.deserialize_with_layout(self, None))
             .transpose()
     }
 
@@ -549,7 +549,7 @@ impl Layout {
         let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type();
-            let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
+            let entity_data: Entity = data.deserialize_with_layout(self, None)?;
 
             let key = EntityKey {
                 entity_type,
@@ -578,7 +578,7 @@ impl Layout {
 
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type();
-            let entity_data: Entity = data.deserialize_with_layout(self, None, true)?;
+            let entity_data: Entity = data.deserialize_with_layout(self, None)?;
             let key = EntityKey {
                 entity_type,
                 entity_id: entity_data.id(),
@@ -614,7 +614,7 @@ impl Layout {
 
         for entity_data in inserts_or_updates.into_iter() {
             let entity_type = entity_data.entity_type();
-            let data: Entity = entity_data.deserialize_with_layout(self, None, true)?;
+            let data: Entity = entity_data.deserialize_with_layout(self, None)?;
             let entity_id = data.id();
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
@@ -789,7 +789,7 @@ impl Layout {
             .into_iter()
             .map(|entity_data| {
                 entity_data
-                    .deserialize_with_layout(self, parent_type.as_ref(), false)
+                    .deserialize_with_layout(self, parent_type.as_ref())
                     .map_err(|e| e.into())
             })
             .collect::<Result<Vec<T>, _>>()
