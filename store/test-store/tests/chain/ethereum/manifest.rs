@@ -8,7 +8,7 @@ use graph::data_source::DataSourceTemplate;
 use graph::entity;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Link, Logger, SubgraphManifest,
-    SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
+    SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest,
 };
 use graph::{
     blockchain::NodeCapabilities as _,
@@ -200,9 +200,13 @@ specVersion: 0.0.2
 
         // Creates base subgraph at block 0 (genesis).
         let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA).await;
+        let schema = store
+            .subgraph_store()
+            .input_schema(&deployment.hash)
+            .unwrap();
 
         // Adds an example entity.
-        let thing = entity! { id: "datthing" };
+        let thing = entity! { schema => id: "datthing" };
         test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .await
             .unwrap();
@@ -276,6 +280,10 @@ specVersion: 0.0.2
         // Validation against subgraph that hasn't synced anything fails
         //
         let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA).await;
+        let schema = store
+            .subgraph_store()
+            .input_schema(&deployment.hash)
+            .unwrap();
         // This check is awkward since the test manifest has other problems
         // that the validation complains about as setting up a valid manifest
         // would be a bit more work; we just want to make sure that
@@ -294,7 +302,7 @@ specVersion: 0.0.2
             msg
         );
 
-        let thing = entity! { id: "datthing" };
+        let thing = entity! { schema => id: "datthing" };
         test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .await
             .unwrap();

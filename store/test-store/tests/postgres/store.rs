@@ -13,7 +13,6 @@ use test_store::*;
 
 use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
 use graph::data::subgraph::*;
-use graph::prelude::*;
 use graph::{
     blockchain::DataSource,
     components::store::{
@@ -23,6 +22,7 @@ use graph::{
     prelude::ethabi::Contract,
 };
 use graph::{data::store::scalar, semver::Version};
+use graph::{entity, prelude::*};
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
 use web3::types::{Address, H256};
@@ -267,7 +267,7 @@ fn create_test_entity(
     favorite_color: Option<&str>,
 ) -> EntityOperation {
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
-    let test_entity = entity! {
+    let test_entity = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: id,
         name: name,
         bin_name: bin_name,
@@ -330,11 +330,13 @@ fn delete_entity() {
 #[test]
 fn get_entity_1() {
     run_test(|_, writable, _| async move {
+        let schema = writable.input_schema();
+
         let key = EntityKey::data(USER.to_owned(), "1".to_owned());
         let result = writable.get(&key).unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
-        let expected_entity = entity! {
+        let expected_entity = entity! { schema =>
             id: "1",
             name: "Johnton",
             bin_name: bin_name,
@@ -355,10 +357,11 @@ fn get_entity_1() {
 #[test]
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
+        let schema = writable.input_schema();
         let key = EntityKey::data(USER.to_owned(), "3".to_owned());
         let result = writable.get(&key).unwrap();
 
-        let expected_entity = entity! {
+        let expected_entity = entity! { schema =>
            id: "3",
            name: "Shaqueeena",
            bin_name: Value::Bytes("Shaqueeena".as_bytes().into()),
@@ -455,8 +458,9 @@ fn update_existing() {
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
         let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let schema = writable.input_schema();
 
-        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable
             .get(&entity_key)
@@ -1064,8 +1068,9 @@ fn revert_block_with_delete() {
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
         let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let schema = writable.input_schema();
 
-        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         let original_entity = writable.get(&entity_key).unwrap().expect("missing entity");
 
@@ -1155,10 +1160,11 @@ fn mock_abi() -> MappingABI {
 fn revert_block_with_dynamic_data_source_operations() {
     run_test(|store, writable, deployment| async move {
         let subgraph_store = store.subgraph_store();
+        let schema = writable.input_schema();
 
         // Create operations to add a user
         let user_key = EntityKey::data(USER.to_owned(), "1".to_owned());
-        let partial_entity = entity! { id: "1", name: "Johnny Boy", email: Value::Null };
+        let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
         let original_user = writable.get(&user_key).unwrap().expect("missing entity");
@@ -1274,8 +1280,11 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 
         // Add two entities to the store
         let added_entities = vec![
-            ("1".to_owned(), entity! { id: "1", name: "Johnny Boy" }),
-            ("2".to_owned(), entity! { id: "2", name: "Tessa" }),
+            (
+                "1".to_owned(),
+                entity! { schema => id: "1", name: "Johnny Boy" },
+            ),
+            ("2".to_owned(), entity! { schema => id: "2", name: "Tessa" }),
         ];
         transact_entity_operations(
             &store.subgraph_store(),
@@ -1293,7 +1302,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // Update an entity in the store
-        let updated_entity = entity! { id: "1", name: "Johnny" };
+        let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
             key: EntityKey::data(USER.to_owned(), "1".to_owned()),
             data: updated_entity.clone(),
@@ -1483,8 +1492,8 @@ fn handle_large_string_with_index() {
     const ONE: &str = "large_string_one";
     const TWO: &str = "large_string_two";
 
-    fn make_insert_op(id: &str, name: &str) -> EntityModification {
-        let data = entity! { id: id, name: name };
+    fn make_insert_op(id: &str, name: &str, schema: &InputSchema) -> EntityModification {
+        let data = entity! { schema => id: id, name: name };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
@@ -1492,6 +1501,8 @@ fn handle_large_string_with_index() {
     }
 
     run_test(|store, writable, deployment| async move {
+        let schema = writable.input_schema();
+
         // We have to produce a massive string (1_000_000 chars) because
         // the repeated text compresses so well. This leads to an error
         // 'index row requires 11488 bytes, maximum size is 8191' if
@@ -1512,8 +1523,8 @@ fn handle_large_string_with_index() {
                 TEST_BLOCK_3_PTR.clone(),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_text),
-                    make_insert_op(TWO, &other_text),
+                    make_insert_op(ONE, &long_text, &schema),
+                    make_insert_op(TWO, &other_text, &schema),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),
@@ -1572,8 +1583,8 @@ fn handle_large_bytea_with_index() {
     const ONE: &str = "large_string_one";
     const TWO: &str = "large_string_two";
 
-    fn make_insert_op(id: &str, name: &[u8]) -> EntityModification {
-        let data = entity! { id: id, bin_name: scalar::Bytes::from(name) };
+    fn make_insert_op(id: &str, name: &[u8], schema: &InputSchema) -> EntityModification {
+        let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
@@ -1581,6 +1592,8 @@ fn handle_large_bytea_with_index() {
     }
 
     run_test(|store, writable, deployment| async move {
+        let schema = writable.input_schema();
+
         // We have to produce a massive bytea (240_000 bytes) because the
         // repeated text compresses so well. This leads to an error 'index
         // row size 2784 exceeds btree version 4 maximum 2704' if used with
@@ -1606,8 +1619,8 @@ fn handle_large_bytea_with_index() {
                 TEST_BLOCK_3_PTR.clone(),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_bytea),
-                    make_insert_op(TWO, &other_bytea),
+                    make_insert_op(ONE, &long_bytea, &schema),
+                    make_insert_op(TWO, &other_bytea, &schema),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),
@@ -1770,8 +1783,8 @@ impl WindowQuery {
 
 #[test]
 fn window() {
-    fn make_color_end_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
-        let entity = entity! { id: id, age: age, favorite_color: color };
+    fn make_color_and_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
+        let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
             key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
@@ -1780,11 +1793,11 @@ fn window() {
     }
 
     fn make_user(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_end_age(USER, id, color, age)
+        make_color_and_age(USER, id, color, age)
     }
 
     fn make_person(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_end_age("Person", id, color, age)
+        make_color_and_age("Person", id, color, age)
     }
 
     let ops = vec![

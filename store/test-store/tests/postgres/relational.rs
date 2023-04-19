@@ -154,6 +154,8 @@ const THINGS_GQL: &str = r#"
 
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
+    static ref THINGS_SCHEMA: InputSchema =
+        InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).expect("failed to parse schema");
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
     static ref LARGE_DECIMAL: BigDecimal =
@@ -170,7 +172,7 @@ lazy_static! {
     static ref SCALAR_ENTITY: Entity = {
         let decimal = (*LARGE_DECIMAL).clone();
         let big_int = (*LARGE_INT).clone();
-        entity! {
+        entity! { THINGS_SCHEMA =>
             id: "one",
             bool: true,
             int: std::i32::MAX,
@@ -186,7 +188,7 @@ lazy_static! {
         }
     };
     static ref EMPTY_NULLABLESTRINGS_ENTITY: Entity = {
-        entity! {
+        entity! { THINGS_SCHEMA =>
             id: "one",
         }
     };
@@ -338,8 +340,7 @@ fn make_user(
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color
-    }
-    .unwrap();
+    };
     if let Some(drinks) = drinks {
         user.insert("drinks", drinks.into()).unwrap();
     }
@@ -427,7 +428,7 @@ fn insert_pet(
     name: &str,
     block: BlockNumber,
 ) {
-    let pet = entity! {
+    let pet = entity! { layout.input_schema =>
         id: id,
         name: name
     };
@@ -867,7 +868,7 @@ fn conflicting_entity() {
         let dog = EntityType::from(dog);
         let ferret = EntityType::from(ferret);
 
-        let fred = entity! { id:  id.clone(), name: id.clone() };
+        let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
         insert_entity(conn, layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
@@ -904,7 +905,7 @@ fn revert_block() {
         let id = "fred";
 
         let set_fred = |name, block| {
-            let fred = entity! {
+            let fred = entity! { layout.input_schema =>
                 id: id,
                 name: name
             };
@@ -943,7 +944,7 @@ fn revert_block() {
         let set_marties = |from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
-                let marty = entity! {
+                let marty = entity! { layout.input_schema =>
                     id: id,
                     order: block,
                 };
@@ -1804,7 +1805,7 @@ fn check_filters() {
             conn,
             layout,
             "Ferret",
-            vec![entity! {
+            vec![entity! { layout.input_schema =>
               id: "a1",
               name: "Test"
             }],

@@ -16,6 +16,7 @@ use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
+use graph::data::value::Word;
 use graph::data_source::{
     offchain, CausalityRegion, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
 };
@@ -1061,11 +1062,14 @@ async fn update_proof_of_indexing(
 
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
-        let new_poi_entity = entity! {
-            entity_cache.schema =>
-            id: entity_key.entity_id.to_string(),
-            digest: updated_proof_of_indexing,
-        }?;
+        let data = vec![
+            (
+                graph::data::store::ID.clone(),
+                Value::from(entity_key.entity_id.to_string()),
+            ),
+            (Word::from("digest"), Value::from(updated_proof_of_indexing)),
+        ];
+        let new_poi_entity = entity_cache.make_entity(data)?;
 
         entity_cache.set(entity_key, new_poi_entity)?;
     }

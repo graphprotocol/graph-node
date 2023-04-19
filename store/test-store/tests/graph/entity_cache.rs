@@ -5,12 +5,12 @@ use graph::components::store::{
 };
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
-use graph::prelude::*;
 use graph::schema::InputSchema;
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
 };
+use graph::{entity, prelude::*};
 use hex_literal::hex;
 
 use graph::semver::Version;
@@ -205,11 +205,11 @@ fn insert_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { id: "mogwai", name: "Mogwai" };
+    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
     let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros" };
+    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
@@ -250,8 +250,8 @@ fn overwrite_modifications() {
     // every set operation as an overwrite.
     let store = {
         let entities = vec![
-            entity! { id: "mogwai", name: "Mogwai"; founded },
-            entity! { id: "sigurros", name: "Sigur Ros"; founded },
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai" },
+            entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" },
         ];
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -259,11 +259,11 @@ fn overwrite_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let mogwai_data = entity! { id: "mogwai", name: "Mogwai", founded: 1995 };
+    let mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
     let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros", founded: 1994 };
+    let sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994 };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
@@ -291,7 +291,7 @@ fn consecutive_modifications() {
     // `Value::Null`.
     let store = {
         let entities =
-            vec![entity! { id: "mogwai", name: "Mogwai", label: "Chemikal Underground"; founded }];
+            vec![entity! { SCHEMA => id: "mogwai", name: "Mogwai", label: "Chemikal Underground" }];
 
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -300,12 +300,13 @@ fn consecutive_modifications() {
     let mut cache = EntityCache::new(store);
 
     // First, add "founded" and change the "label".
-    let update_data = entity! { id: "mogwai", founded: 1995, label: "Rock Action Records" };
+    let update_data =
+        entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
     cache.set(update_key, update_data).unwrap();
 
     // Then, just reset the "label".
-    let update_data = entity! { id: "mogwai", label: Value::Null };
+    let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
     cache.set(update_key.clone(), update_data).unwrap();
 
@@ -316,7 +317,7 @@ fn consecutive_modifications() {
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {
             key: update_key,
-            data: entity! { id: "mogwai", name: "Mogwai", founded: 1995 }
+            data: entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 }
         }])
     );
 }
@@ -459,7 +460,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 }
 
 fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityOperation {
-    let test_entity = entity! { id: id, name: name, email: email, age: age };
+    let test_entity =
+        entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
         key: EntityKey::data(ACCOUNT.to_owned(), id.to_owned()),
@@ -468,7 +470,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityO
 }
 
 fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
-    entity! { id: id, account: account_id, balance: balance }
+    entity! { LOAD_RELATED_SUBGRAPH => id: id, account: account_id, balance: balance }
 }
 fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
     let test_wallet = create_wallet_entity(id, account_id, balance);

@@ -12,8 +12,8 @@ use graph::components::store::{
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
-use graph::prelude::*;
 use graph::semver::Version;
+use graph::{entity, prelude::*};
 use graph_store_postgres::{Shard, SubgraphStore as DieselSubgraphStore};
 
 const USER_GQL: &str = "
@@ -242,7 +242,7 @@ fn create_test_entity(
     favorite_color: Option<&str>,
 ) -> EntityOperation {
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
-    let test_entity = entity! {
+    let test_entity = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: id,
         name: name,
         bin_name: bin_name,

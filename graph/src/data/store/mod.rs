@@ -612,16 +612,11 @@ pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>
 
 impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
 
-/// The `entity!` macro is a convenient way to create entities. It comes in
-/// two forms, one where a schema is provided and one where it is not. The
-/// schema-less form can only be used in tests, since it creates an
-/// `AtomPool` just for this entity behind the scenes.
+/// The `entity!` macro is a convenient way to create entities in tests. It
+/// can not be used in production code since it panics when creating the
+/// entity goes wrong.
 ///
-/// The form with schema returns a `Result<Entity, Error>` since it can be
-/// used in production code. The schemaless form returns an `Entity` because
-/// it unwraps the `Result` for you.
-///
-/// Production code should always use the form with the schema
+/// The macro takes a schema and a list of attribute names and values:
 /// ```
 ///   use graph::entity;
 ///   use graph::schema::InputSchema;
@@ -630,88 +625,18 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 ///   let id = DeploymentHash::new("Qm123").unwrap();
 ///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
 ///
-///   let entity = entity! { schema => id: "1", name: "John Doe" }.unwrap();
-/// ```
-///
-/// Test code which often doesn't have access to an `InputSchema` can use
-/// the form without the schema
-/// ```
-///   use graph::entity;
-///   let entity = entity! { id: "1", name: "John Doe" };
-/// ```
-///
-/// In the test form, it is also possible to provide additional names after
-/// a `;` that should be put into the `AtomPool` so that they can be set
-/// later in the test
-/// ```
-///   use graph::entity;
-///   let entity = entity! { id: "1", name: "John Doe"; phone, email };
+///   let entity = entity! { schema => id: "1", name: "John Doe" };
 /// ```
 #[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! entity {
-    () => {
-        {
-            let pairs = Vec::new();
-            let pool = $crate::util::intern::AtomPool::new();
-            Entity::make(std::sync::Arc::new(pool), pairs)
-        }
-    };
-    ($($name:ident: $value:expr,)*) => {
-        {
-            let mut pairs = Vec::new();
-            let mut pool = $crate::util::intern::AtomPool::new();
-            $(
-                pool.intern(stringify!($name));
-                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
-            )*
-            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
-        }
-    };
-    ($($name:ident: $value:expr),*) => {
-        entity! {$($name: $value,)*}
-    };
-    ($($name:ident: $value:expr,)*; $($extra:ident,)*) => {
-        {
-            let mut pairs = Vec::new();
-            let mut pool = $crate::util::intern::AtomPool::new();
-            $(
-                pool.intern(stringify!($name));
-                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
-            )*
-            $(
-                pool.intern(stringify!($extra));
-            )*
-            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
-        }
-    };
-    ($($name:ident: $value:expr),*; $($extra:ident),*) => {
-        entity! {$($name: $value,)*; $($extra,)*}
-    };
     ($schema:expr => $($name:ident: $value:expr,)*) => {
         {
             let mut result = Vec::new();
             $(
                 result.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
             )*
-            $schema.make_entity(result)
-        }
-    };
-    ($schema:expr => $($name:ident: $value:expr),*) => {
-        entity! {$schema => $($name: $value,)*}
-    };
-}
-
-#[cfg(not(debug_assertions))]
-#[macro_export]
-macro_rules! entity {
-    ($schema:expr => $($name:ident: $value:expr,)*) => {
-        {
-            let mut pairs = Vec::new();
-            $(
-                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
-            )*
-            $schema.make_entity(pairs)
+            $schema.make_entity(result).unwrap()
         }
     };
     ($schema:expr => $($name:ident: $value:expr),*) => {
@@ -1004,34 +929,39 @@ fn value_bigint() {
 
 #[test]
 fn entity_validation() {
+    const DOCUMENT: &str = "
+    enum Color { red, yellow, blue }
+    interface Stuff { id: ID!, name: String! }
+    type Cruft @entity {
+        id: ID!,
+        thing: Thing!
+    }
+    type Thing @entity {
+        id: ID!,
+        name: String!,
+        favorite_color: Color,
+        stuff: Stuff,
+        things: [Thing!]!
+        # Make sure we do not validate derived fields; it's ok
+        # to store a thing with a null Cruft
+        cruft: Cruft! @derivedFrom(field: \"thing\")
+    }";
+
+    lazy_static! {
+        static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
+        static ref SCHEMA: InputSchema =
+            InputSchema::parse(DOCUMENT, SUBGRAPH.clone()).expect("Failed to parse test schema");
+    }
+
     fn make_thing(name: &str) -> Entity {
-        entity! { id: name, name: name, stuff: "less", favorite_color: "red", things: Value::List(vec![]); cruft }
+        entity! { SCHEMA => id: name, name: name, stuff: "less", favorite_color: "red", things: Value::List(vec![]) }
     }
 
     fn check(thing: Entity, errmsg: &str) {
-        const DOCUMENT: &str = "
-      enum Color { red, yellow, blue }
-      interface Stuff { id: ID!, name: String! }
-      type Cruft @entity {
-          id: ID!,
-          thing: Thing!
-      }
-      type Thing @entity {
-          id: ID!,
-          name: String!,
-          favorite_color: Color,
-          stuff: Stuff,
-          things: [Thing!]!
-          # Make sure we do not validate derived fields; it's ok
-          # to store a thing with a null Cruft
-          cruft: Cruft! @derivedFrom(field: \"thing\")
-      }";
-        let subgraph = DeploymentHash::new("doesntmatter").unwrap();
-        let schema = InputSchema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
-        let err = thing.validate(&schema, &key);
+        let err = thing.validate(&SCHEMA, &key);
         if errmsg.is_empty() {
             assert!(
                 err.is_ok(),

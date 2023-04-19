@@ -62,7 +62,6 @@ pub use url;
 /// use graph::prelude::*;
 /// ```
 pub mod prelude {
-    pub use super::entity;
     pub use ::anyhow;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use async_trait::async_trait;

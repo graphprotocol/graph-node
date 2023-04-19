@@ -1,5 +1,7 @@
 // Tests for graphql interfaces.
 
+use graph::entity;
+use graph::schema::InputSchema;
 use pretty_assertions::assert_eq;
 
 use graph::{components::store::EntityType, data::graphql::object};
@@ -63,14 +65,15 @@ async fn one_interface_zero_entities() {
 #[tokio::test]
 async fn one_interface_one_entity() {
     let subgraph_id = "oneInterfaceOneEntity";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let entity = ("Animal", entity! { id: "1", legs: 3 });
+    let entity = ("Animal", entity! { schema => id: "1", legs: 3 });
 
     // Collection query.
     let query = "query { leggeds(first: 100) { legs } }";
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query)
+    let res = insert_and_query(subgraph_id, document, vec![entity], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -79,7 +82,7 @@ async fn one_interface_one_entity() {
 
     // Query by ID.
     let query = "query { legged(id: \"1\") { legs } }";
-    let res = insert_and_query(subgraph_id, schema, vec![], query)
+    let res = insert_and_query(subgraph_id, document, vec![], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -90,14 +93,15 @@ async fn one_interface_one_entity() {
 #[tokio::test]
 async fn one_interface_one_entity_typename() {
     let subgraph_id = "oneInterfaceOneEntityTypename";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let entity = ("Animal", entity! { id: "1", legs: 3 });
+    let entity = ("Animal", entity! { schema => id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { __typename } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query)
+    let res = insert_and_query(subgraph_id, document, vec![entity], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -108,17 +112,18 @@ async fn one_interface_one_entity_typename() {
 #[tokio::test]
 async fn one_interface_multiple_entities() {
     let subgraph_id = "oneInterfaceMultipleEntities";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }
                   type Furniture implements Legged @entity { id: ID!, legs: Int }
                   ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let animal = ("Animal", entity! { id: "1", legs: 3 });
-    let furniture = ("Furniture", entity! { id: "2", legs: 4 });
+    let animal = ("Animal", entity! { schema => id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { schema => id: "2", legs: 4 });
 
     let query = "query { leggeds(first: 100, orderBy: legs) { legs } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query)
+    let res = insert_and_query(subgraph_id, document, vec![animal, furniture], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -127,7 +132,7 @@ async fn one_interface_multiple_entities() {
 
     // Test for support issue #32.
     let query = "query { legged(id: \"2\") { legs } }";
-    let res = insert_and_query(subgraph_id, schema, vec![], query)
+    let res = insert_and_query(subgraph_id, document, vec![], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -138,16 +143,17 @@ async fn one_interface_multiple_entities() {
 #[tokio::test]
 async fn reference_interface() {
     let subgraph_id = "ReferenceInterface";
-    let schema = "type Leg @entity { id: ID! }
+    let document = "type Leg @entity { id: ID! }
                   interface Legged { leg: Leg }
                   type Animal implements Legged @entity { id: ID!, leg: Leg }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query { leggeds(first: 100) { leg { id } } }";
 
-    let leg = ("Leg", entity! { id: "1" });
-    let animal = ("Animal", entity! { id: "1", leg: 1 });
+    let leg = ("Leg", entity! { schema => id: "1" });
+    let animal = ("Animal", entity! { schema => id: "1", leg: 1 });
 
-    let res = insert_and_query(subgraph_id, schema, vec![leg, animal], query)
+    let res = insert_and_query(subgraph_id, document, vec![leg, animal], query)
         .await
         .unwrap();
 
@@ -161,7 +167,7 @@ async fn reference_interface_derived() {
     // Test the different ways in which interface implementations
     // can reference another entity
     let subgraph_id = "ReferenceInterfaceDerived";
-    let schema = "
+    let document = "
     type Transaction @entity {
         id: ID!,
         buyEvent: BuyEvent!,
@@ -191,20 +197,24 @@ async fn reference_interface_derived() {
         # Store the transaction directly
         transaction: Transaction!
     }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query { events { id transaction { id } } }";
 
-    let buy = ("BuyEvent", entity! { id: "buy" });
-    let sell1 = ("SellEvent", entity! { id: "sell1" });
-    let sell2 = ("SellEvent", entity! { id: "sell2" });
-    let gift = ("GiftEvent", entity! { id: "gift", transaction: "txn" });
+    let buy = ("BuyEvent", entity! { schema => id: "buy" });
+    let sell1 = ("SellEvent", entity! { schema => id: "sell1" });
+    let sell2 = ("SellEvent", entity! { schema => id: "sell2" });
+    let gift = (
+        "GiftEvent",
+        entity! { schema => id: "gift", transaction: "txn" },
+    );
     let txn = (
         "Transaction",
-        entity! {id: "txn", buyEvent: "buy", sellEvents: vec!["sell1", "sell2"] },
+        entity! { schema => id: "txn", buyEvent: "buy", sellEvents: vec!["sell1", "sell2"] },
     );
 
     let entities = vec![buy, sell1, sell2, gift, txn];
-    let res = insert_and_query(subgraph_id, schema, entities.clone(), query)
+    let res = insert_and_query(subgraph_id, document, entities.clone(), query)
         .await
         .unwrap();
 
@@ -256,22 +266,26 @@ async fn follow_interface_reference_invalid() {
 #[tokio::test]
 async fn follow_interface_reference() {
     let subgraph_id = "FollowInterfaceReference";
-    let schema = "interface Legged { id: ID!, legs: Int! }
+    let document = "interface Legged { id: ID!, legs: Int! }
                   type Animal implements Legged @entity {
                     id: ID!
                     legs: Int!
                     parent: Legged
                   }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query { legged(id: \"child\") { ... on Animal { parent { id } } } }";
 
     let parent = (
         "Animal",
-        entity! { id: "parent", legs: 4, parent: Value::Null },
+        entity! { schema => id: "parent", legs: 4, parent: Value::Null },
     );
-    let child = ("Animal", entity! { id: "child", legs: 3, parent: "parent" });
+    let child = (
+        "Animal",
+        entity! { schema => id: "child", legs: 3, parent: "parent" },
+    );
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
         .await
         .unwrap();
 
@@ -285,17 +299,18 @@ async fn follow_interface_reference() {
 #[tokio::test]
 async fn conflicting_implementors_id() {
     let subgraph_id = "ConflictingImplementorsId";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, legs: Int }
                   type Furniture implements Legged @entity { id: ID!, legs: Int }
                   ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let animal = ("Animal", entity! { id: "1", legs: 3 });
-    let furniture = ("Furniture", entity! { id: "1", legs: 3 });
+    let animal = ("Animal", entity! { schema => id: "1", legs: 3 });
+    let furniture = ("Furniture", entity! { schema => id: "1", legs: 3 });
 
     let query = "query { leggeds(first: 100) { legs } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![animal, furniture], query).await;
+    let res = insert_and_query(subgraph_id, document, vec![animal, furniture], query).await;
 
     let msg = res.unwrap_err().to_string();
     // We don't know in which order the two entities get inserted; the two
@@ -313,17 +328,18 @@ async fn conflicting_implementors_id() {
 #[tokio::test]
 async fn derived_interface_relationship() {
     let subgraph_id = "DerivedInterfaceRelationship";
-    let schema = "interface ForestDweller { id: ID!, forest: Forest }
+    let document = "interface ForestDweller { id: ID!, forest: Forest }
                   type Animal implements ForestDweller @entity { id: ID!, forest: Forest }
                   type Forest @entity { id: ID!, dwellers: [ForestDweller]! @derivedFrom(field: \"forest\") }
                   ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let forest = ("Forest", entity! { id: "1" });
-    let animal = ("Animal", entity! { id: "1", forest: "1" });
+    let forest = ("Forest", entity! { schema => id: "1" });
+    let animal = ("Animal", entity! { schema => id: "1", forest: "1" });
 
     let query = "query { forests(first: 100) { dwellers(first: 100) { id } } }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![forest, animal], query)
+    let res = insert_and_query(subgraph_id, document, vec![forest, animal], query)
         .await
         .unwrap();
     let data = extract_data!(res);
@@ -336,7 +352,7 @@ async fn derived_interface_relationship() {
 #[tokio::test]
 async fn two_interfaces() {
     let subgraph_id = "TwoInterfaces";
-    let schema = "interface IFoo { foo: String! }
+    let document = "interface IFoo { foo: String! }
                   interface IBar { bar: Int! }
 
                   type A implements IFoo @entity { id: ID!, foo: String! }
@@ -344,16 +360,17 @@ async fn two_interfaces() {
 
                   type AB implements IFoo & IBar @entity { id: ID!, foo: String!, bar: Int! }
                   ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let a = ("A", entity! { id: "1", foo: "bla" });
-    let b = ("B", entity! { id: "1", bar: 100 });
-    let ab = ("AB", entity! { id: "2", foo: "ble", bar: 200 });
+    let a = ("A", entity! { schema => id: "1", foo: "bla" });
+    let b = ("B", entity! { schema => id: "1", bar: 100 });
+    let ab = ("AB", entity! { schema => id: "2", foo: "ble", bar: 200 });
 
     let query = "query {
                     ibars(first: 100, orderBy: bar) { bar }
                     ifoos(first: 100, orderBy: foo) { foo }
                 }";
-    let res = insert_and_query(subgraph_id, schema, vec![a, b, ab], query)
+    let res = insert_and_query(subgraph_id, document, vec![a, b, ab], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -367,14 +384,18 @@ async fn two_interfaces() {
 #[tokio::test]
 async fn interface_non_inline_fragment() {
     let subgraph_id = "interfaceNonInlineFragment";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, name: String, legs: Int }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let entity = ("Animal", entity! { id: "1", name: "cow", legs: 3 });
+    let entity = (
+        "Animal",
+        entity! { schema => id: "1", name: "cow", legs: 3 },
+    );
 
     // Query only the fragment.
     let query = "query { leggeds { ...frag } } fragment frag on Animal { name }";
-    let res = insert_and_query(subgraph_id, schema, vec![entity], query)
+    let res = insert_and_query(subgraph_id, document, vec![entity], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -383,7 +404,7 @@ async fn interface_non_inline_fragment() {
 
     // Query the fragment and something else.
     let query = "query { leggeds { legs, ...frag } } fragment frag on Animal { name }";
-    let res = insert_and_query(subgraph_id, schema, vec![], query)
+    let res = insert_and_query(subgraph_id, document, vec![], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -394,16 +415,20 @@ async fn interface_non_inline_fragment() {
 #[tokio::test]
 async fn interface_inline_fragment() {
     let subgraph_id = "interfaceInlineFragment";
-    let schema = "interface Legged { legs: Int }
+    let document = "interface Legged { legs: Int }
                   type Animal implements Legged @entity { id: ID!, name: String, legs: Int }
                   type Bird implements Legged @entity { id: ID!, airspeed: Int, legs: Int }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let animal = ("Animal", entity! { id: "1", name: "cow", legs: 4 });
-    let bird = ("Bird", entity! { id: "2", airspeed: 24, legs: 2 });
+    let animal = (
+        "Animal",
+        entity! { schema => id: "1", name: "cow", legs: 4 },
+    );
+    let bird = ("Bird", entity! { schema => id: "2", airspeed: 24, legs: 2 });
 
     let query =
         "query { leggeds(orderBy: legs) { ... on Animal { name } ...on Bird { airspeed } } }";
-    let res = insert_and_query(subgraph_id, schema, vec![animal, bird], query)
+    let res = insert_and_query(subgraph_id, document, vec![animal, bird], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -414,7 +439,7 @@ async fn interface_inline_fragment() {
 #[tokio::test]
 async fn interface_inline_fragment_with_subquery() {
     let subgraph_id = "InterfaceInlineFragmentWithSubquery";
-    let schema = "
+    let document = "
         interface Legged { legs: Int }
         type Parent @entity {
           id: ID!
@@ -432,23 +457,24 @@ async fn interface_inline_fragment_with_subquery() {
           parent: Parent
         }
     ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
-    let mama_cow = ("Parent", entity! { id: "mama_cow" });
+    let mama_cow = ("Parent", entity! { schema =>  id: "mama_cow" });
     let cow = (
         "Animal",
-        entity! { id: "1", name: "cow", legs: 4, parent: "mama_cow" },
+        entity! { schema =>  id: "1", name: "cow", legs: 4, parent: "mama_cow" },
     );
 
-    let mama_bird = ("Parent", entity! { id: "mama_bird" });
+    let mama_bird = ("Parent", entity! { schema =>  id: "mama_bird" });
     let bird = (
         "Bird",
-        entity! { id: "2", airspeed: 5, legs: 2, parent: "mama_bird" },
+        entity! { schema =>  id: "2", airspeed: 5, legs: 2, parent: "mama_bird" },
     );
 
     let query = "query { leggeds(orderBy: legs) { legs ... on Bird { airspeed parent { id } } } }";
     let res = insert_and_query(
         subgraph_id,
-        schema,
+        document,
         vec![cow, mama_cow, bird, mama_bird],
         query,
     )
@@ -497,12 +523,13 @@ async fn invalid_fragment() {
 #[tokio::test]
 async fn alias() {
     let subgraph_id = "Alias";
-    let schema = "interface Legged { id: ID!, legs: Int! }
+    let document = "interface Legged { id: ID!, legs: Int! }
                   type Animal implements Legged @entity {
                     id: ID!
                     legs: Int!
                     parent: Legged
                   }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query {
                     l: legged(id: \"child\") {
@@ -518,11 +545,14 @@ async fn alias() {
 
     let parent = (
         "Animal",
-        entity! { id: "parent", legs: 4, parent: Value::Null },
+        entity! { schema =>  id: "parent", legs: 4, parent: Value::Null },
     );
-    let child = ("Animal", entity! { id: "child", legs: 3, parent: "parent" });
+    let child = (
+        "Animal",
+        entity! { schema =>  id: "child", legs: 3, parent: "parent" },
+    );
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -543,7 +573,7 @@ async fn alias() {
 #[tokio::test]
 async fn fragments_dont_panic() {
     let subgraph_id = "FragmentsDontPanic";
-    let schema = "
+    let document = "
       type Parent @entity {
         id: ID!
         child: Child
@@ -553,6 +583,7 @@ async fn fragments_dont_panic() {
         id: ID!
       }
     ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "
         query {
@@ -577,28 +608,11 @@ async fn fragments_dont_panic() {
     ";
 
     // The panic manifests if two parents exist.
-    let parent = (
-        "Parent",
-        entity!(
-            id: "p",
-            child: "c",
-        ),
-    );
-    let parent2 = (
-        "Parent",
-        entity!(
-            id: "p2",
-            child: Value::Null,
-        ),
-    );
-    let child = (
-        "Child",
-        entity!(
-            id:"c"
-        ),
-    );
+    let parent = ("Parent", entity! { schema => id: "p", child: "c" });
+    let parent2 = ("Parent", entity! { schema => id: "p2", child: Value::Null });
+    let child = ("Child", entity! { schema => id:"c" });
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, parent2, child], query)
         .await
         .unwrap();
 
@@ -624,7 +638,7 @@ async fn fragments_dont_panic() {
 #[tokio::test]
 async fn fragments_dont_duplicate_data() {
     let subgraph_id = "FragmentsDupe";
-    let schema = "
+    let document = "
       type Parent @entity {
         id: ID!
         children: [Child!]!
@@ -634,6 +648,7 @@ async fn fragments_dont_duplicate_data() {
         id: ID!
       }
     ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "
         query {
@@ -653,28 +668,14 @@ async fn fragments_dont_duplicate_data() {
     ";
 
     // This bug manifests if two parents exist.
-    let parent = (
-        "Parent",
-        entity!(
-            id: "p",
-            children: vec!["c"]
-        ),
-    );
+    let parent = ("Parent", entity! { schema => id: "p", children: vec!["c"] });
     let parent2 = (
         "Parent",
-        entity!(
-            id: "b",
-            children: Vec::<String>::new()
-        ),
+        entity! { schema => id: "b", children: Vec::<String>::new() },
     );
-    let child = (
-        "Child",
-        entity!(
-            id:"c"
-        ),
-    );
+    let child = ("Child", entity! { schema => id:"c" });
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, parent2, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, parent2, child], query)
         .await
         .unwrap();
 
@@ -702,11 +703,12 @@ async fn fragments_dont_duplicate_data() {
 #[tokio::test]
 async fn redundant_fields() {
     let subgraph_id = "RedundantFields";
-    let schema = "interface Legged { id: ID!, parent: Legged }
+    let document = "interface Legged { id: ID!, parent: Legged }
                   type Animal implements Legged @entity {
                     id: ID!
                     parent: Legged
                   }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query {
                     leggeds {
@@ -719,20 +721,14 @@ async fn redundant_fields() {
 
     let parent = (
         "Animal",
-        entity!(
-            id: "parent",
-            parent: Value::Null,
-        ),
+        entity! { schema => id: "parent", parent: Value::Null },
     );
     let child = (
         "Animal",
-        entity!(
-            id: "child",
-            parent: "parent",
-        ),
+        entity! { schema => id: "child", parent: "parent" },
     );
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
         .await
         .unwrap();
 
@@ -757,7 +753,7 @@ async fn redundant_fields() {
 #[tokio::test]
 async fn fragments_merge_selections() {
     let subgraph_id = "FragmentsMergeSelections";
-    let schema = "
+    let document = "
       type Parent @entity {
         id: ID!
         children: [Child!]!
@@ -768,6 +764,7 @@ async fn fragments_merge_selections() {
         foo: Int!
       }
     ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "
         query {
@@ -786,22 +783,10 @@ async fn fragments_merge_selections() {
         }
     ";
 
-    let parent = (
-        "Parent",
-        entity!(
-            id: "p",
-            children: vec!["c"]
-        ),
-    );
-    let child = (
-        "Child",
-        entity!(
-            id: "c",
-            foo: 1,
-        ),
-    );
+    let parent = ("Parent", entity! { schema => id: "p", children: vec!["c"] });
+    let child = ("Child", entity! { schema => id: "c", foo: 1 });
 
-    let res = insert_and_query(subgraph_id, schema, vec![parent, child], query)
+    let res = insert_and_query(subgraph_id, document, vec![parent, child], query)
         .await
         .unwrap();
 
@@ -826,7 +811,7 @@ async fn fragments_merge_selections() {
 #[tokio::test]
 async fn merge_fields_not_in_interface() {
     let subgraph_id = "MergeFieldsNotInInterface";
-    let schema = "interface Iface { id: ID! }
+    let document = "interface Iface { id: ID! }
                   type Animal implements Iface @entity {
                     id: ID!
                     human: Iface!
@@ -836,6 +821,7 @@ async fn merge_fields_not_in_interface() {
                     animal: Iface!
                   }
                   ";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query {
                     ifaces {
@@ -854,22 +840,10 @@ async fn merge_fields_not_in_interface() {
                     }
             }";
 
-    let animal = (
-        "Animal",
-        entity!(
-            id: "cow",
-            human: "fred",
-        ),
-    );
-    let human = (
-        "Human",
-        entity!(
-            id: "fred",
-            animal: "cow",
-        ),
-    );
+    let animal = ("Animal", entity! { schema => id: "cow", human: "fred" });
+    let human = ("Human", entity! { schema => id: "fred", animal: "cow" });
 
-    let res = insert_and_query(subgraph_id, schema, vec![animal, human], query)
+    let res = insert_and_query(subgraph_id, document, vec![animal, human], query)
         .await
         .unwrap();
 
@@ -898,7 +872,7 @@ async fn merge_fields_not_in_interface() {
 #[tokio::test]
 async fn nested_interface_fragments() {
     let subgraph_id = "NestedInterfaceFragments";
-    let schema = "interface I1face { id: ID!, foo1: Foo! }
+    let document = "interface I1face { id: ID!, foo1: Foo! }
                   interface I2face { id: ID!, foo2: Foo! }
                   interface I3face { id: ID!, foo3: Foo! }
                   type Foo @entity {
@@ -919,6 +893,7 @@ async fn nested_interface_fragments() {
                     foo2: Foo!
                     foo3: Foo!
                   }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query {
                     i1Faces {
@@ -939,38 +914,18 @@ async fn nested_interface_fragments() {
                     }
             }";
 
-    let foo = (
-        "Foo",
-        entity!(
-            id: "foo",
-        ),
-    );
-    let one = (
-        "One",
-        entity!(
-            id: "1",
-            foo1: "foo",
-        ),
-    );
+    let foo = ("Foo", entity! { schema => id: "foo" });
+    let one = ("One", entity! { schema => id: "1", foo1: "foo" });
     let two = (
         "Two",
-        entity!(
-            id: "2",
-            foo1: "foo",
-            foo2: "foo",
-        ),
+        entity! { schema => id: "2", foo1: "foo", foo2: "foo" },
     );
     let three = (
         "Three",
-        entity!(
-            id: "3",
-            foo1: "foo",
-            foo2: "foo",
-            foo3: "foo"
-        ),
+        entity! { schema => id: "3", foo1: "foo", foo2: "foo", foo3: "foo" },
     );
 
-    let res = insert_and_query(subgraph_id, schema, vec![foo, one, two, three], query)
+    let res = insert_and_query(subgraph_id, document, vec![foo, one, two, three], query)
         .await
         .unwrap();
 
@@ -1014,7 +969,7 @@ async fn nested_interface_fragments() {
 #[tokio::test]
 async fn nested_interface_fragments_overlapping() {
     let subgraph_id = "NestedInterfaceFragmentsOverlapping";
-    let schema = "interface I1face { id: ID!, foo1: Foo! }
+    let document = "interface I1face { id: ID!, foo1: Foo! }
                   interface I2face { id: ID!, foo1: Foo! }
                   type Foo @entity {
                       id: ID!
@@ -1027,6 +982,7 @@ async fn nested_interface_fragments_overlapping() {
                     id: ID!
                     foo1: Foo!
                   }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query {
                     i1Faces {
@@ -1039,27 +995,10 @@ async fn nested_interface_fragments_overlapping() {
                     }
             }";
 
-    let foo = (
-        "Foo",
-        entity!(
-            id: "foo",
-        ),
-    );
-    let one = (
-        "One",
-        entity!(
-            id: "1",
-            foo1: "foo",
-        ),
-    );
-    let two = (
-        "Two",
-        entity!(
-            id: "2",
-            foo1: "foo",
-        ),
-    );
-    let res = insert_and_query(subgraph_id, schema, vec![foo, one, two], query)
+    let foo = ("Foo", entity! { schema => id: "foo" });
+    let one = ("One", entity! { schema => id: "1", foo1: "foo" });
+    let two = ("Two", entity! { schema => id: "2", foo1: "foo" });
+    let res = insert_and_query(subgraph_id, document, vec![foo, one, two], query)
         .await
         .unwrap();
 
@@ -1095,7 +1034,7 @@ async fn nested_interface_fragments_overlapping() {
         }
     }";
 
-    let res = insert_and_query(subgraph_id, schema, vec![], query)
+    let res = insert_and_query(subgraph_id, document, vec![], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -1124,7 +1063,7 @@ async fn nested_interface_fragments_overlapping() {
 async fn enums() {
     use r::Value::Enum;
     let subgraph_id = "enums";
-    let schema = r#"
+    let document = r#"
        enum Direction {
          NORTH
          EAST
@@ -1137,20 +1076,21 @@ async fn enums() {
          direction: Direction!
          meters: Int!
        }"#;
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let entities = vec![
         (
             "Trajectory",
-            entity! { id: "1", direction: "EAST", meters: 10 },
+            entity! { schema =>  id: "1", direction: "EAST", meters: 10 },
         ),
         (
             "Trajectory",
-            entity! { id: "2", direction: "NORTH", meters: 15 },
+            entity! { schema =>  id: "2", direction: "NORTH", meters: 15 },
         ),
     ];
     let query = "query { trajectories { id, direction, meters } }";
 
-    let res = insert_and_query(subgraph_id, schema, entities, query)
+    let res = insert_and_query(subgraph_id, document, entities, query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -1176,7 +1116,7 @@ async fn enums() {
 async fn enum_list_filters() {
     use r::Value::Enum;
     let subgraph_id = "enum_list_filters";
-    let schema = r#"
+    let document = r#"
        enum Direction {
          NORTH
          EAST
@@ -1189,24 +1129,25 @@ async fn enum_list_filters() {
          direction: Direction!
          meters: Int!
        }"#;
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let entities = vec![
         (
             "Trajectory",
-            entity! { id: "1", direction: "EAST", meters: 10 },
+            entity! { schema =>  id: "1", direction: "EAST", meters: 10 },
         ),
         (
             "Trajectory",
-            entity! { id: "2", direction: "NORTH", meters: 15 },
+            entity! { schema =>  id: "2", direction: "NORTH", meters: 15 },
         ),
         (
             "Trajectory",
-            entity! { id: "3", direction: "WEST", meters: 20 },
+            entity! { schema =>  id: "3", direction: "WEST", meters: 20 },
         ),
     ];
 
     let query = "query { trajectories(where: { direction_in: [NORTH, EAST] }) { id, direction } }";
-    let res = insert_and_query(subgraph_id, schema, entities, query)
+    let res = insert_and_query(subgraph_id, document, entities, query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -1226,7 +1167,7 @@ async fn enum_list_filters() {
     );
 
     let query = "query { trajectories(where: { direction_not_in: [EAST] }) { id, direction } }";
-    let res = insert_and_query(subgraph_id, schema, vec![], query)
+    let res = insert_and_query(subgraph_id, document, vec![], query)
         .await
         .unwrap();
     let data = extract_data!(res).unwrap();
@@ -1323,15 +1264,19 @@ async fn recursive_fragment() {
 #[tokio::test]
 async fn mixed_mutability() {
     let subgraph_id = "MixedMutability";
-    let schema = "interface Event { id: String! }
+    let document = "interface Event { id: String! }
                   type Mutable implements Event @entity { id: String!, name: String! }
                   type Immutable implements Event @entity(immutable: true) { id: String!, name: String! }";
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query { events { id } }";
 
     let entities = vec![
-        ("Mutable", entity! { id: "mut0", name: "mut0" }),
-        ("Immutable", entity! { id: "immo0", name: "immo0" }),
+        ("Mutable", entity! { schema =>  id: "mut0", name: "mut0" }),
+        (
+            "Immutable",
+            entity! { schema =>  id: "immo0", name: "immo0" },
+        ),
     ];
 
     {
@@ -1342,7 +1287,7 @@ async fn mixed_mutability() {
         let id = DeploymentHash::new(subgraph_id).unwrap();
         remove_subgraph(&id);
     }
-    let res = insert_and_query(subgraph_id, schema, entities, query)
+    let res = insert_and_query(subgraph_id, document, entities, query)
         .await
         .unwrap();
 
@@ -1354,7 +1299,7 @@ async fn mixed_mutability() {
 #[tokio::test]
 async fn derived_interface_bytes() {
     let subgraph_id = "DerivedInterfaceBytes";
-    let schema = r#" type Pool {
+    let document = r#" type Pool {
         id: Bytes!,
         trades: [Trade!]! @derivedFrom(field: "pool")
       }
@@ -1372,16 +1317,17 @@ async fn derived_interface_bytes() {
        id: Bytes!
        pool: Pool!
       }"#;
+    let schema = InputSchema::raw(document, subgraph_id);
 
     let query = "query { pools { trades { id } } }";
 
     let entities = vec![
-        ("Pool", entity! { id: "0xf001" }),
-        ("Sell", entity! { id: "0xc0", pool: "0xf001"}),
-        ("Buy", entity! { id: "0xb0", pool: "0xf001"}),
+        ("Pool", entity! { schema =>  id: "0xf001" }),
+        ("Sell", entity! { schema =>  id: "0xc0", pool: "0xf001"}),
+        ("Buy", entity! { schema =>  id: "0xb0", pool: "0xf001"}),
     ];
 
-    let res = insert_and_query(subgraph_id, schema, entities, query)
+    let res = insert_and_query(subgraph_id, document, entities, query)
         .await
         .unwrap();
 
