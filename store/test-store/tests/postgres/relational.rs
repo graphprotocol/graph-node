@@ -220,7 +220,7 @@ fn insert_entity_at(
     let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
+            let key = EntityKey::data(entity_type.to_owned(), entity.id());
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
@@ -259,7 +259,7 @@ fn update_entity_at(
     let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::data(entity_type.to_owned(), entity.id().unwrap());
+            let key = EntityKey::data(entity_type.to_owned(), entity.id());
             (key, entity)
         })
         .collect();
@@ -584,7 +584,7 @@ fn update() {
         entity.set("string", "updated").unwrap();
         entity.remove("strings");
         entity.set("bool", Value::Null).unwrap();
-        let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap());
+        let key = EntityKey::data("Scalar".to_owned(), entity.id());
 
         let entity_type = EntityType::from("Scalar");
         let mut entities = vec![(&key, Cow::from(&entity))];
@@ -711,7 +711,7 @@ fn serialize_bigdecimal() {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d).unwrap();
 
-            let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
+            let key = EntityKey::data("Scalar".to_owned(), entity.id());
             let entity_type = EntityType::from("Scalar");
             let mut entities = vec![(&key, Cow::Borrowed(&entity))];
             layout

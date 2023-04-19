@@ -1343,7 +1343,7 @@ async fn test_store_set_id() {
     let entity = host.store_get(USER, UID).unwrap().unwrap();
     assert_eq!(
         "u1",
-        entity.id().unwrap().as_str(),
+        entity.id().as_str(),
         "store.set sets id automatically"
     );
 
@@ -1383,11 +1383,7 @@ async fn test_store_set_id() {
         .expect("setting with no id works");
 
     let entity = host.store_get(BINARY, BID).unwrap().unwrap();
-    assert_eq!(
-        BID,
-        entity.id().unwrap().as_str(),
-        "store.set sets id automatically"
-    );
+    assert_eq!(BID, entity.id().as_str(), "store.set sets id automatically");
 
     let err = host
         .store_setv(BINARY, BID, vec![("id", Value::Int(32))])

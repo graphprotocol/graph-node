@@ -750,7 +750,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     let mut deletions_graphql: Vec<r::Value> = Vec::with_capacity(deletions.len());
 
     for (entity_type, mut entities) in updates {
-        entities.sort_unstable_by_key(|e| e.id().unwrap_or("no-id".to_string()));
+        entities.sort_unstable_by_key(|e| e.id());
         updates_graphql.push(object! {
             type: entity_type.to_string(),
             entities:
