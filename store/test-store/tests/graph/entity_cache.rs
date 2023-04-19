@@ -739,5 +739,27 @@ fn scoped_get() {
         assert_eq!(Some(&wallet1), act1.as_ref());
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
         assert_eq!(Some(&wallet1), act1.as_ref());
+    })
+}
+
+/// Entities should never contain a `__typename` or `g$parent_id` field, if
+/// they do, that can cause PoI divergences, because entities will differ
+/// depending on whether they had to be loaded from the database or stuck
+/// around in the cache where they won't have these attributes
+#[test]
+fn no_internal_keys() {
+    run_store_test(|mut cache, _, _, writable| async move {
+        #[track_caller]
+        fn check(entity: &Entity) {
+            assert_eq!(None, entity.get("__typename"));
+            assert_eq!(None, entity.get("g$parent_id"));
+        }
+        let key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+
+        let wallet = writable.get(&key).unwrap().unwrap();
+        check(&wallet);
+
+        let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
+        check(&wallet);
     });
 }
