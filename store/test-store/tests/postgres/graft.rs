@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::data::value::Word;
 use graph::schema::InputSchema;
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
@@ -280,7 +281,7 @@ async fn create_grafted_subgraph(
 fn find_entities(
     store: &DieselSubgraphStore,
     deployment: &DeploymentLocator,
-) -> (Vec<Entity>, Vec<String>) {
+) -> (Vec<Entity>, Vec<Word>) {
     let query = EntityQuery::new(
         deployment.hash.clone(),
         BLOCK_NUMBER_MAX,

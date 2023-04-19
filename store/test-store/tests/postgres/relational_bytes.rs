@@ -3,6 +3,7 @@ use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
+use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::{EntityQuery, MetricsRegistry};
@@ -408,7 +409,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 
 #[test]
 fn query() {
-    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
+    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<Word> {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
