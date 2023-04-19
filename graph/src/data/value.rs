@@ -97,6 +97,18 @@ impl AsRef<str> for Word {
     }
 }
 
+impl PartialEq<&str> for Word {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<Word> for &str {
+    fn eq(&self, other: &Word) -> bool {
+        self == &other.as_str()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 struct Entry {
     key: Option<Word>,

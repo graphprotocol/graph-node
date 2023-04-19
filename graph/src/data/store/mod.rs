@@ -715,10 +715,10 @@ impl Entity {
     /// string. If it is `Bytes`, return it as a hex string with a `0x`
     /// prefix. If the ID is not set or anything but a `String` or `Bytes`,
     /// return an error
-    pub fn id(&self) -> String {
+    pub fn id(&self) -> Word {
         match self.get("id") {
-            Some(Value::String(s)) => s.clone(),
-            Some(Value::Bytes(b)) => b.to_string(),
+            Some(Value::String(s)) => Word::from(s.clone()),
+            Some(Value::Bytes(b)) => Word::from(b.to_string()),
             None | Some(_) => unreachable!("we checked the id when constructing this entity"),
         }
     }
