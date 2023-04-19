@@ -87,7 +87,7 @@ where
         let deployment = insert_test_data(subgraph_store.clone()).await;
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id)
+            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
             .await
             .expect("we can get a writable store");
 

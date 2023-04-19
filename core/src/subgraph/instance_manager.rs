@@ -199,12 +199,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
 
-        let store = self
-            .subgraph_store
-            .cheap_clone()
-            .writable(logger.clone(), deployment.id)
-            .await?;
-
         let raw_yaml = serde_yaml::to_string(&manifest).unwrap();
         let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
 
@@ -256,7 +250,15 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             );
         }
 
-        let manifest_idx_and_name: Vec<(u32, String)> = manifest.template_idx_and_name().collect();
+        let store = self
+            .subgraph_store
+            .cheap_clone()
+            .writable(
+                logger.clone(),
+                deployment.id,
+                Arc::new(manifest.template_idx_and_name().collect()),
+            )
+            .await?;
 
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will
@@ -425,7 +427,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             templates,
             unified_api_version,
             static_filters,
-            manifest_idx_and_name,
             poi_version,
             network,
             instrument,

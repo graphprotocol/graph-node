@@ -1009,7 +1009,10 @@ async fn test_entity_store(api_version: Version) {
     load_and_set_user_name(&mut module, "steve", "Steve-O");
 
     // We need to empty the cache for the next test
-    let writable = store.writable(LOGGER.clone(), deployment.id).await.unwrap();
+    let writable = store
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .await
+        .unwrap();
     let cache = std::mem::replace(
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),

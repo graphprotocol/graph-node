@@ -477,7 +477,6 @@ where
                 &self.metrics.host.stopwatch,
                 persisted_data_sources,
                 deterministic_errors,
-                self.inputs.manifest_idx_and_name.clone(),
                 processed_data_sources,
             )
             .await

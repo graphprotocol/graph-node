@@ -141,7 +141,7 @@ where
         let deployment = insert_test_data(subgraph_store.clone()).await;
         let writable = store
             .subgraph_store()
-            .writable(LOGGER.clone(), deployment.id)
+            .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
             .await
             .expect("we can get a writable store");
 
@@ -1530,7 +1530,6 @@ fn handle_large_string_with_index() {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
-                Vec::new(),
             )
             .await
             .expect("Failed to insert large text");
@@ -1621,7 +1620,6 @@ fn handle_large_bytea_with_index() {
                     make_insert_op(TWO, &other_bytea, &schema),
                 ],
                 &stopwatch_metrics,
-                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
