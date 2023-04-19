@@ -678,14 +678,6 @@ impl Entity {
         self.0.get(key)
     }
 
-    pub fn insert(&mut self, key: &str, value: Value) -> Result<Option<Value>, InternError> {
-        self.0.insert(key, value)
-    }
-
-    pub fn remove(&mut self, key: &str) -> Option<Value> {
-        self.0.remove(key)
-    }
-
     pub fn contains_key(&self, key: &str) -> bool {
         self.0.contains_key(key)
     }
@@ -721,15 +713,6 @@ impl Entity {
         }
     }
 
-    /// Convenience method to save having to `.into()` the arguments.
-    pub fn set(
-        &mut self,
-        name: &str,
-        value: impl Into<Value>,
-    ) -> Result<Option<Value>, InternError> {
-        self.0.insert(name, value.into())
-    }
-
     /// Merges an entity update `update` into this entity.
     ///
     /// If a key exists in both entities, the value from `update` is chosen.
@@ -747,8 +730,8 @@ impl Entity {
     pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
         for (key, value) in update.0.into_iter() {
             match value {
-                Value::Null => self.remove(&key),
-                _ => self.insert(&key, value)?,
+                Value::Null => self.0.remove(&key),
+                _ => self.0.insert(&key, value)?,
             };
         }
         Ok(())
@@ -896,6 +879,27 @@ impl Entity {
             }
         }
         Ok(())
+    }
+}
+
+/// Convenience methods to modify individual attributes for tests.
+/// Production code should not use/need this.
+#[cfg(debug_assertions)]
+impl Entity {
+    pub fn insert(&mut self, key: &str, value: Value) -> Result<Option<Value>, InternError> {
+        self.0.insert(key, value)
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<Value> {
+        self.0.remove(key)
+    }
+
+    pub fn set(
+        &mut self,
+        name: &str,
+        value: impl Into<Value>,
+    ) -> Result<Option<Value>, InternError> {
+        self.0.insert(name, value.into())
     }
 }
 
