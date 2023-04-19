@@ -411,34 +411,38 @@ fn entity_validation() {
     use crate::prelude::{DeploymentHash, Entity};
     use crate::schema::InputSchema;
 
+    const DOCUMENT: &str = "
+    enum Color { red, yellow, blue }
+    interface Stuff { id: ID!, name: String! }
+    type Cruft @entity {
+        id: ID!,
+        thing: Thing!
+    }
+    type Thing @entity {
+        id: ID!,
+        name: String!,
+        favorite_color: Color,
+        stuff: Stuff,
+        things: [Thing!]!
+        # Make sure we do not validate derived fields; it's ok
+        # to store a thing with a null Cruft
+        cruft: Cruft! @derivedFrom(field: \"thing\")
+    }";
+
+    lazy_static! {
+        static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
+        static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
+    }
+
     fn make_thing(name: &str) -> Entity {
-        entity! { id: name, name: name, stuff: "less", favorite_color: "red", things: store::Value::List(vec![]); cruft}
+        entity! { SCHEMA => id: name, name: name, stuff: "less", favorite_color: "red", things: store::Value::List(vec![]) }
     }
 
     fn check(thing: Entity, errmsg: &str) {
-        const DOCUMENT: &str = "
-      enum Color { red, yellow, blue }
-      interface Stuff { id: ID!, name: String! }
-      type Cruft @entity {
-          id: ID!,
-          thing: Thing!
-      }
-      type Thing @entity {
-          id: ID!,
-          name: String!,
-          favorite_color: Color,
-          stuff: Stuff,
-          things: [Thing!]!
-          # Make sure we do not validate derived fields; it's ok
-          # to store a thing with a null Cruft
-          cruft: Cruft! @derivedFrom(field: \"thing\")
-      }";
-        let subgraph = DeploymentHash::new("doesntmatter").unwrap();
-        let schema = InputSchema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
-        let err = thing.validate(&schema, &key);
+        let err = thing.validate(&SCHEMA, &key);
         if errmsg.is_empty() {
             assert!(
                 err.is_ok(),

@@ -83,6 +83,18 @@ impl InputSchema {
         Ok(Self::create(schema))
     }
 
+    /// Convenience for tests to construct an `InputSchema`
+    ///
+    /// # Panics
+    ///
+    /// If the `document` or `hash` can not be successfully converted
+    #[cfg(debug_assertions)]
+    #[track_caller]
+    pub fn raw(document: &str, hash: &str) -> Self {
+        let hash = DeploymentHash::new(hash).unwrap();
+        Self::parse(document, hash).unwrap()
+    }
+
     /// Generate the `ApiSchema` for use with GraphQL queries for this
     /// `InputSchema`
     pub fn api_schema(&self) -> Result<ApiSchema, anyhow::Error> {

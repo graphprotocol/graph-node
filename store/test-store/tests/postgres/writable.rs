@@ -7,8 +7,8 @@ use test_store::*;
 
 use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
 use graph::data::subgraph::*;
-use graph::prelude::*;
 use graph::semver::Version;
+use graph::{entity, prelude::*};
 use graph_store_postgres::layout_for_tests::writable;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
 use web3::types::H256;
@@ -107,7 +107,7 @@ fn count_key(id: &str) -> EntityKey {
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
-    let data = entity! {
+    let data = entity! { TEST_SUBGRAPH_SCHEMA =>
         id: "1",
         count: count as i32
     };
@@ -170,11 +170,12 @@ fn tracker() {
 fn restart() {
     run_test(|store, writable, deployment| async move {
         let subgraph_store = store.subgraph_store();
+        let schema = subgraph_store.input_schema(&deployment.hash).unwrap();
 
         // Cause an error by leaving out the non-nullable `count` attribute
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { id: "1" },
+            data: entity! { schema => id: "1" },
         }];
         transact_entity_operations(
             &subgraph_store,
@@ -198,7 +199,7 @@ fn restart() {
         // Retry our write with correct data
         let entity_ops = vec![EntityOperation::Set {
             key: count_key("1"),
-            data: entity! { id: "1", count: 1 },
+            data: entity! { schema => id: "1", count: 1 },
         }];
         // `SubgraphStore` caches the correct writable so that this call
         // uses the restarted writable, and is equivalent to using

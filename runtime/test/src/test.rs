@@ -2,11 +2,12 @@ use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::data::value::Word;
 use graph::prelude::web3::types::U256;
-use graph::prelude::*;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
+use graph::schema::InputSchema;
 use graph::{components::store::*, ipfs_client::IpfsClient};
+use graph::{entity, prelude::*};
 use graph_chain_ethereum::{Chain, DataSource};
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
@@ -431,7 +432,11 @@ async fn test_ipfs_block() {
 const USER_DATA: &str = "user_data";
 
 fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
-    let data = entity! { id: id, value: value, extra: USER_DATA };
+    const DOCUMENT: &str = " type Thing @entity { id: String!, value: String!, extra: String }";
+    lazy_static! {
+        static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
+    }
+    let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA };
     let key = EntityKey::data("Thing".to_string(), id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
@@ -960,8 +965,8 @@ async fn test_entity_store(api_version: Version) {
 
     let schema = store.input_schema(&deployment.hash).unwrap();
 
-    let alex = entity! { id: "alex", name: "Alex" };
-    let steve = entity! { id: "steve", name: "Steve" };
+    let alex = entity! { schema => id: "alex", name: "Alex" };
+    let steve = entity! { schema => id: "steve", name: "Steve" };
     let user_type = EntityType::from("User");
     test_store::insert_entities(
         &deployment,
