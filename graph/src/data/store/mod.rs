@@ -1,5 +1,4 @@
 use crate::{
-    bail,
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
     prelude::{anyhow::Context, lazy_static, q, r, s, CacheWeight, QueryExecutionError},
@@ -655,10 +654,9 @@ impl Entity {
                 )
             })?;
         }
-        if !obj.contains_key(&ID) {
-            bail!("internal error: no id attribute for entity `{obj:?}`");
-        }
-        Ok(Entity(obj))
+        let entity = Entity(obj);
+        entity.check_id()?;
+        Ok(entity)
     }
 
     pub fn try_make<E: std::error::Error + Send + Sync + 'static, I: TryIntoEntityIterator<E>>(
@@ -671,10 +669,9 @@ impl Entity {
             obj.insert(key, value)
                 .map_err(|e| anyhow!("unknown attribute {}", e.not_interned()))?;
         }
-        if !obj.contains_key(&ID) {
-            bail!("internal error: no id attribute for entity `{obj:?}`");
-        }
-        Ok(Entity(obj))
+        let entity = Entity(obj);
+        entity.check_id()?;
+        Ok(entity)
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
@@ -698,6 +695,18 @@ impl Entity {
         let mut v: Vec<_> = self.0.into_iter().map(|(k, v)| (k, v)).collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
+    }
+
+    fn check_id(&self) -> Result<(), Error> {
+        match self.get("id") {
+            None => Err(anyhow!(
+                "internal error: no id attribute for entity `{:?}`",
+                self.0
+            )),
+            Some(Value::String(_)) => Ok(()),
+            Some(Value::Bytes(_)) => Ok(()),
+            _ => Err(anyhow!("Entity has non-string `id` attribute")),
+        }
     }
 
     /// Return the ID of this entity. If the ID is a string, return the
