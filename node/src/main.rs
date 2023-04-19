@@ -1,5 +1,6 @@
 use clap::Parser as _;
 use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumStreamBuilder};
+use ethereum::codec::HeaderOnlyBlock;
 use ethereum::{BlockIngestor, EthereumNetworks, RuntimeAdapter};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
@@ -296,8 +297,18 @@ async fn main() {
         )
         .await;
 
+        // This only has idents for chains with rpc adapters.
         let (eth_networks, ethereum_idents) =
             connect_ethereum_networks(&logger, eth_networks).await;
+
+        let (eth_firehose_only_networks, eth_firehose_only_idents) =
+            connect_firehose_networks::<HeaderOnlyBlock>(
+                &logger,
+                firehose_networks_by_kind
+                    .remove(&BlockchainKind::Ethereum)
+                    .unwrap_or_else(FirehoseNetworks::new),
+            )
+            .await;
 
         let (near_networks, near_idents) =
             connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
@@ -318,6 +329,7 @@ async fn main() {
 
         let network_identifiers = ethereum_idents
             .into_iter()
+            .chain(eth_firehose_only_idents)
             .chain(arweave_idents)
             .chain(near_idents)
             .chain(cosmos_idents)
@@ -334,12 +346,18 @@ async fn main() {
             metrics_registry.clone(),
         );
 
+        let eth_firehose_only_networks = if eth_firehose_only_networks.networks.len() == 0 {
+            None
+        } else {
+            Some(&eth_firehose_only_networks)
+        };
+
         let ethereum_chains = ethereum_networks_as_chains(
             &mut blockchain_map,
             &logger,
             node_id.clone(),
             metrics_registry.clone(),
-            firehose_networks_by_kind.get(&BlockchainKind::Ethereum),
+            eth_firehose_only_networks,
             substreams_networks_by_kind.get(&BlockchainKind::Ethereum),
             &eth_networks,
             network_store.as_ref(),
