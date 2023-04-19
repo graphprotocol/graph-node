@@ -1392,5 +1392,5 @@ async fn test_store_set_id() {
     let err = host
         .store_setv(BINARY, BID, vec![("id", Value::Int(32))])
         .expect_err("id must be Bytes");
-    err_says(err, "must have type Bytes! but has type Int");
+    err_says(err, "Entity has non-string `id` attribute");
 }
