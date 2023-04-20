@@ -36,7 +36,6 @@ use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
-use crate::sql_value::SqlValue;
 use crate::{
     block_range::{
         BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
@@ -579,7 +578,6 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
             }
             Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
             Value::List(values) => {
-                let sql_values = SqlValue::new_array(values.clone());
                 match &column_type {
                     ColumnType::BigDecimal | ColumnType::BigInt => {
                         let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
@@ -587,12 +585,12 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                         out.push_sql("::numeric[]");
                         Ok(())
                     }
-                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(&sql_values),
-                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(&sql_values),
-                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(&sql_values),
-                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(&sql_values),
+                    ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(values),
+                    ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
+                    ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
+                    ColumnType::String => out.push_bind_param::<Array<Text>, _>(values),
                     ColumnType::Enum(enum_type) => {
-                        out.push_bind_param::<Array<Text>, _>(&sql_values)?;
+                        out.push_bind_param::<Array<Text>, _>(values)?;
                         out.push_sql("::");
                         out.push_sql(enum_type.name.as_str());
                         out.push_sql("[]");
@@ -600,11 +598,11 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     }
                     // TSVector will only be in a Value::List() for inserts so "to_tsvector" can always be used here
                     ColumnType::TSVector(config) => {
-                        if sql_values.is_empty() {
+                        if values.is_empty() {
                             out.push_sql("''::tsvector");
                         } else {
                             out.push_sql("(");
-                            for (i, value) in sql_values.iter().enumerate() {
+                            for (i, value) in values.iter().enumerate() {
                                 if i > 0 {
                                     out.push_sql(") || ");
                                 }

@@ -1,24 +1,16 @@
+use anyhow::anyhow;
 use diesel::pg::Pg;
 use diesel::serialize::{self, Output, ToSql};
 use diesel::sql_types::{Binary, Bool, Integer, Text};
-use graph::prelude::anyhow::anyhow;
+
 use std::io::Write;
 use std::str::FromStr;
 
-use graph::data::store::{scalar, Value};
+use super::{scalar, Value};
 
-#[derive(Clone, Debug, PartialEq, Eq, AsExpression)]
-pub struct SqlValue(Value);
-
-impl SqlValue {
-    pub fn new_array(values: Vec<Value>) -> Vec<Self> {
-        values.into_iter().map(SqlValue).collect()
-    }
-}
-
-impl ToSql<Bool, Pg> for SqlValue {
+impl ToSql<Bool, Pg> for Value {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match &self.0 {
+        match self {
             Value::Bool(b) => <bool as ToSql<Bool, Pg>>::to_sql(b, out),
             v => Err(anyhow!(
                 "Failed to convert non-boolean attribute value to boolean in SQL: {}",
@@ -29,9 +21,9 @@ impl ToSql<Bool, Pg> for SqlValue {
     }
 }
 
-impl ToSql<Integer, Pg> for SqlValue {
+impl ToSql<Integer, Pg> for Value {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match &self.0 {
+        match self {
             Value::Int(i) => <i32 as ToSql<Integer, Pg>>::to_sql(i, out),
             v => Err(anyhow!(
                 "Failed to convert non-int attribute value to int in SQL: {}",
@@ -42,9 +34,9 @@ impl ToSql<Integer, Pg> for SqlValue {
     }
 }
 
-impl ToSql<Text, Pg> for SqlValue {
+impl ToSql<Text, Pg> for Value {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match &self.0 {
+        match self {
             Value::String(s) => <String as ToSql<Text, Pg>>::to_sql(s, out),
             Value::Bytes(h) => <String as ToSql<Text, Pg>>::to_sql(&h.to_string(), out),
             v => Err(anyhow!(
@@ -56,9 +48,9 @@ impl ToSql<Text, Pg> for SqlValue {
     }
 }
 
-impl ToSql<Binary, Pg> for SqlValue {
+impl ToSql<Binary, Pg> for Value {
     fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> serialize::Result {
-        match &self.0 {
+        match self {
             Value::Bytes(h) => <_ as ToSql<Binary, Pg>>::to_sql(&h.as_slice(), out),
             Value::String(s) => {
                 <_ as ToSql<Binary, Pg>>::to_sql(scalar::Bytes::from_str(s)?.as_slice(), out)

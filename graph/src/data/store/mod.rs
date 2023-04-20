@@ -26,6 +26,9 @@ pub mod scalar;
 // Ethereum compatibility.
 pub mod ethereum;
 
+/// Conversion of values to/from SQL
+pub mod sql;
+
 /// Filter subscriptions
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SubscriptionFilter {
