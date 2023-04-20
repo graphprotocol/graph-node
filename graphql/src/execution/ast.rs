@@ -7,7 +7,7 @@ use graph::{
 };
 use graphql_parser::Pos;
 
-use crate::schema::ast::ObjectType;
+use crate::schema::{ast::ObjectType, is_connection_type};
 
 /// A selection set is a table that maps object types to the fields that
 /// should be selected for objects of that type. The types are always
@@ -234,6 +234,14 @@ pub struct Field {
     pub arguments: Vec<(String, r::Value)>,
     pub directives: Vec<Directive>,
     pub selection_set: SelectionSet,
+
+    // To support Relay-style cursor pagination we have `PageInfo`. We need to dynamically compute
+    // the `hasNextPage` and `hasPreviousPage` values. These values help us track which one is
+    // requested by the client so we only compute the one that is needed.
+    /// Do we need to compute `hasNextPage` for `PageInfo`?
+    pub has_next_page: bool,
+    /// Do we need to compute `hasPreviousPage` for `PageInfo`?
+    pub has_previous_page: bool,
 }
 
 impl Field {
@@ -241,6 +249,10 @@ impl Field {
     /// alias (if there is one).
     pub fn response_key(&self) -> &str {
         self.alias.as_deref().unwrap_or(self.name.as_str())
+    }
+
+    pub fn is_connection_type(&self) -> bool {
+        is_connection_type(&self.name) || self.name.ends_with("Paginated")
     }
 
     /// Looks up the value of an argument for this field

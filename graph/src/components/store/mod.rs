@@ -229,6 +229,8 @@ pub enum EntityFilter {
     ChangeBlockGte(BlockNumber),
     Child(Child),
     Fulltext(Attribute, Value),
+    // After cursor
+    // Before cursor
 }
 
 // A somewhat concise string representation of a filter

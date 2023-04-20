@@ -20,7 +20,7 @@ use graph::prelude::{
     TryFromValue, ENV_VARS,
 };
 
-use crate::execution::ast as a;
+use crate::execution::ast::{self as a};
 use crate::query::{ast as qast, ext::BlockConstraint};
 use crate::schema::ast::{self as sast};
 use crate::values::coercion;
@@ -907,6 +907,8 @@ impl Transform {
                 arguments: vec![],
                 directives: vec![],
                 selection_set: a::SelectionSet::new(vec![]),
+                has_next_page: false,
+                has_previous_page: false,
             }));
         }
 
@@ -945,6 +947,28 @@ impl Transform {
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
 
+        let mut has_next_page = false;
+        let mut has_previous_page = false;
+        for (_, fields) in selection_set.interior_fields() {
+            // Iterate through selection set and see if it has pageInfo field
+            // if it has page info then see if it has hasNextPage or hasPreviousPage
+            // if it has either of them then set the corresponding flag in the field
+            for field in fields {
+                if field.name == "pageInfo" {
+                    for (_, fields) in field.selection_set.fields() {
+                        for field in fields {
+                            if field.name == "hasNextPage" {
+                                has_next_page = true;
+                            }
+                            if field.name == "hasPreviousPage" {
+                                has_previous_page = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(Some(a::Field {
             position,
             alias,
@@ -952,6 +976,8 @@ impl Transform {
             arguments,
             directives,
             selection_set,
+            has_next_page,
+            has_previous_page,
         }))
     }
 
