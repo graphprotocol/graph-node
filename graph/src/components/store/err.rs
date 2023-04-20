@@ -1,5 +1,7 @@
 use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
 use crate::prelude::QueryExecutionError;
+use crate::util::intern::Error as InternError;
+
 use anyhow::{anyhow, Error};
 use diesel::result::Error as DieselError;
 use thiserror::Error;
@@ -120,5 +122,13 @@ impl From<QueryExecutionError> for StoreError {
 impl From<std::fmt::Error> for StoreError {
     fn from(e: std::fmt::Error) -> Self {
         StoreError::Unknown(anyhow!("{}", e.to_string()))
+    }
+}
+
+impl From<InternError> for StoreError {
+    fn from(e: InternError) -> Self {
+        match e {
+            InternError::NotInterned(key) => StoreError::UnknownField(key),
+        }
     }
 }

@@ -1762,6 +1762,7 @@ impl<'a> InsertQuery<'a> {
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
         for (entity_key, entity) in entities.iter_mut() {
+            let mut fulltext = Vec::new();
             for column in table.columns.iter() {
                 if let Some(fields) = column.fulltext_fields.as_ref() {
                     let fulltext_field_values = fields
@@ -1770,10 +1771,7 @@ impl<'a> InsertQuery<'a> {
                         .cloned()
                         .collect::<Vec<Value>>();
                     if !fulltext_field_values.is_empty() {
-                        entity
-                            .to_mut()
-                            .insert(&column.field, Value::List(fulltext_field_values))
-                            .map_err(|e| entity_key.unknown_attribute(e))?;
+                        fulltext.push((&column.field, Value::List(fulltext_field_values)));
                     }
                 }
                 if !column.is_nullable() && !entity.contains_key(&column.field) {
@@ -1784,6 +1782,9 @@ impl<'a> InsertQuery<'a> {
                     entity_key.entity_type, entity_key.entity_id, column.field
                 )));
                 }
+            }
+            if !fulltext.is_empty() {
+                entity.to_mut().merge_iter(fulltext)?;
             }
         }
         let unique_columns = InsertQuery::unique_columns(table, entities);
