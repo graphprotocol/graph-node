@@ -761,6 +761,20 @@ impl Entity {
         self.0.retain(|_, value| !value.is_null())
     }
 
+    /// Add the key/value pairs from `iter` to this entity. This is the same
+    /// as an implementation of `std::iter::Extend` would be, except that
+    /// this operation is fallible because one of the keys from the iterator
+    /// might not be in the underlying pool
+    pub fn merge_iter(
+        &mut self,
+        iter: impl IntoIterator<Item = (impl AsRef<str>, Value)>,
+    ) -> Result<(), InternError> {
+        for (key, value) in iter {
+            self.0.insert(key, value)?;
+        }
+        Ok(())
+    }
+
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
