@@ -10,7 +10,7 @@ use diesel::{
 use diesel::{insert_into, pg::PgConnection};
 
 use graph::{
-    components::store::StoredDynamicDataSource,
+    components::store::{write, StoredDynamicDataSource},
     constraint_violation,
     data_source::CausalityRegion,
     prelude::{
@@ -103,62 +103,68 @@ pub(super) fn load(
 pub(super) fn insert(
     conn: &PgConnection,
     deployment: &DeploymentHash,
-    data_sources: &[StoredDynamicDataSource],
+    data_sources: &write::DataSources,
     block_ptr: &BlockPtr,
     manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
-    if data_sources.is_empty() {
+    if data_sources.entries.is_empty() {
         // Avoids a roundtrip to the DB.
         return Ok(0);
     }
 
     let dds: Vec<_> = data_sources
+        .entries
         .iter()
-        .map(|ds| {
-            let StoredDynamicDataSource {
-                manifest_idx: _,
-                param,
-                context,
-                creation_block: _,
-                done_at: _,
-                causality_region,
-            } = ds;
+        .map(|(_, dds)| {
+            dds.iter().map(|ds| {
+                let StoredDynamicDataSource {
+                    manifest_idx: _,
+                    param,
+                    context,
+                    creation_block: _,
+                    done_at: _,
+                    causality_region,
+                } = ds;
 
-            if causality_region != &CausalityRegion::ONCHAIN {
-                return Err(constraint_violation!(
-                    "using shared data source schema with file data sources"
-                ));
-            }
-
-            let address = match param {
-                Some(param) => param,
-                None => {
+                if causality_region != &CausalityRegion::ONCHAIN {
                     return Err(constraint_violation!(
-                        "dynamic data sources must have an addres",
+                        "using shared data source schema with file data sources"
                     ));
                 }
-            };
-            let name = manifest_idx_and_name
-                .iter()
-                .find(|(idx, _)| *idx == ds.manifest_idx)
-                .ok_or_else(|| constraint_violation!("manifest idx {} not found", ds.manifest_idx))?
-                .1
-                .clone();
-            Ok((
-                decds::deployment.eq(deployment.as_str()),
-                decds::name.eq(name),
-                decds::context.eq(context
-                    .as_ref()
-                    .map(|ctx| serde_json::to_string(ctx).unwrap())),
-                decds::address.eq(&**address),
-                decds::abi.eq(""),
-                decds::start_block.eq(0),
-                decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
-                decds::ethereum_block_hash.eq(block_ptr.hash_slice()),
-            ))
+
+                let address = match param {
+                    Some(param) => param,
+                    None => {
+                        return Err(constraint_violation!(
+                            "dynamic data sources must have an addres",
+                        ));
+                    }
+                };
+                let name = manifest_idx_and_name
+                    .iter()
+                    .find(|(idx, _)| *idx == ds.manifest_idx)
+                    .ok_or_else(|| {
+                        constraint_violation!("manifest idx {} not found", ds.manifest_idx)
+                    })?
+                    .1
+                    .clone();
+                Ok((
+                    decds::deployment.eq(deployment.as_str()),
+                    decds::name.eq(name),
+                    decds::context.eq(context
+                        .as_ref()
+                        .map(|ctx| serde_json::to_string(ctx).unwrap())),
+                    decds::address.eq(&**address),
+                    decds::abi.eq(""),
+                    decds::start_block.eq(0),
+                    decds::ethereum_block_number.eq(sql(&format!("{}::numeric", block_ptr.number))),
+                    decds::ethereum_block_hash.eq(block_ptr.hash_slice()),
+                ))
+            })
         })
+        .flatten()
         .collect::<Result<_, _>>()?;
 
     insert_into(decds::table)

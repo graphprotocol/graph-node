@@ -5,8 +5,9 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::components::store::write::{EntityWrite, RowGroup, Sheet};
 use graph::components::store::{
-    DerivedEntityQuery, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest,
+    Batch, DerivedEntityQuery, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest,
     PruningStrategy, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
@@ -38,8 +39,8 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
-    DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error, Logger,
-    QueryExecutionError, StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value, ENV_VARS,
+    DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
+    StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value, ENV_VARS,
 };
 use graph::schema::{ApiSchema, InputSchema};
 use web3::types::Address;
@@ -319,113 +320,81 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         layout: &Layout,
-        mods: &[EntityModification],
+        inserts: &Sheet<EntityWrite>,
+        overwrites: &Sheet<EntityWrite>,
+        removes: &Sheet<EntityKey>,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<i32, StoreError> {
-        use EntityModification::*;
         let mut count = 0;
-
-        // Group `Insert`s and `Overwrite`s by key, and accumulate `Remove`s.
-        let mut inserts = HashMap::new();
-        let mut overwrites = HashMap::new();
-        let mut removals = HashMap::new();
-        for modification in mods.iter() {
-            match modification {
-                Insert { key, data } => {
-                    inserts
-                        .entry(key.entity_type.clone())
-                        .or_insert_with(Vec::new)
-                        .push((key, data));
-                }
-                Overwrite { key, data } => {
-                    overwrites
-                        .entry(key.entity_type.clone())
-                        .or_insert_with(Vec::new)
-                        .push((key, data));
-                }
-                Remove { key } => {
-                    removals
-                        .entry(key.entity_type.clone())
-                        .or_insert_with(Vec::new)
-                        .push(key.entity_id.as_str());
-                }
-            }
-        }
 
         // Apply modification groups.
         // Inserts:
-        for (entity_type, entities) in inserts.into_iter() {
-            count +=
-                self.insert_entities(&entity_type, &entities, conn, layout, ptr, stopwatch)? as i32
+        for group in &inserts.groups {
+            count += self.insert_entities(group, conn, layout, ptr, stopwatch)? as i32
         }
 
         // Overwrites:
-        for (entity_type, entities) in overwrites.into_iter() {
+        for group in &overwrites.groups {
             // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(&entity_type, &entities, conn, layout, ptr, stopwatch)?;
+            self.overwrite_entities(group, conn, layout, ptr, stopwatch)?;
         }
 
         // Removals
-        for (entity_type, entity_keys) in removals.into_iter() {
-            count -=
-                self.remove_entities(&entity_type, &entity_keys, conn, layout, ptr, stopwatch)?
-                    as i32;
+        for group in &removes.groups {
+            count -= self.remove_entities(group, conn, layout, ptr, stopwatch)? as i32;
         }
         Ok(count)
     }
 
     fn insert_entities<'a>(
         &'a self,
-        entity_type: &'a EntityType,
-        data: &'a [(&'a EntityKey, &'a Entity)],
+        group: &'a RowGroup<EntityWrite>,
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for (key, _) in data.iter() {
+        for row in group.rows.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
+            self.check_interface_entity_uniqueness(conn, layout, &row.key)?;
         }
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout.insert(conn, entity_type, data, block_number(ptr), stopwatch)
+        layout.insert(conn, group, block_number(ptr), stopwatch)
     }
 
     fn overwrite_entities<'a>(
         &'a self,
-        entity_type: &'a EntityType,
-        data: &'a [(&'a EntityKey, &'a Entity)],
+        group: &'a RowGroup<EntityWrite>,
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for (key, _) in data.iter() {
+        for row in group.rows.iter() {
             // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, key)?;
+            self.check_interface_entity_uniqueness(conn, layout, &row.key)?;
         }
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, entity_type, data, block_number(ptr), stopwatch)
+        layout.update(conn, group, block_number(ptr), stopwatch)
     }
 
     fn remove_entities(
         &self,
-        entity_type: &EntityType,
-        entity_keys: &[&str],
+        group: &RowGroup<EntityKey>,
         conn: &PgConnection,
         layout: &Layout,
         ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
-        layout.delete(conn, entity_type, entity_keys, block_number(ptr), stopwatch)
+        layout.delete(conn, group, block_number(ptr), stopwatch)
     }
 
     /// Execute a closure with a connection to the database.
@@ -1148,14 +1117,9 @@ impl DeploymentStore {
         self: &Arc<Self>,
         logger: &Logger,
         site: Arc<Site>,
-        block_ptr_to: &BlockPtr,
-        firehose_cursor: &FirehoseCursor,
-        mods: &[EntityModification],
+        batch: &Batch,
         stopwatch: &StopwatchMetrics,
-        data_sources: &[StoredDynamicDataSource],
-        deterministic_errors: &[SubgraphError],
         manifest_idx_and_name: &[(u32, String)],
-        processed_data_sources: &[StoredDynamicDataSource],
     ) -> Result<StoreEvent, StoreError> {
         let conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
@@ -1166,7 +1130,7 @@ impl DeploymentStore {
         // wait with sending it until we have done all our other work
         // so that we do not hold a lock on the notification queue
         // for longer than we have to
-        let event: StoreEvent = StoreEvent::from_mods(&site.deployment, mods);
+        let event: StoreEvent = batch.store_event(&site.deployment);
 
         let (layout, earliest_block) = deployment::with_lock(&conn, &site, || {
             conn.transaction(|| -> Result<_, StoreError> {
@@ -1177,8 +1141,10 @@ impl DeploymentStore {
                 let count = self.apply_entity_modifications(
                     &conn,
                     layout.as_ref(),
-                    mods,
-                    block_ptr_to,
+                    &batch.inserts,
+                    &batch.overwrites,
+                    &batch.removes,
+                    &batch.block_ptr,
                     stopwatch,
                 )?;
                 section.end();
@@ -1186,30 +1152,35 @@ impl DeploymentStore {
                 dynds::insert(
                     &conn,
                     &site,
-                    data_sources,
-                    block_ptr_to,
+                    &batch.data_sources,
+                    &batch.block_ptr,
                     manifest_idx_and_name,
                 )?;
 
-                dynds::update_offchain_status(&conn, &site, processed_data_sources)?;
+                dynds::update_offchain_status(&conn, &site, &batch.offchain_to_remove)?;
 
-                if !deterministic_errors.is_empty() {
+                if !batch.deterministic_errors.is_empty() {
                     deployment::insert_subgraph_errors(
                         &conn,
                         &site.deployment,
-                        deterministic_errors,
-                        block_ptr_to.block_number(),
+                        &batch.deterministic_errors,
+                        batch.block_ptr.number,
                     )?;
                 }
 
-                let earliest_block =
-                    deployment::transact_block(&conn, &site, block_ptr_to, firehose_cursor, count)?;
+                let earliest_block = deployment::transact_block(
+                    &conn,
+                    &site,
+                    &batch.block_ptr,
+                    &batch.firehose_cursor,
+                    count,
+                )?;
 
                 Ok((layout, earliest_block))
             })
         })?;
 
-        if block_ptr_to.number as f64
+        if batch.block_ptr.number as f64
             > earliest_block as f64
                 + layout.history_blocks as f64 * ENV_VARS.store.history_slack_factor
         {
@@ -1222,7 +1193,7 @@ impl DeploymentStore {
                 site,
                 layout.history_blocks,
                 earliest_block,
-                block_ptr_to.number,
+                batch.block_ptr.number,
             )?;
         }
 

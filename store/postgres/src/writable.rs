@@ -4,7 +4,9 @@ use std::sync::Mutex;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore};
+use graph::components::store::{
+    Batch, DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore,
+};
 use graph::constraint_violation;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
@@ -18,7 +20,7 @@ use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
-    components::store::{self, EntityType, WritableStore as WritableStoreTrait},
+    components::store::{self, write::EntityOp, EntityType, WritableStore as WritableStoreTrait},
     data::subgraph::schema::SubgraphError,
     prelude::{
         BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,
@@ -208,26 +210,16 @@ impl SyncStore {
 
     fn transact_block_operations(
         &self,
-        block_ptr_to: &BlockPtr,
-        firehose_cursor: &FirehoseCursor,
-        mods: &[EntityModification],
+        batch: &Batch,
         stopwatch: &StopwatchMetrics,
-        data_sources: &[StoredDynamicDataSource],
-        deterministic_errors: &[SubgraphError],
-        processed_data_sources: &[StoredDynamicDataSource],
     ) -> Result<(), StoreError> {
         retry::forever(&self.logger, "transact_block_operations", move || {
             let event = self.writable.transact_block_operations(
                 &self.logger,
                 self.site.clone(),
-                block_ptr_to,
-                firehose_cursor,
-                mods,
+                batch,
                 stopwatch,
-                data_sources,
-                deterministic_errors,
                 &self.manifest_idx_and_name,
-                processed_data_sources,
             )?;
 
             let _section = stopwatch.start_section("send_store_event");
@@ -402,8 +394,8 @@ impl BlockTracker {
 
     fn update(&mut self, req: &Request) {
         match req {
-            Request::Write { block_ptr, .. } => {
-                self.block = self.block.min(block_ptr.number - 1);
+            Request::Write { batch, .. } => {
+                self.block = self.block.min(batch.block_ptr.number - 1);
             }
             Request::RevertTo { block_ptr, .. } => {
                 // `block_ptr` is the block pointer we are reverting _to_,
@@ -435,13 +427,7 @@ enum Request {
     Write {
         store: Arc<SyncStore>,
         stopwatch: StopwatchMetrics,
-        /// The block at which we are writing the changes
-        block_ptr: BlockPtr,
-        firehose_cursor: FirehoseCursor,
-        mods: Vec<EntityModification>,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
-        processed_data_sources: Vec<StoredDynamicDataSource>,
+        batch: Batch,
     },
     RevertTo {
         store: Arc<SyncStore>,
@@ -455,17 +441,12 @@ enum Request {
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Write {
-                block_ptr,
-                mods,
-                store,
-                ..
-            } => write!(
+            Self::Write { batch, store, .. } => write!(
                 f,
                 "write[{}, {:p}, {} entities]",
-                block_ptr.number,
+                batch.block_ptr.number,
                 store.as_ref(),
-                mods.len()
+                batch.entity_count()
             ),
             Self::RevertTo {
                 block_ptr, store, ..
@@ -484,24 +465,11 @@ impl Request {
     fn execute(&self) -> Result<ExecResult, StoreError> {
         match self {
             Request::Write {
+                batch,
                 store,
                 stopwatch,
-                block_ptr: block_ptr_to,
-                firehose_cursor,
-                mods,
-                data_sources,
-                deterministic_errors,
-                processed_data_sources,
             } => store
-                .transact_block_operations(
-                    block_ptr_to,
-                    firehose_cursor,
-                    mods,
-                    stopwatch,
-                    data_sources,
-                    deterministic_errors,
-                    processed_data_sources,
-                )
+                .transact_block_operations(batch, stopwatch)
                 .map(|()| ExecResult::Continue),
             Request::RevertTo {
                 store,
@@ -725,6 +693,15 @@ impl Queue {
             Remove,
         }
 
+        impl<'a> From<EntityOp<'a>> for Op {
+            fn from(value: EntityOp) -> Self {
+                match value {
+                    EntityOp::Write(entity) => Self::Write(entity.clone()),
+                    EntityOp::Remove => Self::Remove,
+                }
+            }
+        }
+
         // Going from newest to oldest entry in the queue as `find_map` does
         // ensures that we see reverts before we see the corresponding write
         // request. We ignore any write request that writes blocks that have
@@ -736,19 +713,11 @@ impl Queue {
         let op = self.queue.find_map(|req| {
             tracker.update(req.as_ref());
             match req.as_ref() {
-                Request::Write {
-                    block_ptr, mods, ..
-                } => {
-                    if tracker.visible(block_ptr) {
-                        mods.iter()
-                            .find(|emod| emod.entity_ref() == key)
-                            .map(|emod| match emod {
-                                EntityModification::Insert { data, .. }
-                                | EntityModification::Overwrite { data, .. } => {
-                                    Op::Write(data.clone())
-                                }
-                                EntityModification::Remove { .. } => Op::Remove,
-                            })
+                Request::Write { batch, .. } => {
+                    if tracker.visible(&batch.block_ptr) {
+                        batch
+                            .last_op(&key.entity_type, &key.entity_id)
+                            .map(Op::from)
                     } else {
                         None
                     }
@@ -778,15 +747,18 @@ impl Queue {
             |mut map: BTreeMap<EntityKey, Option<Entity>>, req| {
                 tracker.update(req.as_ref());
                 match req.as_ref() {
-                    Request::Write {
-                        block_ptr, mods, ..
-                    } => {
-                        if tracker.visible(block_ptr) {
-                            for emod in mods {
-                                let key = emod.entity_ref();
-                                // The key must be removed to avoid overwriting it with a stale value.
-                                if let Some(key) = keys.take(key) {
-                                    map.insert(key, emod.entity().cloned());
+                    Request::Write { batch, .. } => {
+                        if tracker.visible(&batch.block_ptr) {
+                            // See if we have changes for any of the keys.
+                            for key in &keys {
+                                match batch.last_op(&key.entity_type, &key.entity_id) {
+                                    Some(EntityOp::Write(entity)) => {
+                                        map.insert(key.clone(), Some(entity.clone()));
+                                    }
+                                    Some(EntityOp::Remove) => {
+                                        map.insert(key.clone(), None);
+                                    }
+                                    None => { /* nothing to do  */ }
                                 }
                             }
                         }
@@ -797,7 +769,8 @@ impl Queue {
             },
         );
 
-        // Whatever remains in `keys` needs to be gotten from the store
+        // Look entities for the remaining keys up in the store
+        keys.retain(|key| !entities_in_queue.contains_key(key));
         let mut map = self.store.get_many(keys, tracker.query_block())?;
 
         // Extend the store results with the entities from the queue.
@@ -823,31 +796,20 @@ impl Queue {
             |mut map: BTreeMap<EntityKey, Option<Entity>>, req| {
                 tracker.update(req.as_ref());
                 match req.as_ref() {
-                    Request::Write {
-                        block_ptr, mods, ..
-                    } => {
-                        if tracker.visible(block_ptr) {
-                            for emod in mods {
-                                let key = emod.entity_ref();
-                                // we select just the entities that match the query
-                                if derived_query.entity_type == key.entity_type {
-                                    if let Some(entity) = emod.entity().cloned() {
-                                        if let Some(related_id) =
-                                            entity.get(derived_query.entity_field.as_str())
-                                        {
-                                            // we check only the field agains the value
-                                            if related_id.to_string()
-                                                == derived_query.value.to_string()
-                                            {
-                                                map.insert(key.clone(), Some(entity));
-                                            }
-                                        }
-                                    } else {
-                                        // if the entity was deleted, we add here with no checks
-                                        // just for removing from the query
-                                        map.insert(key.clone(), emod.entity().cloned());
+                    Request::Write { batch, .. } => {
+                        if tracker.visible(&batch.block_ptr) {
+                            for (key, entity) in batch.writes(&derived_query.entity_type) {
+                                if let Some(related_id) =
+                                    entity.get(derived_query.entity_field.as_str())
+                                {
+                                    // we check only the field against the value
+                                    if related_id.as_str() == Some(&derived_query.value) {
+                                        map.insert(key.clone(), Some(entity.clone()));
                                     }
                                 }
+                            }
+                            for key in batch.removes(&derived_query.entity_type) {
+                                map.insert(key.clone(), None);
                             }
                         }
                     }
@@ -892,15 +854,9 @@ impl Queue {
         let mut queue_dds = self.queue.fold(Vec::new(), |mut dds, req| {
             tracker.update(req.as_ref());
             match req.as_ref() {
-                Request::Write {
-                    block_ptr,
-                    data_sources,
-                    processed_data_sources,
-                    ..
-                } => {
-                    if tracker.visible(block_ptr) {
-                        dds.extend(data_sources.clone());
-                        dds.retain(|dds| !processed_data_sources.contains(dds));
+                Request::Write { batch, .. } => {
+                    if tracker.visible(&batch.block_ptr) {
+                        dds.extend(batch.new_data_sources().cloned());
                     }
                 }
                 Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
@@ -974,37 +930,15 @@ impl Writer {
         }
     }
 
-    async fn write(
-        &self,
-        block_ptr_to: BlockPtr,
-        firehose_cursor: FirehoseCursor,
-        mods: Vec<EntityModification>,
-        stopwatch: &StopwatchMetrics,
-        data_sources: Vec<StoredDynamicDataSource>,
-        deterministic_errors: Vec<SubgraphError>,
-        processed_data_sources: Vec<StoredDynamicDataSource>,
-    ) -> Result<(), StoreError> {
+    async fn write(&self, batch: Batch, stopwatch: &StopwatchMetrics) -> Result<(), StoreError> {
         match self {
-            Writer::Sync(store) => store.transact_block_operations(
-                &block_ptr_to,
-                &firehose_cursor,
-                &mods,
-                stopwatch,
-                &data_sources,
-                &deterministic_errors,
-                &processed_data_sources,
-            ),
+            Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch),
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
                 let req = Request::Write {
                     store: queue.store.cheap_clone(),
                     stopwatch: queue.stopwatch.cheap_clone(),
-                    block_ptr: block_ptr_to,
-                    firehose_cursor,
-                    mods,
-                    data_sources,
-                    deterministic_errors,
-                    processed_data_sources,
+                    batch,
                 };
                 queue.push(req).await
             }
@@ -1258,17 +1192,15 @@ impl WritableStoreTrait for WritableStore {
         deterministic_errors: Vec<SubgraphError>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
-        self.writer
-            .write(
-                block_ptr_to.clone(),
-                firehose_cursor.clone(),
-                mods,
-                stopwatch,
-                data_sources,
-                deterministic_errors,
-                processed_data_sources,
-            )
-            .await?;
+        let batch = Batch::new(
+            block_ptr_to.clone(),
+            firehose_cursor.clone(),
+            mods,
+            data_sources,
+            deterministic_errors,
+            processed_data_sources,
+        );
+        self.writer.write(batch, stopwatch).await?;
 
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to);
         *self.block_cursor.lock().unwrap() = firehose_cursor;

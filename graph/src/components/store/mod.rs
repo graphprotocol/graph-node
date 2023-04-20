@@ -1,6 +1,7 @@
 mod entity_cache;
 mod err;
 mod traits;
+pub mod write;
 
 pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
 
@@ -9,6 +10,7 @@ pub use err::StoreError;
 use itertools::Itertools;
 use strum_macros::Display;
 pub use traits::*;
+pub use write::Batch;
 
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
@@ -689,10 +691,14 @@ pub struct StoreEvent {
 
 impl StoreEvent {
     pub fn new(changes: Vec<EntityChange>) -> StoreEvent {
+        let changes = changes.into_iter().collect();
+        StoreEvent::from_set(changes)
+    }
+
+    fn from_set(changes: HashSet<EntityChange>) -> StoreEvent {
         static NEXT_TAG: AtomicUsize = AtomicUsize::new(0);
 
         let tag = NEXT_TAG.fetch_add(1, Ordering::Relaxed);
-        let changes = changes.into_iter().collect();
         StoreEvent { tag, changes }
     }
 
@@ -712,6 +718,19 @@ impl StoreEvent {
             })
             .collect();
         StoreEvent::new(changes)
+    }
+
+    pub fn from_types(deployment: &DeploymentHash, entity_types: HashSet<EntityType>) -> Self {
+        let changes =
+            HashSet::from_iter(
+                entity_types
+                    .into_iter()
+                    .map(|entity_type| EntityChange::Data {
+                        subgraph_id: deployment.clone(),
+                        entity_type,
+                    }),
+            );
+        Self::from_set(changes)
     }
 
     /// Extend `ev1` with `ev2`. If `ev1` is `None`, just set it to `ev2`
