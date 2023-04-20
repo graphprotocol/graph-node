@@ -24,6 +24,7 @@ use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
+use graph::components::store::write::{EntityWrite, RowGroup};
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
@@ -33,6 +34,7 @@ use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME};
 use graph::slog::warn;
 use inflector::Inflector;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -652,19 +654,18 @@ impl Layout {
     pub fn insert<'a>(
         &'a self,
         conn: &PgConnection,
-        entity_type: &'a EntityType,
-        entities: &'a [(&'a EntityKey, &'a Entity)],
+        group: &'a RowGroup<EntityWrite>,
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(entity_type)?;
+        let table = self.table_for_entity(&group.entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
         let mut count = 0;
 
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
-        for chunk in entities.chunks(chunk_size) {
+        for chunk in group.rows.chunks(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
                 .get_results(conn)
                 .map(|ids| ids.len())?
@@ -800,28 +801,29 @@ impl Layout {
     pub fn update<'a>(
         &'a self,
         conn: &PgConnection,
-        entity_type: &'a EntityType,
-        entities: &'a [(&'a EntityKey, &'a Entity)],
+        group: &'a RowGroup<EntityWrite>,
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(entity_type)?;
+        let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
-            let ids = entities
+            let ids = group
+                .rows
                 .iter()
-                .map(|(key, _)| key.entity_id.as_str())
+                .map(|row| row.key.entity_id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
             return Err(constraint_violation!(
                 "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
-                entity_type,
+                group.entity_type,
                 ids
             ));
         }
 
-        let entity_keys: Vec<&str> = entities
+        let entity_keys: Vec<&str> = group
+            .rows
             .iter()
-            .map(|(key, _)| key.entity_id.as_str())
+            .map(|row| row.key.entity_id.as_str())
             .collect();
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
@@ -834,7 +836,7 @@ impl Layout {
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
-        for chunk in entities.chunks(chunk_size) {
+        for chunk in group.rows.chunks(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
         }
         Ok(count)
@@ -843,22 +845,26 @@ impl Layout {
     pub fn delete(
         &self,
         conn: &PgConnection,
-        entity_type: &EntityType,
-        entity_ids: &[&str],
+        group: &RowGroup<EntityKey>,
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
-        let table = self.table_for_entity(entity_type)?;
+        let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
-                entity_type, entity_ids.join(", ")
+                table.object, group.rows.iter().map(|key| &key.entity_id).join(", ")
             ));
         }
 
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
-        for chunk in entity_ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
+        let ids: Vec<_> = group
+            .rows
+            .iter()
+            .map(|key| key.entity_id.as_str())
+            .collect();
+        for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
             count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
         }
         Ok(count)

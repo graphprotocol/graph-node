@@ -1,12 +1,13 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
+use graph::components::store::write::{EntityWrite, RowGroup};
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
-use graph::prelude::{EntityQuery, MetricsRegistry};
+use graph::prelude::{BlockNumber, EntityQuery, MetricsRegistry};
 use graph::schema::InputSchema;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -78,14 +79,39 @@ fn remove_test_data(conn: &PgConnection) {
         .expect("Failed to drop test schema");
 }
 
+pub fn row_group(
+    entity_type: &EntityType,
+    block: BlockNumber,
+    data: impl IntoIterator<Item = (EntityKey, Entity)>,
+) -> RowGroup<EntityWrite> {
+    let mut group = RowGroup::new(entity_type.clone());
+    for (key, entity) in data {
+        group.push(EntityWrite::new(key, entity, block));
+    }
+    group
+}
+
+pub fn row_group_key(
+    entity_type: &EntityType,
+    _block: BlockNumber,
+    data: impl IntoIterator<Item = EntityKey>,
+) -> RowGroup<EntityKey> {
+    let mut group = RowGroup::new(entity_type.clone());
+    for key in data {
+        group.push(key);
+    }
+    group
+}
+
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
     let key = EntityKey::data(entity_type.to_owned(), entity.id());
 
     let entity_type = EntityType::from(entity_type);
-    let entities = vec![(&key, &entity)];
+    let entities = vec![(key.clone(), entity)];
+    let group = row_group(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
-        .insert(conn, &entity_type, &entities, 0, &MOCK_STOPWATCH)
+        .insert(conn, &group, 0, &MOCK_STOPWATCH)
         .expect(&errmsg);
 }
 
@@ -296,9 +322,10 @@ fn update() {
 
         let entity_id = entity.id();
         let entity_type = key.entity_type.clone();
-        let entities = vec![(&key, &entity)];
+        let entities = vec![(key, entity.clone())];
+        let group = row_group(&entity_type, 1, entities);
         layout
-            .update(conn, &entity_type, &entities, 1, &MOCK_STOPWATCH)
+            .update(conn, &group, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -327,19 +354,21 @@ fn delete() {
         // Delete where nothing is getting deleted
         let key = EntityKey::data("Thing".to_owned(), "ffff".to_owned());
         let entity_type = key.entity_type.clone();
-        let mut entity_keys = vec![key.entity_id.as_str()];
+        let mut entity_keys = vec![key.clone()];
+        let group = row_group_key(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
 
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| *key = TWO_ID)
+            .map(|key| key.entity_id = Word::from(TWO_ID))
             .expect("Failed to update entity types");
+        let group = row_group_key(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(conn, &entity_type, &entity_keys, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, 1, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
     });

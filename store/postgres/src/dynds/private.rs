@@ -10,7 +10,7 @@ use diesel::{
 
 use graph::{
     anyhow::Context,
-    components::store::StoredDynamicDataSource,
+    components::store::{write, StoredDynamicDataSource},
     constraint_violation,
     data_source::CausalityRegion,
     prelude::{serde_json, BlockNumber, StoreError},
@@ -144,48 +144,49 @@ impl DataSourcesTable {
     pub(crate) fn insert(
         &self,
         conn: &PgConnection,
-        data_sources: &[StoredDynamicDataSource],
-        block: BlockNumber,
+        data_sources: &write::DataSources,
     ) -> Result<usize, StoreError> {
         let mut inserted_total = 0;
 
-        for ds in data_sources {
-            let StoredDynamicDataSource {
-                manifest_idx,
-                param,
-                context,
-                creation_block,
-                done_at,
-                causality_region,
-            } = ds;
-
-            if creation_block != &Some(block) {
-                return Err(constraint_violation!(
-                    "mismatching creation blocks `{:?}` and `{}`",
+        for (block_ptr, dss) in &data_sources.entries {
+            let block = block_ptr.number;
+            for ds in dss {
+                let StoredDynamicDataSource {
+                    manifest_idx,
+                    param,
+                    context,
                     creation_block,
-                    block
-                ));
-            }
+                    done_at,
+                    causality_region,
+                } = ds;
 
-            // Offchain data sources have a unique causality region assigned from a sequence in the
-            // database, while onchain data sources always have causality region 0.
-            let query = format!(
+                if creation_block != &Some(block) {
+                    return Err(constraint_violation!(
+                        "mismatching creation blocks `{:?}` and `{}`",
+                        creation_block,
+                        block
+                    ));
+                }
+
+                // Offchain data sources have a unique causality region assigned from a sequence in the
+                // database, while onchain data sources always have causality region 0.
+                let query = format!(
                 "insert into {}(block_range, manifest_idx, param, context, causality_region, done_at) \
                             values (int4range($1, null), $2, $3, $4, $5, $6)",
                 self.qname
             );
 
-            let query = sql_query(query)
-                .bind::<Nullable<Integer>, _>(creation_block)
-                .bind::<Integer, _>(*manifest_idx as i32)
-                .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
-                .bind::<Nullable<Jsonb>, _>(context)
-                .bind::<Integer, _>(causality_region)
-                .bind::<Nullable<Integer>, _>(done_at);
+                let query = sql_query(query)
+                    .bind::<Nullable<Integer>, _>(creation_block)
+                    .bind::<Integer, _>(*manifest_idx as i32)
+                    .bind::<Nullable<Binary>, _>(param.as_ref().map(|p| &**p))
+                    .bind::<Nullable<Jsonb>, _>(context)
+                    .bind::<Integer, _>(causality_region)
+                    .bind::<Nullable<Integer>, _>(done_at);
 
-            inserted_total += query.execute(conn)?;
+                inserted_total += query.execute(conn)?;
+            }
         }
-
         Ok(inserted_total)
     }
 
@@ -294,25 +295,27 @@ impl DataSourcesTable {
     pub(super) fn update_offchain_status(
         &self,
         conn: &PgConnection,
-        data_sources: &[StoredDynamicDataSource],
+        data_sources: &write::DataSources,
     ) -> Result<(), StoreError> {
-        for ds in data_sources {
-            let query = format!(
-                "update {} set done_at = $1 where causality_region = $2",
-                self.qname
-            );
+        for (_, dss) in &data_sources.entries {
+            for ds in dss {
+                let query = format!(
+                    "update {} set done_at = $1 where causality_region = $2",
+                    self.qname
+                );
 
-            let count = sql_query(query)
-                .bind::<Nullable<Integer>, _>(ds.done_at)
-                .bind::<Integer, _>(ds.causality_region)
-                .execute(conn)?;
+                let count = sql_query(query)
+                    .bind::<Nullable<Integer>, _>(ds.done_at)
+                    .bind::<Integer, _>(ds.causality_region)
+                    .execute(conn)?;
 
-            if count > 1 {
-                return Err(constraint_violation!(
+                if count > 1 {
+                    return Err(constraint_violation!(
                     "expected to remove at most one offchain data source but would remove {}, causality region: {}",
                     count,
                     ds.causality_region
                 ));
+                }
             }
         }
 
