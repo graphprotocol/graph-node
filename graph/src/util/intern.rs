@@ -18,9 +18,9 @@ use crate::runtime::gas::{Gas, GasSizeOf};
 
 use super::cache_weight::CacheWeight;
 
-// We could probably get away with a `u16` here, but unless we improve the
-// layout of `Object`, there's little point in that
-type AtomInt = u32;
+// An `Atom` is really just an integer value of this type. The size of the
+// type determines how many atoms a pool (and all its parents) can hold.
+type AtomInt = u16;
 
 /// An atom in a pool. To look up the underlying string, surrounding code
 /// needs to know the pool for it.
