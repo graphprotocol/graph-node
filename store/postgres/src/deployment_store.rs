@@ -23,7 +23,6 @@ use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::iter::FromIterator;
@@ -337,13 +336,13 @@ impl DeploymentStore {
                     inserts
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push((key, Cow::from(data)));
+                        .push((key, data));
                 }
                 Overwrite { key, data } => {
                     overwrites
                         .entry(key.entity_type.clone())
                         .or_insert_with(Vec::new)
-                        .push((key, Cow::from(data)));
+                        .push((key, data));
                 }
                 Remove { key } => {
                     removals
@@ -356,28 +355,22 @@ impl DeploymentStore {
 
         // Apply modification groups.
         // Inserts:
-        for (entity_type, mut entities) in inserts.into_iter() {
+        for (entity_type, entities) in inserts.into_iter() {
             count +=
-                self.insert_entities(&entity_type, &mut entities, conn, layout, ptr, stopwatch)?
-                    as i32
+                self.insert_entities(&entity_type, &entities, conn, layout, ptr, stopwatch)? as i32
         }
 
         // Overwrites:
-        for (entity_type, mut entities) in overwrites.into_iter() {
+        for (entity_type, entities) in overwrites.into_iter() {
             // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(&entity_type, &mut entities, conn, layout, ptr, stopwatch)?;
+            self.overwrite_entities(&entity_type, &entities, conn, layout, ptr, stopwatch)?;
         }
 
         // Removals
         for (entity_type, entity_keys) in removals.into_iter() {
-            count -= self.remove_entities(
-                &entity_type,
-                entity_keys.as_slice(),
-                conn,
-                layout,
-                ptr,
-                stopwatch,
-            )? as i32;
+            count -=
+                self.remove_entities(&entity_type, &entity_keys, conn, layout, ptr, stopwatch)?
+                    as i32;
         }
         Ok(count)
     }
@@ -385,7 +378,7 @@ impl DeploymentStore {
     fn insert_entities<'a>(
         &'a self,
         entity_type: &'a EntityType,
-        data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        data: &'a [(&'a EntityKey, &'a Entity)],
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,
@@ -405,7 +398,7 @@ impl DeploymentStore {
     fn overwrite_entities<'a>(
         &'a self,
         entity_type: &'a EntityType,
-        data: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        data: &'a [(&'a EntityKey, &'a Entity)],
         conn: &PgConnection,
         layout: &'a Layout,
         ptr: &BlockPtr,

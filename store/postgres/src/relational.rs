@@ -34,7 +34,7 @@ use graph::schema::{FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::{From, TryFrom};
 use std::fmt::{self, Write};
@@ -652,7 +652,7 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        entities: &'a [(&'a EntityKey, &'a Entity)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -663,7 +663,7 @@ impl Layout {
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
-        for chunk in entities.chunks_mut(chunk_size) {
+        for chunk in entities.chunks(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?
                 .get_results(conn)
                 .map(|ids| ids.len())?
@@ -800,14 +800,14 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         entity_type: &'a EntityType,
-        entities: &'a mut [(&'a EntityKey, Cow<'a, Entity>)],
+        entities: &'a [(&'a EntityKey, &'a Entity)],
         block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(entity_type)?;
         if table.immutable {
             let ids = entities
-                .iter_mut()
+                .iter()
                 .map(|(key, _)| key.entity_id.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -833,7 +833,7 @@ impl Layout {
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
-        for chunk in entities.chunks_mut(chunk_size) {
+        for chunk in entities.chunks(chunk_size) {
             count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
         }
         Ok(count)

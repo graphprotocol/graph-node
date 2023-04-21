@@ -15,7 +15,6 @@ use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::panic;
 use std::str::FromStr;
@@ -224,9 +223,9 @@ fn insert_entity_at(
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
-    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+    let entities_with_keys: Vec<_> = entities_with_keys_owned
         .iter()
-        .map(|(key, entity)| (key, Cow::from(entity)))
+        .map(|(key, entity)| (key, entity))
         .collect();
     let entity_type = EntityType::from(entity_type);
     let errmsg = format!(
@@ -237,7 +236,7 @@ fn insert_entity_at(
         .insert(
             conn,
             &entity_type,
-            &mut entities_with_keys,
+            &entities_with_keys,
             block,
             &MOCK_STOPWATCH,
         )
@@ -263,9 +262,9 @@ fn update_entity_at(
             (key, entity)
         })
         .collect();
-    let mut entities_with_keys: Vec<_> = entities_with_keys_owned
+    let entities_with_keys: Vec<_> = entities_with_keys_owned
         .iter()
-        .map(|(key, entity)| (key, Cow::from(entity)))
+        .map(|(key, entity)| (key, entity))
         .collect();
 
     let entity_type = EntityType::from(entity_type);
@@ -278,7 +277,7 @@ fn update_entity_at(
         .update(
             conn,
             &entity_type,
-            &mut entities_with_keys,
+            &entities_with_keys,
             block,
             &MOCK_STOPWATCH,
         )
@@ -587,9 +586,9 @@ fn update() {
         let key = EntityKey::data("Scalar".to_owned(), entity.id());
 
         let entity_type = EntityType::from("Scalar");
-        let mut entities = vec![(&key, Cow::from(&entity))];
+        let entities = vec![(&key, &entity)];
         layout
-            .update(conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -641,13 +640,10 @@ fn update_many() {
             .collect();
 
         let entities_vec = vec![one, two, three];
-        let mut entities: Vec<(&EntityKey, Cow<'_, Entity>)> = keys
-            .iter()
-            .zip(entities_vec.iter().map(Cow::Borrowed))
-            .collect();
+        let entities: Vec<(&EntityKey, &Entity)> = keys.iter().zip(entities_vec.iter()).collect();
 
         layout
-            .update(conn, &entity_type, &mut entities, 0, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &entities, 0, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -713,15 +709,9 @@ fn serialize_bigdecimal() {
 
             let key = EntityKey::data("Scalar".to_owned(), entity.id());
             let entity_type = EntityType::from("Scalar");
-            let mut entities = vec![(&key, Cow::Borrowed(&entity))];
+            let entities = vec![(&key, &entity)];
             layout
-                .update(
-                    conn,
-                    &entity_type,
-                    entities.as_mut_slice(),
-                    0,
-                    &MOCK_STOPWATCH,
-                )
+                .update(conn, &entity_type, &entities, 0, &MOCK_STOPWATCH)
                 .expect("Failed to update");
 
             let actual = layout
