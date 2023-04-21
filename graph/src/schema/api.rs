@@ -73,6 +73,10 @@ impl TryFrom<&r::Value> for ErrorPolicy {
     }
 }
 
+/// The schema used for responding to queries. It is generated from an
+/// `InputSchema` by calling `api_schema` on it. Code that handles GraphQL
+/// queries against a subgraph should use an `ApiSchema` to access the
+/// underlying GraphQL schema
 #[derive(Debug)]
 pub struct ApiSchema {
     schema: Schema,

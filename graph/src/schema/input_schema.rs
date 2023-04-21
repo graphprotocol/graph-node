@@ -18,6 +18,11 @@ use crate::util::intern::AtomPool;
 use super::fulltext::FulltextDefinition;
 use super::{ApiSchema, Schema, SchemaValidationError};
 
+/// The internal representation of a subgraph schema, i.e., the
+/// `schema.graphql` file that is part of a subgraph. Any code that deals
+/// with writing a subgraph should use this struct. Code that deals with
+/// querying subgraphs will instead want to use an `ApiSchema` which can be
+/// generated with the `api_schema` method on `InputSchema`
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {
     inner: Arc<Inner>,
@@ -28,14 +33,6 @@ pub struct Inner {
     schema: Schema,
     immutable_types: HashSet<EntityType>,
     pool: Arc<AtomPool>,
-}
-
-impl std::ops::Deref for InputSchema {
-    type Target = Inner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
 }
 
 impl CheapClone for InputSchema {
@@ -68,22 +65,29 @@ impl InputSchema {
         }
     }
 
+    /// Create a new `InputSchema` from the GraphQL document that resulted
+    /// from parsing a subgraph's `schema.graphql`. The document must have
+    /// already been validated.
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
         let schema = Schema::new(id, document)?;
         Ok(Self::create(schema))
     }
 
+    /// A convenience function for creating an `InputSchema` from the string
+    /// representation of the subgraph's GraphQL schema `raw` and its
+    /// deployment hash `id`. An `InputSchema` that is constructed with this
+    /// function still has to be validated after construction.
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
         let schema = Schema::parse(raw, id)?;
 
         Ok(Self::create(schema))
     }
-}
 
-impl Inner {
+    /// Generate the `ApiSchema` for use with GraphQL queries for this
+    /// `InputSchema`
     pub fn api_schema(&self) -> Result<ApiSchema, anyhow::Error> {
-        let mut schema = self.schema.clone();
-        schema.document = api_schema(&self.schema.document)?;
+        let mut schema = self.inner.schema.clone();
+        schema.document = api_schema(&self.inner.schema.document)?;
         schema.add_subgraph_id_directives(schema.id.clone());
         ApiSchema::from_api_schema(schema)
     }
@@ -105,6 +109,7 @@ impl Inner {
     /// This function will return the type "Wallet" with the field "account"
     pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &s::Field), Error> {
         let field = self
+            .inner
             .schema
             .document
             .get_object_type_definition(key.entity_type.as_str())
@@ -131,6 +136,7 @@ impl Inner {
             let field_name = derived_from.argument("field").unwrap();
 
             let field = self
+                .inner
                 .schema
                 .document
                 .get_object_type_definition(base_type)
@@ -166,6 +172,7 @@ impl Inner {
     /// Construct a value for the entity type's id attribute
     pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
         let base_type = self
+            .inner
             .schema
             .document
             .get_object_type_definition(key.entity_type.as_str())
@@ -198,21 +205,23 @@ impl Inner {
     }
 
     pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
-        self.immutable_types.contains(entity_type)
+        self.inner.immutable_types.contains(entity_type)
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&s::TypeDefinition> {
-        self.schema.document.get_named_type(name)
+        self.inner.schema.document.get_named_type(name)
     }
 
     pub fn types_for_interface(&self, intf: &s::InterfaceType) -> Option<&Vec<s::ObjectType>> {
-        self.schema
+        self.inner
+            .schema
             .types_for_interface
             .get(&EntityType::new(intf.name.clone()))
     }
 
     pub fn find_object_type(&self, entity_type: &EntityType) -> Option<&s::ObjectType> {
-        self.schema
+        self.inner
+            .schema
             .document
             .definitions
             .iter()
@@ -224,22 +233,22 @@ impl Inner {
     }
 
     pub fn get_enum_definitions(&self) -> Vec<&s::EnumType> {
-        self.schema.document.get_enum_definitions()
+        self.inner.schema.document.get_enum_definitions()
     }
 
     pub fn get_object_type_definitions(&self) -> Vec<&s::ObjectType> {
-        self.schema.document.get_object_type_definitions()
+        self.inner.schema.document.get_object_type_definitions()
     }
 
     pub fn interface_types(&self) -> &BTreeMap<EntityType, Vec<s::ObjectType>> {
-        &self.schema.types_for_interface
+        &self.inner.schema.types_for_interface
     }
 
     pub fn entity_fulltext_definitions(
         &self,
         entity: &str,
     ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
-        Self::fulltext_definitions(&self.schema.document, entity)
+        Self::fulltext_definitions(&self.inner.schema.document, entity)
     }
 
     fn fulltext_definitions(
@@ -268,23 +277,23 @@ impl Inner {
     }
 
     pub fn id(&self) -> &DeploymentHash {
-        &self.schema.id
+        &self.inner.schema.id
     }
 
     pub fn document_string(&self) -> String {
-        self.schema.document.to_string()
+        self.inner.schema.document.to_string()
     }
 
     pub fn get_fulltext_directives(&self) -> Result<Vec<&s::Directive>, Error> {
-        self.schema.document.get_fulltext_directives()
+        self.inner.schema.document.get_fulltext_directives()
     }
 
     pub(crate) fn validate(&self) -> Result<(), Vec<SchemaValidationError>> {
-        self.schema.validate()
+        self.inner.schema.validate()
     }
 
     pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Result<Entity, Error> {
-        Entity::make(self.pool.clone(), iter)
+        Entity::make(self.inner.pool.clone(), iter)
     }
 
     pub fn try_make_entity<
@@ -294,7 +303,7 @@ impl Inner {
         &self,
         iter: I,
     ) -> Result<Entity, Error> {
-        Entity::try_make(self.pool.clone(), iter)
+        Entity::try_make(self.inner.pool.clone(), iter)
     }
 }
 
@@ -348,7 +357,7 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     }
 
     for object_type in document.get_object_type_definitions() {
-        for defn in Inner::fulltext_definitions(&document, &object_type.name).unwrap() {
+        for defn in InputSchema::fulltext_definitions(&document, &object_type.name).unwrap() {
             pool.intern(defn.name.as_str());
         }
     }
