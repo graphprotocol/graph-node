@@ -10,7 +10,6 @@ use graph::prelude::{EntityQuery, MetricsRegistry};
 use graph::schema::InputSchema;
 use hex_literal::hex;
 use lazy_static::lazy_static;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
@@ -83,16 +82,10 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     let key = EntityKey::data(entity_type.to_owned(), entity.id());
 
     let entity_type = EntityType::from(entity_type);
-    let mut entities = vec![(&key, Cow::from(&entity))];
+    let entities = vec![(&key, &entity)];
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
-        .insert(
-            conn,
-            &entity_type,
-            entities.as_mut_slice(),
-            0,
-            &MOCK_STOPWATCH,
-        )
+        .insert(conn, &entity_type, &entities, 0, &MOCK_STOPWATCH)
         .expect(&errmsg);
 }
 
@@ -303,9 +296,9 @@ fn update() {
 
         let entity_id = entity.id();
         let entity_type = key.entity_type.clone();
-        let mut entities = vec![(&key, Cow::from(&entity))];
+        let entities = vec![(&key, &entity)];
         layout
-            .update(conn, &entity_type, &mut entities, 1, &MOCK_STOPWATCH)
+            .update(conn, &entity_type, &entities, 1, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout

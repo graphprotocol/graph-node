@@ -27,7 +27,6 @@ use graph::{
     data::store::scalar,
 };
 use itertools::Itertools;
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
@@ -1752,7 +1751,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 struct FulltextValues<'a>(HashMap<Word, Vec<(&'a str, Value)>>);
 
 impl<'a> FulltextValues<'a> {
-    fn new(table: &'a Table, entities: &'a [(&'a EntityKey, Cow<'a, Entity>)]) -> Self {
+    fn new(table: &'a Table, entities: &'a [(&'a EntityKey, &'a Entity)]) -> Self {
         let mut map = HashMap::new();
         for column in table.columns.iter().filter(|column| column.is_fulltext()) {
             for (_, entity) in entities {
@@ -1791,7 +1790,7 @@ impl<'a> FulltextValues<'a> {
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+    entities: &'a [(&'a EntityKey, &'a Entity)],
     fulltext_values: FulltextValues<'a>,
     unique_columns: Vec<&'a Column>,
     br_column: BlockRangeColumn<'a>,
@@ -1800,10 +1799,10 @@ pub struct InsertQuery<'a> {
 impl<'a> InsertQuery<'a> {
     pub fn new(
         table: &'a Table,
-        entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
+        entities: &'a [(&'a EntityKey, &'a Entity)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
-        for (entity_key, entity) in entities.iter() {
+        for (entity_key, entity) in entities {
             for column in table.columns.iter() {
                 if !column.is_nullable() && !entity.contains_key(&column.field) {
                     return Err(StoreError::QueryExecutionError(format!(
@@ -1832,7 +1831,7 @@ impl<'a> InsertQuery<'a> {
     /// Build the column name list using the subset of all keys among present entities.
     fn unique_columns(
         table: &'a Table,
-        entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+        entities: &'a [(&'a EntityKey, &'a Entity)],
         fulltext_values: &FulltextValues<'a>,
     ) -> Vec<&'a Column> {
         table
