@@ -42,6 +42,7 @@ wait_for_ipfs() {
         then
             [ "$proto" = "https" ] && port=443 || port=80
         fi
+        echo "Waiting for IPFS ($host:$port)"
         wait_for "$host:$port" -t 120
     else
         echo "invalid IPFS URL: $1"
@@ -67,6 +68,7 @@ run_graph_node() {
         postgres_url="postgresql://$postgres_user:$postgres_pass@$postgres_host:$postgres_port/$postgres_db?sslmode=prefer"
 
         wait_for_ipfs "$ipfs"
+        echo "Waiting for Postgres ($postgres_host:$postgres_port)"
         wait_for "$postgres_host:$postgres_port" -t 120
         sleep 5
 
