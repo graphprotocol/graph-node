@@ -188,6 +188,8 @@ pub enum Value {
     BigInt(scalar::BigInt),
 }
 
+pub const NULL: Value = Value::Null;
+
 impl stable_hash_legacy::StableHash for Value {
     fn stable_hash<H: stable_hash_legacy::StableHasher>(
         &self,
