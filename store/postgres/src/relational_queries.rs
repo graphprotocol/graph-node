@@ -1835,17 +1835,19 @@ impl<'a> InsertQuery<'a> {
         entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
         fulltext_values: &FulltextValues<'a>,
     ) -> Vec<&'a Column> {
-        let mut hashmap = HashMap::new();
-        for (_key, entity) in entities.iter() {
-            for column in &table.columns {
-                if entity.get(&column.field).is_some()
-                    || !fulltext_values.get(&entity.id(), &column.field).is_null()
-                {
-                    hashmap.entry(column.name.as_str()).or_insert(column);
-                }
-            }
-        }
-        hashmap.into_values().collect()
+        table
+            .columns
+            .iter()
+            .filter(|column| {
+                entities.iter().any(|(_, entity)| {
+                    if column.is_fulltext() {
+                        !fulltext_values.get(&entity.id(), &column.field).is_null()
+                    } else {
+                        entity.get(&column.field).is_some()
+                    }
+                })
+            })
+            .collect()
     }
 
     /// Return the maximum number of entities that can be inserted with one
