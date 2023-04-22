@@ -13,6 +13,7 @@ use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
 use diesel::Connection;
 
 use graph::components::store::{DerivedEntityQuery, EntityKey};
+use graph::data::store::NULL;
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -1748,9 +1749,50 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindDerivedQuery<'a> {
 impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
 #[derive(Debug)]
+struct FulltextValues<'a>(HashMap<Word, Vec<(&'a str, Value)>>);
+
+impl<'a> FulltextValues<'a> {
+    fn new(table: &'a Table, entities: &'a [(&'a EntityKey, Cow<'a, Entity>)]) -> Self {
+        let mut map = HashMap::new();
+        for column in table.columns.iter().filter(|column| column.is_fulltext()) {
+            for (_, entity) in entities {
+                let mut fulltext = Vec::new();
+                if let Some(fields) = column.fulltext_fields.as_ref() {
+                    let fulltext_field_values = fields
+                        .iter()
+                        .filter_map(|field| entity.get(field))
+                        .cloned()
+                        .collect::<Vec<Value>>();
+                    if !fulltext_field_values.is_empty() {
+                        fulltext.push((column.field.as_str(), Value::List(fulltext_field_values)));
+                    }
+                }
+                if !fulltext.is_empty() {
+                    map.insert(entity.id(), fulltext);
+                }
+            }
+        }
+        Self(map)
+    }
+
+    fn get(&self, entity_id: &Word, field: &str) -> &Value {
+        self.0
+            .get(entity_id)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .find(|(key, _)| field == *key)
+                    .map(|(_, value)| value)
+            })
+            .unwrap_or(&NULL)
+    }
+}
+
+#[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
     entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+    fulltext_values: FulltextValues<'a>,
     unique_columns: Vec<&'a Column>,
     br_column: BlockRangeColumn<'a>,
 }
@@ -1761,19 +1803,8 @@ impl<'a> InsertQuery<'a> {
         entities: &'a mut [(&'a EntityKey, Cow<Entity>)],
         block: BlockNumber,
     ) -> Result<InsertQuery<'a>, StoreError> {
-        for (entity_key, entity) in entities.iter_mut() {
-            let mut fulltext = Vec::new();
+        for (entity_key, entity) in entities.iter() {
             for column in table.columns.iter() {
-                if let Some(fields) = column.fulltext_fields.as_ref() {
-                    let fulltext_field_values = fields
-                        .iter()
-                        .filter_map(|field| entity.get(field))
-                        .cloned()
-                        .collect::<Vec<Value>>();
-                    if !fulltext_field_values.is_empty() {
-                        fulltext.push((&column.field, Value::List(fulltext_field_values)));
-                    }
-                }
                 if !column.is_nullable() && !entity.contains_key(&column.field) {
                     return Err(StoreError::QueryExecutionError(format!(
                     "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
@@ -1783,16 +1814,16 @@ impl<'a> InsertQuery<'a> {
                 )));
                 }
             }
-            if !fulltext.is_empty() {
-                entity.to_mut().merge_iter(fulltext)?;
-            }
         }
-        let unique_columns = InsertQuery::unique_columns(table, entities);
+
+        let fulltext_values = FulltextValues::new(table, entities);
+        let unique_columns = InsertQuery::unique_columns(table, entities, &fulltext_values);
         let br_column = BlockRangeColumn::new(table, "", block);
 
         Ok(InsertQuery {
             table,
             entities,
+            fulltext_values,
             unique_columns,
             br_column,
         })
@@ -1802,11 +1833,14 @@ impl<'a> InsertQuery<'a> {
     fn unique_columns(
         table: &'a Table,
         entities: &'a [(&'a EntityKey, Cow<'a, Entity>)],
+        fulltext_values: &FulltextValues<'a>,
     ) -> Vec<&'a Column> {
         let mut hashmap = HashMap::new();
         for (_key, entity) in entities.iter() {
             for column in &table.columns {
-                if entity.get(&column.field).is_some() {
+                if entity.get(&column.field).is_some()
+                    || !fulltext_values.get(&entity.id(), &column.field).is_null()
+                {
                     hashmap.entry(column.name.as_str()).or_insert(column);
                 }
             }
@@ -1872,13 +1906,12 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
         while let Some((key, entity)) = iter.next() {
             out.push_sql("(");
             for column in &self.unique_columns {
-                // If the column name is not within this entity's fields, we will issue the
-                // null value in its place
-                if let Some(value) = entity.get(&column.field) {
-                    QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+                let value = if column.is_fulltext() {
+                    self.fulltext_values.get(&key.entity_id, &column.field)
                 } else {
-                    out.push_sql("null");
-                }
+                    entity.get(&column.field).unwrap_or(&NULL)
+                };
+                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
             self.br_column.literal_range_current(&mut out)?;
