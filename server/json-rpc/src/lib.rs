@@ -123,6 +123,7 @@ impl<R: SubgraphRegistrar> ServerState<R> {
                 // startBlock, we'll use the one from the manifest.
                 None,
                 None,
+                params.history_blocks,
             )
             .await
         {
@@ -236,6 +237,7 @@ struct SubgraphDeployParams {
     ipfs_hash: DeploymentHash,
     node_id: Option<NodeId>,
     debug_fork: Option<DeploymentHash>,
+    history_blocks: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -269,6 +269,7 @@ where
         debug_fork: Option<DeploymentHash>,
         start_block_override: Option<BlockPtr>,
         graft_block_override: Option<BlockPtr>,
+        history_blocks: Option<i32>,
     ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
         // We don't have a location for the subgraph yet; that will be
         // assigned when we deploy for real. For logging purposes, make up a
@@ -311,6 +312,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &self.resolver,
+                    history_blocks,
                 )
                 .await?
             }
@@ -328,6 +330,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &self.resolver,
+                    history_blocks,
                 )
                 .await?
             }
@@ -345,6 +348,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &self.resolver,
+                    history_blocks,
                 )
                 .await?
             }
@@ -362,6 +366,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &self.resolver,
+                    history_blocks,
                 )
                 .await?
             }
@@ -379,6 +384,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &self.resolver,
+                    history_blocks,
                 )
                 .await?
             }
@@ -541,6 +547,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     debug_fork: Option<DeploymentHash>,
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
+    history_blocks: Option<i32>,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
@@ -626,10 +633,13 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
 
     // Apply the subgraph versioning and deployment operations,
     // creating a new subgraph deployment if one doesn't exist.
-    let deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
+    let mut deployment = DeploymentCreate::new(raw_string, &manifest, start_block)
         .graft(base_block)
         .debug(debug_fork)
         .entities_with_causality_region(needs_causality_region);
+    if let Some(history_blocks) = history_blocks {
+        deployment = deployment.with_history_blocks(history_blocks);
+    }
 
     deployment_store
         .create_subgraph_deployment(

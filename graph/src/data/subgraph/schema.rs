@@ -108,6 +108,7 @@ pub struct DeploymentCreate {
     pub graft_base: Option<DeploymentHash>,
     pub graft_block: Option<BlockPtr>,
     pub debug_fork: Option<DeploymentHash>,
+    pub history_blocks: Option<i32>,
 }
 
 impl DeploymentCreate {
@@ -122,7 +123,13 @@ impl DeploymentCreate {
             graft_base: None,
             graft_block: None,
             debug_fork: None,
+            history_blocks: None,
         }
+    }
+
+    pub fn with_history_blocks(mut self, blocks: i32) -> Self {
+        self.history_blocks = Some(blocks);
+        self
     }
 
     pub fn graft(mut self, base: Option<(DeploymentHash, BlockPtr)>) -> Self {
