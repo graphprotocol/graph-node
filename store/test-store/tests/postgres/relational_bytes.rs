@@ -110,9 +110,7 @@ fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity
     let entities = vec![(key.clone(), entity)];
     let group = row_group(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout
-        .insert(conn, &group, 0, &MOCK_STOPWATCH)
-        .expect(&errmsg);
+    layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
 }
 
 fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {

@@ -235,18 +235,6 @@ impl<'a> BlockRangeColumn<'a> {
         }
     }
 
-    /// Output the literal value of the block range `[block,..)`, mostly for
-    /// generating an insert statement containing the block range column
-    pub fn literal_range_current(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match self {
-            BlockRangeColumn::Mutable { block, .. } => {
-                let block_range: BlockRange = (*block..).into();
-                out.push_bind_param::<Range<Integer>, _>(&block_range)
-            }
-            BlockRangeColumn::Immutable { block, .. } => out.push_bind_param::<Integer, _>(block),
-        }
-    }
-
     /// Output an expression that matches rows that are the latest version
     /// of their entity
     pub fn latest(&self, out: &mut AstPass<Pg>) {

@@ -236,9 +236,7 @@ fn insert_entity_at(
         entity_type, entities_with_keys
     );
     let group = row_group(&entity_type, block, entities_with_keys_owned.clone());
-    let inserted = layout
-        .insert(conn, &group, block, &MOCK_STOPWATCH)
-        .expect(&errmsg);
+    let inserted = layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
     assert_eq!(inserted, entities_with_keys_owned.len());
 }
 

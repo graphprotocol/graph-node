@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 
 use graph::components::store::write::EntityWrite;
@@ -34,6 +34,7 @@ use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 
+use crate::block_range::BlockRange;
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
@@ -1794,15 +1795,10 @@ pub struct InsertQuery<'a> {
     rows: &'a [EntityWrite],
     fulltext_values: FulltextValues<'a>,
     unique_columns: Vec<&'a Column>,
-    br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> InsertQuery<'a> {
-    pub fn new(
-        table: &'a Table,
-        rows: &'a [EntityWrite],
-        block: BlockNumber,
-    ) -> Result<InsertQuery<'a>, StoreError> {
+    pub fn new(table: &'a Table, rows: &'a [EntityWrite]) -> Result<InsertQuery<'a>, StoreError> {
         for row in rows {
             for column in table.columns.iter() {
                 if !column.is_nullable() && !row.data.contains_key(&column.field) {
@@ -1818,14 +1814,12 @@ impl<'a> InsertQuery<'a> {
 
         let fulltext_values = FulltextValues::new(table, rows);
         let unique_columns = InsertQuery::unique_columns(table, rows, &fulltext_values);
-        let br_column = BlockRangeColumn::new(table, "", block);
 
         Ok(InsertQuery {
             table,
             rows,
             fulltext_values,
             unique_columns,
-            br_column,
         })
     }
 
@@ -1871,6 +1865,21 @@ impl<'a> InsertQuery<'a> {
         }
         POSTGRES_MAX_PARAMETERS / count
     }
+
+    /// Output the literal value of the block range `[block,..)`, mostly for
+    /// generating an insert statement containing the block range column
+    pub fn literal_range_current(
+        table: &Table,
+        block: BlockNumber,
+        out: &mut AstPass<Pg>,
+    ) -> QueryResult<()> {
+        if table.immutable {
+            out.push_bind_param::<Integer, _>(&block)
+        } else {
+            let block_range: BlockRange = (block..).into();
+            out.push_bind_param::<Range<Integer>, _>(&block_range)
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
@@ -1895,7 +1904,8 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_identifier(column.name.as_str())?;
             out.push_sql(", ");
         }
-        self.br_column.name(&mut out);
+        out.push_sql(self.table.block_column().as_str());
+
         if self.table.has_causality_region {
             out.push_sql(", ");
             out.push_sql(CAUSALITY_REGION_COLUMN);
@@ -1916,7 +1926,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
-            self.br_column.literal_range_current(&mut out)?;
+            Self::literal_range_current(&self.table, row.block, &mut out)?;
             if self.table.has_causality_region {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.key.causality_region)?;
