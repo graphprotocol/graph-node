@@ -1318,9 +1318,22 @@ impl WritableStoreTrait for WritableStore {
 
     async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStoreTrait>>, StoreError> {
         if self.poisoned() {
+            // When the writer is poisoned, the background thread has
+            // finished since `start_writer` returns whenever it encounters
+            // an error. Just to make extra-sure, we log a warning if the
+            // join handle indicates that the writer hasn't stopped yet.
             let logger = self.store.logger.clone();
-            if let Err(e) = self.stop().await {
-                warn!(logger, "Writable had error when stopping, it is safe to ignore this error"; "error" => e.to_string());
+            match &self.writer {
+                Writer::Sync(_) => { /* can't happen, a sync writer never gets poisoned */ }
+                Writer::Async { join_handle, queue } => {
+                    let err = match queue.check_err() {
+                        Ok(()) => "error missing".to_string(),
+                        Err(e) => e.to_string(),
+                    };
+                    if !join_handle.is_finished() {
+                        warn!(logger, "Writer was poisoned, but background thread didn't finish. Creating new writer regardless"; "error" => err);
+                    }
+                }
             }
             let store = Arc::new(self.store.store.0.clone());
             store
