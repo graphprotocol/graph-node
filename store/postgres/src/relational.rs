@@ -655,7 +655,6 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         group: &'a RowGroup<EntityWrite>,
-        block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
@@ -666,7 +665,7 @@ impl Layout {
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
         for chunk in group.rows.chunks(chunk_size) {
-            count += InsertQuery::new(table, chunk, block)?
+            count += InsertQuery::new(table, chunk)?
                 .get_results(conn)
                 .map(|ids| ids.len())?
         }
@@ -837,7 +836,7 @@ impl Layout {
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
         for chunk in group.rows.chunks(chunk_size) {
-            count += InsertQuery::new(table, chunk, block)?.execute(conn)?;
+            count += InsertQuery::new(table, chunk)?.execute(conn)?;
         }
         Ok(count)
     }

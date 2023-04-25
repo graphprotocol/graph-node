@@ -331,7 +331,7 @@ impl DeploymentStore {
         // Apply modification groups.
         // Inserts:
         for group in &inserts.groups {
-            count += self.insert_entities(group, conn, layout, ptr, stopwatch)? as i32
+            count += self.insert_entities(group, conn, layout, stopwatch)? as i32
         }
 
         // Overwrites:
@@ -352,7 +352,6 @@ impl DeploymentStore {
         group: &'a RowGroup<EntityWrite>,
         conn: &PgConnection,
         layout: &'a Layout,
-        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -363,7 +362,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout.insert(conn, group, block_number(ptr), stopwatch)
+        layout.insert(conn, group, stopwatch)
     }
 
     fn overwrite_entities<'a>(
