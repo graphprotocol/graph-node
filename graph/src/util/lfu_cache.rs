@@ -187,6 +187,18 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         self.queue.len()
     }
 
+    pub fn evict_and_stats(&mut self, max_weight: usize) -> EvictStats {
+        self.evict_with_period(max_weight, STALE_PERIOD)
+            .unwrap_or_else(|| EvictStats {
+                new_weight: self.total_weight,
+                evicted_weight: 0,
+                new_count: self.len(),
+                evicted_count: 0,
+                stale_update: false,
+                evict_time: Duration::from_millis(0),
+            })
+    }
+
     /// Same as `evict_with_period(max_weight, STALE_PERIOD)`
     pub fn evict(&mut self, max_weight: usize) -> Option<EvictStats> {
         self.evict_with_period(max_weight, STALE_PERIOD)

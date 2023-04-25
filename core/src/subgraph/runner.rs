@@ -215,8 +215,7 @@ where
         ));
 
         debug!(logger, "Start processing block";
-               "triggers" => triggers.len(),
-               "cached_entities" => self.state.entity_lfu_cache.len());
+               "triggers" => triggers.len());
 
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
@@ -400,11 +399,19 @@ where
         let ModificationsAndCache {
             modifications: mut mods,
             entity_lfu_cache: cache,
+            evict_stats,
         } = block_state
             .entity_cache
             .as_modifications()
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
+
+        debug!(self.logger, "Entity cache statistics";
+            "weight" => evict_stats.new_weight,
+            "evicted_weight" => evict_stats.evicted_weight,
+            "count" => evict_stats.new_count,
+            "evicted_count" => evict_stats.evicted_count,
+            "stale_update" => evict_stats.stale_update);
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.

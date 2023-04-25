@@ -7,7 +7,7 @@ use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOpe
 use crate::data::store::IntoEntityIterator;
 use crate::prelude::ENV_VARS;
 use crate::schema::InputSchema;
-use crate::util::lfu_cache::LfuCache;
+use crate::util::lfu_cache::{EvictStats, LfuCache};
 
 use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
 
@@ -58,6 +58,7 @@ impl Debug for EntityCache {
 pub struct ModificationsAndCache {
     pub modifications: Vec<s::EntityModification>,
     pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub evict_stats: EvictStats,
 }
 
 impl EntityCache {
@@ -332,11 +333,14 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(ENV_VARS.mappings.entity_cache_size);
+        let evict_stats = self
+            .current
+            .evict_and_stats(ENV_VARS.mappings.entity_cache_size);
 
         Ok(ModificationsAndCache {
             modifications: mods,
             entity_lfu_cache: self.current,
+            evict_stats,
         })
     }
 }
