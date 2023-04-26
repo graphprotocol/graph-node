@@ -696,8 +696,8 @@ impl Queue {
         impl<'a> From<EntityOp<'a>> for Op {
             fn from(value: EntityOp) -> Self {
                 match value {
-                    EntityOp::Write(entity) => Self::Write(entity.clone()),
-                    EntityOp::Remove => Self::Remove,
+                    EntityOp::Write { key: _, entity } => Self::Write(entity.clone()),
+                    EntityOp::Remove { .. } => Self::Remove,
                 }
             }
         }
@@ -715,9 +715,7 @@ impl Queue {
             match req.as_ref() {
                 Request::Write { batch, .. } => {
                     if tracker.visible(&batch.block_ptr) {
-                        batch
-                            .last_op(&key.entity_type, &key.entity_id)
-                            .map(Op::from)
+                        batch.last_op(key).map(Op::from)
                     } else {
                         None
                     }
@@ -751,11 +749,11 @@ impl Queue {
                         if tracker.visible(&batch.block_ptr) {
                             // See if we have changes for any of the keys.
                             for key in &keys {
-                                match batch.last_op(&key.entity_type, &key.entity_id) {
-                                    Some(EntityOp::Write(entity)) => {
+                                match batch.last_op(key) {
+                                    Some(EntityOp::Write { key: _, entity }) => {
                                         map.insert(key.clone(), Some(entity.clone()));
                                     }
-                                    Some(EntityOp::Remove) => {
+                                    Some(EntityOp::Remove { .. }) => {
                                         map.insert(key.clone(), None);
                                     }
                                     None => { /* nothing to do  */ }
@@ -790,6 +788,28 @@ impl Queue {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut tracker = BlockTracker::new();
 
+        fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
+            entity
+                .get(&derived_query.entity_field)
+                .map(|related_id| related_id.as_str() == Some(&derived_query.value))
+                .unwrap_or(false)
+        }
+
+        fn effective_ops<'a>(
+            batch: &'a Batch,
+            derived_query: &'a DerivedEntityQuery,
+        ) -> impl Iterator<Item = (EntityKey, Option<Entity>)> + 'a {
+            batch
+                .effective_ops(&derived_query.entity_type)
+                .filter_map(|op| match op {
+                    EntityOp::Write { key, entity } if is_related(derived_query, entity) => {
+                        Some((key.clone(), Some(entity.clone())))
+                    }
+                    EntityOp::Write { .. } => None,
+                    EntityOp::Remove { key } => Some((key.clone(), None)),
+                })
+        }
+
         // Get entities from entries in the queue
         let entities_in_queue = self.queue.fold(
             BTreeMap::new(),
@@ -798,19 +818,7 @@ impl Queue {
                 match req.as_ref() {
                     Request::Write { batch, .. } => {
                         if tracker.visible(&batch.block_ptr) {
-                            for (key, entity) in batch.writes(&derived_query.entity_type) {
-                                if let Some(related_id) =
-                                    entity.get(derived_query.entity_field.as_str())
-                                {
-                                    // we check only the field against the value
-                                    if related_id.as_str() == Some(&derived_query.value) {
-                                        map.insert(key.clone(), Some(entity.clone()));
-                                    }
-                                }
-                            }
-                            for eref in batch.removes(&derived_query.entity_type) {
-                                map.insert(eref.key.clone(), None);
-                            }
+                            map.extend(effective_ops(batch, derived_query));
                         }
                     }
                     Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
@@ -1199,7 +1207,7 @@ impl WritableStoreTrait for WritableStore {
             data_sources,
             deterministic_errors,
             processed_data_sources,
-        );
+        )?;
         self.writer.write(batch, stopwatch).await?;
 
         *self.block_ptr.lock().unwrap() = Some(block_ptr_to);

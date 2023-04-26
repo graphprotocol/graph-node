@@ -816,18 +816,21 @@ pub fn update_deployment_status(
         .map_err(StoreError::from)
 }
 
-/// Insert the errors and check if the subgraph needs to be set as unhealthy.
+/// Insert the errors and check if the subgraph needs to be set as
+/// unhealthy. The `latest_block` is only used to check whether the subgraph
+/// is healthy as of that block; errors are inserted according to the
+/// `block_ptr` they contain
 pub(crate) fn insert_subgraph_errors(
     conn: &PgConnection,
     id: &DeploymentHash,
     deterministic_errors: &[SubgraphError],
-    block: BlockNumber,
+    latest_block: BlockNumber,
 ) -> Result<(), StoreError> {
     for error in deterministic_errors {
         insert_subgraph_error(conn, error)?;
     }
 
-    check_health(conn, id, block)
+    check_health(conn, id, latest_block)
 }
 
 #[cfg(debug_assertions)]

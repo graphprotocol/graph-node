@@ -12,7 +12,7 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 
-use graph::components::store::write::EntityWrite;
+use graph::components::store::write::WriteChunk;
 use graph::components::store::{DerivedEntityQuery, EntityKey};
 use graph::data::store::NULL;
 use graph::data::value::{Object, Word};
@@ -1750,18 +1750,18 @@ impl<'a> LoadQuery<PgConnection, EntityData> for FindDerivedQuery<'a> {
 impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
 #[derive(Debug)]
-struct FulltextValues<'a>(HashMap<Word, Vec<(&'a str, Value)>>);
+struct FulltextValues<'a>(HashMap<&'a Word, Vec<(&'a str, Value)>>);
 
 impl<'a> FulltextValues<'a> {
-    fn new(table: &'a Table, rows: &'a [EntityWrite]) -> Self {
+    fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Self {
         let mut map = HashMap::new();
         for column in table.columns.iter().filter(|column| column.is_fulltext()) {
-            for row in rows {
+            for (id, entity, _, _) in rows {
                 let mut fulltext = Vec::new();
                 if let Some(fields) = column.fulltext_fields.as_ref() {
                     let fulltext_field_values = fields
                         .iter()
-                        .filter_map(|field| row.data.get(field))
+                        .filter_map(|field| entity.get(field))
                         .cloned()
                         .collect::<Vec<Value>>();
                     if !fulltext_field_values.is_empty() {
@@ -1769,7 +1769,7 @@ impl<'a> FulltextValues<'a> {
                     }
                 }
                 if !fulltext.is_empty() {
-                    map.insert(row.data.id(), fulltext);
+                    map.insert(id, fulltext);
                 }
             }
         }
@@ -1792,21 +1792,21 @@ impl<'a> FulltextValues<'a> {
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    rows: &'a [EntityWrite],
+    rows: &'a WriteChunk<'a>,
     fulltext_values: FulltextValues<'a>,
     unique_columns: Vec<&'a Column>,
 }
 
 impl<'a> InsertQuery<'a> {
-    pub fn new(table: &'a Table, rows: &'a [EntityWrite]) -> Result<InsertQuery<'a>, StoreError> {
-        for row in rows {
+    pub fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Result<InsertQuery<'a>, StoreError> {
+        for (id, entity, _, _) in rows {
             for column in table.columns.iter() {
-                if !column.is_nullable() && !row.data.contains_key(&column.field) {
+                if !column.is_nullable() && !entity.contains_key(&column.field) {
                     return Err(StoreError::QueryExecutionError(format!(
                     "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
                      To fix this, mark the attribute as nullable in the GraphQL schema or change the \
                      mapping code to always set this attribute.",
-                    table.object, row.data.id(), column.field
+                    table.object, id, column.field
                 )));
                 }
             }
@@ -1826,18 +1826,18 @@ impl<'a> InsertQuery<'a> {
     /// Build the column name list using the subset of all keys among present entities.
     fn unique_columns(
         table: &'a Table,
-        rows: &'a [EntityWrite],
+        rows: &'a WriteChunk<'a>,
         fulltext_values: &FulltextValues<'a>,
     ) -> Vec<&'a Column> {
         table
             .columns
             .iter()
             .filter(|column| {
-                rows.iter().any(|row| {
+                rows.iter().any(|(id, entity, _, _)| {
                     if column.is_fulltext() {
-                        !fulltext_values.get(&row.data.id(), &column.field).is_null()
+                        !fulltext_values.get(id, &column.field).is_null()
                     } else {
-                        row.data.get(&column.field).is_some()
+                        entity.get(&column.field).is_some()
                     }
                 })
             })
@@ -1915,21 +1915,21 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
 
         // Use a `Peekable` iterator to help us decide how to finalize each line.
         let mut iter = self.rows.iter().peekable();
-        while let Some(row) = iter.next() {
+        while let Some((id, entity, causality_region, block)) = iter.next() {
             out.push_sql("(");
             for column in &self.unique_columns {
                 let value = if column.is_fulltext() {
-                    self.fulltext_values.get(&row.key.entity_id, &column.field)
+                    self.fulltext_values.get(id, &column.field)
                 } else {
-                    row.data.get(&column.field).unwrap_or(&NULL)
+                    entity.get(&column.field).unwrap_or(&NULL)
                 };
                 QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
-            Self::literal_range_current(&self.table, row.block, &mut out)?;
+            Self::literal_range_current(&self.table, block, &mut out)?;
             if self.table.has_causality_region {
                 out.push_sql(", ");
-                out.push_bind_param::<Integer, _>(&row.key.causality_region)?;
+                out.push_bind_param::<Integer, _>(&causality_region)?;
             };
             out.push_sql(")");
 
