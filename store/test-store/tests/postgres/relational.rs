@@ -34,7 +34,7 @@ use graph_store_postgres::{
 
 use test_store::*;
 
-use crate::postgres::relational_bytes::{row_group, row_group_key};
+use crate::postgres::relational_bytes::{row_group, row_group_ref};
 
 const THINGS_GQL: &str = r#"
     type _Schema_ @fulltext(
@@ -745,9 +745,9 @@ fn delete() {
         let key = EntityKey::data("Scalar".to_owned(), "no such entity".to_owned());
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key];
-        let group = row_group_key(&entity_type, 1, entity_keys.clone());
+        let group = row_group_ref(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(conn, &group, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout));
@@ -758,9 +758,9 @@ fn delete() {
             .map(|key| key.entity_id = Word::from("two"))
             .expect("Failed to update key");
 
-        let group = row_group_key(&entity_type, 1, entity_keys);
+        let group = row_group_ref(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(conn, &group, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
@@ -786,9 +786,9 @@ fn insert_many_and_delete_many() {
             .into_iter()
             .map(|key| EntityKey::data(entity_type.as_str(), key))
             .collect();
-        let group = row_group_key(&entity_type, 1, entity_keys);
+        let group = row_group_ref(&entity_type, 1, entity_keys);
         let num_removed = layout
-            .delete(conn, &group, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));

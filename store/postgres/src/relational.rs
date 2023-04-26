@@ -24,7 +24,7 @@ use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
-use graph::components::store::write::{EntityWrite, RowGroup};
+use graph::components::store::write::{EntityRef, EntityWrite, RowGroup};
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
@@ -842,27 +842,27 @@ impl Layout {
     pub fn delete(
         &self,
         conn: &PgConnection,
-        group: &RowGroup<EntityKey>,
-        block: BlockNumber,
+        group: &RowGroup<EntityRef>,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
-                table.object, group.rows.iter().map(|key| &key.entity_id).join(", ")
+                table.object, group.rows.iter().map(|eref| &eref.key.entity_id).join(", ")
             ));
         }
 
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
-        let ids: Vec<_> = group
-            .rows
-            .iter()
-            .map(|key| key.entity_id.as_str())
-            .collect();
-        for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-            count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
+        for (block, rows) in group.runs() {
+            let ids: Vec<_> = rows
+                .iter()
+                .map(|eref| eref.key.entity_id.as_str())
+                .collect();
+            for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
+                count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
+            }
         }
         Ok(count)
     }
