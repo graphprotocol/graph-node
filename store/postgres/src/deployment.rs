@@ -1050,6 +1050,7 @@ pub fn create_deployment(
         graft_base,
         graft_block,
         debug_fork,
+        history_blocks: history_blocks_override,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
     let entities_with_causality_region = Vec::from_iter(entities_with_causality_region.into_iter());
@@ -1089,7 +1090,7 @@ pub fn create_deployment(
         m::start_block_number.eq(start_block.as_ref().map(|ptr| ptr.number)),
         m::raw_yaml.eq(raw_yaml),
         m::entities_with_causality_region.eq(entities_with_causality_region),
-        m::history_blocks.eq(history_blocks),
+        m::history_blocks.eq(history_blocks_override.unwrap_or(history_blocks)),
     );
 
     if exists && replace {
