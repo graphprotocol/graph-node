@@ -323,7 +323,7 @@ fn update() {
         let entities = vec![(key, entity.clone())];
         let group = row_group(&entity_type, 1, entities);
         layout
-            .update(conn, &group, 1, &MOCK_STOPWATCH)
+            .update(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout

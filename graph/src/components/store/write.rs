@@ -13,9 +13,15 @@ use super::{
     BlockNumber, EntityKey, EntityModification, EntityType, StoreEvent, StoredDynamicDataSource,
 };
 
+/// Trait for something that has a block number associated with it
+pub trait BlockTagged {
+    fn block(&self) -> BlockNumber;
+}
+
+#[derive(Debug)]
 /// The data for a write operation; a write operation is either an insert of
 /// a new entity or the overwriting of an existing entity.
-#[derive(Debug)]
+/// A helper for objects that are tagged with a block number
 pub struct EntityWrite {
     pub key: EntityKey,
     pub data: Entity,
@@ -25,6 +31,12 @@ pub struct EntityWrite {
 impl EntityWrite {
     pub fn new(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
         Self { key, data, block }
+    }
+}
+
+impl BlockTagged for EntityWrite {
+    fn block(&self) -> BlockNumber {
+        self.block
     }
 }
 
@@ -48,6 +60,44 @@ impl<R> RowGroup<R> {
 
     fn row_count(&self) -> usize {
         self.rows.len()
+    }
+}
+
+impl<R: BlockTagged> RowGroup<R> {
+    pub fn runs(&self) -> impl Iterator<Item = (BlockNumber, &[R])> {
+        RunIterator::new(self)
+    }
+}
+
+struct RunIterator<'a, R> {
+    position: usize,
+    rows: &'a [R],
+}
+
+impl<'a, R> RunIterator<'a, R> {
+    fn new(group: &'a RowGroup<R>) -> Self {
+        RunIterator {
+            position: 0,
+            rows: &group.rows,
+        }
+    }
+}
+
+impl<'a, R: BlockTagged> Iterator for RunIterator<'a, R> {
+    type Item = (BlockNumber, &'a [R]);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.position >= self.rows.len() {
+            return None;
+        }
+        let block = self.rows[self.position].block();
+        let mut next = self.position;
+        while next < self.rows.len() && self.rows[next].block() == block {
+            next += 1;
+        }
+        let res = Some((block, &self.rows[self.position..next]));
+        self.position = next;
+        res
     }
 }
 
@@ -279,5 +329,70 @@ impl Batch {
                 .map(|group| group.entity_type.clone()),
         );
         StoreEvent::from_types(deployment, entity_types)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::components::store::{BlockNumber, EntityType};
+
+    use super::{BlockTagged, RowGroup};
+
+    #[derive(Debug)]
+    struct Entry {
+        value: usize,
+        block: BlockNumber,
+    }
+
+    impl BlockTagged for Entry {
+        fn block(&self) -> BlockNumber {
+            self.block
+        }
+    }
+
+    #[track_caller]
+    fn check_runs(values: &[usize], blocks: &[BlockNumber], exp: &[(BlockNumber, &[usize])]) {
+        assert_eq!(values.len(), blocks.len());
+
+        let rows = values
+            .iter()
+            .zip(blocks.iter())
+            .map(|(value, block)| Entry {
+                value: *value,
+                block: *block,
+            })
+            .collect();
+        let group = RowGroup {
+            entity_type: EntityType::new("Entry".to_string()),
+            rows,
+        };
+        let act = group
+            .runs()
+            .map(|(block, entries)| {
+                (
+                    block,
+                    entries.iter().map(|entry| entry.value).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let exp = Vec::from_iter(
+            exp.into_iter()
+                .map(|(block, values)| (*block, Vec::from_iter(values.iter().cloned()))),
+        );
+        assert_eq!(exp, act);
+    }
+
+    #[test]
+    fn run_iterator() {
+        type RunList<'a> = &'a [(i32, &'a [usize])];
+
+        let exp: RunList<'_> = &[(1, &[10, 11, 12])];
+        check_runs(&[10, 11, 12], &[1, 1, 1], exp);
+
+        let exp: RunList<'_> = &[(1, &[10, 11, 12]), (2, &[20, 21])];
+        check_runs(&[10, 11, 12, 20, 21], &[1, 1, 1, 2, 2], exp);
+
+        let exp: RunList<'_> = &[(1, &[10]), (2, &[20]), (1, &[11])];
+        check_runs(&[10, 20, 11], &[1, 2, 1], exp);
     }
 }

@@ -800,7 +800,6 @@ impl Layout {
         &'a self,
         conn: &PgConnection,
         group: &'a RowGroup<EntityWrite>,
-        block: BlockNumber,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
@@ -818,14 +817,13 @@ impl Layout {
             ));
         }
 
-        let entity_keys: Vec<&str> = group
-            .rows
-            .iter()
-            .map(|row| row.key.entity_id.as_str())
-            .collect();
-
         let section = stopwatch.start_section("update_modification_clamp_range_query");
-        ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
+        for (block, rows) in group.runs() {
+            let entity_keys: Vec<&str> =
+                rows.iter().map(|row| row.key.entity_id.as_str()).collect();
+
+            ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
+        }
         section.end();
 
         let _section = stopwatch.start_section("update_modification_insert_query");
@@ -837,6 +835,7 @@ impl Layout {
         for chunk in group.rows.chunks(chunk_size) {
             count += InsertQuery::new(table, chunk)?.execute(conn)?;
         }
+
         Ok(count)
     }
 

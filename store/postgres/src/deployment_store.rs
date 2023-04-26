@@ -337,7 +337,7 @@ impl DeploymentStore {
         // Overwrites:
         for group in &overwrites.groups {
             // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(group, conn, layout, ptr, stopwatch)?;
+            self.overwrite_entities(group, conn, layout, stopwatch)?;
         }
 
         // Removals
@@ -370,7 +370,6 @@ impl DeploymentStore {
         group: &'a RowGroup<EntityWrite>,
         conn: &PgConnection,
         layout: &'a Layout,
-        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -381,7 +380,7 @@ impl DeploymentStore {
         section.end();
 
         let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, group, block_number(ptr), stopwatch)
+        layout.update(conn, group, stopwatch)
     }
 
     fn remove_entities(

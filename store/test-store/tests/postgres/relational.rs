@@ -269,9 +269,7 @@ fn update_entity_at(
         entity_type, entities_with_keys
     );
     let group = row_group(&entity_type, block, entities_with_keys_owned.clone());
-    let updated = layout
-        .update(conn, &group, block, &MOCK_STOPWATCH)
-        .expect(&errmsg);
+    let updated = layout.update(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
     assert_eq!(updated, entities_with_keys_owned.len());
 }
 
@@ -579,7 +577,7 @@ fn update() {
         let entities = vec![(key, entity.clone())];
         let group = row_group(&entity_type, 0, entities);
         layout
-            .update(conn, &group, 0, &MOCK_STOPWATCH)
+            .update(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         let actual = layout
@@ -634,7 +632,7 @@ fn update_many() {
         let entities: Vec<_> = keys.into_iter().zip(entities_vec.into_iter()).collect();
         let group = row_group(&entity_type, 0, entities);
         layout
-            .update(conn, &group, 0, &MOCK_STOPWATCH)
+            .update(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to update");
 
         // check updates took effect
@@ -703,7 +701,7 @@ fn serialize_bigdecimal() {
             let entities = vec![(key, entity.clone())];
             let group = row_group(&entity_type, 0, entities);
             layout
-                .update(conn, &group, 0, &MOCK_STOPWATCH)
+                .update(conn, &group, &MOCK_STOPWATCH)
                 .expect("Failed to update");
 
             let actual = layout
