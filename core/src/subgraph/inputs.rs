@@ -33,3 +33,42 @@ pub struct IndexingInputs<C: Blockchain> {
     /// possibly expensive and noisy, information
     pub instrument: bool,
 }
+
+impl<C: Blockchain> IndexingInputs<C> {
+    pub fn with_store(&self, store: Arc<dyn WritableStore>) -> Self {
+        let IndexingInputs {
+            deployment,
+            features,
+            start_blocks,
+            stop_block,
+            store: _,
+            debug_fork,
+            triggers_adapter,
+            chain,
+            templates,
+            unified_api_version,
+            static_filters,
+            poi_version,
+            network,
+            manifest_idx_and_name,
+            instrument,
+        } = self;
+        IndexingInputs {
+            deployment: deployment.clone(),
+            features: features.clone(),
+            start_blocks: start_blocks.clone(),
+            stop_block: stop_block.clone(),
+            store,
+            debug_fork: debug_fork.clone(),
+            triggers_adapter: triggers_adapter.clone(),
+            chain: chain.clone(),
+            templates: templates.clone(),
+            unified_api_version: unified_api_version.clone(),
+            static_filters: *static_filters,
+            poi_version: *poi_version,
+            network: network.clone(),
+            manifest_idx_and_name: manifest_idx_and_name.clone(),
+            instrument: *instrument,
+        }
+    }
+}

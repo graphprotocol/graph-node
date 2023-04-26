@@ -2,7 +2,6 @@ use cid::Cid;
 
 use crate::{
     blockchain::mock::{MockBlockchain, MockDataSource},
-    components::subgraph::Entity,
     ipfs_client::CidFile,
     prelude::Link,
 };
@@ -39,7 +38,7 @@ fn offchain_duplicate() {
     assert!(!a.is_duplicate_of(&c));
 
     let mut c = a.clone();
-    c.context = Arc::new(Some(Entity::new()));
+    c.context = Arc::new(Some(DataSourceContext::new()));
     assert!(!a.is_duplicate_of(&c));
 }
 

@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::schema::InputSchema;
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
@@ -76,8 +77,9 @@ const USER: &str = "User";
 
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("testsubgraph").unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
+        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+            .expect("Failed to parse user schema");
     static ref BLOCKS: Vec<BlockPtr> = vec![
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
@@ -239,26 +241,18 @@ fn create_test_entity(
     coffee: bool,
     favorite_color: Option<&str>,
 ) -> EntityOperation {
-    let mut test_entity = Entity::new();
-
-    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
     let bin_name = scalar::Bytes::from_str(&hex::encode(name)).unwrap();
-    test_entity.insert("bin_name".to_owned(), Value::Bytes(bin_name));
-    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
-    test_entity.insert("age".to_owned(), Value::Int(age));
-    test_entity.insert(
-        "seconds_age".to_owned(),
-        Value::BigInt(BigInt::from(age) * 31557600.into()),
-    );
-    test_entity.insert("weight".to_owned(), Value::BigDecimal(weight.into()));
-    test_entity.insert("coffee".to_owned(), Value::Bool(coffee));
-    test_entity.insert(
-        "favorite_color".to_owned(),
-        favorite_color
-            .map(|s| Value::String(s.to_owned()))
-            .unwrap_or(Value::Null),
-    );
+    let test_entity = entity! {
+        id: id,
+        name: name,
+        bin_name: bin_name,
+        email: email,
+        age: age,
+        seconds_age: age * 31557600,
+        weight: Value::BigDecimal(weight.into()),
+        coffee: coffee,
+        favorite_color: favorite_color
+    };
 
     EntityOperation::Set {
         key: EntityKey::data(entity_type.to_string(), id),
@@ -322,7 +316,7 @@ async fn check_graft(
     assert_eq!(Some(&Value::from("queensha@email.com")), shaq.get("email"));
 
     // Make our own entries for block 2
-    shaq.set("email", "shaq@gmail.com");
+    shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
         key: EntityKey::data(USER.to_owned(), "3"),
         data: shaq,

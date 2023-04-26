@@ -25,11 +25,12 @@ use graph::{
     data::subgraph::{schema::DeploymentCreate, status},
     prelude::StoreEvent,
     prelude::{
-        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiSchema,
-        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, Schema, StoreError, SubgraphDeploymentEntity,
+        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
+        BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
+        MetricsRegistry, NodeId, PartialBlockPtr, StoreError, SubgraphDeploymentEntity,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    schema::{ApiSchema, InputSchema},
     url::Url,
     util::timed_cache::TimedCache,
 };
@@ -500,7 +501,7 @@ impl SubgraphStoreInner {
     fn create_deployment_internal(
         &self,
         name: SubgraphName,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
@@ -512,7 +513,7 @@ impl SubgraphStoreInner {
         #[cfg(not(debug_assertions))]
         assert!(!replace);
 
-        self.evict(&schema.id)?;
+        self.evict(schema.id())?;
 
         let graft_base = deployment
             .graft_base
@@ -537,7 +538,7 @@ impl SubgraphStoreInner {
                 Some(src_layout) => src_layout.site.schema_version,
             };
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard, &schema.id, network_name, schema_version)?;
+            let site = conn.allocate_site(shard, schema.id(), network_name, schema_version)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
         };
@@ -621,6 +622,8 @@ impl SubgraphStoreInner {
             )));
         }
 
+        let history_blocks = deployment.manifest.history_blocks;
+
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
             manifest: deployment.manifest,
@@ -628,6 +631,7 @@ impl SubgraphStoreInner {
             graft_base: Some(src.deployment.clone()),
             graft_block: Some(block),
             debug_fork: deployment.debug_fork,
+            history_blocks: Some(history_blocks),
         };
 
         let graft_base = self.layout(&src.deployment)?;
@@ -680,7 +684,7 @@ impl SubgraphStoreInner {
     pub fn create_deployment_replace(
         &self,
         name: SubgraphName,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
@@ -1219,7 +1223,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         node_id: NodeId,
         network_name: String,
@@ -1287,7 +1291,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(changes)
     }
 
-    fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<Schema>, StoreError> {
+    fn input_schema(&self, id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError> {
         let (store, site) = self.store(id)?;
         let info = store.subgraph_info(&site)?;
         Ok(info.input)

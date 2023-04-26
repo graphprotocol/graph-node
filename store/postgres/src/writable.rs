@@ -9,10 +9,11 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, Schema, SubgraphDeploymentEntity, SubgraphStore as _,
+    BlockNumber, Entity, MetricsRegistry, SubgraphDeploymentEntity, SubgraphStore as _,
     BLOCK_NUMBER_MAX,
 };
-use graph::slog::info;
+use graph::schema::InputSchema;
+use graph::slog::{info, warn};
 use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
@@ -69,7 +70,7 @@ struct SyncStore {
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
-    input_schema: Arc<Schema>,
+    input_schema: Arc<InputSchema>,
 }
 
 impl SyncStore {
@@ -367,7 +368,7 @@ impl SyncStore {
         .await
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         self.input_schema.clone()
     }
 }
@@ -960,6 +961,8 @@ impl Writer {
         match self {
             Writer::Sync(_) => Ok(()),
             Writer::Async { join_handle, queue } => {
+                // If there was an error, report that instead of a naked 'writer not running'
+                queue.check_err()?;
                 if join_handle.is_finished() {
                     Err(constraint_violation!(
                         "Subgraph writer for {} is not running",
@@ -1166,7 +1169,7 @@ impl ReadStore for WritableStore {
         self.writer.get_derived(key)
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         self.store.input_schema()
     }
 }
@@ -1311,5 +1314,34 @@ impl WritableStoreTrait for WritableStore {
 
     async fn flush(&self) -> Result<(), StoreError> {
         self.writer.flush().await
+    }
+
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStoreTrait>>, StoreError> {
+        if self.poisoned() {
+            // When the writer is poisoned, the background thread has
+            // finished since `start_writer` returns whenever it encounters
+            // an error. Just to make extra-sure, we log a warning if the
+            // join handle indicates that the writer hasn't stopped yet.
+            let logger = self.store.logger.clone();
+            match &self.writer {
+                Writer::Sync(_) => { /* can't happen, a sync writer never gets poisoned */ }
+                Writer::Async { join_handle, queue } => {
+                    let err = match queue.check_err() {
+                        Ok(()) => "error missing".to_string(),
+                        Err(e) => e.to_string(),
+                    };
+                    if !join_handle.is_finished() {
+                        warn!(logger, "Writer was poisoned, but background thread didn't finish. Creating new writer regardless"; "error" => err);
+                    }
+                }
+            }
+            let store = Arc::new(self.store.store.0.clone());
+            store
+                .writable(logger, self.store.site.id.into())
+                .await
+                .map(|store| Some(store))
+        } else {
+            Ok(None)
+        }
     }
 }

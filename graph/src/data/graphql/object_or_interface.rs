@@ -1,4 +1,4 @@
-use crate::prelude::Schema;
+use crate::schema::Schema;
 use crate::{components::store::EntityType, prelude::s};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;

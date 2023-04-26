@@ -606,9 +606,9 @@ impl<S: Store> IndexNodeResolver<S> {
         // We then bulid a GraphqQL `Object` value that contains the feature detection and
         // validation results and send it back as a response.
         let response = [
-            ("features".to_string(), features),
-            ("errors".to_string(), errors),
-            ("network".to_string(), network),
+            ("features".into(), features),
+            ("errors".into(), errors),
+            ("network".into(), network),
         ];
         let response = Object::from_iter(response);
 
@@ -621,7 +621,7 @@ impl<S: Store> IndexNodeResolver<S> {
                 .iter()
                 .map(|version| {
                     r::Value::Object(Object::from_iter(vec![(
-                        "version".to_string(),
+                        "version".into(),
                         r::Value::String(version.to_string()),
                     )]))
                 })

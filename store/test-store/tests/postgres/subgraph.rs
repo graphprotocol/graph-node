@@ -10,13 +10,13 @@ use graph::{
     prelude::EntityChange,
     prelude::EntityChangeOperation,
     prelude::QueryStoreManager,
-    prelude::Schema,
     prelude::SubgraphManifest,
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
     prelude::UnfailOutcome,
     prelude::{futures03, StoreEvent},
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
+    schema::InputSchema,
     semver::Version,
 };
 use graph_store_postgres::layout_for_tests::Connection as Primary;
@@ -133,7 +133,7 @@ fn create_subgraph() {
     ) -> (DeploymentLocator, HashSet<EntityChange>) {
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let id = DeploymentHash::new(id.to_string()).unwrap();
-        let schema = Schema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
+        let schema = InputSchema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id,
@@ -472,7 +472,7 @@ fn version_info() {
             Some("repo for versionInfoSubgraph"),
             vi.repository.as_deref()
         );
-        assert_eq!(NAME, vi.schema.id.as_str());
+        assert_eq!(NAME, vi.schema.id().as_str());
         assert_eq!(Some(1), vi.latest_ethereum_block_number);
         assert_eq!(NETWORK_NAME, vi.network.as_str());
         // We set the head for the network to null in the test framework

@@ -9,6 +9,8 @@ use std::time::Instant;
 
 use anyhow::anyhow;
 use anyhow::Error;
+use graph::components::store::GetScope;
+use graph::data::value::Word;
 use graph::slog::SendSyncRefUnwindSafeKV;
 use never::Never;
 use semver::Version;
@@ -536,6 +538,13 @@ impl<C: Blockchain> WasmInstance<C> {
             field
         );
         link!(
+            "store.get_in_block",
+            store_get_in_block,
+            "host_export_store_get_in_block",
+            entity,
+            id
+        );
+        link!(
             "store.set",
             store_set,
             "host_export_store_set",
@@ -910,6 +919,71 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             experimental_features,
         })
     }
+
+    fn store_get_scoped(
+        &mut self,
+        gas: &GasCounter,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+        scope: GetScope,
+    ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        let _timer = self
+            .host_metrics
+            .cheap_clone()
+            .time_host_fn_execution_region("store_get");
+
+        let entity_type: String = asc_get(self, entity_ptr, gas)?;
+        let id: String = asc_get(self, id_ptr, gas)?;
+        let entity_option = self.ctx.host_exports.store_get(
+            &mut self.ctx.state,
+            entity_type.clone(),
+            id.clone(),
+            gas,
+            scope,
+        )?;
+
+        if self.ctx.instrument {
+            debug!(self.ctx.logger, "store_get";
+                    "type" => &entity_type,
+                    "id" => &id,
+                    "found" => entity_option.is_some());
+        }
+
+        let ret = match entity_option {
+            Some(entity) => {
+                let _section = self
+                    .host_metrics
+                    .stopwatch
+                    .start_section("store_get_asc_new");
+                asc_new(self, &entity.sorted(), gas)?
+            }
+            None => match &self.ctx.debug_fork {
+                Some(fork) => {
+                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
+                        HostExportError::Unknown(anyhow!(
+                            "store_get: failed to fetch entity from the debug fork: {}",
+                            e
+                        ))
+                    })?;
+                    match entity_option {
+                        Some(entity) => {
+                            let _section = self
+                                .host_metrics
+                                .stopwatch
+                                .start_section("store_get_asc_new");
+                            let entity = asc_new(self, &entity.sorted(), gas)?;
+                            self.store_set(gas, entity_ptr, id_ptr, entity)?;
+                            entity
+                        }
+                        None => AscPtr::null(),
+                    }
+                }
+                None => AscPtr::null(),
+            },
+        };
+
+        Ok(ret)
+    }
 }
 
 // Implementation of externals.
@@ -1012,59 +1086,17 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         entity_ptr: AscPtr<AscString>,
         id_ptr: AscPtr<AscString>,
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
-        let _timer = self
-            .host_metrics
-            .cheap_clone()
-            .time_host_fn_execution_region("store_get");
+        self.store_get_scoped(gas, entity_ptr, id_ptr, GetScope::Store)
+    }
 
-        let entity_type: String = asc_get(self, entity_ptr, gas)?;
-        let id: String = asc_get(self, id_ptr, gas)?;
-        let entity_option = self.ctx.host_exports.store_get(
-            &mut self.ctx.state,
-            entity_type.clone(),
-            id.clone(),
-            gas,
-        )?;
-        if self.ctx.instrument {
-            debug!(self.ctx.logger, "store_get";
-                    "type" => &entity_type,
-                    "id" => &id,
-                    "found" => entity_option.is_some());
-        }
-        let ret = match entity_option {
-            Some(entity) => {
-                let _section = self
-                    .host_metrics
-                    .stopwatch
-                    .start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted(), gas)?
-            }
-            None => match &self.ctx.debug_fork {
-                Some(fork) => {
-                    let entity_option = fork.fetch(entity_type, id).map_err(|e| {
-                        HostExportError::Unknown(anyhow!(
-                            "store_get: failed to fetch entity from the debug fork: {}",
-                            e
-                        ))
-                    })?;
-                    match entity_option {
-                        Some(entity) => {
-                            let _section = self
-                                .host_metrics
-                                .stopwatch
-                                .start_section("store_get_asc_new");
-                            let entity = asc_new(self, &entity.sorted(), gas)?;
-                            self.store_set(gas, entity_ptr, id_ptr, entity)?;
-                            entity
-                        }
-                        None => AscPtr::null(),
-                    }
-                }
-                None => AscPtr::null(),
-            },
-        };
-
-        Ok(ret)
+    /// function store.get_in_block(entity: string, id: string): Entity | null
+    pub fn store_get_in_block(
+        &mut self,
+        gas: &GasCounter,
+        entity_ptr: AscPtr<AscString>,
+        id_ptr: AscPtr<AscString>,
+    ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        self.store_get_scoped(gas, entity_ptr, id_ptr, GetScope::InBlock)
     }
 
     /// function store.loadRelated(entity_type: string, id: string, field: string): Array<Entity>
@@ -1086,7 +1118,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             gas,
         )?;
 
-        let entities: Vec<Vec<(String, Value)>> =
+        let entities: Vec<Vec<(Word, Value)>> =
             entities.into_iter().map(|entity| entity.sorted()).collect();
         let ret = asc_new(self, &entities, gas)?;
         Ok(ret)
@@ -1705,12 +1737,14 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         let name: String = asc_get(self, name_ptr, gas)?;
         let params: Vec<String> = asc_get(self, params_ptr, gas)?;
         let context: HashMap<_, _> = asc_get(self, context_ptr, gas)?;
+        let context = DataSourceContext::from(context);
+
         self.ctx.host_exports.data_source_create(
             &self.ctx.logger,
             &mut self.ctx.state,
             name,
             params,
-            Some(context.into()),
+            Some(context),
             self.ctx.block_ptr.number,
             gas,
         )
@@ -1743,7 +1777,12 @@ impl<C: Blockchain> WasmInstanceContext<C> {
     ) -> Result<AscPtr<AscEntity>, HostExportError> {
         asc_new(
             self,
-            &self.ctx.host_exports.data_source_context(gas)?.sorted(),
+            &self
+                .ctx
+                .host_exports
+                .data_source_context(gas)?
+                .map(|e| e.sorted())
+                .unwrap_or(vec![]),
             gas,
         )
     }

@@ -6,18 +6,18 @@ use std::{
 
 use graph::{
     block_on,
-    components::store::SubgraphFork as SubgraphForkTrait,
+    components::store::{EntityType, SubgraphFork as SubgraphForkTrait},
     data::graphql::ext::DirectiveFinder,
     prelude::{
         info,
         r::Value as RValue,
         reqwest,
-        s::{Definition, Field, ObjectType, TypeDefinition},
-        serde_json, Attribute, DeploymentHash, Entity, Logger, Schema, Serialize, StoreError,
-        Value, ValueType,
+        s::{Field, ObjectType},
+        serde_json, DeploymentHash, Entity, Logger, Serialize, StoreError, Value, ValueType,
     },
     url::Url,
 };
+use graph::{data::value::Word, schema::InputSchema};
 use inflector::Inflector;
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -41,7 +41,7 @@ struct Variables {
 pub(crate) struct SubgraphFork {
     client: reqwest::Client,
     endpoint: Url,
-    schema: Arc<Schema>,
+    schema: Arc<InputSchema>,
     fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
 }
@@ -82,7 +82,7 @@ impl SubgraphForkTrait for SubgraphFork {
             )));
         }
 
-        let entity = SubgraphFork::extract_entity(&raw_json, &entity_type, fields)?;
+        let entity = SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type, fields)?;
         Ok(entity)
     }
 }
@@ -91,7 +91,7 @@ impl SubgraphFork {
     pub(crate) fn new(
         base: Url,
         id: DeploymentHash,
-        schema: Arc<Schema>,
+        schema: Arc<InputSchema>,
         logger: Logger,
     ) -> Result<Self, StoreError> {
         Ok(Self {
@@ -130,19 +130,8 @@ impl SubgraphFork {
     }
 
     fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
-        let entity: Option<&ObjectType> =
-            self.schema
-                .document
-                .definitions
-                .iter()
-                .find_map(|def| match def {
-                    Definition::TypeDefinition(TypeDefinition::Object(o))
-                        if o.name == entity_type =>
-                    {
-                        Some(o)
-                    }
-                    _ => None,
-                });
+        let entity_type = EntityType::new(entity_type.to_string());
+        let entity: Option<&ObjectType> = self.schema.find_object_type(&entity_type);
 
         if entity.is_none() {
             return Err(StoreError::ForkFailure(format!(
@@ -182,6 +171,7 @@ query Query ($id: String) {{
     }
 
     fn extract_entity(
+        schema: &InputSchema,
         raw_json: &str,
         entity_type: &str,
         fields: &[Field],
@@ -193,7 +183,7 @@ query Query ($id: String) {{
             return Ok(None);
         }
 
-        let map: HashMap<Attribute, Value> = {
+        let map: HashMap<Word, Value> = {
             let mut map = HashMap::new();
             for f in fields {
                 if f.is_derived() {
@@ -225,18 +215,18 @@ query Query ($id: String) {{
                         e
                     ))
                 })?;
-                map.insert(f.name.clone(), value);
+                map.insert(Word::from(f.name.clone()), value);
             }
             map
         };
 
-        Ok(Some(Entity::from(map)))
+        Ok(Some(schema.make_entity(map)?))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{iter::FromIterator, str::FromStr};
+    use std::str::FromStr;
 
     use super::*;
 
@@ -255,8 +245,8 @@ mod tests {
         DeploymentHash::new("test").unwrap()
     }
 
-    fn test_schema() -> Arc<Schema> {
-        let schema = Schema::new(
+    fn test_schema() -> Arc<InputSchema> {
+        let schema = InputSchema::new(
             DeploymentHash::new("test").unwrap(),
             parse_schema::<String>(
                 r#"type Gravatar @entity {
@@ -358,7 +348,9 @@ mod tests {
 
     #[test]
     fn test_extract_entity() {
+        let schema = test_schema();
         let entity = SubgraphFork::extract_entity(
+            &schema,
             r#"{
     "data": {
         "gravatar": {
@@ -376,21 +368,20 @@ mod tests {
 
         assert_eq!(
             entity.unwrap(),
-            Entity::from(HashMap::from_iter(
-                vec![
-                    ("id".to_string(), Value::String("0x00".to_string())),
+            schema
+                .make_entity(vec![
+                    ("id".into(), Value::String("0x00".to_string())),
                     (
-                        "owner".to_string(),
+                        "owner".into(),
                         Value::Bytes(scalar::Bytes::from_str("0x01").unwrap())
                     ),
-                    ("displayName".to_string(), Value::String("test".to_string())),
+                    ("displayName".into(), Value::String("test".to_string())),
                     (
-                        "imageUrl".to_string(),
+                        "imageUrl".into(),
                         Value::String("http://example.com/image.png".to_string())
                     ),
-                ]
-                .into_iter()
-            ))
+                ])
+                .unwrap()
         );
     }
 }

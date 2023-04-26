@@ -1,11 +1,12 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, LoadRelatedRequest,
-    ReadStore, StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, GetScope,
+    LoadRelatedRequest, ReadStore, StoredDynamicDataSource, WritableStore,
 };
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::prelude::*;
+use graph::schema::InputSchema;
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
@@ -27,8 +28,8 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
-    static ref SCHEMA: Arc<Schema> = Arc::new(
-        Schema::parse(
+    static ref SCHEMA: Arc<InputSchema> = Arc::new(
+        InputSchema::parse(
             "
             type Band @entity {
                 id: ID!
@@ -72,7 +73,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         SCHEMA.clone()
     }
 }
@@ -168,17 +169,18 @@ impl WritableStore for MockStore {
     async fn causality_region_curr_val(&self) -> Result<Option<CausalityRegion>, StoreError> {
         unimplemented!()
     }
+
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStore>>, StoreError> {
+        unimplemented!()
+    }
 }
 
-fn make_band(id: &'static str, data: Vec<(&str, Value)>) -> (EntityKey, Entity) {
-    (
-        EntityKey {
-            entity_type: EntityType::new("Band".to_string()),
-            entity_id: id.into(),
-            causality_region: CausalityRegion::ONCHAIN,
-        },
-        Entity::from(data),
-    )
+fn make_band_key(id: &'static str) -> EntityKey {
+    EntityKey {
+        entity_type: EntityType::new("Band".to_string()),
+        entity_id: id.into(),
+        causality_region: CausalityRegion::ONCHAIN,
+    }
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
@@ -203,16 +205,12 @@ fn insert_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let (mogwai_key, mogwai_data) = make_band(
-        "mogwai",
-        vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-    );
+    let mogwai_data = entity! { id: "mogwai", name: "Mogwai" };
+    let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let (sigurros_key, sigurros_data) = make_band(
-        "sigurros",
-        vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-    );
+    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros" };
+    let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
@@ -252,16 +250,8 @@ fn overwrite_modifications() {
     // every set operation as an overwrite.
     let store = {
         let entities = vec![
-            make_band(
-                "mogwai",
-                vec![("id", "mogwai".into()), ("name", "Mogwai".into())],
-            )
-            .1,
-            make_band(
-                "sigurros",
-                vec![("id", "sigurros".into()), ("name", "Sigur Ros".into())],
-            )
-            .1,
+            entity! { id: "mogwai", name: "Mogwai"; founded },
+            entity! { id: "sigurros", name: "Sigur Ros"; founded },
         ];
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -269,24 +259,12 @@ fn overwrite_modifications() {
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
 
-    let (mogwai_key, mogwai_data) = make_band(
-        "mogwai",
-        vec![
-            ("id", "mogwai".into()),
-            ("name", "Mogwai".into()),
-            ("founded", 1995.into()),
-        ],
-    );
+    let mogwai_data = entity! { id: "mogwai", name: "Mogwai", founded: 1995 };
+    let mogwai_key = make_band_key("mogwai");
     cache.set(mogwai_key.clone(), mogwai_data.clone()).unwrap();
 
-    let (sigurros_key, sigurros_data) = make_band(
-        "sigurros",
-        vec![
-            ("id", "sigurros".into()),
-            ("name", "Sigur Ros".into()),
-            ("founded", 1994.into()),
-        ],
-    );
+    let sigurros_data = entity! { id: "sigurros", name: "Sigur Ros", founded: 1994 };
+    let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
@@ -312,17 +290,8 @@ fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     let store = {
-        let entities = vec![
-            make_band(
-                "mogwai",
-                vec![
-                    ("id", "mogwai".into()),
-                    ("name", "Mogwai".into()),
-                    ("label", "Chemikal Underground".into()),
-                ],
-            )
-            .1,
-        ];
+        let entities =
+            vec![entity! { id: "mogwai", name: "Mogwai", label: "Chemikal Underground"; founded }];
 
         MockStore::new(entity_version_map("Band", entities))
     };
@@ -331,21 +300,13 @@ fn consecutive_modifications() {
     let mut cache = EntityCache::new(store);
 
     // First, add "founded" and change the "label".
-    let (update_key, update_data) = make_band(
-        "mogwai",
-        vec![
-            ("id", "mogwai".into()),
-            ("founded", 1995.into()),
-            ("label", "Rock Action Records".into()),
-        ],
-    );
+    let update_data = entity! { id: "mogwai", founded: 1995, label: "Rock Action Records" };
+    let update_key = make_band_key("mogwai");
     cache.set(update_key, update_data).unwrap();
 
     // Then, just reset the "label".
-    let (update_key, update_data) = make_band(
-        "mogwai",
-        vec![("id", "mogwai".into()), ("label", Value::Null)],
-    );
+    let update_data = entity! { id: "mogwai", label: Value::Null };
+    let update_key = make_band_key("mogwai");
     cache.set(update_key.clone(), update_data).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
@@ -355,12 +316,8 @@ fn consecutive_modifications() {
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::Overwrite {
             key: update_key,
-            data: Entity::from(vec![
-                ("id", "mogwai".into()),
-                ("name", "Mogwai".into()),
-                ("founded", 1995.into()),
-            ]),
-        },])
+            data: entity! { id: "mogwai", name: "Mogwai", founded: 1995 }
+        }])
     );
 }
 
@@ -387,8 +344,9 @@ lazy_static! {
     static ref LOAD_RELATED_ID_STRING: String = String::from("loadrelatedsubgraph");
     static ref LOAD_RELATED_ID: DeploymentHash =
         DeploymentHash::new(LOAD_RELATED_ID_STRING.as_str()).unwrap();
-    static ref LOAD_RELATED_SUBGRAPH: Schema =
-        Schema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone()).expect("Failed to parse user schema");
+    static ref LOAD_RELATED_SUBGRAPH: InputSchema =
+        InputSchema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
+            .expect("Failed to parse user schema");
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
         H256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
@@ -501,12 +459,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 }
 
 fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityOperation {
-    let mut test_entity = Entity::new();
-
-    test_entity.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_entity.insert("name".to_owned(), Value::String(name.to_owned()));
-    test_entity.insert("email".to_owned(), Value::String(email.to_owned()));
-    test_entity.insert("age".to_owned(), Value::Int(age));
+    let test_entity = entity! { id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
         key: EntityKey::data(ACCOUNT.to_owned(), id.to_owned()),
@@ -515,12 +468,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityO
 }
 
 fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
-    let mut test_wallet = Entity::new();
-
-    test_wallet.insert("id".to_owned(), Value::String(id.to_owned()));
-    test_wallet.insert("account".to_owned(), Value::String(account_id.to_owned()));
-    test_wallet.insert("balance".to_owned(), Value::Int(balance));
-    test_wallet
+    entity! { id: id, account: account_id, balance: balance }
 }
 fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
     let test_wallet = create_wallet_entity(id, account_id, balance);
@@ -750,5 +698,44 @@ fn check_for_delete_async_related() {
         let expeted_vec = vec![wallet_2, wallet_3];
 
         assert_eq!(result, expeted_vec);
+    });
+}
+
+#[test]
+fn scoped_get() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        // Key for an existing entity that is in the store
+        let key1 = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let wallet1 = create_wallet_entity("1", "1", 67);
+
+        // Create a new entity that is not in the store
+        let wallet5 = create_wallet_entity("5", "5", 100);
+        let key5 = EntityKey::data(WALLET.to_owned(), "5".to_owned());
+        cache.set(key5.clone(), wallet5.clone()).unwrap();
+
+        // For the new entity, we can retrieve it with either scope
+        let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet5), act5.as_ref());
+        let act5 = cache.get(&key5, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet5), act5.as_ref());
+
+        // For an entity in the store, we can not get it `InBlock` but with
+        // `Store`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
+        // Even after reading from the store, the entity is not visible with
+        // `InBlock`
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(None, act1);
+        // But if it gets updated, it becomes visible with either scope
+        let mut wallet1 = wallet1;
+        wallet1.set("balance", 70).unwrap();
+        cache.set(key1.clone(), wallet1.clone()).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
+        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        assert_eq!(Some(&wallet1), act1.as_ref());
     });
 }

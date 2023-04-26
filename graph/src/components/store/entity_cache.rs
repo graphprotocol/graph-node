@@ -4,10 +4,20 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
-use crate::prelude::{Schema, ENV_VARS};
-use crate::util::lfu_cache::LfuCache;
+use crate::data::store::IntoEntityIterator;
+use crate::prelude::ENV_VARS;
+use crate::schema::InputSchema;
+use crate::util::lfu_cache::{EvictStats, LfuCache};
 
-use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest};
+use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
+
+/// The scope in which the `EntityCache` should perform a `get` operation
+pub enum GetScope {
+    /// Get from all previously stored entities in the store
+    Store,
+    /// Get from the entities that have been stored during this block
+    InBlock,
+}
 
 /// A cache for entities from the store that provides the basic functionality
 /// needed for the store interactions in the host exports. This struct tracks
@@ -33,7 +43,7 @@ pub struct EntityCache {
     /// The store is only used to read entities.
     pub store: Arc<dyn s::ReadStore>,
 
-    schema: Arc<Schema>,
+    pub schema: Arc<InputSchema>,
 }
 
 impl Debug for EntityCache {
@@ -48,6 +58,7 @@ impl Debug for EntityCache {
 pub struct ModificationsAndCache {
     pub modifications: Vec<s::EntityModification>,
     pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub evict_stats: EvictStats,
 }
 
 impl EntityCache {
@@ -60,6 +71,11 @@ impl EntityCache {
             schema: store.input_schema(),
             store,
         }
+    }
+
+    /// Make a new entity. The entity is not part of the cache
+    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Result<Entity, anyhow::Error> {
+        self.schema.make_entity(iter)
     }
 
     pub fn with_current(
@@ -98,19 +114,26 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(&mut self, eref: &EntityKey) -> Result<Option<Entity>, s::QueryExecutionError> {
+    pub fn get(&mut self, key: &EntityKey, scope: GetScope) -> Result<Option<Entity>, StoreError> {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
-        let mut entity = self.current.get_entity(&*self.store, eref)?;
+        let mut entity = match scope {
+            GetScope::Store => self.current.get_entity(&*self.store, key)?,
+            GetScope::InBlock => None,
+        };
 
-        // Always test the cache consistency in debug mode.
-        debug_assert!(entity == self.store.get(eref).unwrap());
+        // Always test the cache consistency in debug mode. The test only
+        // makes sense when we were actually asked to read from the store
+        debug_assert!(match scope {
+            GetScope::Store => entity == self.store.get(key).unwrap(),
+            GetScope::InBlock => true,
+        });
 
-        if let Some(op) = self.updates.get(eref).cloned() {
-            entity = op.apply_to(entity)
+        if let Some(op) = self.updates.get(key).cloned() {
+            entity = op.apply_to(entity).map_err(|e| key.unknown_attribute(e))?;
         }
-        if let Some(op) = self.handler_updates.get(eref).cloned() {
-            entity = op.apply_to(entity)
+        if let Some(op) = self.handler_updates.get(key).cloned() {
+            entity = op.apply_to(entity).map_err(|e| key.unknown_attribute(e))?;
         }
         Ok(entity)
     }
@@ -170,7 +193,8 @@ impl EntityCache {
             }
             None => {
                 let value = self.schema.id_value(&key)?;
-                entity.set("id", value);
+                // unwrap: our AtomPool always has an id in it
+                entity.set("id", value).unwrap();
             }
         }
 
@@ -183,7 +207,7 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
-            let entity = self.get(&key)?.ok_or_else(|| {
+            let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
                     key.entity_type,
@@ -240,7 +264,7 @@ impl EntityCache {
     /// to the current state is actually needed.
     ///
     /// Also returns the updated `LfuCache`.
-    pub fn as_modifications(mut self) -> Result<ModificationsAndCache, s::QueryExecutionError> {
+    pub fn as_modifications(mut self) -> Result<ModificationsAndCache, StoreError> {
         assert!(!self.in_handler);
 
         // The first step is to make sure all entities being set are in `self.current`.
@@ -270,17 +294,17 @@ impl EntityCache {
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
                 // Entity was created
-                (None, EntityOp::Update(updates)) | (None, EntityOp::Overwrite(updates)) => {
-                    // Merging with an empty entity removes null fields.
-                    let mut data = Entity::new();
-                    data.merge_remove_null_fields(updates);
-                    self.current.insert(key.clone(), Some(data.clone()));
-                    Some(Insert { key, data })
+                (None, EntityOp::Update(mut updates))
+                | (None, EntityOp::Overwrite(mut updates)) => {
+                    updates.remove_null_fields();
+                    self.current.insert(key.clone(), Some(updates.clone()));
+                    Some(Insert { key, data: updates })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
                     let mut data = current.clone();
-                    data.merge_remove_null_fields(updates);
+                    data.merge_remove_null_fields(updates)
+                        .map_err(|e| key.unknown_attribute(e))?;
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
                         Some(Overwrite { key, data })
@@ -309,11 +333,14 @@ impl EntityCache {
                 mods.push(modification)
             }
         }
-        self.current.evict(ENV_VARS.mappings.entity_cache_size);
+        let evict_stats = self
+            .current
+            .evict_and_stats(ENV_VARS.mappings.entity_cache_size);
 
         Ok(ModificationsAndCache {
             modifications: mods,
             entity_lfu_cache: self.current,
+            evict_stats,
         })
     }
 }

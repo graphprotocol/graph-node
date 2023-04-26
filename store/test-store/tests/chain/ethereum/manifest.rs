@@ -5,8 +5,9 @@ use std::time::Duration;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
 use graph::data_source::DataSourceTemplate;
+use graph::entity;
 use graph::prelude::{
-    anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Entity, Link, Logger, SubgraphManifest,
+    anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Link, Logger, SubgraphManifest,
     SubgraphManifestValidationError, UnvalidatedSubgraphManifest,
 };
 use graph::{
@@ -201,8 +202,7 @@ specVersion: 0.0.2
         let deployment = test_store::create_test_subgraph(&subgraph, GQL_SCHEMA).await;
 
         // Adds an example entity.
-        let mut thing = Entity::new();
-        thing.set("id", "datthing");
+        let thing = entity! { id: "datthing" };
         test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .await
             .unwrap();
@@ -294,8 +294,7 @@ specVersion: 0.0.2
             msg
         );
 
-        let mut thing = Entity::new();
-        thing.set("id", "datthing");
+        let thing = entity! { id: "datthing" };
         test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
             .await
             .unwrap();

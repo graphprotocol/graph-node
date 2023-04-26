@@ -1,31 +1,41 @@
-use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
+use crate::components::store::EntityType;
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
-use crate::data::store::{self, ValueType};
+use crate::data::store::ValueType;
 use crate::data::subgraph::DeploymentHash;
 use crate::prelude::{
-    anyhow, lazy_static,
+    anyhow,
     q::Value,
     s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
 };
 
-use anyhow::{Context, Error};
+use anyhow::Error;
 use graphql_parser::{self, Pos};
 use inflector::Inflector;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::convert::TryFrom;
 use std::fmt;
 use std::iter::FromIterator;
 use std::str::FromStr;
-use std::sync::Arc;
 
-use super::graphql::ObjectOrInterface;
-use super::store::scalar;
+/// Generate full-fledged API schemas from existing GraphQL schemas.
+mod api;
+
+/// Utilities for working with GraphQL schema ASTs.
+pub mod ast;
+
+mod fulltext;
+mod input_schema;
+
+pub use api::{api_schema, APISchemaError};
+
+pub use api::{ApiSchema, ErrorPolicy};
+pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
+pub use input_schema::InputSchema;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 
@@ -103,370 +113,6 @@ pub enum SchemaValidationError {
     FulltextIncludedFieldInvalid(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum FulltextLanguage {
-    Simple,
-    Danish,
-    Dutch,
-    English,
-    Finnish,
-    French,
-    German,
-    Hungarian,
-    Italian,
-    Norwegian,
-    Portugese,
-    Romanian,
-    Russian,
-    Spanish,
-    Swedish,
-    Turkish,
-}
-
-impl TryFrom<&str> for FulltextLanguage {
-    type Error = String;
-    fn try_from(language: &str) -> Result<Self, Self::Error> {
-        match language {
-            "simple" => Ok(FulltextLanguage::Simple),
-            "da" => Ok(FulltextLanguage::Danish),
-            "nl" => Ok(FulltextLanguage::Dutch),
-            "en" => Ok(FulltextLanguage::English),
-            "fi" => Ok(FulltextLanguage::Finnish),
-            "fr" => Ok(FulltextLanguage::French),
-            "de" => Ok(FulltextLanguage::German),
-            "hu" => Ok(FulltextLanguage::Hungarian),
-            "it" => Ok(FulltextLanguage::Italian),
-            "no" => Ok(FulltextLanguage::Norwegian),
-            "pt" => Ok(FulltextLanguage::Portugese),
-            "ro" => Ok(FulltextLanguage::Romanian),
-            "ru" => Ok(FulltextLanguage::Russian),
-            "es" => Ok(FulltextLanguage::Spanish),
-            "sv" => Ok(FulltextLanguage::Swedish),
-            "tr" => Ok(FulltextLanguage::Turkish),
-            invalid => Err(format!(
-                "Provided language for fulltext search is invalid: {}",
-                invalid
-            )),
-        }
-    }
-}
-
-impl FulltextLanguage {
-    /// Return the language as a valid SQL string. The string is safe to
-    /// directly use verbatim in a query, i.e., doesn't require being passed
-    /// through a bind variable
-    pub fn as_sql(&self) -> &'static str {
-        match self {
-            Self::Simple => "'simple'",
-            Self::Danish => "'danish'",
-            Self::Dutch => "'dutch'",
-            Self::English => "'english'",
-            Self::Finnish => "'finnish'",
-            Self::French => "'french'",
-            Self::German => "'german'",
-            Self::Hungarian => "'hungarian'",
-            Self::Italian => "'italian'",
-            Self::Norwegian => "'norwegian'",
-            Self::Portugese => "'portugese'",
-            Self::Romanian => "'romanian'",
-            Self::Russian => "'russian'",
-            Self::Spanish => "'spanish'",
-            Self::Swedish => "'swedish'",
-            Self::Turkish => "'turkish'",
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum FulltextAlgorithm {
-    Rank,
-    ProximityRank,
-}
-
-impl TryFrom<&str> for FulltextAlgorithm {
-    type Error = String;
-    fn try_from(algorithm: &str) -> Result<Self, Self::Error> {
-        match algorithm {
-            "rank" => Ok(FulltextAlgorithm::Rank),
-            "proximityRank" => Ok(FulltextAlgorithm::ProximityRank),
-            invalid => Err(format!(
-                "The provided fulltext search algorithm {} is invalid. It must be one of: rank, proximityRank",
-                invalid,
-            )),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct FulltextConfig {
-    pub language: FulltextLanguage,
-    pub algorithm: FulltextAlgorithm,
-}
-
-pub struct FulltextDefinition {
-    pub config: FulltextConfig,
-    pub included_fields: HashSet<String>,
-    pub name: String,
-}
-
-impl From<&s::Directive> for FulltextDefinition {
-    // Assumes the input is a Fulltext Directive that has already been validated because it makes
-    // liberal use of unwrap() where specific types are expected
-    fn from(directive: &Directive) -> Self {
-        let name = directive.argument("name").unwrap().as_str().unwrap();
-
-        let algorithm = FulltextAlgorithm::try_from(
-            directive.argument("algorithm").unwrap().as_enum().unwrap(),
-        )
-        .unwrap();
-
-        let language =
-            FulltextLanguage::try_from(directive.argument("language").unwrap().as_enum().unwrap())
-                .unwrap();
-
-        let included_entity_list = directive.argument("include").unwrap().as_list().unwrap();
-        // Currently fulltext query fields are limited to 1 entity, so we just take the first (and only) included Entity
-        let included_entity = included_entity_list.first().unwrap().as_object().unwrap();
-        let included_field_values = included_entity.get("fields").unwrap().as_list().unwrap();
-        let included_fields: HashSet<String> = included_field_values
-            .iter()
-            .map(|field| {
-                field
-                    .as_object()
-                    .unwrap()
-                    .get("name")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .into()
-            })
-            .collect();
-
-        FulltextDefinition {
-            config: FulltextConfig {
-                language,
-                algorithm,
-            },
-            included_fields,
-            name: name.into(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ApiSchema {
-    schema: Schema,
-
-    // Root types for the api schema.
-    pub query_type: Arc<ObjectType>,
-    pub subscription_type: Option<Arc<ObjectType>>,
-    object_types: HashMap<String, Arc<ObjectType>>,
-}
-
-impl ApiSchema {
-    /// `api_schema` will typically come from `fn api_schema` in the graphql
-    /// crate.
-    ///
-    /// In addition, the API schema has an introspection schema mixed into
-    /// `api_schema`. In particular, the `Query` type has fields called
-    /// `__schema` and `__type`
-    pub fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
-        add_introspection_schema(&mut api_schema.document);
-
-        let query_type = api_schema
-            .document
-            .get_root_query_type()
-            .context("no root `Query` in the schema")?
-            .clone();
-        let subscription_type = api_schema
-            .document
-            .get_root_subscription_type()
-            .cloned()
-            .map(Arc::new);
-
-        let object_types = HashMap::from_iter(
-            api_schema
-                .document
-                .get_object_type_definitions()
-                .into_iter()
-                .map(|obj_type| (obj_type.name.clone(), Arc::new(obj_type.clone()))),
-        );
-
-        Ok(Self {
-            schema: api_schema,
-            query_type: Arc::new(query_type),
-            subscription_type,
-            object_types,
-        })
-    }
-
-    pub fn document(&self) -> &s::Document {
-        &self.schema.document
-    }
-
-    pub fn id(&self) -> &DeploymentHash {
-        &self.schema.id
-    }
-
-    pub fn schema(&self) -> &Schema {
-        &self.schema
-    }
-
-    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
-        &self.schema.types_for_interface
-    }
-
-    /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
-        self.schema.interfaces_for_type(type_name)
-    }
-
-    /// Return an `Arc` around the `ObjectType` from our internal cache
-    ///
-    /// # Panics
-    /// If `obj_type` is not part of this schema, this function panics
-    pub fn object_type(&self, obj_type: &ObjectType) -> Arc<ObjectType> {
-        self.object_types
-            .get(&obj_type.name)
-            .expect("ApiSchema.object_type is only used with existing types")
-            .cheap_clone()
-    }
-
-    pub fn get_named_type(&self, name: &str) -> Option<&TypeDefinition> {
-        self.schema.document.get_named_type(name)
-    }
-
-    /// Returns true if the given type is an input type.
-    ///
-    /// Uses the algorithm outlined on
-    /// https://facebook.github.io/graphql/draft/#IsInputType().
-    pub fn is_input_type(&self, t: &s::Type) -> bool {
-        match t {
-            s::Type::NamedType(name) => {
-                let named_type = self.get_named_type(name);
-                named_type.map_or(false, |type_def| match type_def {
-                    s::TypeDefinition::Scalar(_)
-                    | s::TypeDefinition::Enum(_)
-                    | s::TypeDefinition::InputObject(_) => true,
-                    _ => false,
-                })
-            }
-            s::Type::ListType(inner) => self.is_input_type(inner),
-            s::Type::NonNullType(inner) => self.is_input_type(inner),
-        }
-    }
-
-    pub fn get_root_query_type_def(&self) -> Option<&s::TypeDefinition> {
-        self.schema
-            .document
-            .definitions
-            .iter()
-            .find_map(|d| match d {
-                s::Definition::TypeDefinition(def @ s::TypeDefinition::Object(_)) => match def {
-                    s::TypeDefinition::Object(t) if t.name == "Query" => Some(def),
-                    _ => None,
-                },
-                _ => None,
-            })
-    }
-
-    pub fn object_or_interface(&self, name: &str) -> Option<ObjectOrInterface<'_>> {
-        if name.starts_with("__") {
-            INTROSPECTION_SCHEMA.object_or_interface(name)
-        } else {
-            self.schema.document.object_or_interface(name)
-        }
-    }
-
-    /// Returns the type definition that a field type corresponds to.
-    pub fn get_type_definition_from_field<'a>(
-        &'a self,
-        field: &s::Field,
-    ) -> Option<&'a s::TypeDefinition> {
-        self.get_type_definition_from_type(&field.field_type)
-    }
-
-    /// Returns the type definition for a type.
-    pub fn get_type_definition_from_type<'a>(
-        &'a self,
-        t: &s::Type,
-    ) -> Option<&'a s::TypeDefinition> {
-        match t {
-            s::Type::NamedType(name) => self.get_named_type(name),
-            s::Type::ListType(inner) => self.get_type_definition_from_type(inner),
-            s::Type::NonNullType(inner) => self.get_type_definition_from_type(inner),
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition<'static, String>> {
-        self.schema.document.definitions.iter()
-    }
-}
-
-lazy_static! {
-    static ref INTROSPECTION_SCHEMA: Document = {
-        let schema = include_str!("introspection.graphql");
-        parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
-    };
-}
-
-fn add_introspection_schema(schema: &mut Document) {
-    fn introspection_fields() -> Vec<Field> {
-        // Generate fields for the root query fields in an introspection schema,
-        // the equivalent of the fields of the `Query` type:
-        //
-        // type Query {
-        //   __schema: __Schema!
-        //   __type(name: String!): __Type
-        // }
-
-        let type_args = vec![InputValue {
-            position: Pos::default(),
-            description: None,
-            name: "name".to_string(),
-            value_type: Type::NonNullType(Box::new(Type::NamedType("String".to_string()))),
-            default_value: None,
-            directives: vec![],
-        }];
-
-        vec![
-            Field {
-                position: Pos::default(),
-                description: None,
-                name: "__schema".to_string(),
-                arguments: vec![],
-                field_type: Type::NonNullType(Box::new(Type::NamedType("__Schema".to_string()))),
-                directives: vec![],
-            },
-            Field {
-                position: Pos::default(),
-                description: None,
-                name: "__type".to_string(),
-                arguments: type_args,
-                field_type: Type::NamedType("__Type".to_string()),
-                directives: vec![],
-            },
-        ]
-    }
-
-    schema
-        .definitions
-        .extend(INTROSPECTION_SCHEMA.definitions.iter().cloned());
-
-    let query_type = schema
-        .definitions
-        .iter_mut()
-        .filter_map(|d| match d {
-            Definition::TypeDefinition(TypeDefinition::Object(t)) if t.name == "Query" => Some(t),
-            _ => None,
-        })
-        .peekable()
-        .next()
-        .expect("no root `Query` in the schema");
-    query_type.fields.append(&mut introspection_fields());
-}
-
 /// A validated and preprocessed GraphQL schema for a subgraph.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Schema {
@@ -478,8 +124,6 @@ pub struct Schema {
 
     // Maps an interface name to the list of entities that implement it.
     pub types_for_interface: BTreeMap<EntityType, Vec<ObjectType>>,
-
-    immutable_types: HashSet<EntityType>,
 }
 
 impl Schema {
@@ -491,129 +135,17 @@ impl Schema {
     // `Schema` is always fully valid
     pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
         let (interfaces_for_type, types_for_interface) = Self::collect_interfaces(&document)?;
-        let immutable_types = Self::collect_immutable_types(&document);
 
         let mut schema = Schema {
             id: id.clone(),
             document,
             interfaces_for_type,
             types_for_interface,
-            immutable_types,
         };
 
         schema.add_subgraph_id_directives(id);
 
         Ok(schema)
-    }
-
-    /// Construct a value for the entity type's id attribute
-    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
-        let base_type = self
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type
-                )
-            })?
-            .field("id")
-            .unwrap()
-            .field_type
-            .get_base_type();
-
-        match base_type {
-            "ID" | "String" => Ok(store::Value::String(key.entity_id.to_string())),
-            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
-                &key.entity_id,
-            )?)),
-            s => {
-                return Err(anyhow!(
-                    "Entity type {} uses illegal type {} for id column",
-                    key.entity_type,
-                    s
-                ))
-            }
-        }
-    }
-
-    /// Returns the field that has the relationship with the key requested
-    /// This works as a reverse search for the Field related to the query
-    ///
-    /// example:
-    ///
-    /// type Account @entity {
-    ///     wallets: [Wallet!]! @derivedFrom(field: "account")
-    /// }
-    /// type Wallet {
-    ///     account: Account!
-    ///     balance: Int!
-    /// }
-    ///
-    /// When asked to load the related entities from "Account" in the field "wallets"
-    /// This function will return the type "Wallet" with the field "account"
-    pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &Field), Error> {
-        let field = self
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type,
-                )
-            })?
-            .field(&key.entity_field)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown field `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_field,
-                )
-            })?;
-        if field.is_derived() {
-            let derived_from = field.find_directive("derivedFrom").unwrap();
-            let base_type = field.field_type.get_base_type();
-            let field_name = derived_from.argument("field").unwrap();
-
-            let field = self
-                .document
-                .get_object_type_definition(base_type)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown entity type `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_type,
-                    )
-                })?
-                .field(field_name.as_str().unwrap())
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown field `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_field,
-                    )
-                })?;
-
-            Ok((base_type, field))
-        } else {
-            Err(anyhow!(
-                "Entity {}[{}]: field `{}` is not derived",
-                key.entity_type,
-                key.entity_id,
-                key.entity_field,
-            ))
-        }
-    }
-
-    pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
-        self.immutable_types.contains(entity_type)
     }
 
     fn collect_interfaces(
@@ -667,16 +199,6 @@ impl Schema {
         }
 
         Ok((interfaces_for_type, types_for_interface))
-    }
-
-    fn collect_immutable_types(document: &s::Document) -> HashSet<EntityType> {
-        HashSet::from_iter(
-            document
-                .get_object_type_definitions()
-                .into_iter()
-                .filter(|obj_type| obj_type.is_immutable())
-                .map(Into::into),
-        )
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
@@ -1280,31 +802,6 @@ impl Schema {
             .get_object_type_definitions()
             .into_iter()
             .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
-    }
-
-    pub fn entity_fulltext_definitions(
-        entity: &str,
-        document: &Document,
-    ) -> Result<Vec<FulltextDefinition>, anyhow::Error> {
-        Ok(document
-            .get_fulltext_directives()?
-            .into_iter()
-            .filter(|directive| match directive.argument("include") {
-                Some(Value::List(includes)) if !includes.is_empty() => {
-                    includes.iter().any(|include| match include {
-                        Value::Object(include) => match include.get("entity") {
-                            Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
-                                true
-                            }
-                            _ => false,
-                        },
-                        _ => false,
-                    })
-                }
-                _ => false,
-            })
-            .map(FulltextDefinition::from)
-            .collect())
     }
 }
 

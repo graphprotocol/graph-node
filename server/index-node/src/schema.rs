@@ -1,4 +1,7 @@
-use graph::prelude::*;
+use graph::{
+    prelude::*,
+    schema::{ApiSchema, Schema},
+};
 
 lazy_static! {
     pub static ref SCHEMA: Arc<ApiSchema> = {

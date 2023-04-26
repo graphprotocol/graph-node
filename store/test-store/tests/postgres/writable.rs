@@ -1,5 +1,6 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::schema::InputSchema;
 use lazy_static::lazy_static;
 use std::marker::PhantomData;
 use test_store::*;
@@ -15,7 +16,7 @@ use web3::types::H256;
 const SCHEMA_GQL: &str = "
     type Counter @entity {
         id: ID!,
-        count: Int,
+        count: Int!,
     }
 ";
 
@@ -25,8 +26,9 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID_STRING: String = String::from("writableSubgraph");
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
-    static ref TEST_SUBGRAPH_SCHEMA: Schema =
-        Schema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone()).expect("Failed to parse user schema");
+    static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
+        InputSchema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
+            .expect("Failed to parse user schema");
 }
 
 /// Inserts test data into the store.
@@ -91,8 +93,7 @@ where
 
         // Run test and wait for the background writer to finish its work so
         // it won't conflict with the next test
-        test(store, writable.clone(), deployment).await;
-        writable.flush().await.unwrap();
+        test(store, writable, deployment).await;
     });
 }
 
@@ -159,5 +160,58 @@ fn tracker() {
 
         resume_writer(&deployment, 1).await;
         assert_eq!(2, read_count());
+
+        // There shouldn't be anything left to do, but make sure of that
+        writable.flush().await.unwrap();
+    })
+}
+
+#[test]
+fn restart() {
+    run_test(|store, writable, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+
+        // Cause an error by leaving out the non-nullable `count` attribute
+        let entity_ops = vec![EntityOperation::Set {
+            key: count_key("1"),
+            data: entity! { id: "1" },
+        }];
+        transact_entity_operations(
+            &subgraph_store,
+            &deployment,
+            block_pointer(1),
+            entity_ops.clone(),
+        )
+        .await
+        .unwrap();
+        // flush checks for errors and therefore fails
+        writable
+            .flush()
+            .await
+            .expect_err("writing with missing non-nullable field should fail");
+
+        // We now have a poisoned store. Restarting it gives us a new store
+        // that works again
+        let writable = writable.restart().await.unwrap().unwrap();
+        writable.flush().await.unwrap();
+
+        // Retry our write with correct data
+        let entity_ops = vec![EntityOperation::Set {
+            key: count_key("1"),
+            data: entity! { id: "1", count: 1 },
+        }];
+        // `SubgraphStore` caches the correct writable so that this call
+        // uses the restarted writable, and is equivalent to using
+        // `writable` directly
+        transact_entity_operations(
+            &subgraph_store,
+            &deployment,
+            block_pointer(1),
+            entity_ops.clone(),
+        )
+        .await
+        .unwrap();
+        // Look, no errors
+        writable.flush().await.unwrap();
     })
 }

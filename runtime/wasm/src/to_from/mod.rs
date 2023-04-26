@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use graph::runtime::{
-    asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-    DeterministicHostError, FromAscObj, HostExportError, ToAscObj,
+use graph::{
+    data::value::Word,
+    runtime::{
+        asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
+        DeterministicHostError, FromAscObj, HostExportError, ToAscObj,
+    },
 };
 
 use crate::asc_abi::class::*;
@@ -70,6 +73,16 @@ impl ToAscObj<AscString> for String {
     }
 }
 
+impl ToAscObj<AscString> for Word {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscString, HostExportError> {
+        self.as_str().to_asc_obj(heap, gas)
+    }
+}
+
 impl FromAscObj<AscString> for String {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_string: AscString,
@@ -84,6 +97,18 @@ impl FromAscObj<AscString> for String {
             string = string.replace('\u{0000}', "");
         }
         Ok(string)
+    }
+}
+
+impl FromAscObj<AscString> for Word {
+    fn from_asc_obj<H: AscHeap + ?Sized>(
+        asc_string: AscString,
+        heap: &H,
+        gas: &GasCounter,
+    ) -> Result<Self, DeterministicHostError> {
+        let string = String::from_asc_obj(asc_string, heap, gas)?;
+
+        Ok(Word::from(string))
     }
 }
 

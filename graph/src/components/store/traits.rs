@@ -7,8 +7,9 @@ use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
 use crate::data::subgraph::status;
-use crate::data::value::Word;
+use crate::data::value::Object;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
+use crate::schema::{ApiSchema, InputSchema};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
     /// Subscribe to changes for specific subgraphs and entities.
@@ -67,7 +68,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     fn create_subgraph_deployment(
         &self,
         name: SubgraphName,
-        schema: &Schema,
+        schema: &InputSchema,
         deployment: DeploymentCreate,
         node_id: NodeId,
         network: String,
@@ -111,7 +112,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<Schema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
@@ -192,7 +193,7 @@ pub trait ReadStore: Send + Sync + 'static {
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    fn input_schema(&self) -> Arc<Schema>;
+    fn input_schema(&self) -> Arc<InputSchema>;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
@@ -215,7 +216,7 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_derived(entity_derived)
     }
 
-    fn input_schema(&self) -> Arc<Schema> {
+    fn input_schema(&self) -> Arc<InputSchema> {
         (**self).input_schema()
     }
 }
@@ -323,6 +324,18 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;
+
+    /// Restart the `WritableStore`. This will clear any errors that have
+    /// been encountered. Code that calls this must not make any assumptions
+    /// about what has been written already, as the write queue might
+    /// contain unprocessed write requests that will be discarded by this
+    /// call.
+    ///
+    /// This call returns `None` if a restart was not needed because `self`
+    /// had no errors. If it returns `Some`, `self` should not be used
+    /// anymore, as it will continue to produce errors for any write
+    /// requests, and instead, the returned `WritableStore` should be used.
+    async fn restart(self: Arc<Self>) -> Result<Option<Arc<dyn WritableStore>>, StoreError>;
 }
 
 #[async_trait]
@@ -486,7 +499,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), QueryExecutionError>;
+    ) -> Result<(Vec<Object>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

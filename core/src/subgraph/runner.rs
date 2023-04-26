@@ -6,7 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
-use graph::components::store::{EmptyStore, EntityKey, StoredDynamicDataSource};
+use graph::components::store::{EmptyStore, EntityKey, GetScope, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -105,8 +105,8 @@ where
         self.run_inner(break_on_restart).await
     }
 
-    pub async fn run(self) -> Result<Self, Error> {
-        self.run_inner(false).await
+    pub async fn run(self) -> Result<(), Error> {
+        self.run_inner(false).await.map(|_| ())
     }
 
     async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
@@ -179,7 +179,19 @@ where
                         self.inputs.store.flush().await?;
                         return Ok(self);
                     }
-                    Action::Restart => break,
+                    Action::Restart => {
+                        // Restart the store to clear any errors that it
+                        // might have encountered and use that from now on
+                        let store = self.inputs.store.cheap_clone();
+                        if let Some(store) = store.restart().await? {
+                            let last_good_block =
+                                store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
+                            self.revert_state(last_good_block)?;
+                            self.inputs = Arc::new(self.inputs.with_store(store));
+                            self.state.synced = self.inputs.store.is_deployment_synced().await?;
+                        }
+                        break;
+                    }
                 };
             }
         }
@@ -202,15 +214,8 @@ where
                 "block_hash" => format!("{}", block_ptr.hash)
         ));
 
-        if triggers.len() == 1 {
-            debug!(&logger, "1 candidate trigger in this block");
-        } else {
-            debug!(
-                &logger,
-                "{} candidate triggers in this block",
-                triggers.len()
-            );
-        }
+        debug!(logger, "Start processing block";
+               "triggers" => triggers.len());
 
         let proof_of_indexing = if self.inputs.store.supports_proof_of_indexing().await? {
             Some(Arc::new(AtomicRefCell::new(ProofOfIndexing::new(
@@ -394,11 +399,19 @@ where
         let ModificationsAndCache {
             modifications: mut mods,
             entity_lfu_cache: cache,
+            evict_stats,
         } = block_state
             .entity_cache
             .as_modifications()
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
+
+        debug!(self.logger, "Entity cache statistics";
+            "weight" => evict_stats.new_weight,
+            "evicted_weight" => evict_stats.evicted_weight,
+            "count" => evict_stats.new_count,
+            "evicted_count" => evict_stats.evicted_count,
+            "stale_update" => evict_stats.stale_update);
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
@@ -1034,14 +1047,13 @@ async fn update_proof_of_indexing(
         };
 
         // Grab the current digest attribute on this entity
-        let prev_poi =
-            entity_cache
-                .get(&entity_key)
-                .map_err(Error::from)?
-                .map(|entity| match entity.get("digest") {
-                    Some(Value::Bytes(b)) => b.clone(),
-                    _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
-                });
+        let prev_poi = entity_cache
+            .get(&entity_key, GetScope::Store)
+            .map_err(Error::from)?
+            .map(|entity| match entity.get("digest") {
+                Some(Value::Bytes(b)) => b.clone(),
+                _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
+            });
 
         // Finish the POI stream, getting the new POI value.
         let updated_proof_of_indexing = stream.pause(prev_poi.as_deref());
@@ -1050,9 +1062,10 @@ async fn update_proof_of_indexing(
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
         let new_poi_entity = entity! {
+            entity_cache.schema =>
             id: entity_key.entity_id.to_string(),
             digest: updated_proof_of_indexing,
-        };
+        }?;
 
         entity_cache.set(entity_key, new_poi_entity)?;
     }

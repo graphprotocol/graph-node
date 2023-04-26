@@ -30,6 +30,7 @@ use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::schema::{FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME};
 use graph::slog::warn;
 use inflector::Inflector;
 use lazy_static::lazy_static;
@@ -50,8 +51,7 @@ use crate::{
     },
 };
 use graph::components::store::{DerivedEntityQuery, EntityKey, EntityType};
-use graph::data::graphql::ext::{DirectiveFinder, DocumentExt, ObjectTypeExt};
-use graph::data::schema::{FulltextConfig, FulltextDefinition, Schema, SCHEMA_TYPE_NAME};
+use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
 use graph::prelude::{
@@ -249,16 +249,21 @@ pub struct Layout {
     pub count_query: String,
     /// How many blocks of history the subgraph should keep
     pub history_blocks: BlockNumber,
+
+    pub input_schema: InputSchema,
 }
 
 impl Layout {
     /// Generate a layout for a relational schema for entities in the
     /// GraphQL schema `schema`. The name of the database schema in which
     /// the subgraph's tables live is in `site`.
-    pub fn new(site: Arc<Site>, schema: &Schema, catalog: Catalog) -> Result<Self, StoreError> {
+    pub fn new(
+        site: Arc<Site>,
+        schema: &InputSchema,
+        catalog: Catalog,
+    ) -> Result<Self, StoreError> {
         // Extract enum types
         let enums: EnumMap = schema
-            .document
             .get_enum_definitions()
             .iter()
             .map(
@@ -280,7 +285,6 @@ impl Layout {
 
         // List of all object types that are not __SCHEMA__
         let object_types = schema
-            .document
             .get_object_type_definitions()
             .into_iter()
             .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
@@ -288,7 +292,7 @@ impl Layout {
 
         // For interfaces, check that all implementors use the same IdType
         // and build a list of name/IdType pairs
-        let id_types_for_interface = schema.types_for_interface.iter().map(|(interface, types)| {
+        let id_types_for_interface = schema.interface_types().iter().map(|(interface, types)| {
             types
                 .iter()
                 .map(IdType::try_from)
@@ -327,7 +331,8 @@ impl Layout {
                 Table::new(
                     obj_type,
                     &catalog,
-                    Schema::entity_fulltext_definitions(&obj_type.name, &schema.document)
+                    schema
+                        .entity_fulltext_definitions(&obj_type.name)
                         .map_err(|_| StoreError::FulltextSearchNonDeterministic)?,
                     &enums,
                     &id_types,
@@ -377,6 +382,7 @@ impl Layout {
             enums,
             count_query,
             history_blocks: i32::MAX,
+            input_schema: schema.cheap_clone(),
         })
     }
 
@@ -427,7 +433,7 @@ impl Layout {
     pub fn create_relational_schema(
         conn: &PgConnection,
         site: Arc<Site>,
-        schema: &Schema,
+        schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Layout, StoreError> {
         let catalog = Catalog::for_creation(site.cheap_clone(), entities_with_causality_region);

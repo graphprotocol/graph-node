@@ -12,8 +12,9 @@
 
 use crate::{
     blockchain::Blockchain,
-    data::{graphql::DocumentExt, schema::Schema, subgraph::SubgraphManifest},
+    data::subgraph::SubgraphManifest,
     prelude::{Deserialize, Serialize},
+    schema::InputSchema,
 };
 use itertools::Itertools;
 use std::{collections::BTreeSet, fmt, str::FromStr};
@@ -110,8 +111,8 @@ fn detect_grafting<C: Blockchain>(manifest: &SubgraphManifest<C>) -> Option<Subg
     manifest.graft.as_ref().map(|_| SubgraphFeature::Grafting)
 }
 
-fn detect_full_text_search(schema: &Schema) -> Option<SubgraphFeature> {
-    match schema.document.get_fulltext_directives() {
+fn detect_full_text_search(schema: &InputSchema) -> Option<SubgraphFeature> {
+    match schema.get_fulltext_directives() {
         Ok(directives) => (!directives.is_empty()).then_some(SubgraphFeature::FullTextSearch),
 
         Err(_) => {

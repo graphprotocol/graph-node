@@ -1,5 +1,6 @@
 use ethabi;
 
+use graph::data::value::Word;
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{
@@ -321,7 +322,7 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
 }
 
 // Used for serializing entities.
-impl ToAscObj<AscEntity> for Vec<(String, store::Value)> {
+impl ToAscObj<AscEntity> for Vec<(Word, store::Value)> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
@@ -333,7 +334,7 @@ impl ToAscObj<AscEntity> for Vec<(String, store::Value)> {
     }
 }
 
-impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(String, store::Value)>> {
+impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(Word, store::Value)>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,

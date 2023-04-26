@@ -1,8 +1,11 @@
 use crate::{
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError, Schema},
+    prelude::{anyhow::Context, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
+    schema::InputSchema,
+    util::intern::AtomPool,
+    util::intern::{Error as InternError, NullValue, Object},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
@@ -10,15 +13,18 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt;
-use std::iter::FromIterator;
 use std::str::FromStr;
-use std::{borrow::Cow, collections::HashMap};
+use std::sync::Arc;
 use strum::AsStaticRef as _;
 use strum_macros::AsStaticStr;
 
-use super::graphql::{ext::DirectiveFinder, DocumentExt as _, TypeExt as _};
+use super::{
+    graphql::{ext::DirectiveFinder, TypeExt as _},
+    value::Word,
+};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -274,6 +280,12 @@ impl StableHash for Value {
     }
 }
 
+impl NullValue for Value {
+    fn null() -> Self {
+        Value::Null
+    }
+}
+
 impl Value {
     pub fn from_query_value(value: &r::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
         use graphql_parser::schema::Type::{ListType, NamedType, NonNullType};
@@ -420,6 +432,10 @@ impl Value {
                 .all(|value| value.is_assignable(scalar_type, false)),
             _ => false,
         }
+    }
+
+    fn is_null(&self) -> bool {
+        matches!(self, Value::Null)
     }
 }
 
@@ -580,56 +596,156 @@ where
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
-pub struct Entity(HashMap<Attribute, Value>);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Entity(Object<Value>);
 
-impl stable_hash_legacy::StableHash for Entity {
-    #[inline]
-    fn stable_hash<H: stable_hash_legacy::StableHasher>(
-        &self,
-        mut sequence_number: H::Seq,
-        state: &mut H,
-    ) {
-        use stable_hash_legacy::SequenceNumber;
-        let Self(inner) = self;
-        stable_hash_legacy::StableHash::stable_hash(inner, sequence_number.next_child(), state);
-    }
-}
+pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}
 
-impl StableHash for Entity {
-    fn stable_hash<H: StableHasher>(&self, field_address: H::Addr, state: &mut H) {
-        let Self(inner) = self;
-        StableHash::stable_hash(inner, field_address.child(0), state);
-    }
-}
+impl<T: IntoIterator<Item = (Word, Value)>> IntoEntityIterator for T {}
 
+pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>> {}
+
+impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
+
+/// The `entity!` macro is a convenient way to create entities. It comes in
+/// two forms, one where a schema is provided and one where it is not. The
+/// schema-less form can only be used in tests, since it creates an
+/// `AtomPool` just for this entity behind the scenes.
+///
+/// The form with schema returns a `Result<Entity, Error>` since it can be
+/// used in production code. The schemaless form returns an `Entity` because
+/// it unwraps the `Result` for you.
+///
+/// Production code should always use the form with the schema
+/// ```
+///   use graph::entity;
+///   use graph::schema::InputSchema;
+///   use graph::data::subgraph::DeploymentHash;
+///
+///   let id = DeploymentHash::new("Qm123").unwrap();
+///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
+///
+///   let entity = entity! { schema => id: "1", name: "John Doe" }.unwrap();
+/// ```
+///
+/// Test code which often doesn't have access to an `InputSchema` can use
+/// the form without the schema
+/// ```
+///   use graph::entity;
+///   let entity = entity! { id: "1", name: "John Doe" };
+/// ```
+///
+/// In the test form, it is also possible to provide additional names after
+/// a `;` that should be put into the `AtomPool` so that they can be set
+/// later in the test
+/// ```
+///   use graph::entity;
+///   let entity = entity! { id: "1", name: "John Doe"; phone, email };
+/// ```
+#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! entity {
+    () => {
+        {
+            let pairs = Vec::new();
+            let pool = $crate::util::intern::AtomPool::new();
+            Entity::make(std::sync::Arc::new(pool), pairs)
+        }
+    };
     ($($name:ident: $value:expr,)*) => {
         {
-            let mut result = $crate::data::store::Entity::new();
+            let mut pairs = Vec::new();
+            let mut pool = $crate::util::intern::AtomPool::new();
             $(
-                result.set(stringify!($name), $crate::data::store::Value::from($value));
+                pool.intern(stringify!($name));
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
             )*
-            result
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
         }
     };
     ($($name:ident: $value:expr),*) => {
         entity! {$($name: $value,)*}
     };
+    ($($name:ident: $value:expr,)*; $($extra:ident,)*) => {
+        {
+            let mut pairs = Vec::new();
+            let mut pool = $crate::util::intern::AtomPool::new();
+            $(
+                pool.intern(stringify!($name));
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $(
+                pool.intern(stringify!($extra));
+            )*
+            $crate::data::store::Entity::make(std::sync::Arc::new(pool), pairs).unwrap()
+        }
+    };
+    ($($name:ident: $value:expr),*; $($extra:ident),*) => {
+        entity! {$($name: $value,)*; $($extra,)*}
+    };
+    ($schema:expr => $($name:ident: $value:expr,)*) => {
+        {
+            let mut result = Vec::new();
+            $(
+                result.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $schema.make_entity(result)
+        }
+    };
+    ($schema:expr => $($name:ident: $value:expr),*) => {
+        entity! {$schema => $($name: $value,)*}
+    };
+}
+
+#[cfg(not(debug_assertions))]
+#[macro_export]
+macro_rules! entity {
+    ($schema:expr => $($name:ident: $value:expr,)*) => {
+        {
+            let mut pairs = Vec::new();
+            $(
+                pairs.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
+            )*
+            $schema.make_entity(pairs)
+        }
+    };
+    ($schema:expr => $($name:ident: $value:expr),*) => {
+        entity! {$schema => $($name: $value,)*}
+    };
 }
 
 impl Entity {
-    /// Creates a new entity with no attributes set.
-    pub fn new() -> Self {
-        Default::default()
+    pub fn make<I: IntoEntityIterator>(pool: Arc<AtomPool>, iter: I) -> Result<Entity, Error> {
+        let mut obj = Object::new(pool);
+        for (key, value) in iter {
+            obj.insert(key, value).map_err(|e| {
+                anyhow!(
+                    "Unknown key `{}`. It probably is not part of the schema",
+                    e.not_interned()
+                )
+            })?;
+        }
+        Ok(Entity(obj))
+    }
+
+    pub fn try_make<E: std::error::Error + Send + Sync + 'static, I: TryIntoEntityIterator<E>>(
+        pool: Arc<AtomPool>,
+        iter: I,
+    ) -> Result<Entity, Error> {
+        let mut obj = Object::new(pool);
+        for pair in iter {
+            let (key, value) = pair?;
+            obj.insert(key, value)
+                .map_err(|e| anyhow!("unknown attribute {}", e.not_interned()))?;
+        }
+        Ok(Entity(obj))
     }
 
     pub fn get(&self, key: &str) -> Option<&Value> {
         self.0.get(key)
     }
 
-    pub fn insert(&mut self, key: String, value: Value) -> Option<Value> {
+    pub fn insert(&mut self, key: &str, value: Value) -> Result<Option<Value>, InternError> {
         self.0.insert(key, value)
     }
 
@@ -642,8 +758,8 @@ impl Entity {
     }
 
     // This collects the entity into an ordered vector so that it can be iterated deterministically.
-    pub fn sorted(self) -> Vec<(String, Value)> {
-        let mut v: Vec<_> = self.0.into_iter().collect();
+    pub fn sorted(self) -> Vec<(Word, Value)> {
+        let mut v: Vec<_> = self.0.into_iter().map(|(k, v)| (k, v)).collect();
         v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
         v
     }
@@ -662,8 +778,12 @@ impl Entity {
     }
 
     /// Convenience method to save having to `.into()` the arguments.
-    pub fn set(&mut self, name: impl Into<Attribute>, value: impl Into<Value>) -> Option<Value> {
-        self.0.insert(name.into(), value.into())
+    pub fn set(
+        &mut self,
+        name: &str,
+        value: impl Into<Value>,
+    ) -> Result<Option<Value>, InternError> {
+        self.0.insert(name, value.into())
     }
 
     /// Merges an entity update `update` into this entity.
@@ -672,9 +792,7 @@ impl Entity {
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is set to `Value::Null`.
     pub fn merge(&mut self, update: Entity) {
-        for (key, value) in update.0.into_iter() {
-            self.insert(key, value);
-        }
+        self.0.merge(update.0);
     }
 
     /// Merges an entity update `update` into this entity, removing `Value::Null` values.
@@ -682,24 +800,30 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
         for (key, value) in update.0.into_iter() {
             match value {
                 Value::Null => self.remove(&key),
-                _ => self.insert(key, value),
+                _ => self.insert(&key, value)?,
             };
         }
+        Ok(())
+    }
+
+    /// Remove all entries with value `Value::Null` from `self`
+    pub fn remove_null_fields(&mut self) {
+        self.0.retain(|_, value| !value.is_null())
     }
 
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
-    pub fn validate(&self, schema: &Schema, key: &EntityKey) -> Result<(), anyhow::Error> {
-        fn scalar_value_type(schema: &Schema, field_type: &s::Type) -> ValueType {
+    pub fn validate(&self, schema: &InputSchema, key: &EntityKey) -> Result<(), anyhow::Error> {
+        fn scalar_value_type(schema: &InputSchema, field_type: &s::Type) -> ValueType {
             use s::TypeDefinition as t;
             match field_type {
                 s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
-                    match schema.document.get_named_type(name) {
+                    match schema.get_named_type(name) {
                         Some(t::Object(obj_type)) => {
                             let id = obj_type.field("id").expect("all object types have an id");
                             scalar_value_type(schema, &id.field_type)
@@ -710,8 +834,7 @@ impl Entity {
                             // therefore enough to use the id type of one of
                             // the implementors
                             match schema
-                                .types_for_interface()
-                                .get(&EntityType::new(intf.name.clone()))
+                                .types_for_interface(intf)
                                 .expect("interface type names are known")
                                 .first()
                             {
@@ -745,16 +868,12 @@ impl Entity {
             // type for them, and validation would therefore fail
             return Ok(());
         }
-        let object_type_definitions = schema.document.get_object_type_definitions();
-        let object_type = object_type_definitions
-            .iter()
-            .find(|object_type| key.entity_type.as_str() == object_type.name)
-            .with_context(|| {
-                format!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type, key.entity_id, key.entity_type
-                )
-            })?;
+        let object_type = schema.find_object_type(&key.entity_type).with_context(|| {
+            format!(
+                "Entity {}[{}]: unknown entity type `{}`",
+                key.entity_type, key.entity_id, key.entity_type
+            )
+        })?;
 
         for field in &object_type.fields {
             let is_derived = field.is_derived();
@@ -822,23 +941,9 @@ impl Entity {
     }
 }
 
-impl From<HashMap<Attribute, Value>> for Entity {
-    fn from(m: HashMap<Attribute, Value>) -> Entity {
-        Entity(m)
-    }
-}
-
 impl<'a> From<&'a Entity> for Cow<'a, Entity> {
     fn from(entity: &'a Entity) -> Self {
         Cow::Borrowed(entity)
-    }
-}
-
-impl<'a> From<Vec<(&'a str, Value)>> for Entity {
-    fn from(entries: Vec<(&'a str, Value)>) -> Entity {
-        Entity::from(HashMap::from_iter(
-            entries.into_iter().map(|(k, v)| (String::from(k), v)),
-        ))
     }
 }
 
@@ -889,13 +994,7 @@ fn value_bigint() {
 #[test]
 fn entity_validation() {
     fn make_thing(name: &str) -> Entity {
-        let mut thing = Entity::new();
-        thing.set("id", name);
-        thing.set("name", name);
-        thing.set("stuff", "less");
-        thing.set("favorite_color", "red");
-        thing.set("things", Value::List(vec![]));
-        thing
+        entity! { id: name, name: name, stuff: "less", favorite_color: "red", things: Value::List(vec![]); cruft }
     }
 
     fn check(thing: Entity, errmsg: &str) {
@@ -917,8 +1016,7 @@ fn entity_validation() {
           cruft: Cruft! @derivedFrom(field: \"thing\")
       }";
         let subgraph = DeploymentHash::new("doesntmatter").unwrap();
-        let schema =
-            crate::prelude::Schema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
+        let schema = InputSchema::parse(DOCUMENT, subgraph).expect("Failed to parse test schema");
         let id = thing.id().unwrap_or("none".to_owned());
         let key = EntityKey::data("Thing".to_owned(), id.clone());
 
@@ -941,7 +1039,9 @@ fn entity_validation() {
     }
 
     let mut thing = make_thing("t1");
-    thing.set("things", Value::from(vec!["thing1", "thing2"]));
+    thing
+        .set("things", Value::from(vec!["thing1", "thing2"]))
+        .unwrap();
     check(thing, "");
 
     let thing = make_thing("t2");
@@ -962,7 +1062,7 @@ fn entity_validation() {
     );
 
     let mut thing = make_thing("t5");
-    thing.set("name", Value::Int(32));
+    thing.set("name", Value::Int(32)).unwrap();
     check(
         thing,
         "Entity Thing[t5]: the value `32` for field `name` must \
@@ -970,7 +1070,9 @@ fn entity_validation() {
     );
 
     let mut thing = make_thing("t6");
-    thing.set("things", Value::List(vec!["thing1".into(), 17.into()]));
+    thing
+        .set("things", Value::List(vec!["thing1".into(), 17.into()]))
+        .unwrap();
     check(
         thing,
         "Entity Thing[t6]: field `things` is of type [Thing!]!, \
@@ -983,7 +1085,7 @@ fn entity_validation() {
     check(thing, "");
 
     let mut thing = make_thing("t8");
-    thing.set("cruft", "wat");
+    thing.set("cruft", "wat").unwrap();
     check(
         thing,
         "Entity Thing[t8]: field `cruft` is derived and can not be set",

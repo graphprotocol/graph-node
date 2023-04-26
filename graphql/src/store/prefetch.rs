@@ -12,19 +12,19 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
+use graph::schema::{ast as sast, ApiSchema};
 use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
-        s, ApiSchema, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter,
-        EntityLink, EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
+        s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
+        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
         Value as StoreValue, WindowAttribute, ENV_VARS,
     },
 };
 
 use crate::execution::{ast as a, ExecutionContext, Resolver};
 use crate::metrics::GraphQLMetrics;
-use crate::schema::ast as sast;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
@@ -40,7 +40,7 @@ struct Node {
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
 
-    entity: BTreeMap<Word, r::Value>,
+    entity: Object,
     /// We are using an `Rc` here for two reasons: it allows us to defer
     /// copying objects until the end, when converting to `q::Value` forces
     /// us to copy any child that is referenced by multiple parents. It also
@@ -84,8 +84,8 @@ struct Node {
     children: BTreeMap<Word, Vec<Rc<Node>>>,
 }
 
-impl From<BTreeMap<Word, r::Value>> for Node {
-    fn from(entity: BTreeMap<Word, r::Value>) -> Self {
+impl From<Object> for Node {
+    fn from(entity: Object) -> Self {
         Node {
             children_weight: entity.weight(),
             entity,
@@ -130,7 +130,7 @@ fn is_root_node<'a>(mut nodes: impl Iterator<Item = &'a Node>) -> bool {
 }
 
 fn make_root_node() -> Vec<Node> {
-    let entity = BTreeMap::new();
+    let entity = Object::empty();
     vec![Node {
         children_weight: entity.weight(),
         entity,
@@ -145,13 +145,14 @@ fn make_root_node() -> Vec<Node> {
 impl From<Node> for r::Value {
     fn from(node: Node) -> Self {
         let mut map = node.entity;
-        for (key, nodes) in node.children.into_iter() {
-            map.insert(
+        let entries = node.children.into_iter().map(|(key, nodes)| {
+            (
                 format!("prefetch:{}", key).into(),
                 node_list_as_value(nodes),
-            );
-        }
-        r::Value::object(map)
+            )
+        });
+        map.extend(entries);
+        r::Value::Object(map)
     }
 }
 
@@ -178,7 +179,7 @@ impl Node {
     }
 
     fn get(&self, key: &str) -> Option<&r::Value> {
-        self.entity.get(&key.into())
+        self.entity.get(key)
     }
 
     fn typename(&self) -> &str {
@@ -480,9 +481,12 @@ pub fn run(
     execute_root_selection_set(resolver, ctx, selection_set).map(|(nodes, trace)| {
         graphql_metrics.observe_query_result_size(nodes.weight());
         let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
-            node.children
-                .into_iter()
-                .map(|(key, nodes)| (format!("prefetch:{}", key), node_list_as_value(nodes)))
+            node.children.into_iter().map(|(key, nodes)| {
+                (
+                    Word::from(format!("prefetch:{}", key)),
+                    node_list_as_value(nodes),
+                )
+            })
         }));
         (r::Value::Object(obj), trace)
     })
@@ -699,12 +703,7 @@ fn fetch(
     resolver
         .store
         .find_query_values(query)
-        .map(|(values, trace)| {
-            (
-                values.into_iter().map(|entity| entity.into()).collect(),
-                trace,
-            )
-        })
+        .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
 }
 
 #[derive(Debug, Default, Clone)]

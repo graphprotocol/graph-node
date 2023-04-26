@@ -6,9 +6,10 @@ use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityOrder, EntityQuery, Logger, Schema, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
+    EntityOrder, EntityQuery, Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
+use graph::schema::InputSchema;
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
@@ -297,12 +298,23 @@ fn insert_user_entity(
     drinks: Option<Vec<&str>>,
     block: BlockNumber,
 ) {
-    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
+    let user = make_user(
+        &layout.input_schema,
+        id,
+        name,
+        email,
+        age,
+        weight,
+        coffee,
+        favorite_color,
+        drinks,
+    );
 
     insert_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
 fn make_user(
+    schema: &InputSchema,
     id: &str,
     name: &str,
     email: &str,
@@ -316,7 +328,7 @@ fn make_user(
         .map(|s| Value::String(s.to_owned()))
         .unwrap_or(Value::Null);
     let bin_name = Bytes::from_str(&hex::encode(name)).unwrap();
-    let mut user = entity! {
+    let mut user = entity! { schema =>
         id: id,
         name: name,
         bin_name: bin_name,
@@ -326,9 +338,10 @@ fn make_user(
         weight: BigDecimal::from(weight),
         coffee: coffee,
         favorite_color: favorite_color
-    };
+    }
+    .unwrap();
     if let Some(drinks) = drinks {
-        user.insert("drinks".to_owned(), drinks.into());
+        user.insert("drinks", drinks.into()).unwrap();
     }
     user
 }
@@ -392,7 +405,17 @@ fn update_user_entity(
     drinks: Option<Vec<&str>>,
     block: BlockNumber,
 ) {
-    let user = make_user(id, name, email, age, weight, coffee, favorite_color, drinks);
+    let user = make_user(
+        &layout.input_schema,
+        id,
+        name,
+        email,
+        age,
+        weight,
+        coffee,
+        favorite_color,
+        drinks,
+    );
     update_entity_at(conn, layout, entity_type, vec![user], block);
 }
 
@@ -417,7 +440,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = Schema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
         NAMESPACE.clone(),
@@ -431,10 +454,8 @@ fn create_schema(conn: &PgConnection) -> Layout {
 }
 
 fn scrub(entity: &Entity) -> Entity {
-    let mut scrubbed = Entity::new();
-    // merge_remove_null_fields has the side-effect of removing any attribute
-    // that is Value::Null
-    scrubbed.merge_remove_null_fields(entity.clone());
+    let mut scrubbed = entity.clone();
+    scrubbed.remove_null_fields();
     scrubbed
 }
 
@@ -559,9 +580,9 @@ fn update() {
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
-        entity.set("string", "updated");
+        entity.set("string", "updated").unwrap();
         entity.remove("strings");
-        entity.set("bool", Value::Null);
+        entity.set("bool", Value::Null).unwrap();
         let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap());
 
         let entity_type = EntityType::from("Scalar");
@@ -587,9 +608,9 @@ fn update_many() {
     run_test(|conn, layout| {
         let mut one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
-        two.set("id", "two");
+        two.set("id", "two").unwrap();
         let mut three = SCALAR_ENTITY.clone();
-        three.set("id", "three");
+        three.set("id", "three").unwrap();
         insert_entity(
             conn,
             layout,
@@ -601,15 +622,15 @@ fn update_many() {
         assert_eq!(3, count_scalar_entities(conn, layout));
 
         // update with overwrite
-        one.set("string", "updated");
+        one.set("string", "updated").unwrap();
         one.remove("strings");
 
-        two.set("string", "updated too");
-        two.set("bool", false);
+        two.set("string", "updated too").unwrap();
+        two.set("bool", false).unwrap();
 
-        three.set("string", "updated in a different way");
+        three.set("string", "updated in a different way").unwrap();
         three.remove("strings");
-        three.set("color", "red");
+        three.set("color", "red").unwrap();
 
         // generate keys
         let entity_type = EntityType::from("Scalar");
@@ -687,7 +708,7 @@ fn serialize_bigdecimal() {
 
         for d in &["50", "50.00", "5000", "0.5000", "0.050", "0.5", "0.05"] {
             let d = BigDecimal::from_str(d).unwrap();
-            entity.set("bigDecimal", d);
+            entity.set("bigDecimal", d).unwrap();
 
             let key = EntityKey::data("Scalar".to_owned(), entity.id().unwrap().clone());
             let entity_type = EntityType::from("Scalar");
@@ -736,7 +757,7 @@ fn delete() {
     run_test(|conn, layout| {
         insert_entity(conn, layout, "Scalar", vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
-        two.set("id", "two");
+        two.set("id", "two").unwrap();
         insert_entity(conn, layout, "Scalar", vec![two]);
 
         // Delete where nothing is getting deleted
@@ -768,9 +789,9 @@ fn insert_many_and_delete_many() {
     run_test(|conn, layout| {
         let one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
-        two.set("id", "two");
+        two.set("id", "two").unwrap();
         let mut three = SCALAR_ENTITY.clone();
-        three.set("id", "three");
+        three.set("id", "three").unwrap();
         insert_entity(conn, layout, "Scalar", vec![one, two, three]);
 
         // confidence test: there should be 3 scalar entities in store right now
@@ -846,9 +867,7 @@ fn conflicting_entity() {
         let dog = EntityType::from(dog);
         let ferret = EntityType::from(ferret);
 
-        let mut fred = Entity::new();
-        fred.set("id", id.clone());
-        fred.set("name", Value::String(id.to_string()));
+        let fred = entity! { id:  id.clone(), name: id.clone() };
         insert_entity(conn, layout, cat.as_str(), vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:

@@ -1,6 +1,7 @@
 use graph::components::store::UnitStream;
 use graph::data::query::Trace;
-use graph::prelude::{async_trait, s, tokio, ApiSchema, Error, QueryExecutionError};
+use graph::prelude::{async_trait, s, tokio, Error, QueryExecutionError};
+use graph::schema::ApiSchema;
 use graph::{
     data::graphql::ObjectOrInterface,
     prelude::{r, QueryResult},

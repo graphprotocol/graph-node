@@ -3,12 +3,13 @@ use std::sync::Arc;
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
-    async_trait, o, r, s, slog, tokio, ApiSchema, DeploymentHash, Logger, Query,
-    QueryExecutionError, QueryResult, Schema,
+    async_trait, o, r, s, slog, tokio, DeploymentHash, Logger, Query, QueryExecutionError,
+    QueryResult,
 };
+use graph::schema::{api_schema, ApiSchema, Schema};
+
 use graph_graphql::prelude::{
-    a, api_schema, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions,
-    Resolver,
+    a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
 use test_store::graphql_metrics;
 use test_store::LOAD_MANAGER;

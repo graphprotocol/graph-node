@@ -29,3 +29,5 @@ pub mod mem;
 
 /// Data structures instrumented with Prometheus metrics.
 pub mod monitored;
+
+pub mod intern;

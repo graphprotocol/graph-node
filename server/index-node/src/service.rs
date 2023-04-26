@@ -374,7 +374,10 @@ impl ValidatedRequest {
 
 #[cfg(test)]
 mod tests {
-    use graph::{data::value::Object, prelude::*};
+    use graph::{
+        data::value::{Object, Word},
+        prelude::*,
+    };
 
     use hyper::body::Bytes;
     use hyper::HeaderMap;
@@ -474,7 +477,7 @@ mod tests {
                 (
                     String::from("map"),
                     r::Value::Object(Object::from_iter(
-                        vec![(String::from("k"), r::Value::String(String::from("v")))].into_iter(),
+                        vec![(Word::from("k"), r::Value::String(String::from("v")))].into_iter(),
                     )),
                 ),
                 (String::from("int"), r::Value::Int(5)),

@@ -2,8 +2,12 @@ use super::cache::{QueryBlockCache, QueryCache};
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
-    data::{query::Trace, schema::META_FIELD_NAME, value::Object},
+    data::{
+        query::Trace,
+        value::{Object, Word},
+    },
     prelude::{s, CheapClone},
+    schema::META_FIELD_NAME,
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
@@ -15,13 +19,13 @@ use graph::data::graphql::*;
 use graph::data::query::CacheStatus;
 use graph::env::CachedSubgraphIds;
 use graph::prelude::*;
+use graph::schema::ast as sast;
 use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
 use crate::execution::ast as a;
 use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
-use crate::schema::ast as sast;
 
 lazy_static! {
     // Sharded query results cache for recent blocks by network.
@@ -284,11 +288,11 @@ pub(crate) async fn execute_root_selection_set_uncached(
     if !intro_set.is_empty() {
         let ictx = ctx.as_introspection_context();
 
-        values.extend(
+        values.append(
             execute_selection_set_to_map(
                 &ictx,
                 ctx.query.selection_set.as_ref(),
-                &INTROSPECTION_QUERY_TYPE,
+                &*INTROSPECTION_QUERY_TYPE,
                 None,
             )
             .await?,
@@ -538,7 +542,7 @@ async fn execute_selection_set_to_map<'a>(
     }
 
     if errors.is_empty() {
-        let obj = Object::from_iter(results.into_iter().map(|(k, v)| (k.to_owned(), v)));
+        let obj = Object::from_iter(results.into_iter().map(|(k, v)| (Word::from(k), v)));
         Ok(obj)
     } else {
         Err(errors)

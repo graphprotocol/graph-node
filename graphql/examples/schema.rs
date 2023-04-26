@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::process::exit;
 
-use graph_graphql::schema::api::api_schema;
+use graph::schema::api_schema;
 
 pub fn usage(msg: &str) -> ! {
     println!("{}", msg);

@@ -98,7 +98,7 @@ where
             failed: vi.failed,
             description: vi.description.as_deref(),
             repository: vi.repository.as_deref(),
-            schema: vi.schema.document.to_string(),
+            schema: vi.schema.document_string(),
             network: vi.network.as_str()
         };
         Ok(as_http_response(&value))

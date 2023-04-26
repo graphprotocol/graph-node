@@ -3,13 +3,14 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use graph::data::value::Word;
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::blockchain::Blockchain;
-use graph::components::store::{EnsLookup, LoadRelatedRequest};
+use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
@@ -155,7 +156,7 @@ impl<C: Blockchain> HostExports<C> {
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
-        data: HashMap<String, Value>,
+        data: HashMap<Word, Value>,
         stopwatch: &StopwatchMetrics,
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
@@ -181,7 +182,10 @@ impl<C: Blockchain> HostExports<C> {
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
 
-        let entity = Entity::from(data);
+        let entity = state
+            .entity_cache
+            .make_entity(data.into_iter().map(|(key, value)| (key, value)))?;
+
         state.entity_cache.set(key, entity)?;
 
         Ok(())
@@ -225,6 +229,7 @@ impl<C: Blockchain> HostExports<C> {
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
+        scope: GetScope,
     ) -> Result<Option<Entity>, anyhow::Error> {
         let store_key = EntityKey {
             entity_type: EntityType::new(entity_type),
@@ -233,7 +238,7 @@ impl<C: Blockchain> HostExports<C> {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get(&store_key)?;
+        let result = state.entity_cache.get(&store_key, scope)?;
         gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
 
         Ok(result)
@@ -751,13 +756,9 @@ impl<C: Blockchain> HostExports<C> {
     pub(crate) fn data_source_context(
         &self,
         gas: &GasCounter,
-    ) -> Result<Entity, DeterministicHostError> {
+    ) -> Result<Option<DataSourceContext>, DeterministicHostError> {
         gas.consume_host_fn(Gas::new(gas::DEFAULT_BASE_COST))?;
-        Ok(self
-            .data_source_context
-            .as_ref()
-            .clone()
-            .unwrap_or_default())
+        Ok(self.data_source_context.as_ref().clone())
     }
 
     pub(crate) fn json_from_bytes(

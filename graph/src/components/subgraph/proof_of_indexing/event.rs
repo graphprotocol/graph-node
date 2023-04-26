@@ -1,3 +1,4 @@
+use crate::data::value::Word;
 use crate::prelude::{impl_slog_value, Value};
 use stable_hash_legacy::StableHasher;
 use std::collections::{BTreeMap, HashMap};
@@ -13,7 +14,7 @@ pub enum ProofOfIndexingEvent<'a> {
     SetEntity {
         entity_type: &'a str,
         id: &'a str,
-        data: &'a HashMap<String, Value>,
+        data: &'a HashMap<Word, Value>,
     },
     /// For when a deterministic error has happened.
     ///

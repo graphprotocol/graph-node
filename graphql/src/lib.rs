@@ -1,8 +1,5 @@
 pub extern crate graphql_parser;
 
-/// Utilities for working with GraphQL schemas.
-pub mod schema;
-
 /// Utilities for schema introspection.
 pub mod introspection;
 
@@ -32,7 +29,6 @@ pub mod prelude {
     pub use super::execution::{ast as a, ExecutionContext, Query, Resolver};
     pub use super::introspection::IntrospectionResolver;
     pub use super::query::{execute_query, ext::BlockConstraint, QueryExecutionOptions};
-    pub use super::schema::{api_schema, APISchemaError};
     pub use super::store::StoreResolver;
     pub use super::subscription::SubscriptionExecutionOptions;
     pub use super::values::MaybeCoercible;

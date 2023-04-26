@@ -9,7 +9,7 @@ const ID_TYPE: ColumnType = ColumnType::String;
 
 fn test_layout(gql: &str) -> Layout {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
-    let schema = Schema::parse(gql, subgraph.clone()).expect("Test schema invalid");
+    let schema = InputSchema::parse(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let catalog = Catalog::for_tests(site.clone(), BTreeSet::from_iter(["FileThing".into()]))
@@ -201,7 +201,7 @@ const THING_GQL: &str = r#"
             bigInt: BigInt,
             color: Color,
         }
-        
+
         type FileThing @entity {
             id: ID!
         }

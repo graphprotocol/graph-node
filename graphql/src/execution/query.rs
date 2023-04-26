@@ -1,5 +1,6 @@
 use graph::data::graphql::DocumentExt as _;
-use graph::data::value::Object;
+use graph::data::value::{Object, Word};
+use graph::schema::ApiSchema;
 use graphql_parser::Pos;
 use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{validate, ValidationPlan};
@@ -14,17 +15,17 @@ use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
 use graph::data::query::QueryExecutionError;
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
-use graph::data::schema::ApiSchema;
 use graph::prelude::{
     info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, GraphQLMetrics, Logger,
     TryFromValue, ENV_VARS,
 };
+use graph::schema::ast::{self as sast};
+use graph::schema::ErrorPolicy;
 
 use crate::execution::ast as a;
+use crate::execution::get_field;
 use crate::query::{ast as qast, ext::BlockConstraint};
-use crate::schema::ast::{self as sast};
 use crate::values::coercion;
-use crate::{execution::get_field, schema::api::ErrorPolicy};
 
 lazy_static! {
     static ref GRAPHQL_VALIDATION_PLAN: ValidationPlan =
@@ -849,7 +850,7 @@ impl Transform {
             ) {
                 Ok(Some(value)) => {
                     let value = if argument_def.name == *"text" {
-                        r::Value::Object(Object::from_iter(vec![(field_name.to_string(), value)]))
+                        r::Value::Object(Object::from_iter(vec![(Word::from(field_name), value)]))
                     } else {
                         value
                     };

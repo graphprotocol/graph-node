@@ -351,7 +351,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph::data::value::Object;
+    use graph::data::value::{Object, Word};
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
@@ -398,11 +398,7 @@ mod tests {
 
         async fn run_query(self: Arc<Self>, _query: Query, _target: QueryTarget) -> QueryResults {
             QueryResults::from(Object::from_iter(
-                vec![(
-                    String::from("name"),
-                    r::Value::String(String::from("Jordi")),
-                )]
-                .into_iter(),
+                vec![(Word::from("name"), r::Value::String(String::from("Jordi")))].into_iter(),
             ))
         }
 

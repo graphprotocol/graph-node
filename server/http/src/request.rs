@@ -51,7 +51,10 @@ mod tests {
     use std::collections::HashMap;
 
     use graph::{
-        data::{query::QueryTarget, value::Object},
+        data::{
+            query::QueryTarget,
+            value::{Object, Word},
+        },
         prelude::*,
     };
 
@@ -165,7 +168,7 @@ mod tests {
                 (
                     String::from("map"),
                     r::Value::Object(Object::from_iter(
-                        vec![(String::from("k"), r::Value::String(String::from("v")))].into_iter(),
+                        vec![(Word::from("k"), r::Value::String(String::from("v")))].into_iter(),
                     )),
                 ),
                 (String::from("int"), r::Value::Int(5)),

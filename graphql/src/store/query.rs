@@ -6,10 +6,11 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::*;
+use graph::schema::ast::{self as sast, FilterOp};
+use graph::schema::ApiSchema;
 use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
 
 use crate::execution::ast as a;
-use crate::schema::ast::{self as sast, FilterOp};
 
 use super::prefetch::SelectedAttributes;
 
@@ -749,13 +750,14 @@ mod tests {
         components::store::EntityType,
         data::value::Object,
         prelude::{
-            r, ApiSchema, AttributeNames, DeploymentHash, EntityCollection, EntityFilter,
-            EntityRange, Schema, Value, ValueType, BLOCK_NUMBER_MAX,
+            r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Value,
+            ValueType, BLOCK_NUMBER_MAX,
         },
         prelude::{
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
             EntityOrder,
         },
+        schema::{ApiSchema, Schema},
     };
     use graphql_parser::Pos;
     use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
@@ -1150,7 +1152,7 @@ mod tests {
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
-                "name_ends_with".to_string(),
+                "name_ends_with".into(),
                 r::Value::String("ello".to_string()),
             )])),
         );
@@ -1183,9 +1185,9 @@ mod tests {
         let query_field = default_field_with(
             "where",
             r::Value::Object(Object::from_iter(vec![(
-                "_change_block".to_string(),
+                "_change_block".into(),
                 r::Value::Object(Object::from_iter(vec![(
-                    "number_gte".to_string(),
+                    "number_gte".into(),
                     r::Value::Int(10),
                 )])),
             )])),

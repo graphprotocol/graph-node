@@ -1,4 +1,5 @@
 use crate::data::value::Object;
+use crate::data::value::Word;
 use crate::prelude::q;
 use crate::prelude::r;
 use std::iter::FromIterator;
@@ -8,7 +9,7 @@ use std::iter::FromIterator;
 /// consider using the `object! {}` macro instead.
 pub fn object_value(data: Vec<(&str, r::Value)>) -> r::Value {
     r::Value::Object(Object::from_iter(
-        data.into_iter().map(|(k, v)| (k.to_string(), v)),
+        data.into_iter().map(|(k, v)| (Word::from(k), v)),
     ))
 }
 
@@ -102,10 +103,11 @@ impl_into_values![(String, String), (f64, Float), (bool, Boolean)];
 macro_rules! object {
     ($($name:ident: $value:expr,)*) => {
         {
+            use $crate::data::value::Word;
             let mut result = Vec::new();
             $(
                 let value = $crate::data::graphql::object_macro::IntoValue::into_value($value);
-                result.push((stringify!($name).to_string(), value));
+                result.push((Word::from(stringify!($name)), value));
             )*
             $crate::prelude::r::Value::Object($crate::data::value::Object::from_iter(result))
         }

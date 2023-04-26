@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
-
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::QueryStore as QueryStoreTrait;
 use graph::data::query::Trace;
-use graph::data::value::Word;
+use graph::data::value::Object;
 use graph::prelude::*;
+use graph::schema::ApiSchema;
 
 use crate::primary::Site;
 
@@ -39,7 +38,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<BTreeMap<Word, r::Value>>, Trace), graph::prelude::QueryExecutionError> {
+    ) -> Result<(Vec<Object>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store

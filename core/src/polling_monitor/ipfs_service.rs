@@ -17,7 +17,7 @@ pub fn ipfs_service(
     client: IpfsClient,
     max_file_size: u64,
     timeout: Duration,
-    concurrency_and_rate_limit: u16,
+    rate_limit: u16,
 ) -> IpfsService {
     let ipfs = IpfsServiceInner {
         client,
@@ -26,8 +26,7 @@ pub fn ipfs_service(
     };
 
     let svc = ServiceBuilder::new()
-        .rate_limit(concurrency_and_rate_limit.into(), Duration::from_secs(1))
-        .concurrency_limit(concurrency_and_rate_limit as usize)
+        .rate_limit(rate_limit.into(), Duration::from_secs(1))
         .service_fn(move |req| ipfs.cheap_clone().call_inner(req))
         .boxed();
 
