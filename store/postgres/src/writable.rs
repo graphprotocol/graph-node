@@ -808,8 +808,8 @@ impl Queue {
                                     }
                                 }
                             }
-                            for key in batch.removes(&derived_query.entity_type) {
-                                map.insert(key.clone(), None);
+                            for eref in batch.removes(&derived_query.entity_type) {
+                                map.insert(eref.key.clone(), None);
                             }
                         }
                     }

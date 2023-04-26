@@ -1,7 +1,7 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::components::store::write::{EntityWrite, RowGroup};
+use graph::components::store::write::{EntityRef, EntityWrite, RowGroup};
 use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data::value::Word;
@@ -91,14 +91,14 @@ pub fn row_group(
     group
 }
 
-pub fn row_group_key(
+pub fn row_group_ref(
     entity_type: &EntityType,
-    _block: BlockNumber,
+    block: BlockNumber,
     data: impl IntoIterator<Item = EntityKey>,
-) -> RowGroup<EntityKey> {
+) -> RowGroup<EntityRef> {
     let mut group = RowGroup::new(entity_type.clone());
     for key in data {
-        group.push(key);
+        group.push(EntityRef::new(key, block));
     }
     group
 }
@@ -353,9 +353,9 @@ fn delete() {
         let key = EntityKey::data("Thing".to_owned(), "ffff".to_owned());
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.clone()];
-        let group = row_group_key(&entity_type, 1, entity_keys.clone());
+        let group = row_group_ref(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(conn, &group, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -364,9 +364,9 @@ fn delete() {
             .get_mut(0)
             .map(|key| key.entity_id = Word::from(TWO_ID))
             .expect("Failed to update entity types");
-        let group = row_group_key(&entity_type, 1, entity_keys);
+        let group = row_group_ref(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(conn, &group, 1, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
     });

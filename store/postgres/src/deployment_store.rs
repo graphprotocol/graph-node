@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::write::{EntityWrite, RowGroup, RowGroups};
+use graph::components::store::write::{EntityRef, EntityWrite, RowGroup, RowGroups};
 use graph::components::store::{
     Batch, DerivedEntityQuery, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest,
     PruningStrategy, StoredDynamicDataSource, VersionStats,
@@ -45,7 +45,7 @@ use graph::prelude::{
 use graph::schema::{ApiSchema, InputSchema};
 use web3::types::Address;
 
-use crate::block_range::{block_number, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
@@ -322,8 +322,7 @@ impl DeploymentStore {
         layout: &Layout,
         inserts: &RowGroups<EntityWrite>,
         overwrites: &RowGroups<EntityWrite>,
-        removes: &RowGroups<EntityKey>,
-        ptr: &BlockPtr,
+        removes: &RowGroups<EntityRef>,
         stopwatch: &StopwatchMetrics,
     ) -> Result<i32, StoreError> {
         let mut count = 0;
@@ -342,7 +341,7 @@ impl DeploymentStore {
 
         // Removals
         for group in &removes.groups {
-            count -= self.remove_entities(group, conn, layout, ptr, stopwatch)? as i32;
+            count -= self.remove_entities(group, conn, layout, stopwatch)? as i32;
         }
         Ok(count)
     }
@@ -385,14 +384,13 @@ impl DeploymentStore {
 
     fn remove_entities(
         &self,
-        group: &RowGroup<EntityKey>,
+        group: &RowGroup<EntityRef>,
         conn: &PgConnection,
         layout: &Layout,
-        ptr: &BlockPtr,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let _section = stopwatch.start_section("apply_entity_modifications_delete");
-        layout.delete(conn, group, block_number(ptr), stopwatch)
+        layout.delete(conn, group, stopwatch)
     }
 
     /// Execute a closure with a connection to the database.
@@ -1142,7 +1140,6 @@ impl DeploymentStore {
                     &batch.inserts,
                     &batch.overwrites,
                     &batch.removes,
-                    &batch.block_ptr,
                     stopwatch,
                 )?;
                 section.end();

@@ -40,6 +40,23 @@ impl BlockTagged for EntityWrite {
     }
 }
 
+pub struct EntityRef {
+    pub key: EntityKey,
+    pub block: BlockNumber,
+}
+
+impl EntityRef {
+    pub fn new(key: EntityKey, block: BlockNumber) -> Self {
+        Self { key, block }
+    }
+}
+
+impl BlockTagged for EntityRef {
+    fn block(&self) -> BlockNumber {
+        self.block
+    }
+}
+
 /// A list of entity changes grouped by the entity type
 pub struct RowGroup<R> {
     pub entity_type: EntityType,
@@ -190,7 +207,7 @@ pub struct Batch {
     /// Existing entities that need to be modified
     pub overwrites: RowGroups<EntityWrite>,
     /// Existing entities that need to be removed
-    pub removes: RowGroups<EntityKey>,
+    pub removes: RowGroups<EntityRef>,
     /// New data sources
     pub data_sources: DataSources,
     pub deterministic_errors: Vec<SubgraphError>,
@@ -223,7 +240,8 @@ impl Batch {
                     overwrites.group_entry(&row.key.entity_type).push(row);
                 }
                 EntityModification::Remove { key } => {
-                    removes.group_entry(&key.entity_type).push(key)
+                    let row = EntityRef::new(key, block);
+                    removes.group_entry(&row.key.entity_type).push(row)
                 }
             }
         }
@@ -259,7 +277,7 @@ impl Batch {
             return Some(EntityOp::Write(entity));
         }
         self.removes(entity_type)
-            .find(|key| key.entity_id.as_str() == id)
+            .find(|eref| eref.key.entity_id.as_str() == id)
             .map(|_| EntityOp::Remove)
     }
 
@@ -302,7 +320,7 @@ impl Batch {
     }
 
     /// Iterate over all entity deletions/removals
-    pub fn removes(&self, entity_type: &EntityType) -> impl Iterator<Item = &EntityKey> {
+    pub fn removes(&self, entity_type: &EntityType) -> impl Iterator<Item = &EntityRef> {
         self.removes
             .group(entity_type)
             .into_iter()
