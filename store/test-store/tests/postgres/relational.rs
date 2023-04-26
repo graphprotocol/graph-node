@@ -34,7 +34,7 @@ use graph_store_postgres::{
 
 use test_store::*;
 
-use crate::postgres::relational_bytes::{row_group, row_group_ref};
+use crate::postgres::relational_bytes::{row_group_delete, row_group_insert, row_group_update};
 
 const THINGS_GQL: &str = r#"
     type _Schema_ @fulltext(
@@ -235,7 +235,7 @@ fn insert_entity_at(
         "Failed to insert entities {}[{:?}]",
         entity_type, entities_with_keys
     );
-    let group = row_group(&entity_type, block, entities_with_keys_owned.clone());
+    let group = row_group_insert(&entity_type, block, entities_with_keys_owned.clone());
     let inserted = layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
     assert_eq!(inserted, entities_with_keys_owned.len());
 }
@@ -268,7 +268,7 @@ fn update_entity_at(
         "Failed to insert entities {}[{:?}]",
         entity_type, entities_with_keys
     );
-    let group = row_group(&entity_type, block, entities_with_keys_owned.clone());
+    let group = row_group_update(&entity_type, block, entities_with_keys_owned.clone());
     let updated = layout.update(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
     assert_eq!(updated, entities_with_keys_owned.len());
 }
@@ -575,7 +575,7 @@ fn update() {
 
         let entity_type = EntityType::from("Scalar");
         let entities = vec![(key, entity.clone())];
-        let group = row_group(&entity_type, 0, entities);
+        let group = row_group_update(&entity_type, 0, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to update");
@@ -630,7 +630,7 @@ fn update_many() {
 
         let entities_vec = vec![one, two, three];
         let entities: Vec<_> = keys.into_iter().zip(entities_vec.into_iter()).collect();
-        let group = row_group(&entity_type, 0, entities);
+        let group = row_group_update(&entity_type, 0, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to update");
@@ -699,7 +699,7 @@ fn serialize_bigdecimal() {
             let key = EntityKey::data("Scalar".to_owned(), entity.id());
             let entity_type = EntityType::from("Scalar");
             let entities = vec![(key, entity.clone())];
-            let group = row_group(&entity_type, 0, entities);
+            let group = row_group_update(&entity_type, 0, entities);
             layout
                 .update(conn, &group, &MOCK_STOPWATCH)
                 .expect("Failed to update");
@@ -745,7 +745,7 @@ fn delete() {
         let key = EntityKey::data("Scalar".to_owned(), "no such entity".to_owned());
         let entity_type = EntityType::from("Scalar");
         let mut entity_keys = vec![key];
-        let group = row_group_ref(&entity_type, 1, entity_keys.clone());
+        let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -758,7 +758,7 @@ fn delete() {
             .map(|key| key.entity_id = Word::from("two"))
             .expect("Failed to update key");
 
-        let group = row_group_ref(&entity_type, 1, entity_keys);
+        let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
@@ -786,7 +786,7 @@ fn insert_many_and_delete_many() {
             .into_iter()
             .map(|key| EntityKey::data(entity_type.as_str(), key))
             .collect();
-        let group = row_group_ref(&entity_type, 1, entity_keys);
+        let group = row_group_delete(&entity_type, 1, entity_keys);
         let num_removed = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");

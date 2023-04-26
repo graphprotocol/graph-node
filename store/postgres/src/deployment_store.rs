@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::write::{EntityRef, EntityWrite, RowGroup, RowGroups};
+use graph::components::store::write::RowGroup;
 use graph::components::store::{
     Batch, DerivedEntityQuery, EntityKey, EntityType, PrunePhase, PruneReporter, PruneRequest,
     PruningStrategy, StoredDynamicDataSource, VersionStats,
@@ -13,6 +13,7 @@ use graph::components::store::{
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
+use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::futures03::FutureExt;
 use graph::prelude::{
@@ -272,7 +273,8 @@ impl DeploymentStore {
         &self,
         conn: &PgConnection,
         layout: &Layout,
-        key: &EntityKey,
+        entity_type: &EntityType,
+        entity_id: &Word,
     ) -> Result<(), StoreError> {
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
@@ -291,24 +293,24 @@ impl DeploymentStore {
             .expect("API schema should be present")
             .clone();
         let types_for_interface = schema.types_for_interface();
-        let entity_type = key.entity_type.to_string();
+        let entity_type_str = entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(&key.entity_type)
+                .interfaces_for_type(entity_type)
                 .into_iter()
                 .flatten()
                 .flat_map(|interface| &types_for_interface[&EntityType::from(interface)])
                 .map(EntityType::from)
-                .filter(|type_name| type_name != &key.entity_type),
+                .filter(|type_name| type_name != entity_type),
         );
 
         if !types_with_shared_interface.is_empty() {
             if let Some(conflicting_entity) =
-                layout.conflicting_entity(conn, &key.entity_id, types_with_shared_interface)?
+                layout.conflicting_entity(conn, entity_id, types_with_shared_interface)?
             {
                 return Err(StoreError::ConflictingId(
-                    entity_type,
-                    key.entity_id.to_string(),
+                    entity_type_str,
+                    entity_id.to_string(),
                     conflicting_entity,
                 ));
             }
@@ -316,47 +318,36 @@ impl DeploymentStore {
         Ok(())
     }
 
-    fn apply_entity_modifications(
+    fn apply_entity_modifications<'a>(
         &self,
         conn: &PgConnection,
         layout: &Layout,
-        inserts: &RowGroups<EntityWrite>,
-        overwrites: &RowGroups<EntityWrite>,
-        removes: &RowGroups<EntityRef>,
+        groups: impl Iterator<Item = &'a RowGroup>,
         stopwatch: &StopwatchMetrics,
     ) -> Result<i32, StoreError> {
         let mut count = 0;
 
-        // Apply modification groups.
-        // Inserts:
-        for group in &inserts.groups {
+        for group in groups {
+            if group.has_clamps() {
+                count -= self.remove_entities(group, conn, layout, stopwatch)? as i32;
+            }
             count += self.insert_entities(group, conn, layout, stopwatch)? as i32
         }
 
-        // Overwrites:
-        for group in &overwrites.groups {
-            // we do not update the count since the number of entities remains the same
-            self.overwrite_entities(group, conn, layout, stopwatch)?;
-        }
-
-        // Removals
-        for group in &removes.groups {
-            count -= self.remove_entities(group, conn, layout, stopwatch)? as i32;
-        }
         Ok(count)
     }
 
     fn insert_entities<'a>(
         &'a self,
-        group: &'a RowGroup<EntityWrite>,
+        group: &'a RowGroup,
         conn: &PgConnection,
         layout: &'a Layout,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for row in group.rows.iter() {
+        for row in group.writes() {
             // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, &row.key)?;
+            self.check_interface_entity_uniqueness(conn, layout, &group.entity_type, &row.id())?;
         }
         section.end();
 
@@ -364,27 +355,9 @@ impl DeploymentStore {
         layout.insert(conn, group, stopwatch)
     }
 
-    fn overwrite_entities<'a>(
-        &'a self,
-        group: &'a RowGroup<EntityWrite>,
-        conn: &PgConnection,
-        layout: &'a Layout,
-        stopwatch: &StopwatchMetrics,
-    ) -> Result<usize, StoreError> {
-        let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for row in group.rows.iter() {
-            // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, &row.key)?;
-        }
-        section.end();
-
-        let _section = stopwatch.start_section("apply_entity_modifications_update");
-        layout.update(conn, group, stopwatch)
-    }
-
     fn remove_entities(
         &self,
-        group: &RowGroup<EntityRef>,
+        group: &RowGroup,
         conn: &PgConnection,
         layout: &Layout,
         stopwatch: &StopwatchMetrics,
@@ -1137,9 +1110,7 @@ impl DeploymentStore {
                 let count = self.apply_entity_modifications(
                     &conn,
                     layout.as_ref(),
-                    &batch.inserts,
-                    &batch.overwrites,
-                    &batch.removes,
+                    batch.groups(),
                     stopwatch,
                 )?;
                 section.end();
