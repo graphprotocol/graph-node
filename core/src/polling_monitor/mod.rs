@@ -161,6 +161,8 @@ where
 
                     // Object not found, push the id to the back of the queue.
                     Ok((id, None)) => {
+                        debug!(logger, "not found on polling"; "object_id" => id.to_string());
+
                         metrics.not_found.inc();
                         queue.push_back(id);
                     }

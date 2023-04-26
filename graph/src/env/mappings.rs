@@ -49,7 +49,7 @@ pub struct EnvVarsMapping {
     /// bytes). Defaults to 256 MiB.
     pub max_ipfs_file_bytes: usize,
 
-    /// Limits both concurrent and per second requests to IPFS for file data sources.
+    /// Limits per second requests to IPFS for file data sources.
     ///
     /// Set by the environment variable `GRAPH_IPFS_REQUEST_LIMIT`. Defaults to 100.
     pub ipfs_request_limit: u16,
