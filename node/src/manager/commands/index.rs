@@ -90,11 +90,6 @@ pub async fn list(
         Ok(())
     }
 
-    fn footer(term: &mut Terminal) -> Result<(), anyhow::Error> {
-        writeln!(term, "  (a): account-like flag set")?;
-        Ok(())
-    }
-
     fn print_index(term: &mut Terminal, index: &CreateIndex) -> CmdResult {
         use CreateIndex::*;
 
