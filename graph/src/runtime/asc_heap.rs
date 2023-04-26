@@ -6,6 +6,11 @@ use super::{
     gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError,
     IndexForAscTypeId,
 };
+
+// A 128 limit is plenty for any subgraph, while the `fn recursion_limit` test ensures it is not
+// large enough to cause stack overflows.
+const MAX_RECURSION_DEPTH: usize = 128;
+
 /// A type that can read and write to the Asc heap. Call `asc_new` and `asc_get`
 /// for reading and writing Rust structs from and to Asc.
 ///
@@ -95,12 +100,21 @@ pub fn asc_get<T, C, H: AscHeap + ?Sized>(
     heap: &H,
     asc_ptr: AscPtr<C>,
     gas: &GasCounter,
+    mut depth: usize,
 ) -> Result<T, DeterministicHostError>
 where
     C: AscType + AscIndexId,
     T: FromAscObj<C>,
 {
-    T::from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas)
+    depth += 1;
+
+    if depth > MAX_RECURSION_DEPTH {
+        return Err(DeterministicHostError::Other(anyhow::anyhow!(
+            "recursion limit reached"
+        )));
+    }
+
+    T::from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas, depth)
 }
 
 /// Type that can be converted to an Asc object of class `C`.
@@ -133,10 +147,15 @@ impl ToAscObj<bool> for bool {
 }
 
 /// Type that can be converted from an Asc object of class `C`.
+///
+/// ### Overflow protection
+/// The `depth` parameter is used to prevent stack overflows, it measures how many `asc_get` calls
+/// have been made. `from_asc_obj` does not need to increment the depth, only pass it through.
 pub trait FromAscObj<C: AscType>: Sized {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         obj: C,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError>;
 }

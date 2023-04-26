@@ -1157,3 +1157,21 @@ async fn test_boolean() {
             .is_err());
     }
 }
+
+#[tokio::test]
+async fn recursion_limit() {
+    let module = test_module_latest("RecursionLimit", "recursion_limit.wasm").await;
+
+    // An error about 'unknown key' means the entity was fully read with no stack overflow.
+    module
+        .invoke_export1_val_void("recursionLimit", 128)
+        .unwrap_err()
+        .to_string()
+        .contains("Unknown key `foobar`");
+
+    assert!(module
+        .invoke_export1_val_void("recursionLimit", 129)
+        .unwrap_err()
+        .to_string()
+        .contains("recursion limit reached"));
+}

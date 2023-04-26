@@ -27,8 +27,9 @@ impl FromAscObj<Uint8Array> for web3::H160 {
         typed_array: Uint8Array,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas)?;
+        let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas, depth)?;
         Ok(Self(data))
     }
 }
@@ -38,8 +39,9 @@ impl FromAscObj<Uint8Array> for web3::H256 {
         typed_array: Uint8Array,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas)?;
+        let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
         Ok(Self(data))
     }
 }
@@ -82,8 +84,9 @@ impl FromAscObj<AscBigInt> for BigInt {
         array_buffer: AscBigInt,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap, gas)?;
+        let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap, gas, depth)?;
         Ok(BigInt::from_signed_bytes_le(&bytes))
     }
 }
@@ -109,9 +112,10 @@ impl FromAscObj<AscBigDecimal> for BigDecimal {
         big_decimal: AscBigDecimal,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let digits: BigInt = asc_get(heap, big_decimal.digits, gas)?;
-        let exp: BigInt = asc_get(heap, big_decimal.exp, gas)?;
+        let digits: BigInt = asc_get(heap, big_decimal.digits, gas, depth)?;
+        let exp: BigInt = asc_get(heap, big_decimal.exp, gas, depth)?;
 
         let bytes = exp.to_signed_bytes_le();
         let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
@@ -188,6 +192,7 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
         asc_enum: AscEnum<EthereumValueKind>,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         use ethabi::Token;
 
@@ -196,41 +201,41 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             EthereumValueKind::Bool => Token::Bool(bool::from(payload)),
             EthereumValueKind::Address => {
                 let ptr: AscPtr<AscAddress> = AscPtr::from(payload);
-                Token::Address(asc_get(heap, ptr, gas)?)
+                Token::Address(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::FixedBytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::FixedBytes(asc_get(heap, ptr, gas)?)
+                Token::FixedBytes(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Bytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::Bytes(asc_get(heap, ptr, gas)?)
+                Token::Bytes(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = asc_get(heap, ptr, gas)?;
+                let n: BigInt = asc_get(heap, ptr, gas, depth)?;
                 Token::Int(n.to_signed_u256())
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = asc_get(heap, ptr, gas)?;
+                let n: BigInt = asc_get(heap, ptr, gas, depth)?;
                 Token::Uint(n.to_unsigned_u256())
             }
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Token::String(asc_get(heap, ptr, gas)?)
+                Token::String(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::FixedArray => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::FixedArray(asc_get(heap, ptr, gas)?)
+                Token::FixedArray(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Array => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Array(asc_get(heap, ptr, gas)?)
+                Token::Array(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Tuple => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Tuple(asc_get(heap, ptr, gas)?)
+                Token::Tuple(asc_get(heap, ptr, gas, depth)?)
             }
         })
     }
@@ -241,6 +246,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
         asc_enum: AscEnum<StoreValueKind>,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         use self::store::Value;
 
@@ -248,27 +254,27 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
         Ok(match asc_enum.kind {
             StoreValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Value::String(asc_get(heap, ptr, gas)?)
+                Value::String(asc_get(heap, ptr, gas, depth)?)
             }
             StoreValueKind::Int => Value::Int(i32::from(payload)),
             StoreValueKind::BigDecimal => {
                 let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
-                Value::BigDecimal(asc_get(heap, ptr, gas)?)
+                Value::BigDecimal(asc_get(heap, ptr, gas, depth)?)
             }
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
-                Value::List(asc_get(heap, ptr, gas)?)
+                Value::List(asc_get(heap, ptr, gas, depth)?)
             }
             StoreValueKind::Null => Value::Null,
             StoreValueKind::Bytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                let array: Vec<u8> = asc_get(heap, ptr, gas)?;
+                let array: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
                 Value::Bytes(array.as_slice().into())
             }
             StoreValueKind::BigInt => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let array: Vec<u8> = asc_get(heap, ptr, gas)?;
+                let array: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
                 Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array))
             }
         })
