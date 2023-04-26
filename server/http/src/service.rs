@@ -266,6 +266,23 @@ where
         }
         .boxed()
     }
+    /// Handles requests without body.
+    fn handle_requests_without_body(&self) -> GraphQLServiceResponse {
+        async {
+            let response_obj = json!({
+                "message": "Body is required"
+            });
+            let response_str = serde_json::to_string(&response_obj).unwrap();
+
+            Ok(Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header(CONTENT_TYPE, "application/json")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(Body::from(response_str))
+                .unwrap())
+        }
+        .boxed()
+    }
 
     fn has_request_body(&self, req: &Request<Body>) -> bool {
         if let Some(length) = req.headers().get(hyper::header::CONTENT_LENGTH) {
@@ -294,8 +311,12 @@ where
         let headers = req.headers();
         let content_type = headers.get("content-type");
 
-        if method == Method::POST && (content_type.is_none() || !self.has_request_body(&req)) {
+        if method == Method::POST && (content_type.is_none()) {
             return self.handle_requests_without_content_type().boxed();
+        }
+
+        if method == Method::POST && !self.has_request_body(&req) {
+            return self.handle_requests_without_body().boxed();
         }
 
         match (method, path_segments.as_slice()) {
@@ -410,7 +431,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph::data::value::{Object, Word};
+    use graph::data::value::Object;
+    use graph::prelude::serde_json::json;
     use http::header::CONTENT_TYPE;
     use http::status::StatusCode;
     use hyper::service::Service;
@@ -533,14 +555,15 @@ mod tests {
 
         let response =
             futures03::executor::block_on(service.call(request)).expect("Should return a response");
-        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
+        let errors = test_utils::assert_error_response(response, StatusCode::OK, false);
 
         let message = errors[0].as_str().expect("Error message is not a string");
 
-        assert_eq!(
-            message,
-            "GraphQL server error (client error): The \"query\" field is missing in request data"
-        );
+        let response = json!({
+            "error": "GraphQL server error (client error): The \"query\" field is missing in request data".to_string()
+        });
+
+        assert_eq!(message, response.to_string());
     }
 
     #[tokio::test(flavor = "multi_thread")]
