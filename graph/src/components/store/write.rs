@@ -5,6 +5,7 @@ use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr},
     cheap_clone::CheapClone,
     components::subgraph::Entity,
+    constraint_violation,
     data::{subgraph::schema::SubgraphError, value::Word},
     data_source::CausalityRegion,
     prelude::DeploymentHash,
@@ -57,6 +58,8 @@ pub enum EntityMod {
     Remove { key: EntityKey, block: BlockNumber },
 }
 
+/// A helper struct for passing entity writes to the outside world, viz. the
+/// SQL query generation that inserts rows
 pub struct EntityWrite<'a> {
     pub id: &'a Word,
     pub entity: &'a Entity,
@@ -189,6 +192,58 @@ impl EntityMod {
             EntityMod::Remove { .. } => -1,
         }
     }
+
+    fn clamp(&mut self, block: BlockNumber) -> Result<(), StoreError> {
+        use EntityMod::*;
+
+        match self {
+            Insert { end, .. } | Overwrite { end, .. } => {
+                if end.is_some() {
+                    return Err(constraint_violation!(
+                        "can not clamp {:?} to block {}",
+                        self,
+                        block
+                    ));
+                }
+                *end = Some(block);
+            }
+            Remove { .. } => {
+                return Err(constraint_violation!(
+                    "can not clamp block range for removal of {:?} to {}",
+                    self,
+                    block
+                ))
+            }
+        }
+        Ok(())
+    }
+
+    /// Turn an `Overwrite` into an `Insert`, return an error if this is a `Remove`
+    fn as_insert(self, entity_type: &EntityType) -> Result<Self, StoreError> {
+        use EntityMod::*;
+
+        match self {
+            Insert { .. } => Ok(self),
+            Overwrite {
+                key,
+                data,
+                block,
+                end,
+            } => Ok(Insert {
+                key,
+                data,
+                block,
+                end,
+            }),
+            Remove { key, .. } => {
+                return Err(constraint_violation!(
+                    "a remove for {}[{}] can not be converted into an insert",
+                    entity_type,
+                    key.entity_id
+                ))
+            }
+        }
+    }
 }
 
 /// A list of entity changes grouped by the entity type
@@ -196,7 +251,8 @@ impl EntityMod {
 pub struct RowGroup {
     pub entity_type: EntityType,
     /// All changes for this entity type, ordered by block; i.e., if `i < j`
-    /// then `rows[i].block() <= rows[j].block()`
+    /// then `rows[i].block() <= rows[j].block()`. Several methods on this
+    /// struct rely on the fact that this ordering is observed.
     pub rows: Vec<EntityMod>,
 }
 
@@ -215,8 +271,7 @@ impl RowGroup {
             .map(|emod| emod.block() <= block)
             .unwrap_or(true));
         let row = EntityMod::new(emod, block);
-        self.rows.push(row);
-        Ok(())
+        self.append_row(row)
     }
 
     fn row_count(&self) -> usize {
@@ -266,6 +321,86 @@ impl RowGroup {
             .rev()
             .filter(move |emod| seen.insert(emod.id()))
             .map(EntityOp::from)
+    }
+
+    /// Find the most recent entry for `id`
+    fn prev_row_mut(&mut self, id: &Word) -> Option<&mut EntityMod> {
+        self.rows.iter_mut().rfind(|emod| emod.id() == id)
+    }
+
+    /// Append `row` to `self.rows` by combining it with a previously
+    /// existing row, if that is possible
+    fn append_row(&mut self, row: EntityMod) -> Result<(), StoreError> {
+        if let Some(prev_row) = self.prev_row_mut(row.id()) {
+            use EntityMod::*;
+
+            if row.block() <= prev_row.block() {
+                return Err(constraint_violation!(
+                    "can not append operations that go backwards from {:?} to {:?}",
+                    prev_row,
+                    row
+                ));
+            }
+
+            // The heart of the matter: depending on what `row` is, clamp
+            // `prev_row` and either ignore `row` since it is not needed, or
+            // turn it into an `Insert`, which also does not require
+            // clamping an old version
+            match (&*prev_row, &row) {
+                (Insert { end: None, .. } | Overwrite { end: None, .. }, Insert { .. })
+                | (Remove { .. }, Overwrite { .. } | Remove { .. })
+                | (
+                    Insert { end: Some(_), .. } | Overwrite { end: Some(_), .. },
+                    Overwrite { .. } | Remove { .. },
+                ) => {
+                    return Err(constraint_violation!(
+                        "impossible combination of entity operations: {:?} and then {:?}",
+                        prev_row,
+                        row
+                    ))
+                }
+                (
+                    Insert { end: Some(_), .. } | Overwrite { end: Some(_), .. } | Remove { .. },
+                    Insert { .. },
+                ) => {
+                    // prev_row was deleted
+                    self.rows.push(row);
+                }
+                (
+                    Insert { end: None, .. } | Overwrite { end: None, .. },
+                    Overwrite { block, .. },
+                ) => {
+                    prev_row.clamp(*block)?;
+                    self.rows.push(row.as_insert(&self.entity_type)?);
+                }
+                (Insert { end: None, .. } | Overwrite { end: None, .. }, Remove { block, .. }) => {
+                    prev_row.clamp(*block)?;
+                }
+            }
+        } else {
+            self.rows.push(row);
+        }
+        Ok(())
+    }
+
+    fn append(&mut self, group: RowGroup) -> Result<(), StoreError> {
+        if self.entity_type != group.entity_type {
+            return Err(constraint_violation!(
+                "Can not append a row group for {} to a row group for {}",
+                group.entity_type,
+                self.entity_type
+            ));
+        }
+
+        for row in group.rows {
+            self.append_row(row)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn ids(&self) -> impl Iterator<Item = &str> {
+        self.rows.iter().map(|emod| emod.id().as_str())
     }
 }
 
@@ -345,6 +480,13 @@ impl RowGroups {
     fn entity_count(&self) -> usize {
         self.groups.iter().map(|group| group.row_count()).sum()
     }
+
+    fn append(&mut self, other: RowGroups) -> Result<(), StoreError> {
+        for group in other.groups {
+            self.group_entry(&group.entity_type).append(group)?;
+        }
+        Ok(())
+    }
 }
 
 /// Data sources data grouped by block
@@ -365,6 +507,10 @@ impl DataSources {
     pub fn is_empty(&self) -> bool {
         self.entries.iter().all(|(_, dss)| dss.is_empty())
     }
+
+    fn append(&mut self, mut other: DataSources) {
+        self.entries.append(&mut other.entries);
+    }
 }
 
 /// Indicate to code that looks up entities from the in-memory batch whether
@@ -382,19 +528,34 @@ pub enum EntityOp<'a> {
 
 impl<'a> From<&'a EntityMod> for EntityOp<'a> {
     fn from(emod: &'a EntityMod) -> Self {
+        use EntityMod::*;
+
         match emod {
-            EntityMod::Insert { data, key, .. } | EntityMod::Overwrite { data, key, .. } => {
-                EntityOp::Write { key, entity: data }
+            Insert {
+                data,
+                key,
+                end: None,
+                ..
             }
-            EntityMod::Remove { key, .. } => EntityOp::Remove { key },
+            | Overwrite {
+                data,
+                key,
+                end: None,
+                ..
+            } => EntityOp::Write { key, entity: data },
+            Insert {
+                key, end: Some(_), ..
+            }
+            | Overwrite {
+                key, end: Some(_), ..
+            }
+            | Remove { key, .. } => EntityOp::Remove { key },
         }
     }
 }
 
 /// A write batch. This data structure encapsulates all the things that need
 /// to be changed to persist the output of mappings up to a certain block.
-/// For now, a batch will only contain changes for a single block, but will
-/// eventually contain data for multiple blocks.
 pub struct Batch {
     /// The last block for which this batch contains changes
     pub block_ptr: BlockPtr,
@@ -405,6 +566,7 @@ pub struct Batch {
     pub data_sources: DataSources,
     pub deterministic_errors: Vec<SubgraphError>,
     pub offchain_to_remove: DataSources,
+    pub error: Option<StoreError>,
 }
 
 impl Batch {
@@ -444,7 +606,38 @@ impl Batch {
             data_sources,
             deterministic_errors,
             offchain_to_remove,
+            error: None,
         })
+    }
+
+    fn append_inner(&mut self, mut batch: Batch) -> Result<(), StoreError> {
+        if batch.block_ptr.number <= self.block_ptr.number {
+            return Err(constraint_violation!("Batches must go forward. Can't append a batch with block pointer {} to one with block pointer {}", batch.block_ptr, self.block_ptr));
+        }
+
+        self.block_ptr = batch.block_ptr;
+        self.firehose_cursor = batch.firehose_cursor;
+        self.mods.append(batch.mods)?;
+        self.data_sources.append(batch.data_sources);
+        self.deterministic_errors
+            .append(&mut batch.deterministic_errors);
+        self.offchain_to_remove.append(batch.offchain_to_remove);
+        Ok(())
+    }
+
+    /// Append `batch` to `self` so that writing `self` afterwards has the
+    /// same effect as writing `self` first and then `batch` in separate
+    /// transactions.
+    ///
+    /// When this method returns an `Err`, the batch is marked as not
+    /// healthy by setting `self.error` to `Some(_)` and must not be written
+    /// as it will be in an indeterminate state.
+    pub fn append(&mut self, batch: Batch) -> Result<(), StoreError> {
+        let res = self.append_inner(batch);
+        if let Err(e) = &res {
+            self.error = Some(e.clone());
+        }
+        res
     }
 
     pub fn entity_count(&self) -> usize {
