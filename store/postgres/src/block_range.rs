@@ -53,16 +53,6 @@ lazy_static! {
 #[derive(Clone, Debug)]
 pub struct BlockRange(Bound<BlockNumber>, Bound<BlockNumber>);
 
-// Doing this properly by implementing Clone for Bound is currently
-// a nightly-only feature, so we need to work around that
-fn clone_bound(bound: Bound<&BlockNumber>) -> Bound<BlockNumber> {
-    match bound {
-        Bound::Included(nr) => Bound::Included(*nr),
-        Bound::Excluded(nr) => Bound::Excluded(*nr),
-        Bound::Unbounded => Bound::Unbounded,
-    }
-}
-
 pub(crate) fn first_block_in_range(
     bound: &(Bound<BlockNumber>, Bound<BlockNumber>),
 ) -> Option<BlockNumber> {
@@ -87,10 +77,13 @@ pub(crate) fn block_number(block_ptr: &BlockPtr) -> BlockNumber {
 
 impl From<RangeFrom<BlockNumber>> for BlockRange {
     fn from(range: RangeFrom<BlockNumber>) -> BlockRange {
-        BlockRange(
-            clone_bound(range.start_bound()),
-            clone_bound(range.end_bound()),
-        )
+        BlockRange(range.start_bound().cloned(), range.end_bound().cloned())
+    }
+}
+
+impl From<std::ops::Range<BlockNumber>> for BlockRange {
+    fn from(range: std::ops::Range<BlockNumber>) -> BlockRange {
+        BlockRange(Bound::Included(range.start), Bound::Excluded(range.end))
     }
 }
 
