@@ -40,6 +40,32 @@ pub enum EntityMod {
     Remove { key: EntityKey, block: BlockNumber },
 }
 
+pub struct EntityWrite<'a> {
+    pub id: &'a Word,
+    pub entity: &'a Entity,
+    pub causality_region: CausalityRegion,
+    pub block: BlockNumber,
+}
+
+impl<'a> TryFrom<&'a EntityMod> for EntityWrite<'a> {
+    type Error = ();
+
+    fn try_from(emod: &'a EntityMod) -> Result<Self, Self::Error> {
+        match emod {
+            EntityMod::Insert { key, data, block } | EntityMod::Overwrite { key, data, block } => {
+                Ok(EntityWrite {
+                    id: &key.entity_id,
+                    entity: data,
+                    causality_region: key.causality_region,
+                    block: *block,
+                })
+            }
+
+            EntityMod::Remove { .. } => Err(()),
+        }
+    }
+}
+
 impl EntityMod {
     fn new(m: EntityModification, block: BlockNumber) -> Self {
         match m {
@@ -81,13 +107,8 @@ impl EntityMod {
 
     /// Return the details of the write if `self` is a write operation for a
     /// new or an existing entity
-    fn as_write(&self) -> Option<(&Word, &Entity, CausalityRegion, BlockNumber)> {
-        match self {
-            EntityMod::Insert { key, data, block } | EntityMod::Overwrite { key, data, block } => {
-                Some((&key.entity_id, data, key.causality_region, *block))
-            }
-            EntityMod::Remove { .. } => None,
-        }
+    fn as_write(&self) -> Option<EntityWrite> {
+        EntityWrite::try_from(self).ok()
     }
 
     /// Return `true` if `self` requires clamping of an existing version
@@ -478,7 +499,7 @@ impl<'a> WriteChunk<'a> {
 }
 
 impl<'a> IntoIterator for &WriteChunk<'a> {
-    type Item = (&'a Word, &'a Entity, CausalityRegion, BlockNumber);
+    type Item = EntityWrite<'a>;
 
     type IntoIter = WriteChunkIter<'a>;
 
@@ -500,7 +521,7 @@ pub struct WriteChunkIter<'a> {
 }
 
 impl<'a> Iterator for WriteChunkIter<'a> {
-    type Item = (&'a Word, &'a Entity, CausalityRegion, BlockNumber);
+    type Item = EntityWrite<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.count < self.chunk_size && self.position < self.group.rows.len() {
