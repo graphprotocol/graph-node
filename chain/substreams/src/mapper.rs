@@ -83,6 +83,8 @@ impl SubstreamsMapper<Chain> for Mapper {
                 )))
             }
 
+            // ignoring Progress messages and SessionInit
+            // We are only interested in Data and Undo signals
             _ => Ok(None),
         }
     }

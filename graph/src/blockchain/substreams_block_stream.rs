@@ -309,7 +309,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
 
             return Ok(Some(BlockResponse::Proceed(event, cursor)));
         }
-        None => Ok(None),
+        None => Ok(None), // some progress responses are ignored within to_block_stream_event
     }
 }
 
