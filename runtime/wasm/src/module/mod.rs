@@ -22,7 +22,7 @@ use graph::data::subgraph::schema::SubgraphError;
 use graph::data_source::{offchain, MappingTrigger, TriggerWithHandler};
 use graph::prelude::*;
 use graph::runtime::{
-    asc_get, asc_new,
+    asc_new,
     gas::{self, Gas, GasCounter, SaturatingInto},
     AscHeap, AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError,
     IndexForAscTypeId, ToAscObj,
@@ -44,6 +44,19 @@ mod into_wasm_ret;
 pub mod stopwatch;
 
 pub const TRAP_TIMEOUT: &str = "trap: interrupt";
+
+// Convenience for a 'top-level' asc_get, with depth 0.
+fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(
+    heap: &H,
+    ptr: AscPtr<C>,
+    gas: &GasCounter,
+) -> Result<T, DeterministicHostError>
+where
+    C: AscType + AscIndexId,
+    T: FromAscObj<C>,
+{
+    graph::runtime::asc_get(heap, ptr, gas, 0)
+}
 
 pub trait IntoTrap {
     fn determinism_level(&self) -> DeterminismLevel;

@@ -138,13 +138,14 @@ impl FromAscObj<AscUnresolvedContractCall_0_0_4> for UnresolvedContractCall {
         asc_call: AscUnresolvedContractCall_0_0_4,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         Ok(UnresolvedContractCall {
-            contract_name: asc_get(heap, asc_call.contract_name, gas)?,
-            contract_address: asc_get(heap, asc_call.contract_address, gas)?,
-            function_name: asc_get(heap, asc_call.function_name, gas)?,
-            function_signature: Some(asc_get(heap, asc_call.function_signature, gas)?),
-            function_args: asc_get(heap, asc_call.function_args, gas)?,
+            contract_name: asc_get(heap, asc_call.contract_name, gas, depth)?,
+            contract_address: asc_get(heap, asc_call.contract_address, gas, depth)?,
+            function_name: asc_get(heap, asc_call.function_name, gas, depth)?,
+            function_signature: Some(asc_get(heap, asc_call.function_signature, gas, depth)?),
+            function_args: asc_get(heap, asc_call.function_args, gas, depth)?,
         })
     }
 }
@@ -163,13 +164,14 @@ impl FromAscObj<AscUnresolvedContractCall> for UnresolvedContractCall {
         asc_call: AscUnresolvedContractCall,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         Ok(UnresolvedContractCall {
-            contract_name: asc_get(heap, asc_call.contract_name, gas)?,
-            contract_address: asc_get(heap, asc_call.contract_address, gas)?,
-            function_name: asc_get(heap, asc_call.function_name, gas)?,
+            contract_name: asc_get(heap, asc_call.contract_name, gas, depth)?,
+            contract_address: asc_get(heap, asc_call.contract_address, gas, depth)?,
+            function_name: asc_get(heap, asc_call.function_name, gas, depth)?,
             function_signature: None,
-            function_args: asc_get(heap, asc_call.function_args, gas)?,
+            function_args: asc_get(heap, asc_call.function_args, gas, depth)?,
         })
     }
 }

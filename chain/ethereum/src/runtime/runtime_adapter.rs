@@ -77,9 +77,9 @@ fn ethereum_call(
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
     // the signature along with the call.
     let call: UnresolvedContractCall = if ctx.heap.api_version() >= Version::new(0, 0, 4) {
-        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into(), &ctx.gas)?
+        asc_get::<_, AscUnresolvedContractCall_0_0_4, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     } else {
-        asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas)?
+        asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     };
 
     let result = eth_call(

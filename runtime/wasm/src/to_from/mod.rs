@@ -32,6 +32,7 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
         typed_array: TypedArray<T>,
         heap: &H,
         gas: &GasCounter,
+        _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         typed_array.to_vec(heap, gas)
     }
@@ -42,6 +43,7 @@ impl<T: AscValue + Send + Sync, const LEN: usize> FromAscObj<TypedArray<T>> for 
         typed_array: TypedArray<T>,
         heap: &H,
         gas: &GasCounter,
+        _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         let v = typed_array.to_vec(heap, gas)?;
         let array = <[T; LEN]>::try_from(v)
@@ -88,6 +90,7 @@ impl FromAscObj<AscString> for String {
         asc_string: AscString,
         _: &H,
         _gas: &GasCounter,
+        _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         let mut string = String::from_utf16(asc_string.content())
             .map_err(|e| DeterministicHostError::from(anyhow::Error::from(e)))?;
@@ -105,8 +108,9 @@ impl FromAscObj<AscString> for Word {
         asc_string: AscString,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let string = String::from_asc_obj(asc_string, heap, gas)?;
+        let string = String::from_asc_obj(asc_string, heap, gas, depth)?;
 
         Ok(Word::from(string))
     }
@@ -129,11 +133,12 @@ impl<C: AscType + AscIndexId, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for
         array: Array<AscPtr<C>>,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         array
             .to_vec(heap, gas)?
             .into_iter()
-            .map(|x| asc_get(heap, x, gas))
+            .map(|x| asc_get(heap, x, gas, depth))
             .collect()
     }
 }
@@ -145,10 +150,11 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: FromAscObj<K>, U: From
         asc_entry: AscTypedMapEntry<K, V>,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         Ok((
-            asc_get(heap, asc_entry.key, gas)?,
-            asc_get(heap, asc_entry.value, gas)?,
+            asc_get(heap, asc_entry.key, gas, depth)?,
+            asc_get(heap, asc_entry.value, gas, depth)?,
         ))
     }
 }
@@ -182,8 +188,9 @@ where
         asc_map: AscTypedMap<K, V>,
         heap: &H,
         gas: &GasCounter,
+        depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let entries: Vec<(T, U)> = asc_get(heap, asc_map.entries, gas)?;
+        let entries: Vec<(T, U)> = asc_get(heap, asc_map.entries, gas, depth)?;
         Ok(HashMap::from_iter(entries.into_iter()))
     }
 }
