@@ -328,42 +328,30 @@ impl DeploymentStore {
         let mut count = 0;
 
         for group in groups {
-            if group.has_clamps() {
-                count -= self.remove_entities(group, conn, layout, stopwatch)? as i32;
+            // Clamp entities before inserting them to avoid having versions
+            // with overlapping block ranges
+            let section = stopwatch.start_section("apply_entity_modifications_delete");
+            count -= layout.delete(conn, group, stopwatch)? as i32;
+            section.end();
+
+            let section = stopwatch.start_section("check_interface_entity_uniqueness");
+            for row in group.writes().filter(|emod| emod.creates_entity()) {
+                // WARNING: This will potentially execute 2 queries for each entity key.
+                self.check_interface_entity_uniqueness(
+                    conn,
+                    layout,
+                    &group.entity_type,
+                    &row.id(),
+                )?;
             }
-            count += self.insert_entities(group, conn, layout, stopwatch)? as i32
+            section.end();
+
+            let section = stopwatch.start_section("apply_entity_modifications_insert");
+            count += layout.insert(conn, group, stopwatch)? as i32;
+            section.end();
         }
 
         Ok(count)
-    }
-
-    fn insert_entities<'a>(
-        &'a self,
-        group: &'a RowGroup,
-        conn: &PgConnection,
-        layout: &'a Layout,
-        stopwatch: &StopwatchMetrics,
-    ) -> Result<usize, StoreError> {
-        let section = stopwatch.start_section("check_interface_entity_uniqueness");
-        for row in group.writes() {
-            // WARNING: This will potentially execute 2 queries for each entity key.
-            self.check_interface_entity_uniqueness(conn, layout, &group.entity_type, &row.id())?;
-        }
-        section.end();
-
-        let _section = stopwatch.start_section("apply_entity_modifications_insert");
-        layout.insert(conn, group, stopwatch)
-    }
-
-    fn remove_entities(
-        &self,
-        group: &RowGroup,
-        conn: &PgConnection,
-        layout: &Layout,
-        stopwatch: &StopwatchMetrics,
-    ) -> Result<usize, StoreError> {
-        let _section = stopwatch.start_section("apply_entity_modifications_delete");
-        layout.delete(conn, group, stopwatch)
     }
 
     /// Execute a closure with a connection to the database.

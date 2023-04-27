@@ -848,6 +848,11 @@ impl Layout {
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
+        if !group.has_clamps() {
+            // Nothing to do
+            return Ok(0);
+        }
+
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
             return Err(constraint_violation!(
