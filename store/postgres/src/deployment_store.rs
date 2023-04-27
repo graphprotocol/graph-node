@@ -1144,13 +1144,7 @@ impl DeploymentStore {
                 )?;
                 section.end();
 
-                dynds::insert(
-                    &conn,
-                    &site,
-                    &batch.data_sources,
-                    &batch.block_ptr,
-                    manifest_idx_and_name,
-                )?;
+                dynds::insert(&conn, &site, &batch.data_sources, manifest_idx_and_name)?;
 
                 dynds::update_offchain_status(&conn, &site, &batch.offchain_to_remove)?;
 

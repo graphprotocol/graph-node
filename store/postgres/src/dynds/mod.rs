@@ -6,7 +6,6 @@ pub(crate) use private::DataSourcesTable;
 use crate::primary::Site;
 use diesel::PgConnection;
 use graph::{
-    blockchain::BlockPtr,
     components::store::{write, StoredDynamicDataSource},
     constraint_violation,
     data_source::CausalityRegion,
@@ -29,18 +28,11 @@ pub(crate) fn insert(
     conn: &PgConnection,
     site: &Site,
     data_sources: &write::DataSources,
-    block_ptr: &BlockPtr,
     manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     match site.schema_version.private_data_sources() {
         true => DataSourcesTable::new(site.namespace.clone()).insert(conn, data_sources),
-        false => shared::insert(
-            conn,
-            &site.deployment,
-            data_sources,
-            block_ptr,
-            manifest_idx_and_name,
-        ),
+        false => shared::insert(conn, &site.deployment, data_sources, manifest_idx_and_name),
     }
 }
 

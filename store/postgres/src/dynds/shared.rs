@@ -14,8 +14,7 @@ use graph::{
     constraint_violation,
     data_source::CausalityRegion,
     prelude::{
-        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, BlockPtr, DeploymentHash,
-        StoreError,
+        bigdecimal::ToPrimitive, serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError,
     },
 };
 
@@ -104,7 +103,6 @@ pub(super) fn insert(
     conn: &PgConnection,
     deployment: &DeploymentHash,
     data_sources: &write::DataSources,
-    block_ptr: &BlockPtr,
     manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
@@ -117,7 +115,7 @@ pub(super) fn insert(
     let dds: Vec<_> = data_sources
         .entries
         .iter()
-        .map(|(_, dds)| {
+        .map(|(block_ptr, dds)| {
             dds.iter().map(|ds| {
                 let StoredDynamicDataSource {
                     manifest_idx: _,
