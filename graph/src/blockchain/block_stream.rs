@@ -338,6 +338,10 @@ pub enum FirehoseError {
 pub enum SubstreamsError {
     #[error("response is missing the clock information")]
     MissingClockError,
+
+    #[error("invalid undo message")]
+    InvalidUndoError,
+
     /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),

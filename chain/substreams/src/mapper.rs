@@ -19,8 +19,8 @@ impl SubstreamsMapper<Chain> for Mapper {
         match message {
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
                 let valid_block = match undo.last_valid_block {
-                    None => return Err(SubstreamsError::MissingClockError),
-                    Some(block) => block,
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::InvalidUndoError),
                 };
                 let valid_ptr = BlockPtr {
                     hash: valid_block.id.trim_start_matches("0x").try_into()?,
@@ -83,10 +83,6 @@ impl SubstreamsMapper<Chain> for Mapper {
                 )))
             }
 
-            None => {
-                //warn!(&logger, "Got None on substream message");
-                Ok(None)
-            }
             _ => Ok(None),
         }
     }
