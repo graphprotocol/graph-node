@@ -86,6 +86,19 @@ impl<T: Clone> BoundedQueue<T> {
         item.clone()
     }
 
+    /// Same as `peek`, but also call `f` while the queue is still locked
+    /// and safe from modification
+    pub async fn peek_with<F>(&self, f: F) -> T
+    where
+        F: FnOnce(&T),
+    {
+        let _permit = self.pop_semaphore.acquire().await.unwrap();
+        let queue = self.queue.lock().unwrap();
+        let item = queue.front().expect("the queue is not empty");
+        f(item);
+        item.clone()
+    }
+
     /// Push an item into the queue. If the queue is currently full this method
     /// blocks until an item is available
     pub async fn push(&self, item: T) {
@@ -127,6 +140,17 @@ impl<T: Clone> BoundedQueue<T> {
     {
         let queue = self.queue.lock().unwrap();
         queue.iter().rev().find_map(f)
+    }
+
+    /// Execute `f` on the newest entry in the queue atomically, i.e., while
+    /// the queue is locked. The function `f` should therefore not do any
+    /// slow work
+    pub fn map_newest<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(Option<&T>) -> R,
+    {
+        let queue = self.queue.lock().unwrap();
+        f(queue.back())
     }
 
     /// Iterate over the entries in the queue from newest to oldest entry
