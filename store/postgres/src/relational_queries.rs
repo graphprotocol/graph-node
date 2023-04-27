@@ -1871,12 +1871,16 @@ impl<'a> InsertQuery<'a> {
     pub fn literal_range_current(
         table: &Table,
         block: BlockNumber,
+        end: Option<BlockNumber>,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
         if table.immutable {
             out.push_bind_param::<Integer, _>(&block)
         } else {
-            let block_range: BlockRange = (block..).into();
+            let block_range: BlockRange = match end {
+                Some(end) => (block..end).into(),
+                None => (block..).into(),
+            };
             out.push_bind_param::<Range<Integer>, _>(&block_range)
         }
     }
@@ -1926,7 +1930,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
-            Self::literal_range_current(&self.table, row.block, &mut out)?;
+            Self::literal_range_current(&self.table, row.block, row.end, &mut out)?;
             if self.table.has_causality_region {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;

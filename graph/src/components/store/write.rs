@@ -29,12 +29,14 @@ pub enum EntityMod {
         key: EntityKey,
         data: Entity,
         block: BlockNumber,
+        end: Option<BlockNumber>,
     },
     /// Update the entity by overwriting it
     Overwrite {
         key: EntityKey,
         data: Entity,
         block: BlockNumber,
+        end: Option<BlockNumber>,
     },
     /// Remove the entity
     Remove { key: EntityKey, block: BlockNumber },
@@ -45,6 +47,9 @@ pub struct EntityWrite<'a> {
     pub entity: &'a Entity,
     pub causality_region: CausalityRegion,
     pub block: BlockNumber,
+    // The end of the block range for which this write is valid. The value
+    // of `end` itself is not included in the range
+    pub end: Option<BlockNumber>,
 }
 
 impl<'a> TryFrom<&'a EntityMod> for EntityWrite<'a> {
@@ -52,14 +57,24 @@ impl<'a> TryFrom<&'a EntityMod> for EntityWrite<'a> {
 
     fn try_from(emod: &'a EntityMod) -> Result<Self, Self::Error> {
         match emod {
-            EntityMod::Insert { key, data, block } | EntityMod::Overwrite { key, data, block } => {
-                Ok(EntityWrite {
-                    id: &key.entity_id,
-                    entity: data,
-                    causality_region: key.causality_region,
-                    block: *block,
-                })
+            EntityMod::Insert {
+                key,
+                data,
+                block,
+                end,
             }
+            | EntityMod::Overwrite {
+                key,
+                data,
+                block,
+                end,
+            } => Ok(EntityWrite {
+                id: &key.entity_id,
+                entity: data,
+                causality_region: key.causality_region,
+                block: *block,
+                end: *end,
+            }),
 
             EntityMod::Remove { .. } => Err(()),
         }
@@ -69,8 +84,18 @@ impl<'a> TryFrom<&'a EntityMod> for EntityWrite<'a> {
 impl EntityMod {
     fn new(m: EntityModification, block: BlockNumber) -> Self {
         match m {
-            EntityModification::Insert { key, data } => Self::Insert { key, data, block },
-            EntityModification::Overwrite { key, data } => Self::Overwrite { key, data, block },
+            EntityModification::Insert { key, data } => Self::Insert {
+                key,
+                data,
+                block,
+                end: None,
+            },
+            EntityModification::Overwrite { key, data } => Self::Overwrite {
+                key,
+                data,
+                block,
+                end: None,
+            },
             EntityModification::Remove { key } => Self::Remove { key, block },
         }
     }
