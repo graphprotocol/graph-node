@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
+use std::time::{Duration, Instant};
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
@@ -395,6 +396,7 @@ impl BlockTracker {
     fn update(&mut self, req: &Request) {
         match req {
             Request::Write { batch, .. } => {
+                let batch = batch.read().unwrap();
                 self.block = self.block.min(batch.block_ptr.number - 1);
             }
             Request::RevertTo { block_ptr, .. } => {
@@ -423,17 +425,24 @@ impl BlockTracker {
 
 /// A write request received from the `WritableStore` frontend that gets
 /// queued
+///
+/// The `processed` flag is set to true as soon as the background writer is
+/// working on that request. Once it has been set, no changes can be made to
+/// the request
 enum Request {
     Write {
+        queued: Instant,
         store: Arc<SyncStore>,
         stopwatch: StopwatchMetrics,
-        batch: Batch,
+        batch: RwLock<Batch>,
+        processed: AtomicBool,
     },
     RevertTo {
         store: Arc<SyncStore>,
         /// The subgraph head will be at this block pointer after the revert
         block_ptr: BlockPtr,
         firehose_cursor: FirehoseCursor,
+        processed: AtomicBool,
     },
     Stop,
 }
@@ -441,13 +450,16 @@ enum Request {
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Write { batch, store, .. } => write!(
-                f,
-                "write[{}, {:p}, {} entities]",
-                batch.block_ptr.number,
-                store.as_ref(),
-                batch.entity_count()
-            ),
+            Self::Write { batch, store, .. } => {
+                let batch = batch.read().unwrap();
+                write!(
+                    f,
+                    "write[{}, {:p}, {} entities]",
+                    batch.block_ptr.number,
+                    store.as_ref(),
+                    batch.entity_count()
+                )
+            }
             Self::RevertTo {
                 block_ptr, store, ..
             } => write!(f, "revert[{}, {:p}]", block_ptr.number, store.as_ref()),
@@ -462,19 +474,66 @@ enum ExecResult {
 }
 
 impl Request {
+    fn write(store: Arc<SyncStore>, stopwatch: StopwatchMetrics, batch: Batch) -> Self {
+        Self::Write {
+            queued: Instant::now(),
+            store,
+            stopwatch,
+            batch: RwLock::new(batch),
+            processed: AtomicBool::new(false),
+        }
+    }
+
+    fn revert(store: Arc<SyncStore>, block_ptr: BlockPtr, firehose_cursor: FirehoseCursor) -> Self {
+        Self::RevertTo {
+            store,
+            block_ptr,
+            firehose_cursor,
+            processed: AtomicBool::new(false),
+        }
+    }
+
+    fn start_process(&self) {
+        match self {
+            Request::Write { processed, .. } | Request::RevertTo { processed, .. } => {
+                processed.store(true, Ordering::SeqCst)
+            }
+            Request::Stop => { /* nothing to do  */ }
+        }
+    }
+
+    fn processed(&self) -> bool {
+        match self {
+            Request::Write { processed, .. } | Request::RevertTo { processed, .. } => {
+                processed.load(Ordering::SeqCst)
+            }
+            Request::Stop => false,
+        }
+    }
+
     fn execute(&self) -> Result<ExecResult, StoreError> {
         match self {
             Request::Write {
                 batch,
                 store,
                 stopwatch,
-            } => store
-                .transact_block_operations(batch, stopwatch)
-                .map(|()| ExecResult::Continue),
+                queued: _,
+                processed: _,
+            } => {
+                let batch = batch.read().unwrap();
+                info!(store.logger, "Transacting write batch";
+                        "block" => batch.block_ptr.number,
+                        "block_count" => batch.block_ptr.number - batch.first_block + 1,
+                        "entities" => batch.entity_count());
+                store
+                    .transact_block_operations(&batch, stopwatch)
+                    .map(|()| ExecResult::Continue)
+            }
             Request::RevertTo {
                 store,
                 block_ptr,
                 firehose_cursor,
+                processed: _,
             } => store
                 .revert_block_operations(block_ptr.clone(), firehose_cursor)
                 .map(|()| ExecResult::Continue),
@@ -505,6 +564,11 @@ struct Queue {
     poisoned: AtomicBool,
 
     stopwatch: StopwatchMetrics,
+
+    /// Wether we should attempt to combine writes into large bacthes
+    /// spanning multiple blocks. This is initially `true` and gets set to
+    /// `false` when the subgraph is marked as synced.
+    batch_writes: AtomicBool,
 }
 
 /// Support for controlling the background writer (pause/resume) only for
@@ -587,7 +651,7 @@ impl Queue {
                 // incorrect results.
                 let req = {
                     let _section = queue.stopwatch.start_section("queue_wait");
-                    queue.queue.peek().await
+                    queue.queue.peek_with(|req| req.start_process()).await
                 };
                 let res = {
                     let _section = queue.stopwatch.start_section("queue_execute");
@@ -641,6 +705,7 @@ impl Queue {
             write_err,
             poisoned: AtomicBool::new(false),
             stopwatch,
+            batch_writes: AtomicBool::new(true),
         };
         let queue = Arc::new(queue);
 
@@ -653,6 +718,84 @@ impl Queue {
     async fn push(&self, req: Request) -> Result<(), StoreError> {
         self.check_err()?;
         self.queue.push(Arc::new(req)).await;
+        Ok(())
+    }
+
+    /// Try to append the `batch` to an existing write request. We will only
+    /// append if several conditions are true:
+    ///
+    ///   1. The subgraph is not synced
+    ///   2. The newest request (back of the queue) is not already being
+    ///      processed by the writing thread
+    ///   3. The newest write request is not older than `MAX_BATCH_TIME`
+    ///
+    /// In all other cases, we queue a new write request.
+    ///
+    ///  This strategy has the downside that if writes happen very fast and
+    /// the queue never has more than one entry, we do never append to an
+    /// existing batch and always queue new requests. But in that case,
+    /// nothing has to ever wait for the database, and the gains from
+    /// batching would not be noticable.
+    async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
+        const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
+
+        let batch = if !self.batch_writes.load(Ordering::SeqCst) {
+            Some(batch)
+        } else {
+            self.queue.map_newest(move |newest| {
+                let newest = match newest {
+                    Some(newest) => newest,
+                    None => {
+                        return Ok(Some(batch));
+                    }
+                };
+                // This check at first seems redundant with getting the lock
+                // on the batch in the request below, but is very important
+                // for correctness: if the writer has finished processing
+                // the request and released its lock on the batch, without
+                // this check, we would modify a request that has already
+                // been written, and our changes would therefore never be
+                // written
+                if newest.processed() {
+                    return Ok(Some(batch));
+                }
+                match newest.as_ref() {
+                    Request::Write {
+                        batch: existing,
+                        queued,
+                        ..
+                    } => {
+                        if queued.elapsed() < MAX_BATCH_TIME {
+                            // We are being very defensive here: if anything
+                            // is holding the lock on the batch, do not
+                            // modify it. We create a new request instead of
+                            // waiting for the lock to avoid slowing writes
+                            // down because of other activity. It would
+                            // probably be fine to wait for the lock.
+                            match existing.try_write() {
+                                Ok(mut existing) => existing.append(batch).map(|()| None),
+                                Err(RwLockError::WouldBlock) => return Ok(Some(batch)),
+                                Err(RwLockError::Poisoned(e)) => {
+                                    panic!("rwlock on batch was poisoned {:?}", e);
+                                }
+                            }
+                        } else {
+                            Ok(Some(batch))
+                        }
+                    }
+                    Request::RevertTo { .. } | Request::Stop => Ok(Some(batch)),
+                }
+            })?
+        };
+
+        if let Some(batch) = batch {
+            let req = Request::write(
+                self.store.cheap_clone(),
+                self.stopwatch.cheap_clone(),
+                batch,
+            );
+            self.push(req).await?;
+        }
         Ok(())
     }
 
@@ -714,6 +857,7 @@ impl Queue {
             tracker.update(req.as_ref());
             match req.as_ref() {
                 Request::Write { batch, .. } => {
+                    let batch = batch.read().unwrap();
                     if tracker.visible(&batch.block_ptr) {
                         batch.last_op(key).map(Op::from)
                     } else {
@@ -746,6 +890,7 @@ impl Queue {
                 tracker.update(req.as_ref());
                 match req.as_ref() {
                     Request::Write { batch, .. } => {
+                        let batch = batch.read().unwrap();
                         if tracker.visible(&batch.block_ptr) {
                             // See if we have changes for any of the keys.
                             for key in &keys {
@@ -817,8 +962,9 @@ impl Queue {
                 tracker.update(req.as_ref());
                 match req.as_ref() {
                     Request::Write { batch, .. } => {
+                        let batch = batch.read().unwrap();
                         if tracker.visible(&batch.block_ptr) {
-                            map.extend(effective_ops(batch, derived_query));
+                            map.extend(effective_ops(&batch, derived_query));
                         }
                     }
                     Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
@@ -863,6 +1009,7 @@ impl Queue {
             tracker.update(req.as_ref());
             match req.as_ref() {
                 Request::Write { batch, .. } => {
+                    let batch = batch.read().unwrap();
                     if tracker.visible(&batch.block_ptr) {
                         dds.extend(batch.new_data_sources().cloned());
                     }
@@ -891,6 +1038,7 @@ impl Queue {
     }
 
     fn deployment_synced(&self) {
+        self.batch_writes.store(false, Ordering::SeqCst);
         self.stopwatch.disable()
     }
 }
@@ -939,16 +1087,13 @@ impl Writer {
     }
 
     async fn write(&self, batch: Batch, stopwatch: &StopwatchMetrics) -> Result<(), StoreError> {
+        const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
+
         match self {
             Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch),
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
-                let req = Request::Write {
-                    store: queue.store.cheap_clone(),
-                    stopwatch: queue.stopwatch.cheap_clone(),
-                    batch,
-                };
-                queue.push(req).await
+                queue.push_write(batch).await
             }
         }
     }
@@ -962,11 +1107,7 @@ impl Writer {
             Writer::Sync(store) => store.revert_block_operations(block_ptr_to, &firehose_cursor),
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
-                let req = Request::RevertTo {
-                    store: queue.store.cheap_clone(),
-                    block_ptr: block_ptr_to,
-                    firehose_cursor,
-                };
+                let req = Request::revert(queue.store.cheap_clone(), block_ptr_to, firehose_cursor);
                 queue.push(req).await
             }
         }

@@ -491,6 +491,8 @@ impl<'a> From<&'a EntityMod> for EntityOp<'a> {
 pub struct Batch {
     /// The last block for which this batch contains changes
     pub block_ptr: BlockPtr,
+    /// The first block for which this batch contains changes
+    pub first_block: BlockNumber,
     /// The firehose cursor corresponding to `block_ptr`
     pub firehose_cursor: FirehoseCursor,
     mods: Sheet,
@@ -530,8 +532,10 @@ impl Batch {
 
         let data_sources = DataSources::new(block_ptr.cheap_clone(), data_sources);
         let offchain_to_remove = DataSources::new(block_ptr.cheap_clone(), offchain_to_remove);
+        let first_block = block_ptr.number;
         Ok(Self {
             block_ptr,
+            first_block,
             firehose_cursor,
             mods,
             data_sources,
