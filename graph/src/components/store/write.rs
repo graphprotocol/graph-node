@@ -98,6 +98,13 @@ impl EntityMod {
         }
     }
 
+    pub fn creates_entity(&self) -> bool {
+        match self {
+            EntityMod::Insert { .. } => true,
+            EntityMod::Overwrite { .. } | EntityMod::Remove { .. } => false,
+        }
+    }
+
     fn key(&self) -> &EntityKey {
         match self {
             EntityMod::Insert { key, .. }
