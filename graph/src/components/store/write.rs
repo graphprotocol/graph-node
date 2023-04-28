@@ -9,6 +9,7 @@ use crate::{
     data::{subgraph::schema::SubgraphError, value::Word},
     data_source::CausalityRegion,
     prelude::DeploymentHash,
+    util::cache_weight::CacheWeight,
 };
 
 use super::{
@@ -721,6 +722,35 @@ impl Batch {
 
     pub fn groups<'a>(&'a self) -> impl Iterator<Item = &'a RowGroup> {
         self.mods.groups.iter()
+    }
+}
+
+impl CacheWeight for Batch {
+    fn indirect_weight(&self) -> usize {
+        self.mods.indirect_weight()
+    }
+}
+
+impl CacheWeight for RowGroups {
+    fn indirect_weight(&self) -> usize {
+        self.groups.indirect_weight()
+    }
+}
+
+impl CacheWeight for RowGroup {
+    fn indirect_weight(&self) -> usize {
+        self.rows.indirect_weight()
+    }
+}
+
+impl CacheWeight for EntityMod {
+    fn indirect_weight(&self) -> usize {
+        match self {
+            EntityMod::Insert { key, data, .. } | EntityMod::Overwrite { key, data, .. } => {
+                key.indirect_weight() + data.indirect_weight()
+            }
+            EntityMod::Remove { key, .. } => key.indirect_weight(),
+        }
     }
 }
 
