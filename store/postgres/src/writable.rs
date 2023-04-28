@@ -12,8 +12,8 @@ use graph::constraint_violation;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    BlockNumber, Entity, MetricsRegistry, SubgraphDeploymentEntity, SubgraphStore as _,
-    BLOCK_NUMBER_MAX,
+    BlockNumber, CacheWeight, Entity, MetricsRegistry, SubgraphDeploymentEntity,
+    SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
 use graph::schema::InputSchema;
 use graph::slog::{info, warn};
@@ -524,7 +524,8 @@ impl Request {
                 info!(store.logger, "Transacting write batch";
                         "block" => batch.block_ptr.number,
                         "block_count" => batch.block_ptr.number - batch.first_block + 1,
-                        "entities" => batch.entity_count());
+                        "entities" => batch.entity_count(),
+                        "weight" => batch.weight());
                 store
                     .transact_block_operations(&batch, stopwatch)
                     .map(|()| ExecResult::Continue)
@@ -728,16 +729,18 @@ impl Queue {
     ///   2. The newest request (back of the queue) is not already being
     ///      processed by the writing thread
     ///   3. The newest write request is not older than `MAX_BATCH_TIME`
+    ///   4. The newest write request is not bigger than `MAX_BATCH_WEIGHT`
     ///
     /// In all other cases, we queue a new write request.
     ///
-    ///  This strategy has the downside that if writes happen very fast and
+    /// This strategy has the downside that if writes happen very fast and
     /// the queue never has more than one entry, we do never append to an
     /// existing batch and always queue new requests. But in that case,
     /// nothing has to ever wait for the database, and the gains from
     /// batching would not be noticable.
     async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
         const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
+        const MAX_BATCH_WEIGHT: usize = 10_000 * 1000;
 
         let batch = if !self.batch_writes.load(Ordering::SeqCst) {
             Some(batch)
@@ -773,7 +776,13 @@ impl Queue {
                             // down because of other activity. It would
                             // probably be fine to wait for the lock.
                             match existing.try_write() {
-                                Ok(mut existing) => existing.append(batch).map(|()| None),
+                                Ok(mut existing) => {
+                                    if existing.weight() < MAX_BATCH_WEIGHT {
+                                        existing.append(batch).map(|()| None)
+                                    } else {
+                                        Ok(Some(batch))
+                                    }
+                                }
                                 Err(RwLockError::WouldBlock) => return Ok(Some(batch)),
                                 Err(RwLockError::Poisoned(e)) => {
                                     panic!("rwlock on batch was poisoned {:?}", e);
