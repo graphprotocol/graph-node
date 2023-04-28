@@ -1,13 +1,10 @@
 use crate::{Block, Chain, EntityChanges, TriggerData};
-use graph::blockchain::block_stream::SubstreamsError::{
-    MultipleModuleOutputError, UnexpectedStoreDeltaOutput,
-};
 use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
 };
 use graph::prelude::{async_trait, BlockHash, BlockNumber, BlockPtr, Logger};
-use graph::substreams::module_output::Data;
-use graph::substreams::{BlockScopedData, Clock, ForkStep};
+use graph::substreams::Clock;
+use graph::substreams_rpc::response::Message as SubstreamsMessage;
 use prost::Message;
 
 pub struct Mapper {}
@@ -17,89 +14,78 @@ impl SubstreamsMapper<Chain> for Mapper {
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
-        block_scoped_data: &BlockScopedData,
+        message: Option<SubstreamsMessage>,
     ) -> Result<Option<BlockStreamEvent<Chain>>, SubstreamsError> {
-        let BlockScopedData {
-            outputs,
-            clock,
-            step,
-            cursor: _,
-        } = block_scoped_data;
-
-        let step = ForkStep::from_i32(*step).unwrap_or_else(|| {
-            panic!(
-                "unknown step i32 value {}, maybe you forgot update & re-regenerate the protobuf definitions?",
-                step
-            )
-        });
-
-        if outputs.is_empty() {
-            return Ok(None);
-        }
-
-        if outputs.len() > 1 {
-            return Err(MultipleModuleOutputError);
-        }
-
-        //todo: handle step
-        let module_output = &block_scoped_data.outputs[0];
-        let cursor = &block_scoped_data.cursor;
-
-        let clock = match clock {
-            Some(clock) => clock,
-            None => return Err(SubstreamsError::MissingClockError),
-        };
-
-        let Clock {
-            id: hash,
-            number,
-            timestamp: _,
-        } = clock;
-
-        let hash: BlockHash = hash.as_str().try_into()?;
-        let number: BlockNumber = *number as BlockNumber;
-
-        match module_output.data.as_ref() {
-            Some(Data::MapOutput(msg)) => {
-                let changes: EntityChanges = Message::decode(msg.value.as_slice())
-                    .map_err(SubstreamsError::DecodingError)?;
-
-                use ForkStep::*;
-                match step {
-                    StepIrreversible | StepNew => Ok(Some(BlockStreamEvent::ProcessBlock(
-                        // Even though the trigger processor for substreams doesn't care about TriggerData
-                        // there are a bunch of places in the runner that check if trigger data
-                        // empty and skip processing if so. This will prolly breakdown
-                        // close to head so we will need to improve things.
-
-                        // TODO(filipe): Fix once either trigger data can be empty
-                        // or we move the changes into trigger data.
-                        BlockWithTriggers::new(
-                            Block {
-                                hash,
-                                number,
-                                changes,
-                            },
-                            vec![TriggerData {}],
-                            logger,
-                        ),
-                        FirehoseCursor::from(cursor.clone()),
-                    ))),
-                    StepUndo => {
-                        let parent_ptr = BlockPtr { hash, number };
-
-                        Ok(Some(BlockStreamEvent::Revert(
-                            parent_ptr,
-                            FirehoseCursor::from(cursor.clone()),
-                        )))
-                    }
-                    StepUnknown => {
-                        panic!("unknown step should not happen in the Firehose response")
-                    }
-                }
+        match message {
+            Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
+                let valid_block = match undo.last_valid_block {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::InvalidUndoError),
+                };
+                let valid_ptr = BlockPtr {
+                    hash: valid_block.id.trim_start_matches("0x").try_into()?,
+                    number: valid_block.number as i32,
+                };
+                return Ok(Some(BlockStreamEvent::Revert(
+                    valid_ptr,
+                    FirehoseCursor::from(undo.last_valid_cursor.clone()),
+                )));
             }
-            Some(Data::DebugStoreDeltas(_)) => Err(UnexpectedStoreDeltaOutput),
-            _ => Err(SubstreamsError::ModuleOutputNotPresentOrUnexpected),
+
+            Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
+                let module_output = match &block_scoped_data.output {
+                    Some(out) => out,
+                    None => return Ok(None),
+                };
+
+                let clock = match block_scoped_data.clock {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::MissingClockError),
+                };
+
+                let cursor = &block_scoped_data.cursor;
+
+                let Clock {
+                    id: hash,
+                    number,
+                    timestamp: _,
+                } = clock;
+
+                let hash: BlockHash = hash.as_str().try_into()?;
+                let number: BlockNumber = number as BlockNumber;
+
+                let changes: EntityChanges = match module_output.map_output.as_ref() {
+                    Some(msg) => Message::decode(msg.value.as_slice())
+                        .map_err(SubstreamsError::DecodingError)?,
+                    None => EntityChanges {
+                        entity_changes: [].to_vec(),
+                    },
+                };
+
+                // Even though the trigger processor for substreams doesn't care about TriggerData
+                // there are a bunch of places in the runner that check if trigger data
+                // empty and skip processing if so. This will prolly breakdown
+                // close to head so we will need to improve things.
+
+                // TODO(filipe): Fix once either trigger data can be empty
+                // or we move the changes into trigger data.
+                Ok(Some(BlockStreamEvent::ProcessBlock(
+                    BlockWithTriggers::new(
+                        Block {
+                            hash,
+                            number,
+                            changes,
+                        },
+                        vec![TriggerData {}],
+                        logger,
+                    ),
+                    FirehoseCursor::from(cursor.clone()),
+                )))
+            }
+
+            // ignoring Progress messages and SessionInit
+            // We are only interested in Data and Undo signals
+            _ => Ok(None),
         }
     }
 }

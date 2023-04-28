@@ -401,6 +401,9 @@ mod test {
             }),
             module_meta: vec![],
             package_meta: vec![],
+            sink_config: None,
+            network: "".into(),
+            sink_module: "".into(),
         }
     }
 

@@ -3,9 +3,8 @@ use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
 use crate::firehose::FirehoseEndpoint;
 use crate::prelude::*;
-use crate::substreams::response::Message;
-use crate::substreams::ForkStep::{StepNew, StepUndo};
-use crate::substreams::{Modules, Request, Response};
+use crate::substreams::Modules;
+use crate::substreams_rpc::{Request, Response};
 use crate::util::backoff::ExponentialBackoff;
 use async_stream::try_stream;
 use futures03::{Stream, StreamExt};
@@ -203,10 +202,8 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                 start_block_num,
                 start_cursor: latest_cursor.clone(),
                 stop_block_num,
-                fork_steps: vec![StepNew as i32, StepUndo as i32],
-                irreversibility_condition: "".to_string(),
                 modules: modules.clone(),
-                output_modules: vec![module_name.clone()],
+                output_module: module_name.clone(),
                 production_mode: true,
                 ..Default::default()
             };
@@ -298,25 +295,21 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
         Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:#}", e)),
     };
 
-    match response.message {
-        Some(Message::Data(block_scoped_data)) => {
-            match mapper
-                .to_block_stream_event(logger, &block_scoped_data)
-                .await
-                .context("Mapping block to BlockStreamEvent failed")?
-            {
-                Some(event) => Ok(Some(BlockResponse::Proceed(
-                    event,
-                    block_scoped_data.cursor.to_string(),
-                ))),
-                None => Ok(None),
+    match mapper
+        .to_block_stream_event(logger, response.message)
+        .await
+        .context("Mapping message to BlockStreamEvent failed")?
+    {
+        Some(event) => {
+            let cursor = match &event {
+                BlockStreamEvent::Revert(_, cursor) => cursor,
+                BlockStreamEvent::ProcessBlock(_, cursor) => cursor,
             }
+            .to_string();
+
+            return Ok(Some(BlockResponse::Proceed(event, cursor)));
         }
-        None => {
-            warn!(&logger, "Got None on substream message");
-            Ok(None)
-        }
-        _ => Ok(None),
+        None => Ok(None), // some progress responses are ignored within to_block_stream_event
     }
 }
 
