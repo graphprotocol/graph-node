@@ -98,6 +98,17 @@ pub struct EnvVarsStore {
     /// blocks) than its history limit. The default value is 1.2 and the
     /// value must be at least 1.01
     pub history_slack_factor: f64,
+    /// How long to accumulate changes into a batch before a write has to
+    /// happen. Set by the environment variable
+    /// `GRAPH_STORE_WRITE_BATCH_DURATION` in seconds. The default is 300s.
+    /// Setting this to 0 disables write batching.
+    pub write_batch_duration: Duration,
+    /// How many changes to accumulate in bytes before a write has to
+    /// happen. Set by the environment variable
+    /// `GRAPH_STORE_WRITE_BATCH_SIZE`, which is in kilobytes. The default
+    /// is 10_000 which corresponds to 10MB. Setting this to 0 disables
+    /// write batching.
+    pub write_batch_size: usize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -137,6 +148,8 @@ impl From<InnerStore> for EnvVarsStore {
             rebuild_threshold: x.rebuild_threshold.0,
             delete_threshold: x.delete_threshold.0,
             history_slack_factor: x.history_slack_factor.0,
+            write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
+            write_batch_size: x.write_batch_size * 1_000,
         }
     }
 }
@@ -186,6 +199,10 @@ pub struct InnerStore {
     delete_threshold: ZeroToOneF64,
     #[envconfig(from = "GRAPH_STORE_HISTORY_SLACK_FACTOR", default = "1.2")]
     history_slack_factor: HistorySlackF64,
+    #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_DURATION", default = "300")]
+    write_batch_duration_in_secs: u64,
+    #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]
+    write_batch_size: usize,
 }
 
 #[derive(Clone, Copy, Debug)]

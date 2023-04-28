@@ -238,3 +238,9 @@ those.
   to 0.5 for the `REBUILD_THRESHOLD` and 0.05 for the `DELETE_THRESHOLD`;
   they must be between 0 and 1, and `REBUILD_THRESHOLD` must be bigger than
   `DELETE_THRESHOLD`.
+- `GRAPH_STORE_WRITE_BATCH_DURATION`: how long to accumulate changes during
+  syncing into a batch before a write has to happen in seconds. The default
+  is 300s. Setting this to 0 disables write batching.
+- `GRAPH_STORE_WRITE_BATCH_SIZE`: how many changes to accumulate during
+  syncing in kilobytes before a write has to happen. The default is 10_000
+  which corresponds to 10MB. Setting this to 0 disables write batching.

@@ -812,8 +812,10 @@ impl Queue {
     ///   1. The subgraph is not synced
     ///   2. The newest request (back of the queue) is not already being
     ///      processed by the writing thread
-    ///   3. The newest write request is not older than `MAX_BATCH_TIME`
-    ///   4. The newest write request is not bigger than `MAX_BATCH_WEIGHT`
+    ///   3. The newest write request is not older than
+    ///      `GRAPH_STORE_WRITE_BATCH_DURATION`
+    ///   4. The newest write request is not bigger than
+    ///      `GRAPH_STORE_WRITE_BATCH_SIZE`
     ///
     /// In all other cases, we queue a new write request.
     ///
@@ -823,10 +825,10 @@ impl Queue {
     /// nothing has to ever wait for the database, and the gains from
     /// batching would not be noticable.
     async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
-        const MAX_BATCH_TIME: Duration = Duration::from_secs(30);
-        const MAX_BATCH_WEIGHT: usize = 10_000 * 1000;
-
-        let batch = if !self.batch_writes.load(Ordering::SeqCst) {
+        let batch = if ENV_VARS.store.write_batch_size == 0
+            || ENV_VARS.store.write_batch_duration.is_zero()
+            || !self.batch_writes.load(Ordering::SeqCst)
+        {
             Some(batch)
         } else {
             self.queue.map_newest(move |newest| {
@@ -852,7 +854,7 @@ impl Queue {
                         queued,
                         ..
                     } => {
-                        if queued.elapsed() < MAX_BATCH_TIME {
+                        if queued.elapsed() < ENV_VARS.store.write_batch_duration {
                             // We are being very defensive here: if anything
                             // is holding the lock on the batch, do not
                             // modify it. We create a new request instead of
@@ -861,7 +863,7 @@ impl Queue {
                             // probably be fine to wait for the lock.
                             match existing.try_write() {
                                 Ok(mut existing) => {
-                                    if existing.weight() < MAX_BATCH_WEIGHT {
+                                    if existing.weight() < ENV_VARS.store.write_batch_size {
                                         existing.append(batch).map(|()| None)
                                     } else {
                                         Ok(Some(batch))
