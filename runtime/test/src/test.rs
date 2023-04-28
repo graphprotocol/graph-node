@@ -326,13 +326,6 @@ async fn test_json_parsing(api_version: Version, gas_used: u64) {
     )
     .await;
 
-    // Parse invalid JSON and handle the error gracefully
-    let s = "foo"; // Invalid because there are no quotes around `foo`
-    let bytes: &[u8] = s.as_ref();
-    let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes);
-    let output: String = module.asc_get(return_value).unwrap();
-    assert_eq!(output, "ERROR: true");
-
     // Parse valid JSON and get it back
     let s = "\"foo\""; // Valid because there are quotes around `foo`
     let bytes: &[u8] = s.as_ref();
@@ -341,16 +334,31 @@ async fn test_json_parsing(api_version: Version, gas_used: u64) {
     let output: String = module.asc_get(return_value).unwrap();
     assert_eq!(output, "OK: foo, ERROR: false");
     assert_eq!(module.gas_used(), gas_used);
+
+    // Parse invalid JSON and handle the error gracefully
+    let s = "foo"; // Invalid because there are no quotes around `foo`
+    let bytes: &[u8] = s.as_ref();
+    let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes);
+    let output: String = module.asc_get(return_value).unwrap();
+    assert_eq!(output, "ERROR: true");
+
+    // Parse JSON that's too long and handle the error gracefully
+    let s = format!("\"f{}\"", "o".repeat(10_000_000));
+    let bytes: &[u8] = s.as_ref();
+    let return_value: AscPtr<AscString> = module.invoke_export1("handleJsonError", bytes);
+
+    let output: String = module.asc_get(return_value).unwrap();
+    assert_eq!(output, "ERROR: true");
 }
 
 #[tokio::test]
 async fn json_parsing_v0_0_4() {
-    test_json_parsing(API_VERSION_0_0_4, 2722284).await;
+    test_json_parsing(API_VERSION_0_0_4, 4373087).await;
 }
 
 #[tokio::test]
 async fn json_parsing_v0_0_5() {
-    test_json_parsing(API_VERSION_0_0_5, 3862933).await;
+    test_json_parsing(API_VERSION_0_0_5, 5153540).await;
 }
 
 async fn test_ipfs_cat(api_version: Version) {

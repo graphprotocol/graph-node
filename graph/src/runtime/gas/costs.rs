@@ -74,3 +74,10 @@ pub const STORE_GET: GasOp = GasOp {
 };
 
 pub const STORE_REMOVE: GasOp = STORE_SET;
+
+// Deeply nested JSON can take over 100x the memory of the serialized format, so multiplying the
+// size cost by 100 makes sense.
+pub const JSON_FROM_BYTES: GasOp = GasOp {
+    base_cost: DEFAULT_BASE_COST,
+    size_mult: DEFAULT_GAS_PER_BYTE * 100,
+};
