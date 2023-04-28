@@ -40,8 +40,6 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         filter: Arc<TriggerFilter>,
         _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let firehose_endpoint = chain.chain_client().firehose_endpoint()?;
-
         let mapper = Arc::new(Mapper {});
 
         let logger = chain
@@ -51,7 +49,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
 
         Ok(Box::new(SubstreamsBlockStream::new(
             deployment.hash,
-            firehose_endpoint,
+            chain.chain_client(),
             subgraph_current_block,
             block_cursor.as_ref().clone(),
             mapper,

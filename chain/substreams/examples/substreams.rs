@@ -1,8 +1,9 @@
 use anyhow::{format_err, Context, Error};
 use graph::blockchain::block_stream::BlockStreamEvent;
+use graph::blockchain::client::ChainClient;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
 use graph::endpoint::EndpointMetrics;
-use graph::firehose::SubgraphLimit;
+use graph::firehose::{FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::{info, tokio, DeploymentHash, MetricsRegistry, Registry};
 use graph::tokio_stream::StreamExt;
 use graph::{env::env_var, firehose::FirehoseEndpoint, log::logger, substreams};
@@ -57,10 +58,14 @@ async fn main() -> Result<(), Error> {
         Arc::new(endpoint_metrics),
     ));
 
+    let client = Arc::new(ChainClient::new_firehose(FirehoseEndpoints::from(vec![
+        firehose,
+    ])));
+
     let mut stream: SubstreamsBlockStream<graph_chain_substreams::Chain> =
         SubstreamsBlockStream::new(
             DeploymentHash::new("substreams".to_string()).unwrap(),
-            firehose.clone(),
+            client,
             None,
             None,
             Arc::new(Mapper {}),
