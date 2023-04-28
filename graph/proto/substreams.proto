@@ -1,196 +1,42 @@
-// File generated using this command at the root of `graph-node` project
-// and assuming `substreams` repository is a sibling of `graph-node` (note that you
-// might need to adjust the `head -nN` and `skip N` values in the commands below to skip
-// more/less lines):
-//
-// ```
-// cat graph/proto/substreams.proto | head -n16 > /tmp/substreams.proto && mv /tmp/substreams.proto graph/proto/substreams.proto
-// cat ../substreams/proto/sf/substreams/v1/substreams.proto | grep -Ev 'import *"sf/substreams' >> graph/proto/substreams.proto
-// cat ../substreams/proto/sf/substreams/v1/modules.proto | skip 6 >> graph/proto/substreams.proto
-// cat ../substreams/proto/sf/substreams/v1/package.proto | skip 9 >> graph/proto/substreams.proto
-// cat ../substreams/proto/sf/substreams/v1/clock.proto | skip 7 >> graph/proto/substreams.proto
-// # Manually add line `import "google/protobuf/descriptor.proto";` below `import "google/protobuf/timestamp.proto";`
-// ```
-//
-// FIXME: We copy over and inline most of the substreams files, this is bad and we need a better way to
-// generate that, outside of doing this copying over.
 syntax = "proto3";
 
 package sf.substreams.v1;
-option go_package = "github.com/streamingfast/substreams/pb/sf/substreams/v1;pbsubstreams";
 
-import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/descriptor.proto";
+import "google/protobuf/any.proto";
 
-service Stream {
-  rpc Blocks(Request) returns (stream Response);
+message Package {
+  // Needs to be one so this file can be used _directly_ as a
+  // buf `Image` andor a ProtoSet for grpcurl and other tools
+  repeated google.protobuf.FileDescriptorProto proto_files = 1;
+  reserved 2 to 4; // Reserved for future: in case protosets adds fields
+
+  uint64 version = 5;
+  sf.substreams.v1.Modules modules = 6;
+  repeated ModuleMetadata module_meta = 7;
+  repeated PackageMetadata package_meta = 8;
+
+  // Source network for Substreams to fetch its data from.
+  string network = 9;
+
+  google.protobuf.Any sink_config = 10;
+  string sink_module = 11;
 }
 
-message Request {
-  int64 start_block_num = 1;
-  string start_cursor = 2;
-  uint64 stop_block_num = 3;
-  repeated ForkStep fork_steps = 4;
-  string irreversibility_condition = 5;
-
-  // By default, the engine runs in developer mode, with richer and deeper output,
-  // * support for multiple `output_modules`, of `store` and `map` kinds
-  // * support for `initial_store_snapshot_for_modules`
-  // * log outputs for output modules
-  //
-  // With `production_mode`, however, you trade off functionality for high speed, where it:
-  // * restricts the possible requested `output_modules` to a single mapper module,
-  // * turns off support for `initial_store_snapshot_for_modules`,
-  // * still streams output linearly, with a cursor, but at higher speeds
-  // * and purges log outputs from responses.
-  bool production_mode = 9;
-
-  Modules modules = 6;
-  repeated string output_modules = 7;
-  repeated string initial_store_snapshot_for_modules = 8;
+message PackageMetadata {
+  string version = 1;
+  string url = 2;
+  string name = 3;
+  string doc = 4;
 }
 
-message Response {
-  oneof message {
-    SessionInit session = 5; // Always sent first
-    ModulesProgress progress = 1; // Progress of data preparation, before sending in the stream of `data` events.
-    InitialSnapshotData snapshot_data = 2;
-    InitialSnapshotComplete snapshot_complete = 3;
-    BlockScopedData data = 4;
-  }
+message ModuleMetadata {
+  // Corresponds to the index in `Package.metadata.package_meta`
+  uint64 package_index = 1;
+  string doc = 2;
 }
 
-enum ForkStep {
-  STEP_UNKNOWN = 0;
-  // Block is new head block of the chain, that is linear with the previous block
-  STEP_NEW = 1;
-  // Block is now forked and should be undone, it's not the head block of the chain anymore
-  STEP_UNDO = 2;
-  // Removed, was STEP_REDO
-  reserved 3;
-  // Block is now irreversible and can be committed to (finality is chain specific, see chain documentation for more details)
-  STEP_IRREVERSIBLE = 4;
-  // Removed, was STEP_STALLED
-  reserved 5;
-}
-
-message SessionInit  {
-  string trace_id = 1;
-}
-
-message InitialSnapshotComplete {
-  string cursor = 1;
-}
-
-message InitialSnapshotData {
-  string module_name = 1;
-  StoreDeltas deltas = 2;
-  uint64 sent_keys = 4;
-  uint64 total_keys = 3;
-}
-
-message BlockScopedData {
-  repeated ModuleOutput outputs = 1;
-  Clock clock = 3;
-  ForkStep step = 6;
-  string cursor = 10;
-}
-
-message ModuleOutput {
-  string name = 1;
-
-  oneof data {
-    google.protobuf.Any map_output = 2;
-
-    // StoreDeltas are produced for store modules in development mode.
-    // It is not possible to retrieve store models in production, with parallelization
-    // enabled. If you need the deltas directly, write a pass through mapper module
-    // that will get them down to you.
-    StoreDeltas debug_store_deltas = 3;
-  }
-  repeated string debug_logs = 4;
-  // LogsTruncated is a flag that tells you if you received all the logs or if they
-  // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
-  bool debug_logs_truncated = 5;
-
-  bool cached = 6;
-}
-
-// think about:
-// message ModuleOutput { ...
-//   ModuleOutputDebug debug_info = 6;
-// ...}
-//message ModuleOutputDebug {
-//  StoreDeltas store_deltas = 3;
-//  repeated string logs = 4;
-//  // LogsTruncated is a flag that tells you if you received all the logs or if they
-//  // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
-//  bool logs_truncated = 5;
-//}
-
-message ModulesProgress {
-  repeated ModuleProgress modules = 1;
-}
-
-message ModuleProgress {
-  string name = 1;
-
-  oneof type {
-    ProcessedRange processed_ranges = 2;
-    InitialState initial_state = 3;
-    ProcessedBytes processed_bytes = 4;
-    Failed failed = 5;
-  }
-
-  message ProcessedRange {
-    repeated BlockRange processed_ranges = 1;
-  }
-  message InitialState {
-    uint64 available_up_to_block = 2;
-  }
-  message ProcessedBytes {
-    uint64 total_bytes_read = 1;
-    uint64 total_bytes_written = 2;
-  }
-  message Failed {
-    string reason = 1;
-    repeated string logs = 2;
-    // FailureLogsTruncated is a flag that tells you if you received all the logs or if they
-    // were truncated because you logged too much (fixed limit currently is set to 128 KiB).
-    bool logs_truncated = 3;
-  }
-}
-
-message BlockRange {
-  uint64 start_block = 2;
-  uint64 end_block = 3;
-}
-
-message StoreDeltas {
-  repeated StoreDelta deltas = 1;
-}
-
-message StoreDelta {
-  enum Operation {
-    UNSET = 0;
-    CREATE = 1;
-    UPDATE = 2;
-    DELETE = 3;
-  }
-  Operation operation = 1;
-  uint64 ordinal = 2;
-  string key = 3;
-  bytes old_value = 4;
-  bytes new_value = 5;
-}
-
-message Output {
-  uint64 block_num = 1;
-  string block_id = 2;
-  google.protobuf.Timestamp timestamp = 4;
-  google.protobuf.Any value = 10;
-}
 message Modules {
   repeated Module modules = 1;
   repeated Binary binaries = 2;
@@ -255,6 +101,7 @@ message Module {
       Source source = 1;
       Map map = 2;
       Store store = 3;
+      Params params = 4;
     }
 
     message Source {
@@ -273,40 +120,25 @@ message Module {
 	DELTAS = 2;
       }
     }
+    message Params {
+      string value = 1;
+    }
   }
 
   message Output {
     string type = 1;
   }
 }
-message Package {
-  // Needs to be one so this file can be used _directly_ as a
-  // buf `Image` andor a ProtoSet for grpcurl and other tools
-  repeated google.protobuf.FileDescriptorProto proto_files = 1;
-  reserved 2; // In case protosets add a field some day.
-  reserved 3; // In case protosets add a field some day.
-  reserved 4; // In case protosets add a field some day.
 
-  uint64 version = 5;
-  sf.substreams.v1.Modules modules = 6;
-  repeated ModuleMetadata module_meta = 7;
-  repeated PackageMetadata package_meta = 8;
-}
-
-message PackageMetadata {
-  string version = 1;
-  string url = 2;
-  string name = 3;
-  string doc = 4;
-}
-
-message ModuleMetadata {
-  // Corresponds to the index in `Package.metadata.package_meta`
-  uint64 package_index = 1;
-  string doc = 2;
-}
+// Clock is a pointer to a block with added timestamp
 message Clock {
   string id = 1;
   uint64 number = 2;
   google.protobuf.Timestamp timestamp = 3;
+}
+
+// BlockRef is a pointer to a block to which we don't know the timestamp
+message BlockRef {
+  string id = 1;
+  uint64 number = 2;
 }
