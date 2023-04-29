@@ -495,6 +495,7 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 }
 
 /// A list of entity changes with one group per entity type
+#[derive(Debug)]
 pub struct RowGroups {
     pub groups: Vec<RowGroup>,
 }
@@ -540,6 +541,7 @@ impl RowGroups {
 }
 
 /// Data sources data grouped by block
+#[derive(Debug)]
 pub struct DataSources {
     pub entries: Vec<(BlockPtr, Vec<StoredDynamicDataSource>)>,
 }
@@ -578,6 +580,7 @@ pub enum EntityOp<'a> {
 
 /// A write batch. This data structure encapsulates all the things that need
 /// to be changed to persist the output of mappings up to a certain block.
+#[derive(Debug)]
 pub struct Batch {
     /// The last block for which this batch contains changes
     pub block_ptr: BlockPtr,

@@ -18,6 +18,8 @@ use graph::prelude::{
 };
 use graph::schema::InputSchema;
 use graph::slog::{info, warn};
+use graph::tokio::select;
+use graph::tokio::sync::Notify;
 use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
@@ -509,6 +511,11 @@ enum Request {
         queued: Instant,
         store: Arc<SyncStore>,
         stopwatch: StopwatchMetrics,
+        // The batch is in a `RwLock` because `push_write` will try to add
+        // to the batch under the right conditions, and other operations
+        // will try to read the batch. The batch only becomes truly readonly
+        // when we decide to process it at which point we set `processed` to
+        // `true`
         batch: RwLock<Batch>,
         processed: AtomicBool,
     },
@@ -625,6 +632,26 @@ impl Request {
             Request::Stop => Ok(ExecResult::Stop),
         }
     }
+
+    /// Return `true` if we should process this request right away. Return
+    /// `false` if we should wait for a little longer with processing the
+    /// request
+    fn should_process(&self) -> bool {
+        match self {
+            Request::Write { queued, batch, .. } => {
+                batch.read().unwrap().weight() >= ENV_VARS.store.write_batch_size
+                    || queued.elapsed() >= ENV_VARS.store.write_batch_duration
+            }
+            Request::RevertTo { .. } | Request::Stop => true,
+        }
+    }
+
+    fn is_write(&self) -> bool {
+        match self {
+            Request::Write { .. } => true,
+            Request::RevertTo { .. } | Request::Stop => false,
+        }
+    }
 }
 
 /// A queue that asynchronously writes requests queued with `push` to the
@@ -654,6 +681,10 @@ struct Queue {
     /// spanning multiple blocks. This is initially `true` and gets set to
     /// `false` when the subgraph is marked as synced.
     batch_writes: AtomicBool,
+
+    /// Notify the background writer as soon as we are told to stop
+    /// batching or there is a batch that is big enough to proceed.
+    batch_ready_notify: Arc<Notify>,
 }
 
 /// Support for controlling the background writer (pause/resume) only for
@@ -723,10 +754,43 @@ impl Queue {
         capacity: usize,
         registry: Arc<MetricsRegistry>,
     ) -> (Arc<Self>, JoinHandle<()>) {
-        async fn start_writer(queue: Arc<Queue>, logger: Logger) {
+        async fn start_writer(queue: Arc<Queue>, logger: Logger, batch_stop_notify: Arc<Notify>) {
             loop {
                 #[cfg(debug_assertions)]
                 test_support::take_step(&queue.store.site.as_ref().into()).await;
+
+                // If batching is enabled, hold off on writing a batch for a
+                // little bit to give processing a chance to add more
+                // changes. We start processing a batch if it is big enough
+                // or old enough, or if there is more than one request in
+                // the queue. The latter condition makes sure that we do not
+                // wait for a batch to grow when `push_write` would never
+                // add to it again.
+                if queue.batch_writes() && queue.queue.len() <= 1 {
+                    loop {
+                        let _section = queue.stopwatch.start_section("queue_wait");
+                        let req = queue.queue.peek().await;
+
+                        // When this is true, push_write would never add to
+                        // `req`, and we therefore execute the request as
+                        // waiting for more changes to it would be pointless
+                        if !queue.batch_writes() || queue.queue.len() > 1 || req.should_process() {
+                            break;
+                        }
+
+                        // Wait until something has changed before checking
+                        // again, either because we were notified that the
+                        // batch should be processed or after some time
+                        // passed. The latter is just for safety in case
+                        // there is a mistake with notifications.
+                        let sleep = graph::tokio::time::sleep(Duration::from_secs(2));
+                        let notify = batch_stop_notify.notified();
+                        select!(
+                            () = sleep => (),
+                            () = notify => (),
+                        );
+                    }
+                }
 
                 // We peek at the front of the queue, rather than pop it
                 // right away, so that query methods like `get` have access
@@ -736,6 +800,9 @@ impl Queue {
                 // incorrect results.
                 let req = {
                     let _section = queue.stopwatch.start_section("queue_wait");
+                    // Mark the request as being processed so push_write
+                    // will not modify it again, even after we are done with
+                    // it here
                     queue.queue.peek_with(|req| req.start_process()).await
                 };
                 let res = {
@@ -784,6 +851,7 @@ impl Queue {
             registry,
         );
 
+        let batch_ready_notify = Arc::new(Notify::new());
         let queue = Self {
             store,
             queue,
@@ -791,10 +859,15 @@ impl Queue {
             poisoned: AtomicBool::new(false),
             stopwatch,
             batch_writes: AtomicBool::new(true),
+            batch_ready_notify: batch_ready_notify.clone(),
         };
         let queue = Arc::new(queue);
 
-        let handle = graph::spawn(start_writer(queue.cheap_clone(), logger));
+        let handle = graph::spawn(start_writer(
+            queue.cheap_clone(),
+            logger,
+            batch_ready_notify,
+        ));
 
         (queue, handle)
     }
@@ -802,32 +875,42 @@ impl Queue {
     /// Add a write request to the queue
     async fn push(&self, req: Request) -> Result<(), StoreError> {
         self.check_err()?;
+        // If we see anything but a write we have to turn off batching as
+        // that would risk adding changes from after a revert into a batch
+        // that gets processed before the revert
+        if !req.is_write() {
+            self.stop_batching();
+        }
         self.queue.push(Arc::new(req)).await;
         Ok(())
     }
 
-    /// Try to append the `batch` to an existing write request. We will only
-    /// append if several conditions are true:
+    /// Try to append the `batch` to the newest request in the queue if that
+    /// is a write request. We will only append if several conditions are
+    /// true:
     ///
     ///   1. The subgraph is not synced
-    ///   2. The newest request (back of the queue) is not already being
-    ///      processed by the writing thread
-    ///   3. The newest write request is not older than
+    ///   2. The newest request (back of the queue) is a write
+    ///   3. The newest request is not already being processed by the
+    ///      writing thread
+    ///   4. The newest write request is not older than
     ///      `GRAPH_STORE_WRITE_BATCH_DURATION`
-    ///   4. The newest write request is not bigger than
+    ///   5. The newest write request is not bigger than
     ///      `GRAPH_STORE_WRITE_BATCH_SIZE`
     ///
-    /// In all other cases, we queue a new write request.
+    /// In all other cases, we queue a new write request. Note that (3)
+    /// means that the oldest request (front of the queue) does not
+    /// necessarily fulfill (4) and (5) even if it is a write and the
+    /// subgraph is not synced yet.
     ///
-    /// This strategy has the downside that if writes happen very fast and
-    /// the queue never has more than one entry, we do never append to an
-    /// existing batch and always queue new requests. But in that case,
-    /// nothing has to ever wait for the database, and the gains from
-    /// batching would not be noticable.
+    /// This strategy is closely tied to how start_writer waits for writes
+    /// to fill up before writing them to maximize the chances that we build
+    /// a 'full' write batch, i.e., one that is either big enough or old
+    /// enough
     async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
         let batch = if ENV_VARS.store.write_batch_size == 0
             || ENV_VARS.store.write_batch_duration.is_zero()
-            || !self.batch_writes.load(Ordering::SeqCst)
+            || !self.batch_writes()
         {
             Some(batch)
         } else {
@@ -858,18 +941,29 @@ impl Queue {
                             // We are being very defensive here: if anything
                             // is holding the lock on the batch, do not
                             // modify it. We create a new request instead of
-                            // waiting for the lock to avoid slowing writes
-                            // down because of other activity. It would
-                            // probably be fine to wait for the lock.
+                            // waiting for the lock since writing a batch
+                            // holds a read lock on the batch for the
+                            // duration of the write, and we do not want to
+                            // slow down queueing requests unnecessarily
                             match existing.try_write() {
                                 Ok(mut existing) => {
                                     if existing.weight() < ENV_VARS.store.write_batch_size {
-                                        existing.append(batch).map(|()| None)
+                                        let res = existing.append(batch).map(|()| None);
+                                        if existing.weight() >= ENV_VARS.store.write_batch_size {
+                                            self.batch_ready_notify.notify_one();
+                                        }
+                                        res
                                     } else {
                                         Ok(Some(batch))
                                     }
                                 }
-                                Err(RwLockError::WouldBlock) => return Ok(Some(batch)),
+                                Err(RwLockError::WouldBlock) => {
+                                    // This branch can cause batches that
+                                    // are not 'full' at the head of the
+                                    // queue, something that start_writer
+                                    // has to take into account
+                                    return Ok(Some(batch));
+                                }
                                 Err(RwLockError::Poisoned(e)) => {
                                     panic!("rwlock on batch was poisoned {:?}", e);
                                 }
@@ -897,11 +991,19 @@ impl Queue {
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
         self.check_err()?;
+        // Turn off batching so the queue doesn't wait for a batch to become
+        // full, but restore the old behavior once the queue is empty.
+        let batching = self.batch_writes.load(Ordering::SeqCst);
+        self.stop_batching();
+
         self.queue.wait_empty().await;
+
+        self.batch_writes.store(batching, Ordering::SeqCst);
         self.check_err()
     }
 
     async fn stop(&self) -> Result<(), StoreError> {
+        self.stop_batching();
         self.push(Request::Stop).await
     }
 
@@ -1082,8 +1184,17 @@ impl Queue {
     }
 
     fn deployment_synced(&self) {
-        self.batch_writes.store(false, Ordering::SeqCst);
+        self.stop_batching();
         self.stopwatch.disable()
+    }
+
+    fn batch_writes(&self) -> bool {
+        self.batch_writes.load(Ordering::SeqCst)
+    }
+
+    fn stop_batching(&self) {
+        self.batch_writes.store(false, Ordering::SeqCst);
+        self.batch_ready_notify.notify_one();
     }
 }
 

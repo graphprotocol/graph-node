@@ -171,7 +171,7 @@ impl TestContext {
 
         wait_for_sync(
             &self.logger,
-            &self.store,
+            self.store.clone(),
             &self.deployment.clone(),
             stop_block,
         )
@@ -190,7 +190,7 @@ impl TestContext {
 
         wait_for_sync(
             &self.logger,
-            &self.store,
+            self.store.clone(),
             &self.deployment.clone(),
             stop_block,
         )
@@ -457,13 +457,32 @@ pub fn cleanup(
 
 pub async fn wait_for_sync(
     logger: &Logger,
-    store: &SubgraphStore,
+    store: Arc<SubgraphStore>,
     deployment: &DeploymentLocator,
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
+    /// We flush here to speed up how long the write queue waits before it
+    /// considers a batch complete and writable. Without flushing, we would
+    /// have to wait for `GRAPH_STORE_WRITE_BATCH_DURATION` before all
+    /// changes have been written to the database
+    async fn flush(logger: &Logger, store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
+        store
+            .clone()
+            .writable(logger.clone(), deployment.id, Arc::new(vec![]))
+            .await
+            .unwrap()
+            .flush()
+            .await
+            .unwrap();
+    }
+
     let mut err_count = 0;
+
+    flush(logger, &store, deployment).await;
+
     while err_count < 10 {
         tokio::time::sleep(Duration::from_millis(1000)).await;
+        flush(logger, &store, deployment).await;
 
         let block_ptr = match store.least_block_ptr(&deployment.hash).await {
             Ok(Some(ptr)) => ptr,

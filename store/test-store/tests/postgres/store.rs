@@ -1286,7 +1286,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             ),
             ("2".to_owned(), entity! { schema => id: "2", name: "Tessa" }),
         ];
-        transact_entity_operations(
+        transact_and_wait(
             &store.subgraph_store(),
             &deployment,
             TEST_BLOCK_1_PTR.clone(),
@@ -1314,7 +1314,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         };
 
         // Commit update & delete ops
-        transact_entity_operations(
+        transact_and_wait(
             &store.subgraph_store(),
             &deployment,
             TEST_BLOCK_2_PTR.clone(),
