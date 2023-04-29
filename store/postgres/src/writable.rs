@@ -17,6 +17,8 @@ use graph::prelude::{
 };
 use graph::schema::InputSchema;
 use graph::slog::{info, warn};
+use graph::tokio::select;
+use graph::tokio::sync::Notify;
 use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
@@ -541,6 +543,19 @@ impl Request {
             Request::Stop => Ok(ExecResult::Stop),
         }
     }
+
+    /// Return `true` if we should process this request right away. Return
+    /// `false` if we should wait for a little longer with processing the
+    /// request
+    fn should_process(&self) -> bool {
+        match self {
+            Request::Write { queued, batch, .. } => {
+                batch.read().unwrap().weight() >= ENV_VARS.store.write_batch_size
+                    || queued.elapsed() >= ENV_VARS.store.write_batch_duration
+            }
+            Request::RevertTo { .. } | Request::Stop => true,
+        }
+    }
 }
 
 /// A queue that asynchronously writes requests queued with `push` to the
@@ -570,6 +585,10 @@ struct Queue {
     /// spanning multiple blocks. This is initially `true` and gets set to
     /// `false` when the subgraph is marked as synced.
     batch_writes: AtomicBool,
+
+    /// Notify the background writer as soon as we are told to stop
+    /// batching or there is a batch that is big enough to proceed.
+    batch_ready_notify: Arc<Notify>,
 }
 
 /// Support for controlling the background writer (pause/resume) only for
@@ -639,10 +658,35 @@ impl Queue {
         capacity: usize,
         registry: Arc<MetricsRegistry>,
     ) -> (Arc<Self>, JoinHandle<()>) {
-        async fn start_writer(queue: Arc<Queue>, logger: Logger) {
+        async fn start_writer(queue: Arc<Queue>, logger: Logger, batch_stop_notify: Arc<Notify>) {
             loop {
                 #[cfg(debug_assertions)]
                 test_support::take_step(&queue.store.site.as_ref().into()).await;
+
+                // If batching is enabled, hold off on writing a batch for a
+                // little bit to give processing a chance to add more
+                // changes
+                if queue.batch_writes() {
+                    loop {
+                        let _section = queue.stopwatch.start_section("queue_wait");
+                        let req = queue.queue.peek().await;
+                        if !queue.batch_writes() || req.should_process() {
+                            break;
+                        }
+
+                        // Wait until something has changed before checking
+                        // again, either because we were notified that the
+                        // batch should be processed or after some time
+                        // passed. The latter is just for safety in case
+                        // there is a mistake with notifications.
+                        let sleep = graph::tokio::time::sleep(Duration::from_secs(2));
+                        let notify = batch_stop_notify.notified();
+                        select!(
+                            () = sleep => (),
+                            () = notify => (),
+                        );
+                    }
+                }
 
                 // We peek at the front of the queue, rather than pop it
                 // right away, so that query methods like `get` have access
@@ -700,6 +744,7 @@ impl Queue {
             registry,
         );
 
+        let batch_ready_notify = Arc::new(Notify::new());
         let queue = Self {
             store,
             queue,
@@ -707,10 +752,15 @@ impl Queue {
             poisoned: AtomicBool::new(false),
             stopwatch,
             batch_writes: AtomicBool::new(true),
+            batch_ready_notify: batch_ready_notify.clone(),
         };
         let queue = Arc::new(queue);
 
-        let handle = graph::spawn(start_writer(queue.cheap_clone(), logger));
+        let handle = graph::spawn(start_writer(
+            queue.cheap_clone(),
+            logger,
+            batch_ready_notify,
+        ));
 
         (queue, handle)
     }
@@ -743,7 +793,7 @@ impl Queue {
     async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
         let batch = if ENV_VARS.store.write_batch_size == 0
             || ENV_VARS.store.write_batch_duration.is_zero()
-            || !self.batch_writes.load(Ordering::SeqCst)
+            || !self.batch_writes()
         {
             Some(batch)
         } else {
@@ -780,7 +830,11 @@ impl Queue {
                             match existing.try_write() {
                                 Ok(mut existing) => {
                                     if existing.weight() < ENV_VARS.store.write_batch_size {
-                                        existing.append(batch).map(|()| None)
+                                        let res = existing.append(batch).map(|()| None);
+                                        if existing.weight() >= ENV_VARS.store.write_batch_size {
+                                            self.batch_ready_notify.notify_one();
+                                        }
+                                        res
                                     } else {
                                         Ok(Some(batch))
                                     }
@@ -813,11 +867,19 @@ impl Queue {
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
         self.check_err()?;
+        // Turn off batching so the queue doesn't wait for a batch to become
+        // full, but restore the old behavior once the queue is empty.
+        let batching = self.batch_writes.load(Ordering::SeqCst);
+        self.stop_batching();
+
         self.queue.wait_empty().await;
+
+        self.batch_writes.store(batching, Ordering::SeqCst);
         self.check_err()
     }
 
     async fn stop(&self) -> Result<(), StoreError> {
+        self.stop_batching();
         self.push(Request::Stop).await
     }
 
@@ -1049,8 +1111,17 @@ impl Queue {
     }
 
     fn deployment_synced(&self) {
-        self.batch_writes.store(false, Ordering::SeqCst);
+        self.stop_batching();
         self.stopwatch.disable()
+    }
+
+    fn batch_writes(&self) -> bool {
+        self.batch_writes.load(Ordering::SeqCst)
+    }
+
+    fn stop_batching(&self) {
+        self.batch_writes.store(false, Ordering::SeqCst);
+        self.batch_ready_notify.notify_one();
     }
 }
 
