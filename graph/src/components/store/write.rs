@@ -1,5 +1,5 @@
 //! Data structures and helpers for writing subgraph changes to the store
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr},
@@ -161,14 +161,6 @@ impl EntityMod {
         }
     }
 
-    fn key(&self) -> &EntityKey {
-        match self {
-            EntityMod::Insert { key, .. }
-            | EntityMod::Overwrite { key, .. }
-            | EntityMod::Remove { key, .. } => key,
-        }
-    }
-
     fn clamp(&mut self, block: BlockNumber) -> Result<(), StoreError> {
         use EntityMod::*;
 
@@ -225,6 +217,10 @@ pub struct RowGroup {
     /// then `rows[i].block() <= rows[j].block()`. Several methods on this
     /// struct rely on the fact that this ordering is observed.
     rows: Vec<EntityMod>,
+
+    /// Map the `key.entity_id` of all entries in `rows` to the index with
+    /// the most recent entry for that id to speed up lookups
+    last_mod: HashMap<Word, usize>,
 }
 
 impl RowGroup {
@@ -232,6 +228,7 @@ impl RowGroup {
         Self {
             entity_type,
             rows: Vec::new(),
+            last_mod: HashMap::new(),
         }
     }
 
@@ -273,10 +270,8 @@ impl RowGroup {
     }
 
     pub fn last_op(&self, key: &EntityKey) -> Option<EntityOp<'_>> {
-        self.rows
-            .iter()
-            .rfind(|emod| emod.key() == key)
-            .map(EntityOp::from)
+        let idx = *self.last_mod.get(&key.entity_id)?;
+        self.rows.get(idx).map(EntityOp::from)
     }
 
     pub fn effective_ops(&self) -> impl Iterator<Item = EntityOp<'_>> {
@@ -290,7 +285,8 @@ impl RowGroup {
 
     /// Find the most recent entry for `id`
     fn prev_row_mut(&mut self, id: &Word) -> Option<&mut EntityMod> {
-        self.rows.iter_mut().rfind(|emod| emod.id() == id)
+        let idx = *self.last_mod.get(id)?;
+        self.rows.get_mut(idx)
     }
 
     /// Append `row` to `self.rows` by combining it with a previously
@@ -304,6 +300,14 @@ impl RowGroup {
                     "can not append operations that go backwards from {:?} to {:?}",
                     prev_row,
                     row
+                ));
+            }
+
+            if row.id() != prev_row.id() {
+                return Err(constraint_violation!(
+                    "last_mod map is corrupted: got id {} looking up id {}",
+                    prev_row.id(),
+                    row.id()
                 ));
             }
 
@@ -325,7 +329,9 @@ impl RowGroup {
                 (Insert { .. }, Overwrite { block, .. })
                 | (Overwrite { .. }, Overwrite { block, .. }) => {
                     prev_row.clamp(*block)?;
-                    self.rows.push(row.as_insert(&self.entity_type)?);
+                    let row = row.as_insert(&self.entity_type)?;
+                    self.last_mod.insert(row.id().clone(), self.rows.len());
+                    self.rows.push(row);
                 }
                 (Insert { .. }, Remove { block, .. })
                 | (Overwrite { .. }, Remove { block, .. }) => {
@@ -334,6 +340,7 @@ impl RowGroup {
                 (Remove { .. }, Insert { .. }) => { /* nothing to do */ }
             }
         } else {
+            self.last_mod.insert(row.id().clone(), self.rows.len());
             self.rows.push(row);
         }
         Ok(())
@@ -753,6 +760,8 @@ impl<'a> Iterator for WriteChunkIter<'a> {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
+
     use crate::components::store::{write::EntityMod, BlockNumber, EntityKey, EntityType};
 
     use super::RowGroup;
@@ -761,7 +770,7 @@ mod test {
     fn check_runs(values: &[usize], blocks: &[BlockNumber], exp: &[(BlockNumber, &[usize])]) {
         assert_eq!(values.len(), blocks.len());
 
-        let rows = values
+        let rows: Vec<_> = values
             .iter()
             .zip(blocks.iter())
             .map(|(value, block)| EntityMod::Remove {
@@ -769,9 +778,18 @@ mod test {
                 block: *block,
             })
             .collect();
+        let last_mod = rows
+            .iter()
+            .enumerate()
+            .fold(HashMap::new(), |mut map, (idx, emod)| {
+                map.insert(emod.id().clone(), idx);
+                map
+            });
+
         let group = RowGroup {
             entity_type: EntityType::new("Entry".to_string()),
             rows,
+            last_mod,
         };
         let act = group
             .clamps_by_block()
