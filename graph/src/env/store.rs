@@ -129,6 +129,11 @@ pub struct EnvVarsStore {
     /// is 10_000 which corresponds to 10MB. Setting this to 0 disables
     /// write batching.
     pub write_batch_size: usize,
+    /// Whether to memoize the last operation for each entity in a write
+    /// batch to speed up adding more entities. Set by
+    /// `GRAPH_STORE_WRITE_BATCH_MEMOIZE`. The default is `true`.
+    /// Remove after 2025-07-01 if there have been no issues with it.
+    pub write_batch_memoize: bool,
     /// Whether to create GIN indexes for array attributes. Set by
     /// `GRAPH_STORE_CREATE_GIN_INDEXES`. The default is `false`
     pub create_gin_indexes: bool,
@@ -184,6 +189,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
+            write_batch_memoize: x.write_batch_memoize,
             batch_target_duration: Duration::from_secs(x.batch_target_duration_in_secs),
             batch_timeout: x.batch_timeout_in_secs.map(Duration::from_secs),
             batch_workers: x.batch_workers,
@@ -277,6 +283,8 @@ pub struct InnerStore {
     write_batch_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]
     write_batch_size: usize,
+    #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_MEMOIZE", default = "true")]
+    write_batch_memoize: bool,
     #[envconfig(from = "GRAPH_STORE_CREATE_GIN_INDEXES", default = "false")]
     create_gin_indexes: bool,
     #[envconfig(from = "GRAPH_STORE_USE_BRIN_FOR_ALL_QUERY_TYPES", default = "false")]
