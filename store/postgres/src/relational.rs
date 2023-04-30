@@ -805,12 +805,7 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
-            let ids = group
-                .rows
-                .iter()
-                .map(|row| row.id().as_str())
-                .collect::<Vec<_>>()
-                .join(", ");
+            let ids = group.ids().collect::<Vec<_>>().join(", ");
             return Err(constraint_violation!(
                 "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
                 group.entity_type,
@@ -854,7 +849,7 @@ impl Layout {
         if table.immutable {
             return Err(constraint_violation!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
-                table.object, group.rows.iter().map(|eref| eref.id()).join(", ")
+                table.object, group.ids().join(", ")
             ));
         }
 

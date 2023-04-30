@@ -294,7 +294,7 @@ pub struct RowGroup {
     /// All changes for this entity type, ordered by block; i.e., if `i < j`
     /// then `rows[i].block() <= rows[j].block()`. Several methods on this
     /// struct rely on the fact that this ordering is observed.
-    pub rows: Vec<EntityMod>,
+    rows: Vec<EntityMod>,
 }
 
 impl RowGroup {
