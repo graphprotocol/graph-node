@@ -1492,12 +1492,17 @@ fn handle_large_string_with_index() {
     const ONE: &str = "large_string_one";
     const TWO: &str = "large_string_two";
 
-    fn make_insert_op(id: &str, name: &str, schema: &InputSchema) -> EntityModification {
+    fn make_insert_op(
+        id: &str,
+        name: &str,
+        schema: &InputSchema,
+        block: BlockNumber,
+    ) -> EntityModification {
         let data = entity! { schema => id: id, name: name };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
-        EntityModification::Insert { key, data }
+        EntityModification::insert(key, data, block)
     }
 
     run_test(|store, writable, deployment| async move {
@@ -1518,13 +1523,14 @@ fn handle_large_string_with_index() {
             metrics_registry.clone(),
         );
 
+        let block = TEST_BLOCK_3_PTR.number;
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_text, &schema),
-                    make_insert_op(TWO, &other_text, &schema),
+                    make_insert_op(ONE, &long_text, &schema, block),
+                    make_insert_op(TWO, &other_text, &schema, block),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),
@@ -1580,12 +1586,17 @@ fn handle_large_bytea_with_index() {
     const ONE: &str = "large_string_one";
     const TWO: &str = "large_string_two";
 
-    fn make_insert_op(id: &str, name: &[u8], schema: &InputSchema) -> EntityModification {
+    fn make_insert_op(
+        id: &str,
+        name: &[u8],
+        schema: &InputSchema,
+        block: BlockNumber,
+    ) -> EntityModification {
         let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
         let key = EntityKey::data(USER.to_owned(), id.to_owned());
 
-        EntityModification::Insert { key, data }
+        EntityModification::insert(key, data, block)
     }
 
     run_test(|store, writable, deployment| async move {
@@ -1611,13 +1622,14 @@ fn handle_large_bytea_with_index() {
             metrics_registry.clone(),
         );
 
+        let block = TEST_BLOCK_3_PTR.number;
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
                 FirehoseCursor::None,
                 vec![
-                    make_insert_op(ONE, &long_bytea, &schema),
-                    make_insert_op(TWO, &other_bytea, &schema),
+                    make_insert_op(ONE, &long_bytea, &schema, block),
+                    make_insert_op(TWO, &other_bytea, &schema, block),
                 ],
                 &stopwatch_metrics,
                 Vec::new(),

@@ -725,7 +725,7 @@ impl StoreEvent {
             .map(|op| {
                 use self::EntityModification::*;
                 match op {
-                    Insert { key, .. } | Overwrite { key, .. } | Remove { key } => {
+                    Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => {
                         EntityChange::for_data(subgraph_id.clone(), key.clone())
                     }
                 }
@@ -1008,18 +1008,50 @@ pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EntityModification {
     /// Insert the entity
-    Insert { key: EntityKey, data: Entity },
+    Insert {
+        key: EntityKey,
+        data: Entity,
+        block: BlockNumber,
+        end: Option<BlockNumber>,
+    },
     /// Update the entity by overwriting it
-    Overwrite { key: EntityKey, data: Entity },
+    Overwrite {
+        key: EntityKey,
+        data: Entity,
+        block: BlockNumber,
+        end: Option<BlockNumber>,
+    },
     /// Remove the entity
-    Remove { key: EntityKey },
+    Remove { key: EntityKey, block: BlockNumber },
 }
 
 impl EntityModification {
+    pub fn insert(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
+        EntityModification::Insert {
+            key,
+            data,
+            block,
+            end: None,
+        }
+    }
+
+    pub fn overwrite(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
+        EntityModification::Overwrite {
+            key,
+            data,
+            block,
+            end: None,
+        }
+    }
+
+    pub fn remove(key: EntityKey, block: BlockNumber) -> Self {
+        EntityModification::Remove { key, block }
+    }
+
     pub fn entity_ref(&self) -> &EntityKey {
         use EntityModification::*;
         match self {
-            Insert { key, .. } | Overwrite { key, .. } | Remove { key } => key,
+            Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
         }
     }
 

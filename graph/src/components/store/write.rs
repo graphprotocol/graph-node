@@ -101,27 +101,37 @@ impl<'a> TryFrom<&'a EntityMod> for EntityWrite<'a> {
 }
 
 impl EntityMod {
-    fn new(m: EntityModification, block: BlockNumber) -> Self {
+    fn new(m: EntityModification) -> Self {
         match m {
-            EntityModification::Insert { key, data } => Self::Insert {
+            EntityModification::Insert {
                 key,
                 data,
                 block,
-                end: None,
-            },
-            EntityModification::Overwrite { key, data } => Self::Overwrite {
+                end,
+            } => Self::Insert {
                 key,
                 data,
                 block,
-                end: None,
+                end,
             },
-            EntityModification::Remove { key } => Self::Remove { key, block },
+            EntityModification::Overwrite {
+                key,
+                data,
+                block,
+                end,
+            } => Self::Overwrite {
+                key,
+                data,
+                block,
+                end,
+            },
+            EntityModification::Remove { key, block } => Self::Remove { key, block },
         }
     }
 
     #[cfg(debug_assertions)]
-    pub fn new_test(m: EntityModification, block: BlockNumber) -> Self {
-        Self::new(m, block)
+    pub fn new_test(m: EntityModification) -> Self {
+        Self::new(m)
     }
 
     pub fn id(&self) -> &Word {
@@ -321,7 +331,7 @@ impl RowGroup {
             ));
         }
 
-        let row = EntityMod::new(emod, block);
+        let row = EntityMod::new(emod);
         self.append_row(row)
     }
 

@@ -403,7 +403,7 @@ where
             evict_stats,
         } = block_state
             .entity_cache
-            .as_modifications()
+            .as_modifications(block.number())
             .map_err(|e| BlockProcessingError::Unknown(e.into()))?;
         section.end();
 
@@ -738,7 +738,12 @@ where
                 return Err(anyhow!("{}", err.to_string()));
             }
 
-            mods.extend(block_state.entity_cache.as_modifications()?.modifications);
+            mods.extend(
+                block_state
+                    .entity_cache
+                    .as_modifications(block.number())?
+                    .modifications,
+            );
             processed_data_sources.extend(block_state.processed_data_sources);
         }
 

@@ -191,7 +191,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store);
-    let result = cache.as_modifications();
+    let result = cache.as_modifications(0);
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
@@ -214,18 +214,12 @@ fn insert_modifications() {
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
 
-    let result = cache.as_modifications();
+    let result = cache.as_modifications(0);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::Insert {
-                key: mogwai_key,
-                data: mogwai_data,
-            },
-            EntityModification::Insert {
-                key: sigurros_key,
-                data: sigurros_data,
-            }
+            EntityModification::insert(mogwai_key, mogwai_data, 0),
+            EntityModification::insert(sigurros_key, sigurros_data, 0)
         ])
     );
 }
@@ -268,18 +262,12 @@ fn overwrite_modifications() {
         .set(sigurros_key.clone(), sigurros_data.clone())
         .unwrap();
 
-    let result = cache.as_modifications();
+    let result = cache.as_modifications(0);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
-            EntityModification::Overwrite {
-                key: mogwai_key,
-                data: mogwai_data,
-            },
-            EntityModification::Overwrite {
-                key: sigurros_key,
-                data: sigurros_data,
-            }
+            EntityModification::overwrite(mogwai_key, mogwai_data, 0),
+            EntityModification::overwrite(sigurros_key, sigurros_data, 0)
         ])
     );
 }
@@ -311,13 +299,14 @@ fn consecutive_modifications() {
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications();
+    let result = cache.as_modifications(0);
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
-        sort_by_entity_key(vec![EntityModification::Overwrite {
-            key: update_key,
-            data: entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 }
-        }])
+        sort_by_entity_key(vec![EntityModification::overwrite(
+            update_key,
+            entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 },
+            0
+        )])
     );
 }
 

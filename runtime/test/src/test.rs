@@ -441,7 +441,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     let key = EntityKey::data("Thing".to_string(), id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
-        EntityModification::Insert { key, data },
+        EntityModification::insert(key, data, 0),
     )
 }
 
@@ -485,7 +485,7 @@ async fn run_ipfs_map(
             .ctx
             .state
             .entity_cache
-            .as_modifications()?
+            .as_modifications(0)?
             .modifications;
 
         // Bring the modifications into a predictable order (by entity_id)
@@ -1017,7 +1017,7 @@ async fn test_entity_store(api_version: Version) {
         &mut module.instance_ctx_mut().ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
-    let mut mods = cache.as_modifications().unwrap().modifications;
+    let mut mods = cache.as_modifications(0).unwrap().modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -1038,7 +1038,7 @@ async fn test_entity_store(api_version: Version) {
         .ctx
         .state
         .entity_cache
-        .as_modifications()
+        .as_modifications(0)
         .unwrap()
         .modifications;
     assert_eq!(1, mods.len());

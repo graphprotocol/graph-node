@@ -290,7 +290,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
     let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
-        .as_modifications()
+        .as_modifications(block_ptr_to.number)
         .expect("failed to convert to modifications")
         .modifications;
     let metrics_registry = Arc::new(MetricsRegistry::mock());

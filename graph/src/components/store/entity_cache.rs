@@ -11,7 +11,7 @@ use crate::prelude::ENV_VARS;
 use crate::schema::InputSchema;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
 
-use super::{DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
+use super::{BlockNumber, DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -251,7 +251,10 @@ impl EntityCache {
     /// to the current state is actually needed.
     ///
     /// Also returns the updated `LfuCache`.
-    pub fn as_modifications(mut self) -> Result<ModificationsAndCache, StoreError> {
+    pub fn as_modifications(
+        mut self,
+        block: BlockNumber,
+    ) -> Result<ModificationsAndCache, StoreError> {
         assert!(!self.in_handler);
 
         // The first step is to make sure all entities being set are in `self.current`.
@@ -285,7 +288,12 @@ impl EntityCache {
                 | (None, EntityOp::Overwrite(mut updates)) => {
                     updates.remove_null_fields();
                     self.current.insert(key.clone(), Some(updates.clone()));
-                    Some(Insert { key, data: updates })
+                    Some(Insert {
+                        key,
+                        data: updates,
+                        block,
+                        end: None,
+                    })
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
@@ -294,7 +302,12 @@ impl EntityCache {
                         .map_err(|e| key.unknown_attribute(e))?;
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
-                        Some(Overwrite { key, data })
+                        Some(Overwrite {
+                            key,
+                            data,
+                            block,
+                            end: None,
+                        })
                     } else {
                         None
                     }
@@ -303,7 +316,12 @@ impl EntityCache {
                 (Some(current), EntityOp::Overwrite(data)) => {
                     self.current.insert(key.clone(), Some(data.clone()));
                     if current != data {
-                        Some(Overwrite { key, data })
+                        Some(Overwrite {
+                            key,
+                            data,
+                            block,
+                            end: None,
+                        })
                     } else {
                         None
                     }
@@ -311,7 +329,7 @@ impl EntityCache {
                 // Existing entity was deleted
                 (Some(_), EntityOp::Remove) => {
                     self.current.insert(key.clone(), None);
-                    Some(Remove { key })
+                    Some(Remove { key, block })
                 }
                 // Entity was deleted, but it doesn't exist in the store
                 (None, EntityOp::Remove) => None,

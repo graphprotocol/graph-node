@@ -87,7 +87,7 @@ pub fn row_group_update(
     let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
-            .push(EntityModification::Overwrite { key, data }, block)
+            .push(EntityModification::overwrite(key, data, block), block)
             .unwrap();
     }
     group
@@ -101,7 +101,7 @@ pub fn row_group_insert(
     let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
-            .push(EntityModification::Insert { key, data }, block)
+            .push(EntityModification::insert(key, data, block), block)
             .unwrap();
     }
     group
@@ -115,7 +115,7 @@ pub fn row_group_delete(
     let mut group = RowGroup::new(entity_type.clone());
     for key in data {
         group
-            .push(EntityModification::Remove { key }, block)
+            .push(EntityModification::remove(key, block), block)
             .unwrap();
     }
     group
