@@ -155,7 +155,7 @@ const THINGS_GQL: &str = r#"
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
-    static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17);
+    static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
     static ref BYTES_VALUE: H256 = H256::from(hex!(

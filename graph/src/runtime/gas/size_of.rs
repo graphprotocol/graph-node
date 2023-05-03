@@ -3,7 +3,6 @@
 use crate::{
     components::store::{EntityKey, EntityType, LoadRelatedRequest},
     data::store::{scalar::Bytes, Value},
-    prelude::{BigDecimal, BigInt},
 };
 
 use super::{Gas, GasSizeOf, SaturatingInto as _};
@@ -47,22 +46,6 @@ where
         } else {
             Gas(1)
         }
-    }
-}
-
-impl GasSizeOf for BigInt {
-    fn gas_size_of(&self) -> Gas {
-        // Add one to always have an upper bound on the number of bytes required to represent the
-        // number, and so that `0` has a size of 1.
-        let n_bytes = self.bits() / 8 + 1;
-        n_bytes.saturating_into()
-    }
-}
-
-impl GasSizeOf for BigDecimal {
-    fn gas_size_of(&self) -> Gas {
-        let (int, _) = self.as_bigint_and_exponent();
-        BigInt::from(int).gas_size_of()
     }
 }
 

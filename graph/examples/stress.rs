@@ -249,7 +249,7 @@ impl Template for BigInt {
             }
             None => 1,
         };
-        BigInt::from(3u64).pow(size as u8) * BigInt::from(f)
+        BigInt::from(3u64).pow(size as u8).unwrap() * BigInt::from(f)
     }
 
     fn sample(&self, size: usize, rng: Option<&mut SmallRng>) -> Box<Self> {
@@ -274,7 +274,7 @@ impl Template for BigDecimal {
             Some(rng) => rng.gen_range(-100..=100),
             None => 1,
         };
-        let bi = BigInt::from(3u64).pow(size as u8) * BigInt::from(f);
+        let bi = BigInt::from(3u64).pow(size as u8).unwrap() * BigInt::from(f);
         BigDecimal::new(bi, exp)
     }
 

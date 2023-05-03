@@ -71,6 +71,7 @@ async fn test_valid_module_and_store_with_timeout(
         "type User @entity {
             id: ID!,
             name: String,
+            count: BigInt,
         }
 
         type Thing @entity {
@@ -299,7 +300,7 @@ async fn test_json_conversions(api_version: Version, gas_used: u64) {
 
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
-        scalar::BigInt::from_signed_bytes_le(&bytes)
+        scalar::BigInt::from_signed_bytes_le(&bytes).unwrap()
     );
 
     assert_eq!(module.gas_used(), gas_used);
@@ -654,19 +655,19 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     .await;
 
     // Convert zero to hex
-    let zero = BigInt::from_unsigned_u256(&U256::zero());
+    let zero = BigInt::from_unsigned_u256(&U256::zero()).unwrap();
     let zero_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &zero);
     let zero_hex_str: String = module.asc_get(zero_hex_ptr).unwrap();
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
-    let one = BigInt::from_unsigned_u256(&U256::one());
+    let one = BigInt::from_unsigned_u256(&U256::one()).unwrap();
     let one_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &one);
     let one_hex_str: String = module.asc_get(one_hex_ptr).unwrap();
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
-    let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
+    let u256_max = BigInt::from_unsigned_u256(&U256::max_value()).unwrap();
     let u256_max_hex_ptr: AscPtr<AscString> = module.invoke_export1("big_int_to_hex", &u256_max);
     let u256_max_hex_str: String = module.asc_get(u256_max_hex_ptr).unwrap();
     assert_eq!(
@@ -675,6 +676,31 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     );
 
     assert_eq!(module.gas_used(), gas_used);
+}
+
+#[tokio::test]
+async fn test_big_int_size_limit() {
+    let module = test_module(
+        "BigIntSizeLimit",
+        mock_data_source(
+            &wasm_file_path("big_int_size_limit.wasm", API_VERSION_0_0_5),
+            API_VERSION_0_0_5,
+        ),
+        API_VERSION_0_0_5,
+    )
+    .await;
+
+    let len = BigInt::MAX_BITS / 8;
+    module
+        .invoke_export1_val_void("bigIntWithLength", len)
+        .unwrap();
+
+    let len = BigInt::MAX_BITS / 8 + 1;
+    assert!(module
+        .invoke_export1_val_void("bigIntWithLength", len)
+        .unwrap_err()
+        .to_string()
+        .contains("BigInt is too big, total bits 489835 (max 489834)"));
 }
 
 #[tokio::test]
