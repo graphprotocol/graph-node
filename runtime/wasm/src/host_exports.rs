@@ -638,7 +638,7 @@ impl<C: Blockchain> HostExports<C> {
         x: BigDecimal,
         gas: &GasCounter,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &x))?;
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Mul, (&x, &x)))?;
         Ok(x.to_string())
     }
 
