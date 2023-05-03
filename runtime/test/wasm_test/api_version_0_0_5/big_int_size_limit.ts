@@ -26,7 +26,7 @@ export function bigIntWithLength(bytes: u32): void {
   user.set("id", Value.fromString("jhon"));
 
   let array = new Uint8Array(bytes);
-  array.fill(2);
+  array.fill(127);
   let big_int = changetype<BigInt>(array);
   user.set("count", Value.fromBigInt(big_int));
   store.set("User", "jhon", user);

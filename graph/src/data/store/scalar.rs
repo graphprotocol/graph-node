@@ -223,7 +223,7 @@ impl StableHash for BigDecimal {
         let (int, exp) = self.as_bigint_and_exponent();
         StableHash::stable_hash(&exp, field_address.child(1), state);
         // Normally it would be a red flag to pass field_address in after having used a child slot.
-        // But, we know the implementation of StableHash for BigInt will not use child(1) and that
+        // But, we know the implemecntation of StableHash for BigInt will not use child(1) and that
         // it will not in the future due to having no forward schema evolutions for ints and the
         // stability guarantee.
         //
@@ -257,10 +257,10 @@ mod big_int {
     }
 
     impl BigInt {
-        // Postgres has a limit of:
+        // Postgres `numeric` has a limit documented here [https://www.postgresql.org/docs/current/datatype-numeric.htm]:
         // "Up to 131072 digits before the decimal point; up to 16383 digits after the decimal point"
-        // So based on this we adopt a limit of 147455 decimal digits in total, converted here to bits.
-        pub const MAX_BITS: u32 = (147455.0 * LOG2_10) as u32; // 489_834
+        // So based on this we adopt a limit of 131072 decimal digits for big int, converted here to bits.
+        pub const MAX_BITS: u32 = (131072.0 * LOG2_10) as u32 + 1; // 435_412
 
         pub fn new(inner: num_bigint::BigInt) -> Result<Self, anyhow::Error> {
             // `inner.bits()` won't include the sign bit, so we add 1 to account for it.
@@ -397,22 +397,24 @@ impl BigInt {
         self.try_into().unwrap()
     }
 
-    pub fn from_unsigned_u128(n: U128) -> Result<Self, anyhow::Error> {
+    pub fn from_unsigned_u128(n: U128) -> Self {
         let mut bytes: [u8; 16] = [0; 16];
         n.to_little_endian(&mut bytes);
-        BigInt::from_unsigned_bytes_le(&bytes)
+        // Unwrap: 128 bits is much less than BigInt::MAX_BITS
+        BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
-    pub fn from_unsigned_u256(n: &U256) -> Result<Self, anyhow::Error> {
+    pub fn from_unsigned_u256(n: &U256) -> Self {
         let mut bytes: [u8; 32] = [0; 32];
         n.to_little_endian(&mut bytes);
-        BigInt::from_unsigned_bytes_le(&bytes)
+        // Unwrap: 256 bits is much less than BigInt::MAX_BITS
+        BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
-    pub fn from_signed_u256(n: &U256) -> Result<Self, anyhow::Error> {
+    pub fn from_signed_u256(n: &U256) -> Self {
         let mut bytes: [u8; 32] = [0; 32];
         n.to_little_endian(&mut bytes);
-        BigInt::from_signed_bytes_le(&bytes)
+        BigInt::from_signed_bytes_le(&bytes).unwrap()
     }
 
     pub fn to_signed_u256(&self) -> U256 {

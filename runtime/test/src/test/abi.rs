@@ -438,7 +438,7 @@ async fn test_abi_big_int(api_version: Version) {
     // Test passing in 0 and increment it by 1
     let old_uint = U256::zero();
     let new_uint_obj: AscPtr<AscBigInt> =
-        module.invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint).unwrap());
+        module.invoke_export1("test_uint", &BigInt::from_unsigned_u256(&old_uint));
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1_i32));
     let new_uint = new_uint.to_unsigned_u256();
@@ -449,7 +449,7 @@ async fn test_abi_big_int(api_version: Version) {
     let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", &old_uint);
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(-49_i32));
-    let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256()).unwrap();
+    let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
     assert_eq!(new_uint, new_uint_from_u256);
 }
 

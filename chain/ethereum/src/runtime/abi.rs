@@ -428,18 +428,18 @@ impl ToAscObj<AscEthereumBlock> for EthereumBlockData {
             transactions_root: asc_new(heap, &self.transactions_root, gas)?,
             receipts_root: asc_new(heap, &self.receipts_root, gas)?,
             number: asc_new(heap, &BigInt::from(self.number), gas)?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used)?, gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit)?, gas)?,
-            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp)?, gas)?,
-            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty)?, gas)?,
+            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
+            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp), gas)?,
+            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty), gas)?,
             total_difficulty: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.total_difficulty)?,
+                &BigInt::from_unsigned_u256(&self.total_difficulty),
                 gas,
             )?,
             size: self
                 .size
-                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size)?, gas))
+                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
         })
     }
@@ -460,22 +460,22 @@ impl ToAscObj<AscEthereumBlock_0_0_6> for EthereumBlockData {
             transactions_root: asc_new(heap, &self.transactions_root, gas)?,
             receipts_root: asc_new(heap, &self.receipts_root, gas)?,
             number: asc_new(heap, &BigInt::from(self.number), gas)?,
-            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used)?, gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit)?, gas)?,
-            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp)?, gas)?,
-            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty)?, gas)?,
+            gas_used: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_used), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
+            timestamp: asc_new(heap, &BigInt::from_unsigned_u256(&self.timestamp), gas)?,
+            difficulty: asc_new(heap, &BigInt::from_unsigned_u256(&self.difficulty), gas)?,
             total_difficulty: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.total_difficulty)?,
+                &BigInt::from_unsigned_u256(&self.total_difficulty),
                 gas,
             )?,
             size: self
                 .size
-                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size)?, gas))
+                .map(|size| asc_new(heap, &BigInt::from_unsigned_u256(&size), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             base_fee_per_block: self
                 .base_fee_per_gas
-                .map(|base_fee| asc_new(heap, &BigInt::from_unsigned_u256(&base_fee)?, gas))
+                .map(|base_fee| asc_new(heap, &BigInt::from_unsigned_u256(&base_fee), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
         })
     }
@@ -489,15 +489,15 @@ impl ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_1, HostExportError> {
         Ok(AscEthereumTransaction_0_0_1 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index)?, gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to
                 .map(|to| asc_new(heap, &to, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
-            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value)?, gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit)?, gas)?,
-            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price)?, gas)?,
+            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
+            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price), gas)?,
         })
     }
 }
@@ -510,15 +510,15 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_2, HostExportError> {
         Ok(AscEthereumTransaction_0_0_2 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index)?, gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to
                 .map(|to| asc_new(heap, &to, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
-            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value)?, gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit)?, gas)?,
-            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price)?, gas)?,
+            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
+            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price), gas)?,
             input: asc_new(heap, &*self.input, gas)?,
         })
     }
@@ -532,17 +532,17 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_6, HostExportError> {
         Ok(AscEthereumTransaction_0_0_6 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index)?, gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to
                 .map(|to| asc_new(heap, &to, gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
-            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value)?, gas)?,
-            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit)?, gas)?,
-            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price)?, gas)?,
+            value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value), gas)?,
+            gas_limit: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_limit), gas)?,
+            gas_price: asc_new(heap, &BigInt::from_unsigned_u256(&self.gas_price), gas)?,
             input: asc_new(heap, &*self.input, gas)?,
-            nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce)?, gas)?,
+            nonce: asc_new(heap, &BigInt::from_unsigned_u256(&self.nonce), gas)?,
         })
     }
 }
@@ -561,10 +561,10 @@ where
     ) -> Result<AscEthereumEvent<T, B>, HostExportError> {
         Ok(AscEthereumEvent {
             address: asc_new(heap, &self.address, gas)?,
-            log_index: asc_new(heap, &BigInt::from_unsigned_u256(&self.log_index)?, gas)?,
+            log_index: asc_new(heap, &BigInt::from_unsigned_u256(&self.log_index), gas)?,
             transaction_log_index: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.transaction_log_index)?,
+                &BigInt::from_unsigned_u256(&self.transaction_log_index),
                 gas,
             )?,
             log_type: self
@@ -648,11 +648,11 @@ impl ToAscObj<AscEthereumLog> for Log {
                 .unwrap_or(Ok(AscPtr::null()))?,
             log_index: self
                 .log_index
-                .map(|log_index| asc_new(heap, &BigInt::from_unsigned_u256(&log_index)?, gas))
+                .map(|log_index| asc_new(heap, &BigInt::from_unsigned_u256(&log_index), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             transaction_log_index: self
                 .transaction_log_index
-                .map(|index| asc_new(heap, &BigInt::from_unsigned_u256(&index)?, gas))
+                .map(|index| asc_new(heap, &BigInt::from_unsigned_u256(&index), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             log_type: self
                 .log_type
@@ -686,12 +686,12 @@ impl ToAscObj<AscEthereumTransactionReceipt> for &TransactionReceipt {
                 .unwrap_or(Ok(AscPtr::null()))?,
             cumulative_gas_used: asc_new(
                 heap,
-                &BigInt::from_unsigned_u256(&self.cumulative_gas_used)?,
+                &BigInt::from_unsigned_u256(&self.cumulative_gas_used),
                 gas,
             )?,
             gas_used: self
                 .gas_used
-                .map(|gas_used| asc_new(heap, &BigInt::from_unsigned_u256(&gas_used)?, gas))
+                .map(|gas_used| asc_new(heap, &BigInt::from_unsigned_u256(&gas_used), gas))
                 .unwrap_or(Ok(AscPtr::null()))?,
             contract_address: self
                 .contract_address
