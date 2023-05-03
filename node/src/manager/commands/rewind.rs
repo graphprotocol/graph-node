@@ -59,12 +59,18 @@ pub async fn run(
     primary: ConnectionPool,
     store: Arc<Store>,
     searches: Vec<DeploymentSearch>,
-    block_hash: String,
-    block_number: BlockNumber,
+    block_hash: Option<String>,
+    block_number: Option<BlockNumber>,
     force: bool,
     sleep: Duration,
+    start_block: bool,
 ) -> Result<(), anyhow::Error> {
     const PAUSED: &str = "paused_";
+
+    // Sanity check
+    if !start_block && (block_hash.is_none() || block_number.is_none()) {
+        bail!("--block-hash and --block-number must be specified when --start-block is not set");
+    }
 
     let subgraph_store = store.subgraph_store();
     let block_store = store.block_store();
@@ -81,15 +87,21 @@ pub async fn run(
         return Ok(());
     }
 
-    let block_ptr_to = block_ptr(
-        block_store,
-        &searches,
-        &deployments,
-        &block_hash,
-        block_number,
-        force,
-    )
-    .await?;
+    let block_ptr_to = if start_block {
+        None
+    } else {
+        Some(
+            block_ptr(
+                block_store,
+                &searches,
+                &deployments,
+                block_hash.as_deref().unwrap_or_default(),
+                block_number.unwrap_or_default(),
+                force,
+            )
+            .await?,
+        )
+    };
 
     println!("Pausing deployments");
     let mut paused = false;
@@ -116,8 +128,22 @@ pub async fn run(
     println!("\nRewinding deployments");
     for deployment in &deployments {
         let loc = deployment.locator();
-        subgraph_store.rewind(loc.hash.clone(), block_ptr_to.clone())?;
-        println!("  ... rewound {}", loc);
+        let deployment_details = subgraph_store.load_deployment_by_id(loc.clone().into())?;
+
+        let block_ptr_to = block_ptr_to.clone();
+
+        if let Some(block_ptr) = block_ptr_to {
+            subgraph_store.rewind(loc.hash.clone(), block_ptr.clone())?;
+            println!("  ... rewound {}", loc);
+        } else {
+            if let Some(block_ptr) = deployment_details.start_block {
+                subgraph_store.truncate(loc.hash.clone(), block_ptr.clone())?;
+                println!("  ... truncated {}", loc);
+            } else {
+                // TODO: Remove the if block and truncate even if there is no startBlock set
+                println!("  ... no block pointer to rewind to for {}", loc);
+            }
+        }
     }
 
     println!("Resuming deployments");
