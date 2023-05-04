@@ -1177,7 +1177,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &n))?;
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)))?;
         asc_new(self, &n.to_string(), gas)
     }
 

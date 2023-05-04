@@ -1,12 +1,6 @@
 use super::scalar;
 use crate::prelude::*;
-use web3::types::{Address, Bytes, H2048, H256, H64, U128, U256, U64};
-
-impl From<U128> for Value {
-    fn from(n: U128) -> Value {
-        Value::BigInt(scalar::BigInt::from_signed_u256(&n.into()))
-    }
-}
+use web3::types::{Address, Bytes, H2048, H256, H64, U64};
 
 impl From<Address> for Value {
     fn from(address: Address) -> Value {
@@ -41,11 +35,5 @@ impl From<Bytes> for Value {
 impl From<U64> for Value {
     fn from(n: U64) -> Value {
         Value::BigInt(BigInt::from(n))
-    }
-}
-
-impl From<U256> for Value {
-    fn from(n: U256) -> Value {
-        Value::BigInt(BigInt::from_unsigned_u256(&n))
     }
 }

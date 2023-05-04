@@ -350,7 +350,7 @@ async fn test_abi_store_value(api_version: Version) {
     let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(
         new_value,
-        Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes))
+        Value::BigInt(::graph::data::store::scalar::BigInt::from_unsigned_bytes_le(bytes).unwrap())
     );
 }
 

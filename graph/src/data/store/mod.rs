@@ -313,7 +313,9 @@ impl Value {
                 // just a string.
                 match n.as_str() {
                     BYTES_SCALAR => Value::Bytes(scalar::Bytes::from_str(s)?),
-                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(s)?),
+                    BIG_INT_SCALAR => Value::BigInt(scalar::BigInt::from_str(s).map_err(|e| {
+                        QueryExecutionError::ValueParseError("BigInt".to_string(), format!("{}", e))
+                    })?),
                     BIG_DECIMAL_SCALAR => Value::BigDecimal(scalar::BigDecimal::from_str(s)?),
                     _ => Value::String(s.clone()),
                 }
