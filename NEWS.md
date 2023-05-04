@@ -36,7 +36,7 @@ Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-no
 - Fixed a bug that would cause the copying or grafting of a subgraph while pruning it to incorrectly set `earliest_block` in the destination deployment. [#4502](https://github.com/graphprotocol/graph-node/pull/4502)
 - Handler timeouts would sometimes be reported as deterministic errors with the error message `Subgraph instance failed to run: Failed to call 'asc_type_id' with [...] wasm backtrace [...]`; this error is now nondeterministic and recoverable. [#4475](https://github.com/graphprotocol/graph-node/pull/4475)
 - Fixed faulty exponential request backoff behavior after many minutes of failed requests, caused by an overflow. [#4421](https://github.com/graphprotocol/graph-node/pull/4421)
-- `json.fromBytes` and all `BigInt` operations now require more gas, protecting against malicious subgraphs.
+- `json.fromBytes` and all `BigInt` operations now require more gas, protecting against malicious subgraphs. [#4594](https://github.com/graphprotocol/graph-node/pull/4594), [#4595](https://github.com/graphprotocol/graph-node/pull/4595)
 - Fixed faulty `startBlock` selection logic in substreams. [#4463](https://github.com/graphprotocol/graph-node/pull/4463)
 
 ### Graphman
