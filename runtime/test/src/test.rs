@@ -71,6 +71,7 @@ async fn test_valid_module_and_store_with_timeout(
         "type User @entity {
             id: ID!,
             name: String,
+            count: BigInt,
         }
 
         type Thing @entity {
@@ -299,7 +300,7 @@ async fn test_json_conversions(api_version: Version, gas_used: u64) {
 
     assert_eq!(
         scalar::BigInt::from_str(number).unwrap(),
-        scalar::BigInt::from_signed_bytes_le(&bytes)
+        scalar::BigInt::from_signed_bytes_le(&bytes).unwrap()
     );
 
     assert_eq!(module.gas_used(), gas_used);
@@ -675,6 +676,31 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     );
 
     assert_eq!(module.gas_used(), gas_used);
+}
+
+#[tokio::test]
+async fn test_big_int_size_limit() {
+    let module = test_module(
+        "BigIntSizeLimit",
+        mock_data_source(
+            &wasm_file_path("big_int_size_limit.wasm", API_VERSION_0_0_5),
+            API_VERSION_0_0_5,
+        ),
+        API_VERSION_0_0_5,
+    )
+    .await;
+
+    let len = BigInt::MAX_BITS / 8;
+    module
+        .invoke_export1_val_void("bigIntWithLength", len)
+        .unwrap();
+
+    let len = BigInt::MAX_BITS / 8 + 1;
+    assert!(module
+        .invoke_export1_val_void("bigIntWithLength", len)
+        .unwrap_err()
+        .to_string()
+        .contains("BigInt is too big, total bits 435416 (max 435412)"));
 }
 
 #[tokio::test]

@@ -512,7 +512,7 @@ impl<C: Blockchain> HostExports<C> {
             gas::BIG_MATH_GAS_OP
                 .with_args(complexity::Exponential, (&x, (exp as f32).log2() as u8)),
         )?;
-        Ok(x.pow(exp))
+        Ok(x.pow(exp)?)
     }
 
     pub(crate) fn big_int_from_string(
@@ -638,7 +638,7 @@ impl<C: Blockchain> HostExports<C> {
         x: BigDecimal,
         gas: &GasCounter,
     ) -> Result<String, DeterministicHostError> {
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Size, &x))?;
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(complexity::Mul, (&x, &x)))?;
         Ok(x.to_string())
     }
 

@@ -87,7 +87,7 @@ impl FromAscObj<AscBigInt> for BigInt {
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap, gas, depth)?;
-        Ok(BigInt::from_signed_bytes_le(&bytes))
+        Ok(BigInt::from_signed_bytes_le(&bytes)?)
     }
 }
 
@@ -102,7 +102,7 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
         let (digits, negative_exp) = self.as_bigint_and_exponent();
         Ok(AscBigDecimal {
             exp: asc_new(heap, &BigInt::from(-negative_exp), gas)?,
-            digits: asc_new(heap, &BigInt::from(digits), gas)?,
+            digits: asc_new(heap, &BigInt::new(digits)?, gas)?,
         })
     }
 }
@@ -275,7 +275,7 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
             StoreValueKind::BigInt => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let array: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
-                Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array))
+                Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array)?)
             }
         })
     }

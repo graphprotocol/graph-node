@@ -489,7 +489,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_1, HostExportError> {
         Ok(AscEthereumTransaction_0_0_1 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from(self.index), gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to
@@ -510,7 +510,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_2, HostExportError> {
         Ok(AscEthereumTransaction_0_0_2 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from(self.index), gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to
@@ -532,7 +532,7 @@ impl ToAscObj<AscEthereumTransaction_0_0_6> for EthereumTransactionData {
     ) -> Result<AscEthereumTransaction_0_0_6, HostExportError> {
         Ok(AscEthereumTransaction_0_0_6 {
             hash: asc_new(heap, &self.hash, gas)?,
-            index: asc_new(heap, &BigInt::from(self.index), gas)?,
+            index: asc_new(heap, &BigInt::from_unsigned_u128(self.index), gas)?,
             from: asc_new(heap, &self.from, gas)?,
             to: self
                 .to

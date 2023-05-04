@@ -1,6 +1,5 @@
 use graphql_parser::Pos;
 use hex::FromHexError;
-use num_bigint;
 use serde::ser::*;
 use std::collections::HashMap;
 use std::error::Error;
@@ -289,12 +288,6 @@ impl From<QueryExecutionError> for Vec<QueryExecutionError> {
 impl From<FromHexError> for QueryExecutionError {
     fn from(e: FromHexError) -> Self {
         QueryExecutionError::ValueParseError("Bytes".to_string(), e.to_string())
-    }
-}
-
-impl From<num_bigint::ParseBigIntError> for QueryExecutionError {
-    fn from(e: num_bigint::ParseBigIntError) -> Self {
-        QueryExecutionError::ValueParseError("BigInt".to_string(), format!("{}", e))
     }
 }
 
