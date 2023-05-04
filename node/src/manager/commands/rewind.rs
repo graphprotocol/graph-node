@@ -128,20 +128,27 @@ pub async fn run(
     println!("\nRewinding deployments");
     for deployment in &deployments {
         let loc = deployment.locator();
+        let block_store = store.block_store();
         let deployment_details = subgraph_store.load_deployment_by_id(loc.clone().into())?;
-
         let block_ptr_to = block_ptr_to.clone();
 
-        if let Some(block_ptr) = block_ptr_to {
-            subgraph_store.rewind(loc.hash.clone(), block_ptr.clone())?;
-            println!("  ... rewound {}", loc);
-        } else {
-            if let Some(block_ptr) = deployment_details.start_block {
-                subgraph_store.truncate(loc.hash.clone(), block_ptr.clone())?;
+        let start_block = deployment_details.start_block.or_else(|| {
+            block_store
+                .chain_store(&deployment.chain)
+                .and_then(|chain_store| chain_store.genesis_block_ptr().ok())
+        });
+
+        match (block_ptr_to, start_block) {
+            (Some(block_ptr), _) => {
+                subgraph_store.rewind(loc.hash.clone(), block_ptr)?;
+                println!("  ... rewound {}", loc);
+            }
+            (None, Some(start_block_ptr)) => {
+                subgraph_store.truncate(loc.hash.clone(), start_block_ptr)?;
                 println!("  ... truncated {}", loc);
-            } else {
-                // TODO: Remove the if block and truncate even if there is no startBlock set
-                println!("  ... no block pointer to rewind to for {}", loc);
+            }
+            (None, None) => {
+                println!("  ... Failed to find start block for {}", loc);
             }
         }
     }
