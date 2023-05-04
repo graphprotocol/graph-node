@@ -19,7 +19,7 @@ Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-no
 - Introduced WASM host function `store.get_in_block`, which is a much faster variant of `store.get` limited to entities created or updated in the current block. [#4540](https://github.com/graphprotocol/graph-node/pull/4540)
 - The entity cache that `graph-node` keeps around is much more efficient, meaning more cache entries fit in the same amount of memory resulting in a performance increase under a wide range of workloads. [#4485](https://github.com/graphprotocol/graph-node/pull/4485)
 - The `subgraph_deploy` JSON-RPC method now accepts a `history_blocks` parameter, which indexers can use to set default amounts of history to keep. [#4564](https://github.com/graphprotocol/graph-node/pull/4564)
-- IPFS requests are **not** throttled anymore (also known as concurrency or burst limiting), only rate-limited. [#4570](https://github.com/graphprotocol/graph-node/pull/4570)
+- IPFS requests for polling file data sources are not throttled anymore (also known as concurrency or burst limiting), only rate-limited. [#4570](https://github.com/graphprotocol/graph-node/pull/4570)
 - Exponential requests backoff is now "jittered", smoothing out request spikes. [#4476](https://github.com/graphprotocol/graph-node/pull/4476)
 - RPC provider responses that decrease the chain head block number (non-monotonic) are now ignored, increasing resiliency against inconsistent provider data. [#4354](https://github.com/graphprotocol/graph-node/pull/4354)
 - It's now possible to to have a Firehose-only chain with no RPC provider at all in the configuration. [#4508](https://github.com/graphprotocol/graph-node/pull/4508), [#4553](https://github.com/graphprotocol/graph-node/pull/4553)
@@ -36,6 +36,7 @@ Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-no
 - Fixed a bug that would cause the copying or grafting of a subgraph while pruning it to incorrectly set `earliest_block` in the destination deployment. [#4502](https://github.com/graphprotocol/graph-node/pull/4502)
 - Handler timeouts would sometimes be reported as deterministic errors with the error message `Subgraph instance failed to run: Failed to call 'asc_type_id' with [...] wasm backtrace [...]`; this error is now nondeterministic and recoverable. [#4475](https://github.com/graphprotocol/graph-node/pull/4475)
 - Fixed faulty exponential request backoff behavior after many minutes of failed requests, caused by an overflow. [#4421](https://github.com/graphprotocol/graph-node/pull/4421)
+- `json.fromBytes` and all `BigInt` operations now require more gas, protecting against malicious subgraphs.
 - Fixed faulty `startBlock` selection logic in substreams. [#4463](https://github.com/graphprotocol/graph-node/pull/4463)
 
 ### Graphman
