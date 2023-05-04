@@ -766,8 +766,18 @@ impl<C: Blockchain> HostExports<C> {
         bytes: &Vec<u8>,
         gas: &GasCounter,
     ) -> Result<serde_json::Value, DeterministicHostError> {
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
-        serde_json::from_reader(bytes.as_slice())
+        // Max JSON size is 10MB.
+        const MAX_JSON_SIZE: usize = 10_000_000;
+
+        gas.consume_host_fn(gas::JSON_FROM_BYTES.with_args(gas::complexity::Size, &bytes))?;
+
+        if bytes.len() > MAX_JSON_SIZE {
+            return Err(DeterministicHostError::Other(
+                anyhow!("JSON size exceeds max size of {}", MAX_JSON_SIZE).into(),
+            ));
+        }
+
+        serde_json::from_slice(bytes.as_slice())
             .map_err(|e| DeterministicHostError::from(Error::from(e)))
     }
 
