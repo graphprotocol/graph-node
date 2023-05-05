@@ -12,11 +12,11 @@ use graph::components::{
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
+use graph::data::subgraph::schema::POI_DIGEST;
 use graph::data::subgraph::{
     schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
     SubgraphFeature,
 };
-use graph::data::value::Word;
 use graph::data_source::{
     offchain, CausalityRegion, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
 };
@@ -1051,7 +1051,7 @@ async fn update_proof_of_indexing(
         let prev_poi = entity_cache
             .get(&entity_key, GetScope::Store)
             .map_err(Error::from)?
-            .map(|entity| match entity.get("digest") {
+            .map(|entity| match entity.get(POI_DIGEST.as_str()) {
                 Some(Value::Bytes(b)) => b.clone(),
                 _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
             });
@@ -1067,7 +1067,7 @@ async fn update_proof_of_indexing(
                 graph::data::store::ID.clone(),
                 Value::from(entity_key.entity_id.to_string()),
             ),
-            (Word::from("digest"), Value::from(updated_proof_of_indexing)),
+            (POI_DIGEST.clone(), Value::from(updated_proof_of_indexing)),
         ];
         let new_poi_entity = entity_cache.make_entity(data)?;
 

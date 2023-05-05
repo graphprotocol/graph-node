@@ -36,7 +36,7 @@ use std::time::{Duration, Instant};
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::constraint_violation;
-use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_OBJECT};
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_DIGEST, POI_OBJECT};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
     DeploymentHash, DeploymentState, Entity, EntityModification, EntityQuery, Error, Logger,
@@ -1062,7 +1062,7 @@ impl DeploymentStore {
             .into_iter()
             .map(|e| {
                 let causality_region = e.id();
-                let digest = match e.get("digest") {
+                let digest = match e.get(POI_DIGEST.as_str()) {
                     Some(Value::Bytes(b)) => Ok(b.clone()),
                     other => Err(anyhow::anyhow!(
                         "Entity has non-bytes digest attribute: {:?}",

@@ -10,6 +10,7 @@ use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
 use crate::data::store::{self, scalar, IntoEntityIterator, TryIntoEntityIterator};
+use crate::data::subgraph::schema::POI_DIGEST;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
@@ -323,7 +324,7 @@ impl InputSchema {
 /// in the document and the names of all their fields
 fn atom_pool(document: &s::Document) -> AtomPool {
     let mut pool = AtomPool::new();
-    pool.intern("digest"); // Attribute of PoI object
+    pool.intern(POI_DIGEST.as_str()); // Attribute of PoI object
     for definition in &document.definitions {
         match definition {
             s::Definition::TypeDefinition(typedef) => match typedef {

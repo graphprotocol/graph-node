@@ -53,7 +53,7 @@ use crate::{
 use graph::components::store::{DerivedEntityQuery, EntityKey, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
 use graph::data::store::BYTES_SCALAR;
-use graph::data::subgraph::schema::{POI_OBJECT, POI_TABLE};
+use graph::data::subgraph::schema::{POI_DIGEST, POI_OBJECT, POI_TABLE};
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
@@ -394,8 +394,8 @@ impl Layout {
             name: table_name,
             columns: vec![
                 Column {
-                    name: SqlName::from("digest"),
-                    field: "digest".to_owned(),
+                    name: SqlName::from(POI_DIGEST.as_str()),
+                    field: POI_DIGEST.to_string(),
                     field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
                         BYTES_SCALAR.to_owned(),
                     ))),

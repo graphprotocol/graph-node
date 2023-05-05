@@ -13,6 +13,7 @@ use super::DeploymentHash;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
+use crate::data::value::Word;
 use crate::prelude::*;
 use crate::util::stable_hash_glue::impl_stable_hash;
 use crate::{blockchain::Blockchain, components::store::EntityType};
@@ -20,6 +21,8 @@ use crate::{blockchain::Blockchain, components::store::EntityType};
 pub const POI_TABLE: &str = "poi2$";
 lazy_static! {
     pub static ref POI_OBJECT: EntityType = EntityType::new("Poi$".to_string());
+    /// The name of the digest attribute of POI entities
+    pub static ref POI_DIGEST: Word = Word::from("digest");
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Deserialize)]
