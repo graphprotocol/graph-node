@@ -2,6 +2,8 @@
 
 use anyhow::{anyhow, bail, Error};
 use hex;
+use juniper::GraphQLObject;
+use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use std::collections::BTreeSet;
@@ -19,7 +21,7 @@ use crate::util::stable_hash_glue::impl_stable_hash;
 
 pub const POI_TABLE: &str = "poi2$";
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Deserialize, juniper::GraphQLEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum SubgraphHealth {
     /// Syncing without errors.
@@ -238,7 +240,7 @@ impl SubgraphManifestEntity {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, GraphQLObject)]
 pub struct SubgraphError {
     pub subgraph_id: DeploymentHash,
     pub message: String,

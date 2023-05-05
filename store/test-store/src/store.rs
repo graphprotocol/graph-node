@@ -16,12 +16,12 @@ use graph::{
     components::store::DeploymentLocator, components::store::StatusStore,
     components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
+use graph_core::graphman::config::{Config, Opt};
+use graph_core::graphman::store_builder::StoreBuilder;
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
 };
 use graph_graphql::test_support::GraphQLMetrics;
-use graph_node::config::{Config, Opt};
-use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::layout_for_tests::FAKE_NETWORK_SHARED;
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, SubscriptionManager};
 use graph_store_postgres::{

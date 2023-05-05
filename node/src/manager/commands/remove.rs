@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use graph::prelude::{anyhow, Error, SubgraphName, SubgraphStore as _};
+use graph::prelude::Error;
 use graph_store_postgres::SubgraphStore;
 
-pub fn run(store: Arc<SubgraphStore>, name: &str) -> Result<(), Error> {
-    let name = SubgraphName::new(name).map_err(|()| anyhow!("illegal subgraph name `{}`", name))?;
+use graph_core::graphman::core;
 
-    println!("Removing subgraph {}", name);
-    store.remove_subgraph(name)?;
+pub fn run(store: Arc<SubgraphStore>, name: &str) -> Result<(), Error> {
+    core::remove::run(store, name, true)?;
 
     Ok(())
 }

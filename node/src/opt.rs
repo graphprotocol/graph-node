@@ -2,7 +2,7 @@ use clap::Parser;
 use git_testament::{git_testament, render_testament};
 use lazy_static::lazy_static;
 
-use crate::config;
+use graph_core::graphman::config;
 
 git_testament!(TESTAMENT);
 lazy_static! {
@@ -153,6 +153,13 @@ pub struct Opt {
         help = "Port for the Prometheus metrics server"
     )]
     pub metrics_port: u16,
+    #[clap(
+        long,
+        default_value = "8050",
+        value_name = "PORT",
+        help = "Port for the graphman graphql server"
+    )]
+    pub graphman_port: u16,
     #[clap(
         long,
         default_value = "default",

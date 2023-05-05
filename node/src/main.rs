@@ -26,19 +26,19 @@ use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_starknet::{self as starknet, Block as StarknetBlock};
 use graph_chain_substreams as substreams;
+use graph_core::graphman::chain::{
+    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
+    create_firehose_networks, create_ipfs_clients, create_substreams_networks,
+};
+use graph_core::graphman::config::Config;
+use graph_core::graphman::store_builder::StoreBuilder;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::chain::{
-    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, create_substreams_networks,
-};
-use graph_node::config::Config;
 use graph_node::opt;
-use graph_node::store_builder::StoreBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -172,18 +172,15 @@ async fn main() {
     // Obtain subgraph related command-line arguments
     let subgraph = opt.subgraph.clone();
 
-    // Obtain ports to use for the GraphQL server(s)
-    let http_port = opt.http_port;
-    let ws_port = opt.ws_port;
-
-    // Obtain JSON-RPC server port
-    let json_rpc_port = opt.admin_port;
-
-    // Obtain index node server port
-    let index_node_port = opt.index_node_port;
-
-    // Obtain metrics server port
-    let metrics_port = opt.metrics_port;
+    let opt::Opt {
+        http_port,
+        ws_port,
+        admin_port: json_rpc_port,
+        index_node_port,
+        metrics_port,
+        graphman_port,
+        ..
+    } = opt;
 
     // Obtain the fork base URL
     let fork_base = match &opt.fork_base {

@@ -14,6 +14,7 @@ use crate::object;
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
+use juniper::{GraphQLObject, GraphQLScalarValue};
 use semver::Version;
 use serde::{de, ser};
 use serde_yaml;
@@ -73,7 +74,7 @@ where
 
 /// The IPFS hash used to identifiy a deployment externally, i.e., the
 /// `Qm..` string that `graph-cli` prints when deploying to a subgraph
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default, GraphQLScalarValue)]
 pub struct DeploymentHash(String);
 
 impl stable_hash_legacy::StableHash for DeploymentHash {

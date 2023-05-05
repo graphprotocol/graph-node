@@ -1,4 +1,8 @@
 use anyhow::anyhow;
+use juniper::{
+    graphql_value, DefaultScalarValue, FieldError, GraphQLObject, GraphQLScalarValue, GraphQLValue,
+    InputValue, ScalarValue,
+};
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
@@ -10,14 +14,15 @@ use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
 /// A simple marker for byte arrays that are really block hashes
-#[derive(Clone, Default, PartialEq, Eq, Hash)]
-pub struct BlockHash(pub Box<[u8]>);
-
-impl_stable_hash!(BlockHash(transparent: AsBytes));
+#[derive(Clone, Default, PartialEq, Eq, Hash, GraphQLObject)]
+pub struct BlockHash {
+    pub value: String,
+}
+impl_stable_hash!(BlockHash { value: AsBytes });
 
 impl BlockHash {
     pub fn as_slice(&self) -> &[u8] {
-        &self.0
+        &self.value.as_bytes()
     }
 
     /// Encodes the block hash into a hexadecimal string **without** a "0x"
@@ -25,7 +30,7 @@ impl BlockHash {
     /// schema uses `text` columns, which is a legacy and such columns
     /// should be changed to use `bytea`
     pub fn hash_hex(&self) -> String {
-        hex::encode(&self.0)
+        hex::encode(&self.value)
     }
 
     pub fn zero() -> Self {
@@ -35,19 +40,19 @@ impl BlockHash {
 
 impl fmt::Display for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", hex::encode(&self.0))
+        write!(f, "0x{}", hex::encode(&self.value))
     }
 }
 
 impl fmt::Debug for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "0x{}", hex::encode(&self.0))
+        write!(f, "0x{}", hex::encode(&self.value))
     }
 }
 
 impl fmt::LowerHex for BlockHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&hex::encode(&self.0))
+        f.write_str(&hex::encode(&self.value))
     }
 }
 
@@ -55,13 +60,17 @@ impl CheapClone for BlockHash {}
 
 impl From<H256> for BlockHash {
     fn from(hash: H256) -> Self {
-        BlockHash(hash.as_bytes().into())
+        BlockHash {
+            value: hex::encode(hash),
+        }
     }
 }
 
 impl From<Vec<u8>> for BlockHash {
     fn from(bytes: Vec<u8>) -> Self {
-        BlockHash(bytes.as_slice().into())
+        BlockHash {
+            value: hex::encode(bytes.as_slice()),
+        }
     }
 }
 
@@ -70,9 +79,10 @@ impl TryFrom<&str> for BlockHash {
 
     fn try_from(hash: &str) -> Result<Self, Self::Error> {
         let hash = hash.trim_start_matches("0x");
-        let hash = hex::decode(hash)?;
 
-        Ok(BlockHash(hash.as_slice().into()))
+        Ok(BlockHash {
+            value: hash.to_string(),
+        })
     }
 }
 
@@ -87,7 +97,7 @@ impl FromStr for BlockHash {
 /// A block hash and block number from a specific Ethereum block.
 ///
 /// Block numbers are signed 32 bit integers
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, GraphQLObject)]
 pub struct BlockPtr {
     pub hash: BlockHash,
     pub number: BlockNumber,
@@ -121,7 +131,7 @@ impl BlockPtr {
     }
 
     pub fn hash_slice(&self) -> &[u8] {
-        self.hash.0.as_ref()
+        self.hash.value.as_bytes()
     }
 }
 
