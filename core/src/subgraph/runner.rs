@@ -1029,6 +1029,23 @@ async fn update_proof_of_indexing(
     stopwatch: &StopwatchMetrics,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
+    // Helper to store the digest as a PoI entity in the cache
+    fn store_poi_entity(
+        entity_cache: &mut EntityCache,
+        key: EntityKey,
+        digest: Bytes,
+    ) -> Result<(), Error> {
+        let data = vec![
+            (
+                graph::data::store::ID.clone(),
+                Value::from(key.entity_id.to_string()),
+            ),
+            (POI_DIGEST.clone(), Value::from(digest)),
+        ];
+        let poi = entity_cache.make_entity(data)?;
+        entity_cache.set(key, poi)
+    }
+
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
 
     let mut proof_of_indexing = proof_of_indexing.take();
@@ -1062,16 +1079,7 @@ async fn update_proof_of_indexing(
 
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
-        let data = vec![
-            (
-                graph::data::store::ID.clone(),
-                Value::from(entity_key.entity_id.to_string()),
-            ),
-            (POI_DIGEST.clone(), Value::from(updated_proof_of_indexing)),
-        ];
-        let new_poi_entity = entity_cache.make_entity(data)?;
-
-        entity_cache.set(entity_key, new_poi_entity)?;
+        store_poi_entity(entity_cache, entity_key, updated_proof_of_indexing)?;
     }
 
     Ok(())
