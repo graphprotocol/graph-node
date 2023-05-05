@@ -5,9 +5,9 @@ use graph::{
     prelude::{anyhow, StoreEventStreamBox, SubscriptionFilter},
 };
 
-pub mod catalog;
+pub mod cli;
 pub mod color;
-pub mod commands;
+pub mod core;
 pub mod deployment;
 mod display;
 pub mod prompt;

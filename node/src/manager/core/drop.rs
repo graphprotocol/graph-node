@@ -33,19 +33,19 @@ pub async fn run(
         }
     }
     // call `graphman unassign` to stop any active deployments
-    crate::manager::commands::assign::unassign(primary_pool, &sender, &search_term).await?;
+    crate::manager::core::assign::unassign(primary_pool, &sender, &search_term).await?;
 
     // call `graphman remove` to unregister the subgraph's name
     for deployment in &deployments {
-        crate::manager::commands::remove::run(subgraph_store.clone(), &deployment.name)?;
+        crate::manager::core::remove::run(subgraph_store.clone(), &deployment.name)?;
     }
 
     // call `graphman unused record` to register those deployments unused
-    crate::manager::commands::unused_deployments::record(subgraph_store.clone())?;
+    crate::manager::core::unused_deployments::record(subgraph_store.clone())?;
 
     // call `graphman unused remove` to remove each deployment's data
     for deployment in &deployments {
-        crate::manager::commands::unused_deployments::remove(
+        crate::manager::core::unused_deployments::remove(
             subgraph_store.clone(),
             1_000_000,
             Some(&deployment.deployment),
