@@ -34,7 +34,7 @@ use crate::{constraint_violation, prelude::*};
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityType(Word);
 
 impl EntityType {
@@ -109,6 +109,11 @@ impl ToSql<diesel::sql_types::Text, diesel::pg::Pg> for EntityType {
     }
 }
 
+impl std::fmt::Debug for EntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EntityType({})", self.0)
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityFilterDerivative(bool);
 
@@ -124,7 +129,7 @@ impl EntityFilterDerivative {
 
 /// Key by which an individual entity in the store can be accessed. Stores
 /// only the entity type and id. The deployment must be known from context.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityKey {
     /// Name of the entity type.
     pub entity_type: EntityType,
@@ -146,6 +151,15 @@ impl EntityKey {
     }
 }
 
+impl std::fmt::Debug for EntityKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EntityKey({}[{}], cr={})",
+            self.entity_type, self.entity_id, self.causality_region
+        )
+    }
+}
 #[derive(Debug, Clone)]
 pub struct LoadRelatedRequest {
     /// Name of the entity type.

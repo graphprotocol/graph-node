@@ -602,7 +602,7 @@ lazy_static! {
 }
 
 /// An entity is represented as a map of attribute names to values.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct Entity(Object<Value>);
 
 pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}
@@ -926,6 +926,16 @@ impl CacheWeight for Entity {
 impl GasSizeOf for Entity {
     fn gas_size_of(&self) -> Gas {
         self.0.gas_size_of()
+    }
+}
+
+impl std::fmt::Debug for Entity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ds = f.debug_struct("Entity");
+        for (k, v) in &self.0 {
+            ds.field(k, v);
+        }
+        ds.finish()
     }
 }
 
