@@ -373,9 +373,8 @@ impl SyncStore {
 /// number at which queries should run so that they only consider data that
 /// is not affected by any requests currently queued.
 ///
-/// The tracker relies on `update` being called in the order newest request
-/// in the queue to oldest request so that reverts are seen before the
-/// writes that they revert.
+/// The best way to use the trtacker is to use the `fold_map` and `find`
+/// methods.
 struct BlockTracker {
     /// The smallest block number that has been reverted to
     revert: BlockNumber,
@@ -418,6 +417,80 @@ impl BlockTracker {
     /// reverted by a previous queue entry
     fn visible(&self, block_ptr: &BlockPtr) -> bool {
         block_ptr.number <= self.revert
+    }
+
+    /// Iterate over all batches currently in the queue, from newest to
+    /// oldest, and call `f` for each batch whose changes will actually be
+    /// visible in the database once the entire queue has been processed.
+    ///
+    /// The iteration ends the first time that `f` returns `Some(_)`. The
+    /// queue will be locked during the iteration, so `f` should not do any
+    /// slow work.
+    ///
+    /// The returned `BlockNumber` is the block at which queries should run
+    /// to only consider the state of the database before any of the queued
+    /// changes have been applied.
+    fn find_map<R, F>(queue: &BoundedQueue<Arc<Request>>, f: F) -> (Option<R>, BlockNumber)
+    where
+        F: Fn(&Batch) -> Option<R>,
+    {
+        let mut tracker = BlockTracker::new();
+        // Going from newest to oldest entry in the queue as `find_map` does
+        // ensures that we see reverts before we see the corresponding write
+        // request. We ignore any write request that writes blocks that have
+        // a number strictly higher than the revert with the smallest block
+        // number, as all such writes will be undone once the revert is
+        // processed.
+        let res = queue.find_map(|req| {
+            tracker.update(req.as_ref());
+            match req.as_ref() {
+                Request::Write { batch, .. } => {
+                    if tracker.visible(&batch.block_ptr) {
+                        f(batch)
+                    } else {
+                        None
+                    }
+                }
+                Request::RevertTo { .. } | Request::Stop => None,
+            }
+        });
+        (res, tracker.query_block())
+    }
+
+    /// Iterate over all batches currently in the queue, from newest to
+    /// oldest, and call `f` for each batch whose changes will actually be
+    /// visible in the database once the entire queue has been processed.
+    ///
+    /// Return the value that the last invocation of `f` returned, together
+    /// with the block at which queries should run to only consider the
+    /// state of the database before any of the queued changes have been
+    /// applied.
+    ///
+    /// The queue will be locked during the iteration, so `f` should not do
+    /// any slow work.
+    fn fold<F, B>(queue: &BoundedQueue<Arc<Request>>, init: B, mut f: F) -> (B, BlockNumber)
+    where
+        F: FnMut(B, &Batch) -> B,
+    {
+        let mut tracker = BlockTracker::new();
+
+        let accum = queue.fold(init, |accum, req| {
+            tracker.update(req.as_ref());
+            match req.as_ref() {
+                Request::Write { batch, .. } => {
+                    if tracker.visible(&batch.block_ptr) {
+                        f(accum, batch)
+                    } else {
+                        accum
+                    }
+                }
+                Request::RevertTo { .. } | Request::Stop => {
+                    /* nothing to do */
+                    accum
+                }
+            }
+        });
+        (accum, tracker.query_block())
     }
 }
 
@@ -702,32 +775,13 @@ impl Queue {
             }
         }
 
-        // Going from newest to oldest entry in the queue as `find_map` does
-        // ensures that we see reverts before we see the corresponding write
-        // request. We ignore any write request that writes blocks that have
-        // a number strictly higher than the revert with the smallest block
-        // number, as all such writes will be undone once the revert is
-        // processed.
-        let mut tracker = BlockTracker::new();
-
-        let op = self.queue.find_map(|req| {
-            tracker.update(req.as_ref());
-            match req.as_ref() {
-                Request::Write { batch, .. } => {
-                    if tracker.visible(&batch.block_ptr) {
-                        batch.last_op(key).map(Op::from)
-                    } else {
-                        None
-                    }
-                }
-                Request::RevertTo { .. } | Request::Stop => None,
-            }
-        });
+        let (op, query_block) =
+            BlockTracker::find_map(&self.queue, |batch| batch.last_op(key).map(Op::from));
 
         match op {
             Some(Op::Write(entity)) => Ok(Some(entity)),
             Some(Op::Remove) => Ok(None),
-            None => self.store.get(key, tracker.query_block()),
+            None => self.store.get(key, query_block),
         }
     }
 
@@ -736,32 +790,21 @@ impl Queue {
         &self,
         mut keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        // See the implementation of `get` for how we handle reverts
-        let mut tracker = BlockTracker::new();
-
-        // Get entities from entries in the queue
-        let entities_in_queue = self.queue.fold(
+        let (entities_in_queue, query_block) = BlockTracker::fold(
+            &self.queue,
             BTreeMap::new(),
-            |mut map: BTreeMap<EntityKey, Option<Entity>>, req| {
-                tracker.update(req.as_ref());
-                match req.as_ref() {
-                    Request::Write { batch, .. } => {
-                        if tracker.visible(&batch.block_ptr) {
-                            // See if we have changes for any of the keys.
-                            for key in &keys {
-                                match batch.last_op(key) {
-                                    Some(EntityOp::Write { key: _, entity }) => {
-                                        map.insert(key.clone(), Some(entity.clone()));
-                                    }
-                                    Some(EntityOp::Remove { .. }) => {
-                                        map.insert(key.clone(), None);
-                                    }
-                                    None => { /* nothing to do  */ }
-                                }
-                            }
+            |mut map: BTreeMap<EntityKey, Option<Entity>>, batch| {
+                // See if we have changes for any of the keys.
+                for key in &keys {
+                    match batch.last_op(key) {
+                        Some(EntityOp::Write { key: _, entity }) => {
+                            map.insert(key.clone(), Some(entity.clone()));
                         }
+                        Some(EntityOp::Remove { .. }) => {
+                            map.insert(key.clone(), None);
+                        }
+                        None => { /* nothing to do  */ }
                     }
-                    Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
                 }
                 map
             },
@@ -769,7 +812,7 @@ impl Queue {
 
         // Look entities for the remaining keys up in the store
         keys.retain(|key| !entities_in_queue.contains_key(key));
-        let mut map = self.store.get_many(keys, tracker.query_block())?;
+        let mut map = self.store.get_many(keys, query_block)?;
 
         // Extend the store results with the entities from the queue.
         for (key, entity) in entities_in_queue {
@@ -786,8 +829,6 @@ impl Queue {
         &self,
         derived_query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut tracker = BlockTracker::new();
-
         fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
             entity
                 .get(&derived_query.entity_field)
@@ -811,18 +852,11 @@ impl Queue {
         }
 
         // Get entities from entries in the queue
-        let entities_in_queue = self.queue.fold(
+        let (entities_in_queue, query_block) = BlockTracker::fold(
+            &self.queue,
             BTreeMap::new(),
-            |mut map: BTreeMap<EntityKey, Option<Entity>>, req| {
-                tracker.update(req.as_ref());
-                match req.as_ref() {
-                    Request::Write { batch, .. } => {
-                        if tracker.visible(&batch.block_ptr) {
-                            map.extend(effective_ops(batch, derived_query));
-                        }
-                    }
-                    Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
-                }
+            |mut map: BTreeMap<EntityKey, Option<Entity>>, batch| {
+                map.extend(effective_ops(batch, derived_query));
                 map
             },
         );
@@ -832,7 +866,7 @@ impl Queue {
         // We filter to exclude the entities ids that we already have from the queue
         let mut items_from_database =
             self.store
-                .get_derived(derived_query, tracker.query_block(), excluded_keys)?;
+                .get_derived(derived_query, query_block, excluded_keys)?;
 
         // Extend the store results with the entities from the queue.
         // This overwrites any entitiy from the database with the same key from queue
@@ -850,27 +884,17 @@ impl Queue {
         &self,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        // See the implementation of `get` for how we handle reverts
-        let mut tracker = BlockTracker::new();
-
         // We need to produce a list of dynamic data sources that are
         // ordered by their creation block. We first look through all the
         // dds that are still in the queue, and then load dds from the store
         // as long as they were written at a block before whatever is still
         // in the queue. The overall list of dds is the list of dds from the
         // store plus the ones still in memory sorted by their block number.
-        let mut queue_dds = self.queue.fold(Vec::new(), |mut dds, req| {
-            tracker.update(req.as_ref());
-            match req.as_ref() {
-                Request::Write { batch, .. } => {
-                    if tracker.visible(&batch.block_ptr) {
-                        dds.extend(batch.new_data_sources().cloned());
-                    }
-                }
-                Request::RevertTo { .. } | Request::Stop => { /* nothing to do */ }
-            }
-            dds
-        });
+        let (mut queue_dds, query_block) =
+            BlockTracker::fold(&self.queue, Vec::new(), |mut dds, batch| {
+                dds.extend(batch.new_data_sources().cloned());
+                dds
+            });
         // Using a stable sort is important here so that dds created at the
         // same block stay in the order in which they were added (and
         // therefore will be loaded from the store in that order once the
@@ -879,7 +903,7 @@ impl Queue {
 
         let mut dds = self
             .store
-            .load_dynamic_data_sources(tracker.query_block(), manifest_idx_and_name)
+            .load_dynamic_data_sources(query_block, manifest_idx_and_name)
             .await?;
         dds.append(&mut queue_dds);
 
