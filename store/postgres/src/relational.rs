@@ -656,10 +656,9 @@ impl Layout {
         conn: &PgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
-    ) -> Result<usize, StoreError> {
+    ) -> Result<(), StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         let _section = stopwatch.start_section("insert_modification_insert_query");
-        let mut count = 0;
 
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
@@ -667,12 +666,10 @@ impl Layout {
         for chunk in group.write_chunks(chunk_size) {
             // Empty chunks would lead to invalid SQL
             if !chunk.is_empty() {
-                count += InsertQuery::new(table, &chunk)?
-                    .get_results(conn)
-                    .map(|ids| ids.len())?
+                InsertQuery::new(table, &chunk)?.execute(conn)?;
             }
         }
-        Ok(count)
+        Ok(())
     }
 
     pub fn conflicting_entity(

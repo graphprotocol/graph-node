@@ -173,6 +173,22 @@ impl EntityMod {
             | EntityMod::Remove { key, .. } => key,
         }
     }
+
+    fn entity_count_change(&self) -> i32 {
+        match self {
+            EntityMod::Insert { end: None, .. } => 1,
+            EntityMod::Insert { end: Some(_), .. } => {
+                // Insert followed by a remove
+                0
+            }
+            EntityMod::Overwrite { end: None, .. } => 0,
+            EntityMod::Overwrite { end: Some(_), .. } => {
+                // Overwrite followed by a remove
+                -1
+            }
+            EntityMod::Remove { .. } => -1,
+        }
+    }
 }
 
 /// A list of entity changes grouped by the entity type
@@ -205,6 +221,12 @@ impl RowGroup {
 
     fn row_count(&self) -> usize {
         self.rows.len()
+    }
+
+    /// Return the change in entity count that will result from applying
+    /// writing this row group to the database
+    pub fn entity_count_change(&self) -> i32 {
+        self.rows.iter().map(|row| row.entity_count_change()).sum()
     }
 
     /// Iterate over all changes that need clamping of the block range of an

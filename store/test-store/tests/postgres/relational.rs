@@ -236,8 +236,11 @@ fn insert_entity_at(
         entity_type, entities_with_keys
     );
     let group = row_group_insert(&entity_type, block, entities_with_keys_owned.clone());
-    let inserted = layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
-    assert_eq!(inserted, entities_with_keys_owned.len());
+    layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
+    assert_eq!(
+        group.entity_count_change(),
+        entities_with_keys_owned.len() as i32
+    );
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entities: Vec<Entity>) {

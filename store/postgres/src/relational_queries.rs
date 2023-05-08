@@ -1942,9 +1942,6 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_sql(",\n");
             }
         }
-        out.push_sql("\nreturning ");
-        out.push_sql(PRIMARY_KEY_COLUMN);
-        out.push_sql("::text");
 
         Ok(())
     }
@@ -1954,13 +1951,6 @@ impl<'a> QueryId for InsertQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
-}
-
-impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for InsertQuery<'a> {
-    fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
-        conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
-    }
 }
 
 impl<'a, Conn> RunQueryDsl<Conn> for InsertQuery<'a> {}

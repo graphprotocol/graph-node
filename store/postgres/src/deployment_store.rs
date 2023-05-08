@@ -328,10 +328,12 @@ impl DeploymentStore {
         let mut count = 0;
 
         for group in groups {
+            count += group.entity_count_change();
+
             // Clamp entities before inserting them to avoid having versions
             // with overlapping block ranges
             let section = stopwatch.start_section("apply_entity_modifications_delete");
-            count -= layout.delete(conn, group, stopwatch)? as i32;
+            layout.delete(conn, group, stopwatch)?;
             section.end();
 
             let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -347,7 +349,7 @@ impl DeploymentStore {
             section.end();
 
             let section = stopwatch.start_section("apply_entity_modifications_insert");
-            count += layout.insert(conn, group, stopwatch)? as i32;
+            layout.insert(conn, group, stopwatch)?;
             section.end();
         }
 
