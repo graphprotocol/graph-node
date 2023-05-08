@@ -1,8 +1,7 @@
-use crate::manager::{
-    deployment::{Deployment, DeploymentSearch},
-    display::List,
-    prompt::prompt_for_confirmation,
-};
+use crate::manager::cli::utils::display::List;
+use crate::manager::cli::utils::prompt::prompt_for_confirmation;
+use crate::manager::deployment::{Deployment, DeploymentSearch};
+
 use graph::anyhow::{self, bail};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;

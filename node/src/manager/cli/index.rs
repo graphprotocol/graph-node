@@ -1,4 +1,4 @@
-use crate::manager::{color::Terminal, deployment::DeploymentSearch, CmdResult};
+use crate::manager::{cli::utils::color::Terminal, deployment::DeploymentSearch, CmdResult};
 use graph::{
     components::store::DeploymentLocator,
     itertools::Itertools,

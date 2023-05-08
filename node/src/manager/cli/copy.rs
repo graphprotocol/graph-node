@@ -3,12 +3,12 @@ use std::{collections::HashMap, sync::Arc, time::SystemTime};
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
 
 use crate::manager::{
+    cli::utils::display::List,
     core::{
         self,
         copy::{CopyState, CreateCopyResult, StatusResult, UtcDateTime},
     },
     deployment::DeploymentSearch,
-    display::List,
 };
 
 use graph::prelude::{anyhow::Error, chrono::Duration};

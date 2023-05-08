@@ -1,4 +1,3 @@
-use crate::manager::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
     components::store::ChainStore as ChainStoreTrait,
@@ -11,6 +10,8 @@ use graph::{
 use graph_chain_ethereum::{EthereumAdapter, EthereumAdapterTrait};
 use graph_store_postgres::ChainStore;
 use std::sync::Arc;
+
+use super::utils::prompt::prompt_for_confirmation;
 
 pub async fn by_hash(
     hash: &str,

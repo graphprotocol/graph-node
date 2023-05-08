@@ -1850,6 +1850,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-server-graphman"
+version = "0.30.0"
+dependencies = [
+ "futures 0.1.31",
+ "graph",
+ "graph-core",
+ "graph-graphql",
+ "graph-node",
+ "graphql-parser",
+ "http",
+ "hyper",
+ "serde",
+]
+
+[[package]]
 name = "graph-server-http"
 version = "0.30.0"
 dependencies = [

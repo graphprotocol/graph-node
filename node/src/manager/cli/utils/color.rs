@@ -3,7 +3,7 @@ use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 use graph::prelude::{isatty, lazy_static};
 
-use super::CmdResult;
+use crate::manager::CmdResult;
 
 lazy_static! {
     static ref COLOR_MODE: Mutex<ColorChoice> = Mutex::new(ColorChoice::Auto);
