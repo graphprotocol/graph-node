@@ -20,6 +20,7 @@ use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
 use crate::codec;
+use crate::codec::value::Typed;
 use crate::{codec::entity_change::Operation, Block, Chain, NoopDataSourceTemplate};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
@@ -215,6 +216,11 @@ where
                         },
                         causality_region,
                         logger,
+                    );
+
+                    data.insert(
+                        Word::from("id"),
+                        decode_value(&Typed::String(entity_id)).unwrap(),
                     );
 
                     let entity = state.entity_cache.make_entity(data)?;
