@@ -11,6 +11,7 @@ use graph::{
     components::store::BlockStore as _, prelude::anyhow::Error, prelude::serde_json as json,
 };
 use graph_store_postgres::command_support::catalog::block_store::Chain;
+use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
@@ -90,7 +91,7 @@ pub fn remove_chain(
     primary: ConnectionPool,
     store: Arc<BlockStore>,
     name: String,
-) -> Result<(), Error> {
+) -> Result<Vec<Site>, Error> {
     let sites = {
         let conn = graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
         conn.find_sites_for_network(&name)?
@@ -102,5 +103,5 @@ pub fn remove_chain(
 
     store.drop_chain(&name)?;
 
-    Ok(())
+    Ok(sites)
 }

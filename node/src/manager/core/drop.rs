@@ -11,7 +11,7 @@ use std::sync::Arc;
 ///
 /// Asks for confirmation before removing any data.
 /// This is a convenience fuction that to call a series of other graphman commands.
-pub async fn run(
+pub async fn run<T>(
     primary_pool: ConnectionPool,
     subgraph_store: Arc<SubgraphStore>,
     sender: Arc<NotificationSender>,
@@ -20,37 +20,40 @@ pub async fn run(
     pending: bool,
     used: bool,
     skip_confirmation: bool,
-) -> anyhow::Result<()> {
+    enable_logging: bool,
+    on_deployment: T,
+) -> anyhow::Result<()>
+where
+    T: Fn(&Deployment) -> Result<(), anyhow::Error>,
+{
     // call `graphman info` to find matching deployments
     let deployments = search_term.find(primary_pool.clone(), current, pending, used)?;
     if deployments.is_empty() {
         bail!("Found no deployment for search_term: {search_term}")
     } else {
-        print_deployments(&deployments);
-        if !skip_confirmation && !prompt_for_confirmation("\nContinue?")? {
+        if enable_logging {
+            print_deployments(&deployments);
+        }
+
+        if !skip_confirmation && !prompt_for_confirmation("\nContinue?")? && enable_logging {
             println!("Execution aborted by user");
             return Ok(());
         }
     }
     // call `graphman unassign` to stop any active deployments
-    crate::manager::core::assign::unassign(primary_pool, &sender, &search_term).await?;
+    super::assign::unassign(primary_pool, &sender, &search_term)?;
 
     // call `graphman remove` to unregister the subgraph's name
     for deployment in &deployments {
-        crate::manager::core::remove::run(subgraph_store.clone(), &deployment.name)?;
+        super::remove::run(subgraph_store.clone(), &deployment.name, enable_logging)?;
     }
 
     // call `graphman unused record` to register those deployments unused
-    crate::manager::core::unused_deployments::record(subgraph_store.clone())?;
+    super::unused_deployments::record(subgraph_store.clone(), enable_logging)?;
 
     // call `graphman unused remove` to remove each deployment's data
     for deployment in &deployments {
-        crate::manager::core::unused_deployments::remove(
-            subgraph_store.clone(),
-            1_000_000,
-            Some(&deployment.deployment),
-            None,
-        )?;
+        on_deployment(deployment)?;
     }
     Ok(())
 }

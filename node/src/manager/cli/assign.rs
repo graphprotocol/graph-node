@@ -1,20 +1,23 @@
-use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
+use graph::prelude::Error;
 use graph_store_postgres::{
     command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
 };
 
-use crate::manager::{core, deployment::DeploymentSearch};
+use crate::manager::{
+    core::{self, assign::ReassignResult},
+    deployment::DeploymentSearch,
+};
 
 pub fn unassign(
     primary: ConnectionPool,
     sender: &NotificationSender,
     search: &DeploymentSearch,
 ) -> Result<(), Error> {
-    let locator = search.locate_unique(&primary)?;
+    let locator = core::assign::unassign(primary, sender, search)?;
 
     println!("unassigning {locator}");
 
-    core::assign::unassign(primary, sender, search)
+    Ok(())
 }
 
 pub fn reassign(
@@ -23,19 +26,22 @@ pub fn reassign(
     search: &DeploymentSearch,
     node: String,
 ) -> Result<(), Error> {
-    let node_id = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
-    let locator = search.locate_unique(&primary)?;
+    let ReassignResult {
+        node_id,
+        assigned_node,
+        locator,
+    } = core::assign::reassign(primary.clone(), sender, search, node.clone())?;
 
-    let changes = match core::assign::reassign(primary, sender, search, node)? {
+    match assigned_node {
         Some(cur) => {
             if cur == node_id {
                 println!("deployment {locator} is already assigned to {cur}");
             } else {
-                println!("reassigning {locator} to {node} (was {cur})");
+                println!("reassigning {locator} to {node_id} (was {cur})");
             }
         }
         None => {
-            println!("assigning {locator} to {node}");
+            println!("assigning {locator} to {node_id}");
         }
     };
 

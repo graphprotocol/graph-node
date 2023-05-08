@@ -47,7 +47,7 @@ pub async fn clear_call_cache(
         "Removing entries for blocks from {from} to {to} from the call cache for `{}`",
         chain_store.chain
     );
-    core::chain::clear_call_cache(chain_store, from, to).await;
+    core::chain::clear_call_cache(chain_store, from, to).await?;
 
     Ok(())
 }
@@ -89,6 +89,23 @@ pub async fn info(
     print_ptr("head block", chain_info.head_block, hashes);
     row("reorg threshold", chain_info.reorg_threshold);
     print_ptr("reorg ancestor", chain_info.ancestor, hashes);
+
+    Ok(())
+}
+
+pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
+    let sites = core::chain::remove_chain(primary, store, name.clone())?;
+
+    if !sites.is_empty() {
+        println!(
+            "there are {} deployments using chain {}:",
+            sites.len(),
+            name
+        );
+        for site in sites {
+            println!("{:<8} | {} ", site.namespace, site.deployment);
+        }
+    }
 
     Ok(())
 }

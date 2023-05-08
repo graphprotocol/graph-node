@@ -1,7 +1,7 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use graph::prelude::{anyhow::Error, chrono};
-use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
+use graph_store_postgres::{unused, DeploymentDetail, SubgraphStore, UnusedDeployment};
 
 use crate::manager::display::List;
 
@@ -29,7 +29,7 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
     ])
 }
 
-pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<(), Error> {
+pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<List, Error> {
     let mut list = make_list();
 
     let filter = if existing {
@@ -42,19 +42,19 @@ pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<(), Error> {
         add_row(&mut list, deployment);
     }
 
-    if list.is_empty() {
-        println!("no unused deployments");
-    } else {
-        list.render();
-    }
-
-    Ok(())
+    Ok(list)
 }
 
-pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
+pub fn record(
+    store: Arc<SubgraphStore>,
+    enable_logging: bool,
+) -> Result<Vec<DeploymentDetail>, Error> {
     let mut list = make_list();
 
-    println!("Recording unused deployments. This might take a while.");
+    if enable_logging {
+        println!("Recording unused deployments. This might take a while.");
+    }
+
     let recorded = store.record_unused_deployments()?;
 
     for unused in store.list_unused_deployments(unused::Filter::New)? {
@@ -64,17 +64,22 @@ pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     }
 
     list.render();
-    println!("Recorded {} unused deployments", recorded.len());
 
-    Ok(())
+    Ok(recorded)
 }
 
-pub fn remove(
+pub fn remove<T, U>(
     store: Arc<SubgraphStore>,
     count: usize,
     deployment: Option<&str>,
     older: Option<chrono::Duration>,
-) -> Result<(), Error> {
+    on_unused_empty: T,
+    on_remove_deployment: U,
+) -> Result<(), Error>
+where
+    T: FnOnce() -> Result<(), Error>,
+    U: Fn((usize, &UnusedDeployment)) -> Result<(), Error>,
+{
     let filter = match older {
         Some(duration) => unused::Filter::UnusedLongerThan(duration),
         None => unused::Filter::New,
@@ -89,47 +94,12 @@ pub fn remove(
     };
 
     if unused.is_empty() {
-        match &deployment {
-            Some(s) => println!("No unused subgraph matches `{}`", s),
-            None => println!("Nothing to remove."),
-        }
-        return Ok(());
+        return on_unused_empty();
     }
 
-    for (i, deployment) in unused.iter().take(count).enumerate() {
-        println!("{:=<36} {:4} {:=<36}", "", i + 1, "");
-        println!(
-            "removing {} from {}",
-            deployment.namespace, deployment.shard
-        );
-        println!("  {:>14}: {}", "deployment id", deployment.deployment);
-        println!("  {:>14}: {}", "entities", deployment.entity_count);
-        if let Some(subgraphs) = &deployment.subgraphs {
-            let mut first = true;
-            for name in subgraphs {
-                if first {
-                    println!("  {:>14}: {}", "subgraphs", name);
-                } else {
-                    println!("  {:>14}  {}", "", name);
-                }
-                first = false;
-            }
-        }
-
-        let start = Instant::now();
-        match store.remove_deployment(deployment.id) {
-            Ok(()) => {
-                println!(
-                    "done removing {} from {} in {:.1}s\n",
-                    deployment.namespace,
-                    deployment.shard,
-                    start.elapsed().as_millis() as f64 / 1000.0
-                );
-            }
-            Err(e) => {
-                println!("removal failed: {}", e)
-            }
-        }
+    for unused_deployment in unused.iter().take(count).enumerate() {
+        on_remove_deployment(unused_deployment)?;
     }
+
     Ok(())
 }

@@ -9,8 +9,9 @@ pub mod cli;
 pub mod color;
 pub mod core;
 pub mod deployment;
-mod display;
+pub mod display;
 pub mod prompt;
+pub mod utils;
 
 /// A dummy subscription manager that always panics
 pub struct PanicSubscriptionManager;

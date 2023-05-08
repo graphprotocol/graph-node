@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, io::Write};
 
 use futures::compat::Future01CompatExt;
-//use futures::future;
 use graph::{
     components::store::{EntityType, SubscriptionManager as _},
     prelude::{serde_json, Error, Stream, SubscriptionFilter},

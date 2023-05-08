@@ -17,7 +17,7 @@ use graph::{
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::manager::{
-    core::stats::{abbreviate_table_name, show_stats},
+    cli::stats::{abbreviate_table_name, show_stats},
     deployment::DeploymentSearch,
 };
 
