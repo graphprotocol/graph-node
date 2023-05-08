@@ -30,6 +30,7 @@ graph-chain-substreams = { path = "../chain/substreams" }
 graph-graphql = { path = "../graphql" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 graph-server-http = { path = "../server/http" }
+graph-server-graphman = { path = "../server/graphman" }
 graph-server-index-node = { path = "../server/index-node" }
 graph-server-json-rpc = { path = "../server/json-rpc" }
 graph-server-websocket = { path = "../server/websocket" }

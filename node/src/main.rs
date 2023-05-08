@@ -35,6 +35,7 @@ use graph_node::chain::{
 use graph_node::config::Config;
 use graph_node::opt;
 use graph_node::store_builder::StoreBuilder;
+use graph_server_graphman::GraphQLServer as GraphQLQraphmanServer;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
@@ -153,18 +154,15 @@ async fn main() {
     // Obtain subgraph related command-line arguments
     let subgraph = opt.subgraph.clone();
 
-    // Obtain ports to use for the GraphQL server(s)
-    let http_port = opt.http_port;
-    let ws_port = opt.ws_port;
-
-    // Obtain JSON-RPC server port
-    let json_rpc_port = opt.admin_port;
-
-    // Obtain index node server port
-    let index_node_port = opt.index_node_port;
-
-    // Obtain metrics server port
-    let metrics_port = opt.metrics_port;
+    let opt::Opt {
+        http_port,
+        ws_port,
+        admin_port: json_rpc_port,
+        index_node_port,
+        metrics_port,
+        graphman_port,
+        ..
+    } = opt;
 
     // Obtain the fork base URL
     let fork_base = match &opt.fork_base {
@@ -400,6 +398,8 @@ async fn main() {
         ));
         let mut graphql_server =
             GraphQLQueryServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
+        let mut graphman_graphql_server =
+            GraphQLQraphmanServer::new(&logger_factory, graphql_runner.clone(), node_id.clone());
         let subscription_server =
             GraphQLSubscriptionServer::new(&logger, graphql_runner.clone(), network_store.clone());
 
@@ -579,6 +579,14 @@ async fn main() {
                 .await
                 .expect("Failed to start metrics server")
         });
+
+        // Serve Graphman commands over HTTP GraphQL server
+        graph::spawn(
+            graphman_graphql_server
+                .serve(graphman_port, ws_port)
+                .expect("Failed to start GraphQL graphman server")
+                .compat(),
+        );
     };
 
     graph::spawn(launch_services(logger.clone(), env_vars.cheap_clone()));

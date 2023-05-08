@@ -15,7 +15,7 @@ use http::header::{
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use crate::request::parse_graphql_request;
+use graphql_utils::request::parse_graphql_request;
 
 pub type GraphQLServiceResult = Result<Response<Body>, GraphQLServerError>;
 /// An asynchronous response to a GraphQL request.
@@ -57,7 +57,7 @@ where
     }
 
     fn graphiql_html(&self) -> String {
-        include_str!("../assets/index.html")
+        include_str!("../../graphql_utils/assets/index.html")
             .replace("__WS_PORT__", format!("{}", self.ws_port).as_str())
     }
 
@@ -67,8 +67,7 @@ where
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
             .header(CONTENT_TYPE, "text/plain")
             .body(Body::from(String::from(
-                "Access deployed subgraphs by deployment ID at \
-                /subgraphs/id/<ID> or by name at /subgraphs/name/<NAME>",
+                "Graphman is a maintenance tool for Graph Node, helping with diagnosis and resolution of different day-to-day and exceptional tasks.",
             )))
             .unwrap())
     }
@@ -88,68 +87,6 @@ where
 
     fn handle_graphiql(&self) -> GraphQLServiceResponse {
         self.serve_dynamic_file(self.graphiql_html())
-    }
-
-    fn resolve_api_version(
-        &self,
-        request: &Request<Body>,
-    ) -> Result<ApiVersion, GraphQLServerError> {
-        let mut version = ApiVersion::default();
-
-        if let Some(query) = request.uri().query() {
-            let potential_version_requirement = query.split('&').find_map(|pair| {
-                if pair.starts_with("api-version=") {
-                    if let Some(version_requirement) = pair.split('=').nth(1) {
-                        return Some(version_requirement);
-                    }
-                }
-                None
-            });
-
-            if let Some(version_requirement) = potential_version_requirement {
-                version = ApiVersion::new(
-                    &VersionReq::parse(version_requirement)
-                        .map_err(|error| GraphQLServerError::ClientError(error.to_string()))?,
-                )
-                .map_err(GraphQLServerError::ClientError)?;
-            }
-        }
-
-        Ok(version)
-    }
-
-    async fn handle_graphql_query_by_name(
-        self,
-        subgraph_name: String,
-        request: Request<Body>,
-    ) -> GraphQLServiceResult {
-        let version = self.resolve_api_version(&request)?;
-        let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
-            GraphQLServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
-        })?;
-
-        self.handle_graphql_query(QueryTarget::Name(subgraph_name, version), request)
-            .await
-    }
-
-    fn handle_graphql_query_by_id(
-        self,
-        id: String,
-        request: Request<Body>,
-    ) -> GraphQLServiceResponse {
-        let res = DeploymentHash::new(id)
-            .map_err(|id| GraphQLServerError::ClientError(format!("Invalid subgraph id `{}`", id)))
-            .and_then(|id| match self.resolve_api_version(&request) {
-                Ok(version) => Ok((id, version)),
-                Err(error) => Err(error),
-            });
-
-        match res {
-            Err(_) => self.handle_not_found(),
-            Ok((id, version)) => self
-                .handle_graphql_query(QueryTarget::Deployment(id, version), request)
-                .boxed(),
-        }
     }
 
     async fn handle_graphql_query(
@@ -194,46 +131,16 @@ where
         Ok(result.as_http_response())
     }
 
-    // Handles OPTIONS requests
-    fn handle_graphql_options(&self, _request: Request<Body>) -> GraphQLServiceResponse {
-        async {
-            Ok(Response::builder()
-                .status(200)
-                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, User-Agent")
-                .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS, POST")
-                .header(CONTENT_TYPE, "text/html")
-                .body(Body::from(""))
-                .unwrap())
-        }
-        .boxed()
-    }
-
-    /// Handles 302 redirects
-    async fn handle_temp_redirect(self, destination: String) -> GraphQLServiceResult {
-        header::HeaderValue::try_from(destination)
-            .map_err(|_| {
-                GraphQLServerError::ClientError("invalid characters in redirect URL".into())
-            })
-            .map(|loc_header_val| {
-                Response::builder()
-                    .status(StatusCode::FOUND)
-                    .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                    .header(LOCATION, loc_header_val)
-                    .header(CONTENT_TYPE, "text/plain")
-                    .body(Body::from("Redirecting..."))
-                    .unwrap()
-            })
-    }
-
     /// Handles 404s.
     fn handle_not_found(&self) -> GraphQLServiceResponse {
         async {
+            let json: String = serde_json::to_string("Not Found").unwrap();
+
             Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header(CONTENT_TYPE, "text/plain")
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-                .body(Body::from("Not found"))
+                .body(Body::from(json))
                 .unwrap())
         }
         .boxed()
@@ -254,43 +161,39 @@ where
 
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
-            (Method::GET, &["subgraphs", "id", _, "graphql"])
-            | (Method::GET, &["subgraphs", "name", _, "graphql"])
-            | (Method::GET, &["subgraphs", "name", _, _, "graphql"])
-            | (Method::GET, &["subgraphs", "network", _, _, "graphql"])
-            | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
+            (Method::GET, &["graphql"]) => self.handle_graphiql(),
+            (Method::POST, &["graphql"]) => self.handle_graphiql(),
 
-            (Method::GET, path @ ["subgraphs", "id", _])
-            | (Method::GET, path @ ["subgraphs", "name", _])
-            | (Method::GET, path @ ["subgraphs", "name", _, _])
-            | (Method::GET, path @ ["subgraphs", "network", _, _]) => {
-                let dest = format!("/{}/graphql", path.join("/"));
-                self.handle_temp_redirect(dest).boxed()
-            }
+            // (Method::GET, path @ ["subgraphs", "id", _])
+            // | (Method::GET, path @ ["subgraphs", "name", _])
+            // | (Method::GET, path @ ["subgraphs", "name", _, _])
+            // | (Method::GET, path @ ["subgraphs", "network", _, _]) => {
+            //     let dest = format!("/{}/graphql", path.join("/"));
+            //     self.handle_temp_redirect(dest).boxed()
+            // }
 
-            (Method::POST, &["subgraphs", "id", subgraph_id]) => {
-                self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
-            }
-            (Method::OPTIONS, ["subgraphs", "id", _]) => self.handle_graphql_options(req),
-            (Method::POST, &["subgraphs", "name", subgraph_name]) => self
-                .handle_graphql_query_by_name(subgraph_name.to_owned(), req)
-                .boxed(),
-            (Method::POST, ["subgraphs", "name", subgraph_name_part1, subgraph_name_part2]) => {
-                let subgraph_name = format!("{}/{}", subgraph_name_part1, subgraph_name_part2);
-                self.handle_graphql_query_by_name(subgraph_name, req)
-                    .boxed()
-            }
-            (Method::POST, ["subgraphs", "network", subgraph_name_part1, subgraph_name_part2]) => {
-                let subgraph_name =
-                    format!("network/{}/{}", subgraph_name_part1, subgraph_name_part2);
-                self.handle_graphql_query_by_name(subgraph_name, req)
-                    .boxed()
-            }
+            // (Method::POST, &["subgraphs", "id", subgraph_id]) => {
+            //     self.handle_graphql_query_by_id(subgraph_id.to_owned(), req)
+            // }
+            // (Method::OPTIONS, ["subgraphs", "id", _]) => self.handle_graphql_options(req),
+            // (Method::POST, &["subgraphs", "name", subgraph_name]) => self
+            //     .handle_graphql_query_by_name(subgraph_name.to_owned(), req)
+            //     .boxed(),
+            // (Method::POST, ["subgraphs", "name", subgraph_name_part1, subgraph_name_part2]) => {
+            //     let subgraph_name = format!("{}/{}", subgraph_name_part1, subgraph_name_part2);
+            //     self.handle_graphql_query_by_name(subgraph_name, req)
+            //         .boxed()
+            // }
+            // (Method::POST, ["subgraphs", "network", subgraph_name_part1, subgraph_name_part2]) => {
+            //     let subgraph_name =
+            //         format!("network/{}/{}", subgraph_name_part1, subgraph_name_part2);
+            //     self.handle_graphql_query_by_name(subgraph_name, req)
+            //         .boxed()
+            // }
 
-            (Method::OPTIONS, ["subgraphs", "name", _])
-            | (Method::OPTIONS, ["subgraphs", "name", _, _])
-            | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
-
+            // (Method::OPTIONS, ["subgraphs", "name", _])
+            // | (Method::OPTIONS, ["subgraphs", "name", _, _])
+            // | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
             _ => self.handle_not_found(),
         }
     }
@@ -362,7 +265,7 @@ mod tests {
     };
     use graph::prelude::*;
 
-    use crate::test_utils;
+    use graphql_utils::test_utils;
 
     use super::GraphQLService;
 

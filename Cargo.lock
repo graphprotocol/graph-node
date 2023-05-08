@@ -1779,6 +1779,7 @@ dependencies = [
  "graph-core",
  "graph-graphql",
  "graph-runtime-wasm",
+ "graph-server-graphman",
  "graph-server-http",
  "graph-server-index-node",
  "graph-server-json-rpc",
@@ -1857,8 +1858,8 @@ dependencies = [
  "graph",
  "graph-core",
  "graph-graphql",
- "graph-node",
  "graphql-parser",
+ "graphql-utils",
  "http",
  "hyper",
  "serde",
@@ -1873,6 +1874,7 @@ dependencies = [
  "graph-core",
  "graph-graphql",
  "graphql-parser",
+ "graphql-utils",
  "http",
  "hyper",
  "serde",
@@ -2016,6 +2018,17 @@ dependencies = [
  "lazy_static",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "graphql-utils"
+version = "0.30.0"
+dependencies = [
+ "graph",
+ "graphql-parser",
+ "http",
+ "hyper",
+ "serde",
 ]
 
 [[package]]

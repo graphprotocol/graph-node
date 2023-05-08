@@ -25,9 +25,10 @@ impl<Q> GraphQLServer<Q> {
     /// Creates a new GraphQL server.
     pub fn new(logger_factory: &LoggerFactory, graphql_runner: Arc<Q>, node_id: NodeId) -> Self {
         let logger = logger_factory.component_logger(
-            "GraphQLServer",
+            "GraphmanGraphQLServer",
             Some(ComponentLoggerConfig {
                 elastic: Some(ElasticComponentLoggerConfig {
+                    // TODO: probably we need to change this to another index?
                     index: String::from("graphql-server-logs"),
                 }),
             }),
@@ -55,7 +56,7 @@ where
 
         info!(
             logger,
-            "Starting GraphQL HTTP server at: http://localhost:{}", port
+            "Starting Graphman GraphQL HTTP server at: http://localhost:{}", port
         );
 
         let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);

@@ -15,7 +15,7 @@ use http::header::{
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use crate::request::parse_graphql_request;
+use graphql_utils::request::parse_graphql_request;
 
 pub type GraphQLServiceResult = Result<Response<Body>, GraphQLServerError>;
 /// An asynchronous response to a GraphQL request.
@@ -57,7 +57,7 @@ where
     }
 
     fn graphiql_html(&self) -> String {
-        include_str!("../assets/index.html")
+        include_str!("../../graphql_utils/assets/index.html")
             .replace("__WS_PORT__", format!("{}", self.ws_port).as_str())
     }
 
@@ -362,7 +362,7 @@ mod tests {
     };
     use graph::prelude::*;
 
-    use crate::test_utils;
+    use graphql_utils::test_utils;
 
     use super::GraphQLService;
 
