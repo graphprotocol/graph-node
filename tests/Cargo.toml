@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 anyhow = "1.0"
 assert-json-diff = "2.0.2"
-async-stream = "0.3.4"
+async-stream = "0.3.5"
 bollard = "0.10"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
