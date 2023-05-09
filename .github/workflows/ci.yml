@@ -126,6 +126,8 @@ jobs:
         env:
           N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+          # Reduce how long a batch will stick around to avoid timeouts
+          GRAPH_STORE_WRITE_BATCH_DURATION: 30
         with:
           command: test
           args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
@@ -137,6 +139,8 @@ jobs:
         env:
           N_CONCURRENT_TESTS: "4"
           TESTS_GANACHE_HARD_WAIT_SECONDS: "30"
+          # Reduce how long a batch will stick around to avoid timeouts
+          GRAPH_STORE_WRITE_BATCH_DURATION: 30
         with:
           command: test
           args: --verbose --package graph-tests parallel_integration_tests -- --nocapture
