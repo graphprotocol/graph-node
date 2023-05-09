@@ -39,7 +39,7 @@ use super::{
 /// `append_row`, eliminates an update in the database which would otherwise
 /// be needed to clamp the open block range of the entity to the block
 /// contained in `end`
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum EntityMod {
     /// Insert the entity
     Insert {
@@ -578,6 +578,7 @@ impl DataSources {
 /// Indicate to code that looks up entities from the in-memory batch whether
 /// the entity in question will be written or removed at the block of the
 /// lookup
+#[derive(Debug, PartialEq)]
 pub enum EntityOp<'a> {
     /// There is a new version of the entity that will be written
     Write {
@@ -873,7 +874,15 @@ impl<'a> Iterator for WriteChunkIter<'a> {
 
 #[cfg(test)]
 mod test {
-    use crate::components::store::{write::EntityMod, BlockNumber, EntityKey, EntityType};
+    use crate::{
+        components::store::{
+            write::EntityMod, write::EntityOp, BlockNumber, EntityKey, EntityType, StoreError,
+        },
+        entity,
+        prelude::DeploymentHash,
+        schema::InputSchema,
+    };
+    use lazy_static::lazy_static;
 
     use super::RowGroup;
 
@@ -924,5 +933,175 @@ mod test {
 
         let exp: RunList<'_> = &[(1, &[10]), (2, &[20]), (1, &[11])];
         check_runs(&[10, 20, 11], &[1, 2, 1], exp);
+    }
+
+    const GQL: &str = "type Thing @entity { id: ID!, count: Int! }";
+    lazy_static! {
+        static ref DEPLOYMENT: DeploymentHash = DeploymentHash::new("batchAppend").unwrap();
+        static ref SCHEMA: InputSchema = InputSchema::parse(GQL, DEPLOYMENT.clone()).unwrap();
+        static ref ENTITY_TYPE: EntityType = EntityType::new("Thing".to_string());
+    }
+
+    /// Convenient notation for changes to a fixed entity
+    #[derive(Clone, Debug)]
+    enum Mod {
+        Ins(BlockNumber),
+        Ovw(BlockNumber),
+        Rem(BlockNumber),
+        // clamped insert
+        InsC(BlockNumber, BlockNumber),
+        // clamped overwrite
+        OvwC(BlockNumber, BlockNumber),
+    }
+
+    impl From<&Mod> for EntityMod {
+        fn from(value: &Mod) -> Self {
+            use Mod::*;
+
+            let value = value.clone();
+            let key = EntityKey::data("Thing", "one");
+            match value {
+                Ins(block) => EntityMod::Insert {
+                    key,
+                    data: entity! { SCHEMA => id: "one", count: block },
+                    block,
+                    end: None,
+                },
+                Ovw(block) => EntityMod::Overwrite {
+                    key,
+                    data: entity! { SCHEMA => id: "one", count: block },
+                    block,
+                    end: None,
+                },
+                Rem(block) => EntityMod::Remove { key, block },
+                InsC(block, end) => EntityMod::Insert {
+                    key,
+                    data: entity! { SCHEMA => id: "one", count: block },
+                    block,
+                    end: Some(end),
+                },
+                OvwC(block, end) => EntityMod::Overwrite {
+                    key,
+                    data: entity! { SCHEMA => id: "one", count: block },
+                    block,
+                    end: Some(end),
+                },
+            }
+        }
+    }
+
+    /// Helper to construct a `RowGroup`
+    #[derive(Debug)]
+    struct Group {
+        group: RowGroup,
+    }
+
+    impl Group {
+        fn new() -> Self {
+            Self {
+                group: RowGroup::new(ENTITY_TYPE.clone()),
+            }
+        }
+
+        fn append(&mut self, mods: &[Mod]) -> Result<(), StoreError> {
+            for m in mods {
+                self.group.append_row(EntityMod::from(m))?
+            }
+            Ok(())
+        }
+
+        fn with(mods: &[Mod]) -> Result<Group, StoreError> {
+            let mut group = Self::new();
+            group.append(mods)?;
+            Ok(group)
+        }
+    }
+
+    impl PartialEq<&[Mod]> for Group {
+        fn eq(&self, mods: &&[Mod]) -> bool {
+            let mods: Vec<_> = mods.iter().map(|m| EntityMod::from(m)).collect();
+            self.group.rows == mods
+        }
+    }
+
+    #[test]
+    fn append() {
+        use Mod::*;
+
+        let res = Group::with(&[Ins(1), Ins(2)]);
+        assert!(res.is_err());
+
+        let res = Group::with(&[Ovw(1), Ins(2)]);
+        assert!(res.is_err());
+
+        let res = Group::with(&[Ins(1), Rem(2), Rem(3)]);
+        assert!(res.is_err());
+
+        let res = Group::with(&[Ovw(1), Rem(2), Rem(3)]);
+        assert!(res.is_err());
+
+        let res = Group::with(&[Ovw(1), Rem(2), Ovw(3)]);
+        assert!(res.is_err());
+
+        let group = Group::with(&[Ins(1), Ovw(2), Rem(3)]).unwrap();
+        assert_eq!(group, &[InsC(1, 2), InsC(2, 3)]);
+
+        let group = Group::with(&[Ovw(1), Rem(4)]).unwrap();
+        assert_eq!(group, &[OvwC(1, 4)]);
+
+        let group = Group::with(&[Ins(1), Rem(4)]).unwrap();
+        assert_eq!(group, &[InsC(1, 4)]);
+
+        let group = Group::with(&[Ins(1), Rem(2), Ins(3)]).unwrap();
+        assert_eq!(group, &[InsC(1, 2), Ins(3)]);
+
+        let group = Group::with(&[Ovw(1), Rem(2), Ins(3)]).unwrap();
+        assert_eq!(group, &[OvwC(1, 2), Ins(3)]);
+    }
+
+    #[test]
+    fn last_op() {
+        #[track_caller]
+        fn is_remove(group: &RowGroup, at: BlockNumber) {
+            let key = EntityKey::data("Thing", "one");
+            let op = group.last_op(&key, at).unwrap();
+
+            assert!(
+                matches!(op, EntityOp::Remove { .. }),
+                "op must be a remove at {} but is {:?}",
+                at,
+                op
+            );
+        }
+        #[track_caller]
+        fn is_write(group: &RowGroup, at: BlockNumber) {
+            let key = EntityKey::data("Thing", "one");
+            let op = group.last_op(&key, at).unwrap();
+
+            assert!(
+                matches!(op, EntityOp::Write { .. }),
+                "op must be a write at {} but is {:?}",
+                at,
+                op
+            );
+        }
+
+        use Mod::*;
+
+        let key = EntityKey::data("Thing", "one");
+
+        // This will result in two mods int the group:
+        //   [ InsC(1,2), InsC(2,3) ]
+        let group = Group::with(&[Ins(1), Ovw(2), Rem(3)]).unwrap().group;
+
+        is_remove(&group, 5);
+        is_remove(&group, 4);
+        is_remove(&group, 3);
+
+        is_write(&group, 2);
+        is_write(&group, 1);
+
+        let op = group.last_op(&key, 0);
+        assert_eq!(None, op);
     }
 }
