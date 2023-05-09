@@ -106,7 +106,9 @@ where
             write!(decorator, " ")?;
 
             decorator.start_msg()?;
-            write!(decorator, "{}", record.msg())?;
+            // Escape control characters in the message, including newlines.
+            let msg = escape_control_chars(record.msg().to_string());
+            write!(decorator, "{}", msg)?;
 
             // Collect key values from the record
             let mut serializer = KeyValueSerializer::new();
@@ -384,4 +386,48 @@ fn formatted_timestamp_local(io: &mut impl io::Write) -> io::Result<()> {
         "{}",
         chrono::Local::now().format(ENV_VARS.log_time_format.as_str())
     )
+}
+
+pub fn escape_control_chars(input: String) -> String {
+    let should_escape = |c: char| c.is_control() && c != '\t';
+
+    if !input.chars().any(should_escape) {
+        return input;
+    }
+
+    let mut escaped = String::new();
+    for c in input.chars() {
+        match c {
+            '\n' => escaped.push_str("\\n"),
+            c if should_escape(c) => {
+                let code = c as u32;
+                escaped.push_str(&format!("\\u{{{:04x}}}", code));
+            }
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+#[test]
+fn test_escape_control_chars() {
+    let test_cases = vec![
+        (
+            "This is a test\nwith some\tcontrol characters\x1B[1;32m and others.",
+            "This is a test\\nwith some\tcontrol characters\\u{001b}[1;32m and others.",
+        ),
+        (
+            "This string has no control characters.",
+            "This string has no control characters.",
+        ),
+        (
+            "This string has a tab\tbut no other control characters.",
+            "This string has a tab\tbut no other control characters.",
+        ),
+    ];
+
+    for (input, expected) in test_cases {
+        let escaped = escape_control_chars(input.to_string());
+        assert_eq!(escaped, expected);
+    }
 }
