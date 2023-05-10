@@ -49,13 +49,13 @@ fn retry_policy<I: Send + Sync>(
 /// case multiple clients respond in a timely manner. In addition, we may make
 /// good use of the stat returned.
 async fn select_fastest_client_with_stat(
-    clients: Arc<Vec<Arc<IpfsClient>>>,
+    clients: Arc<Vec<IpfsClient>>,
     logger: Logger,
     api: StatApi,
     path: String,
     timeout: Duration,
     do_retry: bool,
-) -> Result<(u64, Arc<IpfsClient>), Error> {
+) -> Result<(u64, IpfsClient), Error> {
     let mut err: Option<Error> = None;
 
     let mut stats: FuturesUnordered<_> = clients
@@ -108,7 +108,7 @@ fn restrict_file_size(path: &str, size: u64, max_file_bytes: usize) -> Result<()
 
 #[derive(Clone)]
 pub struct LinkResolver {
-    clients: Arc<Vec<Arc<IpfsClient>>>,
+    clients: Arc<Vec<IpfsClient>>,
     cache: Arc<Mutex<LruCache<String, Vec<u8>>>>,
     timeout: Duration,
     retry: bool,
@@ -118,7 +118,7 @@ pub struct LinkResolver {
 impl LinkResolver {
     pub fn new(clients: Vec<IpfsClient>, env_vars: Arc<EnvVars>) -> Self {
         Self {
-            clients: Arc::new(clients.into_iter().map(Arc::new).collect()),
+            clients: Arc::new(clients.into_iter().collect()),
             cache: Arc::new(Mutex::new(LruCache::with_capacity(
                 env_vars.mappings.max_ipfs_cache_size as usize,
             ))),
