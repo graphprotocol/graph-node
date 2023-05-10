@@ -1412,6 +1412,7 @@ pub struct ChainStore {
     pool: ConnectionPool,
     pub chain: String,
     pub(crate) storage: data::Storage,
+    pub chain_identifier: ChainIdentifier,
     genesis_block_ptr: BlockPtr,
     status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
@@ -1444,6 +1445,7 @@ impl ChainStore {
             genesis_block_ptr: BlockPtr::new(net_identifier.genesis_block_hash.clone(), 0),
             status,
             chain_head_update_sender,
+            chain_identifier: net_identifier.clone(),
             recent_blocks_cache,
         }
     }
