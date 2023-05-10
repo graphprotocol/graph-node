@@ -83,10 +83,10 @@ pub struct EnvVars {
     /// The time to wait between polls when using polling block ingestor.
     /// The value is set in millis and the default is 1000.
     pub ingestor_polling_interval: Duration,
-    /// Set by the flag `ETHEREUM_CALL_GAS_SKIP`. The default value is empty.
-    /// This is a comma separated list of chains for which the gas field will not be set
+    /// Set by the flag `ETHEREUM_CALL_NO_GAS`. 
+    /// This is a comma separated list of chain ids for which the gas field will not be set
     /// when calling `eth_call`.
-    pub eth_call_skip_gas: Vec<String>,
+    pub eth_call_no_gas: Vec<String>,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -128,8 +128,8 @@ impl From<Inner> for EnvVars {
             target_triggers_per_block_range: x.target_triggers_per_block_range,
             genesis_block_number: x.genesis_block_number,
             ingestor_polling_interval: Duration::from_millis(x.ingestor_polling_interval),
-            eth_call_skip_gas: x
-                .eth_call_skip_gas
+            eth_call_no_gas: x
+                .eth_call_no_gas
                 .split(',')
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
@@ -181,6 +181,6 @@ struct Inner {
     genesis_block_number: u64,
     #[envconfig(from = "ETHEREUM_POLLING_INTERVAL", default = "1000")]
     ingestor_polling_interval: u64,
-    #[envconfig(from = "ETHEREUM_CALL_SKIP_GAS", default = "")]
-    eth_call_skip_gas: String,
+    #[envconfig(from = "GRAPH_ETH_CALL_NO_GAS", default = "")]
+    eth_call_no_gas: String,
 }

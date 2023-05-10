@@ -58,11 +58,17 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let call_cache = self.call_cache.cheap_clone();
         let eth_adapters = self.eth_adapters.cheap_clone();
         let archive = ds.mapping.requires_archive()?;
-        let eth_call_gas = ENV_VARS
-            .eth_call_skip_gas
-            .contains(&self.chain_identifier.net_version)
-            .then(|| None)
-            .unwrap_or(Some(ETH_CALL_GAS));
+
+        // Check if the current network version is in the eth_call_no_gas list
+        let should_skip_gas = ENV_VARS
+            .eth_call_no_gas
+            .contains(&self.chain_identifier.net_version);
+    
+        let eth_call_gas = if should_skip_gas {
+            None
+        } else {
+            Some(ETH_CALL_GAS)
+        };
 
         let ethereum_call = HostFn {
             name: "ethereum.call",
