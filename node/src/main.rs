@@ -727,6 +727,7 @@ fn ethereum_networks_as_chains(
             let runtime_adapter = Arc::new(RuntimeAdapter {
                 eth_adapters: Arc::new(eth_adapters.clone()),
                 call_cache: chain_store.cheap_clone(),
+                chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
             });
 
             let chain = ethereum::Chain::new(
