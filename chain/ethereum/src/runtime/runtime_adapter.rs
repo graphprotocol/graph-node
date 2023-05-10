@@ -63,7 +63,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         let should_skip_gas = ENV_VARS
             .eth_call_no_gas
             .contains(&self.chain_identifier.net_version);
-    
+
         let eth_call_gas = if should_skip_gas {
             None
         } else {

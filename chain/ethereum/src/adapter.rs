@@ -39,7 +39,7 @@ pub struct EthereumContractCall {
     pub block_ptr: BlockPtr,
     pub function: Function,
     pub args: Vec<Token>,
-    pub gas: Option<u32>
+    pub gas: Option<u32>,
 }
 
 #[derive(Error, Debug)]
