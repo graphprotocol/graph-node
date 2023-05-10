@@ -438,9 +438,7 @@ impl EthereumAdapter {
             .run(move || {
                 let call_data = call_data.clone();
                 let web3 = web3.cheap_clone();
-                // let get_gas = || {
-                //     self.
-                // }
+                println!("====================== gas {:?}", gas);
                 async move {
                     let req = CallRequest {
                         to: Some(contract_address),
