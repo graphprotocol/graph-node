@@ -15,7 +15,7 @@ use graph::{
 use graph_graphql::prelude::GraphQlRunner;
 use graph_store_postgres::Store;
 
-use crate::manager::PanicSubscriptionManager;
+use crate::graphman::utils::PanicSubscriptionManager;
 
 pub async fn run<U>(
     runner: Arc<GraphQlRunner<Store, PanicSubscriptionManager>>,

@@ -1,9 +1,9 @@
 use std::usize;
 use std::{sync::Arc, time::Instant};
 
-use crate::manager::core;
 use graph::anyhow::anyhow;
 use graph::prelude::{anyhow::Error, chrono};
+use graph_core::graphman::core;
 use graph_store_postgres::{SubgraphStore, UnusedDeployment};
 
 pub fn list(store: Arc<SubgraphStore>, existing: bool) -> Result<(), Error> {

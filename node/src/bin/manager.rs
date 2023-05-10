@@ -14,15 +14,13 @@ use graph::{
     url::Url,
 };
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
+use graph_core::graphman::{deployment::DeploymentSearch, utils::PanicSubscriptionManager};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::cli;
-use graph_node::manager::color::Terminal;
+use graph_node::manager::commands;
+use graph_node::manager::commands::utils::color::Terminal;
 use graph_node::{
-    chain::create_all_ethereum_networks,
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
+    chain::create_all_ethereum_networks, store_builder::StoreBuilder, MetricsContext,
 };
 use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
@@ -932,6 +930,8 @@ impl Context {
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
 
+    println!("OPT: {:?}", opt);
+
     Terminal::set_color_preference(&opt.color);
 
     let version_label = opt.version_label.clone();
@@ -998,7 +998,7 @@ async fn main() -> anyhow::Result<()> {
 
     use Command::*;
     match opt.cmd {
-        TxnSpeed { delay } => cli::txn_speed::run(ctx.primary_pool(), delay),
+        TxnSpeed { delay } => commands::txn_speed::run(ctx.primary_pool(), delay),
         Info {
             deployment,
             current,
@@ -1016,12 +1016,13 @@ async fn main() -> anyhow::Result<()> {
 
             match deployment {
                 Some(deployment) => {
-                    cli::info::run(primary, store, deployment, current, pending, used).err();
+                    commands::info::run(primary, store, deployment, current, pending, used).err();
                 }
                 None => {
                     if all {
                         let deployment = DeploymentSearch::All;
-                        cli::info::run(primary, store, deployment, current, pending, used).err();
+                        commands::info::run(primary, store, deployment, current, pending, used)
+                            .err();
                     } else {
                         bail!("Please specify a deployment or use --all to list all deployments");
                     }
@@ -1034,8 +1035,8 @@ async fn main() -> anyhow::Result<()> {
             use UnusedCommand::*;
 
             match cmd {
-                List { existing } => cli::unused_deployments::list(store, existing),
-                Record => cli::unused_deployments::record(store),
+                List { existing } => commands::unused_deployments::list(store, existing),
+                Record => commands::unused_deployments::record(store),
                 Remove {
                     count,
                     deployment,
@@ -1043,7 +1044,7 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let count = count.unwrap_or(1_000_000);
                     let older = older.map(|older| chrono::Duration::minutes(older as i64));
-                    cli::unused_deployments::remove(store, count, deployment.as_deref(), older)
+                    commands::unused_deployments::remove(store, count, deployment.as_deref(), older)
                 }
             }
         }
@@ -1052,26 +1053,27 @@ async fn main() -> anyhow::Result<()> {
 
             match cmd {
                 Place { name, network } => {
-                    cli::config::place(&ctx.config.deployment, &name, &network)
+                    commands::config::place(&ctx.config.deployment, &name, &network)
                 }
-                Check { print } => cli::config::check(&ctx.config, print),
-                Pools { nodes, shard } => cli::config::pools(&ctx.config, nodes, shard),
+                Check { print } => commands::config::check(&ctx.config, print),
+                Pools { nodes, shard } => commands::config::pools(&ctx.config, nodes, shard),
                 Provider { features, network } => {
                     let logger = ctx.logger.clone();
                     let registry = ctx.registry.clone();
-                    cli::config::provider(logger, &ctx.config, registry, features, network).await
+                    commands::config::provider(logger, &ctx.config, registry, features, network)
+                        .await
                 }
             }
         }
-        Remove { name } => cli::remove::run(ctx.subgraph_store(), &name),
-        Create { name } => cli::create::run(ctx.subgraph_store(), name),
+        Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
+        Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let sender = ctx.notification_sender();
-            cli::assign::unassign(ctx.primary_pool(), &sender, &deployment)
+            commands::assign::unassign(ctx.primary_pool(), &sender, &deployment)
         }
         Reassign { deployment, node } => {
             let sender = ctx.notification_sender();
-            cli::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
+            commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
         }
         Rewind {
             force,
@@ -1081,7 +1083,7 @@ async fn main() -> anyhow::Result<()> {
             deployments,
         } => {
             let (store, primary) = ctx.store_and_primary();
-            cli::rewind::run(
+            commands::rewind::run(
                 primary,
                 store,
                 deployments,
@@ -1112,7 +1114,7 @@ async fn main() -> anyhow::Result<()> {
                 job_name,
             };
 
-            cli::run::run(
+            commands::run::run(
                 logger,
                 store_builder,
                 network_name,
@@ -1128,13 +1130,13 @@ async fn main() -> anyhow::Result<()> {
         Listen(cmd) => {
             use ListenCommand::*;
             match cmd {
-                Assignments => cli::listen::assignments(ctx.subscription_manager()).await,
+                Assignments => commands::listen::assignments(ctx.subscription_manager()).await,
                 Entities {
                     deployment,
                     entity_types,
                 } => {
                     let (primary, mgr) = ctx.primary_and_subscription_manager();
-                    cli::listen::entities(primary, mgr, &deployment, entity_types).await
+                    commands::listen::entities(primary, mgr, &deployment, entity_types).await
                 }
             }
         }
@@ -1151,16 +1153,16 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let shards: Vec<_> = ctx.config.stores.keys().cloned().collect();
                     let (store, primary) = ctx.store_and_primary();
-                    cli::copy::create(
+                    commands::copy::create(
                         store, primary, src, shard, shards, node, offset, activate, replace,
                     )
                     .await
                 }
                 Activate { deployment, shard } => {
-                    cli::copy::activate(ctx.subgraph_store(), deployment, shard)
+                    commands::copy::activate(ctx.subgraph_store(), deployment, shard)
                 }
-                List => cli::copy::list(ctx.pools()),
-                Status { dst } => cli::copy::status(ctx.pools(), &dst),
+                List => commands::copy::list(ctx.pools()),
+                Status { dst } => commands::copy::status(ctx.pools(), &dst),
             }
         }
         Query {
@@ -1169,13 +1171,13 @@ async fn main() -> anyhow::Result<()> {
             target,
             query,
             vars,
-        } => cli::query::run(ctx.graphql_runner(), target, query, vars, output, trace).await,
+        } => commands::query::run(ctx.graphql_runner(), target, query, vars, output, trace).await,
         Chain(cmd) => {
             use ChainCommand::*;
             match cmd {
                 List => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    cli::chain::list(primary, block_store).await
+                    commands::chain::list(primary, block_store).await
                 }
                 Info {
                     name,
@@ -1183,14 +1185,14 @@ async fn main() -> anyhow::Result<()> {
                     hashes,
                 } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    cli::chain::info(primary, block_store, name, reorg_threshold, hashes).await
+                    commands::chain::info(primary, block_store, name, reorg_threshold, hashes).await
                 }
                 Remove { name } => {
                     let (block_store, primary) = ctx.block_store_and_primary_pool();
-                    cli::chain::remove(primary, block_store, name)
+                    commands::chain::remove(primary, block_store, name)
                 }
                 CheckBlocks { method, chain_name } => {
-                    use cli::check_blocks::{by_hash, by_number, by_range};
+                    use commands::check_blocks::{by_hash, by_number, by_range};
                     use CheckBlockMethod::*;
                     let logger = ctx.logger.clone();
                     let (chain_store, ethereum_adapter) =
@@ -1230,7 +1232,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 Truncate { chain_name, force } => {
-                    use cli::check_blocks::truncate;
+                    use commands::check_blocks::truncate;
                     let chain_store = ctx.chain_store(&chain_name)?;
                     truncate(chain_store, force)
                 }
@@ -1251,7 +1253,7 @@ async fn main() -> anyhow::Result<()> {
                                 // Clap makes sure that this does not panic
                                 (from.unwrap(), to.unwrap())
                             };
-                            cli::chain::clear_call_cache(chain_store, from, to).await
+                            commands::chain::clear_call_cache(chain_store, from, to).await
                         }
                     }
                 }
@@ -1267,7 +1269,7 @@ async fn main() -> anyhow::Result<()> {
                 } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    cli::stats::account_like(
+                    commands::stats::account_like(
                         subgraph_store,
                         primary_pool,
                         clear,
@@ -1276,16 +1278,21 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await
                 }
-                Show { deployment } => cli::stats::show(ctx.pools(), &deployment),
+                Show { deployment } => commands::stats::show(ctx.pools(), &deployment),
                 Analyze { deployment, entity } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    cli::stats::analyze(subgraph_store, primary_pool, deployment, entity.as_deref())
+                    commands::stats::analyze(
+                        subgraph_store,
+                        primary_pool,
+                        deployment,
+                        entity.as_deref(),
+                    )
                 }
                 Target { deployment } => {
                     let (store, primary_pool) = ctx.store_and_primary();
                     let subgraph_store = store.subgraph_store();
-                    cli::stats::target(subgraph_store, primary_pool, &deployment)
+                    commands::stats::target(subgraph_store, primary_pool, &deployment)
                 }
                 SetTarget {
                     target,
@@ -1298,7 +1305,7 @@ async fn main() -> anyhow::Result<()> {
                     let (store, primary) = ctx.store_and_primary();
                     let store = store.subgraph_store();
                     let target = if reset { -1 } else { target as i32 };
-                    cli::stats::set_target(
+                    commands::stats::set_target(
                         store,
                         primary,
                         &deployment,
@@ -1321,7 +1328,7 @@ async fn main() -> anyhow::Result<()> {
                     fields,
                     method,
                 } => {
-                    cli::index::create(
+                    commands::index::create(
                         subgraph_store,
                         primary_pool,
                         deployment,
@@ -1340,7 +1347,7 @@ async fn main() -> anyhow::Result<()> {
                     concurrent,
                     if_not_exists,
                 } => {
-                    cli::index::list(
+                    commands::index::list(
                         subgraph_store,
                         primary_pool,
                         deployment,
@@ -1356,7 +1363,10 @@ async fn main() -> anyhow::Result<()> {
                 Drop {
                     deployment,
                     index_name,
-                } => cli::index::drop(subgraph_store, primary_pool, deployment, &index_name).await,
+                } => {
+                    commands::index::drop(subgraph_store, primary_pool, deployment, &index_name)
+                        .await
+                }
             }
         }
         Database(cmd) => {
@@ -1373,7 +1383,7 @@ async fn main() -> anyhow::Result<()> {
                     force,
                 } => {
                     let store_builder = ctx.store_builder().await;
-                    cli::database::remap(&store_builder.coord, source, dest, force).await
+                    commands::database::remap(&store_builder.coord, source, dest, force).await
                 }
             }
         }
@@ -1385,7 +1395,7 @@ async fn main() -> anyhow::Result<()> {
             once,
         } => {
             let (store, primary_pool) = ctx.store_and_primary();
-            cli::prune::run(
+            commands::prune::run(
                 store,
                 primary_pool,
                 deployment,
@@ -1407,7 +1417,7 @@ async fn main() -> anyhow::Result<()> {
             let (store, primary_pool) = ctx.store_and_primary();
             let subgraph_store = store.subgraph_store();
 
-            cli::drop::run(
+            commands::drop::run(
                 primary_pool,
                 subgraph_store,
                 sender,

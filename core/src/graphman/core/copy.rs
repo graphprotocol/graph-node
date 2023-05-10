@@ -18,9 +18,11 @@ use graph_store_postgres::{
 use graph_store_postgres::{connection_pool::ConnectionPool, Shard, Store, SubgraphStore};
 use std::{collections::HashMap, sync::Arc};
 
-use crate::manager::deployment::DeploymentSearch;
+use crate::graphman::deployment::DeploymentSearch;
 
 pub type UtcDateTime = DateTime<Utc>;
+
+use diesel::{Queryable, QueryableByName};
 
 pub struct CreateCopyResult {
     pub dst: DeploymentLocator,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use graph::{prelude::MetricsRegistry, prometheus::Registry};
 
 #[macro_use]
+#[allow(unused_macros)]
 extern crate diesel;
 
 pub mod chain;

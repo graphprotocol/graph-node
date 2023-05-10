@@ -1,9 +1,10 @@
-use crate::manager::{cli::utils::color::Terminal, deployment::DeploymentSearch, CmdResult};
+use crate::manager::{commands::utils::color::Terminal, CmdResult};
 use graph::{
     components::store::DeploymentLocator,
     itertools::Itertools,
     prelude::{anyhow, StoreError},
 };
+use graph_core::graphman::deployment::DeploymentSearch;
 use graph_store_postgres::{
     command_support::index::{CreateIndex, Method},
     connection_pool::ConnectionPool,

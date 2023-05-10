@@ -6,10 +6,10 @@ use graph_store_postgres::connection_pool::ConnectionPool;
 
 pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     fn query(conn: &PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
-        use super::utils::catalog::pg_catalog::pg_stat_database as d;
         use diesel::dsl::*;
         use diesel::sql_types::BigInt;
         use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+        use graph_core::graphman::utils::catalog::pg_catalog::pg_stat_database as d;
 
         let rows = d::table
             .filter(d::datname.eq(any(vec!["explorer", "graph"])))

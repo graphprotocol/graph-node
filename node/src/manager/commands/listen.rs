@@ -10,7 +10,7 @@ use graph::{
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::SubscriptionManager;
 
-use crate::manager::deployment::DeploymentSearch;
+use graph_core::graphman::deployment::DeploymentSearch;
 
 async fn listen(
     mgr: Arc<SubscriptionManager>,

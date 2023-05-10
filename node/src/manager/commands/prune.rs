@@ -16,10 +16,9 @@ use graph::{
 };
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::{
-    cli::stats::{abbreviate_table_name, show_stats},
-    deployment::DeploymentSearch,
-};
+use graph_core::graphman::deployment::DeploymentSearch;
+
+use crate::manager::commands::stats::{abbreviate_table_name, show_stats};
 
 struct Progress {
     start: Instant,

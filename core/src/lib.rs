@@ -1,3 +1,4 @@
+pub mod graphman;
 pub mod polling_monitor;
 
 mod link_resolver;
@@ -8,3 +9,6 @@ pub use crate::subgraph::{
     SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar, SubgraphRunner,
     SubgraphTriggerProcessor,
 };
+
+#[macro_use]
+extern crate diesel;

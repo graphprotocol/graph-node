@@ -1,21 +1,15 @@
-use std::convert::TryFrom;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use std::time::Instant;
 
+use graph::components::server::query::GraphQLServerError;
 use graph::prelude::*;
-use graph::semver::VersionReq;
-use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
-use http::header;
-use http::header::{
-    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-    CONTENT_TYPE, LOCATION,
-};
+use http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use hyper::service::Service;
 use hyper::{Body, Method, Request, Response, StatusCode};
 
-use graphql_utils::request::parse_graphql_request;
+use crate::schema::create_schema;
+use crate::schema::GQLContext;
 
 pub type GraphQLServiceResult = Result<Response<Body>, GraphQLServerError>;
 /// An asynchronous response to a GraphQL request.
@@ -89,46 +83,16 @@ where
         self.serve_dynamic_file(self.graphiql_html())
     }
 
-    async fn handle_graphql_query(
-        self,
-        target: QueryTarget,
-        request: Request<Body>,
-    ) -> GraphQLServiceResult {
-        let service = self.clone();
+    fn handle_operation(&self, req: Request<Body>) -> GraphQLServiceResponse {
+        async {
+            let root_node = create_schema();
+            let ctx = GQLContext {};
 
-        let start = Instant::now();
-        let trace = {
-            !ENV_VARS.graphql.query_trace_token.is_empty()
-                && request
-                    .headers()
-                    .get("X-GraphTraceQuery")
-                    .map(|v| {
-                        v.to_str()
-                            .map(|s| s == &ENV_VARS.graphql.query_trace_token)
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false)
-        };
-        let body = hyper::body::to_bytes(request.into_body())
-            .map_err(|_| GraphQLServerError::InternalError("Failed to read request body".into()))
-            .await?;
-        let query = parse_graphql_request(&body, trace);
-        let query_parsing_time = start.elapsed();
+            let res = juniper_hyper::graphql(Arc::new(root_node), Arc::new(ctx), req).await;
 
-        let result = match query {
-            Ok(query) => service.graphql_runner.run_query(query, target).await,
-            Err(GraphQLServerError::QueryError(e)) => QueryResult::from(e).into(),
-            Err(e) => return Err(e),
-        };
-
-        self.graphql_runner
-            .metrics()
-            .observe_query_parsing(query_parsing_time, &result);
-        self.graphql_runner
-            .metrics()
-            .observe_query_execution(start.elapsed(), &result);
-
-        Ok(result.as_http_response())
+            Ok(res)
+        }
+        .boxed()
     }
 
     /// Handles 404s.
@@ -162,7 +126,7 @@ where
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
             (Method::GET, &["graphql"]) => self.handle_graphiql(),
-            (Method::POST, &["graphql"]) => self.handle_graphiql(),
+            (Method::POST, &["graphql"]) => self.handle_operation(req),
 
             // (Method::GET, path @ ["subgraphs", "id", _])
             // | (Method::GET, path @ ["subgraphs", "name", _])

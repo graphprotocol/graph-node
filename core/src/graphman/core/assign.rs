@@ -6,7 +6,7 @@ use graph_store_postgres::{
     command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
 };
 
-use crate::manager::deployment::DeploymentSearch;
+use crate::graphman::deployment::DeploymentSearch;
 
 pub fn unassign(
     primary: ConnectionPool,

@@ -7,7 +7,7 @@ use graph::{
 };
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::deployment::{Deployment, DeploymentSearch};
+use crate::graphman::deployment::{Deployment, DeploymentSearch};
 
 pub struct InfoResult {
     pub deployments: Vec<Deployment>,

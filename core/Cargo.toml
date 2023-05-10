@@ -29,6 +29,11 @@ tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 cid = "0.10.1"
 anyhow = "1.0"
+graph-store-postgres = { path = "../store/postgres" }
+diesel = "1.4.8"
+graph-graphql = { path = "../graphql" }
+graphql-parser = "0.4.0"
+
 
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }

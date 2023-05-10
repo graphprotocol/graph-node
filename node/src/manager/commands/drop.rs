@@ -1,5 +1,5 @@
-use crate::manager::{core, deployment::DeploymentSearch};
 use graph::anyhow::{self};
+use graph_core::graphman::{core, deployment::DeploymentSearch};
 use graph_store_postgres::{connection_pool::ConnectionPool, NotificationSender, SubgraphStore};
 use std::sync::Arc;
 
@@ -28,7 +28,7 @@ pub async fn run(
         skip_confirmation,
         true,
         |deployment| {
-            crate::manager::cli::unused_deployments::remove(
+            crate::manager::commands::unused_deployments::remove(
                 subgraph_store.clone(),
                 1_000_000,
                 Some(&deployment.deployment),

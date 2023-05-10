@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::manager::{core, PanicSubscriptionManager};
 use graph::data::query::Trace;
 use graph::prelude::anyhow;
+use graph_core::graphman::core;
+use graph_core::graphman::utils::PanicSubscriptionManager;
 use graph_graphql::prelude::GraphQlRunner;
 use graph_store_postgres::Store;
 
@@ -13,10 +14,19 @@ fn print_brief_trace(name: &str, trace: &Trace, indent: usize) -> Result<(), any
     fn query_time(trace: &Trace) -> Duration {
         match trace {
             None => Duration::from_millis(0),
-            Root { children, .. } => children.iter().map(|(_, trace)| query_time(trace)).sum(),
+            Root { children, .. } => children
+                .iter()
+                .map(|(_, trace)| query_time(trace))
+                .sum::<Duration>(),
             Query {
                 elapsed, children, ..
-            } => *elapsed + children.iter().map(|(_, trace)| query_time(trace)).sum(),
+            } => {
+                *elapsed
+                    + children
+                        .iter()
+                        .map(|(_, trace)| query_time(trace))
+                        .sum::<Duration>()
+            }
         }
     }
 

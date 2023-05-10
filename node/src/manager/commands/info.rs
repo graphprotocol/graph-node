@@ -3,7 +3,7 @@ use std::sync::Arc;
 use graph::prelude::anyhow;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::{
+use graph_core::graphman::{
     core::{self, info::InfoResult},
     deployment::{Deployment, DeploymentSearch},
 };

@@ -1,7 +1,7 @@
-use crate::manager::core;
 use graph::components::store::BlockStore as _;
 use graph::prelude::BlockPtr;
 use graph::prelude::{anyhow::Error, BlockNumber};
+use graph_core::graphman::core;
 use graph_store_postgres::connection_pool::ConnectionPool;
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStore;

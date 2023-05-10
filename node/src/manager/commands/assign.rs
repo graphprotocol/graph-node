@@ -3,10 +3,8 @@ use graph_store_postgres::{
     command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
 };
 
-use crate::manager::{
-    core::{self, assign::ReassignResult},
-    deployment::DeploymentSearch,
-};
+use graph_core::graphman::core::{self, assign::ReassignResult};
+use graph_core::graphman::deployment::DeploymentSearch;
 
 pub fn unassign(
     primary: ConnectionPool,
