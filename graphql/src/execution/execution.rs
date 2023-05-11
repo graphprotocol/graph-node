@@ -160,6 +160,8 @@ fn log_lfu_evict_stats(
             evicted_count,
             stale_update,
             evict_time,
+            accesses,
+            hits,
         }) = evict_stats
         {
             {
@@ -176,6 +178,8 @@ fn log_lfu_evict_stats(
                         "weight" => new_weight,
                         "weight_evicted" => evicted_weight,
                         "stale_update" => stale_update,
+                        "hit_rate" => format!("{:.0}%", hits as f64 / accesses as f64 * 100.0),
+                        "accesses" => accesses,
                         "evict_time_ms" => evict_time.as_millis()
                     )
                 });

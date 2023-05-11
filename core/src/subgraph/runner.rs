@@ -412,7 +412,10 @@ where
             "evicted_weight" => evict_stats.evicted_weight,
             "count" => evict_stats.new_count,
             "evicted_count" => evict_stats.evicted_count,
-            "stale_update" => evict_stats.stale_update);
+            "stale_update" => evict_stats.stale_update,
+            "hit_rate" => format!("{:.0}%", evict_stats.hit_rate_pct()),
+            "accesses" => evict_stats.accesses,
+            "evict_time_ms" => evict_stats.evict_time.as_millis());
 
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.

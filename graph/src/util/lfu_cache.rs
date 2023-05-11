@@ -72,8 +72,23 @@ pub struct EvictStats {
     pub stale_update: bool,
     /// How long eviction took
     pub evict_time: Duration,
+    /// The total number of cache accesses during this stale period
+    pub accesses: usize,
+    /// The total number of cache hits during this stale period
+    pub hits: usize,
 }
 
+impl EvictStats {
+    /// The cache hit rate in percent. The underlying counters are reset at
+    /// the end of each stale period.
+    pub fn hit_rate_pct(&self) -> f64 {
+        if self.accesses > 0 {
+            self.hits as f64 / self.accesses as f64 * 100.0
+        } else {
+            100.0
+        }
+    }
+}
 /// Each entry in the cache has a frequency, which is incremented by 1 on access. Entries also have
 /// a weight, upon eviction first stale entries will be removed and then non-stale entries by order
 /// of least frequency until the max weight is respected. This cache only removes entries on calls
@@ -85,6 +100,8 @@ pub struct LfuCache<K: Eq + Hash, V> {
     total_weight: usize,
     stale_counter: u64,
     dead_weight: bool,
+    accesses: usize,
+    hits: usize,
 }
 
 impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
@@ -94,6 +111,8 @@ impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
             total_weight: 0,
             stale_counter: 0,
             dead_weight: false,
+            accesses: 0,
+            hits: 0,
         }
     }
 }
@@ -105,6 +124,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             total_weight: 0,
             stale_counter: 0,
             dead_weight: ENV_VARS.mappings.entity_cache_dead_weight,
+            accesses: 0,
+            hits: 0,
         }
     }
 
@@ -148,7 +169,9 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         let key_entry = CacheEntry::cache_key(key);
         self.queue
             .change_priority_by(&key_entry, |(s, Reverse(f))| (s, Reverse(f + 1)));
+        self.accesses += 1;
         self.queue.get_mut(&key_entry).map(|x| {
+            self.hits += 1;
             x.0.will_stale = false;
             x.0
         })
@@ -196,6 +219,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
                 evicted_count: 0,
                 stale_update: false,
                 evict_time: Duration::from_millis(0),
+                accesses: 0,
+                hits: 0,
             })
     }
 
@@ -223,9 +248,15 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
 
         let start = Instant::now();
 
+        let accesses = self.accesses;
+        let hits = self.hits;
+
         self.stale_counter += 1;
         if self.stale_counter == stale_period {
             self.stale_counter = 0;
+
+            self.accesses = 0;
+            self.hits = 0;
 
             // Entries marked `will_stale` were not accessed in this period. Properly mark them as
             // stale in their priorities. Also mark all entities as `will_stale` for the _next_
@@ -260,6 +291,8 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             evicted_count: old_len - self.len(),
             stale_update: self.stale_counter == 0,
             evict_time: start.elapsed(),
+            accesses,
+            hits,
         })
     }
 }
