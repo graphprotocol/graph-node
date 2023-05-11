@@ -217,7 +217,8 @@ where
                         logger,
                     );
 
-                    data.insert(Word::from("id"), Value::from(&entity_id));
+                    let id = state.entity_cache.schema.id_value(&key)?;
+                    data.insert(Word::from("id"), id);
 
                     let entity = state.entity_cache.make_entity(data)?;
                     state.entity_cache.set(key, entity)?;
