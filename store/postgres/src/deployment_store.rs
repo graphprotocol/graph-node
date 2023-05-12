@@ -1116,6 +1116,15 @@ impl DeploymentStore {
                         &batch.deterministic_errors,
                         batch.block_ptr.number,
                     )?;
+
+                    if batch.is_non_fatal_errors_active {
+                        deployment::update_non_fatal_errors(
+                            &conn,
+                            &site.deployment,
+                            deployment::SubgraphHealth::Unhealthy,
+                            Some(&batch.deterministic_errors),
+                        )?;
+                    }
                 }
 
                 let earliest_block = deployment::transact_block(
@@ -1631,7 +1640,7 @@ impl DeploymentStore {
                     let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None)?;
 
                     // Unfail the deployment.
-                    deployment::update_deployment_status(conn, deployment_id, prev_health, None)?;
+                    deployment::update_deployment_status(conn, deployment_id, prev_health, None,None)?;
 
                     Ok(UnfailOutcome::Unfailed)
                 }
@@ -1713,6 +1722,7 @@ impl DeploymentStore {
                             conn,
                             deployment_id,
                             deployment::SubgraphHealth::Healthy,
+                            None,
                             None,
                         )?;
 

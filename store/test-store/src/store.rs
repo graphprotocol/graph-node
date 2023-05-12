@@ -232,6 +232,7 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
             Vec::new(),
+            false,
         )
         .await?;
     flush(deployment).await
@@ -287,6 +288,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
         deployment.id,
         Arc::new(manifest_idx_and_name),
     ))?;
+
     let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
@@ -309,6 +311,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
             data_sources,
             Vec::new(),
             Vec::new(),
+            false,
         )
         .await
 }

@@ -309,6 +309,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
+        is_non_fatal_errors_active: bool,
     ) -> Result<(), StoreError>;
 
     /// The deployment `id` finished syncing, mark it as synced in the database

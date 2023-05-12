@@ -775,7 +775,29 @@ pub fn fail(
 ) -> Result<(), StoreError> {
     let error_id = insert_subgraph_error(conn, error)?;
 
-    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id))?;
+    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id), None)?;
+
+    Ok(())
+}
+
+pub fn update_non_fatal_errors(
+    conn: &PgConnection,
+    deployment_id: &DeploymentHash,
+    health: SubgraphHealth,
+    non_fatal_errors: Option<&[SubgraphError]>,
+) -> Result<(), StoreError> {
+    let error_ids = non_fatal_errors.map(|errors| {
+        errors
+            .iter()
+            .map(|error| {
+                hex::encode(stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
+                    error,
+                ))
+            })
+            .collect::<Vec<_>>()
+    });
+
+    update_deployment_status(conn, deployment_id, health, None, error_ids)?;
 
     Ok(())
 }
@@ -802,6 +824,7 @@ pub fn update_deployment_status(
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
     fatal_error: Option<String>,
+    non_fatal_errors: Option<Vec<String>>,
 ) -> Result<(), StoreError> {
     use subgraph_deployment as d;
 
@@ -810,6 +833,7 @@ pub fn update_deployment_status(
             d::failed.eq(health.is_failed()),
             d::health.eq(health),
             d::fatal_error.eq::<Option<String>>(fatal_error),
+            d::non_fatal_errors.eq::<Vec<String>>(non_fatal_errors.unwrap_or(vec![])),
         ))
         .execute(conn)
         .map(|_| ())
