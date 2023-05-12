@@ -1495,6 +1495,7 @@ impl WritableStoreTrait for WritableStore {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         processed_data_sources: Vec<StoredDynamicDataSource>,
+        is_non_fatal_errors_active: bool,
     ) -> Result<(), StoreError> {
         let batch = Batch::new(
             block_ptr_to.clone(),
@@ -1503,6 +1504,7 @@ impl WritableStoreTrait for WritableStore {
             data_sources,
             deterministic_errors,
             processed_data_sources,
+            is_non_fatal_errors_active,
         )?;
         self.writer.write(batch, stopwatch).await?;
 

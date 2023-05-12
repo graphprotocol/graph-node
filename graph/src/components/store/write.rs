@@ -605,6 +605,7 @@ pub struct Batch {
     pub deterministic_errors: Vec<SubgraphError>,
     pub offchain_to_remove: DataSources,
     pub error: Option<StoreError>,
+    pub is_non_fatal_errors_active: bool,
 }
 
 impl Batch {
@@ -615,6 +616,7 @@ impl Batch {
         data_sources: Vec<StoredDynamicDataSource>,
         deterministic_errors: Vec<SubgraphError>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
+        is_non_fatal_errors_active: bool,
     ) -> Result<Self, StoreError> {
         let block = block_ptr.number;
 
@@ -647,6 +649,7 @@ impl Batch {
             deterministic_errors,
             offchain_to_remove,
             error: None,
+            is_non_fatal_errors_active,
         })
     }
 

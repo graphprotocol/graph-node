@@ -478,6 +478,7 @@ where
                 persisted_data_sources,
                 deterministic_errors,
                 processed_data_sources,
+                is_non_fatal_errors_active,
             )
             .await
             .context("Failed to transact block operations")?;
