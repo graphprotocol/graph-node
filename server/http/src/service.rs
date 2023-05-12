@@ -433,7 +433,7 @@ where
 mod tests {
     use graph::data::value::Object;
     use graph::prelude::serde_json::json;
-    use http::header::CONTENT_TYPE;
+    use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
     use http::status::StatusCode;
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
@@ -555,7 +555,7 @@ mod tests {
 
         let response =
             futures03::executor::block_on(service.call(request)).expect("Should return a response");
-        let errors = test_utils::assert_error_response(response, StatusCode::OK, false);
+        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
 
         let message = errors[0].as_str().expect("Error message is not a string");
 
@@ -578,6 +578,7 @@ mod tests {
         let request = Request::builder()
             .method(Method::POST)
             .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+            .header(CONTENT_LENGTH, 100)
             .uri(format!(
                 "http://localhost:8000/subgraphs/id/{}",
                 subgraph_id
@@ -590,6 +591,8 @@ mod tests {
             .await
             .unwrap()
             .expect("Should return a response");
+
+        println!("{:?}", response);
         let data = test_utils::assert_successful_response(response);
 
         // The body should match the simulated query result
