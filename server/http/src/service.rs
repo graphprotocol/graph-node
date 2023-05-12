@@ -546,6 +546,7 @@ mod tests {
         let request = Request::builder()
             .method(Method::POST)
             .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+            .header(CONTENT_LENGTH, 100)
             .uri(format!(
                 "http://localhost:8000/subgraphs/id/{}",
                 subgraph_id
@@ -555,7 +556,7 @@ mod tests {
 
         let response =
             futures03::executor::block_on(service.call(request)).expect("Should return a response");
-        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
+        let errors = test_utils::assert_error_response(response, StatusCode::OK, false);
 
         let message = errors[0].as_str().expect("Error message is not a string");
 
