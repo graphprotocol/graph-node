@@ -468,6 +468,7 @@ impl RowGroup {
             ));
         }
 
+        self.rows.reserve(group.rows.len());
         for row in group.rows {
             self.append_row(row)?;
         }
