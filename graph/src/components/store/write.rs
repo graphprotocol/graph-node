@@ -1,5 +1,5 @@
 //! Data structures and helpers for writing subgraph changes to the store
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr},
@@ -9,6 +9,7 @@ use crate::{
     data::{subgraph::schema::SubgraphError, value::Word},
     data_source::CausalityRegion,
     prelude::DeploymentHash,
+    schema::InputSchema,
     util::cache_weight::CacheWeight,
 };
 
@@ -141,13 +142,6 @@ impl EntityModification {
         match self {
             EntityModification::Insert { .. } => true,
             EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => false,
-        }
-    }
-
-    fn key(&self) -> &EntityKey {
-        use EntityModification::*;
-        match self {
-            Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
         }
     }
 
@@ -299,13 +293,16 @@ pub struct RowGroup {
     /// then `rows[i].block() <= rows[j].block()`. Several methods on this
     /// struct rely on the fact that this ordering is observed.
     rows: Vec<EntityModification>,
+
+    immutable: bool,
 }
 
 impl RowGroup {
-    pub fn new(entity_type: EntityType) -> Self {
+    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
         Self {
             entity_type,
             rows: Vec::new(),
+            immutable,
         }
     }
 
@@ -394,6 +391,22 @@ impl RowGroup {
     /// Append `row` to `self.rows` by combining it with a previously
     /// existing row, if that is possible
     fn append_row(&mut self, row: EntityModification) -> Result<(), StoreError> {
+        if self.immutable {
+            match row {
+                EntityModification::Insert { .. } => {
+                    self.rows.push(row);
+                }
+                EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
+                    return Err(constraint_violation!(
+                        "immutable entity type {} only allows inserts, not {:?}",
+                        self.entity_type,
+                        row
+                    ));
+                }
+            }
+            return Ok(());
+        }
+
         if let Some(prev_row) = self.prev_row_mut(row.id()) {
             use EntityModification::*;
 
@@ -510,12 +523,16 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 /// A list of entity changes with one group per entity type
 #[derive(Debug)]
 pub struct RowGroups {
+    schema: Arc<InputSchema>,
     pub groups: Vec<RowGroup>,
 }
 
 impl RowGroups {
-    fn new() -> Self {
-        Self { groups: Vec::new() }
+    fn new(schema: Arc<InputSchema>) -> Self {
+        Self {
+            schema,
+            groups: Vec::new(),
+        }
     }
 
     fn group(&self, entity_type: &EntityType) -> Option<&RowGroup> {
@@ -534,7 +551,9 @@ impl RowGroups {
         match pos {
             Some(pos) => &mut self.groups[pos],
             None => {
-                self.groups.push(RowGroup::new(entity_type.clone()));
+                let immutable = self.schema.is_immutable(entity_type);
+                self.groups
+                    .push(RowGroup::new(entity_type.clone(), immutable));
                 // unwrap: we just pushed an entry
                 self.groups.last_mut().unwrap()
             }
@@ -612,6 +631,7 @@ pub struct Batch {
 
 impl Batch {
     pub fn new(
+        schema: Arc<InputSchema>,
         block_ptr: BlockPtr,
         firehose_cursor: FirehoseCursor,
         mut raw_mods: Vec<EntityModification>,
@@ -631,7 +651,7 @@ impl Batch {
             EntityModification::Remove { .. } => 0,
         });
 
-        let mut mods = RowGroups::new();
+        let mut mods = RowGroups::new(schema);
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;
@@ -905,6 +925,7 @@ mod test {
         let group = RowGroup {
             entity_type: EntityType::new("Entry".to_string()),
             rows,
+            immutable: false,
         };
         let act = group
             .clamps_by_block()
@@ -1003,7 +1024,7 @@ mod test {
     impl Group {
         fn new() -> Self {
             Self {
-                group: RowGroup::new(ENTITY_TYPE.clone()),
+                group: RowGroup::new(ENTITY_TYPE.clone(), false),
             }
         }
 

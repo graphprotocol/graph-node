@@ -1497,6 +1497,7 @@ impl WritableStoreTrait for WritableStore {
         processed_data_sources: Vec<StoredDynamicDataSource>,
     ) -> Result<(), StoreError> {
         let batch = Batch::new(
+            self.store.input_schema.cheap_clone(),
             block_ptr_to.clone(),
             firehose_cursor.clone(),
             mods,
