@@ -289,21 +289,6 @@ impl EntityModification {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
         }
     }
-
-    pub fn entity(&self) -> Option<&Entity> {
-        match self {
-            EntityModification::Insert { data, .. }
-            | EntityModification::Overwrite { data, .. } => Some(data),
-            EntityModification::Remove { .. } => None,
-        }
-    }
-
-    pub fn is_remove(&self) -> bool {
-        match self {
-            EntityModification::Remove { .. } => true,
-            _ => false,
-        }
-    }
 }
 
 /// A list of entity changes grouped by the entity type
