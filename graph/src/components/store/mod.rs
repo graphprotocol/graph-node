@@ -16,7 +16,7 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
-use std::borrow::{Borrow, Cow};
+use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
@@ -32,7 +32,7 @@ use crate::data::store::*;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::schema::InputSchema;
-use crate::util::intern::{self, Error as InternError};
+use crate::util::intern;
 use crate::{constraint_violation, prelude::*};
 
 /// The type name of an entity. This is the string that is used in the
@@ -1002,45 +1002,6 @@ impl Display for DeploymentLocator {
 // The type that the connection pool uses to track wait times for
 // connection checkouts
 pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
-
-/// A representation of entity operations that can be accumulated.
-#[derive(Debug, Clone)]
-enum EntityOp {
-    Remove,
-    Update(Entity),
-    Overwrite(Entity),
-}
-
-impl EntityOp {
-    fn apply_to(self, entity: &mut Option<Cow<Entity>>) -> Result<(), InternError> {
-        use EntityOp::*;
-        match (self, entity) {
-            (Remove, e @ _) => *e = None,
-            (Overwrite(new), e @ _) | (Update(new), e @ None) => *e = Some(Cow::Owned(new)),
-            (Update(updates), Some(entity)) => entity.to_mut().merge_remove_null_fields(updates)?,
-        }
-        Ok(())
-    }
-
-    fn accumulate(&mut self, next: EntityOp) {
-        use EntityOp::*;
-        let update = match next {
-            // Remove and Overwrite ignore the current value.
-            Remove | Overwrite(_) => {
-                *self = next;
-                return;
-            }
-            Update(update) => update,
-        };
-
-        // We have an update, apply it.
-        match self {
-            // This is how `Overwrite` is constructed, by accumulating `Update` onto `Remove`.
-            Remove => *self = Overwrite(update),
-            Update(current) | Overwrite(current) => current.merge(update),
-        }
-    }
-}
 
 /// Determines which columns should be selected in a table.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

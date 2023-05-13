@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
-use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
+use crate::components::store::{self as s, Entity, EntityKey, EntityOperation};
 use crate::data::store::IntoEntityIterator;
 use crate::prelude::ENV_VARS;
 use crate::schema::InputSchema;
+use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
 
 use super::{BlockNumber, DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
@@ -20,6 +21,45 @@ pub enum GetScope {
     Store,
     /// Get from the entities that have been stored during this block
     InBlock,
+}
+
+/// A representation of entity operations that can be accumulated.
+#[derive(Debug, Clone)]
+enum EntityOp {
+    Remove,
+    Update(Entity),
+    Overwrite(Entity),
+}
+
+impl EntityOp {
+    fn apply_to(self, entity: &mut Option<Cow<Entity>>) -> Result<(), InternError> {
+        use EntityOp::*;
+        match (self, entity) {
+            (Remove, e @ _) => *e = None,
+            (Overwrite(new), e @ _) | (Update(new), e @ None) => *e = Some(Cow::Owned(new)),
+            (Update(updates), Some(entity)) => entity.to_mut().merge_remove_null_fields(updates)?,
+        }
+        Ok(())
+    }
+
+    fn accumulate(&mut self, next: EntityOp) {
+        use EntityOp::*;
+        let update = match next {
+            // Remove and Overwrite ignore the current value.
+            Remove | Overwrite(_) => {
+                *self = next;
+                return;
+            }
+            Update(update) => update,
+        };
+
+        // We have an update, apply it.
+        match self {
+            // This is how `Overwrite` is constructed, by accumulating `Update` onto `Remove`.
+            Remove => *self = Overwrite(update),
+            Update(current) | Overwrite(current) => current.merge(update),
+        }
+    }
 }
 
 /// A cache for entities from the store that provides the basic functionality
