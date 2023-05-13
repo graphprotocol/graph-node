@@ -124,13 +124,13 @@ pub mod prelude {
     pub use crate::components::server::query::GraphQLServer;
     pub use crate::components::server::subscription::SubscriptionServer;
     pub use crate::components::store::{
-        AttributeNames, BlockNumber, CachedEthereumCall, ChainStore, Child, ChildMultiplicity,
-        EntityCache, EntityChange, EntityChangeOperation, EntityCollection, EntityFilter,
-        EntityLink, EntityModification, EntityOperation, EntityOrder, EntityOrderByChild,
-        EntityOrderByChildInfo, EntityQuery, EntityRange, EntityWindow, EthereumCallCache,
-        ParentLink, PartialBlockPtr, PoolWaitStats, QueryStore, QueryStoreManager, StoreError,
-        StoreEvent, StoreEventStream, StoreEventStreamBox, SubgraphStore, UnfailOutcome,
-        WindowAttribute, BLOCK_NUMBER_MAX,
+        write::EntityModification, AttributeNames, BlockNumber, CachedEthereumCall, ChainStore,
+        Child, ChildMultiplicity, EntityCache, EntityChange, EntityChangeOperation,
+        EntityCollection, EntityFilter, EntityLink, EntityOperation, EntityOrder,
+        EntityOrderByChild, EntityOrderByChildInfo, EntityQuery, EntityRange, EntityWindow,
+        EthereumCallCache, ParentLink, PartialBlockPtr, PoolWaitStats, QueryStore,
+        QueryStoreManager, StoreError, StoreEvent, StoreEventStream, StoreEventStreamBox,
+        SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
         BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,

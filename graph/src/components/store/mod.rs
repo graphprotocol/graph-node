@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::{fmt, io};
 
 use crate::blockchain::Block;
+use crate::components::store::write::EntityModification;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
 use crate::data::value::Word;
@@ -723,7 +724,7 @@ impl StoreEvent {
         let changes: Vec<_> = mods
             .into_iter()
             .map(|op| {
-                use self::EntityModification::*;
+                use EntityModification::*;
                 match op {
                     Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => {
                         EntityChange::for_data(subgraph_id.clone(), key.clone())
@@ -1001,75 +1002,6 @@ impl Display for DeploymentLocator {
 // The type that the connection pool uses to track wait times for
 // connection checkouts
 pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
-
-/// An entity operation that can be transacted into the store; as opposed to
-/// `EntityOperation`, we already know whether a `Set` should be an `Insert`
-/// or `Update`
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EntityModification {
-    /// Insert the entity
-    Insert {
-        key: EntityKey,
-        data: Entity,
-        block: BlockNumber,
-        end: Option<BlockNumber>,
-    },
-    /// Update the entity by overwriting it
-    Overwrite {
-        key: EntityKey,
-        data: Entity,
-        block: BlockNumber,
-        end: Option<BlockNumber>,
-    },
-    /// Remove the entity
-    Remove { key: EntityKey, block: BlockNumber },
-}
-
-impl EntityModification {
-    pub fn insert(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
-        EntityModification::Insert {
-            key,
-            data,
-            block,
-            end: None,
-        }
-    }
-
-    pub fn overwrite(key: EntityKey, data: Entity, block: BlockNumber) -> Self {
-        EntityModification::Overwrite {
-            key,
-            data,
-            block,
-            end: None,
-        }
-    }
-
-    pub fn remove(key: EntityKey, block: BlockNumber) -> Self {
-        EntityModification::Remove { key, block }
-    }
-
-    pub fn entity_ref(&self) -> &EntityKey {
-        use EntityModification::*;
-        match self {
-            Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
-        }
-    }
-
-    pub fn entity(&self) -> Option<&Entity> {
-        match self {
-            EntityModification::Insert { data, .. }
-            | EntityModification::Overwrite { data, .. } => Some(data),
-            EntityModification::Remove { .. } => None,
-        }
-    }
-
-    pub fn is_remove(&self) -> bool {
-        match self {
-            EntityModification::Remove { .. } => true,
-            _ => false,
-        }
-    }
-}
 
 /// A representation of entity operations that can be accumulated.
 #[derive(Debug, Clone)]

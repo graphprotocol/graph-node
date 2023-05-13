@@ -5,6 +5,7 @@ use std::fmt::{self, Debug};
 use std::sync::Arc;
 
 use crate::cheap_clone::CheapClone;
+use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
 use crate::data::store::IntoEntityIterator;
 use crate::prelude::ENV_VARS;
@@ -279,7 +280,7 @@ impl EntityCache {
 
         let mut mods = Vec::new();
         for (key, update) in self.updates {
-            use s::EntityModification::*;
+            use EntityModification::*;
 
             let current = self.current.remove(&key).and_then(|entity| entity);
             let modification = match (current, update) {
