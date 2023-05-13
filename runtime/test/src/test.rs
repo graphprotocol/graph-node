@@ -489,12 +489,7 @@ async fn run_ipfs_map(
             .modifications;
 
         // Bring the modifications into a predictable order (by entity_id)
-        mods.sort_by(|a, b| {
-            a.entity_ref()
-                .entity_id
-                .partial_cmp(&b.entity_ref().entity_id)
-                .unwrap()
-        });
+        mods.sort_by(|a, b| a.key().entity_id.partial_cmp(&b.key().entity_id).unwrap());
         Ok(mods)
     })
     .join()

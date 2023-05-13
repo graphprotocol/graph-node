@@ -183,7 +183,7 @@ fn make_band_key(id: &'static str) -> EntityKey {
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
-    mods.sort_by_key(|m| m.entity_ref().clone());
+    mods.sort_by_key(|m| m.key().clone());
     mods
 }
 

@@ -283,7 +283,7 @@ impl EntityModification {
         EntityModification::Remove { key, block }
     }
 
-    pub fn entity_ref(&self) -> &EntityKey {
+    pub fn key(&self) -> &EntityKey {
         use EntityModification::*;
         match self {
             Insert { key, .. } | Overwrite { key, .. } | Remove { key, .. } => key,
@@ -649,8 +649,7 @@ impl Batch {
         let mut mods = RowGroups::new();
 
         for m in raw_mods {
-            mods.group_entry(&m.entity_ref().entity_type)
-                .push(m, block)?;
+            mods.group_entry(&m.key().entity_type).push(m, block)?;
         }
 
         let data_sources = DataSources::new(block_ptr.cheap_clone(), data_sources);
