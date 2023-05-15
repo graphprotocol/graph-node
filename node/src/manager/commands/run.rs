@@ -30,7 +30,7 @@ use graph_chain_ethereum as ethereum;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphInstanceManager, SubgraphPerfRules, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 
 fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
@@ -198,6 +198,7 @@ pub async fn run(
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
+        Arc::new(SubgraphPerfRules::default()),
     ));
 
     let (name, hash) = if subgraph.contains(':') {

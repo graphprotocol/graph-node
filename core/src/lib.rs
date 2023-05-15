@@ -5,6 +5,6 @@ mod subgraph;
 
 pub use crate::link_resolver::LinkResolver;
 pub use crate::subgraph::{
-    SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar, SubgraphRunner,
-    SubgraphTriggerProcessor,
+    SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphPerfConfig, SubgraphPerfRules,
+    SubgraphRegistrar, SubgraphRunner, SubgraphTriggerProcessor,
 };

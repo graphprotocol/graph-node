@@ -172,6 +172,9 @@ pub struct EnvVars {
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
     pub reorg_threshold: BlockNumber,
+    /// Set by the env var `GRAPH_EXPERIMENTAL_PERFORMANCE_CFG_FILE` which should point
+    /// the performance configuration file.
+    pub performance_config_file: Option<String>,
 }
 
 impl EnvVars {
@@ -229,6 +232,7 @@ impl EnvVars {
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
             reorg_threshold: inner.reorg_threshold,
+            performance_config_file: inner.performance_config_file,
         })
     }
 
@@ -347,6 +351,8 @@ struct Inner {
     // JSON-RPC specific.
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     reorg_threshold: BlockNumber,
+    #[envconfig(from = "GRAPH_EXPERIMENTAL_PERFORMANCE_CFG_FILE")]
+    performance_config_file: Option<String>,
 }
 
 #[derive(Clone, Debug)]

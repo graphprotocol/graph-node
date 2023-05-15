@@ -1,3 +1,4 @@
+mod config;
 mod context;
 mod error;
 mod inputs;
@@ -10,6 +11,7 @@ mod state;
 mod stream;
 mod trigger_processor;
 
+pub use self::config::*;
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::provider::SubgraphAssignmentProvider;
 pub use self::registrar::SubgraphRegistrar;

@@ -25,7 +25,7 @@ use graph_chain_substreams as substreams;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
+    SubgraphInstanceManager, SubgraphPerfRules, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::chain::{
@@ -34,6 +34,7 @@ use graph_node::chain::{
 };
 use graph_node::config::Config;
 use graph_node::opt;
+use graph_node::perf_config::SubgraphConfigSection;
 use graph_node::store_builder::StoreBuilder;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -42,6 +43,7 @@ use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
 use std::collections::BTreeMap;
+use std::fs::read_to_string;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::time::Duration;
@@ -145,6 +147,17 @@ async fn main() {
         eprintln!("Successfully validated configuration");
         std::process::exit(0);
     }
+
+    let subgraph_config: SubgraphPerfRules = match env_vars.performance_config_file {
+        Some(ref path) => {
+            info!(logger, "Reading subgraph configuration file `{}`", path);
+            toml::from_str::<SubgraphConfigSection>(&read_to_string(path).unwrap())
+                .unwrap()
+                .try_into()
+                .unwrap()
+        }
+        None => SubgraphPerfRules::default(),
+    };
 
     let node_id = NodeId::new(opt.node_id.clone())
         .expect("Node ID must be between 1 and 63 characters in length");
@@ -481,6 +494,7 @@ async fn main() {
             blockchain_map,
             node_id.clone(),
             version_switching_mode,
+            Arc::new(subgraph_config),
         ));
         graph::spawn(
             subgraph_registrar

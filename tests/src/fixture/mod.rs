@@ -408,6 +408,7 @@ pub async fn setup<C: Blockchain>(
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
+        Arc::new(graph_core::SubgraphPerfRules::default()),
     ));
 
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone())

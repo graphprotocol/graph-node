@@ -13,6 +13,8 @@ use graph::prelude::{
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
 
+use crate::SubgraphPerfRules;
+
 pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
@@ -24,6 +26,7 @@ pub struct SubgraphRegistrar<P, S, SM> {
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
+    perf_config: Arc<SubgraphPerfRules>,
 }
 
 impl<P, S, SM> SubgraphRegistrar<P, S, SM>
@@ -41,6 +44,7 @@ where
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
+        perf_config: Arc<SubgraphPerfRules>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphRegistrar", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -58,6 +62,7 @@ where
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
+            perf_config,
         }
     }
 
@@ -296,6 +301,12 @@ where
         let kind = BlockchainKind::from_manifest(&raw).map_err(|e| {
             SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))
         })?;
+
+        // Give priority to deployment specific history_blocks value.
+        let history_blocks = history_blocks.or(self
+            .perf_config
+            .config_for_name(&name)
+            .map(|c| c.history_blocks));
 
         let deployment_locator = match kind {
             BlockchainKind::Arweave => {
@@ -637,6 +648,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
         .graft(base_block)
         .debug(debug_fork)
         .entities_with_causality_region(needs_causality_region);
+
     if let Some(history_blocks) = history_blocks {
         deployment = deployment.with_history_blocks(history_blocks);
     }
