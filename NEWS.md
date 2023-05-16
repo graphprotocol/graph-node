@@ -7,6 +7,8 @@
   performing an initial pruning. To avoid ongoing pruning, use `graphman
   prune --once` ([docs](./docs/implementation/pruning.md))
 - the materialized views in the `info` schema (`table_sizes`, `subgraph_sizes`, and `chain_sizes`) that provide information about the size of various database objects are now automatically refreshed every 6 hours. [#4461](https://github.com/graphprotocol/graph-node/pull/4461)
+- `graphman rewind` has changed, block-number and block-hash are now flags instead of arguments
+- `graphman rewind` now has an extra flag `--start-block` which will rewind to the startBlock set in manifest or to the genesis block if no startBlock is set
 
 ### Fixes
 - fulltext searches now support additional `where` filters making it possible to narrow the results of a fulltext search with other criteria [#1823](https://github.com/graphprotocol/graph-node/issues/1823)
