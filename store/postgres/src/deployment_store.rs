@@ -1315,12 +1315,13 @@ impl DeploymentStore {
         Ok(())
     }
 
-    fn rewind_with_conn(
+    fn rewind_or_truncate_with_conn(
         &self,
         conn: &PgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
+        truncate: bool,
     ) -> Result<StoreEvent, StoreError> {
         let event = deployment::with_lock(conn, &site, || {
             conn.transaction(|| -> Result<_, StoreError> {
@@ -1353,7 +1354,15 @@ impl DeploymentStore {
                 // Revert the data
                 let layout = self.layout(conn, site.clone())?;
 
-                let (event, count) = layout.revert_block(conn, block)?;
+                let event = if truncate {
+                    let event = layout.truncate_tables(conn)?;
+                    deployment::set_entity_count(conn, site.as_ref(), layout.count_query.as_str())?;
+                    event
+                } else {
+                    let (event, count) = layout.revert_block(conn, block)?;
+                    deployment::update_entity_count(conn, site.as_ref(), count)?;
+                    event
+                };
 
                 // Revert the meta data changes that correspond to this subgraph.
                 // Only certain meta data changes need to be reverted, most
@@ -1362,12 +1371,35 @@ impl DeploymentStore {
                 // changes that might need to be reverted
                 Layout::revert_metadata(conn, &site, block)?;
 
-                deployment::update_entity_count(conn, site.as_ref(), count)?;
                 Ok(event)
             })
         })?;
 
         Ok(event)
+    }
+
+    pub(crate) fn truncate(
+        &self,
+        site: Arc<Site>,
+        block_ptr_to: BlockPtr,
+    ) -> Result<StoreEvent, StoreError> {
+        let conn = self.get_conn()?;
+
+        // Unwrap: If we are reverting then the block ptr is not `None`.
+        let block_ptr_from = Self::block_ptr_with_conn(&conn, site.cheap_clone())?.unwrap();
+
+        // Sanity check on block numbers
+        if block_ptr_from.number <= block_ptr_to.number {
+            constraint_violation!(
+                "truncate must go backwards, but would go from block {} to block {}",
+                block_ptr_from.number,
+                block_ptr_to.number
+            );
+        }
+
+        // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
+        // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
+        self.rewind_or_truncate_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None, true)
     }
 
     pub(crate) fn rewind(
@@ -1391,7 +1423,7 @@ impl DeploymentStore {
 
         // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
         // from the block_ptr instead (with sanity check to ensure it's resume at the exact block).
-        self.rewind_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None)
+        self.rewind_or_truncate_with_conn(&conn, site, block_ptr_to, &FirehoseCursor::None, false)
     }
 
     pub(crate) fn revert_block_operations(
@@ -1409,7 +1441,7 @@ impl DeploymentStore {
             panic!("revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}", deployment_head, block_ptr_to);
         }
 
-        self.rewind_with_conn(&conn, site, block_ptr_to, firehose_cursor)
+        self.rewind_or_truncate_with_conn(&conn, site, block_ptr_to, firehose_cursor, false)
     }
 
     pub(crate) async fn deployment_state_from_id(

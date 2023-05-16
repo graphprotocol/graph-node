@@ -863,6 +863,13 @@ impl Layout {
         Ok(count)
     }
 
+    pub fn truncate_tables(&self, conn: &PgConnection) -> Result<StoreEvent, StoreError> {
+        for table in self.tables.values() {
+            conn.execute(&format!("TRUNCATE TABLE {}", table.qualified_name))?;
+        }
+        Ok(StoreEvent::new(vec![]))
+    }
+
     /// Revert the block with number `block` and all blocks with higher
     /// numbers. After this operation, only entity versions inserted or
     /// updated at blocks with numbers strictly lower than `block` will

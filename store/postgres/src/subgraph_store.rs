@@ -950,6 +950,12 @@ impl SubgraphStoreInner {
         self.send_store_event(&event)
     }
 
+    pub fn truncate(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        let (store, site) = self.store(&id)?;
+        let event = store.truncate(site, block_ptr_to)?;
+        self.send_store_event(&event)
+    }
+
     pub(crate) async fn get_proof_of_indexing(
         &self,
         id: &DeploymentHash,
@@ -1153,6 +1159,15 @@ impl SubgraphStoreInner {
     pub fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
         let src_store = self.for_site(site)?;
         src_store.load_deployment(site)
+    }
+
+    pub fn load_deployment_by_id(
+        &self,
+        id: DeploymentId,
+    ) -> Result<SubgraphDeploymentEntity, StoreError> {
+        let site = self.find_site(id)?;
+        let src_store = self.for_site(&site)?;
+        src_store.load_deployment(&site)
     }
 }
 
