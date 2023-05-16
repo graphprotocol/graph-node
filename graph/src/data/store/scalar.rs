@@ -593,7 +593,7 @@ impl From<web3::types::Bytes> for Bytes {
 
 impl From<BlockHash> for Bytes {
     fn from(hash: BlockHash) -> Self {
-        Bytes(hash.0)
+        Bytes(hash.value.as_bytes().to_owned().into_boxed_slice())
     }
 }
 

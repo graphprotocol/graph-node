@@ -2,7 +2,7 @@ use clap::Parser;
 use git_testament::{git_testament, render_testament};
 use lazy_static::lazy_static;
 
-use crate::config;
+use graph_core::graphman::config;
 
 git_testament!(TESTAMENT);
 lazy_static! {

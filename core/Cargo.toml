@@ -33,7 +33,12 @@ graph-store-postgres = { path = "../store/postgres" }
 diesel = "1.4.8"
 graph-graphql = { path = "../graphql" }
 graphql-parser = "0.4.0"
-
+http = "0.2.5" # must be compatible with the version rust-web3 uses
+url = "2.3.1"
+serde_regex = "1.1.0"
+shellexpand = "3.1.0"
+toml = "0.7.1"
+juniper = "0.15.11"
 
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }

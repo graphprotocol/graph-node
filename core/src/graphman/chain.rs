@@ -1,4 +1,4 @@
-use crate::config::{Config, ProviderDetails};
+use super::config::{Config, ProviderDetails};
 use ethereum::{EthereumNetworks, ProviderEthRpcMetrics};
 use futures::future::{join_all, try_join_all};
 use futures::TryFutureExt;
@@ -457,7 +457,7 @@ pub async fn create_ethereum_networks_for_chain(
             "capabilities" => capabilities
         );
 
-        use crate::config::Transport::*;
+        use super::config::Transport::*;
 
         let transport = match web3.transport {
             Rpc => Transport::new_rpc(
@@ -496,8 +496,9 @@ pub async fn create_ethereum_networks_for_chain(
 
 #[cfg(test)]
 mod test {
-    use crate::chain::create_all_ethereum_networks;
-    use crate::config::{Config, Opt};
+    use super::super::config::{Config, Opt};
+    use super::create_all_ethereum_networks;
+
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
     use graph::prelude::{tokio, MetricsRegistry};

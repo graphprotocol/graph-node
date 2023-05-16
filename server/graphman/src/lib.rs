@@ -9,6 +9,7 @@ extern crate serde;
 extern crate juniper;
 extern crate juniper_hyper;
 
+mod inputs;
 mod schema;
 mod server;
 mod service;

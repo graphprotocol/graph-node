@@ -22,19 +22,19 @@ use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_substreams as substreams;
+use graph_core::graphman::chain::{
+    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
+    create_firehose_networks, create_ipfs_clients, create_substreams_networks,
+};
+use graph_core::graphman::config::Config;
+use graph_core::graphman::store_builder::StoreBuilder;
 use graph_core::polling_monitor::ipfs_service;
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::chain::{
-    connect_ethereum_networks, connect_firehose_networks, create_all_ethereum_networks,
-    create_firehose_networks, create_ipfs_clients, create_substreams_networks,
-};
-use graph_node::config::Config;
 use graph_node::opt;
-use graph_node::store_builder::StoreBuilder;
 use graph_server_graphman::GraphQLServer as GraphQLQraphmanServer;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;

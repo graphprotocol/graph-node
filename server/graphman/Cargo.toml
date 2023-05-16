@@ -15,3 +15,4 @@ graph-graphql = { path = "../../graphql" }
 graphql-utils = { path = "../graphql_utils" }
 graph-core = { path = "../../core" }
 juniper_hyper = "0.8.0"
+graph-store-postgres = { path = "../../store/postgres" }

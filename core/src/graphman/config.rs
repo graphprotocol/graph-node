@@ -24,6 +24,8 @@ use std::{
 };
 use url::Url;
 
+use super::shard::{validate_name, Shard};
+
 const ANY_NAME: &str = ".*";
 /// A regular expression that matches nothing
 const NO_NAME: &str = ".^";
@@ -72,30 +74,6 @@ pub struct Config {
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
     pub deployment: Deployment,
-}
-
-fn validate_name(s: &str) -> Result<()> {
-    if s.is_empty() {
-        return Err(anyhow!("names must not be empty"));
-    }
-    if s.len() > 30 {
-        return Err(anyhow!(
-            "names can be at most 30 characters, but `{}` has {} characters",
-            s,
-            s.len()
-        ));
-    }
-
-    if !s
-        .chars()
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-    {
-        return Err(anyhow!(
-            "name `{}` is invalid: names can only contain lowercase alphanumeric characters or '-'",
-            s
-        ));
-    }
-    Ok(())
 }
 
 impl Config {
@@ -223,74 +201,6 @@ pub struct GeneralSection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct Shard {
-    pub connection: String,
-    #[serde(default = "one")]
-    pub weight: usize,
-    #[serde(default)]
-    pub pool_size: PoolSize,
-    #[serde(default = "PoolSize::five")]
-    pub fdw_pool_size: PoolSize,
-    #[serde(default)]
-    pub replicas: BTreeMap<String, Replica>,
-}
-
-impl Shard {
-    fn validate(&mut self, name: &str) -> Result<()> {
-        ShardName::new(name.to_string()).map_err(|e| anyhow!(e))?;
-
-        self.connection = shellexpand::env(&self.connection)?.into_owned();
-
-        if matches!(self.pool_size, PoolSize::None) {
-            return Err(anyhow!("missing pool size definition for shard `{}`", name));
-        }
-
-        self.pool_size
-            .validate(name == PRIMARY_SHARD.as_str(), &self.connection)?;
-        for (name, replica) in self.replicas.iter_mut() {
-            validate_name(name).context("illegal replica name")?;
-            replica.validate(name == PRIMARY_SHARD.as_str(), &self.pool_size)?;
-        }
-
-        let no_weight =
-            self.weight == 0 && self.replicas.values().all(|replica| replica.weight == 0);
-        if no_weight {
-            return Err(anyhow!(
-                "all weights for shard `{}` are 0; \
-                remove explicit weights or set at least one of them to a value bigger than 0",
-                name
-            ));
-        }
-        Ok(())
-    }
-
-    fn from_opt(is_primary: bool, opt: &Opt) -> Result<Self> {
-        let postgres_url = opt
-            .postgres_url
-            .as_ref()
-            .expect("validation checked that postgres_url is set");
-        let pool_size = PoolSize::Fixed(opt.store_connection_pool_size);
-        pool_size.validate(is_primary, postgres_url)?;
-        let mut replicas = BTreeMap::new();
-        for (i, host) in opt.postgres_secondary_hosts.iter().enumerate() {
-            let replica = Replica {
-                connection: replace_host(postgres_url, host),
-                weight: opt.postgres_host_weights.get(i + 1).cloned().unwrap_or(1),
-                pool_size: pool_size.clone(),
-            };
-            replicas.insert(format!("replica{}", i + 1), replica);
-        }
-        Ok(Self {
-            connection: postgres_url.clone(),
-            weight: opt.postgres_host_weights.first().cloned().unwrap_or(1),
-            pool_size,
-            fdw_pool_size: PoolSize::five(),
-            replicas,
-        })
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum PoolSize {
     None,
@@ -305,11 +215,11 @@ impl Default for PoolSize {
 }
 
 impl PoolSize {
-    fn five() -> Self {
+    pub fn five() -> Self {
         Self::Fixed(5)
     }
 
-    fn validate(&self, is_primary: bool, connection: &str) -> Result<()> {
+    pub fn validate(&self, is_primary: bool, connection: &str) -> Result<()> {
         use PoolSize::*;
 
         let pool_size = match self {
@@ -378,7 +288,7 @@ pub struct Replica {
 }
 
 impl Replica {
-    fn validate(&mut self, is_primary: bool, pool_size: &PoolSize) -> Result<()> {
+    pub fn validate(&mut self, is_primary: bool, pool_size: &PoolSize) -> Result<()> {
         self.connection = shellexpand::env(&self.connection)?.into_owned();
         if matches!(self.pool_size, PoolSize::None) {
             self.pool_size = pool_size.clone();
@@ -406,7 +316,7 @@ impl ChainSection {
         Ok(())
     }
 
-    fn from_opt(opt: &Opt) -> Result<Self> {
+    pub fn from_opt(opt: &Opt) -> Result<Self> {
         // If we are not the block ingestor, set the node name
         // to something that is definitely not our node_id
         let ingestor = if opt.disable_block_ingestor {
@@ -937,7 +847,7 @@ impl Deployment {
         Ok(())
     }
 
-    fn from_opt(_: &Opt) -> Self {
+    pub fn from_opt(_: &Opt) -> Self {
         Self { rules: vec![] }
     }
 }
@@ -1074,23 +984,6 @@ impl NetworkPredicate {
     }
 }
 
-/// Replace the host portion of `url` and return a new URL with `host`
-/// as the host portion
-///
-/// Panics if `url` is not a valid URL (which won't happen in our case since
-/// we would have paniced before getting here as `url` is the connection for
-/// the primary Postgres instance)
-fn replace_host(url: &str, host: &str) -> String {
-    let mut url = match Url::parse(url) {
-        Ok(url) => url,
-        Err(_) => panic!("Invalid Postgres URL {}", url),
-    };
-    if let Err(e) = url.set_host(Some(host)) {
-        panic!("Invalid Postgres url {}: {}", url, e);
-    }
-    String::from(url)
-}
-
 // Various default functions for deserialization
 fn any_name() -> Regex {
     Regex::new(ANY_NAME).unwrap()
@@ -1147,7 +1040,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::Web3Rule;
+    use super::Web3Rule;
 
     use super::{
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,

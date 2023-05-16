@@ -18,7 +18,8 @@ use graph_store_postgres::{
     SubscriptionManager, PRIMARY_SHARD,
 };
 
-use crate::config::{Config, Shard};
+use super::config::Config;
+use super::shard::Shard;
 
 pub struct StoreBuilder {
     logger: Logger,

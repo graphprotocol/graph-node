@@ -8,7 +8,9 @@ use graph::{
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
 use crate::graphman::deployment::{Deployment, DeploymentSearch};
+use juniper::GraphQLObject;
 
+#[derive(GraphQLObject, Debug)]
 pub struct InfoResult {
     pub deployments: Vec<Deployment>,
     pub statuses: Vec<Info>,

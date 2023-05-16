@@ -4,6 +4,7 @@ use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::endpoint::EndpointMetrics;
 use graph::log::logger_with_levels;
+use graph::prelude::web3::contract::deploy;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
@@ -14,14 +15,15 @@ use graph::{
     url::Url,
 };
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
-use graph_core::graphman::{deployment::DeploymentSearch, utils::PanicSubscriptionManager};
-use graph_graphql::prelude::GraphQlRunner;
-use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::commands;
-use graph_node::manager::commands::utils::color::Terminal;
-use graph_node::{
+use graph_core::graphman::config::{self, Config as Cfg};
+use graph_core::graphman::context::GraphmanContext as Context;
+use graph_core::graphman::{
     chain::create_all_ethereum_networks, store_builder::StoreBuilder, MetricsContext,
 };
+use graph_core::graphman::{deployment::DeploymentSearch, utils::PanicSubscriptionManager};
+use graph_graphql::prelude::GraphQlRunner;
+use graph_node::manager::commands;
+use graph_node::manager::commands::utils::color::Terminal;
 use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
@@ -29,8 +31,8 @@ use graph_store_postgres::{
     SubscriptionManager, PRIMARY_SHARD,
 };
 use lazy_static::lazy_static;
+use std::str::FromStr;
 use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
-const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
 
@@ -716,221 +718,9 @@ impl From<Opt> for config::Opt {
     }
 }
 
-/// Utilities to interact mostly with the store and build the parts of the
-/// store we need for specific commands
-struct Context {
-    logger: Logger,
-    node_id: NodeId,
-    config: Cfg,
-    ipfs_url: Vec<String>,
-    fork_base: Option<Url>,
-    registry: Arc<MetricsRegistry>,
-    pub prometheus_registry: Arc<Registry>,
-}
-
-impl Context {
-    fn new(
-        logger: Logger,
-        node_id: NodeId,
-        config: Cfg,
-        ipfs_url: Vec<String>,
-        fork_base: Option<Url>,
-        version_label: Option<String>,
-    ) -> Self {
-        let prometheus_registry = Arc::new(
-            Registry::new_custom(
-                None,
-                version_label.map(|label| {
-                    let mut m = HashMap::<String, String>::new();
-                    m.insert(VERSION_LABEL_KEY.into(), label);
-                    m
-                }),
-            )
-            .expect("unable to build prometheus registry"),
-        );
-        let registry = Arc::new(MetricsRegistry::new(
-            logger.clone(),
-            prometheus_registry.clone(),
-        ));
-
-        Self {
-            logger,
-            node_id,
-            config,
-            ipfs_url,
-            fork_base,
-            registry,
-            prometheus_registry,
-        }
-    }
-
-    fn metrics_registry(&self) -> Arc<MetricsRegistry> {
-        self.registry.clone()
-    }
-
-    fn config(&self) -> Cfg {
-        self.config.clone()
-    }
-
-    fn node_id(&self) -> NodeId {
-        self.node_id.clone()
-    }
-
-    fn notification_sender(&self) -> Arc<NotificationSender> {
-        Arc::new(NotificationSender::new(self.registry.clone()))
-    }
-
-    fn primary_pool(self) -> ConnectionPool {
-        let primary = self.config.primary_store();
-        let coord = Arc::new(PoolCoordinator::new(Arc::new(vec![])));
-        let pool = StoreBuilder::main_pool(
-            &self.logger,
-            &self.node_id,
-            PRIMARY_SHARD.as_str(),
-            primary,
-            self.metrics_registry(),
-            coord,
-        );
-        pool.skip_setup();
-        pool
-    }
-
-    fn subgraph_store(self) -> Arc<SubgraphStore> {
-        self.store_and_pools().0.subgraph_store()
-    }
-
-    fn subscription_manager(&self) -> Arc<SubscriptionManager> {
-        let primary = self.config.primary_store();
-
-        Arc::new(SubscriptionManager::new(
-            self.logger.clone(),
-            primary.connection.clone(),
-            self.registry.clone(),
-        ))
-    }
-
-    fn primary_and_subscription_manager(self) -> (ConnectionPool, Arc<SubscriptionManager>) {
-        let mgr = self.subscription_manager();
-        let primary_pool = self.primary_pool();
-
-        (primary_pool, mgr)
-    }
-
-    fn store(self) -> Arc<Store> {
-        let (store, _) = self.store_and_pools();
-        store
-    }
-
-    fn pools(self) -> HashMap<Shard, ConnectionPool> {
-        let (_, pools) = self.store_and_pools();
-        pools
-    }
-
-    async fn store_builder(&self) -> StoreBuilder {
-        StoreBuilder::new(
-            &self.logger,
-            &self.node_id,
-            &self.config,
-            self.fork_base.clone(),
-            self.registry.clone(),
-        )
-        .await
-    }
-
-    fn store_and_pools(self) -> (Arc<Store>, HashMap<Shard, ConnectionPool>) {
-        let (subgraph_store, pools, _) = StoreBuilder::make_subgraph_store_and_pools(
-            &self.logger,
-            &self.node_id,
-            &self.config,
-            self.fork_base,
-            self.registry.clone(),
-        );
-
-        for pool in pools.values() {
-            pool.skip_setup();
-        }
-
-        let store = StoreBuilder::make_store(
-            &self.logger,
-            pools.clone(),
-            subgraph_store,
-            HashMap::default(),
-            vec![],
-            self.registry,
-        );
-
-        (store, pools)
-    }
-
-    fn store_and_primary(self) -> (Arc<Store>, ConnectionPool) {
-        let (store, pools) = self.store_and_pools();
-        let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
-        (store, primary.clone())
-    }
-
-    fn block_store_and_primary_pool(self) -> (Arc<BlockStore>, ConnectionPool) {
-        let (store, pools) = self.store_and_pools();
-
-        let primary = pools.get(&*PRIMARY_SHARD).unwrap();
-        (store.block_store(), primary.clone())
-    }
-
-    fn graphql_runner(self) -> Arc<GraphQlRunner<Store, PanicSubscriptionManager>> {
-        let logger = self.logger.clone();
-        let registry = self.registry.clone();
-
-        let store = self.store();
-
-        let subscription_manager = Arc::new(PanicSubscriptionManager);
-        let load_manager = Arc::new(LoadManager::new(&logger, vec![], registry.clone()));
-
-        Arc::new(GraphQlRunner::new(
-            &logger,
-            store,
-            subscription_manager,
-            load_manager,
-            registry,
-        ))
-    }
-
-    async fn ethereum_networks(&self) -> anyhow::Result<EthereumNetworks> {
-        let logger = self.logger.clone();
-        let registry = self.metrics_registry();
-        let metrics = Arc::new(EndpointMetrics::mock());
-        create_all_ethereum_networks(logger, registry, &self.config, metrics).await
-    }
-
-    fn chain_store(self, chain_name: &str) -> anyhow::Result<Arc<ChainStore>> {
-        use graph::components::store::BlockStore;
-        self.store()
-            .block_store()
-            .chain_store(chain_name)
-            .ok_or_else(|| anyhow::anyhow!("Could not find a network named '{}'", chain_name))
-    }
-
-    async fn chain_store_and_adapter(
-        self,
-        chain_name: &str,
-    ) -> anyhow::Result<(Arc<ChainStore>, Arc<EthereumAdapter>)> {
-        let ethereum_networks = self.ethereum_networks().await?;
-        let chain_store = self.chain_store(chain_name)?;
-        let ethereum_adapter = ethereum_networks
-            .networks
-            .get(chain_name)
-            .and_then(|adapters| adapters.cheapest())
-            .ok_or(anyhow::anyhow!(
-                "Failed to obtain an Ethereum adapter for chain '{}'",
-                chain_name
-            ))?;
-        Ok((chain_store, ethereum_adapter))
-    }
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opt = Opt::parse();
-
-    println!("OPT: {:?}", opt);
 
     Terminal::set_color_preference(&opt.color);
 

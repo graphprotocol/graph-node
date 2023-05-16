@@ -1,5 +1,7 @@
 //! Support for the indexing status API
 
+use juniper::{GraphQLObject, GraphQLScalarValue};
+
 use super::schema::{SubgraphError, SubgraphHealth};
 use crate::blockchain::BlockHash;
 use crate::components::store::{BlockNumber, DeploymentId};
@@ -19,20 +21,24 @@ pub enum Filter {
 }
 
 /// Light wrapper around `EthereumBlockPointer` that is compatible with GraphQL values.
-#[derive(Debug)]
-pub struct EthereumBlock(BlockPtr);
+#[derive(Debug, GraphQLObject)]
+pub struct EthereumBlock {
+    block_ptr: BlockPtr,
+}
 
 impl EthereumBlock {
     pub fn new(hash: BlockHash, number: BlockNumber) -> Self {
-        EthereumBlock(BlockPtr::new(hash, number))
+        EthereumBlock {
+            block_ptr: BlockPtr::new(hash, number),
+        }
     }
 
     pub fn to_ptr(self) -> BlockPtr {
-        self.0
+        self.block_ptr
     }
 
     pub fn number(&self) -> i32 {
-        self.0.number
+        self.block_ptr.number
     }
 }
 
@@ -40,22 +46,22 @@ impl IntoValue for EthereumBlock {
     fn into_value(self) -> r::Value {
         object! {
             __typename: "EthereumBlock",
-            hash: self.0.hash_hex(),
-            number: format!("{}", self.0.number),
+            hash: self.block_ptr.hash_hex(),
+            number: format!("{}", self.block_ptr.number),
         }
     }
 }
 
 impl From<BlockPtr> for EthereumBlock {
     fn from(ptr: BlockPtr) -> Self {
-        Self(ptr)
+        Self { block_ptr: ptr }
     }
 }
 
 /// Indexing status information related to the chain. Right now, we only
 /// support Ethereum, but once we support more chains, we'll have to turn this into
 /// an enum
-#[derive(Debug)]
+#[derive(Debug, GraphQLObject)]
 pub struct ChainInfo {
     /// The network name (e.g. `mainnet`, `ropsten`, `rinkeby`, `kovan` or `goerli`).
     pub network: String,
@@ -91,10 +97,9 @@ impl IntoValue for ChainInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, GraphQLObject)]
 pub struct Info {
     pub id: DeploymentId,
-
     /// The deployment hash
     pub subgraph: String,
 
@@ -107,7 +112,7 @@ pub struct Info {
     /// Indexing status on different chains involved in the subgraph's data sources.
     pub chains: Vec<ChainInfo>,
 
-    pub entity_count: u64,
+    pub entity_count: f64,
 
     /// ID of the Graph Node that the subgraph is indexed by.
     pub node: Option<String>,

@@ -167,7 +167,7 @@ impl DeploymentSearch {
     }
 }
 
-#[derive(Queryable, PartialEq, Eq, Hash, Debug)]
+#[derive(GraphQLObject, Queryable, PartialEq, Eq, Hash, Debug)]
 pub struct Deployment {
     pub name: String,
     pub status: String,

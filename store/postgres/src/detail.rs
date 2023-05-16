@@ -160,7 +160,7 @@ pub(crate) fn block(
                 )
             })?;
             Ok(Some(status::EthereumBlock::new(
-                BlockHash(hash.into_boxed_slice()),
+                BlockHash::from(hash),
                 number,
             )))
         }
@@ -222,9 +222,9 @@ pub(crate) fn info_from_details(
         earliest_block_number,
         latest_block,
     };
-    let entity_count = entity_count.to_u64().ok_or_else(|| {
+    let entity_count = entity_count.to_f64().ok_or_else(|| {
         constraint_violation!(
-            "the entityCount for {} is not representable as a u64",
+            "the entityCount for {} is not representable as a f64",
             deployment
         )
     })?;
