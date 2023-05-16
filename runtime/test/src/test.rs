@@ -15,6 +15,7 @@ use graph_runtime_wasm::{
 };
 
 use semver::Version;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
@@ -1305,7 +1306,7 @@ async fn test_store_set_id() {
             &mut self,
             entity_type: &str,
             id: &str,
-        ) -> Result<Option<Entity>, anyhow::Error> {
+        ) -> Result<Option<Cow<Entity>>, anyhow::Error> {
             let user_id = String::from(id);
             self.host_exports.store_get(
                 &mut self.ctx.state,

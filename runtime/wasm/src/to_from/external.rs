@@ -340,6 +340,18 @@ impl ToAscObj<AscEntity> for Vec<(Word, store::Value)> {
     }
 }
 
+impl ToAscObj<AscEntity> for Vec<(&str, &store::Value)> {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<AscEntity, HostExportError> {
+        Ok(AscTypedMap {
+            entries: asc_new(heap, self.as_slice(), gas)?,
+        })
+    }
+}
+
 impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(Word, store::Value)>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
