@@ -717,16 +717,16 @@ fn scoped_get() {
 
         // For the new entity, we can retrieve it with either scope
         let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
-        assert_eq!(Some(&wallet5), act5.as_ref());
+        assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
         let act5 = cache.get(&key5, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet5), act5.as_ref());
+        assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
 
         // For an entity in the store, we can not get it `InBlock` but with
         // `Store`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
         assert_eq!(None, act1);
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref());
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
@@ -736,9 +736,9 @@ fn scoped_get() {
         wallet1.set("balance", 70).unwrap();
         cache.set(key1.clone(), wallet1.clone()).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref());
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
         let act1 = cache.get(&key1, GetScope::Store).unwrap();
-        assert_eq!(Some(&wallet1), act1.as_ref());
+        assert_eq!(Some(&wallet1), act1.as_ref().map(|e| e.as_ref()));
     })
 }
 

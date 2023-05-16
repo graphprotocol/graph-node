@@ -65,6 +65,19 @@ impl ToAscObj<AscString> for str {
     }
 }
 
+impl ToAscObj<AscString> for &str {
+    fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        _gas: &GasCounter,
+    ) -> Result<AscString, HostExportError> {
+        Ok(AscString::new(
+            &self.encode_utf16().collect::<Vec<_>>(),
+            heap.api_version(),
+        )?)
+    }
+}
+
 impl ToAscObj<AscString> for String {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,

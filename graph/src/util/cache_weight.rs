@@ -37,6 +37,19 @@ impl<T: CacheWeight> CacheWeight for Vec<T> {
     }
 }
 
+impl<T: CacheWeight> CacheWeight for Box<[T]> {
+    fn indirect_weight(&self) -> usize {
+        self.iter().map(CacheWeight::indirect_weight).sum::<usize>()
+            + self.len() * mem::size_of::<T>()
+    }
+}
+
+impl<T: CacheWeight, U: CacheWeight> CacheWeight for (T, U) {
+    fn indirect_weight(&self) -> usize {
+        self.0.indirect_weight() + self.1.indirect_weight()
+    }
+}
+
 impl<T: CacheWeight, U: CacheWeight> CacheWeight for BTreeMap<T, U> {
     fn indirect_weight(&self) -> usize {
         self.iter()

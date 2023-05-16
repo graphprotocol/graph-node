@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -251,14 +252,14 @@ impl<C: Blockchain> HostExports<C> {
         Ok(())
     }
 
-    pub(crate) fn store_get(
+    pub(crate) fn store_get<'a>(
         &self,
-        state: &mut BlockState<C>,
+        state: &'a mut BlockState<C>,
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
         scope: GetScope,
-    ) -> Result<Option<Entity>, anyhow::Error> {
+    ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
         let store_key = EntityKey {
             entity_type: EntityType::new(entity_type),
             entity_id: entity_id.into(),
@@ -267,7 +268,11 @@ impl<C: Blockchain> HostExports<C> {
         self.check_entity_type_access(&store_key.entity_type)?;
 
         let result = state.entity_cache.get(&store_key, scope)?;
-        gas.consume_host_fn(gas::STORE_GET.with_args(complexity::Linear, (&store_key, &result)))?;
+
+        gas.consume_host_fn(gas::STORE_GET.with_args(
+            complexity::Linear,
+            (&store_key, result.as_ref().map(|e| e.as_ref())),
+        ))?;
 
         Ok(result)
     }
@@ -891,7 +896,7 @@ fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
 /// Expose some host functions for testing only
 #[cfg(debug_assertions)]
 pub mod test_support {
-    use std::{collections::HashMap, sync::Arc};
+    use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
     use graph::{
         blockchain::Blockchain,
@@ -934,13 +939,13 @@ pub mod test_support {
             )
         }
 
-        pub fn store_get(
+        pub fn store_get<'a>(
             &self,
-            state: &mut BlockState<C>,
+            state: &'a mut BlockState<C>,
             entity_type: String,
             entity_id: String,
             gas: &GasCounter,
-        ) -> Result<Option<Entity>, anyhow::Error> {
+        ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
             self.0
                 .store_get(state, entity_type, entity_id, gas, GetScope::Store)
         }
