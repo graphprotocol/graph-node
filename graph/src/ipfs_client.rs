@@ -110,7 +110,9 @@ pub struct AddResponse {
 #[derive(Clone)]
 pub struct IpfsClient {
     base: Arc<Uri>,
-    client: Arc<reqwest::Client>,
+    // reqwest::Client doesn't need to be `Arc` because it has one internally
+    // already.
+    client: reqwest::Client,
 }
 
 impl CheapClone for IpfsClient {
@@ -125,14 +127,14 @@ impl CheapClone for IpfsClient {
 impl IpfsClient {
     pub fn new(base: &str) -> Result<Self, Error> {
         Ok(IpfsClient {
-            client: Arc::new(reqwest::Client::new()),
+            client: reqwest::Client::new(),
             base: Arc::new(Uri::from_str(base)?),
         })
     }
 
     pub fn localhost() -> Self {
         IpfsClient {
-            client: Arc::new(reqwest::Client::new()),
+            client: reqwest::Client::new(),
             base: Arc::new(Uri::from_str("http://localhost:5001").unwrap()),
         }
     }
