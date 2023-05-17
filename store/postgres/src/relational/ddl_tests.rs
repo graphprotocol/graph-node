@@ -378,9 +378,9 @@ create table "sgd0815"."song" (
 create index brin_song
     on "sgd0815"."song"
  using brin(block$, vid);
-create index attr_2_1_song_title
+create index attr_2_0_song_title
     on "sgd0815"."song" using btree(left("title", 256));
-create index attr_2_2_song_written_by
+create index attr_2_1_song_written_by
     on "sgd0815"."song" using btree("written_by", block$);
 
 create table "sgd0815"."song_stat" (

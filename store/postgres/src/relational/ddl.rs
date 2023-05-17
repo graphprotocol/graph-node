@@ -197,22 +197,33 @@ impl Table {
     }
 
     fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
-        // Create indexes. Skip columns whose type is an array of enum,
-        // since there is no good way to index them with Postgres 9.6.
-        // Once we move to Postgres 11, we can enable that
-        // (tracked in graph-node issue #1330)
-        for (i, column) in self
+        // Create indexes.
+
+        // Skip columns whose type is an array of enum, since there is no
+        // good way to index them with Postgres 9.6. Once we move to
+        // Postgres 11, we can enable that (tracked in graph-node issue
+        // #1330)
+        let not_enum_list = |col: &&Column| !(col.is_list() && col.is_enum());
+
+        // We create a unique index on `id` in `create_table`
+        // and don't need an explicit attribute index
+        let not_immutable_pk = |col: &&Column| !(self.immutable && col.is_primary_key());
+
+        // GIN indexes on numeric types are not very useful, but expensive
+        // to build
+        let not_numeric_list = |col: &&Column| {
+            !(col.is_list()
+                && [ColumnType::BigDecimal, ColumnType::BigInt, ColumnType::Int]
+                    .contains(&col.column_type))
+        };
+        let columns = self
             .columns
             .iter()
-            .filter(|col| !(col.is_list() && col.is_enum()))
-            .enumerate()
-        {
-            if self.immutable && column.is_primary_key() {
-                // We create a unique index on `id` in `create_table`
-                // and don't need an explicit attribute index
-                continue;
-            }
+            .filter(not_enum_list)
+            .filter(not_immutable_pk)
+            .filter(not_numeric_list);
 
+        for (i, column) in columns.enumerate() {
             let (method, index_expr) = if column.is_reference() && !column.is_list() {
                 // For foreign keys, index the key together with the block range
                 // since we almost always also have a block_range clause in
