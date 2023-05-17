@@ -23,7 +23,7 @@ use crate::{
     relational::{Table, VID_COLUMN},
 };
 
-use super::{Layout, Namespace};
+use super::{Catalog, Layout, Namespace};
 
 // Additions to `Table` that are useful for pruning
 impl Table {
@@ -84,6 +84,7 @@ impl TablePair {
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
+        catalog: &Catalog,
     ) -> Result<Self, StoreError> {
         let dst = src.new_like(&dst_nsp, &src.name);
 
@@ -91,7 +92,7 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            dst.as_ddl(&mut query)?;
+            dst.as_ddl(catalog, &mut query)?;
         }
         conn.batch_execute(&query)?;
 
@@ -423,6 +424,7 @@ impl Layout {
                         table.cheap_clone(),
                         self.site.namespace.clone(),
                         dst_nsp.clone(),
+                        &self.catalog,
                     )?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change

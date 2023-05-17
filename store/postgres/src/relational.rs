@@ -436,7 +436,8 @@ impl Layout {
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Layout, StoreError> {
-        let catalog = Catalog::for_creation(site.cheap_clone(), entities_with_causality_region);
+        let catalog =
+            Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region)?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl()

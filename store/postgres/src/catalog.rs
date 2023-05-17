@@ -182,6 +182,10 @@ pub struct Catalog {
 
     /// Set of tables which have an explicit causality region column.
     pub(crate) entities_with_causality_region: BTreeSet<EntityType>,
+
+    /// Whether the database supports `int4_minmax_multi_ops` etc.
+    /// See the [Postgres docs](https://www.postgresql.org/docs/15/brin-builtin-opclasses.html)
+    has_minmax_multi_ops: bool,
 }
 
 impl Catalog {
@@ -194,21 +198,27 @@ impl Catalog {
     ) -> Result<Self, StoreError> {
         let text_columns = get_text_columns(conn, &site.namespace)?;
         let use_poi = supports_proof_of_indexing(conn, &site.namespace)?;
+        let has_minmax_multi_ops = has_minmax_multi_ops(conn)?;
+
         Ok(Catalog {
             site,
             text_columns,
             use_poi,
             use_bytea_prefix,
             entities_with_causality_region: entities_with_causality_region.into_iter().collect(),
+            has_minmax_multi_ops,
         })
     }
 
     /// Return a new catalog suitable for creating a new subgraph
     pub fn for_creation(
+        conn: &PgConnection,
         site: Arc<Site>,
         entities_with_causality_region: BTreeSet<EntityType>,
-    ) -> Self {
-        Catalog {
+    ) -> Result<Self, StoreError> {
+        let has_minmax_multi_ops = has_minmax_multi_ops(conn)?;
+
+        Ok(Catalog {
             site,
             text_columns: HashMap::default(),
             // DDL generation creates a POI table
@@ -217,7 +227,8 @@ impl Catalog {
             // see: attr-bytea-prefix
             use_bytea_prefix: true,
             entities_with_causality_region,
-        }
+            has_minmax_multi_ops,
+        })
     }
 
     /// Make a catalog as if the given `schema` did not exist in the database
@@ -233,6 +244,7 @@ impl Catalog {
             use_poi: false,
             use_bytea_prefix: true,
             entities_with_causality_region,
+            has_minmax_multi_ops: false,
         })
     }
 
@@ -243,6 +255,19 @@ impl Catalog {
             .get(table.as_str())
             .map(|cols| cols.contains(column.as_str()))
             .unwrap_or(false)
+    }
+
+    /// The operator classes to use for BRIN indexes. The first entry if the
+    /// operator class for `int4`, the second is for `int8`
+    pub fn minmax_ops(&self) -> (&str, &str) {
+        const MINMAX_OPS: (&str, &str) = ("int4_minmax_ops", "int8_minmax_ops");
+        const MINMAX_MULTI_OPS: (&str, &str) = ("int4_minmax_multi_ops", "int8_minmax_multi_ops");
+
+        if self.has_minmax_multi_ops {
+            MINMAX_MULTI_OPS
+        } else {
+            MINMAX_OPS
+        }
     }
 }
 
@@ -858,4 +883,20 @@ pub(crate) fn needs_autoanalyze(
         .unwrap_or(vec![]);
 
     Ok(tables)
+}
+
+/// Check whether the database for `conn` supports the `minmax_multi_ops`
+/// introduced in Postgres 14
+fn has_minmax_multi_ops(conn: &PgConnection) -> Result<bool, StoreError> {
+    const QUERY: &str = "select count(*) = 2 as has_ops \
+                           from pg_opclass \
+                          where opcname in('int8_minmax_multi_ops', 'int4_minmax_multi_ops')";
+
+    #[derive(Queryable, QueryableByName)]
+    struct Ops {
+        #[sql_type = "Bool"]
+        has_ops: bool,
+    }
+
+    Ok(sql_query(QUERY).get_result::<Ops>(conn)?.has_ops)
 }

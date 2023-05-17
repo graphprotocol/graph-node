@@ -11,7 +11,7 @@ use crate::relational::{
     VID_COLUMN,
 };
 
-use super::{Column, Layout, SqlName, Table};
+use super::{Catalog, Column, Layout, SqlName, Table};
 
 // In debug builds (for testing etc.) unconditionally create exclusion constraints, in release
 // builds for production, skip them
@@ -38,7 +38,7 @@ impl Layout {
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
         for table in tables {
-            table.as_ddl(&mut out)?;
+            table.as_ddl(&self.catalog, &mut out)?;
         }
 
         Ok(out)
@@ -142,13 +142,15 @@ impl Table {
         }
     }
 
-    fn create_time_travel_indexes(&self, out: &mut String) -> fmt::Result {
+    fn create_time_travel_indexes(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
+        let (int4, int8) = catalog.minmax_ops();
+
         if self.immutable {
             write!(
                 out,
                 "create index brin_{table_name}\n    \
                 on {qname}\n \
-                   using brin({block}, vid);\n",
+                   using brin({block} {int4}, vid {int8});\n",
                 table_name = self.name,
                 qname = self.qualified_name,
                 block = BLOCK_COLUMN
@@ -177,7 +179,7 @@ impl Table {
             // entities are stored.
             write!(out,"create index brin_{table_name}\n    \
                 on {qname}\n \
-                   using brin(lower(block_range), coalesce(upper(block_range), {block_max}), vid);\n",
+                   using brin(lower(block_range) {int4}, coalesce(upper(block_range), {block_max}) {int4}, vid {int8});\n",
                 table_name = self.name,
                 qname = self.qualified_name,
                 block_max = BLOCK_NUMBER_MAX)?;
@@ -286,9 +288,9 @@ impl Table {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub(crate) fn as_ddl(&self, out: &mut String) -> fmt::Result {
+    pub(crate) fn as_ddl(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
         self.create_table(out)?;
-        self.create_time_travel_indexes(out)?;
+        self.create_time_travel_indexes(catalog, out)?;
         self.create_attribute_indexes(out)
     }
 
