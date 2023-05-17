@@ -377,7 +377,7 @@ impl SyncStore {
 /// number at which queries should run so that they only consider data that
 /// is not affected by any requests currently queued.
 ///
-/// The best way to use the trtacker is to use the `fold_map` and `find`
+/// The best way to use the tracker is to use the `fold_map` and `find`
 /// methods.
 #[derive(Debug)]
 struct BlockTracker {
