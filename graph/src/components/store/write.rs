@@ -306,11 +306,21 @@ impl RowGroup {
     }
 
     pub fn push(&mut self, emod: EntityModification, block: BlockNumber) -> Result<(), StoreError> {
-        debug_assert!(self
+        let is_forward = self
             .rows
             .last()
             .map(|emod| emod.block() <= block)
-            .unwrap_or(true));
+            .unwrap_or(true);
+        if !is_forward {
+            // unwrap: we only get here when `last()` is `Some`
+            let last_block = self.rows.last().map(|emod| emod.block()).unwrap();
+            return Err(constraint_violation!(
+                "we already have a modification for block {}, can not append {:?}",
+                last_block,
+                emod
+            ));
+        }
+
         let row = EntityMod::new(emod, block);
         self.append_row(row)
     }
