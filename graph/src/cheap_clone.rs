@@ -28,6 +28,7 @@ impl<T: ?Sized + CheapClone> CheapClone for Box<T> {}
 impl<T: ?Sized + CheapClone> CheapClone for std::pin::Pin<T> {}
 impl<T: CheapClone> CheapClone for Option<T> {}
 impl CheapClone for Logger {}
+// reqwest::Client uses Arc internally, so it is CheapClone.
 impl CheapClone for reqwest::Client {}
 
 // Pool is implemented as a newtype over Arc,

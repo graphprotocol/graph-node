@@ -110,6 +110,8 @@ pub struct AddResponse {
 #[derive(Clone)]
 pub struct IpfsClient {
     base: Arc<Uri>,
+    // reqwest::Client doesn't need to be `Arc` because it has one internally
+    // already.
     client: reqwest::Client,
 }
 
