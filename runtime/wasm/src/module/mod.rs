@@ -322,18 +322,6 @@ pub struct ExperimentalFeatures {
 }
 
 pub struct WasmInstanceContext<C: Blockchain> {
-    // In the future there may be multiple memories, but currently there is only one memory per
-    // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
-    // is zeroed when initialized or grown.
-    memory: Memory,
-
-    // Function exported by the wasm module that will allocate the request number of bytes and
-    // return a pointer to the first byte of allocated space.
-    memory_allocate: wasmtime::TypedFunc<i32, i32>,
-
-    // Function wrapper for `idof<T>` from AssemblyScript
-    id_of_type: Option<wasmtime::TypedFunc<u32, u32>>,
-
     pub ctx: MappingContext<C>,
     pub valid_module: Arc<ValidModule>,
     pub host_metrics: Arc<HostMetrics>,
@@ -342,12 +330,6 @@ pub struct WasmInstanceContext<C: Blockchain> {
     // Used by ipfs.map.
     pub(crate) timeout_stopwatch: Arc<std::sync::Mutex<TimeoutStopwatch>>,
 
-    // First free byte in the current arena. Set on the first call to `raw_new`.
-    arena_start_ptr: i32,
-
-    // Number of free bytes starting from `arena_start_ptr`.
-    arena_free_size: i32,
-
     // A trap ocurred due to a possible reorg detection.
     pub possible_reorg: bool,
 
@@ -355,6 +337,30 @@ pub struct WasmInstanceContext<C: Blockchain> {
     pub deterministic_host_trap: bool,
 
     pub(crate) experimental_features: ExperimentalFeatures,
+
+    asc_heap: AscHeapCtx,
+}
+
+struct AscHeapCtx {
+    // Function wrapper for `idof<T>` from AssemblyScript
+    id_of_type: Option<wasmtime::TypedFunc<u32, u32>>,
+
+    // Function exported by the wasm module that will allocate the request number of bytes and
+    // return a pointer to the first byte of allocated space.
+    memory_allocate: wasmtime::TypedFunc<i32, i32>,
+
+    api_version: semver::Version,
+
+    // In the future there may be multiple memories, but currently there is only one memory per
+    // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
+    // is zeroed when initialized or grown.
+    memory: Memory,
+
+    // First free byte in the current arena. Set on the first call to `raw_new`.
+    arena_start_ptr: i32,
+
+    // Number of free bytes starting from `arena_start_ptr`.
+    arena_free_size: i32,
 }
 
 impl<C: Blockchain> WasmInstance<C> {
@@ -713,7 +719,35 @@ fn host_export_error_from_trap(trap: Trap, context: String) -> HostExportError {
     }
 }
 
+// This impl is a convenience that delegates to `self.asc_heap`.
 impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
+    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+        self.asc_heap.raw_new(bytes, gas)
+    }
+
+    fn read<'a>(
+        &self,
+        offset: u32,
+        buffer: &'a mut [MaybeUninit<u8>],
+        gas: &GasCounter,
+    ) -> Result<&'a mut [u8], DeterministicHostError> {
+        self.asc_heap.read(offset, buffer, gas)
+    }
+
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+        self.asc_heap.read_u32(offset, gas)
+    }
+
+    fn api_version(&self) -> Version {
+        self.asc_heap.api_version()
+    }
+
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
+        self.asc_heap.asc_type_id(type_id_index)
+    }
+}
+
+impl AscHeap for AscHeapCtx {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
@@ -736,7 +770,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
             self.arena_start_ptr = self.memory_allocate.call(arena_size).unwrap();
             self.arena_free_size = arena_size;
 
-            match &self.ctx.host_exports.api_version {
+            match &self.api_version {
                 version if *version <= Version::new(0, 0, 4) => {}
                 _ => {
                     // This arithmetic is done because when you call AssemblyScripts's `__alloc`
@@ -806,7 +840,7 @@ impl<C: Blockchain> AscHeap for WasmInstanceContext<C> {
     }
 
     fn api_version(&self) -> Version {
-        self.ctx.host_exports.api_version.clone()
+        self.api_version.clone()
     }
 
     fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
@@ -861,16 +895,19 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         };
 
         Ok(WasmInstanceContext {
-            memory_allocate,
-            id_of_type,
-            memory,
+            asc_heap: AscHeapCtx {
+                memory_allocate,
+                memory,
+                arena_start_ptr: 0,
+                arena_free_size: 0,
+                api_version: ctx.host_exports.api_version.clone(),
+                id_of_type,
+            },
             ctx,
             valid_module,
             host_metrics,
             timeout,
             timeout_stopwatch,
-            arena_free_size: 0,
-            arena_start_ptr: 0,
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
@@ -917,16 +954,19 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         };
 
         Ok(WasmInstanceContext {
-            id_of_type,
-            memory_allocate,
-            memory,
+            asc_heap: AscHeapCtx {
+                memory_allocate,
+                memory,
+                arena_start_ptr: 0,
+                arena_free_size: 0,
+                api_version: ctx.host_exports.api_version.clone(),
+                id_of_type,
+            },
             ctx,
             valid_module,
             host_metrics,
             timeout,
             timeout_stopwatch,
-            arena_free_size: 0,
-            arena_start_ptr: 0,
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
@@ -968,7 +1008,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
                     .host_metrics
                     .stopwatch
                     .start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted(), gas)?
+                asc_new(&mut self.asc_heap, &entity.sorted_ref(), gas)?
             }
             None => match &self.ctx.debug_fork {
                 Some(fork) => {

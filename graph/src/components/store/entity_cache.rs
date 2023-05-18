@@ -1,8 +1,10 @@
 use anyhow::anyhow;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
+use crate::cheap_clone::CheapClone;
 use crate::components::store::{self as s, Entity, EntityKey, EntityOp, EntityOperation};
 use crate::data::store::IntoEntityIterator;
 use crate::prelude::ENV_VARS;
@@ -114,26 +116,39 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(&mut self, key: &EntityKey, scope: GetScope) -> Result<Option<Entity>, StoreError> {
+    pub fn get(
+        &mut self,
+        key: &EntityKey,
+        scope: GetScope,
+    ) -> Result<Option<Cow<Entity>>, StoreError> {
         // Get the current entity, apply any updates from `updates`, then
         // from `handler_updates`.
-        let mut entity = match scope {
-            GetScope::Store => self.current.get_entity(&*self.store, key)?,
+        let mut entity: Option<Cow<Entity>> = match scope {
+            GetScope::Store => {
+                if !self.current.contains_key(key) {
+                    let entity = self.store.get(key)?;
+                    self.current.insert(key.clone(), entity);
+                }
+                // Unwrap: we just inserted the entity
+                self.current.get(key).unwrap().as_ref().map(Cow::Borrowed)
+            }
             GetScope::InBlock => None,
         };
 
         // Always test the cache consistency in debug mode. The test only
         // makes sense when we were actually asked to read from the store
         debug_assert!(match scope {
-            GetScope::Store => entity == self.store.get(key).unwrap(),
+            GetScope::Store => entity == self.store.get(key).unwrap().map(Cow::Owned),
             GetScope::InBlock => true,
         });
 
         if let Some(op) = self.updates.get(key).cloned() {
-            entity = op.apply_to(entity).map_err(|e| key.unknown_attribute(e))?;
+            op.apply_to(&mut entity)
+                .map_err(|e| key.unknown_attribute(e))?;
         }
         if let Some(op) = self.handler_updates.get(key).cloned() {
-            entity = op.apply_to(entity).map_err(|e| key.unknown_attribute(e))?;
+            op.apply_to(&mut entity)
+                .map_err(|e| key.unknown_attribute(e))?;
         }
         Ok(entity)
     }
@@ -178,6 +193,7 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
+            let schema = self.schema.cheap_clone();
             let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
@@ -185,7 +201,7 @@ impl EntityCache {
                     key.entity_id
                 )
             })?;
-            entity.validate(&self.schema, &key)?;
+            entity.validate(&schema, &key)?;
         }
 
         Ok(())
@@ -313,23 +329,5 @@ impl EntityCache {
             entity_lfu_cache: self.current,
             evict_stats,
         })
-    }
-}
-
-impl LfuCache<EntityKey, Option<Entity>> {
-    // Helper for cached lookup of an entity.
-    fn get_entity(
-        &mut self,
-        store: &(impl s::ReadStore + ?Sized),
-        key: &EntityKey,
-    ) -> Result<Option<Entity>, s::QueryExecutionError> {
-        match self.get(key) {
-            None => {
-                let entity = store.get(key)?;
-                self.insert(key.clone(), entity.clone());
-                Ok(entity)
-            }
-            Some(data) => Ok(data.clone()),
-        }
     }
 }

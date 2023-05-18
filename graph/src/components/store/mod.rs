@@ -14,7 +14,7 @@ use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
@@ -1015,16 +1015,14 @@ enum EntityOp {
 }
 
 impl EntityOp {
-    fn apply_to(self, entity: Option<Entity>) -> Result<Option<Entity>, InternError> {
+    fn apply_to(self, entity: &mut Option<Cow<Entity>>) -> Result<(), InternError> {
         use EntityOp::*;
         match (self, entity) {
-            (Remove, _) => Ok(None),
-            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new)),
-            (Update(updates), Some(mut entity)) => {
-                entity.merge_remove_null_fields(updates)?;
-                Ok(Some(entity))
-            }
+            (Remove, e @ _) => *e = None,
+            (Overwrite(new), e @ _) | (Update(new), e @ None) => *e = Some(Cow::Owned(new)),
+            (Update(updates), Some(entity)) => entity.to_mut().merge_remove_null_fields(updates)?,
         }
+        Ok(())
     }
 
     fn accumulate(&mut self, next: EntityOp) {

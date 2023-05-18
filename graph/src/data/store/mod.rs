@@ -691,6 +691,12 @@ impl Entity {
         v
     }
 
+    pub fn sorted_ref(&self) -> Vec<(&str, &Value)> {
+        let mut v: Vec<_> = self.0.iter().collect();
+        v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        v
+    }
+
     fn check_id(&self) -> Result<(), Error> {
         match self.get("id") {
             None => Err(anyhow!(
