@@ -383,6 +383,15 @@ pub enum ConfigCommand {
         features: String,
         network: String,
     },
+    /// Show subgraph-specific settings
+    ///
+    /// GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS can add a file that contains
+    /// subgraph-specific settings. This command determines which settings
+    /// would apply when a subgraph <name> is deployed and prints the result
+    Setting {
+        /// The subgraph name for which to print settings
+        name: String,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1079,6 +1088,7 @@ async fn main() -> anyhow::Result<()> {
                     commands::config::provider(logger, &ctx.config, registry, features, network)
                         .await
                 }
+                Setting { name } => commands::config::setting(&name),
             }
         }
         Remove { name } => commands::remove::run(ctx.subgraph_store(), &name),
