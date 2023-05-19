@@ -132,6 +132,10 @@ impl TriggerData for NearTrigger {
             }
         }
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 pub struct ReceiptWithOutcome {

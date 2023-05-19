@@ -3,11 +3,11 @@ use graph::{
     blockchain::Blockchain,
     data_source::{
         causality_region::CausalityRegionSeq, offchain, CausalityRegion, DataSource,
-        DataSourceTemplate,
+        DataSourceTemplate, TriggerData,
     },
     prelude::*,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::OffchainMonitor;
 
@@ -24,6 +24,10 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// data sources appear in the subgraph manifest. Incoming block
     /// stream events are processed by the mappings in this same order.
     hosts: Vec<Arc<T::Host>>,
+
+    /// Addresses of `hosts`, in a set for fast lookup. This may contain false positives, that is,
+    /// addresses which are not in `hosts`. So technically it's a superset of the `host` addresses.
+    host_addresses: HashSet<Box<[u8]>>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
@@ -54,6 +58,7 @@ where
             subgraph_id,
             network,
             hosts: Vec::new(),
+            host_addresses: HashSet::new(),
             module_cache: HashMap::new(),
             templates,
             host_metrics,
@@ -111,6 +116,11 @@ where
                 sender
             }
         };
+
+        if let Some(address) = data_source.address() {
+            self.host_addresses.insert(address.into());
+        }
+
         self.host_builder.build(
             self.network.clone(),
             self.subgraph_id.clone(),
@@ -204,11 +214,37 @@ where
         }
     }
 
-    pub fn hosts(&self) -> &[Arc<T::Host>] {
-        &self.hosts
+    /// Returns all hosts which match the trigger, but may also return false positives. This is a
+    /// performance optimization to reduce the number of calls to `match_and_decode`.
+    pub fn hosts_for_trigger(
+        &self,
+        trigger: &TriggerData<C>,
+    ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
+        // If the trigger has no address, it has opted out of this optimization and might match any host.
+        let Some(address) = trigger.address_match() else {
+            return Box::new(self.hosts.iter().map(|host| host.as_ref()));
+        };
+
+        Box::new(
+            self.hosts
+                .iter()
+                .filter(move |host| match host.data_source().address() {
+                    // A host with an address may only match triggers with the same address.
+                    Some(host_address) => host_address == address,
+
+                    // A host with no address may match a trigger regardless of the trigger's address.
+                    None => true,
+                })
+                .map(|host| host.as_ref()),
+        )
     }
 
     pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
         self.causality_region_seq.next_val()
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn hosts(&self) -> &[Arc<T::Host>] {
+        &self.hosts
     }
 }

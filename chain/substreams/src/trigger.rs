@@ -30,6 +30,10 @@ impl blockchain::TriggerData for TriggerData {
     fn error_context(&self) -> String {
         "Failed to process substreams block".to_string()
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 impl ToAscPtr for TriggerData {
@@ -164,7 +168,7 @@ where
     async fn process_trigger(
         &self,
         logger: &Logger,
-        _hosts: &[Arc<T::Host>],
+        _: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
         mut state: BlockState<Chain>,

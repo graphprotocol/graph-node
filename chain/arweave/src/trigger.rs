@@ -128,6 +128,10 @@ impl TriggerData for ArweaveTrigger {
             }
         }
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 pub struct TransactionWithBlockPtr {

@@ -97,7 +97,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     ) -> Result<BlockState<C>, MappingError> {
         self.process_trigger_in_hosts(
             logger,
-            self.instance.hosts(),
+            self.instance.hosts_for_trigger(trigger),
             block,
             trigger,
             state,
@@ -113,7 +113,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub async fn process_trigger_in_hosts(
         &self,
         logger: &Logger,
-        hosts: &[Arc<T::Host>],
+        hosts: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
         state: BlockState<C>,

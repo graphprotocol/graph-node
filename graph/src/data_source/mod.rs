@@ -407,6 +407,13 @@ impl<C: Blockchain> TriggerData<C> {
             Self::Offchain(trigger) => format!("{:?}", trigger.source),
         }
     }
+
+    pub fn address_match(&self) -> Option<Vec<u8>> {
+        match self {
+            Self::Onchain(trigger) => trigger.address_match().map(|address| address.to_owned()),
+            Self::Offchain(trigger) => trigger.source.address(),
+        }
+    }
 }
 
 #[derive(Debug)]

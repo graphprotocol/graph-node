@@ -333,6 +333,14 @@ pub trait TriggerData {
     /// If there is an error when processing this trigger, this will called to add relevant context.
     /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
     fn error_context(&self) -> String;
+
+    /// If this trigger can only possibly match data sources with a specific address, then it can be
+    /// returned here for improved trigger matching performance, which helps subgraphs with many
+    /// data sources. But this optimization is not required, so returning `None` is always correct.
+    ///
+    /// When this does return `Some`, make sure that the `DataSource::address` of matching data
+    /// sources is equal to the addresssed returned here.
+    fn address_match(&self) -> Option<&[u8]>;
 }
 
 pub struct HostFnCtx<'a> {

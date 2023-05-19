@@ -343,7 +343,7 @@ where
                         .ctx
                         .process_trigger_in_hosts(
                             &logger,
-                            &runtime_hosts,
+                            Box::new(runtime_hosts.iter().map(|host| host.as_ref())),
                             &block,
                             &TriggerData::Onchain(trigger),
                             block_state,

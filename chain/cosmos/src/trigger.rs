@@ -259,6 +259,10 @@ impl TriggerData for CosmosTrigger {
             }
         }
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 #[cfg(test)]
