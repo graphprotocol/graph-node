@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::{
     anyhow::bail,
+    components::subgraph::Settings,
     endpoint::EndpointMetrics,
+    env::EnvVars,
     itertools::Itertools,
     prelude::{
         anyhow::{anyhow, Error},
@@ -39,13 +41,27 @@ pub fn check(config: &Config, print: bool) -> Result<(), Error> {
         Ok(txt) => {
             if print {
                 println!("{}", txt);
-            } else {
-                println!("Successfully validated configuration");
+                return Ok(());
             }
-            Ok(())
         }
-        Err(e) => Err(anyhow!("error serializing config: {}", e)),
+        Err(e) => bail!("error serializing config: {}", e),
     }
+
+    let env_vars = EnvVars::from_env().unwrap();
+    if let Some(path) = &env_vars.subgraph_settings {
+        match Settings::from_file(path) {
+            Ok(_) => {
+                println!("Successfully validated subgraph settings from {path}");
+            }
+            Err(e) => {
+                eprintln!("configuration error in subgraph settings {}: {}", path, e);
+                std::process::exit(1);
+            }
+        }
+    };
+
+    println!("Successfully validated configuration");
+    Ok(())
 }
 
 pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Error> {

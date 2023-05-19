@@ -17,6 +17,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockchainKind, BlockchainMap};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::{BlockStore as _, DeploymentLocator};
+use graph::components::subgraph::Settings;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
@@ -198,6 +199,7 @@ pub async fn run(
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
+        Arc::new(Settings::default()),
     ));
 
     let (name, hash) = if subgraph.contains(':') {

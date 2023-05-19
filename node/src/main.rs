@@ -9,6 +9,7 @@ use graph::blockchain::{
     BasicBlockchainBuilder, Blockchain, BlockchainBuilder, BlockchainKind, BlockchainMap,
 };
 use graph::components::store::BlockStore;
+use graph::components::subgraph::Settings;
 use graph::data::graphql::effort::LoadManager;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
@@ -137,6 +138,21 @@ async fn main() {
         }
         Ok(config) => config,
     };
+
+    let subgraph_settings = match env_vars.subgraph_settings {
+        Some(ref path) => {
+            info!(logger, "Reading subgraph configuration file `{}`", path);
+            match Settings::from_file(path) {
+                Ok(rules) => rules,
+                Err(e) => {
+                    eprintln!("configuration error in subgraph settings {}: {}", path, e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        None => Settings::default(),
+    };
+
     if opt.check_config {
         match config.to_json() {
             Ok(txt) => println!("{}", txt),
@@ -481,6 +497,7 @@ async fn main() {
             blockchain_map,
             node_id.clone(),
             version_switching_mode,
+            Arc::new(subgraph_settings),
         ));
         graph::spawn(
             subgraph_registrar

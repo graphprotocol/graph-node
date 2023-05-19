@@ -6,6 +6,7 @@ use graph::blockchain::Blockchain;
 use graph::blockchain::BlockchainKind;
 use graph::blockchain::BlockchainMap;
 use graph::components::store::{DeploymentId, DeploymentLocator, SubscriptionManager};
+use graph::components::subgraph::Settings;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::Graft;
 use graph::prelude::{
@@ -24,6 +25,7 @@ pub struct SubgraphRegistrar<P, S, SM> {
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
+    settings: Arc<Settings>,
 }
 
 impl<P, S, SM> SubgraphRegistrar<P, S, SM>
@@ -41,6 +43,7 @@ where
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
+        settings: Arc<Settings>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphRegistrar", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -58,6 +61,7 @@ where
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
+            settings,
         }
     }
 
@@ -296,6 +300,10 @@ where
         let kind = BlockchainKind::from_manifest(&raw).map_err(|e| {
             SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))
         })?;
+
+        // Give priority to deployment specific history_blocks value.
+        let history_blocks =
+            history_blocks.or(self.settings.for_name(&name).map(|c| c.history_blocks));
 
         let deployment_locator = match kind {
             BlockchainKind::Arweave => {
