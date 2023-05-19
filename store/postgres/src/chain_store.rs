@@ -973,7 +973,7 @@ mod data {
                     use public::eth_call_meta as meta;
 
                     cache::table
-                        .find(id.as_ref())
+                        .find::<&[u8]>(id.as_ref())
                         .inner_join(meta::table)
                         .select((
                             cache::return_value,
@@ -1101,7 +1101,7 @@ mod data {
                 Storage::Shared => {
                     use public::eth_call_meta as meta;
 
-                    update(meta::table.find(contract_address.as_ref()))
+                    update(meta::table.find::<&[u8]>(contract_address.as_ref()))
                         .set(meta::accessed_at.eq(sql("CURRENT_DATE")))
                         .execute(conn)
                 }

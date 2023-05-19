@@ -10,7 +10,7 @@ use graph::{
             de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer, Serialize,
         },
-        serde_json, Logger, NodeId, StoreError,
+        serde_json, serde_regex, toml, Logger, NodeId, StoreError,
     },
 };
 use graph_chain_ethereum::{self as ethereum, NodeCapabilities};
@@ -1155,7 +1155,7 @@ mod tests {
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
     use graph::prelude::regex::Regex;
-    use graph::prelude::NodeId;
+    use graph::prelude::{toml, NodeId};
     use http::{HeaderMap, HeaderValue};
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
@@ -1460,7 +1460,7 @@ mod tests {
                 details = { type = "firehose", url = "http://localhost:9000" }
                 match = [
                   { name = "some_node_.*", limit = 10 },
-                  { name = "other_node_.*", limit = 0 } ] 
+                  { name = "other_node_.*", limit = 0 } ]
             "#,
         )
         .unwrap();
@@ -1498,7 +1498,7 @@ mod tests {
                 details = { type = "substreams", url = "http://localhost:9000" }
                 match = [
                   { name = "some_node_.*", limit = 101 },
-                  { name = "other_node_.*", limit = 0 } ] 
+                  { name = "other_node_.*", limit = 0 } ]
             "#,
         )
         .unwrap();
@@ -1536,7 +1536,7 @@ mod tests {
                 details = { type = "substreams", url = "http://localhost:9000" }
                 match = [
                   { name = "some_node_.*", limit = 10 },
-                  { name = "other_node_.*", limit = 0 } ] 
+                  { name = "other_node_.*", limit = 0 } ]
             "#,
         )
         .unwrap();
@@ -1574,7 +1574,7 @@ mod tests {
                 details = { type = "substreams", url = "http://localhost:9000" }
                 match = [
                   { name = "some_node_.*", limit = 101 },
-                  { name = "other_node_.*", limit = 0 } ] 
+                  { name = "other_node_.*", limit = 0 } ]
             "#,
         )
         .unwrap();
