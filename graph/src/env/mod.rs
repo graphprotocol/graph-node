@@ -342,8 +342,7 @@ struct Inner {
     external_http_base_url: Option<String>,
     #[envconfig(from = "EXTERNAL_WS_BASE_URL")]
     external_ws_base_url: Option<String>,
-    // Setting this to be unrealistically high so it doesn't get triggered.
-    #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "100000000")]
+    #[envconfig(from = "GRAPH_STATIC_FILTERS_THRESHOLD", default = "10000")]
     static_filters_threshold: usize,
     // JSON-RPC specific.
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
