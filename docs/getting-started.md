@@ -44,7 +44,7 @@ The high-level dataflow for a dApp using The Graph is as follows:
 Three repositories are relevant to building on The Graph:
 1. [Graph Node](../README.md) – A server implementation for indexing, caching, and serving queries against data from Ethereum.
 2. [Graph CLI](https://github.com/graphprotocol/graph-cli) – A CLI for building and compiling projects that are deployed to the Graph Node.
-3. [Graph TypeScript Library](https://github.com/graphprotocol/graph-ts) – TypeScript/AssemblyScript library for writing subgraph mappings to be deployed to The Graph.
+3. [Graph TypeScript Library](https://github.com/graphprotocol/graph-tooling/tree/main/packages/ts) – TypeScript/AssemblyScript library for writing subgraph mappings to be deployed to The Graph.
 
 ### 0.4 Getting Started Overview
 Below, we outline the required steps to build a subgraph from scratch, which will serve queries from a GraphQL endpoint. The three major steps are:
