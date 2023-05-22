@@ -416,10 +416,10 @@ pub enum MappingTrigger<C: Blockchain> {
 }
 
 impl<C: Blockchain> MappingTrigger<C> {
-    pub fn error_context(&self) -> String {
+    pub fn error_context(&self) -> Option<String> {
         match self {
-            Self::Onchain(trigger) => trigger.error_context(),
-            Self::Offchain(trigger) => format!("{:?}", trigger.source),
+            Self::Onchain(trigger) => Some(trigger.error_context()),
+            Self::Offchain(_) => None, // TODO: Add error context for offchain triggers
         }
     }
 }
