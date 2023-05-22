@@ -167,7 +167,7 @@ pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {
 
     /// Decoded trigger ready to be processed by the mapping.
     /// New implementations should have this be the same as `TriggerData`.
-    type MappingTrigger: Send + Sync + Debug;
+    type MappingTrigger: MappingTriggerTrait + Send + Sync + Debug;
 
     /// Trigger filter used as input to the triggers adapter.
     type TriggerFilter: TriggerFilter<Self>;
@@ -330,6 +330,12 @@ pub trait UnresolvedDataSource<C: Blockchain>:
 }
 
 pub trait TriggerData {
+    /// If there is an error when processing this trigger, this will called to add relevant context.
+    /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
+    fn error_context(&self) -> String;
+}
+
+pub trait MappingTriggerTrait {
     /// If there is an error when processing this trigger, this will called to add relevant context.
     /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
     fn error_context(&self) -> String;

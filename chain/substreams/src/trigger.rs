@@ -2,7 +2,9 @@ use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::Error;
 use graph::{
-    blockchain::{self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities},
+    blockchain::{
+        self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
+    },
     components::{
         store::{DeploymentLocator, EntityKey, EntityType, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
@@ -24,6 +26,12 @@ use crate::{codec::entity_change::Operation, Block, Chain, NoopDataSourceTemplat
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct TriggerData {}
+
+impl MappingTriggerTrait for TriggerData {
+    fn error_context(&self) -> String {
+        "Failed to process substreams block".to_string()
+    }
+}
 
 impl blockchain::TriggerData for TriggerData {
     // TODO(filipe): Can this be improved with some data from the block?
