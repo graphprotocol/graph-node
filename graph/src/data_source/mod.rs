@@ -8,8 +8,8 @@ mod tests;
 
 use crate::{
     blockchain::{
-        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, TriggerData as _,
-        UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
+        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
+        TriggerData as _, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
     },
     components::{
         link_resolver::LinkResolver,
@@ -413,6 +413,15 @@ impl<C: Blockchain> TriggerData<C> {
 pub enum MappingTrigger<C: Blockchain> {
     Onchain(C::MappingTrigger),
     Offchain(offchain::TriggerData),
+}
+
+impl<C: Blockchain> MappingTrigger<C> {
+    pub fn error_context(&self) -> String {
+        match self {
+            Self::Onchain(trigger) => trigger.error_context(),
+            Self::Offchain(trigger) => format!("{:?}", trigger.source),
+        }
+    }
 }
 
 macro_rules! clone_data_source {

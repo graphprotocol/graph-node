@@ -14,7 +14,8 @@ use std::{convert::TryFrom, sync::Arc};
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
-    BlockIngestor, EmptyNodeCapabilities, HostFn, IngestorError, TriggerWithHandler,
+    BlockIngestor, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
+    TriggerWithHandler,
 };
 
 use super::{
@@ -224,6 +225,11 @@ impl TriggerData for MockTriggerData {
 #[derive(Debug)]
 pub struct MockMappingTrigger {}
 
+impl MappingTriggerTrait for MockMappingTrigger {
+    fn error_context(&self) -> String {
+        todo!()
+    }
+}
 #[derive(Clone, Default)]
 pub struct MockTriggerFilter;
 

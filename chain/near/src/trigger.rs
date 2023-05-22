@@ -1,4 +1,5 @@
 use graph::blockchain::Block;
+use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::cheap_clone::CheapClone;
 use graph::prelude::hex;
@@ -91,6 +92,22 @@ impl NearTrigger {
             NearTrigger::Receipt(receipt) => receipt.block.ptr().hash_as_h256(),
         }
     }
+
+    fn error_context(&self) -> std::string::String {
+        match self {
+            NearTrigger::Block(..) => {
+                format!("Block #{} ({})", self.block_number(), self.block_hash())
+            }
+            NearTrigger::Receipt(receipt) => {
+                format!(
+                    "receipt id {}, block #{} ({})",
+                    hex::encode(&receipt.receipt.receipt_id.as_ref().unwrap().bytes),
+                    self.block_number(),
+                    self.block_hash()
+                )
+            }
+        }
+    }
 }
 
 impl Ord for NearTrigger {
@@ -117,20 +134,14 @@ impl PartialOrd for NearTrigger {
 }
 
 impl TriggerData for NearTrigger {
-    fn error_context(&self) -> std::string::String {
-        match self {
-            NearTrigger::Block(..) => {
-                format!("Block #{} ({})", self.block_number(), self.block_hash())
-            }
-            NearTrigger::Receipt(receipt) => {
-                format!(
-                    "receipt id {}, block #{} ({})",
-                    hex::encode(&receipt.receipt.receipt_id.as_ref().unwrap().bytes),
-                    self.block_number(),
-                    self.block_hash()
-                )
-            }
-        }
+    fn error_context(&self) -> String {
+        self.error_context()
+    }
+}
+
+impl MappingTriggerTrait for NearTrigger {
+    fn error_context(&self) -> String {
+        self.error_context()
     }
 }
 
