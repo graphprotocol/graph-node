@@ -981,6 +981,44 @@ impl<'a> Connection<'a> {
         }
     }
 
+    pub fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let conn = self.conn.as_ref();
+
+        let updates = update(a::table.filter(a::id.eq(site.id)))
+            .set(a::paused_at.eq(sql("now()")))
+            .execute(conn)?;
+        match updates {
+            0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
+            1 => Ok(()),
+            _ => {
+                // `id` is the primary key of the subgraph_deployment_assignment table,
+                // and we can therefore only update no or one entry
+                unreachable!()
+            }
+        }
+    }
+
+    pub fn resume_subgraph(&self, site: &Site) -> Result<(), StoreError> {
+        use subgraph_deployment_assignment as a;
+
+        let conn = self.conn.as_ref();
+
+        let updates = update(a::table.filter(a::id.eq(site.id)))
+            .set(a::paused_at.eq(sql("null")))
+            .execute(conn)?;
+        match updates {
+            0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
+            1 => Ok(()),
+            _ => {
+                // `id` is the primary key of the subgraph_deployment_assignment table,
+                // and we can therefore only update no or one entry
+                unreachable!()
+            }
+        }
+    }
+
     pub fn reassign_subgraph(
         &self,
         site: &Site,
