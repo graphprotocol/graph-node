@@ -95,6 +95,15 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     fn assigned_node(&self, deployment: &DeploymentLocator) -> Result<Option<NodeId>, StoreError>;
 
+    /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
+    /// the subgraph is assigned to, and `is_paused` is true if the
+    /// subgraph is paused.
+    /// Returns None if the deployment does not exist.
+    fn assignment_status(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Option<(NodeId, bool)>, StoreError>;
+
     fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
