@@ -93,6 +93,8 @@ table! {
     subgraphs.subgraph_deployment_assignment {
         id -> Integer,
         node_id -> Text,
+        paused_at -> Nullable<Timestamptz>,
+        assigned_at -> Nullable<Timestamptz>,
     }
 }
 
