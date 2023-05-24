@@ -85,15 +85,23 @@ pub fn pause_or_resume(
         .locate_site(locator.clone())?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
-    if pause {
-        println!("pausing {locator}");
-        conn.pause_subgraph(&site)?;
-        println!("paused {locator}")
-    } else {
-        println!("resuming {locator}");
-        conn.resume_subgraph(&site)?;
-        println!("resumed {locator}")
-    }
+    let change = match conn.assignment_status(&site)? {
+        Some((_, paused)) => {
+            if paused == pause {
+                println!("deployment {locator} is already {paused}");
+                vec![]
+            } else {
+                println!("pausing {locator}");
+                conn.pause_subgraph(&site)?
+            }
+        }
+        None => {
+            println!("resuming {locator}");
+            conn.resume_subgraph(&site)?
+        }
+    };
+    println!("Operation completed");
+    conn.send_store_event(sender, &StoreEvent::new(change))?;
 
     Ok(())
 }

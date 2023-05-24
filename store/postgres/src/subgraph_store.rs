@@ -1286,6 +1286,18 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.assigned_node(site.as_ref())
     }
 
+    /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
+    /// the subgraph is assigned to, and `is_paused` is true if the
+    /// subgraph is paused.
+    /// Returns None if the deployment does not exist.
+    fn assignment_status(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<Option<(NodeId, bool)>, StoreError> {
+        let site = self.find_site(deployment.id.into())?;
+        self.mirror.assignment_status(site.as_ref())
+    }
+
     fn assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
         self.mirror
             .assignments(node)

@@ -171,13 +171,20 @@ where
                     match operation {
                         EntityChangeOperation::Set => {
                             store
-                                .assigned_node(&deployment)
+                                .assignment_status(&deployment)
                                 .map_err(|e| {
                                     anyhow!("Failed to get subgraph assignment entity: {}", e)
                                 })
                                 .map(|assigned| -> Box<dyn Stream<Item = _, Error = _> + Send> {
-                                    if let Some(assigned) = assigned {
+                                    if let Some((assigned,is_paused)) = assigned {
                                         if assigned == node_id {
+
+                                            if is_paused{
+                                                // Subgraph is paused, so we don't start it
+                                                debug!(logger, "Deployment assignee is this node, but it is paused, so we don't start it"; "assigned_to" => assigned, "node_id" => &node_id,"paused" => is_paused);
+                                                return Box::new(stream::empty());
+                                            }
+
                                             // Start subgraph on this node
                                             debug!(logger, "Deployment assignee is this node, broadcasting add event"; "assigned_to" => assigned, "node_id" => &node_id);
                                             Box::new(stream::once(Ok(AssignmentEvent::Add {
