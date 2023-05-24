@@ -158,6 +158,16 @@ pub enum Command {
         /// The deployment (see `help info`)
         deployment: DeploymentSearch,
     },
+    /// Pause a deployment
+    Pause {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+    },
+    /// Resume a deployment
+    Resume {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+    },
     /// Rewind a subgraph to a specific block
     Rewind {
         /// Force rewinding even if the block hash is not found in the local
@@ -1090,6 +1100,14 @@ async fn main() -> anyhow::Result<()> {
         Reassign { deployment, node } => {
             let sender = ctx.notification_sender();
             commands::assign::reassign(ctx.primary_pool(), &sender, &deployment, node)
+        }
+        Pause { deployment } => {
+            let sender = ctx.notification_sender();
+            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, true)
+        }
+        Resume { deployment } => {
+            let sender = ctx.notification_sender();
+            commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, false)
         }
         Rewind {
             force,

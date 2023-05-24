@@ -69,3 +69,31 @@ pub fn reassign(
     }
     Ok(())
 }
+
+pub fn pause_or_resume(
+    primary: ConnectionPool,
+    sender: &NotificationSender,
+    search: &DeploymentSearch,
+    pause: bool,
+) -> Result<(), Error> {
+    let locator = search.locate_unique(&primary)?;
+
+    let conn = primary.get()?;
+    let conn = catalog::Connection::new(conn);
+
+    let site = conn
+        .locate_site(locator.clone())?
+        .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
+
+    if pause {
+        println!("pausing {locator}");
+        conn.pause_subgraph(&site)?;
+        println!("paused {locator}")
+    } else {
+        println!("resuming {locator}");
+        conn.resume_subgraph(&site)?;
+        println!("resumed {locator}")
+    }
+
+    Ok(())
+}
