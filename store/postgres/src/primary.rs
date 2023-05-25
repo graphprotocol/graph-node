@@ -588,6 +588,22 @@ mod queries {
             .collect::<Result<Vec<Site>, _>>()
     }
 
+    // All assignments for a node that are currently not paused
+    pub(super) fn active_assignments(
+        conn: &PgConnection,
+        node: &NodeId,
+    ) -> Result<Vec<Site>, StoreError> {
+        ds::table
+            .inner_join(a::table.on(a::id.eq(ds::id)))
+            .filter(a::node_id.eq(node.as_str()))
+            .filter(a::paused_at.is_null())
+            .select(ds::all_columns)
+            .load::<Schema>(conn)?
+            .into_iter()
+            .map(Site::try_from)
+            .collect::<Result<Vec<Site>, _>>()
+    }
+
     pub(super) fn fill_assignments(
         conn: &PgConnection,
         infos: &mut [status::Info],
@@ -1801,6 +1817,10 @@ impl Mirror {
 
     pub fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
         self.read(|conn| queries::assignments(conn, node))
+    }
+
+    pub fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
+        self.read(|conn| queries::active_assignments(conn, node))
     }
 
     pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {

@@ -74,7 +74,7 @@ pub fn pause_or_resume(
     primary: ConnectionPool,
     sender: &NotificationSender,
     search: &DeploymentSearch,
-    pause: bool,
+    should_pause: bool,
 ) -> Result<(), Error> {
     let locator = search.locate_unique(&primary)?;
 
@@ -86,18 +86,22 @@ pub fn pause_or_resume(
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
     let change = match conn.assignment_status(&site)? {
-        Some((_, paused)) => {
-            if paused == pause {
-                println!("deployment {locator} is already {paused}");
-                vec![]
-            } else {
+        Some((_, is_paused)) => {
+            if should_pause {
+                if is_paused {
+                    println!("deployment {locator} is already paused");
+                    return Ok(());
+                }
                 println!("pausing {locator}");
                 conn.pause_subgraph(&site)?
+            } else {
+                println!("resuming {locator}");
+                conn.resume_subgraph(&site)?
             }
         }
         None => {
-            println!("resuming {locator}");
-            conn.resume_subgraph(&site)?
+            println!("deployment {locator} not found");
+            return Ok(());
         }
     };
     println!("Operation completed");
