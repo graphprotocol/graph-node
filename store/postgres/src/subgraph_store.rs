@@ -1304,6 +1304,12 @@ impl SubgraphStoreTrait for SubgraphStore {
             .map(|sites| sites.iter().map(|site| site.into()).collect())
     }
 
+    fn active_assignments(&self, node: &NodeId) -> Result<Vec<DeploymentLocator>, StoreError> {
+        self.mirror
+            .active_assignments(node)
+            .map(|sites| sites.iter().map(|site| site.into()).collect())
+    }
+
     fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.mirror.subgraph_exists(name)
     }

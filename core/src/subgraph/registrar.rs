@@ -222,7 +222,7 @@ where
         let logger = self.logger.clone();
         let node_id = self.node_id.clone();
 
-        future::result(self.store.assignments(&self.node_id))
+        future::result(self.store.active_assignments(&self.node_id))
             .map_err(|e| anyhow!("Error querying subgraph assignments: {}", e))
             .and_then(move |deployments| {
                 // This operation should finish only after all subgraphs are
