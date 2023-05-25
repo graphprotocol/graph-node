@@ -3,7 +3,7 @@ use graph::{
     blockchain::Blockchain,
     data_source::{
         causality_region::CausalityRegionSeq, offchain, CausalityRegion, DataSource,
-        DataSourceTemplate,
+        DataSourceTemplate, TriggerData,
     },
     prelude::*,
 };
@@ -18,12 +18,8 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     templates: Arc<Vec<DataSourceTemplate<C>>>,
     host_metrics: Arc<HostMetrics>,
 
-    /// Runtime hosts, one for each data source mapping.
-    ///
-    /// The runtime hosts are created and added in the same order the
-    /// data sources appear in the subgraph manifest. Incoming block
-    /// stream events are processed by the mappings in this same order.
-    hosts: Vec<Arc<T::Host>>,
+    /// The hosts represent the data sources in the subgraph. There is one host per data source.
+    hosts: Hosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
@@ -53,7 +49,7 @@ where
             host_builder,
             subgraph_id,
             network,
-            hosts: Vec::new(),
+            hosts: Hosts::new(),
             module_cache: HashMap::new(),
             templates,
             host_metrics,
@@ -111,6 +107,7 @@ where
                 sender
             }
         };
+
         self.host_builder.build(
             self.network.clone(),
             self.subgraph_id.clone(),
@@ -148,7 +145,7 @@ where
 
         let host = Arc::new(self.new_host(logger.clone(), data_source, &module_bytes)?);
 
-        Ok(if self.hosts.contains(&host) {
+        Ok(if self.hosts.hosts().contains(&host) {
             None
         } else {
             self.hosts.push(host.clone());
@@ -180,6 +177,7 @@ where
         }
 
         self.hosts
+            .hosts()
             .iter()
             .filter(|host| matches!(host.done_at(), Some(done_at) if done_at >= reverted_block))
             .map(|host| {
@@ -204,11 +202,121 @@ where
         }
     }
 
-    pub fn hosts(&self) -> &[Arc<T::Host>] {
-        &self.hosts
+    /// Returns all hosts which match the trigger's address.
+    /// This is a performance optimization to reduce the number of calls to `match_and_decode`.
+    pub fn hosts_for_trigger(
+        &self,
+        trigger: &TriggerData<C>,
+    ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
+        self.hosts.iter_by_address(trigger.address_match())
     }
 
     pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
         self.causality_region_seq.next_val()
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn hosts(&self) -> &[Arc<T::Host>] {
+        &self.hosts.hosts()
+    }
+}
+
+/// Runtime hosts, one for each data source mapping.
+///
+/// The runtime hosts are created and added to the vec in the same order the data sources appear in
+/// the subgraph manifest. Incoming block stream events are processed by the mappings in this same
+/// order.
+///
+/// This structure also maintains a partition of the hosts by address, for faster trigger matching.
+/// This partition uses the host's index in the main vec, to maintain the correct ordering.
+struct Hosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
+    hosts: Vec<Arc<T::Host>>,
+
+    // The `usize` is the index of the host in `hosts`.
+    hosts_by_address: HashMap<Box<[u8]>, Vec<usize>>,
+    hosts_without_address: Vec<usize>,
+}
+
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
+    fn new() -> Self {
+        Self {
+            hosts: Vec::new(),
+            hosts_by_address: HashMap::new(),
+            hosts_without_address: Vec::new(),
+        }
+    }
+
+    fn hosts(&self) -> &[Arc<T::Host>] {
+        &self.hosts
+    }
+
+    fn last(&self) -> Option<&Arc<T::Host>> {
+        self.hosts.last()
+    }
+
+    fn len(&self) -> usize {
+        self.hosts.len()
+    }
+
+    fn push(&mut self, host: Arc<T::Host>) {
+        self.hosts.push(host.cheap_clone());
+        let idx = self.hosts.len() - 1;
+        let address = host.data_source().address();
+        match address {
+            Some(address) => {
+                self.hosts_by_address
+                    .entry(address.into())
+                    .or_default()
+                    .push(idx);
+            }
+            None => {
+                self.hosts_without_address.push(idx);
+            }
+        }
+    }
+
+    fn pop(&mut self) {
+        let Some(host) = self.hosts.pop() else { return };
+        let address = host.data_source().address();
+        match address {
+            Some(address) => {
+                // Unwrap and assert: The same host we just popped must be the last one in `hosts_by_address`.
+                let hosts = self.hosts_by_address.get_mut(address.as_slice()).unwrap();
+                let idx = hosts.pop().unwrap();
+                assert_eq!(idx, self.hosts.len());
+            }
+            None => {
+                // Unwrap and assert: The same host we just popped must be the last one in `hosts_without_address`.
+                let idx = self.hosts_without_address.pop().unwrap();
+                assert_eq!(idx, self.hosts.len());
+            }
+        }
+    }
+
+    /// Returns an iterator over all hosts that match the given address, in the order they were inserted in `hosts`.
+    /// Note that this always includes the hosts without an address, since they match all addresses.
+    /// If no address is provided, returns an iterator over all hosts.
+    fn iter_by_address(
+        &self,
+        address: Option<Vec<u8>>,
+    ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
+        let Some(address) = address else {
+            return Box::new(self.hosts.iter().map(|host| host.as_ref()));
+        };
+
+        let mut matching_hosts: Vec<usize> = self
+            .hosts_by_address
+            .get(address.as_slice())
+            .into_iter()
+            .flatten() // Flatten non-existing `address` into empty.
+            .copied()
+            .chain(self.hosts_without_address.iter().copied())
+            .collect();
+        matching_hosts.sort();
+        Box::new(
+            matching_hosts
+                .into_iter()
+                .map(move |idx| self.hosts[idx].as_ref()),
+        )
     }
 }

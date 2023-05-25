@@ -198,12 +198,8 @@ impl DataSource {
         })
     }
 
-    /// The concept of an address may or not make sense for an offchain data source, but this is
-    /// used as the value to be returned to mappings from the `dataSource.address()` host function.
     pub fn address(&self) -> Option<Vec<u8>> {
-        match self.source {
-            Source::Ipfs(ref cid) => Some(cid.to_bytes()),
-        }
+        self.source.address()
     }
 
     pub(super) fn is_duplicate_of(&self, b: &DataSource) -> bool {
@@ -239,6 +235,20 @@ impl DataSource {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
     Ipfs(CidFile),
+}
+
+impl Source {
+    /// The concept of an address may or not make sense for an offchain data source, but graph node
+    /// will use this in a few places where some sort of not necessarily unique id is useful:
+    /// 1. This is used as the value to be returned to mappings from the `dataSource.address()` host
+    ///    function, so changing this is a breaking change.
+    /// 2. This is used to match with triggers with hosts in `fn hosts_for_trigger`, so make sure
+    ///    the `source` of the data source is equal the `source` of the `TriggerData`.
+    pub fn address(&self) -> Option<Vec<u8>> {
+        match self {
+            Source::Ipfs(ref cid) => Some(cid.to_bytes()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

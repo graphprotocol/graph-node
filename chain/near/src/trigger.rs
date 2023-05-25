@@ -143,6 +143,10 @@ impl MappingTriggerTrait for NearTrigger {
     fn error_context(&self) -> String {
         self.error_context()
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 pub struct ReceiptWithOutcome {

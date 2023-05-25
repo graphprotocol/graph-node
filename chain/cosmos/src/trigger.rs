@@ -214,6 +214,10 @@ impl CosmosTrigger {
             }
         }
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 impl Ord for CosmosTrigger {

@@ -282,6 +282,20 @@ impl EthereumTrigger {
             EthereumTrigger::Log(log, _) => log.block_hash.unwrap(),
         }
     }
+
+    /// `None` means the trigger matches any address.
+    pub fn address(&self) -> Option<&Address> {
+        match self {
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::WithCallTo(address)) => {
+                Some(address)
+            }
+            EthereumTrigger::Call(call) => Some(&call.to),
+            EthereumTrigger::Log(log, _) => Some(&log.address),
+
+            // Unfiltered block triggers match any data source address.
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => None,
+        }
+    }
 }
 
 impl Ord for EthereumTrigger {
@@ -347,6 +361,10 @@ impl TriggerData for EthereumTrigger {
             ),
             None => String::new(),
         }
+    }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        self.address().map(|address| address.as_bytes())
     }
 }
 

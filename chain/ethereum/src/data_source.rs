@@ -504,20 +504,13 @@ impl DataSource {
     }
 
     fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
-        let ds_address = match self.address {
-            Some(addr) => addr,
-
+        let Some(ds_address) = self.address else {
             // 'wildcard' data sources match any trigger address.
-            None => return true,
+            return true
         };
 
-        let trigger_address = match trigger {
-            EthereumTrigger::Block(_, EthereumBlockTriggerType::WithCallTo(address)) => address,
-            EthereumTrigger::Call(call) => &call.to,
-            EthereumTrigger::Log(log, _) => &log.address,
-
-            // Unfiltered block triggers match any data source address.
-            EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => return true,
+        let Some(trigger_address) = trigger.address() else {
+             return true
         };
 
         ds_address == *trigger_address

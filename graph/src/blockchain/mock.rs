@@ -220,6 +220,10 @@ impl TriggerData for MockTriggerData {
     fn error_context(&self) -> String {
         todo!()
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 #[derive(Debug)]

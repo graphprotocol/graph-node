@@ -139,6 +139,10 @@ impl MappingTriggerTrait for ArweaveTrigger {
     fn error_context(&self) -> String {
         self.error_context()
     }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
+    }
 }
 
 pub struct TransactionWithBlockPtr {
