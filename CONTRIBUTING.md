@@ -15,7 +15,7 @@ Install development helpers:
 
 ```sh
 cargo install cargo-watch
-rustup component add rustfmt-preview
+rustup component add rustfmt
 ```
 
 Set environment variables:
