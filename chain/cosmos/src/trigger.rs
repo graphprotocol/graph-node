@@ -214,10 +214,6 @@ impl CosmosTrigger {
             }
         }
     }
-
-    fn address_match(&self) -> Option<&[u8]> {
-        None
-    }
 }
 
 impl Ord for CosmosTrigger {
@@ -266,6 +262,10 @@ impl PartialOrd for CosmosTrigger {
 impl TriggerData for CosmosTrigger {
     fn error_context(&self) -> String {
         self.error_context()
+    }
+
+    fn address_match(&self) -> Option<&[u8]> {
+        None
     }
 }
 
