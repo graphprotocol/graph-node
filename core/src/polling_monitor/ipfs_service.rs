@@ -30,8 +30,9 @@ pub fn ipfs_service(
         .service_fn(move |req| ipfs.cheap_clone().call_inner(req))
         .boxed();
 
-    // The `Buffer` makes it so the rate and concurrency limit are shared among clones.
-    Buffer::new(svc, 1)
+    // The `Buffer` makes it so the rate limit is shared among clones.
+    // Make it unbounded to avoid any risk of starvation.
+    Buffer::new(svc, u32::MAX as usize)
 }
 
 #[derive(Clone)]
