@@ -98,7 +98,7 @@ impl<T> Queue<T> {
 /// `Option`, to represent the object not being found.
 pub fn spawn_monitor<ID, S, E, Res: Send + 'static>(
     service: S,
-    response_sender: mpsc::Sender<(ID, Res)>,
+    response_sender: mpsc::UnboundedSender<(ID, Res)>,
     logger: Logger,
     metrics: PollingMonitorMetrics,
 ) -> PollingMonitor<ID>
@@ -149,10 +149,13 @@ where
             let mut backoffs = Backoffs::new();
             let mut responses = service.call_all(queue_to_stream).unordered().boxed();
             while let Some(response) = responses.next().await {
+                // Note: Be careful not to `await` within this loop, as that could block requests in
+                // the `CallAll` from being polled. This can cause starvation as those requests may
+                // be holding on to resources such as slots for concurrent calls.
                 match response {
                     Ok((id, Some(response))) => {
                         backoffs.remove(&id);
-                        let send_result = response_sender.send((id, response)).await;
+                        let send_result = response_sender.send((id, response));
                         if send_result.is_err() {
                             // The receiver has been dropped, cancel this task.
                             break;
@@ -250,10 +253,10 @@ mod tests {
     fn setup() -> (
         mock::Handle<&'static str, Option<&'static str>>,
         PollingMonitor<&'static str>,
-        mpsc::Receiver<(&'static str, &'static str)>,
+        mpsc::UnboundedReceiver<(&'static str, &'static str)>,
     ) {
         let (svc, handle) = mock::pair();
-        let (tx, rx) = mpsc::channel(10);
+        let (tx, rx) = mpsc::unbounded_channel();
         let monitor = spawn_monitor(svc, tx, log::discard(), PollingMonitorMetrics::mock());
         (handle, monitor, rx)
     }
@@ -263,7 +266,7 @@ mod tests {
         let (svc, mut handle) = mock::pair();
         let shared_svc = tower::buffer::Buffer::new(tower::limit::ConcurrencyLimit::new(svc, 1), 1);
         let make_monitor = |svc| {
-            let (tx, rx) = mpsc::channel(10);
+            let (tx, rx) = mpsc::unbounded_channel();
             let metrics = PollingMonitorMetrics::mock();
             let monitor = spawn_monitor(svc, tx, log::discard(), metrics);
             (monitor, rx)
