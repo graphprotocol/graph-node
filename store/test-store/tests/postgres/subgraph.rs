@@ -506,7 +506,7 @@ fn subgraph_error() {
 
         assert!(count() == 0);
 
-        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error])
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error], false)
             .await
             .unwrap();
         assert!(count() == 1);
@@ -520,7 +520,7 @@ fn subgraph_error() {
         };
 
         // Inserting the same error is allowed but ignored.
-        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error])
+        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error], false)
             .await
             .unwrap();
         assert!(count() == 1);
@@ -533,10 +533,68 @@ fn subgraph_error() {
             deterministic: false,
         };
 
-        transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2])
+        transact_errors(&store, &deployment, BLOCKS[3].clone(), vec![error2], false)
             .await
             .unwrap();
         assert!(count() == 2);
+
+        test_store::remove_subgraph(&subgraph_id);
+    })
+}
+
+#[test]
+fn subgraph_non_fatal_error() {
+    test_store::run_test_sequentially(|store| async move {
+        let subgraph_store = store.subgraph_store();
+        let subgraph_id = DeploymentHash::new("subgraph_non_fatal_error").unwrap();
+        let deployment =
+            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
+
+        let count = || -> usize {
+            let store = store.subgraph_store();
+            let count = store.error_count(&subgraph_id).unwrap();
+            println!("count: {}", count);
+            count
+        };
+
+        let error = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test".to_string(),
+            block_ptr: Some(BLOCKS[1].clone()),
+            handler: None,
+            deterministic: true,
+        };
+
+        assert!(count() == 0);
+
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error], true)
+            .await
+            .unwrap();
+        assert!(count() == 1);
+
+        let info = subgraph_store.status_for_id(deployment.id);
+
+        assert!(info.non_fatal_errors.len() == 1);
+        assert!(info.health == SubgraphHealth::Unhealthy);
+
+        let error2 = SubgraphError {
+            subgraph_id: subgraph_id.clone(),
+            message: "test2".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: false,
+        };
+
+        // Inserting non deterministic errors will increase error count but not count of non fatal errors
+        transact_errors(&store, &deployment, BLOCKS[2].clone(), vec![error2], false)
+            .await
+            .unwrap();
+        assert!(count() == 2);
+
+        let info = subgraph_store.status_for_id(deployment.id);
+
+        assert!(info.non_fatal_errors.len() == 1);
+        assert!(info.health == SubgraphHealth::Unhealthy);
 
         test_store::remove_subgraph(&subgraph_id);
     })
@@ -592,7 +650,7 @@ fn fatal_vs_non_fatal() {
             .await
             .unwrap());
 
-        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()])
+        transact_errors(&store, &deployment, BLOCKS[1].clone(), vec![error()], false)
             .await
             .unwrap();
 
