@@ -8,6 +8,7 @@
     "create:test": "graph create test/api-version-v0-0-4 --node $GRAPH_NODE_ADMIN_URI",
     "deploy:test": "graph deploy test/api-version-v0-0-4 --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
+  "note": "Do not update the dependencies below - we want to make sure it's backward comaptible, so we are using an old CLI version on purpose.",
   "devDependencies": {
     "@graphprotocol/graph-cli": "https://github.com/graphprotocol/graph-cli#v0.21.1",
     "@graphprotocol/graph-ts": "https://github.com/graphprotocol/graph-ts#v0.21.1",

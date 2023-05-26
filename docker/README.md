@@ -59,7 +59,7 @@ can access these via:
   - `postgresql://graph-node:let-me-in@localhost:5432/graph-node`
 
 Once this is up and running, you can use
-[`graph-cli`](https://github.com/graphprotocol/graph-cli) to create and
+[`graph-cli`](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli) to create and
 deploy your subgraph to the running Graph Node.
   
 ### Running Graph Node on an Macbook M1

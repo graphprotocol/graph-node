@@ -256,22 +256,22 @@ Just like in the `server` crate, you'll just have to handle the new `BlockchainK
 
 ## What else?
 
-Besides making `graph-node` support the new chain, [graph-cli](https://github.com/graphprotocol/graph-cli) and [graph-ts](https://github.com/graphprotocol/graph-ts) should also include the new types and enable the new functionality so that subgraph developers can use it.
+Besides making `graph-node` support the new chain, [graph-cli](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli) and [graph-ts](https://github.com/graphprotocol/graph-tooling/tree/main/packages/ts) should also include the new types and enable the new functionality so that subgraph developers can use it.
 
 For now this document doesn't include how to do that integration, here are a few PRs that might help you with that:
 
 - NEAR
   - `graph-cli`
-    - https://github.com/graphprotocol/graph-cli/pull/760
-    - https://github.com/graphprotocol/graph-cli/pull/783
+    - https://github.com/graphprotocol/graph-tooling/pull/760
+    - https://github.com/graphprotocol/graph-tooling/pull/783
   - `graph-ts`
     - https://github.com/graphprotocol/graph-ts/pull/210
     - https://github.com/graphprotocol/graph-ts/pull/217
 - Cosmos
   - `graph-cli`
-    - https://github.com/graphprotocol/graph-cli/pull/827
-    - https://github.com/graphprotocol/graph-cli/pull/851
-    - https://github.com/graphprotocol/graph-cli/pull/888
+    - https://github.com/graphprotocol/graph-tooling/pull/827
+    - https://github.com/graphprotocol/graph-tooling/pull/851
+    - https://github.com/graphprotocol/graph-toolingpull/888
   - `graph-ts`
     - https://github.com/graphprotocol/graph-ts/pull/250
     - https://github.com/graphprotocol/graph-ts/pull/273

@@ -1,6 +1,6 @@
 # Runtime tests
 
-These are the unit tests that check if the WASM runtime code is working. For now we only run code compiled from the [`AssemblyScript`](https://www.assemblyscript.org/) language, which is done by [`asc`](https://github.com/AssemblyScript/assemblyscript) (the AssemblyScript Compiler) in our [`CLI`](https://github.com/graphprotocol/graph-cli).
+These are the unit tests that check if the WASM runtime code is working. For now we only run code compiled from the [`AssemblyScript`](https://www.assemblyscript.org/) language, which is done by [`asc`](https://github.com/AssemblyScript/assemblyscript) (the AssemblyScript Compiler) in our [`CLI`](https://github.com/graphprotocol/graph-tooling/tree/main/packages/cli).
 
 We support two versions of their compiler/language for now:
 
