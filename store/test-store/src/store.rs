@@ -207,11 +207,14 @@ pub fn remove_subgraph(id: &DeploymentHash) {
 }
 
 /// Transact errors for this block and wait until changes have been written
+/// Takes store, deployment, block ptr to, errors, and a bool indicating whether
+/// nonFatalErrors are active
 pub async fn transact_errors(
     store: &Arc<Store>,
     deployment: &DeploymentLocator,
     block_ptr_to: BlockPtr,
     errs: Vec<SubgraphError>,
+    is_non_fatal_errors_active: bool,
 ) -> Result<(), StoreError> {
     let metrics_registry = Arc::new(MetricsRegistry::mock());
     let stopwatch_metrics = StopwatchMetrics::new(
@@ -232,7 +235,7 @@ pub async fn transact_errors(
             Vec::new(),
             errs,
             Vec::new(),
-            false,
+            is_non_fatal_errors_active,
         )
         .await?;
     flush(deployment).await

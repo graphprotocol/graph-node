@@ -225,6 +225,7 @@ specVersion: 0.0.2
             &deployment,
             test_store::BLOCKS[1].clone(),
             vec![error],
+            false,
         )
         .await
         .unwrap();
@@ -336,6 +337,7 @@ specVersion: 0.0.2
             &deployment,
             test_store::BLOCKS[1].clone(),
             vec![error],
+            false,
         )
         .await
         .unwrap();

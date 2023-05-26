@@ -2439,7 +2439,7 @@ fn non_fatal_errors() {
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], true)
             .await
             .unwrap();
 
@@ -2545,7 +2545,7 @@ fn deterministic_error() {
             deterministic: true,
         };
 
-        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err])
+        transact_errors(&STORE, &deployment, BLOCK_TWO.block_ptr(), vec![err], false)
             .await
             .unwrap();
 
