@@ -16,7 +16,7 @@ body:
     id: graph-node-logs
     attributes:
       label: Relevant log output
-      description: Please copy and paste any relevant log output (either graph-node or hosted service logs). This will be automatically formatted into code, so no need for backticks. Leave black if it doesn't apply.
+      description: Please copy and paste any relevant log output (either graph-node or hosted service logs). This will be automatically formatted into code, so no need for backticks. Leave blank if it doesn't apply.
       render: Shell
   - type: markdown
     attributes:
