@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use store::Entity;
 
 use crate::cheap_clone::CheapClone;
@@ -182,38 +182,41 @@ impl InputSchema {
         }
     }
 
-    /// Construct a value for the entity type's id attribute
-    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
+    pub fn id_type(&self, entity_type: &EntityType) -> Result<store::IdType, Error> {
         let base_type = self
             .inner
             .schema
             .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type
-                )
-            })?
+            .get_object_type_definition(entity_type.as_str())
+            .ok_or_else(|| anyhow!("unknown entity type `{}`", entity_type))?
             .field("id")
             .unwrap()
             .field_type
             .get_base_type();
 
         match base_type {
-            "ID" | "String" => Ok(store::Value::String(key.entity_id.to_string())),
-            "Bytes" => Ok(store::Value::Bytes(scalar::Bytes::from_str(
-                &key.entity_id,
-            )?)),
+            "ID" | "String" => Ok(store::IdType::String),
+            "Bytes" => Ok(store::IdType::Bytes),
             s => {
                 return Err(anyhow!(
                     "Entity type {} uses illegal type {} for id column",
-                    key.entity_type,
+                    entity_type,
                     s
                 ))
             }
+        }
+    }
+
+    /// Construct a value for the entity type's id attribute
+    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
+        let id_type = self
+            .id_type(&key.entity_type)
+            .with_context(|| format!("error determining id_type for {:?}", key))?;
+        match id_type {
+            store::IdType::String => Ok(store::Value::String(key.entity_id.to_string())),
+            store::IdType::Bytes => Ok(store::Value::Bytes(scalar::Bytes::from_str(
+                &key.entity_id,
+            )?)),
         }
     }
 
