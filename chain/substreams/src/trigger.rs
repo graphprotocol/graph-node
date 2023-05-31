@@ -219,13 +219,8 @@ where
                             }
                         }
                     };
-                    let key = EntityKey {
-                        entity_type: entity_type.clone(),
-                        entity_id: entity_id.clone().into(),
-                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
-                    };
-                    let mut data: HashMap<Word, Value> = HashMap::from_iter(vec![]);
 
+                    let mut data: HashMap<Word, Value> = HashMap::from_iter(vec![]);
                     for field in entity_change.fields.iter() {
                         let new_value: &codec::value::Typed = match &field.new_value {
                             Some(codec::Value {
@@ -236,7 +231,7 @@ where
 
                         let value: Value = decode_value(new_value)?;
                         *data
-                            .entry(Word::from(field.name.clone()))
+                            .entry(Word::from(field.name.as_str()))
                             .or_insert(Value::Null) = value;
                     }
 
@@ -251,6 +246,12 @@ where
                         causality_region,
                         logger,
                     );
+
+                    let key = EntityKey {
+                        entity_type: entity_type,
+                        entity_id: Word::from(entity_id),
+                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
+                    };
 
                     let id = state.entity_cache.schema.id_value(&key)?;
                     data.insert(Word::from("id"), id);
