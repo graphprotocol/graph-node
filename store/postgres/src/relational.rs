@@ -559,9 +559,15 @@ impl Layout {
                 entity_id: entity_data.id(),
                 causality_region: CausalityRegion::from_entity(&entity_data),
             };
-            let overwrite = entities.insert(key, entity_data).is_some();
-            if overwrite {
-                return Err(constraint_violation!("duplicate entity in result set"));
+            if entities.contains_key(&key) {
+                return Err(constraint_violation!(
+                    "duplicate entity {}[{}] in result set, block = {}",
+                    key.entity_type,
+                    key.entity_id,
+                    block
+                ));
+            } else {
+                entities.insert(key, entity_data);
             }
         }
         Ok(entities)
