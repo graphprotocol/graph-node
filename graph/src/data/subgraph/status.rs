@@ -111,6 +111,8 @@ pub struct Info {
 
     /// ID of the Graph Node that the subgraph is indexed by.
     pub node: Option<String>,
+
+    pub history_blocks: i32,
 }
 
 impl IntoValue for Info {
@@ -125,6 +127,7 @@ impl IntoValue for Info {
             node,
             non_fatal_errors,
             synced,
+            history_blocks,
         } = self;
 
         fn subgraph_error_to_value(subgraph_error: SubgraphError) -> r::Value {
@@ -166,6 +169,7 @@ impl IntoValue for Info {
             chains: chains.into_iter().map(|chain| chain.into_value()).collect::<Vec<_>>(),
             entityCount: format!("{}", entity_count),
             node: node,
+            historyBlocks: history_blocks,
         }
     }
 }
