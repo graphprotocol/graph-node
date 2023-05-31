@@ -9,7 +9,10 @@ use graph::{
         store::{DeploymentLocator, EntityKey, EntityType, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
-    data::{store::scalar::Bytes, value::Word},
+    data::{
+        store::{scalar::Bytes, IdType},
+        value::Word,
+    },
     data_source::{self, CausalityRegion},
     prelude::{
         anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState,
@@ -194,10 +197,30 @@ where
                     return Err(MappingError::Unknown(anyhow!("Detected UNSET entity operation, either a server error or there's a new type of operation and we're running an outdated protobuf")));
                 }
                 Operation::Create | Operation::Update => {
-                    let entity_type: &str = &entity_change.entity;
-                    let entity_id: String = entity_change.id.clone();
+                    let schema = state.entity_cache.schema.as_ref();
+                    let entity_type = EntityType::new(entity_change.entity.to_string());
+                    // Make sure that the `entity_id` gets set to a value
+                    // that is safe for roundtrips through the database. In
+                    // particular, if the type of the id is `Bytes`, we have
+                    // to make sure that the `entity_id` starts with `0x` as
+                    // that will be what the key for such an entity have
+                    // when it is read from the database.
+                    //
+                    // Needless to say, this is a very ugly hack, and the
+                    // real fix is what's described in [this
+                    // issue](https://github.com/graphprotocol/graph-node/issues/4663)
+                    let entity_id: String = match schema.id_type(&entity_type)? {
+                        IdType::String => entity_change.id.clone(),
+                        IdType::Bytes => {
+                            if entity_change.id.starts_with("0x") {
+                                entity_change.id.clone()
+                            } else {
+                                format!("0x{}", entity_change.id)
+                            }
+                        }
+                    };
                     let key = EntityKey {
-                        entity_type: EntityType::new(entity_type.to_string()),
+                        entity_type: entity_type.clone(),
                         entity_id: entity_id.clone().into(),
                         causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
                     };
@@ -220,7 +243,7 @@ where
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
-                            entity_type,
+                            entity_type: entity_type.as_str(),
                             id: &entity_id,
                             // TODO: This should be an entity so we do not have to build the intermediate HashMap
                             data: &data,
