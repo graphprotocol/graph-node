@@ -2,31 +2,37 @@
 
 ## Unreleased
 
-- `graphman rewind` has changed, block-number and block-hash are now flags instead of arguments
-- `graphman rewind` now has an extra flag `--start-block` which will rewind to the startBlock set in manifest or to the genesis block if no startBlock is set
- 
-<!-- 
-Note: the changes in this PR were technically released in v0.31.0, but the feature also requires changes to graph-cli, which at the time of writing has NOT been released. This feature will make it into the release notes of graph-node only once graph-cli has been updated.
-
-Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-node/pull/4434
--->
-
 ## v0.31.0
 
 ### What's new
 - **Fulltext searches can now be combined with `where` filtering**, further narrowing down search results. [#4442](https://github.com/graphprotocol/graph-node/pull/4442)
+- **Derived fields loader support**. This feature requires subgraph authors to upgrade `graph-cli` to v0.51.0. [#4434](https://github.com/graphprotocol/graph-node/pull/4434), [`graph-cli` release notes](https://github.com/graphprotocol/graph-tooling/releases/tag/%40graphprotocol%2Fgraph-cli%400.51.0)
 - Tweaked how RPC provider limiting rules are interpreted from configurations. In particular, node IDs that don't match any rules of a provider won't have access to said provider instead of having access to it for an unlimited number of subgraphs. Read the [docs](https://github.com/graphprotocol/graph-node/pull/4353/files) for more information. [#4353](https://github.com/graphprotocol/graph-node/pull/4353)
 - Introduced WASM host function `store.get_in_block`, which is a much faster variant of `store.get` limited to entities created or updated in the current block. [#4540](https://github.com/graphprotocol/graph-node/pull/4540)
-- The entity cache that `graph-node` keeps around is much more efficient, meaning more cache entries fit in the same amount of memory resulting in a performance increase under a wide range of workloads. [#4485](https://github.com/graphprotocol/graph-node/pull/4485)
 - The `subgraph_deploy` JSON-RPC method now accepts a `history_blocks` parameter, which indexers can use to set default amounts of history to keep. [#4564](https://github.com/graphprotocol/graph-node/pull/4564)
-- IPFS requests for polling file data sources are not throttled anymore (also known as concurrency or burst limiting), only rate-limited. [#4570](https://github.com/graphprotocol/graph-node/pull/4570)
+- IPFS requests for polling file data sources are not throttled anymore (also known as concurrency or burst limiting), only rate-limited. [#4570](https://github.com/graphprotocol/graph-node/pull/4570), [#4649](https://github.com/graphprotocol/graph-node/pull/4649)
 - Exponential requests backoff when retrying failed subgraphs is now "jittered", smoothing out request spikes. [#4476](https://github.com/graphprotocol/graph-node/pull/4476)
+- Indexers can use thee new feature `GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS` to define matching rules on subgraph names for reducing amounts of history stored. [#4633](https://github.com/graphprotocol/graph-node/pull/4633)
 - RPC provider responses that decrease the chain head block number (non-monotonic) are now ignored, increasing resiliency against inconsistent provider data. [#4354](https://github.com/graphprotocol/graph-node/pull/4354)
 - It's now possible to to have a Firehose-only chain with no RPC provider at all in the configuration. [#4508](https://github.com/graphprotocol/graph-node/pull/4508), [#4553](https://github.com/graphprotocol/graph-node/pull/4553)
 - The materialized views in the `info` schema (`table_sizes`, `subgraph_sizes`, and `chain_sizes`) that provide information about the size of various database objects are now automatically refreshed every 6 hours. [#4461](https://github.com/graphprotocol/graph-node/pull/4461)
+- Subgraph error logs now contain the transaction hash when available. [#4635](https://github.com/graphprotocol/graph-node/pull/4635)
 - Adapter selection now takes error rates into account, preferring adapters with lower error rates. [#4468](https://github.com/graphprotocol/graph-node/pull/4468)
-- The substreams protocol has been updated to `sf.substreams.rpc.v2.Stream/Blocks`. [#4556](https://github.com/graphprotocol/graph-node/pull/4556)
 - Removed support for `GRAPH_ETHEREUM_IS_FIREHOSE_PREFERRED`, `REVERSIBLE_ORDER_BY_OFF`, and `GRAPH_STORE_CONNECTION_TRY_ALWAYS` env. variables. [#4375](https://github.om/graphprotocol/graph-node/pull/4375), [#4436](https://github.com/graphprotocol/graph-node/pull/4436)
+- New env. var. `GRAPH_ETH_CALL_NO_GAS` which is a comma-separated list of chains' `net_version` for which to disable `eth_call` gas limits. The default value (`421613`) disables gas limits for Arbitrum Goerli. [#4609](https://github.com/graphprotocol/graph-node/pull/4609)
+
+### Performance improvements
+- **Batched writes**: write operations to the database when indexing subgraphs are now accumulated into in-memory batches before persisting them, resulting in noticeably faster indexing and lower database CPU load. In case of unexpected issues, this feature can be turned off setting `GRAPH_STORE_WRITE_BATCH_SIZE=0`. [#4606](https://github.com/graphprotocol/graph-node/pull/4606), [#4632](https://github.com/graphprotocol/graph-node/pull/4632)
+- The entity cache that `graph-node` keeps around is much more efficient, meaning more cache entries fit in the same amount of memory resulting in a performance increase under a wide range of workloads. [#4485](https://github.com/graphprotocol/graph-node/pull/4485), [#4624](https://github.com/graphprotocol/graph-node/pull/4624)
+- Indexing speed improvements for subgraphs with more than 10k data sources. [#4631](https://github.com/graphprotocol/graph-node/pull/4631)
+- BRIN indexes in PostgreSQL now use `..._minmax_multi_ops` instead of `_minmax_ops` if available (PostgreSQL 14+), often resulting in more selective indexes. [#4629](https://github.com/graphprotocol/graph-node/pull/4629)
+- GIN indexes are not created anymore for numeric arrays. [#4628](https://github.com/graphprotocol/graph-node/pull/4628)
+
+### Substreams
+- The substreams protocol has been updated to `sf.substreams.rpc.v2.Stream/Blocks`. [#4556](https://github.com/graphprotocol/graph-node/pull/4556)
+- Added support for adapter balancing a.k.a. provider failover to substreams. [#4578](https://github.com/graphprotcol/graph-node/pull/4578)
+- Fixed faulty `startBlock` selection logic in substreams. [#4463](https://github.com/graphprotocol/graph-node/pull/4463)
+- Several bug fixes were applied after breakage caused by an internal refactor of how entities are stored in-memory. [#4604](https://github.com/graphprotocol/graph-node/pull/4604), [#4572](https://github.com/graphprotocol/graph-node/pull/4572), [#4612](https://github.com/graphprotocol/graph-node/pull/4612), [#4664](https://github.com/graphprotocol/graph-node/pull/4664)
 
 ### Bug fixes
 - Fixed a bug that would cause subgraphs to fail with a `subgraph writer poisoned by previous error` message following certain database errors. [#4533](https://github.com/graphprotocol/graph-node/pull/4533)
@@ -37,9 +43,10 @@ Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-no
 - Handler timeouts would sometimes be reported as deterministic errors with the error message `Subgraph instance failed to run: Failed to call 'asc_type_id' with [...] wasm backtrace [...]`; this error is now nondeterministic and recoverable. [#4475](https://github.com/graphprotocol/graph-node/pull/4475)
 - Fixed faulty exponential request backoff behavior after many minutes of failed requests, caused by an overflow. [#4421](https://github.com/graphprotocol/graph-node/pull/4421)
 - `json.fromBytes` and all `BigInt` operations now require more gas, protecting against malicious subgraphs. [#4594](https://github.com/graphprotocol/graph-node/pull/4594), [#4595](https://github.com/graphprotocol/graph-node/pull/4595)
-- Fixed faulty `startBlock` selection logic in substreams. [#4463](https://github.com/graphprotocol/graph-node/pull/4463)
 
 ### Graphman
+- `graphman rewind` now requires `block-number` and `block-hash` to be passed as flags instead of arguments. [#4400](https://github.com/graphprotocol/graph-node/pull/4400)
+- You can now use the new flag `--start-block` in `graphman rewind` to rewind a subgraph to the `startBlock` set in manifest, or to the genesis block if no `startBlock` is set. [#4400](https://github.com/graphprotocol/graph-node/pull/4400)
 - The behavior for `graphman prune` has changed: running just `graphman prune` will mark the subgraph for ongoing pruning in addition to performing an initial pruning. To avoid ongoing pruning, use `graphman prune --once` ([docs](./docs/implementation/pruning.md)). [#4429](https://github.com/graphprotocol/graph-node/pull/4429)
 - The env. var. `GRAPH_STORE_HISTORY_COPY_THRESHOLD` –which serves as a configuration setting for `graphman prune`– has been renamed to `GRAPH_STORE_HISTORY_REBUILD_THRESHOLD`. [#4505](https://github.com/graphprotocol/graph-node/pull/4505)
 - You can now list all existing deployments via `graphman info --all`. [#4347](https://github.com/graphprotocol/graph-node/pull/4347)
@@ -56,7 +63,8 @@ Derived fields getter by @flametuner in https://github.com/grahprotocol/graph-no
 - `eth_call` logs now include the provider string. [#4548](https://github.com/graphprotocol/graph-node/pull/4548)
 - Tweaks and small changes to log messages when resolving data sources, mappings, and manifests. [#4399](https://github.com/graphprotocol/graph-node/pull/4399)
 - `FirehoseBlockStream` and `FirehoseBlockIngestor` now log adapter names. [#4411](https://github.com/graphprotocol/graph-node/pull/4411)
-- The `deployment_count` metric has been split into `deployment_running_count` and `deployment_count`. [#4401](https://github.com/grahprotocol/graph-node/pull/4401), [#4398](https://github.com/graphprotocol/graph-node/pul/4398)
+- Runtime panics now provide more contextual information, instead of just `oneshot cancelled`. [#4625](https://github.com/graphprotocol/graph-node/pull/4625)
+- The `deployment_count` metric has been split into `deployment_running_count` and `deployment_count`. [#4401](https://github.com/graphprotocol/graph-node/pull/4401), [#4398](https://github.com/graphprotocol/graph-node/pul/4398)
 
 <!--
 Not relevant
