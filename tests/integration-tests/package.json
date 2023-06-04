@@ -8,6 +8,7 @@
     "overloaded-contract-functions",
     "poi-for-failed-subgraph",
     "remove-then-update",
-    "value-roundtrip"
+    "value-roundtrip",
+    "int8"
   ]
 }

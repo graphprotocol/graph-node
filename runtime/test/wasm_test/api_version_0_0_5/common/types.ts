@@ -30,6 +30,7 @@ export enum ValueKind {
   NULL = 5,
   BYTES = 6,
   BIG_INT = 7,
+  INT8 = 8
 }
 // Big enough to fit any pointer or native `this.data`.
 export type Payload = u64

@@ -9,7 +9,7 @@ use diesel::pg::{Pg, PgConnection};
 use diesel::query_builder::{AstPass, QueryFragment, QueryId};
 use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range, Text};
 use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
@@ -289,6 +289,8 @@ pub trait FromColumnValue: Sized + std::fmt::Debug {
 
     fn from_i32(i: i32) -> Self;
 
+    fn from_i64(i: i64) -> Self;
+
     fn from_big_decimal(d: scalar::BigDecimal) -> Self;
 
     fn from_big_int(i: serde_json::Number) -> Result<Self, StoreError>;
@@ -315,6 +317,13 @@ pub trait FromColumnValue: Sized + std::fmt::Debug {
                 }),
                 None => Err(StoreError::Unknown(anyhow!(
                     "failed to convert {} to Int",
+                    number
+                ))),
+            },
+            (j::Number(number), ColumnType::Int8) => match number.as_i64() {
+                Some(i) => Ok(Self::from_i64(i)),
+                None => Err(StoreError::Unknown(anyhow!(
+                    "failed to convert {} to Int8",
                     number
                 ))),
             },
@@ -379,6 +388,10 @@ impl FromColumnValue for r::Value {
         r::Value::Int(i.into())
     }
 
+    fn from_i64(i: i64) -> Self {
+        r::Value::String(i.to_string())
+    }
+
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
         r::Value::String(d.to_string())
     }
@@ -422,6 +435,10 @@ impl FromColumnValue for graph::prelude::Value {
 
     fn from_i32(i: i32) -> Self {
         graph::prelude::Value::Int(i)
+    }
+
+    fn from_i64(i: i64) -> Self {
+        graph::prelude::Value::Int8(i)
     }
 
     fn from_big_decimal(d: scalar::BigDecimal) -> Self {
@@ -562,6 +579,15 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
         match self.0 {
             Value::String(s) => match &column_type {
                 ColumnType::String => out.push_bind_param::<Text, _>(s),
+                ColumnType::Int8 => {
+                    out.push_bind_param::<BigInt, _>(&s.parse::<i64>().map_err(|e| {
+                        constraint_violation!(
+                            "failed to convert `{}` to an Int8: {}",
+                            s,
+                            e.to_string()
+                        )
+                    })?)
+                }
                 ColumnType::Enum(enum_type) => {
                     out.push_bind_param::<Text, _>(s)?;
                     out.push_sql("::");
@@ -584,6 +610,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 ),
             },
             Value::Int(i) => out.push_bind_param::<Integer, _>(i),
+            Value::Int8(i) => out.push_bind_param::<Int8, _>(i),
             Value::BigDecimal(d) => {
                 out.push_bind_param::<Text, _>(&d.to_string())?;
                 out.push_sql("::numeric");
@@ -601,6 +628,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(values),
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
+                    ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(&values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(values),
                     ColumnType::Enum(enum_type) => {
                         out.push_bind_param::<Array<Text>, _>(values)?;
@@ -1179,6 +1207,7 @@ impl<'a> QueryFilter<'a> {
             Value::Null
             | Value::BigDecimal(_)
             | Value::Int(_)
+            | Value::Int8(_)
             | Value::Bool(_)
             | Value::BigInt(_) => {
                 let filter = match negated {
@@ -1249,6 +1278,7 @@ impl<'a> QueryFilter<'a> {
                 | Value::Bytes(_)
                 | Value::BigDecimal(_)
                 | Value::Int(_)
+                | Value::Int8(_)
                 | Value::String(_) => QueryValue(value, &column.column_type).walk_ast(out)?,
                 Value::Bool(_) | Value::List(_) | Value::Null => {
                     return Err(UnsupportedFilter {
@@ -1388,6 +1418,7 @@ impl<'a> QueryFilter<'a> {
             | Value::Bytes(_)
             | Value::BigDecimal(_)
             | Value::Int(_)
+            | Value::Int8(_)
             | Value::List(_)
             | Value::Null => {
                 return Err(UnsupportedFilter {

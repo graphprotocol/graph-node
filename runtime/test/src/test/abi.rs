@@ -291,6 +291,12 @@ async fn test_abi_store_value(api_version: Version) {
     let new_value: Value = module.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
+    // Value::Int8
+    let int8 = i64::min_value();
+    let new_value_ptr = module.takes_val_returns_ptr("value_from_int8", int8);
+    let new_value: Value = module.asc_get(new_value_ptr).unwrap();
+    assert_eq!(new_value, Value::Int8(int8));
+
     // Value::BigDecimal
     let big_decimal = BigDecimal::from_str("3.14159001").unwrap();
     let new_value_ptr = module.invoke_export1("value_from_big_decimal", &big_decimal);
