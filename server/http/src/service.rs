@@ -8,6 +8,7 @@ use graph::prelude::serde_json;
 use graph::prelude::serde_json::json;
 use graph::prelude::*;
 use graph::semver::VersionReq;
+use graph::url::form_urlencoded;
 use graph::{components::server::query::GraphQLServerError, data::query::QueryTarget};
 use http::header;
 use http::header::{
@@ -248,7 +249,22 @@ where
         }
         .boxed()
     }
+    fn handle_mutations(&self) -> GraphQLServiceResponse {
+        async {
+            let response_obj = json!({
+                "error": "Can't use mutations with GET method"
+            });
+            let response_str = serde_json::to_string(&response_obj).unwrap();
 
+            Ok(Response::builder()
+                .status(400)
+                .header(CONTENT_TYPE, "application/json")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(Body::from(response_str))
+                .unwrap())
+        }
+        .boxed()
+    }
     /// Handles requests without content type.
     fn handle_requests_without_content_type(&self) -> GraphQLServiceResponse {
         async {
@@ -275,7 +291,7 @@ where
             let response_str = serde_json::to_string(&response_obj).unwrap();
 
             Ok(Response::builder()
-                .status(StatusCode::BAD_REQUEST)
+                .status(400)
                 .header(CONTENT_TYPE, "application/json")
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .body(Body::from(response_str))
@@ -283,7 +299,6 @@ where
         }
         .boxed()
     }
-
     fn has_request_body(&self, req: &Request<Body>) -> bool {
         if let Some(length) = req.headers().get(hyper::header::CONTENT_LENGTH) {
             if let Ok(length) = length.to_str() {
@@ -319,6 +334,19 @@ where
             return self.handle_requests_without_body().boxed();
         }
 
+        let is_mutation = req
+            .uri()
+            .query()
+            .and_then(|query_str| {
+                form_urlencoded::parse(query_str.as_bytes())
+                    .find(|(key, _)| key == "query")
+                    .map(|(_, value)| value.into_owned())
+            })
+            .unwrap_or_else(|| String::new())
+            .trim()
+            .to_lowercase()
+            .starts_with("mutation");
+
         match (method, path_segments.as_slice()) {
             (Method::GET, [""]) => self.index().boxed(),
             (Method::GET, &["subgraphs", "id", _, "graphql"])
@@ -327,6 +355,9 @@ where
             | (Method::GET, &["subgraphs", "network", _, _, "graphql"])
             | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
 
+            (Method::GET, path @ ["subgraphs", "name", _, _]) if is_mutation => {
+                self.handle_mutations()
+            }
             (Method::GET, path @ ["subgraphs", "id", _])
             | (Method::GET, path @ ["subgraphs", "name", _])
             | (Method::GET, path @ ["subgraphs", "name", _, _])
@@ -393,7 +424,7 @@ where
                     let response_str = serde_json::to_string(&response_obj).unwrap();
 
                     Ok(Response::builder()
-                        .status(200)
+                        .status(400)
                         .header(CONTENT_TYPE, "application/json")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(response_str))
@@ -408,7 +439,7 @@ where
                     let response_str = serde_json::to_string(&response_obj).unwrap();
 
                     Ok(Response::builder()
-                        .status(200)
+                        .status(400)
                         .header(CONTENT_TYPE, "application/json")
                         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                         .body(Body::from(response_str))
@@ -593,7 +624,6 @@ mod tests {
             .unwrap()
             .expect("Should return a response");
 
-        println!("{:?}", response);
         let data = test_utils::assert_successful_response(response);
 
         // The body should match the simulated query result
