@@ -16,7 +16,7 @@ diesel = { version = "1.4.8", features = [
 # We use diesel-dynamic-schema straight from git as the project has not
 # made a release as a crate yet
 diesel-dynamic-schema = { git = "https://github.com/diesel-rs/diesel-dynamic-schema", rev = "a8ec4fb1" }
-diesel-derive-enum = { version = "1.1", features = ["postgres"] }
+diesel-derive-enum = { version = "2.1", features = ["postgres"] }
 diesel_migrations = "1.3.0"
 fallible-iterator = "0.3.0"
 graph = { path = "../../graph" }
