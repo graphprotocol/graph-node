@@ -46,7 +46,7 @@ pub struct EnvVarsMapping {
     /// Sets the `ipfs.cat` file size limit.
     ///
     /// Set by the environment variable `GRAPH_MAX_IPFS_FILE_BYTES` (expressed in
-    /// bytes). Defaults to 256 MiB.
+    /// bytes). Defaults to 25 MiB.
     pub max_ipfs_file_bytes: usize,
 
     /// Limits per second requests to IPFS for file data sources.
@@ -110,7 +110,7 @@ pub struct InnerMappingHandlers {
     #[envconfig(from = "GRAPH_MAX_IPFS_MAP_FILE_SIZE", default = "")]
     max_ipfs_map_file_size: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_MAX_IPFS_FILE_BYTES", default = "")]
-    max_ipfs_file_bytes: WithDefaultUsize<usize, { 256 * 1024 * 1024 }>,
+    max_ipfs_file_bytes: WithDefaultUsize<usize, { 25 * 1024 * 1024 }>,
     #[envconfig(from = "GRAPH_IPFS_REQUEST_LIMIT", default = "100")]
     ipfs_request_limit: u16,
     #[envconfig(from = "GRAPH_ALLOW_NON_DETERMINISTIC_IPFS", default = "false")]
