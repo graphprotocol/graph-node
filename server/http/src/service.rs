@@ -462,7 +462,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph::data::value::{Word, Object};
+    use graph::data::value::{Object, Word};
     use graph::prelude::serde_json::json;
     use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
     use http::status::StatusCode;
