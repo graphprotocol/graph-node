@@ -355,7 +355,7 @@ where
             | (Method::GET, &["subgraphs", "network", _, _, "graphql"])
             | (Method::GET, &["subgraphs", "graphql"]) => self.handle_graphiql(),
 
-            (Method::GET, path @ ["subgraphs", "name", _, _]) if is_mutation => {
+            (Method::GET, _path @ ["subgraphs", "name", _, _]) if is_mutation => {
                 self.handle_mutations()
             }
             (Method::GET, path @ ["subgraphs", "id", _])
@@ -462,7 +462,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use graph::data::value::Object;
+    use graph::data::value::{Word, Object};
     use graph::prelude::serde_json::json;
     use http::header::{CONTENT_LENGTH, CONTENT_TYPE};
     use http::status::StatusCode;
