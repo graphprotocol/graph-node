@@ -14,3 +14,6 @@ graph-graphql = { path = "../../graphql" }
 
 [dev-dependencies]
 graph-core = { path = "../../core" }
+
+[build-dependencies]
+html-minifier = "4.0.0"
