@@ -14,7 +14,7 @@ use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{btree_map, BTreeMap};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -220,7 +220,7 @@ pub fn create_firehose_networks(
 pub async fn connect_ethereum_networks(
     logger: &Logger,
     mut eth_networks: EthereumNetworks,
-) -> (EthereumNetworks, Vec<(String, Vec<ChainIdentifier>)>) {
+) -> Result<(EthereumNetworks, BTreeMap<String, ChainIdentifier>), anyhow::Error> {
     // This has one entry for each provider, and therefore multiple entries
     // for each network
     let statuses = join_all(
@@ -268,10 +268,10 @@ pub async fn connect_ethereum_networks(
     .await;
 
     // Group identifiers by network name
-    let idents: HashMap<String, Vec<ChainIdentifier>> =
+    let idents: BTreeMap<String, ChainIdentifier> =
         statuses
             .into_iter()
-            .fold(HashMap::new(), |mut networks, status| {
+            .try_fold(BTreeMap::new(), |mut networks, status| {
                 match status {
                     ProviderNetworkStatus::Broken {
                         chain_id: network,
@@ -280,12 +280,25 @@ pub async fn connect_ethereum_networks(
                     ProviderNetworkStatus::Version {
                         chain_id: network,
                         ident,
-                    } => networks.entry(network).or_default().push(ident),
+                    } => match networks.entry(network.clone()) {
+                        btree_map::Entry::Vacant(entry) => {
+                            entry.insert(ident);
+                        }
+                        btree_map::Entry::Occupied(entry) => {
+                            if &ident != entry.get() {
+                                return Err(anyhow!(
+                                    "conflicting network identifiers for chain {}: `{}` != `{}`",
+                                    network,
+                                    ident,
+                                    entry.get()
+                                ));
+                            }
+                        }
+                    },
                 }
-                networks
-            });
-    let idents: Vec<_> = idents.into_iter().collect();
-    (eth_networks, idents)
+                Ok(networks)
+            })?;
+    Ok((eth_networks, idents))
 }
 
 /// Try to connect to all the providers in `firehose_networks` and get their net
@@ -299,7 +312,7 @@ pub async fn connect_ethereum_networks(
 pub async fn connect_firehose_networks<M>(
     logger: &Logger,
     mut firehose_networks: FirehoseNetworks,
-) -> (FirehoseNetworks, Vec<(String, Vec<ChainIdentifier>)>)
+) -> Result<(FirehoseNetworks, BTreeMap<String, ChainIdentifier>), Error>
 where
     M: prost::Message + BlockchainBlock + Default + 'static,
 {
@@ -341,6 +354,8 @@ where
                             "genesis_block" => format_args!("{}", &ptr),
                         );
 
+                        // BUG: Firehose doesn't provide the net_version.
+                        // See also: firehose-no-net-version
                         let ident = ChainIdentifier {
                             net_version: "0".to_string(),
                             genesis_block_hash: ptr.hash,
@@ -354,20 +369,34 @@ where
     .await;
 
     // Group identifiers by chain id
-    let idents: HashMap<String, Vec<ChainIdentifier>> =
+    let idents: BTreeMap<String, ChainIdentifier> =
         statuses
             .into_iter()
-            .fold(HashMap::new(), |mut networks, status| {
+            .try_fold(BTreeMap::new(), |mut networks, status| {
                 match status {
                     ProviderNetworkStatus::Broken { chain_id, provider } => {
                         firehose_networks.remove(&chain_id, &provider)
                     }
                     ProviderNetworkStatus::Version { chain_id, ident } => {
-                        networks.entry(chain_id).or_default().push(ident)
+                        match networks.entry(chain_id.clone()) {
+                            btree_map::Entry::Vacant(entry) => {
+                                entry.insert(ident);
+                            }
+                            btree_map::Entry::Occupied(entry) => {
+                                if &ident != entry.get() {
+                                    return Err(anyhow!(
+                                    "conflicting network identifiers for chain {}: `{}` != `{}`",
+                                    chain_id,
+                                    ident,
+                                    entry.get()
+                                ));
+                                }
+                            }
+                        }
                     }
                 }
-                networks
-            });
+                Ok(networks)
+            })?;
 
     // Clean-up chains with 0 provider
     firehose_networks.networks.retain(|chain_id, endpoints| {
@@ -381,8 +410,7 @@ where
         endpoints.len() > 0
     });
 
-    let idents: Vec<_> = idents.into_iter().collect();
-    (firehose_networks, idents)
+    Ok((firehose_networks, idents))
 }
 
 /// Parses all Ethereum connection strings and returns their network names and

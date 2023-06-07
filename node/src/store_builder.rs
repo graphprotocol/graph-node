@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
@@ -166,7 +167,7 @@ impl StoreBuilder {
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
         chains: HashMap<String, ShardName>,
-        networks: Vec<(String, Vec<ChainIdentifier>)>,
+        networks: BTreeMap<String, ChainIdentifier>,
         registry: Arc<MetricsRegistry>,
     ) -> Arc<DieselStore> {
         let networks = networks
@@ -280,7 +281,7 @@ impl StoreBuilder {
 
     /// Return a store that combines both a `Store` for subgraph data
     /// and a `BlockStore` for all chain related data
-    pub fn network_store(self, networks: Vec<(String, Vec<ChainIdentifier>)>) -> Arc<DieselStore> {
+    pub fn network_store(self, networks: BTreeMap<String, ChainIdentifier>) -> Arc<DieselStore> {
         Self::make_store(
             &self.logger,
             self.pools,

@@ -556,10 +556,14 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
             };
 
             (
-                builder.network_store(vec![
-                    (NETWORK_NAME.to_string(), vec![ident.clone()]),
-                    (FAKE_NETWORK_SHARED.to_string(), vec![ident]),
-                ]),
+                builder.network_store(
+                    vec![
+                        (NETWORK_NAME.to_string(), ident.clone()),
+                        (FAKE_NETWORK_SHARED.to_string(), ident),
+                    ]
+                    .into_iter()
+                    .collect(),
+                ),
                 primary_pool,
                 config,
                 subscription_manager,

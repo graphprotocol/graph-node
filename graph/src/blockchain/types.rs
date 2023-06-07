@@ -280,3 +280,13 @@ pub struct ChainIdentifier {
     pub net_version: String,
     pub genesis_block_hash: BlockHash,
 }
+
+impl fmt::Display for ChainIdentifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "net_version: {}, genesis_block_hash: {}",
+            self.net_version, self.genesis_block_hash
+        )
+    }
+}
