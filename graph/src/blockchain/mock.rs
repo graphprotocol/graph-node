@@ -157,6 +157,10 @@ impl<C: Blockchain> DataSourceTemplate<C> for MockDataSourceTemplate {
     fn manifest_idx(&self) -> u32 {
         todo!()
     }
+
+    fn kind(&self) -> &str {
+        todo!()
+    }
 }
 
 #[derive(Clone, Default, Deserialize)]

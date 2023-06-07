@@ -6,7 +6,7 @@ use crate::components::server::index_node::VersionInfo;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
-use crate::data::subgraph::status;
+use crate::data::subgraph::{status, DeploymentFeatures};
 use crate::data::value::Object;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::schema::{ApiSchema, InputSchema};
@@ -70,6 +70,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
+        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network: String,
         mode: SubgraphVersionSwitchingMode,

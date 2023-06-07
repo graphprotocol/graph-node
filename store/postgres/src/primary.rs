@@ -79,6 +79,16 @@ table! {
 }
 
 table! {
+    subgraphs.subgraph_features (id) {
+        id -> Text,
+        spec_version -> Text,
+        api_versions -> Array<Text>,
+        features -> Array<Text>,
+        data_sources -> Array<Text>,
+    }
+}
+
+table! {
     subgraphs.subgraph_version (vid) {
         vid -> BigInt,
         id -> Text,
@@ -1096,6 +1106,30 @@ impl<'a> Connection<'a> {
                 unreachable!()
             }
         }
+    }
+
+    pub fn create_deployment_features(
+        &self,
+        id: String,
+        spec_version: String,
+        features: Vec<String>,
+        api_versions: Vec<String>,
+        data_source_kinds: Vec<String>,
+    ) -> Result<(), StoreError> {
+        use subgraph_features as f;
+
+        let conn = self.conn.as_ref();
+        insert_into(f::table)
+            .values((
+                f::id.eq(id),
+                f::spec_version.eq(spec_version),
+                f::api_versions.eq(api_versions),
+                f::features.eq(features),
+                f::data_sources.eq(data_source_kinds),
+            ))
+            .on_conflict_do_nothing()
+            .execute(conn)?;
+        Ok(())
     }
 
     pub fn assign_subgraph(

@@ -176,6 +176,7 @@ pub async fn create_subgraph(
         name,
         &schema,
         deployment,
+        manifest.deployment_features(),
         NODE_ID.clone(),
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,

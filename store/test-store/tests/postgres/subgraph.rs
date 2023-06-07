@@ -156,6 +156,7 @@ fn create_subgraph() {
                     name,
                     &schema,
                     deployment,
+                    manifest.deployment_features(),
                     node_id,
                     NETWORK_NAME.to_string(),
                     mode,

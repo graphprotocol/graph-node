@@ -256,6 +256,10 @@ impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
     fn manifest_idx(&self) -> u32 {
         todo!()
     }
+
+    fn kind(&self) -> &str {
+        unimplemented!("{}", TEMPLATE_ERROR);
+    }
 }
 
 #[async_trait]

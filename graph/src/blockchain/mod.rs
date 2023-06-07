@@ -315,6 +315,7 @@ pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
     fn name(&self) -> &str;
     fn manifest_idx(&self) -> u32;
+    fn kind(&self) -> &str;
 }
 
 #[async_trait]

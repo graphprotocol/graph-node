@@ -12,6 +12,7 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
+use itertools::Itertools;
 use semver::Version;
 use serde::{de, ser};
 use serde_yaml;
@@ -19,7 +20,7 @@ use slog::Logger;
 use stable_hash::{FieldAddress, StableHash};
 use stable_hash_legacy::SequenceNumber;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     marker::PhantomData,
 };
 use thiserror::Error;
@@ -497,6 +498,15 @@ impl Graft {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct DeploymentFeatures {
+    pub id: DeploymentHash,
+    pub spec_version: String,
+    pub api_versions: Vec<String>,
+    pub features: Vec<String>,
+    pub data_source_kinds: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BaseSubgraphManifest<C, S, D, T> {
@@ -661,6 +671,51 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .iter()
             .map(|template| template.api_version())
             .chain(self.data_sources.iter().map(|source| source.api_version()))
+    }
+
+    pub fn deployment_features(&self) -> DeploymentFeatures {
+        let mut api_versions = self
+            .api_versions()
+            .map(|v| v.to_string())
+            .collect::<HashSet<_>>();
+
+        let template_api_versions = self
+            .templates
+            .iter()
+            .map(|t| t.api_version().to_string())
+            .collect::<HashSet<_>>();
+
+        api_versions.extend(template_api_versions);
+
+        let features = self
+            .features
+            .iter()
+            .map(|f| f.to_string())
+            .collect::<Vec<_>>();
+
+        let spec_version = self.spec_version.to_string();
+
+        let mut data_source_kinds = self
+            .data_sources
+            .iter()
+            .map(|ds| ds.kind().to_string())
+            .collect::<HashSet<_>>();
+
+        let data_source_template_kinds = self
+            .templates
+            .iter()
+            .map(|t| t.kind().to_string())
+            .collect::<Vec<_>>();
+
+        data_source_kinds.extend(data_source_template_kinds);
+
+        DeploymentFeatures {
+            id: self.id.clone(),
+            api_versions: api_versions.into_iter().collect_vec(),
+            features,
+            spec_version,
+            data_source_kinds: data_source_kinds.into_iter().collect_vec(),
+        }
     }
 
     pub fn runtimes(&self) -> impl Iterator<Item = Arc<Vec<u8>>> + '_ {
