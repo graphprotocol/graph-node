@@ -298,6 +298,13 @@ impl<C: Blockchain> DataSourceTemplate<C> {
             Self::Offchain(ds) => ds.manifest_idx,
         }
     }
+
+    pub fn kind(&self) -> String {
+        match self {
+            Self::Onchain(ds) => ds.kind().to_string(),
+            Self::Offchain(ds) => ds.kind.to_owned(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

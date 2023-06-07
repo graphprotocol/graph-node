@@ -413,6 +413,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             name,
             &LOAD_RELATED_SUBGRAPH,
             deployment,
+            manifest.deployment_features(),
             node_id,
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,

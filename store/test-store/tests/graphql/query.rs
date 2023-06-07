@@ -329,6 +329,7 @@ async fn insert_test_entities(
             name,
             &manifest.schema,
             deployment,
+            manifest.deployment_features(),
             node_id,
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,

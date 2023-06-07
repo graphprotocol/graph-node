@@ -301,6 +301,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn manifest_idx(&self) -> u32 {
         unreachable!("arweave does not support dynamic data sources")
     }
+
+    fn kind(&self) -> &str {
+        &self.kind
+    }
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]

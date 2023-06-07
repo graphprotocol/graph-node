@@ -873,6 +873,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn manifest_idx(&self) -> u32 {
         self.manifest_idx
     }
+
+    fn kind(&self) -> &str {
+        &self.kind
+    }
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]

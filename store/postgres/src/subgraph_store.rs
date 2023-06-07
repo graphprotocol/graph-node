@@ -22,7 +22,7 @@ use graph::{
     },
     constraint_violation,
     data::query::QueryTarget,
-    data::subgraph::{schema::DeploymentCreate, status},
+    data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
@@ -503,6 +503,7 @@ impl SubgraphStoreInner {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
+        features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -571,10 +572,20 @@ impl SubgraphStoreInner {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let pconn = self.primary_conn()?;
+
         pconn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
+
+            pconn.create_deployment_features(
+                features.id.to_string(),
+                features.spec_version,
+                features.features,
+                features.api_versions,
+                features.data_source_kinds,
+            )?;
+
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&self.sender, &event)?;
             Ok(())
@@ -686,11 +697,21 @@ impl SubgraphStoreInner {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
+        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<DeploymentLocator, StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
+        self.create_deployment_internal(
+            name,
+            schema,
+            deployment,
+            deployment_features,
+            node_id,
+            network_name,
+            mode,
+            true,
+        )
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
@@ -1240,6 +1261,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
+        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -1248,6 +1270,7 @@ impl SubgraphStoreTrait for SubgraphStore {
             name,
             schema,
             deployment,
+            deployment_features,
             node_id,
             network_name,
             mode,
