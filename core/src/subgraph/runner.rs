@@ -304,16 +304,19 @@ where
                     let log = logger.cheap_clone();
                     let chain = self.inputs.chain.cheap_clone();
                     Arc::new(
-                        retry("refetch firehose block after dynamic datasource was added", &logger)
-                            .limit(5)
-                            .no_timeout()
-                            .run(move || {
-                                let cur = cur.clone();
-                                let log = log.cheap_clone();
-                                let chain = chain.cheap_clone();
-                                async move { chain.refetch_firehose_block(&log, cur).await }
-                            })
-                            .await?,
+                        retry(
+                            "refetch firehose block after dynamic datasource was added",
+                            &logger,
+                        )
+                        .limit(5)
+                        .no_timeout()
+                        .run(move || {
+                            let cur = cur.clone();
+                            let log = log.cheap_clone();
+                            let chain = chain.cheap_clone();
+                            async move { chain.refetch_firehose_block(&log, cur).await }
+                        })
+                        .await?,
                     )
                 } else {
                     block.cheap_clone()
