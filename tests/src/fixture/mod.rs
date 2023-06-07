@@ -299,11 +299,13 @@ pub async fn stores(store_config_path: &str) -> Stores {
     let chain_head_listener = store_builder.chain_head_update_listener();
     let network_identifiers = vec![(
         network_name.clone(),
-        (vec![ChainIdentifier {
+        ChainIdentifier {
             net_version: "".into(),
             genesis_block_hash: test_ptr(0).hash,
-        }]),
-    )];
+        },
+    )]
+    .into_iter()
+    .collect();
     let network_store = store_builder.network_store(network_identifiers);
     let chain_store = network_store
         .block_store()

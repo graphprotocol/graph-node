@@ -111,7 +111,7 @@ pub async fn run(
 
     let eth_adapters2 = eth_adapters.clone();
 
-    let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await;
+    let (_, ethereum_idents) = connect_ethereum_networks(&logger, eth_networks).await?;
     // let (near_networks, near_idents) = connect_firehose_networks::<NearFirehoseHeaderOnlyBlock>(
     //     &logger,
     //     firehose_networks_by_kind
