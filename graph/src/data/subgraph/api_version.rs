@@ -65,6 +65,10 @@ impl UnifiedMappingApiVersion {
 
         Ok(UnifiedMappingApiVersion(unified_version))
     }
+
+    pub fn version(&self) -> Option<&Version> {
+        self.0.as_ref()
+    }
 }
 
 pub(super) fn format_versions(versions: &BTreeSet<Version>) -> String {

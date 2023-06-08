@@ -82,7 +82,7 @@ table! {
     subgraphs.subgraph_features (id) {
         id -> Text,
         spec_version -> Text,
-        api_versions -> Array<Text>,
+        api_version -> Nullable<Text>,
         features -> Array<Text>,
         data_sources -> Array<Text>,
     }
@@ -1113,21 +1113,25 @@ impl<'a> Connection<'a> {
         id: String,
         spec_version: String,
         features: Vec<String>,
-        api_versions: Vec<String>,
+        api_version: Option<String>,
         data_source_kinds: Vec<String>,
     ) -> Result<(), StoreError> {
         use subgraph_features as f;
 
         let conn = self.conn.as_ref();
+        let changes = (
+            f::id.eq(id),
+            f::spec_version.eq(spec_version),
+            f::api_version.eq(api_version),
+            f::features.eq(features),
+            f::data_sources.eq(data_source_kinds),
+        );
+
         insert_into(f::table)
-            .values((
-                f::id.eq(id),
-                f::spec_version.eq(spec_version),
-                f::api_versions.eq(api_versions),
-                f::features.eq(features),
-                f::data_sources.eq(data_source_kinds),
-            ))
-            .on_conflict_do_nothing()
+            .values(changes.clone())
+            .on_conflict(f::id)
+            .do_update()
+            .set(changes)
             .execute(conn)?;
         Ok(())
     }

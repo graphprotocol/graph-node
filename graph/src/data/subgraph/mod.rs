@@ -502,7 +502,7 @@ impl Graft {
 pub struct DeploymentFeatures {
     pub id: DeploymentHash,
     pub spec_version: String,
-    pub api_versions: Vec<String>,
+    pub api_version: Option<String>,
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
 }
@@ -674,20 +674,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
     }
 
     pub fn deployment_features(&self) -> DeploymentFeatures {
-        let mut api_versions = self
-            .api_versions()
-            .map(|v| v.to_string())
-            .collect::<HashSet<_>>();
+        let unified_api_version = self.unified_mapping_api_version().ok();
+        let api_version = unified_api_version
+            .map(|v| v.version().map(|v| v.to_string()))
+            .flatten();
 
-        let template_api_versions = self
-            .templates
-            .iter()
-            .map(|t| t.api_version().to_string())
-            .collect::<HashSet<_>>();
-
-        api_versions.extend(template_api_versions);
-
-        let features = self
+        let features: Vec<String> = self
             .features
             .iter()
             .map(|f| f.to_string())
@@ -711,7 +703,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
 
         DeploymentFeatures {
             id: self.id.clone(),
-            api_versions: api_versions.into_iter().collect_vec(),
+            api_version,
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),

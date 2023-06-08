@@ -582,7 +582,7 @@ impl SubgraphStoreInner {
                 features.id.to_string(),
                 features.spec_version,
                 features.features,
-                features.api_versions,
+                features.api_version,
                 features.data_source_kinds,
             )?;
 
