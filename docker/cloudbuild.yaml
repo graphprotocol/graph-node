@@ -47,5 +47,3 @@ images:
 substitutions:
   # The owner of the access token whose encrypted value is in PASSWORD
   _DOCKER_HUB_USER: "lutter"
-secrets:
- - kmsKeyName: projects/the-graph-staging/locations/global/keyRings/docker/cryptoKeys/docker-hub-push
