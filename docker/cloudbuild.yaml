@@ -4,6 +4,7 @@ timeout: 1800s
 steps:
 - name: 'docker'
   args: ['build', '--target', 'graph-node-build',
+         '--platform', 'linux/amd64,linux/arm64',
          '--build-arg', 'COMMIT_SHA=$COMMIT_SHA',
          '--build-arg', 'REPO_NAME=$REPO_NAME',
          '--build-arg', 'BRANCH_NAME=$BRANCH_NAME',
