@@ -49,5 +49,3 @@ substitutions:
   _DOCKER_HUB_USER: "lutter"
 secrets:
  - kmsKeyName: projects/the-graph-staging/locations/global/keyRings/docker/cryptoKeys/docker-hub-push
-   secretEnv:
-     PASSWORD: 'CiQAdfFldbmUiHgGP1lPq6bAOfd+VQ/dFwyohB1IQwiwQg03ZE8STQDvWKpv6eJHVUN1YoFC5FcooJrH+Stvx9oMD7jBjgxEH5ngIiAysWP3E4Pgxt/73xnaanbM1EQ94eVFKCiY0GaEKFNu0BJx22vCYmU4'
