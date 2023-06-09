@@ -43,7 +43,10 @@ impl Block for MockBlock {
 }
 
 #[derive(Clone)]
-pub struct MockDataSource;
+pub struct MockDataSource {
+    pub api_version: semver::Version,
+    pub kind: String,
+}
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
     type Error = Error;
@@ -71,7 +74,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn kind(&self) -> &str {
-        todo!()
+        self.kind.as_str()
     }
 
     fn network(&self) -> Option<&str> {
@@ -87,7 +90,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn api_version(&self) -> semver::Version {
-        todo!()
+        self.api_version.clone()
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {

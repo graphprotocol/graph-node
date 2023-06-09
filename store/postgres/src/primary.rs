@@ -25,7 +25,7 @@ use diesel::{
 use graph::{
     components::store::DeploymentLocator,
     constraint_violation,
-    data::subgraph::status,
+    data::subgraph::{status, DeploymentFeatures},
     prelude::{
         anyhow, bigdecimal::ToPrimitive, serde_json, DeploymentHash, EntityChange,
         EntityChangeOperation, NodeId, StoreError, SubgraphName, SubgraphVersionSwitchingMode,
@@ -1108,7 +1108,39 @@ impl<'a> Connection<'a> {
         }
     }
 
-    pub fn create_deployment_features(
+    pub fn get_subgraph_features(
+        &self,
+        id: String,
+    ) -> Result<Option<DeploymentFeatures>, StoreError> {
+        use subgraph_features as f;
+
+        let conn = self.conn.as_ref();
+        let features = f::table
+            .filter(f::id.eq(id))
+            .select((
+                f::id,
+                f::spec_version,
+                f::api_version,
+                f::features,
+                f::data_sources,
+            ))
+            .first::<(String, String, Option<String>, Vec<String>, Vec<String>)>(conn)
+            .optional()?;
+
+        let features = features.map(|(id, spec_version, api_version, features, data_sources)| {
+            DeploymentFeatures {
+                id,
+                spec_version,
+                api_version,
+                features,
+                data_source_kinds: data_sources,
+            }
+        });
+
+        Ok(features)
+    }
+
+    pub fn create_subgraph_features(
         &self,
         id: String,
         spec_version: String,

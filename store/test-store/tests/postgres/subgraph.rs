@@ -4,8 +4,11 @@ use graph::{
         store::{DeploymentId, DeploymentLocator, StatusStore},
     },
     data::query::QueryTarget,
-    data::subgraph::schema::SubgraphHealth,
-    data::subgraph::schema::{DeploymentCreate, SubgraphError},
+    data::subgraph::{schema::SubgraphHealth, SubgraphFeature},
+    data::subgraph::{
+        schema::{DeploymentCreate, SubgraphError},
+        DeploymentFeatures,
+    },
     prelude::BlockPtr,
     prelude::EntityChange,
     prelude::EntityChangeOperation,
@@ -50,6 +53,11 @@ fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
     let (current, _) = primary.versions_for_subgraph(subgraph_name).unwrap();
     let current = current.unwrap();
     store.version_info(&current).unwrap()
+}
+
+fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
+    let primary = primary_connection();
+    primary.get_subgraph_features(id).unwrap()
 }
 
 async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
@@ -482,6 +490,40 @@ fn version_info() {
         assert_eq!(NETWORK_NAME, vi.network.as_str());
         // We set the head for the network to null in the test framework
         assert_eq!(None, vi.total_ethereum_blocks_count);
+    })
+}
+
+#[test]
+fn subgraph_features() {
+    run_test_sequentially(|_store| async move {
+        const NAME: &str = "subgraph_features";
+        let id = DeploymentHash::new(NAME).unwrap();
+
+        remove_subgraphs();
+        block_store::set_chain(vec![], NETWORK_NAME);
+        create_test_subgraph_with_features(&id, SUBGRAPH_GQL).await;
+
+        let DeploymentFeatures {
+            id: subgraph_id,
+            spec_version,
+            api_version,
+            features,
+            data_source_kinds,
+        } = get_subgraph_features(id.to_string()).unwrap();
+
+        assert_eq!(NAME, subgraph_id.as_str());
+        assert_eq!("1.0.0", spec_version);
+        assert_eq!("1.0.0", api_version.unwrap());
+        assert_eq!(
+            vec![
+                SubgraphFeature::NonFatalErrors.to_string(),
+                SubgraphFeature::FullTextSearch.to_string()
+            ],
+            features
+        );
+        assert_eq!(1, data_source_kinds.len());
+
+        test_store::remove_subgraph(&id)
     })
 }
 
