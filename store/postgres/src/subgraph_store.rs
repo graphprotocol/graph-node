@@ -578,7 +578,7 @@ impl SubgraphStoreInner {
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
 
-            pconn.create_deployment_features(
+            pconn.create_subgraph_features(
                 features.id.to_string(),
                 features.spec_version,
                 features.features,

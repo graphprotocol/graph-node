@@ -1,9 +1,12 @@
 use diesel::{self, PgConnection};
+use graph::blockchain::mock::MockDataSource;
 use graph::data::graphql::effort::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
+use graph::data::subgraph::SubgraphFeature;
 use graph::data_source::CausalityRegion;
+use graph::data_source::DataSource;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::schema::InputSchema;
@@ -153,7 +156,6 @@ pub async fn create_subgraph(
     base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
     let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
-
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
         spec_version: Version::new(1, 0, 0),
@@ -167,6 +169,15 @@ pub async fn create_subgraph(
         chain: PhantomData,
     };
 
+    create_subgraph_with_manifest(subgraph_id, schema, manifest, base).await
+}
+
+pub async fn create_subgraph_with_manifest(
+    subgraph_id: &DeploymentHash,
+    schema: InputSchema,
+    manifest: SubgraphManifest<graph::blockchain::mock::MockBlockchain>,
+    base: Option<(DeploymentHash, BlockPtr)>,
+) -> Result<DeploymentLocator, StoreError> {
     let mut yaml = serde_yaml::Mapping::new();
     yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
     let yaml = serde_yaml::to_string(&yaml).unwrap();
@@ -190,9 +201,43 @@ pub async fn create_subgraph(
         .await?;
     Ok(deployment)
 }
-
 pub async fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) -> DeploymentLocator {
     create_subgraph(subgraph_id, schema, None).await.unwrap()
+}
+
+pub async fn create_test_subgraph_with_features(
+    subgraph_id: &DeploymentHash,
+    schema: &str,
+) -> DeploymentLocator {
+    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+
+    let features = [
+        SubgraphFeature::FullTextSearch,
+        SubgraphFeature::NonFatalErrors,
+    ]
+    .iter()
+    .cloned()
+    .collect::<BTreeSet<_>>();
+
+    let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
+        id: subgraph_id.clone(),
+        spec_version: Version::new(1, 0, 0),
+        features: features,
+        description: Some(format!("manifest for {}", subgraph_id)),
+        repository: Some(format!("repo for {}", subgraph_id)),
+        schema: schema.clone(),
+        data_sources: vec![DataSource::Onchain(MockDataSource {
+            kind: "mock/kind".into(),
+            api_version: Version::new(1, 0, 0),
+        })],
+        graft: None,
+        templates: vec![],
+        chain: PhantomData,
+    };
+
+    create_subgraph_with_manifest(subgraph_id, schema, manifest, None)
+        .await
+        .unwrap()
 }
 
 pub fn remove_subgraph(id: &DeploymentHash) {

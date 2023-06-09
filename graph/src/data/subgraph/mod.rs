@@ -500,7 +500,7 @@ impl Graft {
 
 #[derive(Clone, Debug)]
 pub struct DeploymentFeatures {
-    pub id: DeploymentHash,
+    pub id: String,
     pub spec_version: String,
     pub api_version: Option<String>,
     pub features: Vec<String>,
@@ -702,7 +702,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
         data_source_kinds.extend(data_source_template_kinds);
 
         DeploymentFeatures {
-            id: self.id.clone(),
+            id: self.id.to_string(),
             api_version,
             features,
             spec_version,
