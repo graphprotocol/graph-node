@@ -572,19 +572,12 @@ impl SubgraphStoreInner {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let pconn = self.primary_conn()?;
-
         pconn.transaction(|| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
 
-            pconn.create_subgraph_features(
-                features.id.to_string(),
-                features.spec_version,
-                features.features,
-                features.api_version,
-                features.data_source_kinds,
-            )?;
+            pconn.create_subgraph_features(features)?;
 
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&self.sender, &event)?;

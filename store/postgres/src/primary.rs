@@ -1140,23 +1140,16 @@ impl<'a> Connection<'a> {
         Ok(features)
     }
 
-    pub fn create_subgraph_features(
-        &self,
-        id: String,
-        spec_version: String,
-        features: Vec<String>,
-        api_version: Option<String>,
-        data_source_kinds: Vec<String>,
-    ) -> Result<(), StoreError> {
+    pub fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
         use subgraph_features as f;
 
         let conn = self.conn.as_ref();
         let changes = (
-            f::id.eq(id),
-            f::spec_version.eq(spec_version),
-            f::api_version.eq(api_version),
-            f::features.eq(features),
-            f::data_sources.eq(data_source_kinds),
+            f::id.eq(features.id),
+            f::spec_version.eq(features.spec_version),
+            f::api_version.eq(features.api_version),
+            f::features.eq(features.features),
+            f::data_sources.eq(features.data_source_kinds),
         );
 
         insert_into(f::table)
