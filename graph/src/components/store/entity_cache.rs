@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use inflector::Inflector;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
@@ -202,7 +203,7 @@ impl EntityCache {
 
         let query = DerivedEntityQuery {
             entity_type: EntityType::new(base_type.to_string()),
-            entity_field: field.name.clone().into(),
+            entity_field: field.name.clone().to_snake_case().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
         };
