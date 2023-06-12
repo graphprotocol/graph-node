@@ -85,6 +85,8 @@ impl GraphQlRunner for TestGraphQlRunner {
 
 #[cfg(test)]
 mod test {
+    use http::header::CONTENT_TYPE;
+
     use super::*;
 
     lazy_static! {
@@ -114,7 +116,7 @@ mod test {
                         // Send an empty JSON POST request
                         let client = Client::new();
                         let request =
-                            Request::post(format!("http://localhost:8007/subgraphs/id/{}", id))
+                            Request::post(format!("http://localhost:8007/subgraphs/id/{}", id)).header(CONTENT_TYPE, "text/plain")
                                 .body(Body::from("{}"))
                                 .unwrap();
 
@@ -128,7 +130,7 @@ mod test {
                         let message = errors[0]
                             .as_str()
                             .expect("Error message is not a string");
-                        assert_eq!(message, "GraphQL server error (client error): The \"query\" field is missing in request data");
+                        assert_eq!(message, "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}");
                     }).await.unwrap()
             })
     }
@@ -157,6 +159,7 @@ mod test {
                     let client = Client::new();
                     let request =
                         Request::post(format!("http://localhost:8002/subgraphs/id/{}", id))
+                            .header(CONTENT_TYPE, "text/plain")
                             .body(Body::from("{\"query\": \"<L<G<>M>\"}"))
                             .unwrap();
 
@@ -164,8 +167,7 @@ mod test {
                     client.request(request)
                 })
                 .map_ok(|response| {
-                    let errors =
-                        test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, true);
+                    let errors = test_utils::assert_error_response(response, StatusCode::OK, true);
 
                     let message = errors[0]
                         .as_object()
