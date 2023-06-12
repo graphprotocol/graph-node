@@ -14,7 +14,7 @@ use graph::data::value::Word;
 use graph::slog::SendSyncRefUnwindSafeKV;
 use never::Never;
 use semver::Version;
-use wasmtime::{Memory, Trap};
+use wasmtime::{Memory, Trap, TrapCode};
 
 use graph::blockchain::{Blockchain, HostFnCtx};
 use graph::data::store;
@@ -42,8 +42,6 @@ use crate::mapping::ValidModule;
 
 mod into_wasm_ret;
 pub mod stopwatch;
-
-pub const TRAP_TIMEOUT: &str = "trap: interrupt";
 
 // Convenience for a 'top-level' asc_get, with depth 0.
 fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(
@@ -266,8 +264,14 @@ impl<C: Blockchain> WasmInstance<C> {
                 return Err(MappingError::PossibleReorg(trap.into()));
             }
 
-            // Treat as a special case to have a better error message.
-            Err(trap) if trap.to_string().contains(TRAP_TIMEOUT) => {
+            // Treat timeouts anywhere in the error chain as a special case to have a better error
+            // message. Any `TrapCode::Interrupt` is assumed to be a timeout.
+            Err(trap)
+                if Error::from(trap.clone()).chain().any(|e| {
+                    e.downcast_ref::<Trap>().and_then(|t| t.trap_code())
+                        == Some(TrapCode::Interrupt)
+                }) =>
+            {
                 self.instance_ctx_mut().ctx.state.exit_handler();
                 return Err(MappingError::Unknown(Error::from(trap).context(format!(
                     "Handler '{}' hit the timeout of '{}' seconds",
@@ -280,7 +284,7 @@ impl<C: Blockchain> WasmInstance<C> {
                     is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
                 let e = Error::from(trap);
                 match trap_is_deterministic {
-                    true => Some(Error::from(e)),
+                    true => Some(e),
                     false => {
                         self.instance_ctx_mut().ctx.state.exit_handler();
                         return Err(MappingError::Unknown(e));

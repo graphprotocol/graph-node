@@ -1,10 +1,6 @@
 use graph::prelude::{ethabi::Token, web3::types::U256};
-use graph_runtime_wasm::{
-    asc_abi::class::{
-        ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind,
-        TypedArray,
-    },
-    TRAP_TIMEOUT,
+use graph_runtime_wasm::asc_abi::class::{
+    ArrayBuffer, AscAddress, AscEnum, AscEnumArray, EthereumValueKind, StoreValueKind, TypedArray,
 };
 
 use super::*;
@@ -23,7 +19,10 @@ async fn test_unbounded_loop(api_version: Version) {
     .await
     .0;
     let res: Result<(), _> = module.get_func("loop").typed().unwrap().call(());
-    assert!(res.unwrap_err().to_string().contains(TRAP_TIMEOUT));
+    assert_eq!(
+        res.unwrap_err().to_string().lines().next().unwrap(),
+        "wasm trap: interrupt"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
