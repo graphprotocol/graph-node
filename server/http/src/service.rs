@@ -587,7 +587,7 @@ mod tests {
 
         let response =
             futures03::executor::block_on(service.call(request)).expect("Should return a response");
-        let errors = test_utils::assert_error_response(response, StatusCode::OK, false);
+        let errors = test_utils::assert_error_response(response, StatusCode::BAD_REQUEST, false);
 
         let message = errors[0].as_str().expect("Error message is not a string");
 
