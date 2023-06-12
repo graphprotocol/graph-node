@@ -9,6 +9,7 @@
     "poi-for-failed-subgraph",
     "remove-then-update",
     "value-roundtrip",
-    "int8"
+    "int8",
+    "derived-loaders"
   ]
 }
