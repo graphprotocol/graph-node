@@ -241,6 +241,7 @@ mod test {
                     let client = Client::new();
                     let request =
                         Request::post(format!("http://localhost:8003/subgraphs/id/{}", id))
+                            .header(CONTENT_TYPE, "plain/text")
                             .body(Body::from("{\"query\": \"{ name }\"}"))
                             .unwrap();
 
