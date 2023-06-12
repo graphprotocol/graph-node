@@ -37,6 +37,9 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
+      - name: Tune GitHub hosted runner to reduce flakiness
+        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
+        run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
@@ -75,6 +78,9 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
+      - name: Tune GitHub hosted runner to reduce flakiness
+        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
+        run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
@@ -98,6 +104,9 @@ jobs:
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
     steps:
+      - name: Tune GitHub hosted runner to reduce flakiness
+        # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
+        run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
