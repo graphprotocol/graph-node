@@ -219,7 +219,7 @@ async fn main() {
         });
 
     // Set up Prometheus registry
-    let prometheus_registry = Arc::new(Registry::new());
+    let prometheus_registry = Registry::new();
     let metrics_registry = Arc::new(MetricsRegistry::new(
         logger.clone(),
         prometheus_registry.clone(),

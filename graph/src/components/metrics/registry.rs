@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 
 use prometheus::{labels, Histogram, IntCounterVec};
 
@@ -13,7 +13,7 @@ use crate::slog::{self, error, o, Logger};
 
 pub struct MetricsRegistry {
     logger: Logger,
-    registry: Arc<Registry>,
+    registry: Registry,
     register_errors: Box<Counter>,
     unregister_errors: Box<Counter>,
     registered_metrics: Box<Gauge>,
@@ -28,7 +28,7 @@ pub struct MetricsRegistry {
 }
 
 impl MetricsRegistry {
-    pub fn new(logger: Logger, registry: Arc<Registry>) -> Self {
+    pub fn new(logger: Logger, registry: Registry) -> Self {
         // Generate internal metrics
         let register_errors = Self::gen_register_errors_counter(registry.clone());
         let unregister_errors = Self::gen_unregister_errors_counter(registry.clone());
@@ -49,10 +49,10 @@ impl MetricsRegistry {
     }
 
     pub fn mock() -> Self {
-        MetricsRegistry::new(Logger::root(slog::Discard, o!()), Arc::new(Registry::new()))
+        MetricsRegistry::new(Logger::root(slog::Discard, o!()), Registry::new())
     }
 
-    fn gen_register_errors_counter(registry: Arc<Registry>) -> Box<Counter> {
+    fn gen_register_errors_counter(registry: Registry) -> Box<Counter> {
         let opts = Opts::new(
             String::from("metrics_register_errors"),
             String::from("Counts Prometheus metrics register errors"),
@@ -66,7 +66,7 @@ impl MetricsRegistry {
         counter
     }
 
-    fn gen_unregister_errors_counter(registry: Arc<Registry>) -> Box<Counter> {
+    fn gen_unregister_errors_counter(registry: Registry) -> Box<Counter> {
         let opts = Opts::new(
             String::from("metrics_unregister_errors"),
             String::from("Counts Prometheus metrics unregister errors"),
@@ -80,7 +80,7 @@ impl MetricsRegistry {
         counter
     }
 
-    fn gen_registered_metrics_gauge(registry: Arc<Registry>) -> Box<Gauge> {
+    fn gen_registered_metrics_gauge(registry: Registry) -> Box<Gauge> {
         let opts = Opts::new(
             String::from("registered_metrics"),
             String::from("Tracks the number of registered metrics on the node"),
@@ -521,7 +521,7 @@ fn global_counters_are_shared() {
     use crate::log;
 
     let logger = log::logger(false);
-    let prom_reg = Arc::new(Registry::new());
+    let prom_reg = Registry::new();
     let registry = MetricsRegistry::new(logger, prom_reg);
 
     fn check_counters(

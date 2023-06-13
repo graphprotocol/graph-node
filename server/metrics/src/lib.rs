@@ -1,5 +1,4 @@
 use std::net::{Ipv4Addr, SocketAddrV4};
-use std::sync::Arc;
 
 use anyhow::Error;
 use hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
@@ -20,11 +19,11 @@ pub enum PrometheusMetricsServeError {
 #[derive(Clone)]
 pub struct PrometheusMetricsServer {
     logger: Logger,
-    registry: Arc<Registry>,
+    registry: Registry,
 }
 
 impl PrometheusMetricsServer {
-    pub fn new(logger_factory: &LoggerFactory, registry: Arc<Registry>) -> Self {
+    pub fn new(logger_factory: &LoggerFactory, registry: Registry) -> Self {
         PrometheusMetricsServer {
             logger: logger_factory.component_logger("MetricsServer", None),
             registry,
@@ -43,7 +42,7 @@ impl PrometheusMetricsServer {
             "Starting metrics server at: http://localhost:{}", port,
         );
 
-        let addr = SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port);
+        let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
 
         let server = self.clone();
         let new_service = make_service_fn(move |_req| {

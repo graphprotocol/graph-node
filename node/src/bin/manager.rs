@@ -763,7 +763,7 @@ struct Context {
     ipfs_url: Vec<String>,
     fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
-    pub prometheus_registry: Arc<Registry>,
+    pub prometheus_registry: Registry,
 }
 
 impl Context {
@@ -775,17 +775,15 @@ impl Context {
         fork_base: Option<Url>,
         version_label: Option<String>,
     ) -> Self {
-        let prometheus_registry = Arc::new(
-            Registry::new_custom(
-                None,
-                version_label.map(|label| {
-                    let mut m = HashMap::<String, String>::new();
-                    m.insert(VERSION_LABEL_KEY.into(), label);
-                    m
-                }),
-            )
-            .expect("unable to build prometheus registry"),
-        );
+        let prometheus_registry = Registry::new_custom(
+            None,
+            version_label.map(|label| {
+                let mut m = HashMap::<String, String>::new();
+                m.insert(VERSION_LABEL_KEY.into(), label);
+                m
+            }),
+        )
+        .expect("unable to build prometheus registry");
         let registry = Arc::new(MetricsRegistry::new(
             logger.clone(),
             prometheus_registry.clone(),

@@ -13,7 +13,7 @@ pub mod store_builder;
 pub mod manager;
 
 pub struct MetricsContext {
-    pub prometheus: Arc<Registry>,
+    pub prometheus: Registry,
     pub registry: Arc<MetricsRegistry>,
     pub prometheus_host: Option<String>,
     pub job_name: Option<String>,

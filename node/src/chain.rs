@@ -558,7 +558,7 @@ mod test {
 
         let metrics = Arc::new(EndpointMetrics::mock());
         let config = Config::load(&logger, &opt).expect("can create config");
-        let prometheus_registry = Arc::new(Registry::new());
+        let prometheus_registry = Registry::new();
         let metrics_registry = Arc::new(MetricsRegistry::new(
             logger.clone(),
             prometheus_registry.clone(),
