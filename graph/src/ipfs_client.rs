@@ -32,7 +32,7 @@ impl Display for CidFile {
 
 impl CidFile {
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_string().as_bytes().to_vec()
+        self.to_string().into_bytes()
     }
 }
 

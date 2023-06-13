@@ -1,7 +1,9 @@
 use diesel::sql_types::{Binary, Bool, Integer, Nullable, Numeric, Range, Text};
 
 // Create modules for hosting stored procedures
-sql_function! { fn current_setting(setting_name: Text, missing_ok: Bool) }
+sql_function! {
+    fn current_setting(setting_name: Text, missing_ok: Bool)
+}
 
 sql_function! {
     fn set_config(setting_name: Text, new_value: Text, is_local: Bool)

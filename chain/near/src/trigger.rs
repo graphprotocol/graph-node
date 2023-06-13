@@ -70,8 +70,7 @@ impl PartialEq for NearTrigger {
         match (self, other) {
             (Self::Block(a_ptr), Self::Block(b_ptr)) => a_ptr == b_ptr,
             (Self::Receipt(a), Self::Receipt(b)) => a.receipt.receipt_id == b.receipt.receipt_id,
-
-            (Self::Block(_), Self::Receipt(_)) | (Self::Receipt(_), Self::Block(_)) => false,
+            _ => false,
         }
     }
 }
@@ -169,6 +168,9 @@ mod tests {
         runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
         util::mem::init_slice,
     };
+
+    #[quickcheck]
+    fn 
 
     #[test]
     fn block_trigger_to_asc_ptr() {
