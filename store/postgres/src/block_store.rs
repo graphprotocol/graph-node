@@ -7,7 +7,7 @@ use std::{
 use graph::{
     blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
 };
 use graph::{constraint_violation, prelude::CheapClone};
 use graph::{
@@ -431,6 +431,23 @@ impl BlockStore {
 
         self.stores.write().unwrap().remove(chain);
 
+        Ok(())
+    }
+
+    pub fn cleanup_shallow_blocks(
+        &self,
+        firehose_networks: Option<Vec<&String>>,
+    ) -> Result<(), StoreError> {
+        for store in self.stores.read().unwrap().values() {
+            if let Some(fh_nets) = firehose_networks.clone() {
+                if fh_nets.contains(&&store.chain) {
+                    continue;
+                };
+            }
+
+            info!(&self.logger, "Cleaning shallow blocks on non-firehose chain"; "network" => &store.chain);
+            store.cleanup_shallow_blocks()?
+        }
         Ok(())
     }
 
