@@ -566,7 +566,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
-        deployment,
+        deployment.clone(),
         raw,
         resolver,
         logger,
@@ -574,9 +574,9 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     )
     .map_err(SubgraphRegistrarError::ResolveError)
     .await?;
-
+    let exists = store.is_deployed(&deployment)?;
     let manifest = unvalidated
-        .validate(store.cheap_clone(), true)
+        .validate(store.cheap_clone(), !exists)
         .await
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 

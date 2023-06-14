@@ -424,6 +424,16 @@ impl SubgraphStoreInner {
         store.find_layout(site)
     }
 
+    pub(crate) fn deployment_exists(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
+        let (store, site) = match self.store(id) {
+            Ok(pair) => pair,
+            Err(StoreError::DeploymentNotFound(_)) => return Ok(false),
+            Err(err) => return Err(err),
+        };
+
+        store.exists(site)
+    }
+
     fn place_on_node(
         &self,
         mut nodes: Vec<NodeId>,
@@ -516,11 +526,19 @@ impl SubgraphStoreInner {
 
         self.evict(schema.id())?;
 
-        let graft_base = deployment
-            .graft_base
-            .as_ref()
-            .map(|base| self.layout(base))
-            .transpose()?;
+        let deployment_hash = schema.id();
+        let exists = self.deployment_exists(deployment_hash)?;
+        let graft_base = deployment.graft_base.as_ref();
+
+        let schema_version = if exists {
+            let layout = self.layout(deployment_hash)?;
+            layout.site.schema_version
+        } else if let Some(graft_base) = graft_base {
+            let layout = self.layout(graft_base)?;
+            layout.site.schema_version
+        } else {
+            DeploymentSchemaVersion::LATEST
+        };
 
         let (site, node_id) = {
             // We need to deal with two situations:
@@ -534,10 +552,6 @@ impl SubgraphStoreInner {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
-            let schema_version = match &graft_base {
-                None => DeploymentSchemaVersion::LATEST,
-                Some(src_layout) => src_layout.site.schema_version,
-            };
             let conn = self.primary_conn()?;
             let site = conn.allocate_site(shard, schema.id(), network_name, schema_version)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
@@ -545,10 +559,24 @@ impl SubgraphStoreInner {
         };
         let site = Arc::new(site);
 
-        if let Some(graft_base) = &graft_base {
-            self.primary_conn()?
-                .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
-        }
+        // if the deployment already exists, we don't need to perform any copying
+        // so we can set graft_base to None
+        // if it doesn't exist, we need to copy the graft base to the new deployment
+        let graft_base = if !exists {
+            let graft_base = deployment
+                .graft_base
+                .as_ref()
+                .map(|base| self.layout(base))
+                .transpose()?;
+
+            if let Some(graft_base) = &graft_base {
+                self.primary_conn()?
+                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
+            }
+            graft_base
+        } else {
+            None
+        };
 
         // Create the actual databases schema and metadata entries
         let deployment_store = self

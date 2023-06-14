@@ -1441,6 +1441,11 @@ impl DeploymentStore {
         .await
     }
 
+    pub(crate) fn exists(&self, id: Arc<Site>) -> Result<bool, StoreError> {
+        let conn = self.get_conn()?;
+        deployment::exists(&conn, &id)
+    }
+
     pub(crate) fn graft_pending(
         &self,
         id: &DeploymentHash,
