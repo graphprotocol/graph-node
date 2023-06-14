@@ -7,7 +7,7 @@ use std::{
 use graph::{
     blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    prelude::{error, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
 };
 use graph::{constraint_violation, prelude::CheapClone};
 use graph::{
@@ -241,13 +241,21 @@ impl BlockStore {
                 return false;
             }
             if chain.net_version != ident.net_version {
-                error!(logger,
+                if chain.net_version == "0" {
+                    warn!(logger,
+                        "the net version for chain {} has changed from 0 to {} since the last time we ran, ignoring difference because 0 means UNSET and firehose does not provide it",
+                        chain.name,
+                        ident.net_version,
+                        )
+                } else {
+                    error!(logger,
                         "the net version for chain {} has changed from {} to {} since the last time we ran",
                         chain.name,
                         chain.net_version,
                         ident.net_version
                     );
-                return false;
+                    return false;
+                }
             }
             if chain.genesis_block != ident.genesis_block_hash.hash_hex() {
                 error!(logger,
