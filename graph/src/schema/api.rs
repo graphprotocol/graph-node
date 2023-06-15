@@ -6,7 +6,7 @@ use inflector::Inflector;
 use lazy_static::lazy_static;
 
 use crate::components::store::EntityType;
-use crate::data::graphql::ObjectOrInterface;
+use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
 use crate::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
@@ -233,6 +233,13 @@ lazy_static! {
         let schema = include_str!("introspection.graphql");
         parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
+    pub static ref INTROSPECTION_QUERY_TYPE: ast::ObjectType = ast::ObjectType::from(Arc::new(
+        INTROSPECTION_SCHEMA.get_root_query_type().unwrap().clone()
+    ));
+}
+
+pub fn is_introspection_field(name: &str) -> bool {
+    INTROSPECTION_QUERY_TYPE.field(name).is_some()
 }
 
 fn add_introspection_schema(schema: &mut Document) {
