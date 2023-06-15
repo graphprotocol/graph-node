@@ -1154,9 +1154,7 @@ impl<'a> Connection<'a> {
 
         insert_into(f::table)
             .values(changes.clone())
-            .on_conflict(f::id)
-            .do_update()
-            .set(changes)
+            .on_conflict_do_nothing()
             .execute(conn)?;
         Ok(())
     }

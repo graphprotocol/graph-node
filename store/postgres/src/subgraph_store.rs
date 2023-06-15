@@ -503,7 +503,6 @@ impl SubgraphStoreInner {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
-        features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -582,8 +581,6 @@ impl SubgraphStoreInner {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
-
-            pconn.create_subgraph_features(features)?;
 
             let event = StoreEvent::new(changes);
             pconn.send_store_event(&self.sender, &event)?;
@@ -696,21 +693,11 @@ impl SubgraphStoreInner {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
-        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<DeploymentLocator, StoreError> {
-        self.create_deployment_internal(
-            name,
-            schema,
-            deployment,
-            deployment_features,
-            node_id,
-            network_name,
-            mode,
-            true,
-        )
+        self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
@@ -1260,7 +1247,6 @@ impl SubgraphStoreTrait for SubgraphStore {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
-        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network_name: String,
         mode: SubgraphVersionSwitchingMode,
@@ -1269,7 +1255,6 @@ impl SubgraphStoreTrait for SubgraphStore {
             name,
             schema,
             deployment,
-            deployment_features,
             node_id,
             network_name,
             mode,
@@ -1280,6 +1265,11 @@ impl SubgraphStoreTrait for SubgraphStore {
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let pconn = self.primary_conn()?;
         pconn.transaction(|| pconn.create_subgraph(&name))
+    }
+
+    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
+        let pconn = self.primary_conn()?;
+        pconn.transaction(|| pconn.create_subgraph_features(features))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {

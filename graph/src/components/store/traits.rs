@@ -70,11 +70,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
-        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<DeploymentLocator, StoreError>;
+
+    /// Create a subgraph_feature record in the database
+    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
