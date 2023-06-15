@@ -188,7 +188,6 @@ pub async fn create_subgraph_with_manifest(
         name,
         &schema,
         deployment,
-        manifest.deployment_features(),
         NODE_ID.clone(),
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
@@ -237,9 +236,17 @@ pub async fn create_test_subgraph_with_features(
         chain: PhantomData,
     };
 
-    create_subgraph_with_manifest(subgraph_id, schema, manifest, None)
+    let deployment_features = manifest.deployment_features();
+
+    let locator = create_subgraph_with_manifest(subgraph_id, schema, manifest, None)
         .await
-        .unwrap()
+        .unwrap();
+
+    SUBGRAPH_STORE
+        .create_subgraph_features(deployment_features)
+        .unwrap();
+
+    locator
 }
 
 pub fn remove_subgraph(id: &DeploymentHash) {

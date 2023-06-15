@@ -661,7 +661,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
             name,
             &manifest.schema,
             deployment,
-            manifest.deployment_features(),
             node_id,
             network_name,
             version_switching_mode,
