@@ -137,8 +137,10 @@ type CachedEthereumCall {
 }
 
 type SubgraphFeatures {
+  apiVersion: String
+  specVersion: String!
   features: [Feature!]!
-  errors: [String!]!
+  dataSources: [String!]!
   network: String
 }
 

@@ -10,6 +10,7 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
+use crate::object;
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -54,7 +55,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use super::value::Word;
+use super::{graphql::IntoValue, value::Word};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -505,6 +506,18 @@ pub struct DeploymentFeatures {
     pub api_version: Option<String>,
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
+}
+
+impl IntoValue for DeploymentFeatures {
+    fn into_value(self) -> r::Value {
+        object! {
+            __typename: "SubgraphFeatures",
+            specVersion: self.spec_version,
+            apiVersion: self.api_version,
+            features: self.features,
+            dataSources: self.data_source_kinds,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
