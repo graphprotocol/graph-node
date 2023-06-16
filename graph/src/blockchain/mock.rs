@@ -46,6 +46,7 @@ impl Block for MockBlock {
 pub struct MockDataSource {
     pub api_version: semver::Version,
     pub kind: String,
+    pub network: Option<String>,
 }
 
 impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
@@ -78,7 +79,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn network(&self) -> Option<&str> {
-        todo!()
+        self.network.as_deref()
     }
 
     fn context(&self) -> std::sync::Arc<Option<crate::prelude::DataSourceContext>> {
