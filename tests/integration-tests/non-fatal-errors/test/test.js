@@ -82,13 +82,45 @@ contract("Contract", (accounts) => {
   });
 
   it("only sucessful handler register changes", async () => {
+    let meta = await fetchSubgraph({
+      query: `{ _meta { deployment } }`,
+    });
+
+    let deployment = meta.data._meta.deployment;
+    console.log("deployment", deployment);
+
+    let subgraph_features = await fetchSubgraphs({
+      query: `query GetSubgraphFeatures($deployment: String!) {
+        subgraphFeatures(subgraphId: $deployment) {
+          specVersion
+          apiVersion
+          features
+          dataSources
+          network
+        }
+      }`,
+      variables: { deployment },
+    });
+
+    expect(subgraph_features.data).to.deep.equal({
+      subgraphFeatures: {
+        specVersion: "0.0.4",
+        apiVersion: "0.0.6",
+        features: ["nonFatalErrors"],
+        dataSources: ["ethereum/contract"],
+        network: "test",
+      },
+    });
+
     let result = await fetchSubgraph({
       query: `{ foos(orderBy: id, subgraphError: allow) { id } }`,
     });
 
-    expect(result.errors).to.deep.equal([{
-      "message": "indexing_error"
-    }]);
+    expect(result.errors).to.deep.equal([
+      {
+        message: "indexing_error",
+      },
+    ]);
 
     // Importantly, "1" and "11" are not present because their handlers erroed.
     expect(result.data).to.deep.equal({
