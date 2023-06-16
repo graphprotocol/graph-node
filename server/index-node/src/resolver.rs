@@ -63,6 +63,7 @@ pub struct IndexNodeResolver<S: Store> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
+    #[allow(dead_code)]
     link_resolver: Arc<dyn LinkResolver>,
     bearer_token: Option<String>,
 }
