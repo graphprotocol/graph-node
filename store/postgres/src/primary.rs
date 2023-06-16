@@ -85,6 +85,7 @@ table! {
         api_version -> Nullable<Text>,
         features -> Array<Text>,
         data_sources -> Array<Text>,
+        network -> Text,
     }
 }
 
@@ -1123,19 +1124,28 @@ impl<'a> Connection<'a> {
                 f::api_version,
                 f::features,
                 f::data_sources,
+                f::network,
             ))
-            .first::<(String, String, Option<String>, Vec<String>, Vec<String>)>(conn)
+            .first::<(
+                String,
+                String,
+                Option<String>,
+                Vec<String>,
+                Vec<String>,
+                String,
+            )>(conn)
             .optional()?;
 
-        let features = features.map(|(id, spec_version, api_version, features, data_sources)| {
-            DeploymentFeatures {
+        let features = features.map(
+            |(id, spec_version, api_version, features, data_sources, network)| DeploymentFeatures {
                 id,
                 spec_version,
                 api_version,
                 features,
                 data_source_kinds: data_sources,
-            }
-        });
+                network: network,
+            },
+        );
 
         Ok(features)
     }
@@ -1150,6 +1160,7 @@ impl<'a> Connection<'a> {
             f::api_version.eq(features.api_version),
             f::features.eq(features.features),
             f::data_sources.eq(features.data_source_kinds),
+            f::network.eq(features.network),
         );
 
         insert_into(f::table)
