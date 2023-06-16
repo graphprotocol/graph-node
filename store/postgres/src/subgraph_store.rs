@@ -1326,6 +1326,14 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.subgraph_exists(name)
     }
 
+    fn subgraph_features(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Result<Option<DeploymentFeatures>, StoreError> {
+        self.primary_conn()?
+            .get_subgraph_features(deployment.to_string())
+    }
+
     fn entity_changes_in_block(
         &self,
         subgraph_id: &DeploymentHash,

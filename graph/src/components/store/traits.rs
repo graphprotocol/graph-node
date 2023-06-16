@@ -61,6 +61,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// node, as the store will still accept queries.
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
+    fn subgraph_features(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Result<Option<DeploymentFeatures>, StoreError>;
+
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
     /// create a new deployment, and point the current or pending version of
