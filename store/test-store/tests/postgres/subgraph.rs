@@ -508,11 +508,13 @@ fn subgraph_features() {
             api_version,
             features,
             data_source_kinds,
+            network,
         } = get_subgraph_features(id.to_string()).unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
         assert_eq!("1.0.0", spec_version);
         assert_eq!("1.0.0", api_version.unwrap());
+        assert_eq!(NETWORK_NAME, network);
         assert_eq!(
             vec![
                 SubgraphFeature::NonFatalErrors.to_string(),

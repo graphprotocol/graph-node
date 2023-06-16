@@ -506,6 +506,7 @@ pub struct DeploymentFeatures {
     pub api_version: Option<String>,
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
+    pub network: String,
 }
 
 impl IntoValue for DeploymentFeatures {
@@ -516,6 +517,7 @@ impl IntoValue for DeploymentFeatures {
             apiVersion: self.api_version,
             features: self.features,
             dataSources: self.data_source_kinds,
+            network: self.network,
         }
     }
 }
@@ -688,6 +690,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
 
     pub fn deployment_features(&self) -> DeploymentFeatures {
         let unified_api_version = self.unified_mapping_api_version().ok();
+        let network = self.network_name();
         let api_version = unified_api_version
             .map(|v| v.version().map(|v| v.to_string()))
             .flatten();
@@ -713,13 +716,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect::<Vec<_>>();
 
         data_source_kinds.extend(data_source_template_kinds);
-
         DeploymentFeatures {
             id: self.id.to_string(),
             api_version,
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
+            network: network,
         }
     }
 
