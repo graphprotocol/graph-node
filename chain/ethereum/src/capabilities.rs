@@ -67,3 +67,38 @@ impl graph::blockchain::NodeCapabilities<crate::Chain> for NodeCapabilities {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use quickcheck::{Arbitrary, Gen};
+    use quickcheck_macros::quickcheck;
+
+    impl Arbitrary for NodeCapabilities {
+        fn arbitrary(g: &mut Gen) -> Self {
+            Self {
+                archive: bool::arbitrary(g),
+                traces: bool::arbitrary(g),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn node_capabilities_partial_ord_is_correct(
+        a: NodeCapabilities,
+        b: NodeCapabilities,
+        c: NodeCapabilities,
+    ) -> bool {
+        reltester::partial_ord(&a, &b, &c).is_ok()
+    }
+
+    #[quickcheck]
+    fn node_capabilities_eq_is_correct(
+        a: NodeCapabilities,
+        b: NodeCapabilities,
+        c: NodeCapabilities,
+    ) -> bool {
+        reltester::eq(&a, &b, &c).is_ok()
+    }
+}

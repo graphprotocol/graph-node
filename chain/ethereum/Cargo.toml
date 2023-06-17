@@ -26,6 +26,9 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 base64 = "0.20.0"
+quickcheck = "1"
+quickcheck_macros = "1"
+reltester = "1"
 uuid = { version = "1.3.2", features = ["v4"] }
 
 [build-dependencies]
