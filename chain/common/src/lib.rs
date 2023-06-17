@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::convert::From;
 use std::fmt::Debug;
+use std::path::Path;
 
 use anyhow::Error;
 use protobuf::descriptor::field_descriptor_proto::Label;
@@ -9,8 +11,6 @@ use protobuf::descriptor::FieldDescriptorProto;
 use protobuf::descriptor::OneofDescriptorProto;
 use protobuf::Message;
 use protobuf::UnknownValueRef;
-use std::convert::From;
-use std::path::Path;
 
 const REQUIRED_ID: u32 = 77001;
 
@@ -174,11 +174,9 @@ impl From<&DescriptorProto> for PType {
     }
 }
 
-pub fn parse_proto_file<'a, P>(file_path: P) -> Result<HashMap<String, PType>, Error>
-where
-    P: 'a + AsRef<Path> + Debug,
-{
-    let dir = if let Some(p) = file_path.as_ref().parent() {
+pub fn parse_proto_file(file_path: impl AsRef<Path>) -> Result<HashMap<String, PType>, Error> {
+    let file_path = file_path.as_ref();
+    let dir = if let Some(p) = file_path.parent() {
         p
     } else {
         return Err(anyhow::anyhow!(
@@ -195,7 +193,7 @@ where
     assert!(fd.file.len() == 1);
     assert!(fd.file[0].has_name());
 
-    let file_name = file_path.as_ref().file_name().unwrap().to_str().unwrap();
+    let file_name = file_path.file_name().unwrap().to_str().unwrap();
     assert!(fd.file[0].name() == file_name);
 
     let ret_val = fd
