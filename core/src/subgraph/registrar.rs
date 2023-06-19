@@ -575,9 +575,9 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     .map_err(SubgraphRegistrarError::ResolveError)
     .await?;
     let exists = store.is_deployed(&deployment)?;
-    let graft_pending = store.graft_pending(&deployment)?;
+    let should_validate = !exists || store.graft_pending(&deployment)?;
     let manifest = unvalidated
-        .validate(store.cheap_clone(), !exists || graft_pending)
+        .validate(store.cheap_clone(), should_validate)
         .await
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 

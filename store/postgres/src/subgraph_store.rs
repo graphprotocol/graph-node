@@ -424,16 +424,6 @@ impl SubgraphStoreInner {
         store.find_layout(site)
     }
 
-    pub(crate) fn deployment_exists(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
-        let (store, site) = match self.store(id) {
-            Ok(pair) => pair,
-            Err(StoreError::DeploymentNotFound(_)) => return Ok(false),
-            Err(err) => return Err(err),
-        };
-
-        store.exists(site)
-    }
-
     fn place_on_node(
         &self,
         mut nodes: Vec<NodeId>,
@@ -525,12 +515,9 @@ impl SubgraphStoreInner {
         assert!(!replace);
 
         self.evict(schema.id())?;
-
-        let deployment_hash = schema.id();
-        let exists = self.deployment_exists(deployment_hash)?;
         let graft_base = deployment.graft_base.as_ref();
 
-        let (site, node_id) = {
+        let (site, exists, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
             //       to go in the shard and onto the node that the placement
@@ -543,9 +530,10 @@ impl SubgraphStoreInner {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
+            let (site, site_was_created) =
+                conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
-            (site, node_id)
+            (site, !site_was_created, node_id)
         };
         let site = Arc::new(site);
 
