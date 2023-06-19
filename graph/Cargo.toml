@@ -38,7 +38,7 @@ serde_yaml = "0.9.21"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 stable-hash = { version = "0.4.2" }
-strum = "0.21.0"
+strum = "0.25.0"
 strum_macros = "0.21.1"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
