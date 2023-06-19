@@ -182,7 +182,7 @@ pub enum Command {
         #[clap(
             long,
             short,
-            default_value = "10",
+            default_value = "20",
             parse(try_from_str = parse_duration_in_secs)
         )]
         sleep: Duration,
