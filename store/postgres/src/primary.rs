@@ -1252,11 +1252,21 @@ impl<'a> Connection<'a> {
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
-        schema_version: DeploymentSchemaVersion,
+        graft_base: Option<&DeploymentHash>,
     ) -> Result<Site, StoreError> {
         if let Some(site) = queries::find_active_site(self.conn.as_ref(), subgraph)? {
             return Ok(site);
         }
+
+        let schema_version = match graft_base {
+            Some(graft_base) => {
+                let site = queries::find_active_site(self.conn.as_ref(), graft_base)?;
+                site.map(|site| site.schema_version).ok_or_else(|| {
+                    StoreError::DeploymentNotFound("graft_base not found".to_string())
+                })
+            }
+            None => Ok(DeploymentSchemaVersion::LATEST),
+        }?;
 
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
     }

@@ -16,8 +16,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest, SubgraphFork,
+            self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, PruneReporter,
+            PruneRequest, SubgraphFork,
         },
     },
     constraint_violation,
@@ -530,16 +530,6 @@ impl SubgraphStoreInner {
         let exists = self.deployment_exists(deployment_hash)?;
         let graft_base = deployment.graft_base.as_ref();
 
-        let schema_version = if exists {
-            let layout = self.layout(deployment_hash)?;
-            layout.site.schema_version
-        } else if let Some(graft_base) = graft_base {
-            let layout = self.layout(graft_base)?;
-            layout.site.schema_version
-        } else {
-            DeploymentSchemaVersion::LATEST
-        };
-
         let (site, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
@@ -553,7 +543,7 @@ impl SubgraphStoreInner {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard, schema.id(), network_name, schema_version)?;
+            let site = conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, node_id)
         };
@@ -1467,6 +1457,12 @@ impl SubgraphStoreTrait for SubgraphStore {
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
+        let (store, _) = self.store(id)?;
+        let graft_detail = store.graft_pending(id)?;
+        Ok(graft_detail.is_some())
     }
 
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
