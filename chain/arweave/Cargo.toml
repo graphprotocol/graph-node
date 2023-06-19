@@ -12,7 +12,7 @@ graph = { path = "../../graph" }
 prost = { workspace = true }
 prost-types = { workspace = true }
 serde = "1.0"
-sha2 = "0.10.6"
+sha2 = "0.10.7"
 
 graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
