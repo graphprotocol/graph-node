@@ -1,5 +1,5 @@
 use anyhow::Error;
-use futures03::{stream::Stream, Future, FutureExt};
+use futures::{stream::Stream, Future, FutureExt};
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;

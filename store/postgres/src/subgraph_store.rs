@@ -25,7 +25,7 @@ use graph::{
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     prelude::StoreEvent,
     prelude::{
-        anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
+        anyhow, futures::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
         BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
         MetricsRegistry, NodeId, PartialBlockPtr, StoreError, SubgraphDeploymentEntity,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,

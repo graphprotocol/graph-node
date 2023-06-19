@@ -1,7 +1,7 @@
-use futures03::future::FutureExt;
-use futures03::future::Shared;
+use futures::future::FutureExt;
+use futures::future::Shared;
 use graph::{
-    prelude::{debug, futures03, BlockPtr, CheapClone, Logger, QueryResult},
+    prelude::{debug, futures, BlockPtr, CheapClone, Logger, QueryResult},
     util::timed_rw_lock::TimedMutex,
 };
 use stable_hash_legacy::crypto::SetHasher;

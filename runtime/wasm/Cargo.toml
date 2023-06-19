@@ -7,7 +7,7 @@ edition.workspace = true
 async-trait = "0.1.50"
 atomic_refcell = "0.1.10"
 ethabi = "17.2"
-futures = "0.1.21"
+futures = "0.3"
 hex = "0.4.3"
 graph = { path = "../../graph" }
 bs58 = "0.4.0"

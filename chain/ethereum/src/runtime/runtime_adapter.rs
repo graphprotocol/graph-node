@@ -16,7 +16,7 @@ use graph::{
     cheap_clone::CheapClone,
     prelude::{
         ethabi::{self, Address, Token},
-        EthereumCallCache, Future01CompatExt,
+        EthereumCallCache,
     },
     runtime::{asc_get, asc_new, AscPtr, HostExportError},
     semver::Version,
@@ -204,7 +204,7 @@ fn eth_call(
     let logger1 = logger.clone();
     let call_cache = call_cache.clone();
     let result = match graph::block_on(
-            eth_adapter.contract_call(&logger1, call, call_cache).compat()
+            eth_adapter.contract_call(&logger1, call, call_cache)
         ) {
             Ok(tokens) => Ok(Some(tokens)),
             Err(EthereumContractCallError::Revert(reason)) => {

@@ -1,9 +1,9 @@
 use std::cmp::PartialEq;
+use std::sync::mpsc::SyncSender;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use futures::sync::mpsc::Sender;
-use futures03::channel::oneshot::channel;
+use futures::channel::oneshot::channel;
 
 use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
@@ -62,7 +62,7 @@ where
         logger: Logger,
         subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, Error> {
+    ) -> Result<SyncSender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
             allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
         };
@@ -83,7 +83,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: Sender<MappingRequest<C>>,
+        mapping_request_sender: SyncSender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
@@ -103,7 +103,7 @@ where
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
     data_source: DataSource<C>,
-    mapping_request_sender: Sender<MappingRequest<C>>,
+    mapping_request_sender: SyncSender<MappingRequest<C>>,
     host_exports: Arc<HostExports<C>>,
     metrics: Arc<HostMetrics>,
 }
@@ -119,7 +119,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: Sender<MappingRequest<C>>,
+        mapping_request_sender: SyncSender<MappingRequest<C>>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
@@ -192,8 +192,6 @@ where
                 trigger,
                 result_sender,
             })
-            .compat()
-            .await
             .context("Mapping terminated before passing in trigger")?;
 
         let result = result_receiver

@@ -9,7 +9,7 @@ use crate::{
 };
 use anyhow::{Context, Error};
 use async_trait::async_trait;
-use futures03::StreamExt;
+use futures::StreamExt;
 use prost::Message;
 use prost_types::Any;
 use slog::{o, trace};

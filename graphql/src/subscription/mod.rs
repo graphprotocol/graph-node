@@ -143,7 +143,7 @@ fn map_source_to_response_stream(
     // at least once. This satisfies the GraphQL over Websocket protocol
     // requirement of "respond[ing] with at least one GQL_DATA message", see
     // https://github.com/apollographql/subscriptions-transport-ws/blob/master/PROTOCOL.md#gql_data
-    let trigger_stream = futures03::stream::once(async {});
+    let trigger_stream = futures::stream::once(async {});
 
     let SubscriptionExecutionOptions {
         logger,

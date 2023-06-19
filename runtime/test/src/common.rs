@@ -109,7 +109,7 @@ pub fn mock_context(
             api_version,
         )),
         state: BlockState::new(
-            futures03::executor::block_on(store.writable(
+            futures::executor::block_on(store.writable(
                 LOGGER.clone(),
                 deployment.id,
                 Arc::new(Vec::new()),

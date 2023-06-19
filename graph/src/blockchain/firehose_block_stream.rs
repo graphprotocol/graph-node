@@ -7,7 +7,7 @@ use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
 use async_stream::try_stream;
-use futures03::{Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};

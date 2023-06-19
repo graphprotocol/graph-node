@@ -1,7 +1,7 @@
 use crate::prelude::tokio::macros::support::Poll;
 use crate::prelude::{Pin, StoreError};
-use futures03::channel::oneshot;
-use futures03::{future::Fuse, Future, FutureExt, Stream};
+use futures::channel::oneshot;
+use futures::{future::Fuse, Future, FutureExt, Stream};
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex, Weak};
 use std::task::Context;

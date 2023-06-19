@@ -21,7 +21,6 @@ reqwest = { version = "0.11.14", features = ["json", "stream", "multipart"] }
 ethabi = "17.2"
 hex = "0.4.3"
 http = "0.2.3"
-futures = "0.1.21"
 graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
@@ -56,7 +55,7 @@ tonic = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
-futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
+futures = "0.3"
 wasmparser = "0.78.2"
 thiserror = "1.0.25"
 parking_lot = "0.12.1"

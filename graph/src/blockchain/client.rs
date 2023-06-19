@@ -19,6 +19,7 @@ impl<C: Blockchain> ChainClient<C> {
     pub fn new_firehose(firehose_endpoints: FirehoseEndpoints) -> Self {
         Self::new(firehose_endpoints, C::Client::default())
     }
+
     pub fn new(firehose_endpoints: FirehoseEndpoints, adapters: C::Client) -> Self {
         // If we can get a firehose endpoint then we should prioritise it.
         // the reason we want to test this by getting an adapter is because

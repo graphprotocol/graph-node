@@ -1,6 +1,6 @@
 use anyhow::Error;
 use ethabi::{Error as ABIError, Function, ParamType, Token};
-use futures::Future;
+use futures::stream::BoxStream;
 use graph::blockchain::ChainIdentifier;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
@@ -11,7 +11,6 @@ use prost_types::Any;
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::marker::Unpin;
 use thiserror::Error;
 use tiny_keccak::keccak256;
 use web3::types::{Address, Log, H256};
@@ -837,22 +836,19 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     async fn net_identifiers(&self) -> Result<ChainIdentifier, Error>;
 
     /// Get the latest block, including full transactions.
-    fn latest_block(
-        &self,
-        logger: &Logger,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = bc::IngestorError> + Send + Unpin>;
+    async fn latest_block(&self, logger: &Logger) -> Result<LightEthereumBlock, bc::IngestorError>;
 
     /// Get the latest block, with only the header and transaction hashes.
-    fn latest_block_header(
+    async fn latest_block_header(
         &self,
         logger: &Logger,
-    ) -> Box<dyn Future<Item = web3::types::Block<H256>, Error = bc::IngestorError> + Send>;
+    ) -> Result<web3::types::Block<H256>, bc::IngestorError>;
 
-    fn load_block(
+    async fn load_block(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = LightEthereumBlock, Error = Error> + Send>;
+    ) -> Result<LightEthereumBlock, Error>;
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
@@ -861,34 +857,34 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
         block_hashes: HashSet<H256>,
-    ) -> Box<dyn Stream<Item = Arc<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> BoxStream<anyhow::Result<Arc<LightEthereumBlock>>>;
 
     /// Find a block by its hash.
-    fn block_by_hash(
+    async fn block_by_hash(
         &self,
         logger: &Logger,
         block_hash: H256,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> Result<Option<LightEthereumBlock>, Error>;
 
-    fn block_by_number(
+    async fn block_by_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<LightEthereumBlock>, Error = Error> + Send>;
+    ) -> Result<Option<LightEthereumBlock>, Error>;
 
     /// Load full information for the specified `block` (in particular, transaction receipts).
-    fn load_full_block(
+    async fn load_full_block(
         &self,
         logger: &Logger,
         block: LightEthereumBlock,
-    ) -> Pin<Box<dyn std::future::Future<Output = Result<EthereumBlock, bc::IngestorError>> + Send>>;
+    ) -> Result<EthereumBlock, bc::IngestorError>;
 
     /// Load block pointer for the specified `block number`.
-    fn block_pointer_from_number(
+    async fn block_pointer_from_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = BlockPtr, Error = bc::IngestorError> + Send>;
+    ) -> Result<BlockPtr, bc::IngestorError>;
 
     /// Find a block by its number, according to the Ethereum node.
     ///
@@ -899,19 +895,19 @@ pub trait EthereumAdapter: Send + Sync + 'static {
     /// those confirmations.
     /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
     /// reorgs.
-    fn block_hash_by_block_number(
+    async fn block_hash_by_block_number(
         &self,
         logger: &Logger,
         block_number: BlockNumber,
-    ) -> Box<dyn Future<Item = Option<H256>, Error = Error> + Send>;
+    ) -> Result<Option<H256>, Error>;
 
     /// Call the function of a smart contract.
-    fn contract_call(
+    async fn contract_call(
         &self,
         logger: &Logger,
         call: EthereumContractCall,
         cache: Arc<dyn EthereumCallCache>,
-    ) -> Box<dyn Future<Item = Vec<Token>, Error = EthereumContractCallError> + Send>;
+    ) -> Result<Vec<Token>, EthereumContractCallError>;
 }
 
 #[cfg(test)]

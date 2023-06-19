@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::prelude::{SecondsFormat, Utc};
-use futures03::TryFutureExt;
+use futures::TryFutureExt;
 use http::header::CONTENT_TYPE;
 use prometheus::Counter;
 use reqwest;

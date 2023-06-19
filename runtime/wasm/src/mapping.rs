@@ -1,7 +1,6 @@
 use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
-use futures::sync::mpsc;
-use futures03::channel::oneshot::Sender;
+use futures::channel::oneshot::Sender;
 use graph::blockchain::{Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -10,8 +9,57 @@ use graph::prelude::*;
 use graph::runtime::gas::Gas;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::{panic, thread};
+
+fn handle_mapping_request<C: Blockchain>(
+    request: MappingRequest<C>,
+    valid_module: Arc<ValidModule>,
+    host_metrics: Arc<HostMetrics>,
+    timeout: Option<Duration>,
+    experimental_features: ExperimentalFeatures,
+) -> anyhow::Result<()>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
+    let MappingRequest {
+        ctx,
+        trigger,
+        result_sender,
+    } = request;
+
+    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+        instantiate_module_and_handle_trigger(
+            valid_module.cheap_clone(),
+            ctx,
+            trigger,
+            host_metrics.cheap_clone(),
+            timeout,
+            experimental_features,
+        )
+    }));
+
+    let result = match result {
+        Ok(result) => result,
+        Err(panic_info) => {
+            let err_msg = if let Some(payload) = panic_info
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or(panic_info.downcast_ref::<&str>().copied())
+            {
+                anyhow!("Subgraph panicked with message: {}", payload)
+            } else {
+                anyhow!("Subgraph panicked with an unknown payload.")
+            };
+            Err(MappingError::Unknown(err_msg))
+        }
+    };
+
+    result_sender
+        .send(result)
+        .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
+}
 
 /// Spawn a wasm module in its own thread.
 pub fn spawn_module<C: Blockchain>(
@@ -22,14 +70,14 @@ pub fn spawn_module<C: Blockchain>(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error>
+) -> Result<mpsc::SyncSender<MappingRequest<C>>, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
     let valid_module = Arc::new(ValidModule::new(&logger, raw_module)?);
 
     // Create channel for event handling requests
-    let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
+    let (mapping_request_sender, mapping_request_receiver) = mpsc::sync_channel(100);
 
     // wasmtime instances are not `Send` therefore they cannot be scheduled by
     // the regular tokio executor, so we create a dedicated thread.
@@ -44,52 +92,19 @@ where
 
         // Pass incoming triggers to the WASM module and return entity changes;
         // Stop when canceled because all RuntimeHosts and their senders were dropped.
-        match mapping_request_receiver
-            .map_err(|()| unreachable!())
-            .for_each(move |request| {
-                let MappingRequest {
-                    ctx,
-                    trigger,
-                    result_sender,
-                } = request;
-
-                let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    instantiate_module_and_handle_trigger(
-                        valid_module.cheap_clone(),
-                        ctx,
-                        trigger,
-                        host_metrics.cheap_clone(),
-                        timeout,
-                        experimental_features,
-                    )
-                }));
-
-                let result = match result {
-                    Ok(result) => result,
-                    Err(panic_info) => {
-                        let err_msg = if let Some(payload) = panic_info
-                            .downcast_ref::<String>()
-                            .map(String::as_str)
-                            .or(panic_info.downcast_ref::<&str>().copied())
-                        {
-                            anyhow!("Subgraph panicked with message: {}", payload)
-                        } else {
-                            anyhow!("Subgraph panicked with an unknown payload.")
-                        };
-                        Err(MappingError::Unknown(err_msg))
-                    }
-                };
-
-                result_sender
-                    .send(result)
-                    .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
-            })
-            .wait()
-        {
-            Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
-            Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
+        mapping_request_receiver.into_iter().for_each(|request| {
+            match handle_mapping_request(
+                request,
+                valid_module.cheap_clone(),
+                host_metrics.cheap_clone(),
+                timeout,
+                experimental_features,
+            ) {
+                Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
+                Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
                                     "error" => e.to_string()),
-        }
+            }
+        })
     })
     .map(|_| ())
     .context("Spawning WASM runtime thread failed")?;

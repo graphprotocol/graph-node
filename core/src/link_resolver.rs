@@ -4,8 +4,8 @@ use std::time::Duration;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
+use futures::stream::FuturesUnordered;
 use futures01::{stream::poll_fn, try_ready};
-use futures03::stream::FuturesUnordered;
 use graph::env::EnvVars;
 use graph::util::futures::RetryConfigNoTimeout;
 use lru_time_cache::LruCache;
@@ -279,7 +279,7 @@ impl LinkResolverTrait for LinkResolver {
                         if line_bytes.len() > 1 {
                             let line = std::str::from_utf8(&line_bytes)?;
                             let res = match serde_json::from_str::<Value>(line) {
-                                Ok(v) => Ok(Async::Ready(Some(JsonStreamValue {
+                                Ok(v) => Ok(Poll::Ready(Some(JsonStreamValue {
                                     value: v,
                                     line: count,
                                 }))),
@@ -302,7 +302,7 @@ impl LinkResolverTrait for LinkResolver {
                         }
                     } else {
                         // We only get here if there is no complete line in buf, and
-                        // it is therefore ok to immediately pass an Async::NotReady
+                        // it is therefore ok to immediately pass an Poll::Pending
                         // from stream through.
                         // If we get a None from poll, but still have something in buf,
                         // that means the input was not terminated with a newline. We
@@ -311,7 +311,7 @@ impl LinkResolverTrait for LinkResolver {
                         match try_ready!(stream.poll().map_err(|e| anyhow::anyhow!("{}", e))) {
                             Some(b) => buf.extend_from_slice(&b),
                             None if !buf.is_empty() => buf.extend_from_slice(&[b'\n']),
-                            None => return Ok(Async::Ready(None)),
+                            None => return Ok(Poll::Ready(None)),
                         }
                     }
                 }

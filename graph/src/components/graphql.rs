@@ -11,7 +11,7 @@ use std::time::Duration;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
-    Box<dyn Future<Item = SubscriptionResult, Error = SubscriptionError> + Send>;
+    Box<dyn Future<Output = Result<SubscriptionResult, SubscriptionError>> + Send>;
 
 pub enum GraphQlTarget {
     SubgraphName(String),

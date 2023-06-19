@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
+use futures::StreamExt;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
@@ -26,7 +27,7 @@ use graph::{
     firehose,
     prelude::{
         async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Future01CompatExt, Logger, LoggerFactory, NodeId,
+        Logger, LoggerFactory, NodeId,
     },
 };
 use prost::Message;
@@ -409,10 +410,7 @@ impl Blockchain for Chain {
                     .with_context(|| format!("no adapter for chain {}", self.name))?
                     .clone();
 
-                adapter
-                    .block_pointer_from_number(logger, number)
-                    .compat()
-                    .await
+                adapter.block_pointer_from_number(logger, number).await
             }
         }
     }
@@ -684,29 +682,22 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }))
     }
 
-    async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
-        use futures::stream::Stream;
-        use graph::prelude::LightEthereumBlockExt;
-
+    async fn parent_ptr(&self, block: &BlockPtr) -> anyhow::Result<Option<BlockPtr>> {
         let block = match self.chain_client.as_ref() {
             ChainClient::Firehose(_) => Some(BlockPtr {
                 hash: BlockHash::from(vec![0xff; 32]),
                 number: block.number.saturating_sub(1),
             }),
             ChainClient::Rpc(adapters) => {
-                let blocks = adapters
-                    .cheapest_with(&self.capabilities)?
-                    .load_blocks(
-                        self.logger.cheap_clone(),
-                        self.chain_store.cheap_clone(),
-                        HashSet::from_iter(Some(block.hash_as_h256())),
-                    )
-                    .collect()
-                    .compat()
-                    .await?;
+                let stream = adapters.cheapest_with(&self.capabilities)?.load_blocks(
+                    self.logger.cheap_clone(),
+                    self.chain_store.cheap_clone(),
+                    HashSet::from_iter(Some(block.hash_as_h256())),
+                );
+                let blocks = stream.collect::<Vec<_>>().await;
                 assert_eq!(blocks.len(), 1);
 
-                blocks[0].parent_ptr()
+                blocks[0]?.parent_ptr()
             }
         };
 

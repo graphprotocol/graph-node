@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-futures = "0.1.23"
+futures = "0.3"
 graph = { path = "../../graph" }
 graphql-parser = "0.4.0"
 http = "0.2"

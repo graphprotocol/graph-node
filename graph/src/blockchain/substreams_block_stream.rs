@@ -7,7 +7,7 @@ use crate::substreams::Modules;
 use crate::substreams_rpc::{Request, Response};
 use crate::util::backoff::ExponentialBackoff;
 use async_stream::try_stream;
-use futures03::{Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};

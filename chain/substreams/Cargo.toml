@@ -9,7 +9,7 @@ tonic-build = { workspace = true }
 [dependencies]
 async-stream = "0.3"
 envconfig = "0.10.0"
-futures = "0.1.21"
+futures = "0.3"
 http = "0.2.4"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }

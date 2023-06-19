@@ -4,7 +4,7 @@ use graph::{
     cheap_clone::CheapClone,
     prelude::{
         async_trait, error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore,
-        Error, EthereumBlockWithCalls, Future01CompatExt, LogCode, Logger,
+        Error, EthereumBlockWithCalls, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};
@@ -161,7 +161,6 @@ impl PollingBlockIngestor {
         let block = self
             .eth_adapter
             .block_by_hash(&self.logger, block_hash)
-            .compat()
             .await?
             .ok_or(IngestorError::BlockUnavailable(block_hash))?;
         let ethereum_block = self
@@ -195,7 +194,6 @@ impl PollingBlockIngestor {
     async fn latest_block(&self) -> Result<BlockPtr, IngestorError> {
         self.eth_adapter
             .latest_block_header(&self.logger)
-            .compat()
             .await
             .map(|block| block.into())
     }

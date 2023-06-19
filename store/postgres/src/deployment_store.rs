@@ -15,7 +15,7 @@ use graph::data::query::Trace;
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::futures03::FutureExt;
+use graph::prelude::futures::FutureExt;
 use graph::prelude::{
     tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,

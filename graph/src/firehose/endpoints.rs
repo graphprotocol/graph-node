@@ -12,7 +12,7 @@ use crate::{
 
 use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
-use futures03::StreamExt;
+use futures::StreamExt;
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::Logger;

@@ -1,6 +1,6 @@
 use anyhow::Error;
 use async_stream::stream;
-use futures03::Stream;
+use futures::Stream;
 use std::fmt;
 use std::sync::Arc;
 use thiserror::Error;
@@ -447,7 +447,7 @@ mod test {
     use std::{collections::HashSet, task::Poll};
 
     use anyhow::Error;
-    use futures03::{Stream, StreamExt, TryStreamExt};
+    use futures::{Stream, StreamExt, TryStreamExt};
 
     use crate::{
         blockchain::mock::{MockBlock, MockBlockchain},

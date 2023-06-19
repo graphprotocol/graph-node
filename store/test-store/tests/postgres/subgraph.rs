@@ -17,7 +17,7 @@ use graph::{
     prelude::SubgraphName,
     prelude::SubgraphVersionSwitchingMode,
     prelude::UnfailOutcome,
-    prelude::{futures03, StoreEvent},
+    prelude::{futures, StoreEvent},
     prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
     schema::InputSchema,
     semver::Version,
@@ -185,7 +185,7 @@ fn create_subgraph() {
     }
 
     fn deployment_synced(store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
-        futures03::executor::block_on(store.cheap_clone().writable(
+        futures::executor::block_on(store.cheap_clone().writable(
             LOGGER.clone(),
             deployment.id,
             Arc::new(Vec::new()),

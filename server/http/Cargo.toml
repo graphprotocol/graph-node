@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-futures = "0.1.21"
+futures = "0.3"
 graphql-parser = "0.4.0"
 http = "0.2"
 hyper = "0.14"

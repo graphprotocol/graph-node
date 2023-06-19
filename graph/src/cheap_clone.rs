@@ -35,6 +35,6 @@ impl CheapClone for reqwest::Client {}
 // So it is CheapClone.
 impl<M: diesel::r2d2::ManageConnection> CheapClone for diesel::r2d2::Pool<M> {}
 
-impl<F: Future> CheapClone for futures03::future::Shared<F> {}
+impl<F: Future> CheapClone for futures::future::Shared<F> {}
 
 impl CheapClone for Channel {}

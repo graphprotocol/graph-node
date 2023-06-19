@@ -3,7 +3,7 @@ use anyhow::anyhow;
 use anyhow::Error;
 use bytes::Bytes;
 use cid::Cid;
-use futures03::Stream;
+use futures::Stream;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::multipart;

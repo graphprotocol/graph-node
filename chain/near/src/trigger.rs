@@ -169,9 +169,6 @@ mod tests {
         util::mem::init_slice,
     };
 
-    #[quickcheck]
-    fn 
-
     #[test]
     fn block_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);

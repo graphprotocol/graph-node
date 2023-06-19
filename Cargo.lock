@@ -1464,7 +1464,6 @@ version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c1d6de3acfef38d2be4b1f543f553131788603495be83da675e180c8d6b7bd1"
 dependencies = [
- "futures 0.1.31",
  "futures-channel",
  "futures-core",
  "futures-io",
@@ -1575,7 +1574,6 @@ dependencies = [
  "diesel_derives",
  "envconfig",
  "ethabi",
- "futures 0.1.31",
  "futures 0.3.16",
  "graphql-parser",
  "hex",
@@ -1675,7 +1673,7 @@ dependencies = [
  "base64 0.20.0",
  "dirs-next",
  "envconfig",
- "futures 0.1.31",
+ "futures 0.3.16",
  "graph",
  "graph-runtime-derive",
  "graph-runtime-wasm",
@@ -1720,7 +1718,7 @@ dependencies = [
  "base64 0.20.0",
  "dirs-next",
  "envconfig",
- "futures 0.1.31",
+ "futures 0.3.16",
  "graph",
  "graph-runtime-wasm",
  "hex",
@@ -1859,7 +1857,7 @@ dependencies = [
  "bytes",
  "defer",
  "ethabi",
- "futures 0.1.31",
+ "futures 0.3.16",
  "graph",
  "graph-runtime-derive",
  "hex",
@@ -1878,7 +1876,7 @@ dependencies = [
 name = "graph-server-http"
 version = "0.31.0"
 dependencies = [
- "futures 0.1.31",
+ "futures 0.3.16",
  "graph",
  "graph-core",
  "graph-graphql",
@@ -1930,7 +1928,7 @@ name = "graph-server-websocket"
 version = "0.31.0"
 dependencies = [
  "anyhow",
- "futures 0.1.31",
+ "futures 0.3.16",
  "graph",
  "graphql-parser",
  "http",

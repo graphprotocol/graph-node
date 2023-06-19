@@ -200,7 +200,7 @@ where
                             graphql_runner.clone(),
                         );
 
-                        graph::spawn_allow_panic(service.into_future().compat());
+                        graph::spawn_allow_panic(service.into_future());
                     }
                     Err(e) => {
                         // We gracefully skip over failed connection attempts rather

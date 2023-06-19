@@ -53,7 +53,7 @@ impl PrometheusMetricsServer {
                     let mut buffer = vec![];
                     let encoder = TextEncoder::new();
                     encoder.encode(&metric_families, &mut buffer).unwrap();
-                    futures03::future::ok::<_, Error>(
+                    futures::future::ok::<_, Error>(
                         Response::builder()
                             .status(200)
                             .header(CONTENT_TYPE, encoder.format_type())

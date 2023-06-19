@@ -27,5 +27,5 @@ pub trait IndexNodeServer {
     fn serve(
         &mut self,
         port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError>;
+    ) -> Result<Box<dyn Future<Output = Result<(), ()>> + Send>, Self::ServeError>;
 }

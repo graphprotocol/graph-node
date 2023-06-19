@@ -1,7 +1,7 @@
 use graph::{
     blockchain::ChainHeadUpdateStream,
     prelude::{
-        futures03::{self, FutureExt},
+        futures::{self, FutureExt},
         tokio, MetricsRegistry, StoreError,
     },
     prometheus::{CounterVec, GaugeVec},
@@ -219,7 +219,7 @@ impl ChainHeadUpdateListenerTrait for ChainHeadUpdateListener {
             }
         };
 
-        Box::new(futures03::stream::unfold(
+        Box::new(futures::stream::unfold(
             update_receiver,
             move |mut update_receiver| {
                 let logger = logger.clone();

@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures03::prelude::Stream;
+use futures::prelude::Stream;
 use serde_json::Value;
 use slog::Logger;
 

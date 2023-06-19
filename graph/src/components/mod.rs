@@ -65,7 +65,7 @@ pub trait EventConsumer<E> {
     /// Get the event sink.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn event_sink(&self) -> Box<dyn Sink<SinkItem = E, SinkError = ()> + Send>;
+    fn event_sink(&self) -> Box<dyn Sink<E, Error = ()> + Send>;
 }
 
 /// A component that outputs events of type `T`.
@@ -75,7 +75,7 @@ pub trait EventProducer<E> {
     /// return `None`.
     ///
     /// Avoid calling directly, prefer helpers such as `forward`.
-    fn take_event_stream(&mut self) -> Option<Box<dyn Stream<Item = E, Error = ()> + Send>>;
+    fn take_event_stream(&mut self) -> Option<Box<dyn Stream<Item = Result<E, ()>> + Send>>;
 }
 
 pub mod transaction_receipt;

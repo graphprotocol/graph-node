@@ -1,7 +1,8 @@
-use futures03::TryStreamExt;
 use graph::parking_lot::Mutex;
+use graph::prelude::stream::BoxStream;
 use graph::tokio_stream::wrappers::ReceiverStream;
 use std::collections::BTreeSet;
+use std::future::ready;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
@@ -22,7 +23,7 @@ impl StoreEventListener {
         logger: Logger,
         postgres_url: String,
         registry: Arc<MetricsRegistry>,
-    ) -> (Self, Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>) {
+    ) -> (Self, BoxStream<'static, StoreEvent>) {
         let channel = SafeChannelName::i_promise_this_is_safe("store_events");
         let (notification_listener, receiver) =
             NotificationListener::new(&logger, postgres_url, channel.clone());
@@ -36,19 +37,17 @@ impl StoreEventListener {
             .unwrap()
             .with_label_values(&[channel.as_str(), "none"]);
 
-        let event_stream = Box::new(
-            ReceiverStream::new(receiver)
-                .map(Result::<_, ()>::Ok)
-                .compat()
-                .filter_map(move |notification| {
-                    // When graph-node is starting up, it is possible that
-                    // Postgres still has old messages queued up that we
-                    // can't decode anymore. It is safe to skip them; once
-                    // We've seen 10 valid messages, we can assume that
-                    // whatever old messages Postgres had queued have been
-                    // cleared. Seeing an invalid message after that
-                    // definitely indicates trouble.
-                    let num_valid = AtomicUsize::new(0);
+        let event_stream = Box::pin(ReceiverStream::new(receiver).filter_map(
+            move |notification| {
+                // When graph-node is starting up, it is possible that
+                // Postgres still has old messages queued up that we
+                // can't decode anymore. It is safe to skip them; once
+                // We've seen 10 valid messages, we can assume that
+                // whatever old messages Postgres had queued have been
+                // cleared. Seeing an invalid message after that
+                // definitely indicates trouble.
+                let num_valid = AtomicUsize::new(0);
+                ready(
                     serde_json::from_value(notification.payload.clone()).map_or_else(
                         |_err| {
                             error!(
@@ -69,9 +68,10 @@ impl StoreEventListener {
                             counter.inc();
                             Some(change)
                         },
-                    )
-                }),
-        );
+                    ),
+                )
+            },
+        ));
 
         (
             StoreEventListener {
@@ -105,7 +105,7 @@ impl<T: Clone + Debug + Send + Sync + 'static> Watcher<T> {
         self.sender.send(v).unwrap()
     }
 
-    fn stream(&self) -> Box<dyn futures03::Stream<Item = T> + Unpin + Send + Sync> {
+    fn stream(&self) -> Box<dyn futures::Stream<Item = T> + Unpin + Send + Sync> {
         Box::new(tokio_stream::wrappers::WatchStream::new(
             self.receiver.clone(),
         ))
@@ -153,18 +153,14 @@ impl SubscriptionManager {
     /// Receive store events from Postgres and send them to all active
     /// subscriptions. Detect stale subscriptions in the process and
     /// close them.
-    fn handle_store_events(
-        &self,
-        store_events: Box<dyn Stream<Item = StoreEvent, Error = ()> + Send>,
-    ) {
+    fn handle_store_events(&self, mut store_events: BoxStream<'static, StoreEvent>) {
         let subscriptions = self.subscriptions.cheap_clone();
         let subscriptions_no_payload = self.subscriptions_no_payload.cheap_clone();
-        let mut store_events = store_events.compat();
 
         // This channel is constantly receiving things and there are locks involved,
-        // so it's best to use a blocking task.
+        // so it's best to use a blocking task
         graph::spawn_blocking(async move {
-            while let Some(Ok(event)) = store_events.next().await {
+            while let Some(event) = store_events.next().await {
                 let event = Arc::new(event);
 
                 // Send to `subscriptions`.
@@ -264,8 +260,7 @@ impl SubscriptionManagerTrait for SubscriptionManager {
             .insert(id, (Arc::new(entities.clone()), sender));
 
         // Return the subscription ID and entity change stream
-        StoreEventStream::new(Box::new(ReceiverStream::new(receiver).map(Ok).compat()))
-            .filter_by_entities(entities)
+        StoreEventStream::new(Box::new(ReceiverStream::new(receiver))).filter_by_entities(entities)
     }
 
     fn subscribe_no_payload(&self, entities: BTreeSet<SubscriptionFilter>) -> UnitStream {

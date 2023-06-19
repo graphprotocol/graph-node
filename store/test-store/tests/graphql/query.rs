@@ -22,7 +22,7 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        futures03::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
+        futures::stream::StreamExt, lazy_static, o, q, r, serde_json, slog, BlockPtr,
         DeploymentHash, Entity, EntityOperation, FutureExtension, GraphQlRunner as _, Logger,
         NodeId, Query, QueryError, QueryExecutionError, QueryResult, QueryStoreManager,
         QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,

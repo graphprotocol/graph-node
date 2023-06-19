@@ -17,7 +17,7 @@ clap = { version = "3.2.25", features = ["derive", "env"] }
 env_logger = "0.10.0"
 git-testament = "0.2"
 graphql-parser = "0.4.0"
-futures = { version = "0.3.1", features = ["compat"] }
+futures = "0.3"
 lazy_static = "1.2.0"
 url = "2.4.0"
 graph = { path = "../graph" }
@@ -39,6 +39,6 @@ serde = { version = "1.0.126", features = ["derive", "rc"] }
 shellexpand = "3.1.0"
 termcolor = "1.2.0"
 diesel = "1.4.8"
-http = "0.2.5" # must be compatible with the version rust-web3 uses
+http = "0.2.5"                                                      # must be compatible with the version rust-web3 uses
 prometheus = { version = "0.13.3", features = ["push"] }
 json-structural-diff = { version = "0.1", features = ["colorize"] }

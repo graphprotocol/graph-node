@@ -12,8 +12,7 @@ use strum_macros::Display;
 pub use traits::*;
 pub use write::Batch;
 
-use futures::stream::poll_fn;
-use futures::{Async, Poll, Stream};
+use futures::{Stream, StreamExt};
 use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -22,7 +21,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::task::Poll;
 use std::{fmt, io};
 
 use crate::blockchain::Block;
@@ -796,26 +795,29 @@ pub struct StoreEventStream<S> {
 }
 
 /// A boxed `StoreEventStream`
-pub type StoreEventStreamBox =
-    StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>, Error = ()> + Send>>;
+pub type StoreEventStreamBox = StoreEventStream<Box<dyn Stream<Item = Arc<StoreEvent>> + Send>>;
 
-pub type UnitStream = Box<dyn futures03::Stream<Item = ()> + Unpin + Send + Sync>;
+pub type UnitStream = Box<dyn futures::Stream<Item = ()> + Unpin + Send + Sync>;
 
 impl<S> Stream for StoreEventStream<S>
 where
-    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send,
+    S: Stream<Item = Arc<StoreEvent>> + Send,
 {
     type Item = Arc<StoreEvent>;
-    type Error = ();
 
-    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
-        self.source.poll()
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        //Box::pin(&mut self.source).poll_next(cx)
+        // FIXME
+        unimplemented!()
     }
 }
 
 impl<S> StoreEventStream<S>
 where
-    S: Stream<Item = Arc<StoreEvent>, Error = ()> + Send + 'static,
+    S: Stream<Item = Arc<StoreEvent>> + Send + 'static,
 {
     // Create a new `StoreEventStream` from another such stream
     pub fn new(source: S) -> Self {
@@ -826,95 +828,12 @@ where
     /// at least one change to one of the given (subgraph, entity) combinations
     /// will be delivered by the filtered stream.
     pub fn filter_by_entities(self, filters: BTreeSet<SubscriptionFilter>) -> StoreEventStreamBox {
-        let source = self.source.filter(move |event| event.matches(&filters));
+        let source = self
+            .source
+            .filter(move |event| future::ready(event.matches(&filters)));
 
-        StoreEventStream::new(Box::new(source))
-    }
-
-    /// Reduce the frequency with which events are generated while a
-    /// subgraph deployment is syncing. While the given `deployment` is not
-    /// synced yet, events from `source` are reported at most every
-    /// `interval`. At the same time, no event is held for longer than
-    /// `interval`. The `StoreEvents` that arrive during an interval appear
-    /// on the returned stream as a single `StoreEvent`; the events are
-    /// combined by using the maximum of all sources and the concatenation
-    /// of the changes of the `StoreEvents` received during the interval.
-    //
-    // Currently unused, needs to be made compatible with `subscribe_no_payload`.
-    pub async fn throttle_while_syncing(
-        self,
-        logger: &Logger,
-        store: Arc<dyn QueryStore>,
-        interval: Duration,
-    ) -> StoreEventStreamBox {
-        // Check whether a deployment is marked as synced in the store. Note that in the moment a
-        // subgraph becomes synced any existing subscriptions will continue to be throttled since
-        // this is not re-checked.
-        let synced = store.is_deployment_synced().await.unwrap_or(false);
-
-        let mut pending_event: Option<StoreEvent> = None;
-        let mut source = self.source.fuse();
-        let mut had_err = false;
-        let mut delay = tokio::time::sleep(interval).unit_error().boxed().compat();
-        let logger = logger.clone();
-
-        let source = Box::new(poll_fn(move || -> Poll<Option<Arc<StoreEvent>>, ()> {
-            if had_err {
-                // We had an error the last time through, but returned the pending
-                // event first. Indicate the error now
-                had_err = false;
-                return Err(());
-            }
-
-            if synced {
-                return source.poll();
-            }
-
-            // Check if interval has passed since the last time we sent something.
-            // If it has, start a new delay timer
-            let should_send = match futures::future::Future::poll(&mut delay) {
-                Ok(Async::NotReady) => false,
-                // Timer errors are harmless. Treat them as if the timer had
-                // become ready.
-                Ok(Async::Ready(())) | Err(_) => {
-                    delay = tokio::time::sleep(interval).unit_error().boxed().compat();
-                    true
-                }
-            };
-
-            // Get as many events as we can off of the source stream
-            loop {
-                match source.poll() {
-                    Ok(Async::NotReady) => {
-                        if should_send && pending_event.is_some() {
-                            let event = pending_event.take().map(Arc::new);
-                            return Ok(Async::Ready(event));
-                        } else {
-                            return Ok(Async::NotReady);
-                        }
-                    }
-                    Ok(Async::Ready(None)) => {
-                        let event = pending_event.take().map(Arc::new);
-                        return Ok(Async::Ready(event));
-                    }
-                    Ok(Async::Ready(Some(event))) => {
-                        StoreEvent::accumulate(&logger, &mut pending_event, (*event).clone());
-                    }
-                    Err(()) => {
-                        // Before we report the error, deliver what we have accumulated so far.
-                        // We will report the error the next time poll() is called
-                        if pending_event.is_some() {
-                            had_err = true;
-                            let event = pending_event.take().map(Arc::new);
-                            return Ok(Async::Ready(event));
-                        } else {
-                            return Err(());
-                        }
-                    }
-                };
-            }
-        }));
-        StoreEventStream::new(source)
+        //StoreEventStream::new(Box::new(source))
+        unimplemented!()
     }
 }
 

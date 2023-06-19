@@ -50,7 +50,7 @@ where
         &mut self,
         port: u16,
         ws_port: u16,
-    ) -> Result<Box<dyn Future<Item = (), Error = ()> + Send>, Self::ServeError> {
+    ) -> Result<Box<dyn Future<Output = Result<(), ()>> + Send>, Self::ServeError> {
         let logger = self.logger.clone();
 
         info!(
@@ -66,7 +66,7 @@ where
         let graphql_runner = self.graphql_runner.clone();
         let node_id = self.node_id.clone();
         let new_service = make_service_fn(move |_| {
-            futures03::future::ok::<_, Error>(GraphQLService::new(
+            futures::future::ok::<_, Error>(GraphQLService::new(
                 logger_for_service.clone(),
                 graphql_runner.clone(),
                 ws_port,
@@ -79,6 +79,6 @@ where
             .serve(new_service)
             .map_err(move |e| error!(logger, "Server error"; "error" => format!("{}", e)));
 
-        Ok(Box::new(task.compat()))
+        Ok(Box::new(task))
     }
 }

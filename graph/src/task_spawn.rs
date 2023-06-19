@@ -10,7 +10,7 @@
 //! These should not be called from within executors other than tokio, particularly the blocking
 //! functions will panic in that case. We should generally avoid mixing executors whenever possible.
 
-use futures03::future::{FutureExt, TryFutureExt};
+use futures::future::{FutureExt, TryFutureExt};
 use std::future::Future as Future03;
 use std::panic::AssertUnwindSafe;
 use tokio::task::JoinHandle;

@@ -88,7 +88,7 @@ where
             self.link_resolver.clone(),
         );
         let new_service =
-            make_service_fn(move |_| futures03::future::ok::<_, Error>(service.clone()));
+            make_service_fn(move |_| futures::future::ok::<_, Error>(service.clone()));
 
         // Create a task to run the server and handle HTTP requests
         let task = Server::try_bind(&addr.into())?

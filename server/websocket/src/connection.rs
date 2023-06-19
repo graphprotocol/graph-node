@@ -1,8 +1,9 @@
-use futures::sync::mpsc;
-use futures03::stream::SplitStream;
+use futures::channel::mpsc;
+use futures::stream::SplitStream;
 use graphql_parser::parse_query;
 use http::StatusCode;
 use std::collections::HashMap;
+use std::future::{ready, IntoFuture};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::{Error as WsError, Message as WsMessage};
 use tokio_tungstenite::WebSocketStream;
@@ -230,7 +231,7 @@ where
                 // When receiving a connection termination request
                 ConnectionTerminate => {
                     // Close the message sink
-                    msg_sink.close().unwrap();
+                    msg_sink.close().await.unwrap();
 
                     // Return an error here to terminate the connection
                     Err(WsError::ConnectionClosed)
@@ -318,7 +319,6 @@ where
                     let run_subscription = graphql_runner
                         .cheap_clone()
                         .run_subscription(subscription, target)
-                        .compat()
                         .map_err(move |e| {
                             debug!(err_logger, "Subscription error";
                                                "connection" => &err_connection_id,
@@ -355,9 +355,9 @@ where
                                 })
                                 .map(WsMessage::from)
                                 .map(Ok)
-                                .compat()
                                 .forward(result_sink.sink_map_err(|_| ()))
-                                .map(|_| ())
+                                .map(|_| ());
+                            ready(Ok(()))
                         });
 
                     // Setup cancelation.
@@ -365,13 +365,12 @@ where
                     let logger = logger.clone();
                     let cancel_id = id.clone();
                     let connection_id = connection_id.clone();
-                    let run_subscription =
-                        run_subscription.compat().cancelable(&guard, move || {
-                            debug!(logger, "Stopped operation";
+                    let run_subscription = run_subscription.cancelable(&guard, move || {
+                        debug!(logger, "Stopped operation";
                                        "connection" => &connection_id,
                                        "id" => &cancel_id);
-                            Ok(())
-                        });
+                        Ok(())
+                    });
                     operations.insert(id, guard);
 
                     graph::spawn_allow_panic(run_subscription);
@@ -388,11 +387,10 @@ where
     Q: GraphQlRunner,
     S: AsyncRead + AsyncWrite + Send + 'static + Unpin,
 {
-    type Future = Box<dyn Future<Item = Self::Item, Error = Self::Error> + Send>;
-    type Item = ();
-    type Error = ();
+    type IntoFuture = Pin<Box<dyn Future<Output = Self::Output> + Send>>;
+    type Output = Result<(), ()>;
 
-    fn into_future(self) -> Self::Future {
+    fn into_future(self) -> Self::IntoFuture {
         debug!(self.logger, "GraphQL over WebSocket connection opened"; "id" => &self.id);
 
         // Obtain sink/stream pair to send and receive WebSocket messages
@@ -412,7 +410,7 @@ where
         );
 
         // Send outgoing messages asynchronously
-        let ws_writer = msg_stream.forward(ws_sink.compat().sink_map_err(|_| ()));
+        let ws_writer = msg_stream.forward(ws_sink.sink_map_err(|_| ()));
 
         // Silently swallow internal send results and errors. There is nothing
         // we can do about these errors ourselves. Clients will be disconnected
@@ -425,7 +423,7 @@ where
         // our/their end of the WebSocket stream
         let logger = self.logger.clone();
         let id = self.id.clone();
-        Box::new(ws_reader.compat().select(ws_writer).then(move |_| {
+        Box::new(ws_reader.select(ws_writer).then(move |_| {
             debug!(logger, "GraphQL over WebSocket connection closed"; "connection" => id);
             Ok(())
         }))

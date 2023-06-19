@@ -71,14 +71,13 @@ pub mod prelude {
     pub use chrono;
     pub use envconfig;
     pub use ethabi;
+    pub use futures;
     pub use futures::future;
+    pub use futures::future::{FutureExt as _, TryFutureExt};
     pub use futures::prelude::*;
+    pub use futures::sink::SinkExt as _;
     pub use futures::stream;
-    pub use futures03;
-    pub use futures03::compat::{Future01CompatExt, Sink01CompatExt, Stream01CompatExt};
-    pub use futures03::future::{FutureExt as _, TryFutureExt};
-    pub use futures03::sink::SinkExt as _;
-    pub use futures03::stream::{StreamExt as _, TryStreamExt};
+    pub use futures::stream::{StreamExt as _, TryStreamExt};
     pub use hex;
     pub use isatty;
     pub use lazy_static::lazy_static;
@@ -106,7 +105,7 @@ pub mod prelude {
     pub use web3;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
-        Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
+        Pin<Box<dyn futures::Future<Output = Result<Ok, Err>> + Send + 'a>>;
 
     pub use crate::blockchain::{BlockHash, BlockPtr};
 

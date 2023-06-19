@@ -11,7 +11,7 @@ pub mod status;
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use anyhow::{anyhow, Context, Error};
-use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
+use futures::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use semver::Version;
 use serde::{de, ser};

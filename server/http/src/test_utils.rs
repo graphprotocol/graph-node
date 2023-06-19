@@ -9,7 +9,7 @@ pub fn assert_successful_response(
 ) -> serde_json::Map<String, serde_json::Value> {
     assert_eq!(response.status(), StatusCode::OK);
     assert_expected_headers(&response);
-    futures03::executor::block_on(
+    futures::executor::block_on(
         hyper::body::to_bytes(response.into_body())
             .map_ok(|chunk| {
                 let json: serde_json::Value =
@@ -37,7 +37,7 @@ pub fn assert_error_response(
     assert_eq!(response.status(), expected_status);
     assert_expected_headers(&response);
     let body = String::from_utf8(
-        futures03::executor::block_on(hyper::body::to_bytes(response.into_body()))
+        futures::executor::block_on(hyper::body::to_bytes(response.into_body()))
             .unwrap()
             .to_vec(),
     )
