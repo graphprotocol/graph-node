@@ -61,7 +61,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// node, as the store will still accept queries.
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
-    fn subgraph_features(
+    async fn subgraph_features(
         &self,
         deployment: &DeploymentHash,
     ) -> Result<Option<DeploymentFeatures>, StoreError>;

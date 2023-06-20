@@ -499,7 +499,7 @@ impl<S: Store> IndexNodeResolver<S> {
         })?;
 
         let subgraph_store = self.store.subgraph_store();
-        let deployment_features = subgraph_store.subgraph_features(&deployment_hash)?;
+        let deployment_features = subgraph_store.subgraph_features(&deployment_hash).await?;
 
         Ok(deployment_features.into_value())
     }
