@@ -1247,9 +1247,9 @@ impl<'a> Connection<'a> {
     }
 
     /// Create a site for a brand new deployment.
-    /// If it already exists, return the existing site.
+    /// If it already exists, return the existing site
     /// and a boolean indicating whether a new site was created.
-    /// false means the site already existed.
+    /// `false` means the site already existed.
     pub fn allocate_site(
         &self,
         shard: Shard,
