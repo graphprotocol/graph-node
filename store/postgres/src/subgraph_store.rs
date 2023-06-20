@@ -23,13 +23,13 @@ use graph::{
     constraint_violation,
     data::query::QueryTarget,
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
-    prelude::StoreEvent,
     prelude::{
         anyhow, futures03::future::join_all, lazy_static, o, web3::types::Address, ApiVersion,
         BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
         MetricsRegistry, NodeId, PartialBlockPtr, StoreError, SubgraphDeploymentEntity,
         SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
+    prelude::{CancelableError, StoreEvent},
     schema::{ApiSchema, InputSchema},
     url::Url,
     util::timed_cache::TimedCache,
@@ -716,6 +716,18 @@ impl SubgraphStoreInner {
         Ok(primary::Connection::new(conn))
     }
 
+    pub(crate) async fn with_primary_conn<T: Send + 'static>(
+        &self,
+        f: impl 'static + Send + FnOnce(primary::Connection) -> Result<T, CancelableError<StoreError>>,
+    ) -> Result<T, StoreError> {
+        let pool = self.mirror.primary();
+        pool.with_conn(move |pg_conn, _| {
+            let conn = primary::Connection::new(pg_conn);
+            f(conn)
+        })
+        .await
+    }
+
     pub(crate) fn replica_for_query(
         &self,
         target: QueryTarget,
@@ -1326,12 +1338,15 @@ impl SubgraphStoreTrait for SubgraphStore {
         self.mirror.subgraph_exists(name)
     }
 
-    fn subgraph_features(
+    async fn subgraph_features(
         &self,
         deployment: &DeploymentHash,
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
-        self.primary_conn()?
-            .get_subgraph_features(deployment.to_string())
+        let deployment = deployment.to_string();
+        self.with_primary_conn(|conn| {
+            conn.transaction(|| conn.get_subgraph_features(deployment).map_err(|e| e.into()))
+        })
+        .await
     }
 
     fn entity_changes_in_block(
