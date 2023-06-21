@@ -5,6 +5,8 @@
 - `graphman rewind` has changed, block-number and block-hash are now flags instead of arguments
 - `graphman rewind` now has an extra flag `--start-block` which will rewind to the startBlock set in manifest or to the genesis block if no startBlock is set
 - `graphman` now has two new commands `pause` and `resume` that can be used to pause and resume a deployment
+- A new table `subgraph_features` is added which tracks information like spec_version, api_version, network, features, datasources etc
+- The schema for the `subgraphFeatures` endpoint now includes data from the `subgraph_features` table
 
 <!-- 
 Note: the changes in this PR were technically released in v0.31.0, but the feature also requires changes to graph-cli, which at the time of writing has NOT been released. This feature will make it into the release notes of graph-node only once graph-cli has been updated.
