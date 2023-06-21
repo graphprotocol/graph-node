@@ -16,8 +16,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest, SubgraphFork,
+            self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, PruneReporter,
+            PruneRequest, SubgraphFork,
         },
     },
     constraint_violation,
@@ -515,14 +515,9 @@ impl SubgraphStoreInner {
         assert!(!replace);
 
         self.evict(schema.id())?;
+        let graft_base = deployment.graft_base.as_ref();
 
-        let graft_base = deployment
-            .graft_base
-            .as_ref()
-            .map(|base| self.layout(base))
-            .transpose()?;
-
-        let (site, node_id) = {
+        let (site, exists, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
             //       to go in the shard and onto the node that the placement
@@ -534,21 +529,32 @@ impl SubgraphStoreInner {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
-            let schema_version = match &graft_base {
-                None => DeploymentSchemaVersion::LATEST,
-                Some(src_layout) => src_layout.site.schema_version,
-            };
             let conn = self.primary_conn()?;
-            let site = conn.allocate_site(shard, schema.id(), network_name, schema_version)?;
+            let (site, site_was_created) =
+                conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
-            (site, node_id)
+            (site, !site_was_created, node_id)
         };
         let site = Arc::new(site);
 
-        if let Some(graft_base) = &graft_base {
-            self.primary_conn()?
-                .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
-        }
+        // if the deployment already exists, we don't need to perform any copying
+        // so we can set graft_base to None
+        // if it doesn't exist, we need to copy the graft base to the new deployment
+        let graft_base = if !exists {
+            let graft_base = deployment
+                .graft_base
+                .as_ref()
+                .map(|base| self.layout(base))
+                .transpose()?;
+
+            if let Some(graft_base) = &graft_base {
+                self.primary_conn()?
+                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
+            }
+            graft_base
+        } else {
+            None
+        };
 
         // Create the actual databases schema and metadata entries
         let deployment_store = self
@@ -1439,6 +1445,12 @@ impl SubgraphStoreTrait for SubgraphStore {
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
+        let (store, _) = self.store(id)?;
+        let graft_detail = store.graft_pending(id)?;
+        Ok(graft_detail.is_some())
     }
 
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {

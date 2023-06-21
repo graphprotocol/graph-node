@@ -127,6 +127,9 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
 
+    /// Return a bool represeting whether there is a pending graft for the subgraph
+    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
+
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it
     fn api_schema(

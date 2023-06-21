@@ -1247,18 +1247,33 @@ impl<'a> Connection<'a> {
     }
 
     /// Create a site for a brand new deployment.
+    /// If it already exists, return the existing site
+    /// and a boolean indicating whether a new site was created.
+    /// `false` means the site already existed.
     pub fn allocate_site(
         &self,
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
-        schema_version: DeploymentSchemaVersion,
-    ) -> Result<Site, StoreError> {
+        graft_base: Option<&DeploymentHash>,
+    ) -> Result<(Site, bool), StoreError> {
         if let Some(site) = queries::find_active_site(self.conn.as_ref(), subgraph)? {
-            return Ok(site);
+            return Ok((site, false));
         }
 
+        let site_was_created = true;
+        let schema_version = match graft_base {
+            Some(graft_base) => {
+                let site = queries::find_active_site(self.conn.as_ref(), graft_base)?;
+                site.map(|site| site.schema_version).ok_or_else(|| {
+                    StoreError::DeploymentNotFound("graft_base not found".to_string())
+                })
+            }
+            None => Ok(DeploymentSchemaVersion::LATEST),
+        }?;
+
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
+            .map(|site| (site, site_was_created))
     }
 
     pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
