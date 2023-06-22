@@ -433,7 +433,7 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_data_sources) = self
+        let (offchain_mods, processed_data_sources, persisted_off_chain_data_sources) = self
             .handle_offchain_triggers(offchain_events, &block)
             .await?;
         mods.extend(offchain_mods);
@@ -476,12 +476,13 @@ where
 
         let BlockState {
             deterministic_errors,
-            persisted_data_sources,
+            mut persisted_data_sources,
             ..
         } = block_state;
 
         let first_error = deterministic_errors.first().cloned();
 
+        persisted_data_sources.extend(persisted_off_chain_data_sources);
         store
             .transact_block_operations(
                 block_ptr,
@@ -703,9 +704,17 @@ where
         &mut self,
         triggers: Vec<offchain::TriggerData>,
         block: &Arc<C::Block>,
-    ) -> Result<(Vec<EntityModification>, Vec<StoredDynamicDataSource>), Error> {
+    ) -> Result<
+        (
+            Vec<EntityModification>,
+            Vec<StoredDynamicDataSource>,
+            Vec<StoredDynamicDataSource>,
+        ),
+        Error,
+    > {
         let mut mods = vec![];
         let mut processed_data_sources = vec![];
+        let mut persisted_data_sources = vec![];
 
         for trigger in triggers {
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
@@ -742,9 +751,16 @@ where
                 })?;
 
             anyhow::ensure!(
-                !block_state.has_created_data_sources(),
-                "Attempted to create data source in offchain data source handler. This is not yet supported.",
+                !block_state.has_created_on_chain_data_sources(),
+                "Attempted to create on-chain data source in offchain data source handler. This is not yet supported.",
             );
+
+            let (data_sources, _) =
+                self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
+
+            // Add entity operations for the new data sources to the block state
+            // and add runtimes for the data sources to the subgraph instance.
+            self.persist_dynamic_data_sources(&mut block_state, data_sources);
 
             // This propagates any deterministic error as a non-deterministic one. Which might make
             // sense considering offchain data sources are non-deterministic.
@@ -759,9 +775,10 @@ where
                     .modifications,
             );
             processed_data_sources.extend(block_state.processed_data_sources);
+            persisted_data_sources.extend(block_state.persisted_data_sources)
         }
 
-        Ok((mods, processed_data_sources))
+        Ok((mods, processed_data_sources, persisted_data_sources))
     }
 }
 
