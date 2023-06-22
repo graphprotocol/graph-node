@@ -39,6 +39,7 @@ use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;
 
 pub const NETWORK_NAME: &str = "fake_network";
+pub const DATA_SOURCE_KIND: &str = "mock/kind";
 pub const NETWORK_VERSION: &str = "graph test suite";
 
 pub use graph_store_postgres::Store;
@@ -188,7 +189,6 @@ pub async fn create_subgraph_with_manifest(
         name,
         &schema,
         deployment,
-        manifest.deployment_features(),
         NODE_ID.clone(),
         NETWORK_NAME.to_string(),
         SubgraphVersionSwitchingMode::Instant,
@@ -229,17 +229,26 @@ pub async fn create_test_subgraph_with_features(
         repository: Some(format!("repo for {}", subgraph_id)),
         schema: schema.clone(),
         data_sources: vec![DataSource::Onchain(MockDataSource {
-            kind: "mock/kind".into(),
+            kind: DATA_SOURCE_KIND.into(),
             api_version: Version::new(1, 0, 0),
+            network: Some(NETWORK_NAME.into()),
         })],
         graft: None,
         templates: vec![],
         chain: PhantomData,
     };
 
-    create_subgraph_with_manifest(subgraph_id, schema, manifest, None)
+    let deployment_features = manifest.deployment_features();
+
+    let locator = create_subgraph_with_manifest(subgraph_id, schema, manifest, None)
         .await
-        .unwrap()
+        .unwrap();
+
+    SUBGRAPH_STORE
+        .create_subgraph_features(deployment_features)
+        .unwrap();
+
+    locator
 }
 
 pub fn remove_subgraph(id: &DeploymentHash) {

@@ -79,6 +79,16 @@ impl<C: Blockchain> BlockState<C> {
         !self.created_data_sources.is_empty()
     }
 
+    pub fn has_created_on_chain_data_sources(&self) -> bool {
+        assert!(!self.in_handler);
+        self.created_data_sources
+            .iter()
+            .any(|ds| match ds.template {
+                DataSourceTemplate::Onchain(_) => true,
+                _ => false,
+            })
+    }
+
     pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo<C>> {
         assert!(!self.in_handler);
         std::mem::take(&mut self.created_data_sources)

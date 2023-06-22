@@ -85,6 +85,7 @@ table! {
         api_version -> Nullable<Text>,
         features -> Array<Text>,
         data_sources -> Array<Text>,
+        network -> Text,
     }
 }
 
@@ -1123,19 +1124,28 @@ impl<'a> Connection<'a> {
                 f::api_version,
                 f::features,
                 f::data_sources,
+                f::network,
             ))
-            .first::<(String, String, Option<String>, Vec<String>, Vec<String>)>(conn)
+            .first::<(
+                String,
+                String,
+                Option<String>,
+                Vec<String>,
+                Vec<String>,
+                String,
+            )>(conn)
             .optional()?;
 
-        let features = features.map(|(id, spec_version, api_version, features, data_sources)| {
-            DeploymentFeatures {
+        let features = features.map(
+            |(id, spec_version, api_version, features, data_sources, network)| DeploymentFeatures {
                 id,
                 spec_version,
                 api_version,
                 features,
                 data_source_kinds: data_sources,
-            }
-        });
+                network: network,
+            },
+        );
 
         Ok(features)
     }
@@ -1150,13 +1160,12 @@ impl<'a> Connection<'a> {
             f::api_version.eq(features.api_version),
             f::features.eq(features.features),
             f::data_sources.eq(features.data_source_kinds),
+            f::network.eq(features.network),
         );
 
         insert_into(f::table)
             .values(changes.clone())
-            .on_conflict(f::id)
-            .do_update()
-            .set(changes)
+            .on_conflict_do_nothing()
             .execute(conn)?;
         Ok(())
     }
@@ -1247,18 +1256,33 @@ impl<'a> Connection<'a> {
     }
 
     /// Create a site for a brand new deployment.
+    /// If it already exists, return the existing site
+    /// and a boolean indicating whether a new site was created.
+    /// `false` means the site already existed.
     pub fn allocate_site(
         &self,
         shard: Shard,
         subgraph: &DeploymentHash,
         network: String,
-        schema_version: DeploymentSchemaVersion,
-    ) -> Result<Site, StoreError> {
+        graft_base: Option<&DeploymentHash>,
+    ) -> Result<(Site, bool), StoreError> {
         if let Some(site) = queries::find_active_site(self.conn.as_ref(), subgraph)? {
-            return Ok(site);
+            return Ok((site, false));
         }
 
+        let site_was_created = true;
+        let schema_version = match graft_base {
+            Some(graft_base) => {
+                let site = queries::find_active_site(self.conn.as_ref(), graft_base)?;
+                site.map(|site| site.schema_version).ok_or_else(|| {
+                    StoreError::DeploymentNotFound("graft_base not found".to_string())
+                })
+            }
+            None => Ok(DeploymentSchemaVersion::LATEST),
+        }?;
+
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
+            .map(|site| (site, site_was_created))
     }
 
     pub fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {

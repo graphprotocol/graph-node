@@ -10,6 +10,7 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
+use crate::object;
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
@@ -54,7 +55,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use super::value::Word;
+use super::{graphql::IntoValue, value::Word};
 
 /// Deserialize an Address (with or without '0x' prefix).
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<Address>, D::Error>
@@ -505,6 +506,20 @@ pub struct DeploymentFeatures {
     pub api_version: Option<String>,
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
+    pub network: String,
+}
+
+impl IntoValue for DeploymentFeatures {
+    fn into_value(self) -> r::Value {
+        object! {
+            __typename: "SubgraphFeatures",
+            specVersion: self.spec_version,
+            apiVersion: self.api_version,
+            features: self.features,
+            dataSources: self.data_source_kinds,
+            network: self.network,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -675,6 +690,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
 
     pub fn deployment_features(&self) -> DeploymentFeatures {
         let unified_api_version = self.unified_mapping_api_version().ok();
+        let network = self.network_name();
         let api_version = unified_api_version
             .map(|v| v.version().map(|v| v.to_string()))
             .flatten();
@@ -700,13 +716,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect::<Vec<_>>();
 
         data_source_kinds.extend(data_source_template_kinds);
-
         DeploymentFeatures {
             id: self.id.to_string(),
             api_version,
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
+            network: network,
         }
     }
 

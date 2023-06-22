@@ -61,6 +61,11 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// node, as the store will still accept queries.
     fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
+    async fn subgraph_features(
+        &self,
+        deployment: &DeploymentHash,
+    ) -> Result<Option<DeploymentFeatures>, StoreError>;
+
     /// Create a new deployment for the subgraph `name`. If the deployment
     /// already exists (as identified by the `schema.id`), reuse that, otherwise
     /// create a new deployment, and point the current or pending version of
@@ -70,11 +75,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
         name: SubgraphName,
         schema: &InputSchema,
         deployment: DeploymentCreate,
-        deployment_features: DeploymentFeatures,
         node_id: NodeId,
         network: String,
         mode: SubgraphVersionSwitchingMode,
     ) -> Result<DeploymentLocator, StoreError>;
+
+    /// Create a subgraph_feature record in the database
+    fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError>;
 
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
@@ -126,6 +133,9 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Return the GraphQL schema supplied by the user
     fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
+
+    /// Return a bool represeting whether there is a pending graft for the subgraph
+    fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Return the GraphQL schema that was derived from the user's schema by
     /// adding a root query type etc. to it

@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
-use either::Either;
 use graph::data::query::Trace;
 use web3::types::Address;
 
@@ -9,7 +8,6 @@ use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::store::{BlockStore, EntityType, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
-use graph::data::subgraph::features::detect_features;
 use graph::data::subgraph::status;
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
@@ -65,6 +63,7 @@ pub struct IndexNodeResolver<S: Store> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
+    #[allow(dead_code)]
     link_resolver: Arc<dyn LinkResolver>,
     bearer_token: Option<String>,
 }
@@ -494,125 +493,15 @@ impl<S: Store> IndexNodeResolver<S> {
         // We can safely unwrap because the argument is non-nullable and has been validated.
         let subgraph_id = field.get_required::<String>("subgraphId").unwrap();
 
-        // TODO:
-        //
-        // An interesting optimization would involve trying to get the subgraph manifest from the
-        // SubgraphStore before hitting IPFS, but we must fix a dependency cycle between the `graph`
-        // and `server` crates first.
-        //
-        // 1. implement a new method in subgraph store to retrieve the SubgraphManifest of a given deployment id
-        // 2. try to fetch this subgraph from our SubgraphStore before hitting IPFS
-
         // Try to build a deployment hash with the input string
         let deployment_hash = DeploymentHash::new(subgraph_id).map_err(|invalid_qm_hash| {
             QueryExecutionError::SubgraphDeploymentIdError(invalid_qm_hash)
         })?;
 
-        let ValidationPostProcessResult {
-            features,
-            errors,
-            network,
-        } = {
-            let raw: serde_yaml::Mapping = {
-                let file_bytes = self
-                    .link_resolver
-                    .cat(&self.logger, &deployment_hash.to_ipfs_link())
-                    .await
-                    .map_err(SubgraphManifestResolveError::ResolveError)?;
+        let subgraph_store = self.store.subgraph_store();
+        let deployment_features = subgraph_store.subgraph_features(&deployment_hash).await?;
 
-                serde_yaml::from_slice(&file_bytes)
-                    .map_err(SubgraphManifestResolveError::ParseError)?
-            };
-
-            let kind = BlockchainKind::from_manifest(&raw)
-                .map_err(SubgraphManifestResolveError::ResolveError)?;
-            match kind {
-                BlockchainKind::Ethereum => {
-                    let unvalidated_subgraph_manifest =
-                        UnvalidatedSubgraphManifest::<graph_chain_ethereum::Chain>::resolve(
-                            deployment_hash,
-                            raw,
-                            &self.link_resolver,
-                            &self.logger,
-                            ENV_VARS.max_spec_version.clone(),
-                        )
-                        .await?;
-
-                    validate_and_extract_features(
-                        &self.store.subgraph_store(),
-                        unvalidated_subgraph_manifest,
-                    )
-                    .await?
-                }
-
-                BlockchainKind::Cosmos => {
-                    let unvalidated_subgraph_manifest =
-                        UnvalidatedSubgraphManifest::<graph_chain_cosmos::Chain>::resolve(
-                            deployment_hash,
-                            raw,
-                            &self.link_resolver,
-                            &self.logger,
-                            ENV_VARS.max_spec_version.clone(),
-                        )
-                        .await?;
-
-                    validate_and_extract_features(
-                        &self.store.subgraph_store(),
-                        unvalidated_subgraph_manifest,
-                    )
-                    .await?
-                }
-
-                BlockchainKind::Near => {
-                    let unvalidated_subgraph_manifest =
-                        UnvalidatedSubgraphManifest::<graph_chain_near::Chain>::resolve(
-                            deployment_hash,
-                            raw,
-                            &self.link_resolver,
-                            &self.logger,
-                            ENV_VARS.max_spec_version.clone(),
-                        )
-                        .await?;
-
-                    validate_and_extract_features(
-                        &self.store.subgraph_store(),
-                        unvalidated_subgraph_manifest,
-                    )
-                    .await?
-                }
-
-                BlockchainKind::Arweave => {
-                    let unvalidated_subgraph_manifest =
-                        UnvalidatedSubgraphManifest::<graph_chain_arweave::Chain>::resolve(
-                            deployment_hash,
-                            raw,
-                            &self.link_resolver,
-                            &self.logger,
-                            ENV_VARS.max_spec_version.clone(),
-                        )
-                        .await?;
-
-                    validate_and_extract_features(
-                        &self.store.subgraph_store(),
-                        unvalidated_subgraph_manifest,
-                    )
-                    .await?
-                }
-                // TODO(filipe): Kick this can down the road!
-                BlockchainKind::Substreams => unimplemented!(),
-            }
-        };
-
-        // We then bulid a GraphqQL `Object` value that contains the feature detection and
-        // validation results and send it back as a response.
-        let response = [
-            ("features".into(), features),
-            ("errors".into(), errors),
-            ("network".into(), network),
-        ];
-        let response = Object::from_iter(response);
-
-        Ok(r::Value::Object(response))
+        Ok(deployment_features.into_value())
     }
 
     fn resolve_api_versions(&self, _field: &a::Field) -> Result<r::Value, QueryExecutionError> {
@@ -627,99 +516,6 @@ impl<S: Store> IndexNodeResolver<S> {
                 })
                 .collect(),
         ))
-    }
-}
-
-struct ValidationPostProcessResult {
-    features: r::Value,
-    errors: r::Value,
-    network: r::Value,
-}
-
-async fn validate_and_extract_features<C, SgStore>(
-    subgraph_store: &Arc<SgStore>,
-    unvalidated_subgraph_manifest: UnvalidatedSubgraphManifest<C>,
-) -> Result<ValidationPostProcessResult, QueryExecutionError>
-where
-    C: Blockchain,
-    SgStore: SubgraphStore,
-{
-    // Validate the subgraph we've just obtained.
-    //
-    // Note that feature valiadation errors will be inside the error variant vector (because
-    // `validate` also validates subgraph features), so we must filter them out to build our
-    // response.
-    let subgraph_validation: Either<_, _> = match unvalidated_subgraph_manifest
-        .validate(subgraph_store.clone(), false)
-        .await
-    {
-        Ok(subgraph_manifest) => Either::Left(subgraph_manifest),
-        Err(validation_errors) => {
-            // We must ensure that all the errors are of the `FeatureValidationError`
-            // variant and that there is at least one error of that kind.
-            let feature_validation_errors: Vec<_> = validation_errors
-                .into_iter()
-                .filter(|error| {
-                    matches!(
-                        error,
-                        SubgraphManifestValidationError::FeatureValidationError(_)
-                    )
-                })
-                .collect();
-
-            if !feature_validation_errors.is_empty() {
-                Either::Right(feature_validation_errors)
-            } else {
-                // If other error variants are present or there are no feature validation
-                // errors, we must return early with an error.
-                //
-                // It might be useful to return a more thoughtful error, but that is not the
-                // purpose of this endpoint.
-                return Err(QueryExecutionError::InvalidSubgraphManifest);
-            }
-        }
-    };
-
-    // At this point, we have either:
-    // 1. A valid subgraph manifest with no errors.
-    // 2. No subgraph manifest and a set of feature validation errors.
-    //
-    // For this step we must collect whichever results we have into GraphQL `Value` types.
-    match subgraph_validation {
-        Either::Left(subgraph_manifest) => {
-            let features = r::Value::List(
-                detect_features(&subgraph_manifest)
-                    .map_err(|_| QueryExecutionError::InvalidSubgraphManifest)?
-                    .iter()
-                    .map(ToString::to_string)
-                    .map(r::Value::String)
-                    .collect(),
-            );
-            let errors = r::Value::List(vec![]);
-            let network = r::Value::String(subgraph_manifest.network_name());
-
-            Ok(ValidationPostProcessResult {
-                features,
-                errors,
-                network,
-            })
-        }
-        Either::Right(errors) => {
-            let features = r::Value::List(vec![]);
-            let errors = r::Value::List(
-                errors
-                    .iter()
-                    .map(ToString::to_string)
-                    .map(r::Value::String)
-                    .collect(),
-            );
-            let network = r::Value::Null;
-            Ok(ValidationPostProcessResult {
-                features,
-                errors,
-                network,
-            })
-        }
     }
 }
 

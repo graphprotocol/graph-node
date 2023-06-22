@@ -260,6 +260,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             )
             .await?;
 
+        // Create deployment features from the manifest
+        // Write it to the database
+        let deployment_features = manifest.deployment_features();
+        self.subgraph_store
+            .create_subgraph_features(deployment_features)?;
+
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will
         // do the copying and dynamic data sources won't show up until after

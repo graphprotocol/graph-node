@@ -271,9 +271,10 @@ where
             }
         };
 
-        // If new data sources have been created, and static filters are not in use, it is necessary
+        // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
-        let needs_restart = block_state.has_created_data_sources() && !self.inputs.static_filters;
+        let needs_restart =
+            block_state.has_created_on_chain_data_sources() && !self.inputs.static_filters;
 
         {
             let _section = self
