@@ -160,8 +160,13 @@ async fn file_data_sources() {
         let block_3 = empty_block(block_2.ptr(), test_ptr(3));
         let block_4 = empty_block(block_3.ptr(), test_ptr(4));
         let mut block_5 = empty_block(block_4.ptr(), test_ptr(5));
-        push_test_log(&mut block_5, "createFile2");
-        vec![block_0, block_1, block_2, block_3, block_4, block_5]
+        push_test_log(&mut block_5, "spawnTestHandler");
+        let block_6 = empty_block(block_5.ptr(), test_ptr(6));
+        let mut block_7 = empty_block(block_6.ptr(), test_ptr(7));
+        push_test_log(&mut block_7, "createFile2");
+        vec![
+            block_0, block_1, block_2, block_3, block_4, block_5, block_6, block_7,
+        ]
     };
 
     // This test assumes the file data sources will be processed in the same block in which they are
@@ -211,7 +216,7 @@ async fn file_data_sources() {
 
     assert_json_eq!(
         query_res,
-        Some(object! { ipfsFile1: object!{ id: id , content: content } })
+        Some(object! { ipfsFile1: object!{ id: id , content: content.clone() } })
     );
 
     ctx.start_and_sync_to(test_ptr(4)).await;
@@ -231,10 +236,35 @@ async fn file_data_sources() {
         causality_region = causality_region.next();
     }
 
-    let stop_block = test_ptr(5);
+    ctx.start_and_sync_to(test_ptr(5)).await;
+    let writable = ctx
+        .store
+        .clone()
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
+        .await
+        .unwrap();
+    let data_sources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+    assert!(data_sources.len() == 4);
+
+    ctx.start_and_sync_to(test_ptr(6)).await;
+    let query_res = ctx
+        .query(&format!(
+            r#"{{ spawnTestEntity(id: "{id}") {{ id, content, context }} }}"#,
+        ))
+        .await
+        .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(
+            object! { spawnTestEntity: object!{ id: id , content: content.clone(), context: "fromSpawnTestHandler" } }
+        )
+    );
+
+    let stop_block = test_ptr(7);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3649 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #5 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x36ea - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #7 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -246,20 +276,20 @@ async fn file_data_sources() {
 
     // Unfail the subgraph to test a conflict between an onchain and offchain entity
     {
-        ctx.rewind(test_ptr(4));
+        ctx.rewind(test_ptr(6));
 
         // Replace block number 5 with one that contains a different event
         let mut blocks = blocks.clone();
         blocks.pop();
-        let block_5_1_ptr = test_ptr_reorged(5, 1);
-        let mut block_5_1 = empty_block(test_ptr(4), block_5_1_ptr.clone());
-        push_test_log(&mut block_5_1, "saveConflictingEntity");
-        blocks.push(block_5_1);
+        let block_7_1_ptr = test_ptr_reorged(7, 1);
+        let mut block_7_1 = empty_block(test_ptr(6), block_7_1_ptr.clone());
+        push_test_log(&mut block_7_1, "saveConflictingEntity");
+        blocks.push(block_7_1);
 
         chain.set_block_stream(blocks);
 
         // Errors in the store pipeline can be observed by using the runner directly.
-        let runner = ctx.runner(block_5_1_ptr.clone()).await;
+        let runner = ctx.runner(block_7_1_ptr.clone()).await;
         let err = runner
             .run()
             .await
@@ -277,16 +307,16 @@ async fn file_data_sources() {
         // Replace block number 5 with one that contains a different event
         let mut blocks = blocks.clone();
         blocks.pop();
-        let block_5_2_ptr = test_ptr_reorged(5, 2);
-        let mut block_5_2 = empty_block(test_ptr(4), block_5_2_ptr.clone());
-        push_test_log(&mut block_5_2, "createFile1");
-        blocks.push(block_5_2);
+        let block_7_2_ptr = test_ptr_reorged(7, 2);
+        let mut block_7_2 = empty_block(test_ptr(6), block_7_2_ptr.clone());
+        push_test_log(&mut block_7_2, "createFile1");
+        blocks.push(block_7_2);
 
         chain.set_block_stream(blocks);
 
         // Errors in the store pipeline can be observed by using the runner directly.
         let err = ctx
-            .runner(block_5_2_ptr.clone())
+            .runner(block_7_2_ptr.clone())
             .await
             .run()
             .await

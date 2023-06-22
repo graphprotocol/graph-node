@@ -63,3 +63,29 @@ templates:
           file: ./abis/Contract.abi
       handler: handleFile1
       file: ./src/mapping.ts
+  - kind: file/ipfs
+    name: SpawnTestHandler
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - SpawnTestEntity
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: spawnTestHandler
+      file: ./src/mapping.ts
+  - kind: file/ipfs
+    name: SpawnedTestHandler
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - SpawnTestEntity
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: handleSpawnedTest
+      file: ./src/mapping.ts
