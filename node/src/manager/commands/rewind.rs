@@ -121,7 +121,10 @@ pub async fn run(
     if paused {
         // There's no good way to tell that a subgraph has in fact stopped
         // indexing. We sleep and hope for the best.
-        println!("\nWaiting 10s to make sure pausing was processed");
+        println!(
+            "\nWaiting {}s to make sure pausing was processed",
+            sleep.as_secs()
+        );
         thread::sleep(sleep);
     }
 
