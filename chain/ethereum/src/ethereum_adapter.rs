@@ -1192,7 +1192,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         debug!(logger, "eth_call";
             "address" => hex::encode(call.address),
-            "data" => hex::encode(&call_data)
+            "data" => hex::encode(&call_data),
+            "block_hash" => call.block_ptr.hash_hex(),
+            "block_number" => call.block_ptr.block_number()
         );
 
         // Check if we have it cached, if not do the call and cache.
