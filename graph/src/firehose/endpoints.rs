@@ -133,7 +133,8 @@ impl FirehoseEndpoint {
         // These tokens come from the config so they have to be ascii.
         let token: Option<MetadataValue<Ascii>> = token
             .map_or(Ok(None), |token| {
-                token.parse::<MetadataValue<Ascii>>().map(Some)
+                let bearer_token = format!("bearer {}", token);
+                bearer_token.parse::<MetadataValue<Ascii>>().map(Some)
             })
             .expect("Firehose token is invalid");
 
