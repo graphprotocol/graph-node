@@ -271,7 +271,7 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         addresses: Vec<H160>,
-    ) -> impl Stream<Item = anyhow::Result<Trace>> + Send + 'static {
+    ) -> impl Stream<Item = anyhow::Result<Trace>> + Send + '_ {
         assert!(
             from <= to,
             "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -610,14 +610,19 @@ impl EthereumAdapter {
             retry(format!("load block ptr {}", block_num), &logger)
                 .no_limit()
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                .run(move || async {
-                    let block = web3
-                        .eth()
-                        .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
-                        .await?
-                        .map(Into::into);
+                .run(move || {
+                    let web3 = web3.clone();
+                    async move {
+                        let block = web3
+                            .eth()
+                            .block(BlockId::Number(Web3BlockNumber::Number(block_num.into())))
+                            .await?
+                            .map(Into::into);
 
-                    block.ok_or_else(|| anyhow!("Ethereum node did not find block {:?}", block_num))
+                        block.ok_or_else(|| {
+                            anyhow!("Ethereum node did not find block {:?}", block_num)
+                        })
+                    }
                 })
                 .map_err(|e: TimeoutError<anyhow::Error>| anyhow::anyhow!(e))
         }))
