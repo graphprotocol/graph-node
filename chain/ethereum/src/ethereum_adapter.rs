@@ -574,7 +574,7 @@ impl EthereumAdapter {
     ) -> impl Stream<Item = anyhow::Result<Arc<LightEthereumBlock>>> + Send {
         let web3 = self.web3.clone();
 
-        stream::iter(ids.into_iter().map(|hash| async move {
+        stream::iter(ids.into_iter().map(|hash| async {
             retry(format!("load block {}", hash), &logger)
                 .limit(ENV_VARS.request_retries)
                 .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
@@ -715,14 +715,21 @@ impl EthereumAdapter {
         }
 
         eth.trace_stream(logger, subgraph_metrics, from, to, addresses)
-            .filter_map(|trace| ready(EthereumCall::try_from_trace(&trace)))
-            .filter(move |call| {
-                // `trace_filter` can only filter by calls `to` an address and
-                // a block range. Since subgraphs are subscribing to calls
-                // for a specific contract function an additional filter needs
-                // to be applied
-                ready(call_filter.matches(call))
+            .filter_map(|trace_res| async {
+                match trace_res {
+                    Err(e) => Some(Err(e)),
+                    Ok(trace) => EthereumCall::try_from_trace(&trace).map(Ok),
+                }
             })
+        //.filter(move |call_res| async {
+        //    // `trace_filter` can only filter by calls `to` an address and
+        //    // a block range. Since subgraphs are subscribing to calls
+        //    // for a specific contract function an additional filter needs
+        //    // to be applied
+        //    call_res
+        //        .map(|call| call_filter.matches(&call))
+        //        .unwrap_or(true)
+        //})
     }
 
     pub(crate) async fn calls_in_block(
