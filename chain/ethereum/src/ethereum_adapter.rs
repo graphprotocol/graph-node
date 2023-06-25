@@ -271,7 +271,7 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         addresses: Vec<H160>,
-    ) -> impl Stream<Item = anyhow::Result<Trace>> + Send {
+    ) -> impl Stream<Item = anyhow::Result<Trace>> + Send + 'static {
         assert!(
             from <= to,
             "Can not produce a call stream on a backwards block range: from = {}, to = {}",
@@ -285,27 +285,27 @@ impl EthereumAdapter {
             true => 1,
         };
 
-        let traces_batches = stream::unfold(from, |start| async {
+        let traces_batches = stream::unfold(from, move |start| {
             let eth = self.clone();
             let logger = logger.clone();
-            let subgraph_metrics = subgraph_metrics.clone();
             let addresses = addresses.clone();
-
-            if start > to {
-                return None;
+            let subgraph_metrics = subgraph_metrics.clone();
+            async move {
+                if start > to {
+                    return None;
+                }
+                let end = (start + step_size - 1).min(to);
+                let new_start = end + 1;
+                if start == end {
+                    debug!(logger, "Requesting traces for block {}", start);
+                } else {
+                    debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
+                }
+                Some((
+                    eth.traces(logger, subgraph_metrics, start, end, addresses),
+                    new_start,
+                ))
             }
-            let end = (start + step_size - 1).min(to);
-            let new_start = end + 1;
-            if start == end {
-                debug!(logger, "Requesting traces for block {}", start);
-            } else {
-                debug!(logger, "Requesting traces for blocks [{}, {}]", start, end);
-            }
-            Some((
-                eth.traces(logger, subgraph_metrics, start, end, addresses)
-                    .await,
-                new_start,
-            ))
         });
 
         traces_batches
