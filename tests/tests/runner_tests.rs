@@ -160,7 +160,7 @@ async fn file_data_sources() {
         let block_3 = empty_block(block_2.ptr(), test_ptr(3));
         let block_4 = empty_block(block_3.ptr(), test_ptr(4));
         let mut block_5 = empty_block(block_4.ptr(), test_ptr(5));
-        push_test_log(&mut block_5, "spawnTestHandler");
+        push_test_log(&mut block_5, "spawnOffChainHandlerTest");
         let block_6 = empty_block(block_5.ptr(), test_ptr(6));
         let mut block_7 = empty_block(block_6.ptr(), test_ptr(7));
         push_test_log(&mut block_7, "createFile2");
@@ -264,7 +264,7 @@ async fn file_data_sources() {
     let stop_block = test_ptr(7);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x36ea - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #7 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3737 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #7 ()".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -278,7 +278,7 @@ async fn file_data_sources() {
     {
         ctx.rewind(test_ptr(6));
 
-        // Replace block number 5 with one that contains a different event
+        // Replace block number 7 with one that contains a different event
         let mut blocks = blocks.clone();
         blocks.pop();
         let block_7_1_ptr = test_ptr_reorged(7, 1);
@@ -304,7 +304,7 @@ async fn file_data_sources() {
 
     // Unfail the subgraph to test a conflict between an onchain and offchain entity
     {
-        // Replace block number 5 with one that contains a different event
+        // Replace block number 7 with one that contains a different event
         let mut blocks = blocks.clone();
         blocks.pop();
         let block_7_2_ptr = test_ptr_reorged(7, 2);
@@ -325,6 +325,26 @@ async fn file_data_sources() {
 
         let message =
             "store error: conflicting key value violates exclusion constraint \"ipfs_file_1_id_block_range_excl\""
+                .to_string();
+        assert_eq!(err.to_string(), message);
+    }
+
+    {
+        ctx.rewind(test_ptr(6));
+        // Replace block number 7 with one that contains a different event
+        let mut blocks = blocks.clone();
+        blocks.pop();
+        let block_7_3_ptr = test_ptr_reorged(7, 1);
+        let mut block_7_3 = empty_block(test_ptr(6), block_7_3_ptr.clone());
+        push_test_log(&mut block_7_3, "spawnOnChainHandlerTest");
+        blocks.push(block_7_3);
+
+        chain.set_block_stream(blocks);
+
+        // Errors in the store pipeline can be observed by using the runner directly.
+        let err = ctx.start_and_sync_to_error(block_7_3_ptr).await;
+        let message =
+            "Attempted to create on-chain data source in offchain data source handler. This is not yet supported. at block #7 (0000000100000000000000000000000000000000000000000000000000000007)"
                 .to_string();
         assert_eq!(err.to_string(), message);
     }

@@ -62,12 +62,20 @@ export function handleTestEvent(event: TestEvent): void {
     let context = new DataSourceContext();
     context.setBytes("hash", event.block.hash);
     dataSource.createWithContext("File1", [KNOWN_CID], context);
-  } else if (command == "spawnTestHandler") {
+  } else if (command == "spawnOffChainHandlerTest") {
     // Used to test the spawning of a file data source from another file data source handler.
-    // `SpawnTestHandler` will spawn a file data source that will be handled by `spawnTestHandler`,
-    // which creates another file data source `SpawnedTestHandler`, which will be handled by `handleSpawnedTest`.
+    // `SpawnTestHandler` will spawn a file data source that will be handled by `spawnOffChainHandlerTest`,
+    // which creates another file data source `OffChainDataSource`, which will be handled by `handleSpawnedTest`.
     let context = new DataSourceContext();
-    context.setBytes("hash", event.block.hash);
+    context.setString("command", command);
+    dataSource.createWithContext("SpawnTestHandler", [KNOWN_CID], context);
+  } else if (command == "spawnOnChainHandlerTest") {
+    // Used to test the failure of spawning of on-chain data source from a file data source handler.
+    // `SpawnTestHandler` will spawn a file data source that will be handled by `spawnTestHandler`,
+    // which creates an `OnChainDataSource`, which should fail since spawning onchain datasources
+    // from offchain handlers is not allowed.
+    let context = new DataSourceContext();
+    context.setString("command", command);
     dataSource.createWithContext("SpawnTestHandler", [KNOWN_CID], context);
   } else {
     assert(false, "Unknown command: " + command);
@@ -107,10 +115,15 @@ export function handleFile1(data: Bytes): void {
 export function spawnTestHandler(data: Bytes): void {
   let context = new DataSourceContext();
   context.setString("file", "fromSpawnTestHandler");
-  dataSource.createWithContext("SpawnedTestHandler", [KNOWN_CID], context);
+  let command = dataSource.context().getString("command");
+  if (command == "spawnOffChainHandlerTest") {
+    dataSource.createWithContext("OffChainDataSource", [KNOWN_CID], context);
+  } else if (command == "spawnOnChainHandlerTest") {
+    dataSource.createWithContext("OnChainDataSource", [KNOWN_CID], context);
+  }
 }
 
-// This is the handler for the data source spawned by `spawnTestHandler`.
+// This is the handler for the data source spawned by `spawnOffChainHandlerTest`.
 export function handleSpawnedTest(data: Bytes): void {
   let entity = new SpawnTestEntity(dataSource.stringParam());
   let context = dataSource.context().getString("file");
