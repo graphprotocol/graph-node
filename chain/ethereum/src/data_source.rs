@@ -246,17 +246,28 @@ impl blockchain::DataSource<Chain> for DataSource {
         let has_too_many_block_handlers = {
             let mut non_filtered_block_handler_count = 0;
             let mut call_filtered_block_handler_count = 0;
+            let mut polling_filtered_block_handler_count = 0;
+            let mut initialization_handler_count = 0;
             self.mapping
                 .block_handlers
                 .iter()
                 .for_each(|block_handler| {
-                    if block_handler.filter.is_none() {
-                        non_filtered_block_handler_count += 1
-                    } else {
-                        call_filtered_block_handler_count += 1
-                    }
+                    match block_handler.filter {
+                        None => non_filtered_block_handler_count += 1,
+                        Some(ref filter) => match filter {
+                            BlockHandlerFilter::Call => call_filtered_block_handler_count += 1,
+                            BlockHandlerFilter::Once => initialization_handler_count += 1,
+                            BlockHandlerFilter::Polling { every: _ } => {
+                                polling_filtered_block_handler_count += 1
+                            }
+                        },
+                    };
                 });
-            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
+
+            // TODO: Have limits for polling handlers
+            non_filtered_block_handler_count > 1
+                || call_filtered_block_handler_count > 1
+                || initialization_handler_count > 1
         };
         if has_too_many_block_handlers {
             errors.push(anyhow!("data source has duplicated block handlers"));
@@ -371,6 +382,17 @@ impl DataSource {
                 .block_handlers
                 .iter()
                 .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
+                .cloned(),
+            EthereumBlockTriggerType::Polling(_address, trigger_interval) => self
+                .mapping
+                .block_handlers
+                .iter()
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every: interval }) => {
+                        interval == *trigger_interval
+                    }
+                    _ => false,
+                })
                 .cloned(),
         }
     }
@@ -1032,6 +1054,10 @@ pub enum BlockHandlerFilter {
     // Call filter will trigger on all blocks where the data source contract
     // address has been called
     Call,
+    // This filter will trigger once at the startBlock
+    Once,
+    // This filter will trigger in a recurring interval set by the `every` field.
+    Polling { every: i32 },
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]

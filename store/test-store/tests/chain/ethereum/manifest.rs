@@ -20,7 +20,7 @@ use graph::{
 };
 
 use graph::semver::Version;
-use graph_chain_ethereum::{Chain, NodeCapabilities};
+use graph_chain_ethereum::{BlockHandlerFilter, Chain, NodeCapabilities};
 use test_store::LOGGER;
 
 const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
@@ -367,6 +367,150 @@ specVersion: 0.0.2
             msg
         );
     })
+}
+
+#[tokio::test]
+async fn parse_block_handlers_with_recurring_filter() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      blockHandlers:
+        - handler: handleBlock
+          filter:
+            kind: polling
+            every: 10
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.2
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let onchain_data_sources = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_onchain().cloned())
+        .collect::<Vec<_>>();
+
+    let data_source = onchain_data_sources.get(0).unwrap();
+    let filter = data_source.mapping.block_handlers[0].filter.clone();
+
+    assert_eq!(BlockHandlerFilter::Polling { every: 10 }, filter.unwrap());
+
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+}
+
+#[tokio::test]
+async fn parse_block_handlers_with_call_filter() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      blockHandlers:
+        - handler: handleBlock
+          filter:
+            kind: call
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.2
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let onchain_data_sources = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_onchain().cloned())
+        .collect::<Vec<_>>();
+
+    let data_source = onchain_data_sources.get(0).unwrap();
+    let filter = data_source.mapping.block_handlers[0].filter.clone();
+    let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
+
+    assert_eq!(BlockHandlerFilter::Call, filter.unwrap());
+    assert_eq!(true, required_capabilities.traces);
+    assert_eq!("Qmmanifest", manifest.id.as_str());
+}
+
+#[tokio::test]
+async fn parse_block_handlers_with_once_filter() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      blockHandlers:
+        - handler: handleBlock
+          filter:
+            kind: once
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.2
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let onchain_data_sources = manifest
+        .data_sources
+        .iter()
+        .filter_map(|ds| ds.as_onchain().cloned())
+        .collect::<Vec<_>>();
+
+    let data_source = onchain_data_sources.get(0).unwrap();
+    let filter = data_source.mapping.block_handlers[0].filter.clone();
+    let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
+
+    assert_eq!(BlockHandlerFilter::Once, filter.unwrap());
+    assert_eq!(false, required_capabilities.traces);
+    assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
 #[tokio::test]
