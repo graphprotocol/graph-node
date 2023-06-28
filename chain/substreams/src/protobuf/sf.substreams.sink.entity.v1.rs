@@ -11,6 +11,7 @@ pub struct EntityChange {
     pub entity: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub id: ::prost::alloc::string::String,
+    /// Deprecated, this is not used within `graph-node`.
     #[prost(uint64, tag = "3")]
     pub ordinal: u64,
     #[prost(enumeration = "entity_change::Operation", tag = "4")]
@@ -34,10 +35,11 @@ pub mod entity_change {
     #[repr(i32)]
     pub enum Operation {
         /// Protobuf default should not be used, this is used so that the consume can ensure that the value was actually specified
-        Unset = 0,
+        Unspecified = 0,
         Create = 1,
         Update = 2,
         Delete = 3,
+        Final = 4,
     }
     impl Operation {
         /// String value of the enum field names used in the ProtoBuf definition.
@@ -46,19 +48,21 @@ pub mod entity_change {
         /// (if the ProtoBuf definition does not change) and safe for programmatic use.
         pub fn as_str_name(&self) -> &'static str {
             match self {
-                Operation::Unset => "UNSET",
-                Operation::Create => "CREATE",
-                Operation::Update => "UPDATE",
-                Operation::Delete => "DELETE",
+                Operation::Unspecified => "OPERATION_UNSPECIFIED",
+                Operation::Create => "OPERATION_CREATE",
+                Operation::Update => "OPERATION_UPDATE",
+                Operation::Delete => "OPERATION_DELETE",
+                Operation::Final => "OPERATION_FINAL",
             }
         }
         /// Creates an enum from field names used in the ProtoBuf definition.
         pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
             match value {
-                "UNSET" => Some(Self::Unset),
-                "CREATE" => Some(Self::Create),
-                "UPDATE" => Some(Self::Update),
-                "DELETE" => Some(Self::Delete),
+                "OPERATION_UNSPECIFIED" => Some(Self::Unspecified),
+                "OPERATION_CREATE" => Some(Self::Create),
+                "OPERATION_UPDATE" => Some(Self::Update),
+                "OPERATION_DELETE" => Some(Self::Delete),
+                "OPERATION_FINAL" => Some(Self::Final),
                 _ => None,
             }
         }
@@ -83,8 +87,8 @@ pub mod value {
         Bigint(::prost::alloc::string::String),
         #[prost(string, tag = "4")]
         String(::prost::alloc::string::String),
-        #[prost(bytes, tag = "5")]
-        Bytes(::prost::alloc::vec::Vec<u8>),
+        #[prost(string, tag = "5")]
+        Bytes(::prost::alloc::string::String),
         #[prost(bool, tag = "6")]
         Bool(bool),
         #[prost(message, tag = "10")]
@@ -104,6 +108,7 @@ pub struct Field {
     pub name: ::prost::alloc::string::String,
     #[prost(message, optional, tag = "3")]
     pub new_value: ::core::option::Option<Value>,
+    /// Deprecated, this is not used within `graph-node`.
     #[prost(message, optional, tag = "5")]
     pub old_value: ::core::option::Option<Value>,
 }

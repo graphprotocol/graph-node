@@ -191,10 +191,10 @@ where
     ) -> Result<BlockState<Chain>, MappingError> {
         for entity_change in block.changes.entity_changes.iter() {
             match entity_change.operation() {
-                Operation::Unset => {
+                Operation::Unspecified => {
                     // Potentially an issue with the server side or
                     // we are running an outdated version. In either case we should abort.
-                    return Err(MappingError::Unknown(anyhow!("Detected UNSET entity operation, either a server error or there's a new type of operation and we're running an outdated protobuf")));
+                    return Err(MappingError::Unknown(anyhow!("Detected UNSPECIFIED entity operation, either a server error or there's a new type of operation and we're running an outdated protobuf")));
                 }
                 Operation::Create | Operation::Update => {
                     let schema = state.entity_cache.schema.as_ref();
@@ -279,6 +279,9 @@ where
                         causality_region,
                         logger,
                     )
+                }
+                Operation::Final => {
+                    // Ignored, nothing to perform in this case
                 }
             }
         }

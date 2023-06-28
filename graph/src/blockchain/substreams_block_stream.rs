@@ -1,4 +1,4 @@
-use super::block_stream::SubstreamsMapper;
+use super::block_stream::{SubstreamsError, SubstreamsMapper};
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
@@ -242,16 +242,19 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                                 }
                             },
                             Err(err) => {
-                                info!(&logger, "received err");
                                 // We have an open connection but there was an error processing the Firehose
                                 // response. We will reconnect the stream after this; this is the case where
                                 // we actually _want_ to back off in case we keep running into the same error.
                                 // An example of this situation is if we get invalid block or transaction data
                                 // that cannot be decoded properly.
 
+                                // Record the error in all cases.
                                 metrics.observe_response("error", &mut last_response_time, &endpoint.provider);
-
                                 error!(logger, "{:#}", err);
+
+                                // Early exit the try_stream! macro if the error is determined as fatal
+                                exit_stream_if_fatal_error(err)?;
+
                                 expected_stream_end = true;
                                 break;
                             }
@@ -322,3 +325,15 @@ impl<C: Blockchain> Stream for SubstreamsBlockStream<C> {
 }
 
 impl<C: Blockchain> BlockStream<C> for SubstreamsBlockStream<C> {}
+
+pub fn exit_stream_if_fatal_error(error: Error) -> Result<(), Error> {
+    for cause in error.chain() {
+        if let Some(wrapped_err) = cause.downcast_ref::<SubstreamsError>() {
+            if let SubstreamsError::InvalidTypeUrl(_) = wrapped_err {
+                return Err(error);
+            }
+        }
+    }
+
+    Ok(())
+}

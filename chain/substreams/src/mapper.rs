@@ -33,7 +33,7 @@ impl SubstreamsMapper<Chain> for Mapper {
             }
 
             Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
-                let module_output = match &block_scoped_data.output {
+                let module_output = match block_scoped_data.output {
                     Some(out) => out,
                     None => return Ok(None),
                 };
@@ -43,7 +43,7 @@ impl SubstreamsMapper<Chain> for Mapper {
                     None => return Err(SubstreamsError::MissingClockError),
                 };
 
-                let cursor = &block_scoped_data.cursor;
+                let cursor = block_scoped_data.cursor;
 
                 let Clock {
                     id: hash,
@@ -54,9 +54,17 @@ impl SubstreamsMapper<Chain> for Mapper {
                 let hash: BlockHash = hash.as_str().try_into()?;
                 let number: BlockNumber = number as BlockNumber;
 
-                let changes: EntityChanges = match module_output.map_output.as_ref() {
-                    Some(msg) => Message::decode(msg.value.as_slice())
-                        .map_err(SubstreamsError::DecodingError)?,
+                let changes: EntityChanges = match module_output.map_output {
+                    Some(msg) => {
+                        if !is_accepted_message_type_url(&msg.type_url) {
+                            return Err(SubstreamsError::InvalidTypeUrl(
+                                invalid_message_type_url_error(&msg.type_url),
+                            ));
+                        }
+
+                        Message::decode(msg.value.as_slice())
+                            .map_err(SubstreamsError::DecodingError)?
+                    }
                     None => EntityChanges {
                         entity_changes: [].to_vec(),
                     },
@@ -79,7 +87,7 @@ impl SubstreamsMapper<Chain> for Mapper {
                         vec![TriggerData {}],
                         logger,
                     ),
-                    FirehoseCursor::from(cursor.clone()),
+                    FirehoseCursor::from(cursor),
                 )))
             }
 
@@ -88,4 +96,21 @@ impl SubstreamsMapper<Chain> for Mapper {
             _ => Ok(None),
         }
     }
+}
+
+const ACCEPTED_URLS: [&str; 2] = [
+    "type.googleapis.com/sf.substreams.entity.v1.EntityChanges",
+    "type.googleapis.com/sf.substreams.sink.entity.v1.EntityChanges",
+];
+
+fn is_accepted_message_type_url(url: &String) -> bool {
+    ACCEPTED_URLS.contains(&url.as_str())
+}
+
+fn invalid_message_type_url_error(url: &String) -> String {
+    format!(
+        "Invalid message type url, got {} but accepting only {}",
+        url,
+        ACCEPTED_URLS.join(", ")
+    )
 }

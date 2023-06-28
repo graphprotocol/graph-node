@@ -346,6 +346,10 @@ pub enum SubstreamsError {
     #[error("received gRPC block payload cannot be decoded: {0}")]
     DecodingError(#[from] prost::DecodeError),
 
+    /// We received a message for a type we don't support (the argument is the message)
+    #[error("{0}")]
+    InvalidTypeUrl(String),
+
     /// Some unknown error occurred
     #[error("unknown error")]
     UnknownError(#[from] anyhow::Error),

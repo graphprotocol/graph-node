@@ -1,5 +1,5 @@
 #[rustfmt::skip]
-#[path = "protobuf/substreams.entity.v1.rs"]
+#[path = "protobuf/sf.substreams.sink.entity.v1.rs"]
 mod pbsubstreamsentity;
 
 pub use pbsubstreamsentity::*;
