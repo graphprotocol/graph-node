@@ -670,70 +670,73 @@ where
 {
     async fn manual_revert_if_necessary(&mut self) -> Result<bool, Error> {
         use std::env;
-        let force_manual_revert = env::var("MANUAL_REVERT");
+        let manual_revert_env = env::var("MANUAL_REVERT").ok();
 
-        if force_manual_revert.is_err() {
+        if manual_revert_env.is_none() {
             return Ok(false);
         }
 
-        let force_manual_revert = force_manual_revert.unwrap().split(',')
-                    .collect::<Vec<_>>()
-                    .iter()
-                    .map(|s| String::from(*s))
-                    .collect::<Vec<String>>();
+        let manual_revert_values = manual_revert_env
+            .unwrap()
+            .split(',')
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|s| String::from(*s))
+            .collect::<Vec<String>>();
 
-        if force_manual_revert.len() < 3 {
+        if manual_revert_values.len() < 3 {
             warn!(
                 &self.logger,
-                "INVALID value for MANUAL_REVERT, skipping";
-                "value" => format!("{:?}", force_manual_revert),
+                "Not enought values for MANUAL_REVERT, skipping";
+                "values" => format!("{:?}", manual_revert_values),
             );
             env::remove_var("MANUAL_REVERT");
             return Ok(false);
         }
 
-        let subgraph_id = force_manual_revert[0].to_owned();
+        let subgraph_id = manual_revert_values[0].to_owned();
         let current_subgraph = self.ctx.instance.subgraph_id.to_string();
 
         if subgraph_id != current_subgraph {
             return Ok(false);
         }
 
-        warn!(
+        warn!(&self.logger, "Manual reverting subgraph: {}!", subgraph_id);
+        info!(
             &self.logger,
-            ".....Request force-manual-revert for subgraph: {}!", subgraph_id
+            "Remove MANUAL_REVERT envar before proceed (run once only)"
         );
-        info!(&self.logger, "Remove MANUAL_REVERT envar before proceed");
-        // clear env because this is meant to run only once!
         env::remove_var("MANUAL_REVERT");
 
-        let try_block_number = force_manual_revert[1].parse::<i32>();
-        let try_block_hash = BlockHash::try_from(force_manual_revert[2].as_str());
-
+        let try_block_number = manual_revert_values[1].parse::<i32>();
+        let try_block_hash = BlockHash::try_from(manual_revert_values[2].as_str());
 
         match (try_block_number, try_block_hash) {
             (Ok(block_number), Ok(block_hash)) => {
                 warn!(
                     &self.logger,
-                    "--------- FORCE MANUAL REVERT ---------";
+                    "--------- MANUAL REVERT STARTED ---------";
                     "subgraph" => subgraph_id,
                     "number" => block_number,
                     "hash" => block_hash.to_string(),
                 );
-                self.handle_revert(BlockPtr::new(block_hash, block_number), FirehoseCursor::None)
-                    .await?;
-                info!(&self.logger, "------ MANUAL REVERT FINISHED -------");
+                self.handle_revert(
+                    BlockPtr::new(block_hash, block_number),
+                    FirehoseCursor::None,
+                )
+                .await?;
+                info!(&self.logger, "--------- MANUAL REVERT FINISHED ---------");
                 Ok(true)
             }
-            _ => {
+            invalid_values => {
                 warn!(
                 &self.logger,
                     "INVALID values for MANUAL_REVERT, skipping";
-                    "block_number" => format!("{:?}", force_manual_revert[1]),
-                    "block_hash" => format!("{:?}", force_manual_revert[2]),
+                    "block_number" => format!("{:?}", invalid_values.0),
+                    "block_hash" => format!("{:?}", invalid_values.1),
                 );
                 Ok(false)
-            },
+            }
         }
     }
 
