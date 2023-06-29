@@ -59,7 +59,7 @@ where
     T: RuntimeHostBuilder<C>,
     C: Blockchain,
 {
-    instance: SubgraphInstance<C, T>,
+    pub instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub filter: C::TriggerFilter,
     pub offchain_monitor: OffchainMonitor,

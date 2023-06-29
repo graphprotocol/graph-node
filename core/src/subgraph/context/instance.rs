@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use super::OffchainMonitor;
 
 pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
-    subgraph_id: DeploymentHash,
+    pub subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
     templates: Arc<Vec<DataSourceTemplate<C>>>,
