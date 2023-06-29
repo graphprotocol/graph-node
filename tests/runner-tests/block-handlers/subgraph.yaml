@@ -1,0 +1,30 @@
+specVersion: 0.0.7
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "0x0000000000000000000000000000000000000000"
+      abi: Contract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      blockHandlers:
+        - handler: handleBlock
+        - handler: handleBlockPolling
+          filter:
+            kind: polling
+            # this doesnt matter in runner tests since we push triggers manually
+            every: 3
+      eventHandlers:
+        - event: TestEvent(string)
+          handler: handleCommand
+      file: ./src/mapping.ts

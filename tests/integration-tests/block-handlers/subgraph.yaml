@@ -1,0 +1,34 @@
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "0xCfEB869F69431e42cdB54A4F4f105C19C080A601"
+      abi: Contract
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      entities:
+        - Call
+      eventHandlers:
+        - event: Trigger(uint16)
+          handler: handleTrigger
+      blockHandlers:
+        - handler: handleBlock
+        - handler: handleBlockPolling
+          filter:
+            kind: polling
+            every: 3
+        - handler: handleOtherBlockPolling
+          filter:
+            kind: polling
+            every: 4
+      file: ./src/mapping.ts

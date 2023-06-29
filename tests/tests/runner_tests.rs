@@ -8,6 +8,7 @@ use assert_json_diff::assert_json_eq;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::data::value::Value;
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
@@ -16,9 +17,13 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
     CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
-use graph_tests::fixture::ethereum::{chain, empty_block, genesis, push_test_log};
+use graph_tests::fixture::ethereum::{
+    chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_log,
+    push_test_polling_trigger,
+};
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
+    TestContext,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
@@ -507,6 +512,134 @@ async fn file_data_sources() {
                 .to_string();
         assert_eq!(err.to_string(), message);
     }
+}
+
+#[tokio::test]
+async fn block_handlers() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("block-handlers").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1_to_3 = generate_empty_blocks_for_range(block_0.ptr(), 1, 3);
+        let block_4 = {
+            let mut block = empty_block(block_1_to_3.last().unwrap().ptr(), test_ptr(4));
+            push_test_polling_trigger(&mut block, 3);
+            block
+        };
+        let block_6_to_10 = generate_empty_blocks_for_range(block_4.ptr(), 5, 10);
+
+        // return the blocks
+        vec![block_0]
+            .into_iter()
+            .chain(block_1_to_3)
+            .chain(vec![block_4])
+            .chain(block_6_to_10)
+            .collect()
+    };
+
+    let chain = chain(blocks, &stores, None).await;
+
+    let mut env_vars = EnvVars::default();
+    env_vars.experimental_static_filters = true;
+
+    let ctx = fixture::setup(
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        Some(env_vars),
+    )
+    .await;
+
+    async fn query_block_from_polling_handler(ctx: &TestContext, block: BlockPtr) -> Value {
+        let query = format!(
+            r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
+            id = block.number
+        );
+        let query_res = ctx.query(&query).await.unwrap().unwrap();
+        query_res
+    }
+
+    ctx.start_and_sync_to(test_ptr(1)).await;
+
+    let query = format!(r#"{{ block(id: "{id}") {{ id, hash }} }}"#, id = 1);
+    let query_res = ctx.query(&query).await.unwrap();
+    assert_eq!(
+        query_res,
+        Some(object! {
+            block: object! {
+                id: test_ptr(1).number.to_string(),
+                hash:format!("0x{}",test_ptr(1).hash_hex()) ,
+            }
+        })
+    );
+
+    ctx.start_and_sync_to(test_ptr(4)).await;
+    let query = format!(r#"{{ blocks {{ id, hash }} }}"#);
+    let query_res = ctx.query(&query).await.unwrap().unwrap();
+
+    assert_eq!(
+        query_res,
+        object! {
+            blocks: vec![
+                object! {
+                    id: test_ptr(0).number.to_string(),
+                    hash:format!("0x{}",test_ptr(0).hash_hex()) ,
+                },
+                object! {
+                    id: test_ptr(1).number.to_string(),
+                    hash:format!("0x{}",test_ptr(1).hash_hex()) ,
+                },
+                object! {
+                    id: test_ptr(2).number.to_string(),
+                    hash:format!("0x{}",test_ptr(2).hash_hex()) ,
+                },
+                object! {
+                    id: test_ptr(3).number.to_string(),
+                    hash:format!("0x{}",test_ptr(3).hash_hex()) ,
+                },
+                object! {
+                    id: test_ptr(4).number.to_string(),
+                    hash:format!("0x{}",test_ptr(4).hash_hex()) ,
+                },
+
+            ]
+        }
+    );
+
+    let query = format!(
+        r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
+        id = 4
+    );
+    let query_res = ctx.query(&query).await.unwrap();
+    assert_eq!(
+        query_res,
+        Some(object! {
+            blockFromPollingHandler: object! {
+                id: test_ptr(4).number.to_string(),
+                hash:format!("0x{}",test_ptr(4).hash_hex()) ,
+            }
+        })
+    );
+
+    ctx.start_and_sync_to(test_ptr(5)).await;
+    let query = format!(
+        r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
+        id = 5
+    );
+    let query_res = ctx.query(&query).await.unwrap();
+    // should be null
+    assert_eq!(
+        query_res,
+        Some(object! {
+            blockFromPollingHandler: Value::Null
+        })
+    );
 }
 
 #[tokio::test]

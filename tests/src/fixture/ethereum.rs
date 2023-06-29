@@ -94,6 +94,21 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     }
 }
 
+pub fn generate_empty_blocks_for_range(
+    parent_ptr: BlockPtr,
+    start: i32,
+    end: i32,
+) -> Vec<BlockWithTriggers<graph_chain_ethereum::Chain>> {
+    (start + 1..end + 1).fold(
+        vec![empty_block(parent_ptr.clone(), test_ptr(start))],
+        |mut blocks, i| {
+            let parent_ptr = blocks.last().unwrap().ptr().clone();
+            blocks.push(empty_block(parent_ptr, test_ptr(i)));
+            blocks
+        },
+    )
+}
+
 pub fn empty_block(
     parent_ptr: BlockPtr,
     ptr: BlockPtr,
@@ -140,5 +155,12 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
             removed: None,
         }),
         None,
+    ))
+}
+
+pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>, interval: i32) {
+    block.trigger_data.push(EthereumTrigger::Block(
+        block.ptr(),
+        EthereumBlockTriggerType::Polling(Address::zero(), interval),
     ))
 }
