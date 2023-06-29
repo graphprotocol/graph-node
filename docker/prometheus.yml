@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 5s
+  external_labels:
+    monitor: 'codelab-monitor'
+
+scrape_configs:
+  - job_name: 'graph-node'
+    static_configs:
+      - targets: ['localhost:8040', 'host.docker.internal:8040', '0.0.0.0:8040']

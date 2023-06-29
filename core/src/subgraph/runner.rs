@@ -111,6 +111,9 @@ where
     }
 
     async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, Error> {
+        // First, execute manual revert request!
+        self.manual_revert_if_necessary().await.unwrap();
+
         // If a subgraph failed for deterministic reasons, before start indexing, we first
         // revert the deployment head. It should lead to the same result since the error was
         // deterministic.
@@ -665,7 +668,7 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn force_manual_revert(&mut self, cursor: FirehoseCursor) -> Result<bool, Error> {
+    async fn manual_revert_if_necessary(&mut self) -> Result<bool, Error> {
         use std::env;
         let force_manual_revert = env::var("MANUAL_REVERT");
 
@@ -717,7 +720,7 @@ where
                     "number" => block_number,
                     "hash" => block_hash.to_string(),
                 );
-                self.handle_revert(BlockPtr::new(block_hash, block_number), cursor)
+                self.handle_revert(BlockPtr::new(block_hash, block_number), FirehoseCursor::None)
                     .await?;
                 info!(&self.logger, "------ MANUAL REVERT FINISHED -------");
                 Ok(true)
@@ -741,19 +744,13 @@ where
     ) -> Result<Action, Error> {
         let action = match event {
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                let has_force_revert = self.force_manual_revert(cursor.clone()).await?;
-                if !has_force_revert {
-                    let _section = self
+                let _section = self
                     .metrics
                     .stream
                     .stopwatch
                     .start_section(PROCESS_BLOCK_SECTION_NAME);
                 self.handle_process_block(block, cursor, cancel_handle)
                     .await?
-                } else {
-                    Action::Restart
-                }
-
             }
             Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
                 let _section = self
