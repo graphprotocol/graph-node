@@ -2,6 +2,8 @@ use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
 use graph_store_postgres::{
     command_support::catalog, connection_pool::ConnectionPool, NotificationSender,
 };
+use std::time::Duration;
+use std::thread;
 
 use crate::manager::deployment::DeploymentSearch;
 
@@ -107,5 +109,17 @@ pub fn pause_or_resume(
     println!("Operation completed");
     conn.send_store_event(sender, &StoreEvent::new(change))?;
 
+    Ok(())
+}
+
+pub fn restart(
+    primary: ConnectionPool,
+    sender: &NotificationSender,
+    search: &DeploymentSearch,
+    sleep: Duration,
+) -> Result<(), Error> {
+    pause_or_resume(primary.clone(), sender, search, true)?;
+    thread::sleep(sleep);
+    pause_or_resume(primary, sender, search, false)?;
     Ok(())
 }
