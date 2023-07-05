@@ -1133,10 +1133,7 @@ async fn main() -> anyhow::Result<()> {
             let sender = ctx.notification_sender();
             commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, false)
         }
-        Restart { 
-            deployment, 
-            sleep 
-        } => {
+        Restart { deployment, sleep } => {
             let sender = ctx.notification_sender();
             commands::assign::restart(ctx.primary_pool(), &sender, &deployment, sleep)
         }
