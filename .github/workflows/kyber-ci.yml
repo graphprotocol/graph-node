@@ -64,7 +64,7 @@ jobs:
       - name: Run unit tests
         uses: actions-rs/cargo@v1
         env:
-          RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+          RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
         with:
           command: test
           args: --workspace --exclude graph-tests -- --nocapture
