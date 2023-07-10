@@ -119,6 +119,10 @@ pub fn restart(
     sleep: Duration,
 ) -> Result<(), Error> {
     pause_or_resume(primary.clone(), sender, search, true)?;
+    println!(
+        "\nWaiting {}s to make sure pausing was processed",
+        sleep.as_secs()
+    );
     thread::sleep(sleep);
     pause_or_resume(primary, sender, search, false)?;
     Ok(())
