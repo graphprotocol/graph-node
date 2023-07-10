@@ -120,7 +120,7 @@ pub fn restart(
 ) -> Result<(), Error> {
     pause_or_resume(primary.clone(), sender, search, true)?;
     println!(
-        "\nWaiting {}s to make sure pausing was processed",
+        "Waiting {}s to make sure pausing was processed",
         sleep.as_secs()
     );
     thread::sleep(sleep);
