@@ -369,6 +369,7 @@ impl DataSource {
     fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
+        block: BlockNumber,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
             EthereumBlockTriggerType::Every => self
@@ -383,13 +384,16 @@ impl DataSource {
                 .iter()
                 .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
                 .cloned(),
-            EthereumBlockTriggerType::Polling(_address, trigger_interval) => self
+            EthereumBlockTriggerType::Polling => self
                 .mapping
                 .block_handlers
                 .iter()
                 .find(move |handler| match handler.filter {
-                    Some(BlockHandlerFilter::Polling { every: interval }) => {
-                        interval == *trigger_interval
+                    Some(BlockHandlerFilter::Polling { every }) => {
+                        // TODO: Get creation block if start_block is zero //POLLING_TODO
+                        let start_block = self.start_block;
+                        let should_trigger = (block - start_block) % every == 0;
+                        should_trigger
                     }
                     _ => false,
                 })
@@ -556,7 +560,7 @@ impl DataSource {
 
         match trigger {
             EthereumTrigger::Block(_, trigger_type) => {
-                let handler = match self.handler_for_block(trigger_type) {
+                let handler = match self.handler_for_block(trigger_type, block.number()) {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };

@@ -749,47 +749,21 @@ impl EthereumAdapter {
     > {
         // TODO: Maybe add a load_single_block method to the EthereumAdapter
         // And call that here with filter_map
-        let matching_intervals: HashMap<i32, HashSet<(H160, i32)>> = (from..=to)
-            .map(|block_number| {
-                let intervals = filter
+        let matching_blocks = (from..=to)
+            .filter(|block_number| {
+                filter
                     .polling_intervals
-                    .clone()
                     .iter()
-                    .filter_map(move |(start_block, contract_address, polling_interval)| {
-                        if (block_number - start_block) % polling_interval == 0 {
-                            Some((contract_address.clone(), *polling_interval))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<HashSet<_>>();
-                (block_number, intervals)
+                    .any(|(start_block, _, interval)| (block_number - start_block) % interval == 0)
             })
-            .filter(|(_, intervals)| !intervals.is_empty())
-            .collect();
+            .collect_vec();
 
-        let blocks_matching_polling_filter = self.load_ptrs_for_blocks(
-            logger.clone(),
-            matching_intervals.iter().map(|(n, _)| *n).collect_vec(),
-        );
+        let blocks_matching_polling_filter =
+            self.load_ptrs_for_blocks(logger.clone(), matching_blocks);
 
         let block_futures = blocks_matching_polling_filter.map(move |ptrs| {
             ptrs.into_iter()
-                .flat_map(|ptr| {
-                    matching_intervals
-                        .get(&ptr.number)
-                        .unwrap() // FIXME: This is safe to unwrap because we only ask for blocks that are in the map
-                        .iter()
-                        .map(move |(contract_address, interval)| {
-                            EthereumTrigger::Block(
-                                ptr.clone(),
-                                EthereumBlockTriggerType::Polling(
-                                    contract_address.clone(),
-                                    *interval,
-                                ),
-                            )
-                        })
-                })
+                .map(|ptr| EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Polling))
                 .collect::<Vec<_>>()
         });
 
@@ -1473,6 +1447,25 @@ pub(crate) async fn blocks_with_triggers(
         trigger_futs.push(block_futures_matching_polling_filter);
     }
 
+    // Handle wildcard block filters
+    if let Some(wildcard_filter) = &filter.block.wildcard_filters {
+        // Check if the wildcard filter is a polling filter
+        if wildcard_filter.polling {
+            let block_future = eth
+                .block_range_to_ptrs(logger.clone(), from, to)
+                .map(move |ptrs| {
+                    ptrs.into_iter()
+                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Polling))
+                        .collect()
+                })
+                .compat()
+                .boxed();
+            trigger_futs.push(block_future)
+        }
+
+        // TODO: Handle wildcard filters for calls
+    }
+
     // Get hash for "to" block
     let to_hash_fut = eth
         .block_hash_by_block_number(&logger, to)
@@ -1688,11 +1681,23 @@ pub(crate) fn parse_block_triggers(
         ));
     }
 
-    for (start_block, address, interval) in &block_filter.polling_intervals {
-        if (block_number - start_block) % interval == 0 {
+    if let Some(wildcard_filter) = &block_filter.wildcard_filters {
+        let has_polling_handlers = &wildcard_filter.polling;
+        if *has_polling_handlers {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3.clone(),
-                EthereumBlockTriggerType::Polling(address.clone(), *interval),
+                EthereumBlockTriggerType::Polling,
+            ));
+        }
+    } else {
+        let has_polling_trigger = &block_filter
+            .polling_intervals
+            .iter()
+            .any(|(start_block, _, interval)| (block_number - start_block) % interval == 0);
+        if *has_polling_trigger {
+            triggers.push(EthereumTrigger::Block(
+                block_ptr3.clone(),
+                EthereumBlockTriggerType::Polling,
             ));
         }
     }
@@ -2176,6 +2181,7 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
                     trigger_every_block: true,
+                    wildcard_filters: None,
                 },
                 &block
             ),
@@ -2209,6 +2215,7 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(1))]),
                     trigger_every_block: false,
+                    wildcard_filters: None,
                 },
                 &block
             ),
@@ -2245,6 +2252,7 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(4))]),
                     trigger_every_block: false,
+                    wildcard_filters: None,
                 },
                 &block
             ),

@@ -161,6 +161,7 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             polling_intervals: _polling_intervals,
             contract_addresses: _contract_addresses,
             trigger_every_block,
+            ..
         } = self.block.clone();
 
         let log_filters: Vec<LogFilter> = self.log.into();
@@ -584,10 +585,17 @@ impl From<&EthereumBlockFilter> for EthereumCallFilter {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EthereumBlockFilter {
-    // Used for polling block handlers, a hashset of (start_block, address, polling_interval)
+    /// Used for polling block handlers, a hashset of (start_block, address, polling_interval)
     pub polling_intervals: HashSet<(BlockNumber, Address, i32)>,
     pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
+    // Wildcard filters are used for  subgraphs with static_filters
+    pub wildcard_filters: Option<WildcardBlockFilter>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WildcardBlockFilter {
+    pub polling: bool,
 }
 
 impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
@@ -616,6 +624,14 @@ impl EthereumBlockFilter {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::new(),
             trigger_every_block: !mapping.block_handlers.is_empty(),
+            wildcard_filters: Some(WildcardBlockFilter {
+                polling: mapping.block_handlers.iter().any(|block_handler| {
+                    match block_handler.filter {
+                        Some(BlockHandlerFilter::Polling { every: _ }) => true,
+                        _ => false,
+                    }
+                }),
+            }),
         }
     }
 
@@ -676,6 +692,7 @@ impl EthereumBlockFilter {
                     } else {
                         HashSet::default()
                     },
+                    wildcard_filters: None,
                 });
                 filter_opt
             })
@@ -689,6 +706,7 @@ impl EthereumBlockFilter {
             polling_intervals,
             contract_addresses,
             trigger_every_block,
+            ..
         } = other;
 
         self.trigger_every_block = self.trigger_every_block || trigger_every_block;
@@ -1089,6 +1107,7 @@ mod tests {
                     (500, address(1000)),
                 ]),
                 trigger_every_block: false,
+                wildcard_filters: None,
             },
         };
 
@@ -1204,6 +1223,7 @@ mod tests {
                 polling_intervals: HashSet::default(),
                 contract_addresses: HashSet::new(),
                 trigger_every_block: true,
+                wildcard_filters: None,
             },
         };
 
@@ -1358,6 +1378,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::new(),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1365,6 +1386,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         base.extend(extension);
@@ -1382,6 +1404,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1389,6 +1412,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         base.extend(extension);
@@ -1406,6 +1430,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1413,6 +1438,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         base.extend(extension);
@@ -1430,6 +1456,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::default(),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1437,6 +1464,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::default(),
             trigger_every_block: true,
+            wildcard_filters: None,
         };
 
         base.extend(extension);
@@ -1451,6 +1479,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
             trigger_every_block: true,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1458,6 +1487,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         base.extend(extension);
@@ -1476,6 +1506,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
             trigger_every_block: false,
+            wildcard_filters: None,
         };
 
         let extension = EthereumBlockFilter {
@@ -1483,6 +1514,7 @@ mod tests {
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: true,
+            wildcard_filters: None,
         };
 
         base.extend(extension);

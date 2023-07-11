@@ -262,7 +262,7 @@ impl Eq for EthereumTrigger {}
 pub enum EthereumBlockTriggerType {
     Every,
     WithCallTo(Address),
-    Polling(Address, i32),
+    Polling,
 }
 
 impl EthereumTrigger {
@@ -295,9 +295,7 @@ impl EthereumTrigger {
 
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => None,
-            EthereumTrigger::Block(_, EthereumBlockTriggerType::Polling(address, _)) => {
-                Some(address)
-            }
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::Polling) => None,
         }
     }
 }

@@ -27,8 +27,4 @@ dataSources:
           filter:
             kind: polling
             every: 3
-        - handler: handleOtherBlockPolling
-          filter:
-            kind: polling
-            every: 4
       file: ./src/mapping.ts

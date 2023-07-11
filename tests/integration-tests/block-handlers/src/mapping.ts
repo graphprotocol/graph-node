@@ -17,13 +17,6 @@ export function handleBlockPolling(block: ethereum.Block): void {
   blockEntity.save();
 }
 
-export function handleOtherBlockPolling(block: ethereum.Block): void {
-  let blockEntity = new BlockFromOtherPollingHandler(block.number.toString());
-  blockEntity.number = block.number;
-  blockEntity.hash = block.hash;
-  blockEntity.save();
-}
-
 export function handleTrigger(event: Trigger): void {
   let obj = new Foo(event.params.x.toString());
   obj.value = event.params.x as i64;

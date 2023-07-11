@@ -22,8 +22,7 @@ dataSources:
         - handler: handleBlockPolling
           filter:
             kind: polling
-            # this doesnt matter in runner tests since we push triggers manually
-            every: 3
+            every: 4
       eventHandlers:
         - event: TestEvent(string)
           handler: handleCommand
