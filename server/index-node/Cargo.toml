@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-blake3 = "1.3"
+blake3 = "1.4"
 either = "1.8.0"
 futures = "0.3.4"
 graph = { path = "../../graph" }
