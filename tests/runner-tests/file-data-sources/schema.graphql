@@ -7,3 +7,9 @@ type IpfsFile1 @entity {
   id: ID!
   content: String!
 }
+
+type SpawnTestEntity @entity {
+  id: ID!
+  content: String!
+  context: String!
+}

@@ -24,6 +24,26 @@ dataSources:
           handler: handleTestEvent
       file: ./src/mapping.ts
 templates:
+  - kind: ethereum/contract
+    name: OnChainDataSource
+    network: test
+    source:
+      abi: Contract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Gravatar
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      blockHandlers:
+        - handler: handleBlock
+      eventHandlers:
+        - event: TestEvent(string)
+          handler: handleTestEvent
+      file: ./src/mapping.ts
   - kind: file/ipfs
     name: File
     mapping:
@@ -62,4 +82,30 @@ templates:
         - name: Contract
           file: ./abis/Contract.abi
       handler: handleFile1
+      file: ./src/mapping.ts
+  - kind: file/ipfs
+    name: SpawnTestHandler
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - SpawnTestEntity
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: spawnTestHandler
+      file: ./src/mapping.ts
+  - kind: file/ipfs
+    name: OffChainDataSource
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - SpawnTestEntity
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      handler: handleSpawnedTest
       file: ./src/mapping.ts
