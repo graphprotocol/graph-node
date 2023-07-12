@@ -139,21 +139,20 @@ contract("Contract", (accounts) => {
     });
   });
 
-  // it("test other blockHandler with polling filter", async () => {
-  //   // Also test that multiple block constraints do not result in a graphql error.
-  //   let result = await fetchSubgraph({
-  //     query: `{
-  //       blockFromOtherPollingHandlers(orderBy: number, first: 3) { id number }
-  //     }`,
-  //   });
-
-  //   expect(result.errors).to.be.undefined;
-  //   expect(result.data).to.deep.equal({
-  //     blockFromOtherPollingHandlers: [
-  //       { id: "1", number: "1" },
-  //       { id: "5", number: "5" },
-  //       { id: "9", number: "9" },
-  //     ],
-  //   });
-  // });
+  it("test other blockHandler with polling filter", async () => {
+    // Also test that multiple block constraints do not result in a graphql error.
+    let result = await fetchSubgraph({
+      query: `{
+        blockFromOtherPollingHandlers(orderBy: number, first: 3) { id number }
+      }`,
+    });
+    expect(result.errors).to.be.undefined;
+    expect(result.data).to.deep.equal({
+      blockFromOtherPollingHandlers: [
+        { id: "4", number: "4" },
+        { id: "6", number: "6" },
+        { id: "8", number: "8" },
+      ],
+    });
+  });
 });

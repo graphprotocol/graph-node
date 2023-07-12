@@ -756,7 +756,7 @@ impl EthereumBlockFilter {
             return false;
         }
 
-        self.contract_addresses.is_empty()
+        self.contract_addresses.is_empty() && self.polling_intervals.is_empty()
     }
 
     fn find_contract_address(&self, candidate: &Address) -> Option<(i32, Address)> {

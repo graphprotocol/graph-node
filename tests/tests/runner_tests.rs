@@ -527,17 +527,48 @@ async fn block_handlers() {
         let block_1_to_3 = generate_empty_blocks_for_range(block_0.ptr(), 1, 3);
         let block_4 = {
             let mut block = empty_block(block_1_to_3.last().unwrap().ptr(), test_ptr(4));
-            push_test_polling_trigger(&mut block, 3);
+            push_test_polling_trigger(&mut block);
+            push_test_log(&mut block, "create_template");
             block
         };
-        let block_6_to_10 = generate_empty_blocks_for_range(block_4.ptr(), 5, 10);
+        let block_5 = {
+            let mut block = empty_block(block_4.ptr(), test_ptr(5));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        let block_6 = {
+            let mut block = empty_block(block_5.ptr(), test_ptr(6));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        let block_7 = {
+            let mut block = empty_block(block_6.ptr(), test_ptr(7));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        let block_8 = {
+            let mut block = empty_block(block_7.ptr(), test_ptr(8));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        let block_9 = {
+            let mut block = empty_block(block_8.ptr(), test_ptr(9));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        let block_10 = {
+            let mut block = empty_block(block_9.ptr(), test_ptr(10));
+            push_test_polling_trigger(&mut block);
+            block
+        };
 
         // return the blocks
         vec![block_0]
             .into_iter()
             .chain(block_1_to_3)
-            .chain(vec![block_4])
-            .chain(block_6_to_10)
+            .chain(vec![
+                block_4, block_5, block_6, block_7, block_8, block_9, block_10,
+            ])
             .collect()
     };
 
@@ -640,6 +671,8 @@ async fn block_handlers() {
             blockFromPollingHandler: Value::Null
         })
     );
+
+    ctx.start_and_sync_to(test_ptr(10)).await;
 }
 
 #[tokio::test]
