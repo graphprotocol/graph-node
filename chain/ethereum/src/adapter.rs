@@ -706,7 +706,7 @@ impl EthereumBlockFilter {
             polling_intervals,
             contract_addresses,
             trigger_every_block,
-            ..
+            wildcard_filters,
         } = other;
 
         self.trigger_every_block = self.trigger_every_block || trigger_every_block;
@@ -743,6 +743,14 @@ impl EthereumBlockFilter {
                 ));
             }
         }
+
+        self.wildcard_filters = match (self.wildcard_filters.take(), wildcard_filters) {
+            (Some(mut current), Some(other)) => {
+                current.polling = current.polling || other.polling;
+                Some(current)
+            }
+            (current, other) => current.or(other),
+        };
     }
 
     fn requires_traces(&self) -> bool {
@@ -1097,7 +1105,6 @@ mod tests {
                 wildcard_signatures: HashSet::new(),
             },
             block: EthereumBlockFilter {
-                // TODO: add polling intervals
                 polling_intervals: HashSet::default(),
                 contract_addresses: HashSet::from_iter([
                     (100, address(1000)),

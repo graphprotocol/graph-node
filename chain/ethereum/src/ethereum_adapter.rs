@@ -747,8 +747,6 @@ impl EthereumAdapter {
                 + std::marker::Send,
         >,
     > {
-        // TODO: Maybe add a load_single_block method to the EthereumAdapter
-        // And call that here with filter_map
         let matching_blocks = (from..=to)
             .filter(|block_number| {
                 filter
