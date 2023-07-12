@@ -378,16 +378,6 @@ async fn main() {
             Some(&eth_firehose_only_networks)
         };
 
-        let eth_firehose_only_network_names = match eth_firehose_only_networks {
-            Some(firehose_only) => Some(Vec::from_iter(firehose_only.networks.keys())),
-            None => None,
-        };
-
-        network_store
-            .block_store()
-            .cleanup_shallow_blocks(eth_firehose_only_network_names)
-            .unwrap();
-
         let ethereum_chains = ethereum_networks_as_chains(
             &mut blockchain_map,
             &logger,
