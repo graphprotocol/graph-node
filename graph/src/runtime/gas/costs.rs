@@ -53,6 +53,8 @@ pub const BIG_MATH_GAS_OP: GasOp = GasOp {
 // Allow up to 100,000 data sources to be created
 pub const CREATE_DATA_SOURCE: Gas = Gas(CONST_MAX_GAS_PER_HANDLER / 100_000);
 
+pub const ENS_NAME_BY_HASH: Gas = Gas(DEFAULT_BASE_COST);
+
 pub const LOG_OP: GasOp = GasOp {
     // Allow up to 100,000 logs
     base_cost: CONST_MAX_GAS_PER_HANDLER / 100_000,

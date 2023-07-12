@@ -737,7 +737,12 @@ impl<C: Blockchain> HostExports<C> {
         Ok(())
     }
 
-    pub(crate) fn ens_name_by_hash(&self, hash: &str) -> Result<Option<String>, anyhow::Error> {
+    pub(crate) fn ens_name_by_hash(
+        &self,
+        hash: &str,
+        gas: &GasCounter,
+    ) -> Result<Option<String>, anyhow::Error> {
+        gas.consume_host_fn(gas::ENS_NAME_BY_HASH)?;
         Ok(self.ens_lookup.find_name(hash)?)
     }
 
