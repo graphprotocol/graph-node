@@ -12,6 +12,7 @@ use graph::prelude::{anyhow, tokio};
 use graph::prelude::{prost, MetricsRegistry};
 use graph::slog::{debug, error, info, o, Logger};
 use graph::url::Url;
+use graph::util::futures::retry;
 use graph::util::security::SafeDisplay;
 use graph_chain_ethereum::{self as ethereum, EthereumAdapterTrait, Transport};
 use std::collections::{btree_map, BTreeMap};
@@ -329,12 +330,21 @@ where
                     logger, "Connecting to Firehose to get chain identifier";
                     "provider" => &endpoint.provider.to_string(),
                 );
-                match tokio::time::timeout(
-                    NET_VERSION_WAIT_TIME,
-                    endpoint.genesis_block_ptr::<M>(&logger),
-                )
-                .await
-                .map_err(Error::from)
+
+                let retry_endpoint = endpoint.clone();
+                let retry_logger = logger.clone();
+                let req = retry("firehose startup connection test", &logger)
+                    .no_limit()
+                    .no_timeout()
+                    .run(move || {
+                        let retry_endpoint = retry_endpoint.clone();
+                        let retry_logger = retry_logger.clone();
+                        async move { retry_endpoint.genesis_block_ptr::<M>(&retry_logger).await }
+                    });
+
+                match tokio::time::timeout(NET_VERSION_WAIT_TIME, req)
+                    .await
+                    .map_err(Error::from)
                 {
                     // An `Err` means a timeout, an `Ok(Err)` means some other error (maybe a typo
                     // on the URL)
