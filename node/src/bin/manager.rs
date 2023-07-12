@@ -169,6 +169,19 @@ pub enum Command {
         /// The deployment (see `help info`)
         deployment: DeploymentSearch,
     },
+    /// Pause and resume a deployment
+    Restart {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+        /// Sleep for this many seconds after pausing subgraphs
+        #[clap(
+            long,
+            short,
+            default_value = "20",
+            parse(try_from_str = parse_duration_in_secs)
+        )]
+        sleep: Duration,
+    },
     /// Rewind a subgraph to a specific block
     Rewind {
         /// Force rewinding even if the block hash is not found in the local
@@ -1119,6 +1132,10 @@ async fn main() -> anyhow::Result<()> {
         Resume { deployment } => {
             let sender = ctx.notification_sender();
             commands::assign::pause_or_resume(ctx.primary_pool(), &sender, &deployment, false)
+        }
+        Restart { deployment, sleep } => {
+            let sender = ctx.notification_sender();
+            commands::assign::restart(ctx.primary_pool(), &sender, &deployment, sleep)
         }
         Rewind {
             force,

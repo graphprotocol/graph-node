@@ -7,6 +7,7 @@
 - `graphman` now has two new commands `pause` and `resume` that can be used to pause and resume a deployment
 - A new table `subgraph_features` is added which tracks information like spec_version, api_version, network, features, datasources etc
 - The schema for the `subgraphFeatures` endpoint now includes data from the `subgraph_features` table
+- `graphman` now has new command `restart` that can be used to sequentially pause and resume a deployment
 
 <!-- 
 Note: the changes in this PR were technically released in v0.31.0, but the feature also requires changes to graph-cli, which at the time of writing has NOT been released. This feature will make it into the release notes of graph-node only once graph-cli has been updated.
