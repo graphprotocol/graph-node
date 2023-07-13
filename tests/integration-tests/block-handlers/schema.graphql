@@ -3,12 +3,6 @@ type Foo @entity {
   value: Int8!
 }
 
-type Block @entity {
-  id: ID!
-  number: BigInt!
-  hash: Bytes!
-}
-
 type BlockFromPollingHandler @entity {
   id: ID!
   number: BigInt!

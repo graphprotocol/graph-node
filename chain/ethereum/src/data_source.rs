@@ -242,7 +242,8 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
-        // Validate that there are no more than one of each type of block_handler
+        // Ensure that there is at most one instance of each type of block handler
+        // and that a combination of a non-filtered block handler and a filtered block handler is not allowed.
         let has_too_many_block_handlers = {
             let mut non_filtered_block_handler_count = 0;
             let mut call_filtered_block_handler_count = 0;
@@ -264,10 +265,30 @@ impl blockchain::DataSource<Chain> for DataSource {
                     };
                 });
 
-            // TODO: Have limits for polling handlers
-            non_filtered_block_handler_count > 1
+            let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
+            // If there is a non-filtered block handler, we need to check if there are any
+            // filtered block handlers
+            // If there are, we do not allow that combination
+            let has_both_filtered_and_non_filtered = has_non_filtered_block_handler
+                && (call_filtered_block_handler_count > 0
+                    || polling_filtered_block_handler_count > 0
+                    || initialization_handler_count > 0);
+
+            if has_both_filtered_and_non_filtered {
+                errors.push(anyhow!(
+                    "data source has both filtered and non-filtered block handlers, \
+                     this is not allowed"
+                ));
+            }
+
+            // Check the number of handlers for each type
+            // If there is more than one of any type, we have too many handlers
+            let has_too_many = non_filtered_block_handler_count > 1
                 || call_filtered_block_handler_count > 1
                 || initialization_handler_count > 1
+                || polling_filtered_block_handler_count > 1;
+
+            has_too_many || has_both_filtered_and_non_filtered
         };
         if has_too_many_block_handlers {
             errors.push(anyhow!("data source has duplicated block handlers"));
@@ -372,19 +393,10 @@ impl DataSource {
         block: BlockNumber,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
+            // `Every` matches any block handler that has no filter or a polling filter
+            // whose polling interval matches the block number
+            // according to the formula `(block - start_block) % polling_interval == 0`
             EthereumBlockTriggerType::Every => self
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter.is_none())
-                .cloned(),
-            EthereumBlockTriggerType::WithCallTo(_address) => self
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
-                .cloned(),
-            EthereumBlockTriggerType::Polling => self
                 .mapping
                 .block_handlers
                 .iter()
@@ -395,8 +407,15 @@ impl DataSource {
                         let should_trigger = (block - start_block) % every == 0;
                         should_trigger
                     }
+                    None => true,
                     _ => false,
                 })
+                .cloned(),
+            EthereumBlockTriggerType::WithCallTo(_address) => self
+                .mapping
+                .block_handlers
+                .iter()
+                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call))
                 .cloned(),
         }
     }

@@ -22,7 +22,6 @@ dataSources:
         - event: Trigger(uint16)
           handler: handleTrigger
       blockHandlers:
-        - handler: handleBlock
         - handler: handleBlockPolling
           filter:
             kind: polling

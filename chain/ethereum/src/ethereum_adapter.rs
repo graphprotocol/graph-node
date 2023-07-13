@@ -761,7 +761,7 @@ impl EthereumAdapter {
 
         let block_futures = blocks_matching_polling_filter.map(move |ptrs| {
             ptrs.into_iter()
-                .map(|ptr| EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Polling))
+                .map(|ptr| EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Every))
                 .collect::<Vec<_>>()
         });
 
@@ -1453,7 +1453,7 @@ pub(crate) async fn blocks_with_triggers(
                 .block_range_to_ptrs(logger.clone(), from, to)
                 .map(move |ptrs| {
                     ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Polling))
+                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
                         .collect()
                 })
                 .compat()
@@ -1684,7 +1684,7 @@ pub(crate) fn parse_block_triggers(
         if *has_polling_handlers {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3.clone(),
-                EthereumBlockTriggerType::Polling,
+                EthereumBlockTriggerType::Every,
             ));
         }
     } else {
@@ -1695,7 +1695,7 @@ pub(crate) fn parse_block_triggers(
         if *has_polling_trigger {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3.clone(),
-                EthereumBlockTriggerType::Polling,
+                EthereumBlockTriggerType::Every,
             ));
         }
     }

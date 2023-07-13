@@ -8,7 +8,6 @@ use assert_json_diff::assert_json_eq;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
-use graph::data::value::Value;
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
@@ -23,7 +22,6 @@ use graph_tests::fixture::ethereum::{
 };
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
-    TestContext,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
@@ -587,92 +585,66 @@ async fn block_handlers() {
     )
     .await;
 
-    async fn query_block_from_polling_handler(ctx: &TestContext, block: BlockPtr) -> Value {
-        let query = format!(
-            r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
-            id = block.number
-        );
-        let query_res = ctx.query(&query).await.unwrap().unwrap();
-        query_res
-    }
+    ctx.start_and_sync_to(test_ptr(10)).await;
 
-    ctx.start_and_sync_to(test_ptr(1)).await;
-
-    let query = format!(r#"{{ block(id: "{id}") {{ id, hash }} }}"#, id = 1);
+    let query = format!(
+        r#"{{ blockFromPollingHandlers(first: {first}) {{ id, hash }} }}"#,
+        first = 3
+    );
     let query_res = ctx.query(&query).await.unwrap();
+
     assert_eq!(
         query_res,
         Some(object! {
-            block: object! {
-                id: test_ptr(1).number.to_string(),
-                hash:format!("0x{}",test_ptr(1).hash_hex()) ,
-            }
-        })
-    );
-
-    ctx.start_and_sync_to(test_ptr(4)).await;
-    let query = format!(r#"{{ blocks {{ id, hash }} }}"#);
-    let query_res = ctx.query(&query).await.unwrap().unwrap();
-
-    assert_eq!(
-        query_res,
-        object! {
-            blocks: vec![
+            blockFromPollingHandlers: vec![
                 object! {
                     id: test_ptr(0).number.to_string(),
                     hash:format!("0x{}",test_ptr(0).hash_hex()) ,
                 },
                 object! {
-                    id: test_ptr(1).number.to_string(),
-                    hash:format!("0x{}",test_ptr(1).hash_hex()) ,
-                },
-                object! {
-                    id: test_ptr(2).number.to_string(),
-                    hash:format!("0x{}",test_ptr(2).hash_hex()) ,
-                },
-                object! {
-                    id: test_ptr(3).number.to_string(),
-                    hash:format!("0x{}",test_ptr(3).hash_hex()) ,
-                },
-                object! {
-                    id: test_ptr(4).number.to_string(),
-                    hash:format!("0x{}",test_ptr(4).hash_hex()) ,
-                },
-
-            ]
-        }
-    );
-
-    let query = format!(
-        r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
-        id = 4
-    );
-    let query_res = ctx.query(&query).await.unwrap();
-    assert_eq!(
-        query_res,
-        Some(object! {
-            blockFromPollingHandler: object! {
                 id: test_ptr(4).number.to_string(),
                 hash:format!("0x{}",test_ptr(4).hash_hex()) ,
-            }
+                },
+                object! {
+                    id: test_ptr(8).number.to_string(),
+                    hash:format!("0x{}",test_ptr(8).hash_hex()) ,
+                },
+            ]
         })
     );
 
-    ctx.start_and_sync_to(test_ptr(5)).await;
     let query = format!(
-        r#"{{ blockFromPollingHandler(id: "{id}") {{ id, hash }} }}"#,
-        id = 5
+        r#"{{ blockFromOtherPollingHandlers(first: {first}, orderBy: number) {{ id, hash }} }}"#,
+        first = 4
     );
     let query_res = ctx.query(&query).await.unwrap();
-    // should be null
+
     assert_eq!(
         query_res,
         Some(object! {
-            blockFromPollingHandler: Value::Null
+            blockFromOtherPollingHandlers: vec![
+                // TODO: The block in which the handler was created is not included
+                // in the result. This is because for runner tests we mock the triggers_adapter
+                // A mock triggers adapter which can be used here is to be implemented
+                // object! {
+                //     id: test_ptr(4).number.to_string(),
+                //     hash:format!("0x{}",test_ptr(10).hash_hex()) ,
+                // },
+                object!{
+                    id: test_ptr(6).number.to_string(),
+                    hash:format!("0x{}",test_ptr(6).hash_hex()) ,
+                },
+                object!{
+                    id: test_ptr(8).number.to_string(),
+                    hash:format!("0x{}",test_ptr(8).hash_hex()) ,
+                },
+                object!{
+                    id: test_ptr(10).number.to_string(),
+                    hash:format!("0x{}",test_ptr(10).hash_hex()) ,
+                },
+            ]
         })
     );
-
-    ctx.start_and_sync_to(test_ptr(10)).await;
 }
 
 #[tokio::test]

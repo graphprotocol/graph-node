@@ -18,7 +18,6 @@ dataSources:
         - name: Contract
           file: ./abis/Contract.abi
       blockHandlers:
-        - handler: handleBlock
         - handler: handleBlockPolling
           filter:
             kind: polling

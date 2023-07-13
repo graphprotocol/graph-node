@@ -161,6 +161,6 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
 pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {
     block.trigger_data.push(EthereumTrigger::Block(
         block.ptr(),
-        EthereumBlockTriggerType::Polling,
+        EthereumBlockTriggerType::Every,
     ))
 }
