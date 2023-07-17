@@ -1737,11 +1737,6 @@ pub(crate) fn parse_initialization_triggers(
                         _ => false,
                     });
 
-            println!(
-                "=======> {} trigger_length :{}",
-                block_number, has_once_trigger
-            );
-
             if *has_once_trigger {
                 triggers.push(EthereumTrigger::Block(
                     block_ptr3.clone(),

@@ -27,6 +27,27 @@ dataSources:
             kind: polling
             every: 3
       file: ./src/mapping.ts
+  - kind: ethereum/contract
+    name: InitializationHandlerTest
+    network: test
+    source:
+      address: "0xCfEB869F69431e42cdB54A4F4f105C19C080A602"
+      abi: Contract
+      startBlock: 1
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      entities:
+        - Call
+      blockHandlers:
+        - handler: initialize
+          filter:
+            kind: once
+      file: ./src/mapping.ts
 templates:
   - kind: ethereum/contract
     name: ContractTemplate

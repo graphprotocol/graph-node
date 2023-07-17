@@ -596,6 +596,7 @@ pub(crate) struct EthereumBlockFilter {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct WildcardBlockFilter {
     pub polling: bool,
+    pub once: bool,
 }
 
 impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
@@ -620,7 +621,6 @@ impl EthereumBlockFilter {
     /// which keeps track of deployed contracts and relevant addresses.
     pub fn from_mapping(mapping: &Mapping) -> Self {
         Self {
-            // TODO: This is a hack to get around the fact that we don't have a way to get the start block
             polling_intervals: HashSet::new(),
             contract_addresses: HashSet::new(),
             trigger_every_block: !mapping.block_handlers.is_empty(),
@@ -628,6 +628,12 @@ impl EthereumBlockFilter {
                 polling: mapping.block_handlers.iter().any(|block_handler| {
                     match block_handler.filter {
                         Some(BlockHandlerFilter::Polling { every: _ }) => true,
+                        _ => false,
+                    }
+                }),
+                once: mapping.block_handlers.iter().any(|block_handler| {
+                    match block_handler.filter {
+                        Some(BlockHandlerFilter::Once) => true,
                         _ => false,
                     }
                 }),
@@ -648,15 +654,6 @@ impl EthereumBlockFilter {
                         Some(BlockHandlerFilter::Call) => true,
                         _ => false,
                     });
-                let has_block_handler_with_polling_filter = data_source
-                    .mapping
-                    .block_handlers
-                    .clone()
-                    .into_iter()
-                    .any(|block_handler| match block_handler.filter {
-                        Some(BlockHandlerFilter::Polling { every: _ }) => true,
-                        _ => false,
-                    });
                 let has_block_handler_without_filter = data_source
                     .mapping
                     .block_handlers
@@ -666,25 +663,22 @@ impl EthereumBlockFilter {
 
                 filter_opt.extend(Self {
                     trigger_every_block: has_block_handler_without_filter,
-                    // TODO: Handle the case for `once` handlers
-                    polling_intervals: if has_block_handler_with_polling_filter {
-                        data_source
-                            .mapping
-                            .block_handlers
-                            .clone()
-                            .into_iter()
-                            .filter_map(|block_handler| match block_handler.filter {
-                                Some(BlockHandlerFilter::Polling { every }) => Some((
-                                    data_source.start_block,
-                                    data_source.address.unwrap(),
-                                    every,
-                                )),
-                                _ => None,
-                            })
-                            .collect()
-                    } else {
-                        HashSet::default()
-                    },
+                    // POLLING_TODO: Handle the case for `once` handlers
+                    polling_intervals: data_source
+                        .mapping
+                        .block_handlers
+                        .clone()
+                        .into_iter()
+                        .filter_map(|block_handler| match block_handler.filter {
+                            Some(BlockHandlerFilter::Polling { every }) => {
+                                Some((data_source.start_block, data_source.address.unwrap(), every))
+                            }
+                            Some(BlockHandlerFilter::Once) => {
+                                Some((data_source.start_block, data_source.address.unwrap(), 0))
+                            }
+                            _ => None,
+                        })
+                        .collect(),
                     contract_addresses: if has_block_handler_with_call_filter {
                         vec![(data_source.start_block, data_source.address.unwrap())]
                             .into_iter()

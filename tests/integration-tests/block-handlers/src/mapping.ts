@@ -4,6 +4,7 @@ import {
   BlockFromOtherPollingHandler,
   BlockFromPollingHandler,
   Foo,
+  Initialize,
 } from "../generated/schema";
 import { ContractTemplate } from "../../../runner-tests/block-handlers/generated/templates";
 
@@ -37,4 +38,11 @@ export function handleTrigger(event: Trigger): void {
       Address.fromString("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
     );
   }
+}
+
+export function initialize(block: ethereum.Block): void {
+  log.info("initialize {}", [block.number.toString()]);
+  let entity = new Initialize(block.number.toString());
+  entity.block = block.number;
+  entity.save();
 }

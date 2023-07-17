@@ -418,13 +418,20 @@ impl DataSource {
                 .iter()
                 .find(move |handler| match handler.filter {
                     Some(BlockHandlerFilter::Polling { every }) => {
-                        // TODO: Get creation block if start_block is zero //POLLING_TODO
+                        // POLLING_TODO: Get creation block if start_block is zero
                         let start_block = self.start_block;
-                        let should_trigger = (block - start_block) % every == 0;
+                        let should_trigger = match every {
+                            // 0 is an invalid polling interval
+                            // A polling interval of 0 is used internally to indicate
+                            // that the block handler should be triggered once
+                            0 => false,
+                            _ => (block - start_block) % every == 0,
+                        };
                         should_trigger
                     }
+                    Some(BlockHandlerFilter::Once) => block == self.start_block,
+                    Some(BlockHandlerFilter::Call) => false,
                     None => true,
-                    _ => false,
                 })
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self

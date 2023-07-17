@@ -155,4 +155,19 @@ contract("Contract", (accounts) => {
       ],
     });
   });
+
+  it("test initialization handler", async () => {
+    // Also test that multiple block constraints do not result in a graphql error.
+    let result = await fetchSubgraph({
+      query: `{
+        initializes(orderBy: block,first:10) { id block }
+      }`,
+    });
+    console.log(result.errors);
+    expect(result.errors).to.be.undefined;
+    expect(result.data.initializes.length).to.equal(1);
+    expect(result.data).to.deep.equal({
+      initializes: [{ id: "1", block: "1" }],
+    });
+  });
 });
