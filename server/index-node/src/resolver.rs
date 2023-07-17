@@ -212,62 +212,10 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<BlockNumber>("blockNumber")
             .expect("Valid blockNumber required");
 
-        macro_rules! try_resolve_for_chain {
-            ( $typ:path ) => {
-                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
-
-                if let Some(blockchain) = blockchain {
-                    debug!(
-                        self.logger,
-                        "Fetching block hash from number";
-                        "network" => &network,
-                        "block_number" => block_number,
-                    );
-
-                    let block_ptr_res = blockchain
-                        .block_pointer_from_number(&self.logger, block_number)
-                        .await;
-
-                        if let Err(e) = block_ptr_res {
-                            warn!(
-                                self.logger,
-                                "Failed to fetch block hash from number";
-                                "network" => &network,
-                                "chain" => <$typ as Blockchain>::KIND.to_string(),
-                                "block_number" => block_number,
-                                "error" => e.to_string(),
-                            );
-                            return Ok(r::Value::Null);
-                        }
-
-                    let block_ptr = block_ptr_res.unwrap();
-                    return Ok(r::Value::String(block_ptr.hash_hex()));
-                }
-            };
+        match self.block_ptr_for_number(network, block_number).await? {
+            Some(block_ptr) => Ok(r::Value::String(block_ptr.hash_hex())),
+            None => Ok(r::Value::Null),
         }
-
-        // Ugly, but we can't get back an object trait from the `BlockchainMap`,
-        // so this seems like the next best thing.
-        try_resolve_for_chain!(graph_chain_ethereum::Chain);
-        try_resolve_for_chain!(graph_chain_arweave::Chain);
-        try_resolve_for_chain!(graph_chain_cosmos::Chain);
-        try_resolve_for_chain!(graph_chain_near::Chain);
-
-        // If you're adding support for a new chain and this `match` clause just
-        // gave you a compiler error, then this message is for you! You need to
-        // add a new `try_resolve!` macro invocation above for your new chain
-        // type.
-        match BlockchainKind::Ethereum {
-            // Note: we don't actually care about substreams here.
-            BlockchainKind::Substreams
-            | BlockchainKind::Arweave
-            | BlockchainKind::Ethereum
-            | BlockchainKind::Cosmos
-            | BlockchainKind::Near => (),
-        }
-
-        // The given network does not exist.
-        Ok(r::Value::Null)
     }
 
     async fn resolve_cached_ethereum_calls(
@@ -516,6 +464,69 @@ impl<S: Store> IndexNodeResolver<S> {
                 })
                 .collect(),
         ))
+    }
+
+    async fn block_ptr_for_number(
+        &self,
+        network: String,
+        block_number: BlockNumber,
+    ) -> Result<Option<BlockPtr>, QueryExecutionError> {
+        macro_rules! try_resolve_for_chain {
+            ( $typ:path ) => {
+                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
+
+                if let Some(blockchain) = blockchain {
+                    debug!(
+                        self.logger,
+                        "Fetching block hash from number";
+                        "network" => &network,
+                        "block_number" => block_number,
+                    );
+
+                    let block_ptr_res = blockchain
+                        .block_pointer_from_number(&self.logger, block_number)
+                        .await;
+
+                        if let Err(e) = block_ptr_res {
+                            warn!(
+                                self.logger,
+                                "Failed to fetch block hash from number";
+                                "network" => &network,
+                                "chain" => <$typ as Blockchain>::KIND.to_string(),
+                                "block_number" => block_number,
+                                "error" => e.to_string(),
+                            );
+                            return Ok(None);
+                        }
+
+                    let block_ptr = block_ptr_res.unwrap();
+                    return Ok(Some(block_ptr));
+                }
+            };
+        }
+
+        // Ugly, but we can't get back an object trait from the `BlockchainMap`,
+        // so this seems like the next best thing.
+        try_resolve_for_chain!(graph_chain_ethereum::Chain);
+        try_resolve_for_chain!(graph_chain_arweave::Chain);
+        try_resolve_for_chain!(graph_chain_cosmos::Chain);
+        try_resolve_for_chain!(graph_chain_near::Chain);
+
+        // If you're adding support for a new chain and this `match` clause just
+        // gave you a compiler error, then this message is for you! You need to
+        // add a new `try_resolve!` macro invocation above for your new chain
+        // type.
+        match BlockchainKind::Ethereum {
+            // Note: we don't actually care about substreams here.
+            BlockchainKind::Substreams
+            | BlockchainKind::Arweave
+            | BlockchainKind::Ethereum
+            | BlockchainKind::Cosmos
+            | BlockchainKind::Near => (),
+        }
+
+        // The given network does not exist.
+        Ok(None)
     }
 }
 
