@@ -7,6 +7,10 @@ use graph::{
     components::link_resolver::LinkResolver,
     prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
     slog::Logger,
+    substreams::{
+        module::input::{Input, Params},
+        Module,
+    },
 };
 
 use prost::Message;
@@ -152,6 +156,35 @@ pub struct UnresolvedDataSource {
     pub mapping: UnresolvedMapping,
 }
 
+/// Replace all the existing params with the provided ones.
+fn patch_module_params(params: Option<Vec<String>>, module: &mut Module) {
+    let params = match params {
+        Some(params) => params,
+        None => return,
+    };
+
+    let mut inputs: Vec<graph::substreams::module::Input> = module
+        .inputs
+        .iter()
+        .flat_map(|input| match input.input {
+            None => None,
+            Some(Input::Params(_)) => None,
+            Some(_) => Some(input.clone()),
+        })
+        .collect();
+
+    inputs.append(
+        &mut params
+            .into_iter()
+            .map(|value| graph::substreams::module::Input {
+                input: Some(Input::Params(Params { value })),
+            })
+            .collect(),
+    );
+
+    module.inputs = inputs;
+}
+
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Text api_version, before parsing and validation.
@@ -170,13 +203,17 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     ) -> Result<DataSource, Error> {
         let content = resolver.cat(logger, &self.source.package.file).await?;
 
-        let package = graph::substreams::Package::decode(content.as_ref())?;
+        let mut package = graph::substreams::Package::decode(content.as_ref())?;
 
-        let module = match package.modules {
-            Some(ref modules) => modules
+        let module = match package.modules.as_mut() {
+            Some(modules) => modules
                 .modules
-                .iter()
-                .find(|module| module.name == self.source.package.module_name),
+                .iter_mut()
+                .find(|module| module.name == self.source.package.module_name)
+                .map(|module| {
+                    patch_module_params(self.source.package.params, module);
+                    module
+                }),
             None => None,
         };
 
@@ -233,6 +270,7 @@ pub struct UnresolvedSource {
 pub struct UnresolvedPackage {
     pub module_name: String,
     pub file: Link,
+    pub params: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -285,7 +323,10 @@ mod test {
         prelude::{async_trait, serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::module::{Kind, KindMap, KindStore},
-        substreams::{Module, Modules, Package},
+        substreams::{
+            module::input::{Input, Params},
+            Module, Modules, Package,
+        },
     };
     use prost::Message;
 
@@ -304,6 +345,32 @@ mod test {
                     file: Link {
                         link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
                     },
+                    params: None,
+                },
+            },
+            mapping: UnresolvedMapping {
+                api_version: "0.0.7".into(),
+                kind: "substreams/graph-entities".into(),
+            },
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[test]
+    fn parse_data_source_with_params() {
+        let ds: UnresolvedDataSource =
+            serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_PARAMS).unwrap();
+        let expected = UnresolvedDataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::UnresolvedSource {
+                package: crate::UnresolvedPackage {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                    params: Some(vec!["x", "y", "123"].into_iter().map(Into::into).collect()),
                 },
             },
             mapping: UnresolvedMapping {
@@ -327,6 +394,50 @@ mod test {
             source: crate::Source {
                 module_name: "output".into(),
                 package: gen_package(),
+            },
+            mapping: Mapping {
+                api_version: semver::Version::from_str("0.0.7").unwrap(),
+                kind: "substreams/graph-entities".into(),
+            },
+            context: Arc::new(None),
+            initial_block: Some(123),
+        };
+        assert_eq!(ds, expected);
+    }
+
+    #[tokio::test]
+    async fn data_source_conversion_override_params() {
+        let mut package = gen_package();
+        let mut modules = package.modules.unwrap();
+        modules.modules.get_mut(0).map(|module| {
+            module.inputs = vec![
+                graph::substreams::module::Input {
+                    input: Some(Input::Params(Params { value: "x".into() })),
+                },
+                graph::substreams::module::Input {
+                    input: Some(Input::Params(Params { value: "y".into() })),
+                },
+                graph::substreams::module::Input {
+                    input: Some(Input::Params(Params {
+                        value: "123".into(),
+                    })),
+                },
+            ]
+        });
+        package.modules = Some(modules);
+
+        let ds: UnresolvedDataSource =
+            serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_PARAMS).unwrap();
+        let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
+        let logger = Logger::root(Discard, o!());
+        let ds: DataSource = ds.resolve(&link_resolver, &logger, 0).await.unwrap();
+        let expected = DataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::Source {
+                module_name: "output".into(),
+                package,
             },
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
@@ -439,6 +550,25 @@ mod test {
             file:
               /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
               # This IPFs path would be generated from a local path at deploy time
+        mapping:
+          kind: substreams/graph-entities
+          apiVersion: 0.0.7
+    "#;
+
+    const TEMPLATE_DATA_SOURCE_WITH_PARAMS: &str = r#"
+        kind: substreams
+        name: Uniswap
+        network: mainnet
+        source:
+          package:
+            moduleName: output
+            file:
+              /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+              # This IPFs path would be generated from a local path at deploy time
+            params: 
+                - x
+                - y
+                - 123
         mapping:
           kind: substreams/graph-entities
           apiVersion: 0.0.7
