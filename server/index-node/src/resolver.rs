@@ -15,6 +15,9 @@ use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
 use crate::auth::PoiProtection;
 
+/// Timeout for calls to fetch the block from JSON-RPC or Firehose.
+const BLOCK_HASH_FROM_NUMBER_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Clone, Debug)]
 struct PublicProofOfIndexingRequest {
     pub deployment: DeploymentHash,
@@ -483,9 +486,12 @@ impl<S: Store> IndexNodeResolver<S> {
                         "block_number" => block_number,
                     );
 
-                    let block_ptr_res = blockchain
-                        .block_pointer_from_number(&self.logger, block_number)
-                        .await;
+                let block_ptr_res = tokio::time::timeout(BLOCK_HASH_FROM_NUMBER_TIMEOUT, blockchain
+                    .block_pointer_from_number(&self.logger, block_number)
+                    .map_err(Error::from))
+                    .await
+                    .map_err(Error::from)
+                    .and_then(|x| x);
 
                         if let Err(e) = block_ptr_res {
                             warn!(
