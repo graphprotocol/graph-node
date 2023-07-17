@@ -44,6 +44,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::adapter::ProviderStatus;
+use crate::adapter::WildcardBlockFilter;
 use crate::chain::BlockFinality;
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -1679,25 +1680,76 @@ pub(crate) fn parse_block_triggers(
         ));
     }
 
-    if let Some(wildcard_filter) = &block_filter.wildcard_filters {
-        let has_polling_handlers = &wildcard_filter.polling;
-        if *has_polling_handlers {
+    match &block_filter.wildcard_filters {
+        Some(WildcardBlockFilter { polling: true, .. }) => {
             triggers.push(EthereumTrigger::Block(
-                block_ptr3.clone(),
+                block_ptr3,
                 EthereumBlockTriggerType::Every,
             ));
         }
-    } else {
-        let has_polling_trigger = &block_filter
-            .polling_intervals
-            .iter()
-            .any(|(start_block, _, interval)| (block_number - start_block) % interval == 0);
-        if *has_polling_trigger {
-            triggers.push(EthereumTrigger::Block(
-                block_ptr3.clone(),
-                EthereumBlockTriggerType::Every,
-            ));
+        None => {
+            let has_polling_trigger =
+                &block_filter
+                    .polling_intervals
+                    .iter()
+                    .any(|(start_block, _, interval)| match interval {
+                        0 => false,
+                        _ => (block_number - *start_block) % *interval == 0,
+                    });
+            if *has_polling_trigger {
+                triggers.push(EthereumTrigger::Block(
+                    block_ptr3,
+                    EthereumBlockTriggerType::Every,
+                ));
+            }
         }
+        _ => (),
+    }
+    triggers
+}
+
+pub(crate) fn parse_initialization_triggers(
+    block_filter: &EthereumBlockFilter,
+    block: &EthereumBlockWithCalls,
+) -> Vec<EthereumTrigger> {
+    if block_filter.is_empty() {
+        return vec![];
+    }
+
+    let block_ptr = BlockPtr::from(&block.ethereum_block);
+    let block_ptr3 = block_ptr.cheap_clone();
+    let block_number = block_ptr.number;
+
+    let mut triggers = vec![];
+
+    match &block_filter.wildcard_filters {
+        Some(WildcardBlockFilter { once: true, .. }) => triggers.push(EthereumTrigger::Block(
+            block_ptr3.clone(),
+            EthereumBlockTriggerType::Every,
+        )),
+        None => {
+            let has_once_trigger =
+                &block_filter
+                    .polling_intervals
+                    .iter()
+                    .any(|(start_block, _, interval)| match interval {
+                        0 => block_number == *start_block,
+                        _ => false,
+                    });
+
+            println!(
+                "=======> {} trigger_length :{}",
+                block_number, has_once_trigger
+            );
+
+            if *has_once_trigger {
+                triggers.push(EthereumTrigger::Block(
+                    block_ptr3.clone(),
+                    EthereumBlockTriggerType::Every,
+                ));
+            }
+        }
+        _ => {}
     }
 
     triggers
