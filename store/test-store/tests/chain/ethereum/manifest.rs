@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::data::subgraph::schema::SubgraphError;
-use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7};
+use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
 use graph::prelude::{
@@ -370,7 +370,7 @@ specVersion: 0.0.2
 }
 
 #[tokio::test]
-async fn parse_block_handlers_with_recurring_filter() {
+async fn parse_block_handlers_with_polling_filter() {
     const YAML: &str = "
 dataSources:
   - kind: ethereum/contract
@@ -399,10 +399,10 @@ dataSources:
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.2
+specVersion: 0.0.8
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_8).await;
     let onchain_data_sources = manifest
         .data_sources
         .iter()
@@ -494,10 +494,10 @@ dataSources:
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.2
+specVersion: 0.0.8
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_8).await;
     let onchain_data_sources = manifest
         .data_sources
         .iter()

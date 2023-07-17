@@ -6,7 +6,7 @@ use crate::{
         store::{BlockNumber, EntityType, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
-    data::store::scalar::Bytes,
+    data::{store::scalar::Bytes, subgraph::SPEC_VERSION_0_0_7},
     data_source,
     ipfs_client::CidFile,
     prelude::{DataSourceContext, Link},
@@ -85,6 +85,14 @@ impl DataSource {
 
         self.done_at
             .store(value, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn min_spec_version(&self) -> semver::Version {
+        // off-chain data sources are only supported in spec version 0.0.7 and up
+        // As more and more kinds of off-chain data sources are added, this
+        // function should be updated to return the minimum spec version
+        // required for each kind
+        SPEC_VERSION_0_0_7
     }
 }
 

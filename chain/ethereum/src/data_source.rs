@@ -25,7 +25,9 @@ use graph::{
     },
 };
 
-use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
+use graph::data::subgraph::{
+    calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
+};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
@@ -313,6 +315,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn api_version(&self) -> semver::Version {
         self.mapping.api_version.clone()
+    }
+
+    fn min_spec_version(&self) -> semver::Version {
+        self.mapping
+            .block_handlers
+            .iter()
+            .fold(MIN_SPEC_VERSION, |mut min, handler| {
+                min = match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every: _ }) => SPEC_VERSION_0_0_8,
+                    Some(BlockHandlerFilter::Once) => SPEC_VERSION_0_0_8,
+                    _ => min,
+                };
+                min
+            })
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {

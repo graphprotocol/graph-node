@@ -18,7 +18,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::UnifiedMappingApiVersion,
+    data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source,
     prelude::DataSourceContext,
     runtime::{gas::GasCounter, AscHeap, HostExportError},
@@ -270,6 +270,9 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
     fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
     fn api_version(&self) -> semver::Version;
+    fn min_spec_version(&self) -> semver::Version {
+        MIN_SPEC_VERSION
+    }
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.

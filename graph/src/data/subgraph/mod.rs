@@ -844,6 +844,21 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
+        // Check the min_spec_version of each data source against the spec version of the subgraph
+        let min_spec_version_mismatch = data_sources
+            .iter()
+            .find(|ds| spec_version < ds.min_spec_version());
+
+        if let Some(min_spec_version_mismatch) = min_spec_version_mismatch {
+            bail!(
+                "Subgraph `{}` uses spec version {}, but data source `{}` requires at least version {}",
+                id,
+                spec_version,
+                min_spec_version_mismatch.name(),
+                min_spec_version_mismatch.min_spec_version()
+            );
+        }
+
         Ok(SubgraphManifest {
             id,
             spec_version,

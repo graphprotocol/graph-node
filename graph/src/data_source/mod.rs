@@ -114,6 +114,14 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    // POLLING_TODO: handle the case for offchain data sources
+    pub fn min_spec_version(&self) -> Version {
+        match self {
+            Self::Onchain(ds) => ds.min_spec_version(),
+            Self::Offchain(ds) => ds.min_spec_version(),
+        }
+    }
+
     pub fn creation_block(&self) -> Option<BlockNumber> {
         match self {
             Self::Onchain(ds) => ds.creation_block(),
