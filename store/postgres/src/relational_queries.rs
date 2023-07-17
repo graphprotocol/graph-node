@@ -9,8 +9,8 @@ use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Untyped};
-
+use diesel::sql_types::Untyped;
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz};
 use graph::components::store::write::{EntityWrite, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
@@ -241,6 +241,8 @@ pub trait FromColumnValue: Sized + std::fmt::Debug {
     // The string returned by the DB, without the leading '\x'
     fn from_bytes(i: &str) -> Result<Self, StoreError>;
 
+    fn from_timestamp(i: &str) -> Result<Self, StoreError>;
+
     fn from_vec(v: Vec<Self>) -> Self;
 
     fn from_column_value(
@@ -292,6 +294,7 @@ pub trait FromColumnValue: Sized + std::fmt::Debug {
                 Ok(Self::from_string(s))
             }
             (j::String(s), ColumnType::Bytes) => Self::from_bytes(s.trim_start_matches("\\x")),
+            (j::String(s), ColumnType::Timestamp) => Self::from_timestamp(&s),
             (j::String(s), column_type) => Err(StoreError::Unknown(anyhow!(
                 "can not convert string {} to {:?}",
                 s,
@@ -354,6 +357,14 @@ impl FromColumnValue for r::Value {
         }
     }
 
+    fn from_timestamp(i: &str) -> Result<Self, StoreError> {
+        scalar::Timestamp::from_rfc3339(i)
+            .map(|v| r::Value::Timestamp(v))
+            .map_err(|e| {
+                StoreError::Unknown(anyhow!("failed to convert {} to Timestamp: {}", i, e))
+            })
+    }
+
     fn from_vec(v: Vec<Self>) -> Self {
         r::Value::List(v)
     }
@@ -398,6 +409,14 @@ impl FromColumnValue for graph::prelude::Value {
         scalar::Bytes::from_str(b)
             .map(graph::prelude::Value::Bytes)
             .map_err(|e| StoreError::Unknown(anyhow!("failed to convert {} to Bytes: {}", b, e)))
+    }
+
+    fn from_timestamp(i: &str) -> Result<Self, StoreError> {
+        scalar::Timestamp::from_rfc3339(i)
+            .map(graph::prelude::Value::Timestamp)
+            .map_err(|e| {
+                StoreError::Unknown(anyhow!("failed to convert {} to Timestamp: {}", i, e))
+            })
     }
 
     fn from_vec(v: Vec<Self>) -> Self {
@@ -549,6 +568,7 @@ enum SqlValue<'a> {
     Text(&'a String),
     Int(i32),
     Int8(i64),
+    Timestamp(scalar::Timestamp),
     Numeric(String),
     Numerics(Vec<String>),
     Bool(bool),
@@ -583,6 +603,7 @@ impl<'a> SqlValue<'a> {
             BigDecimal(d) => {
                 S::Numeric(d.to_string())
             }
+            Timestamp(ts) => S::Timestamp(ts.clone()),
             Bool(b) => S::Bool(*b),
             List(values) => {
                 match column_type {
@@ -594,6 +615,7 @@ impl<'a> SqlValue<'a> {
                     ColumnType::Int|
                     ColumnType::Int8|
                     ColumnType::String|
+                    ColumnType::Timestamp|
                     ColumnType::Enum(_)|
                     ColumnType::TSVector(_) => {
                         S::List(values)
@@ -621,6 +643,7 @@ impl std::fmt::Display for SqlValue<'_> {
             S::Int(i) => write!(f, "{}", i),
             S::Int8(i) => write!(f, "{}", i),
             S::Numeric(s) => write!(f, "{}", s),
+            S::Timestamp(ts) => write!(f, "{}", ts.as_microseconds_since_epoch().to_string()),
             S::Numerics(values) => write!(f, "{:?}", values),
             S::Bool(b) => write!(f, "{}", b),
             S::List(values) => write!(f, "{:?}", values),
@@ -702,6 +725,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
             S::String(ref s) => push_string(s, column_type, &mut out),
             S::Int(i) => out.push_bind_param::<Integer, _>(i),
             S::Int8(i) => out.push_bind_param::<Int8, _>(i),
+            S::Timestamp(i) => out.push_bind_param::<Timestamptz, _>(&i.0),
             S::Numeric(s) => {
                 out.push_bind_param::<Text, _>(s)?;
                 out.push_sql("::numeric");
@@ -714,6 +738,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
                     ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(values),
+                    ColumnType::Timestamp => out.push_bind_param::<Array<Timestamptz>, _>(values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(values),
                     ColumnType::Enum(enum_type) => {
                         out.push_bind_param::<Array<Text>, _>(values)?;
@@ -821,7 +846,7 @@ impl Comparison {
                 | Comparison::LessOrEqual
                 | Comparison::GreaterOrEqual
                 | Comparison::Greater,
-                Value::Bool(_) | Value::List(_) | Value::Null,
+                Value::Timestamp(_) | Value::Bool(_) | Value::List(_) | Value::Null,
             )
             | (Comparison::Match, _) => {
                 return Err(StoreError::UnsupportedFilter(
@@ -1418,6 +1443,7 @@ impl<'a> Filter<'a> {
                 | Value::BigInt(_)
                 | Value::Bytes(_)
                 | Value::BigDecimal(_)
+                | Value::Timestamp(_)
                 | Value::Int(_)
                 | Value::Int8(_)
                 | Value::List(_)
@@ -1487,6 +1513,7 @@ impl<'a> Filter<'a> {
                 }
                 SqlValue::Int(_)
                 | SqlValue::Int8(_)
+                | SqlValue::Timestamp(_)
                 | SqlValue::Numeric(_)
                 | SqlValue::Numerics(_)
                 | SqlValue::Bool(_)
@@ -1697,6 +1724,7 @@ impl<'a> Filter<'a> {
             SqlValue::Null
             | SqlValue::Bool(_)
             | SqlValue::Numeric(_)
+            | SqlValue::Timestamp(_)
             | SqlValue::Int(_)
             | SqlValue::Int8(_) => {
                 let filter = match op.negated() {

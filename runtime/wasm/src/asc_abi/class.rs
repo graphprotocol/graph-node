@@ -1,7 +1,7 @@
 use ethabi;
 
 use graph::{
-    data::store,
+    data::store::{self, scalar::Timestamp},
     runtime::{
         gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, HostExportError,
         IndexForAscTypeId, ToAscObj,
@@ -464,6 +464,12 @@ impl From<i64> for EnumPayload {
     }
 }
 
+impl From<&Timestamp> for EnumPayload {
+    fn from(x: &Timestamp) -> EnumPayload {
+        EnumPayload::from(x.as_microseconds_since_epoch())
+    }
+}
+
 impl<C> From<EnumPayload> for AscPtr<C> {
     fn from(payload: EnumPayload) -> Self {
         AscPtr::new(payload.0 as u32)
@@ -553,6 +559,7 @@ pub enum StoreValueKind {
     Bytes,
     BigInt,
     Int8,
+    Timestamp,
 }
 
 impl StoreValueKind {
@@ -563,6 +570,7 @@ impl StoreValueKind {
             Value::String(_) => StoreValueKind::String,
             Value::Int(_) => StoreValueKind::Int,
             Value::Int8(_) => StoreValueKind::Int8,
+            Value::Timestamp(_) => StoreValueKind::Timestamp,
             Value::BigDecimal(_) => StoreValueKind::BigDecimal,
             Value::Bool(_) => StoreValueKind::Bool,
             Value::List(_) => StoreValueKind::Array,

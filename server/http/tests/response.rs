@@ -32,7 +32,7 @@ fn canonical_serialization() {
                 use r::Value::*;
                 let _ = match $obj {
                     Object(_) | List(_) | Enum(_) | Null | Int(_) | Float(_) | String(_)
-                    | Boolean(_) => (),
+                    | Timestamp(_) | Boolean(_) => (),
                 };
             }
             let res = QueryResult::try_from($obj).unwrap();

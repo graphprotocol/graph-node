@@ -871,10 +871,10 @@
     graphql-import-node "^0.0.5"
     js-yaml "^4.1.0"
 
-"@graphprotocol/graph-cli@0.62.0":
-  version "0.62.0"
-  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-cli/-/graph-cli-0.62.0.tgz#948d3861d9ff027728097deac5d8751924ec0c8a"
-  integrity sha512-dyjhkCSXbdcul5h1wY2CmorjM4k+tjjzEFs5GFBSSdLC2VodKXEWJo9RzrpFSmRBJzwc7ywDf8Pbmy1cJTCXRA==
+"@graphprotocol/graph-cli@0.69.0":
+  version "0.69.0"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-cli/-/graph-cli-0.69.0.tgz#159cfcf27517810d5a7298694fe8a38f70f8aea1"
+  integrity sha512-DoneR0TRkZYumsygdi/RST+OB55TgwmhziredI21lYzfj0QNXGEHZOagTOKeFKDFEpP3KR6BAq6rQIrkprJ1IQ==
   dependencies:
     "@float-capital/float-subgraph-uncrashable" "^0.0.0-alpha.4"
     "@oclif/core" "2.8.6"
@@ -890,14 +890,13 @@
     dockerode "2.5.8"
     fs-extra "9.1.0"
     glob "9.3.5"
-    gluegun "5.1.2"
+    gluegun "5.1.6"
     graphql "15.5.0"
     immutable "4.2.1"
     ipfs-http-client "55.0.0"
     jayson "4.0.0"
     js-yaml "3.14.1"
-    prettier "1.19.1"
-    request "2.88.2"
+    prettier "3.0.3"
     semver "7.4.0"
     sync-request "6.1.0"
     tmp-promise "3.0.3"
@@ -905,17 +904,10 @@
     which "2.0.2"
     yaml "1.10.2"
 
-"@graphprotocol/graph-ts@0.31.0":
-  version "0.31.0"
-  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.31.0.tgz#730668c0369828b31bef81e8d9bc66b9b48e3480"
-  integrity sha512-xreRVM6ho2BtolyOh2flDkNoGZximybnzUnF53zJVp0+Ed0KnAlO1/KOCUYw06euVI9tk0c9nA2Z/D5SIQV2Rg==
-  dependencies:
-    assemblyscript "0.19.10"
-
-"@graphprotocol/graph-ts@0.33.0-alpha-20240214061300-75be02a":
-  version "0.33.0-alpha-20240214061300-75be02a"
-  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.33.0-alpha-20240214061300-75be02a.tgz#a8b930e4eb1cbbee5a49a830fec45ea8938d9745"
-  integrity sha512-2km7xnM6Mm361Acp1o8dj1AZSqJRZnI3byvkBFpHkQhiU553is4fp5L+80LfxZGyVY0J45rcaRYxH8bLmJ726Q==
+"@graphprotocol/graph-ts@0.34.0":
+  version "0.34.0"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.34.0.tgz#ca47398295b114f25b412faa364b98af31fa2bb7"
+  integrity sha512-gnhjai65AV4YMYe9QHGz+HP/jdzI54z/nOfEXZFfh6m987EP2iy3ycLXrTi+ahcogHH7vtoWFdXbUzZbE8bCAg==
   dependencies:
     assemblyscript "0.19.10"
 
@@ -4606,12 +4598,12 @@ ee-first@1.1.1:
   resolved "https://registry.yarnpkg.com/ee-first/-/ee-first-1.1.1.tgz#590c61156b0ae2f4f0255732a158b266bc56b21d"
   integrity sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==
 
-ejs@3.1.6:
-  version "3.1.6"
-  resolved "https://registry.yarnpkg.com/ejs/-/ejs-3.1.6.tgz#5bfd0a0689743bb5268b3550cceeebbc1702822a"
-  integrity sha512-9lt9Zse4hPucPkoP7FHDF0LQAlGyF9JVpnClFLFH3aSSbxmyoqINRpp/9wePWJTUl4KOQwRL72Iw3InHPDkoGw==
+ejs@3.1.8:
+  version "3.1.8"
+  resolved "https://registry.yarnpkg.com/ejs/-/ejs-3.1.8.tgz#758d32910c78047585c7ef1f92f9ee041c1c190b"
+  integrity sha512-/sXZeMlhS0ArkfX2Aw780gJzXSMPnKjtspYZv+f3NiKLlubezAHDU5+9xz6gd3/NhG3txQCo6xlglmTS+oTGEQ==
   dependencies:
-    jake "^10.6.1"
+    jake "^10.8.5"
 
 ejs@^2.6.1:
   version "2.7.4"
@@ -6109,10 +6101,10 @@ globby@^11.1.0:
     merge2 "^1.4.1"
     slash "^3.0.0"
 
-gluegun@5.1.2:
-  version "5.1.2"
-  resolved "https://registry.yarnpkg.com/gluegun/-/gluegun-5.1.2.tgz#ffa0beda0fb6bbc089a867157b08602beae2c8cf"
-  integrity sha512-Cwx/8S8Z4YQg07a6AFsaGnnnmd8mN17414NcPS3OoDtZRwxgsvwRNJNg69niD6fDa8oNwslCG0xH7rEpRNNE/g==
+gluegun@5.1.6:
+  version "5.1.6"
+  resolved "https://registry.yarnpkg.com/gluegun/-/gluegun-5.1.6.tgz#74ec13193913dc610f5c1a4039972c70c96a7bad"
+  integrity sha512-9zbi4EQWIVvSOftJWquWzr9gLX2kaDgPkNR5dYWbM53eVvCI3iKuxLlnKoHC0v4uPoq+Kr/+F569tjoFbA4DSA==
   dependencies:
     apisauce "^2.1.5"
     app-module-path "^2.2.0"
@@ -6120,7 +6112,7 @@ gluegun@5.1.2:
     colors "1.4.0"
     cosmiconfig "7.0.1"
     cross-spawn "7.0.3"
-    ejs "3.1.6"
+    ejs "3.1.8"
     enquirer "2.3.6"
     execa "5.1.1"
     fs-jetpack "4.3.1"
@@ -7353,7 +7345,7 @@ iterate-value@^1.0.0:
     es-get-iterator "^1.0.2"
     iterate-iterator "^1.0.1"
 
-jake@^10.6.1, jake@^10.8.5:
+jake@^10.8.5:
   version "10.8.6"
   resolved "https://registry.yarnpkg.com/jake/-/jake-10.8.6.tgz#227a96786a1e035214e0ba84b482d6223d41ef04"
   integrity sha512-G43Ub9IYEFfu72sua6rzooi8V8Gz2lkfk48rW20vEWCGizeaEPlKB1Kh8JIA84yQbiAEfqlPmSpGgCKKxH3rDA==
@@ -9814,10 +9806,10 @@ preserve@^0.2.0:
   resolved "https://registry.yarnpkg.com/preserve/-/preserve-0.2.0.tgz#815ed1f6ebc65926f865b310c0713bcb3315ce4b"
   integrity sha1-gV7R9uvGWSb4ZbMQwHE7yzMVzks=
 
-prettier@1.19.1:
-  version "1.19.1"
-  resolved "https://registry.yarnpkg.com/prettier/-/prettier-1.19.1.tgz#f7d7f5ff8a9cd872a7be4ca142095956a60797cb"
-  integrity sha512-s7PoyDv/II1ObgQunCbB9PdLmUcBZcnWOcxDh7O0N/UwDEsHyqkW+Qh28jW+mVuCdx7gLB0BotYI1Y6uI9iyew==
+prettier@3.0.3:
+  version "3.0.3"
+  resolved "https://registry.yarnpkg.com/prettier/-/prettier-3.0.3.tgz#432a51f7ba422d1469096c0fdc28e235db8f9643"
+  integrity sha512-L/4pUDMxcNa8R/EthV08Zt42WBO4h1rarVtK0K+QJG0X187OLo7l699jWw0GKuwzkPQ//jMFA/8Xm6Fh3J/DAg==
 
 private@^0.1.8:
   version "0.1.8"
@@ -10375,7 +10367,7 @@ replace-ext@0.0.1:
   resolved "https://registry.yarnpkg.com/replace-ext/-/replace-ext-0.0.1.tgz#29bbd92078a739f0bcce2b4ee41e837953522924"
   integrity sha1-KbvZIHinOfC8zitO5B6DeVNSKSQ=
 
-request@2.88.2, request@^2.55.0, request@^2.79.0, request@^2.85.0:
+request@^2.55.0, request@^2.79.0, request@^2.85.0:
   version "2.88.2"
   resolved "https://registry.yarnpkg.com/request/-/request-2.88.2.tgz#d73c918731cb5a87da047e207234146f664d12b3"
   integrity sha512-MsvtOrfG9ZcrOwAW+Qi+F6HbD0CWXEh9ou77uOb7FM2WPhwT7smM833PzanhJLsgXjN89Ir6V2PczXNnMpwKhw==

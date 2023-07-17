@@ -12,6 +12,7 @@ enum ValueKind {
     BYTES = 6,
     BIG_INT = 7,
     INT8 = 8,
+    TIMESTAMP = 9,
 }
 
 // Big enough to fit any pointer or native `this.data`.
@@ -41,6 +42,13 @@ export function value_from_int(int: i32): Value {
     let value = new Value();
     value.kind = ValueKind.INT;
     value.data = int as u64
+    return value
+}
+
+export function value_from_timestamp(ts: i64): Value {
+    let value = new Value();
+    value.kind = ValueKind.TIMESTAMP;
+    value.data = ts as i64
     return value
 }
 

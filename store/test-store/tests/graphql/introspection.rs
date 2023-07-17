@@ -146,7 +146,11 @@ fn compare(a: &r::Value, b: &r::Value, path: &mut Vec<String>) -> Option<(r::Val
     }
 
     match a {
-        r::Value::Int(_) | r::Value::Float(_) | r::Value::Boolean(_) | r::Value::Null => {
+        r::Value::Int(_)
+        | r::Value::Float(_)
+        | r::Value::Boolean(_)
+        | r::Value::Null
+        | r::Value::Timestamp(_) => {
             if a != b {
                 different(a, b)
             } else {
@@ -616,7 +620,6 @@ async fn satisfies_graphiql_introspection_query_with_fragments() {
     // needs to be regenerated, uncomment this line, and save the output in
     // mock_introspection.json
     //
-    // println!("{}", graph::prelude::serde_json::to_string(&data).unwrap());
     assert!(same_value(&data, &expected_mock_schema_introspection()));
 }
 

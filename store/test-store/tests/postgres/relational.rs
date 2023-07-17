@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use graph::{
     components::store::AttributeNames,
-    data::store::scalar::{BigDecimal, BigInt, Bytes},
+    data::store::scalar::{BigDecimal, BigInt, Bytes, Timestamp},
 };
 use graph_store_postgres::{
     layout_for_tests::make_dummy_site,
@@ -98,6 +98,7 @@ const THINGS_GQL: &str = r#"
         bigIntArray: [BigInt!]!
         color: Color,
         int8: Int8,
+        timestamp: Timestamp
     }
 
     interface Pet {
@@ -193,6 +194,7 @@ lazy_static! {
             bool: true,
             int: std::i32::MAX,
             int8: std::i64::MAX,
+            timestamp: Value::Timestamp(Timestamp::from_microseconds_since_epoch(1710837304040956).expect("failed to create timestamp")),
             bigDecimal: decimal.clone(),
             bigDecimalArray: vec![decimal.clone(), (decimal + 1.into())],
             string: "scalar",

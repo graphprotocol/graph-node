@@ -100,7 +100,9 @@ impl CacheWeight for Value {
             Value::List(values) => values.indirect_weight(),
             Value::Bytes(bytes) => bytes.indirect_weight(),
             Value::BigInt(n) => n.indirect_weight(),
-            Value::Int8(_) | Value::Int(_) | Value::Bool(_) | Value::Null => 0,
+            Value::Timestamp(_) | Value::Int8(_) | Value::Int(_) | Value::Bool(_) | Value::Null => {
+                0
+            }
         }
     }
 }

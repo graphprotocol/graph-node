@@ -30,6 +30,10 @@ scalar BigInt
 8 bytes signed integer
 """
 scalar Int8
+"""
+A string representation of microseconds UNIX timestamp (16 digits)
+"""
+scalar Timestamp
 
 # The type names are purposely awkward to minimize the risk of them
 # colliding with user-supplied types

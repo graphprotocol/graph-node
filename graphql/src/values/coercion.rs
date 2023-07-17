@@ -1,3 +1,4 @@
+use graph::data::store::scalar::Timestamp;
 use graph::prelude::s::{EnumType, InputValue, ScalarType, Type, TypeDefinition};
 use graph::prelude::{q, r, QueryExecutionError};
 use graph::schema;
@@ -45,6 +46,10 @@ impl MaybeCoercible<ScalarType> for q::Value {
             ("Int8", q::Value::Int(num)) => {
                 let n = num.as_i64().ok_or_else(|| q::Value::Int(num.clone()))?;
                 Ok(r::Value::Int(n))
+            }
+            ("Timestamp", q::Value::String(str)) => {
+                let ts = Timestamp::parse_timestamp(&str).map_err(|_| q::Value::String(str))?;
+                Ok(r::Value::Timestamp(ts))
             }
             ("String", q::Value::String(s)) => Ok(r::Value::String(s)),
             ("ID", q::Value::String(s)) => Ok(r::Value::String(s)),

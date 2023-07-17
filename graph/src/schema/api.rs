@@ -864,9 +864,8 @@ fn field_filter_ops(set: FilterOpsSet<'_>) -> &'static [&'static str] {
             "not_contains",
         ],
         Object("ID") => &["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
-        Object("BigInt") | Object("BigDecimal") | Object("Int") | Object("Int8") => {
-            &["", "not", "gt", "lt", "gte", "lte", "in", "not_in"]
-        }
+        Object("BigInt") | Object("BigDecimal") | Object("Int") | Object("Int8")
+        | Object("Timestamp") => &["", "not", "gt", "lt", "gte", "lte", "in", "not_in"],
         Object("String") => &[
             "",
             "not",
@@ -1369,6 +1368,9 @@ mod tests {
         schema
             .get_named_type("Int8")
             .expect("Int8 type is missing in API schema");
+        schema
+            .get_named_type("Timestamp")
+            .expect("Timestamp type is missing in API schema");
     }
 
     #[test]
