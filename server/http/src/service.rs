@@ -232,7 +232,6 @@ where
             })
     }
 
-    /// Handles 404s.
     fn handle_not_found(&self) -> GraphQLServiceResponse {
         async {
             let response_obj = json!({
@@ -249,6 +248,7 @@ where
         }
         .boxed()
     }
+
     fn handle_mutations(&self) -> GraphQLServiceResponse {
         async {
             let response_obj = json!({
