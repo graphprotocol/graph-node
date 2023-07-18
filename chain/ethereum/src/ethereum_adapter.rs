@@ -736,7 +736,7 @@ impl EthereumAdapter {
     }
 
     // Extract a helper function to find matching intervals
-    pub(crate) fn find_matching_polling_intervals_in_range(
+    pub(crate) fn find_matching_blocks_for_polling_intervals(
         &self,
         logger: Logger,
         from: i32,
@@ -1442,7 +1442,7 @@ pub(crate) async fn blocks_with_triggers(
     // Identify blocks that match polling intervals
     if !filter.block.polling_intervals.is_empty() {
         let block_futures_matching_polling_filter =
-            eth.find_matching_polling_intervals_in_range(logger.clone(), from, to, &filter.block);
+            eth.find_matching_blocks_for_polling_intervals(logger.clone(), from, to, &filter.block);
         trigger_futs.push(block_futures_matching_polling_filter);
     }
 
