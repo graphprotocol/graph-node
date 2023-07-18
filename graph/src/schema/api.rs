@@ -234,7 +234,8 @@ lazy_static! {
         parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
     pub static ref INTROSPECTION_QUERY_TYPE: ast::ObjectType = {
-        let root_query_type = INTROSPECTION_SCHEMA.get_root_query_type()
+        let root_query_type = INTROSPECTION_SCHEMA
+            .get_root_query_type()
             .expect("Schema does not have a root query type");
         ast::ObjectType::from(Arc::new(root_query_type.clone()))
     };
