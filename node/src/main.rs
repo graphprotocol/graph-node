@@ -367,6 +367,7 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &arweave_networks,
+            substreams_networks_by_kind.get(&BlockchainKind::Arweave),
             network_store.as_ref(),
             &logger_factory,
             metrics_registry.clone(),
@@ -396,6 +397,7 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &near_networks,
+            substreams_networks_by_kind.get(&BlockchainKind::Near),
             network_store.as_ref(),
             &logger_factory,
             metrics_registry.clone(),
@@ -405,6 +407,7 @@ async fn main() {
             &mut blockchain_map,
             &logger,
             &cosmos_networks,
+            substreams_networks_by_kind.get(&BlockchainKind::Cosmos),
             network_store.as_ref(),
             &logger_factory,
             metrics_registry.clone(),
@@ -651,6 +654,7 @@ fn networks_as_chains<C>(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
+    substreams_networks: Option<&FirehoseNetworks>,
     store: &Store,
     logger_factory: &LoggerFactory,
     metrics_registry: Arc<MetricsRegistry>,
@@ -696,6 +700,26 @@ where
 
     for (chain_id, chain) in chains.iter() {
         blockchain_map.insert::<C>(chain_id.clone(), chain.clone())
+    }
+
+    if let Some(substreams_networks) = substreams_networks {
+        for (network_name, firehose_endpoints) in substreams_networks.networks.iter() {
+            let chain_store = blockchain_map
+                .get::<C>(network_name.clone())
+                .expect("any substreams endpoint needs an rpc or firehose chain defined")
+                .chain_store();
+
+            blockchain_map.insert::<substreams::Chain>(
+                network_name.clone(),
+                Arc::new(substreams::Chain::new(
+                    logger_factory.clone(),
+                    firehose_endpoints.clone(),
+                    metrics_registry.clone(),
+                    chain_store,
+                    Arc::new(substreams::BlockStreamBuilder::new()),
+                )),
+            );
+        }
     }
 
     HashMap::from_iter(chains)
