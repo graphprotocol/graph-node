@@ -2243,7 +2243,6 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
                     trigger_every_block: true,
-                    wildcard_filters: None,
                 },
                 &block
             ),
@@ -2276,7 +2275,6 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(1))]),
                     trigger_every_block: false,
-                    wildcard_filters: None,
                 },
                 &block
             ),
@@ -2312,7 +2310,6 @@ mod tests {
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(4))]),
                     trigger_every_block: false,
-                    wildcard_filters: None,
                 },
                 &block
             ),
