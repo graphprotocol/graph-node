@@ -16,8 +16,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait, PruneReporter,
-            PruneRequest, SubgraphFork,
+            self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
+            PruneReporter, PruneRequest, SubgraphFork,
         },
     },
     constraint_violation,
@@ -243,9 +243,10 @@ impl SubgraphStore {
         id: &DeploymentHash,
         block_number: BlockNumber,
         block_store: Arc<impl BlockStore>,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
         self.inner
-            .get_public_proof_of_indexing(id, block_number, block_store)
+            .get_public_proof_of_indexing(id, block_number, block_store, fetch_block_ptr)
             .await
     }
 
@@ -990,24 +991,33 @@ impl SubgraphStoreInner {
         id: &DeploymentHash,
         block_number: BlockNumber,
         block_store: Arc<impl BlockStore>,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
         let (store, site) = self.store(id)?;
 
-        let chain_store = match block_store.chain_store(&site.network) {
-            Some(chain_store) => chain_store,
-            None => return Ok(None),
+        let block_hash = {
+            let chain_store = match block_store.chain_store(&site.network) {
+                Some(chain_store) => chain_store,
+                None => return Ok(None),
+            };
+            let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
+
+            // If we have multiple versions of this block using any of them could introduce
+            // non-determinism because we don't know which one is the right one
+            if hashes.len() == 1 {
+                hashes.pop().unwrap()
+            } else {
+                match fetch_block_ptr
+                    .block_ptr_for_number(site.network.clone(), block_number)
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    None => return Ok(None),
+                    Some(block_ptr) => block_ptr.hash,
+                }
+            }
         };
-        let mut hashes = chain_store.block_hashes_by_block_number(block_number)?;
-
-        // If we don't have this block or we have multiple versions of this block
-        // and using any of them could introduce non-deterministic because we don't
-        // know which one is the right one -> return no block hash
-        if hashes.is_empty() || hashes.len() > 1 {
-            return Ok(None);
-        }
-
-        // This `unwrap` is safe to do now
-        let block_hash = hashes.pop().unwrap();
 
         let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
         let indexer = Some(Address::zero());

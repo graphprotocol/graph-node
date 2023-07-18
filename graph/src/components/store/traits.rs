@@ -606,5 +606,15 @@ pub trait StatusStore: Send + Sync + 'static {
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
+}
+
+#[async_trait]
+pub trait BlockPtrForNumber: Send + Sync {
+    async fn block_ptr_for_number(
+        &self,
+        network: String,
+        number: BlockNumber,
+    ) -> Result<Option<BlockPtr>, Error>;
 }

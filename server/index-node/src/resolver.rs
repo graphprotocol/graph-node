@@ -5,7 +5,7 @@ use graph::data::query::Trace;
 use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::store::{BlockStore, EntityType, Store};
+use graph::components::store::{BlockPtrForNumber, BlockStore, EntityType, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;
@@ -356,7 +356,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(poi)
     }
 
-    fn resolve_public_proofs_of_indexing(
+    async fn resolve_public_proofs_of_indexing(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -371,41 +371,41 @@ impl<S: Store> IndexNodeResolver<S> {
             return Err(QueryExecutionError::TooExpensive);
         }
 
-        Ok(r::Value::List(
-            requests
-                .into_iter()
-                .map(|request| {
-                    match futures::executor::block_on(
-                        self.store.get_public_proof_of_indexing(
-                            &request.deployment,
-                            request.block_number,
-                        ),
-                    ) {
-                        Ok(Some(poi)) => (Some(poi), request),
-                        Ok(None) => (None, request),
-                        Err(e) => {
-                            error!(
-                                self.logger,
-                                "Failed to query public proof of indexing";
-                                "subgraph" => &request.deployment,
-                                "block" => format!("{}", request.block_number),
-                                "error" => format!("{:?}", e)
-                            );
-                            (None, request)
-                        }
-                    }
-                })
-                .map(|(poi_result, request)| PublicProofOfIndexingResult {
+        let mut public_poi_results = vec![];
+        for request in requests {
+            let (poi_result, request) = match self
+                .store
+                .get_public_proof_of_indexing(&request.deployment, request.block_number, self)
+                .await
+            {
+                Ok(Some(poi)) => (Some(poi), request),
+                Ok(None) => (None, request),
+                Err(e) => {
+                    error!(
+                        self.logger,
+                        "Failed to query public proof of indexing";
+                        "subgraph" => &request.deployment,
+                        "block" => format!("{}", request.block_number),
+                        "error" => format!("{:?}", e)
+                    );
+                    (None, request)
+                }
+            };
+
+            public_poi_results.push(
+                PublicProofOfIndexingResult {
                     deployment: request.deployment,
                     block: match poi_result {
                         Some((ref block, _)) => block.clone(),
                         None => PartialBlockPtr::from(request.block_number),
                     },
                     proof_of_indexing: poi_result.map(|(_, poi)| poi),
-                })
-                .map(IntoValue::into_value)
-                .collect(),
-        ))
+                }
+                .into_value(),
+            )
+        }
+
+        Ok(r::Value::List(public_poi_results))
     }
 
     fn resolve_indexing_status_for_version(
@@ -536,6 +536,19 @@ impl<S: Store> IndexNodeResolver<S> {
     }
 }
 
+#[async_trait]
+impl<S: Store> BlockPtrForNumber for IndexNodeResolver<S> {
+    async fn block_ptr_for_number(
+        &self,
+        network: String,
+        block_number: BlockNumber,
+    ) -> Result<Option<BlockPtr>, Error> {
+        self.block_ptr_for_number(network, block_number)
+            .map_err(Error::from)
+            .await
+    }
+}
+
 fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
     // Results are sorted first alphabetically by entity type, then by entity
     // ID, and then aphabetically by field name.
@@ -660,7 +673,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
 
             // The top-level `publicProofsOfIndexing` field
             (None, "PublicProofOfIndexingResult", "publicProofsOfIndexing") => {
-                self.resolve_public_proofs_of_indexing(field)
+                self.resolve_public_proofs_of_indexing(field).await
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)

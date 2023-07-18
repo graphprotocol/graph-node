@@ -5,7 +5,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore, Store as StoreTrait,
+            BlockPtrForNumber, BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore,
+            Store as StoreTrait,
         },
     },
     constraint_violation,
@@ -155,9 +156,15 @@ impl StatusStore for Store {
         &self,
         subgraph_id: &DeploymentHash,
         block_number: BlockNumber,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
         self.subgraph_store
-            .get_public_proof_of_indexing(subgraph_id, block_number, self.block_store().clone())
+            .get_public_proof_of_indexing(
+                subgraph_id,
+                block_number,
+                self.block_store().clone(),
+                fetch_block_ptr,
+            )
             .await
     }
 
