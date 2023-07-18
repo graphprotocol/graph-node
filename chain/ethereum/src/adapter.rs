@@ -695,6 +695,7 @@ impl EthereumBlockFilter {
         if other.is_empty() {
             return;
         };
+
         let EthereumBlockFilter {
             polling_intervals,
             contract_addresses,

@@ -740,7 +740,12 @@ impl EthereumAdapter {
         )
     }
 
-    // Extract a helper function to find matching intervals
+    // Used to get the block triggers with a `polling` or `once` filter
+    /// `polling_filter_type` is used to differentiate between `polling` and `once` filters
+    /// A `polling_filter_type` value of  `BlockPollingFilterType::Once` is the case for
+    /// intialization triggers
+    /// A `polling_filter_type` value of  `BlockPollingFilterType::Polling` is the case for
+    /// polling triggers
     pub(crate) fn blocks_matching_polling_intervals(
         &self,
         logger: Logger,
@@ -1692,9 +1697,9 @@ pub(crate) fn parse_call_triggers(
     }
 }
 
-// NOTE: This method does not parse block triggers with `once` filters.
-// This is because it is to be run before any other triggers are run.
-// So we have parse_initialization_triggers for that.
+/// This method does not parse block triggers with `once` filters.
+/// This is because it is to be run before any other triggers are run.
+/// So we have `parse_initialization_triggers` for that.
 pub(crate) fn parse_block_triggers(
     block_filter: &EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
@@ -2272,7 +2277,6 @@ mod tests {
             )],
             parse_block_triggers(
                 &EthereumBlockFilter {
-                    // TODO: test polling_intervals
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
                     trigger_every_block: true,
@@ -2306,7 +2310,6 @@ mod tests {
             Vec::<EthereumTrigger>::new(),
             parse_block_triggers(
                 &EthereumBlockFilter {
-                    // TODO: test polling_intervals
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(1))]),
                     trigger_every_block: false,
@@ -2343,7 +2346,6 @@ mod tests {
             )],
             parse_block_triggers(
                 &EthereumBlockFilter {
-                    // TODO: test polling_intervals
                     polling_intervals: HashSet::new(),
                     contract_addresses: HashSet::from_iter(vec![(1, address(4))]),
                     trigger_every_block: false,
