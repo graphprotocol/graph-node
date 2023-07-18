@@ -1,4 +1,4 @@
-import { Address, ethereum, log } from "@graphprotocol/graph-ts";
+import { Address, BigInt, ethereum, log } from "@graphprotocol/graph-ts";
 import { Contract, Trigger } from "../generated/Contract/Contract";
 import {
   BlockFromOtherPollingHandler,
@@ -24,16 +24,25 @@ export function handleBlockPollingFromTemplate(block: ethereum.Block): void {
 }
 
 export function handleTrigger(event: Trigger): void {
+  // We set the value to 0 to test that the subgraph
+  // runs initialization handler before all other handlers
+  if (event.params.x == 1) {
+    let entity = Foo.load("0");
+
+    // If the intialization handler is called first
+    // this would set the value to -1 for Foo entity with id 0
+    // If it is not called first then the value would be 0
+    if (entity) {
+      entity.value = -1;
+      entity.save();
+    }
+  }
+
   let obj = new Foo(event.params.x.toString());
   obj.value = event.params.x as i64;
   obj.save();
 
-  if (event.params.x == 0) {
-    log.info("===> Creating template {}", [
-      Address.fromString(
-        "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
-      ).toHexString(),
-    ]);
+  if (event.params.x == 1) {
     ContractTemplate.create(
       Address.fromString("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")
     );
@@ -41,8 +50,16 @@ export function handleTrigger(event: Trigger): void {
 }
 
 export function initialize(block: ethereum.Block): void {
-  log.info("initialize {}", [block.number.toString()]);
+  log.info("initialize called at block", [block.number.toString()]);
   let entity = new Initialize(block.number.toString());
   entity.block = block.number;
   entity.save();
+
+  // If initialization handler is called then this would set
+  // the value to 0 for Foo entity with id 0
+  // This is to test that initialization handler is called
+  // before all other handlers
+  let foo = new Foo("0");
+  foo.value = 0;
+  foo.save();
 }

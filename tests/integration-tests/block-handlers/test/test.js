@@ -40,7 +40,9 @@ const createBlocks = async (contract) => {
   // loop and call emitTrigger 10 times
   // This is to force ganache to mine 10 blocks
   for (let i = 0; i < 10; i++) {
-    await contractInstance.methods.emitTrigger(i).send({ from: accounts[0] });
+    await contractInstance.methods
+      .emitTrigger(i + 1)
+      .send({ from: accounts[0] });
   }
 };
 
@@ -106,19 +108,38 @@ contract("Contract", (accounts) => {
     // Also test that multiple block constraints do not result in a graphql error.
     let result = await fetchSubgraph({
       query: `{
-        foos(orderBy: id) { id value }
+        foos(orderBy: value, skip: 1) { id value }
       }`,
     });
 
     expect(result.errors).to.be.undefined;
     const foos = [];
-
-    for (let i = 0; i < 10; i++) {
+    for (let i = 1; i < 11; i++) {
       foos.push({ id: i.toString(), value: i.toString() });
     }
 
     expect(result.data).to.deep.equal({
       foos: foos,
+    });
+  });
+
+  it("should call intialization handler first", async () => {
+    let result = await fetchSubgraph({
+      query: `{
+        foo( id: "0" ) { id value }
+      }`,
+    });
+
+    expect(result.errors).to.be.undefined;
+    // This to test that the initialization handler is called first
+    // if the value is -1 means a log handler has overwritten the value
+    // meaning the initialization handler was called first
+    // if the value is 0 means the log handler was called first
+    expect(result.data).to.deep.equal({
+      foo: {
+        id: "0",
+        value: "-1",
+      },
     });
   });
 
@@ -149,9 +170,9 @@ contract("Contract", (accounts) => {
     expect(result.errors).to.be.undefined;
     expect(result.data).to.deep.equal({
       blockFromOtherPollingHandlers: [
-        { id: "4", number: "4" },
         { id: "6", number: "6" },
         { id: "8", number: "8" },
+        { id: "10", number: "10" },
       ],
     });
   });
