@@ -1692,6 +1692,9 @@ pub(crate) fn parse_call_triggers(
     }
 }
 
+// NOTE: This method does not parse block triggers with `once` filters.
+// This is because it is to be run before any other triggers are run.
+// So we have parse_initialization_triggers for that.
 pub(crate) fn parse_block_triggers(
     block_filter: &EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
@@ -1727,6 +1730,7 @@ pub(crate) fn parse_block_triggers(
         ));
     }
 
+    // We handle polling triggers last
     match &block_filter.wildcard_filters {
         Some(WildcardBlockFilter { polling: true, .. }) => {
             triggers.push(EthereumTrigger::Block(
@@ -1764,14 +1768,13 @@ pub(crate) fn parse_initialization_triggers(
     }
 
     let block_ptr = BlockPtr::from(&block.ethereum_block);
-    let block_ptr3 = block_ptr.cheap_clone();
     let block_number = block_ptr.number;
 
     let mut triggers = vec![];
 
     match &block_filter.wildcard_filters {
         Some(WildcardBlockFilter { once: true, .. }) => triggers.push(EthereumTrigger::Block(
-            block_ptr3.clone(),
+            block_ptr.clone(),
             EthereumBlockTriggerType::Every,
         )),
         None => {
@@ -1786,7 +1789,7 @@ pub(crate) fn parse_initialization_triggers(
 
             if *has_once_trigger {
                 triggers.push(EthereumTrigger::Block(
-                    block_ptr3.clone(),
+                    block_ptr.clone(),
                     EthereumBlockTriggerType::Every,
                 ));
             }
