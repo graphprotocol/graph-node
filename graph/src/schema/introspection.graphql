@@ -1,7 +1,9 @@
 # A GraphQL introspection schema for inclusion in a subgraph's API schema.
-# The schema differs from the 'standard' introspection schema in that it
-# doesn't have a Query type nor scalar declarations as they come from the
-# API schema.
+
+type Query {
+  __schema: __Schema!
+  __type(name: String!): __Type
+}
 
 type __Schema {
   description: String
