@@ -108,13 +108,13 @@ contract("Contract", (accounts) => {
     // Also test that multiple block constraints do not result in a graphql error.
     let result = await fetchSubgraph({
       query: `{
-        foos(orderBy: value, skip: 1) { id value }
+        foos(orderBy: value,skip: 1) { id value }
       }`,
     });
 
     expect(result.errors).to.be.undefined;
     const foos = [];
-    for (let i = 1; i < 11; i++) {
+    for (let i = 0; i < 11; i++) {
       foos.push({ id: i.toString(), value: i.toString() });
     }
 
@@ -126,7 +126,7 @@ contract("Contract", (accounts) => {
   it("should call intialization handler first", async () => {
     let result = await fetchSubgraph({
       query: `{
-        foo( id: "0" ) { id value }
+        foo( id: "initialize" ) { id value }
       }`,
     });
 
@@ -136,10 +136,7 @@ contract("Contract", (accounts) => {
     // meaning the initialization handler was called first
     // if the value is 0 means the log handler was called first
     expect(result.data).to.deep.equal({
-      foo: {
-        id: "0",
-        value: "-1",
-      },
+      foo: { id: "initialize", value: "-1" },
     });
   });
 
@@ -184,7 +181,6 @@ contract("Contract", (accounts) => {
         initializes(orderBy: block,first:10) { id block }
       }`,
     });
-    console.log(result.errors);
     expect(result.errors).to.be.undefined;
     expect(result.data.initializes.length).to.equal(1);
     expect(result.data).to.deep.equal({

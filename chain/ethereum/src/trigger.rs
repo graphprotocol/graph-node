@@ -260,7 +260,8 @@ impl Eq for EthereumTrigger {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
-    Every,
+    Start,
+    End,
     WithCallTo(Address),
 }
 
@@ -293,7 +294,8 @@ impl EthereumTrigger {
             EthereumTrigger::Log(log, _) => Some(&log.address),
 
             // Unfiltered block triggers match any data source address.
-            EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => None,
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::End) => None,
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::Start) => None,
         }
     }
 }

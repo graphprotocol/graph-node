@@ -90,7 +90,7 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
             number: Some(U64::from(ptr.number)),
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
+        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
     }
 }
 
@@ -135,7 +135,7 @@ pub fn empty_block(
             transactions,
             ..Default::default()
         })),
-        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every)],
+        trigger_data: vec![EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End)],
     }
 }
 
@@ -161,6 +161,6 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
 pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {
     block.trigger_data.push(EthereumTrigger::Block(
         block.ptr(),
-        EthereumBlockTriggerType::Every,
+        EthereumBlockTriggerType::End,
     ))
 }

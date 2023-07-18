@@ -44,7 +44,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::adapter::ProviderStatus;
-use crate::adapter::WildcardBlockFilter;
 use crate::chain::BlockFinality;
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -759,6 +758,10 @@ impl EthereumAdapter {
                 + std::marker::Send,
         >,
     > {
+        let trigger_type = match polling_filter_type {
+            BlockPollingFilterType::Once => EthereumBlockTriggerType::Start,
+            BlockPollingFilterType::Polling => EthereumBlockTriggerType::End,
+        };
         let matching_blocks = (from..=to)
             .filter(|block_number| {
                 filter
@@ -781,7 +784,7 @@ impl EthereumAdapter {
 
         let block_futures = blocks_matching_polling_filter.map(move |ptrs| {
             ptrs.into_iter()
-                .map(|ptr| EthereumTrigger::Block(ptr.clone(), EthereumBlockTriggerType::Every))
+                .map(|ptr| EthereumTrigger::Block(ptr.clone(), trigger_type.clone()))
                 .collect::<Vec<_>>()
         });
 
@@ -1402,36 +1405,28 @@ pub(crate) async fn blocks_with_triggers(
     let trigger_futs: FuturesUnordered<BoxFuture<Result<Vec<EthereumTrigger>, anyhow::Error>>> =
         FuturesUnordered::new();
 
-    // Handle initialization triggers first
-    // FIXME: This implementation can cause double triggering of initialization and polling triggers
-    // If there is a subgraph where the current block matches the polling trigger and also matches
-    // the initialization trigger, then both the handlers will be triggered twice.
-    // Solution: we should ensure that only one `EthereumBlockTriggerType::Every` is pushed per block to the
-    // `trigger_futs` .
-    match &filter.block.wildcard_filters {
-        Some(WildcardBlockFilter { once: true, .. }) => {
-            let block_future = eth
-                .block_range_to_ptrs(logger.clone(), from, to)
-                .map(move |ptrs| {
-                    ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
-                        .collect()
-                })
-                .compat()
-                .boxed();
-            trigger_futs.push(block_future)
-        }
-        None => {
-            let block_futures_matching_once_filter = eth.blocks_matching_polling_intervals(
-                logger.clone(),
-                from,
-                to,
-                &filter.block,
-                BlockPollingFilterType::Once,
-            );
-            trigger_futs.push(block_futures_matching_once_filter);
-        }
-        _ => (),
+    // This is for `start` triggers which can be initialization handlers which needs to be run
+    // before all other triggers
+    if filter.block.trigger_every_block {
+        let block_future = eth
+            .block_range_to_ptrs(logger.clone(), from, to)
+            .map(move |ptrs| {
+                ptrs.into_iter()
+                    .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Start))
+                    .collect()
+            })
+            .compat()
+            .boxed();
+        trigger_futs.push(block_future)
+    } else if !filter.block.polling_intervals.is_empty() {
+        let block_futures_matching_once_filter = eth.blocks_matching_polling_intervals(
+            logger.clone(),
+            from,
+            to,
+            &filter.block,
+            BlockPollingFilterType::Once,
+        );
+        trigger_futs.push(block_futures_matching_once_filter);
     }
 
     // Scan for Logs
@@ -1466,45 +1461,33 @@ pub(crate) async fn blocks_with_triggers(
             .block_range_to_ptrs(logger.clone(), from, to)
             .map(move |ptrs| {
                 ptrs.into_iter()
-                    .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
+                    .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::End))
                     .collect()
             })
             .compat()
             .boxed();
         trigger_futs.push(block_future)
-    } else if !filter.block.contract_addresses.is_empty() {
-        // To determine which blocks include a call to addresses
-        // in the block filter, transform the `block_filter` into
-        // a `call_filter` and run `blocks_with_calls`
-        let block_future = eth
-            .calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
-            .map(|call| {
-                EthereumTrigger::Block(
-                    BlockPtr::from(&call),
-                    EthereumBlockTriggerType::WithCallTo(call.to),
-                )
-            })
-            .collect()
-            .compat()
-            .boxed();
-        trigger_futs.push(block_future)
-    }
-
-    // Handle polling triggers
-    match &filter.block.wildcard_filters {
-        Some(WildcardBlockFilter { polling: true, .. }) => {
+    } else {
+        if !filter.block.contract_addresses.is_empty() {
+            // To determine which blocks include a call to addresses
+            // in the block filter, transform the `block_filter` into
+            // a `call_filter` and run `blocks_with_calls`
             let block_future = eth
-                .block_range_to_ptrs(logger.clone(), from, to)
-                .map(move |ptrs| {
-                    ptrs.into_iter()
-                        .map(|ptr| EthereumTrigger::Block(ptr, EthereumBlockTriggerType::Every))
-                        .collect()
+                .calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
+                .map(|call| {
+                    EthereumTrigger::Block(
+                        BlockPtr::from(&call),
+                        EthereumBlockTriggerType::WithCallTo(call.to),
+                    )
                 })
+                .collect()
                 .compat()
                 .boxed();
             trigger_futs.push(block_future)
         }
-        None => {
+
+        // Handle polling triggers
+        if !filter.block.polling_intervals.is_empty() {
             let block_futures_matching_polling_filter = eth.blocks_matching_polling_intervals(
                 logger.clone(),
                 from,
@@ -1514,7 +1497,6 @@ pub(crate) async fn blocks_with_triggers(
             );
             trigger_futs.push(block_futures_matching_polling_filter);
         }
-        _ => (),
     }
 
     // Get hash for "to" block
@@ -1731,35 +1713,21 @@ pub(crate) fn parse_block_triggers(
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(
             block_ptr,
-            EthereumBlockTriggerType::Every,
+            EthereumBlockTriggerType::End,
         ));
-    }
-
-    // We handle polling triggers last
-    match &block_filter.wildcard_filters {
-        Some(WildcardBlockFilter { polling: true, .. }) => {
+    } else if !block_filter.polling_intervals.is_empty() {
+        let has_polling_trigger = &block_filter.polling_intervals.iter().any(
+            |(start_block, _, interval)| match interval {
+                0 => false,
+                _ => (block_number - *start_block) % *interval == 0,
+            },
+        );
+        if *has_polling_trigger {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3,
-                EthereumBlockTriggerType::Every,
+                EthereumBlockTriggerType::End,
             ));
         }
-        None => {
-            let has_polling_trigger =
-                &block_filter
-                    .polling_intervals
-                    .iter()
-                    .any(|(start_block, _, interval)| match interval {
-                        0 => false,
-                        _ => (block_number - *start_block) % *interval == 0,
-                    });
-            if *has_polling_trigger {
-                triggers.push(EthereumTrigger::Block(
-                    block_ptr3,
-                    EthereumBlockTriggerType::Every,
-                ));
-            }
-        }
-        _ => (),
     }
     triggers
 }
@@ -1777,29 +1745,24 @@ pub(crate) fn parse_initialization_triggers(
 
     let mut triggers = vec![];
 
-    match &block_filter.wildcard_filters {
-        Some(WildcardBlockFilter { once: true, .. }) => triggers.push(EthereumTrigger::Block(
-            block_ptr.clone(),
-            EthereumBlockTriggerType::Every,
-        )),
-        None => {
-            let has_once_trigger =
-                &block_filter
-                    .polling_intervals
-                    .iter()
-                    .any(|(start_block, _, interval)| match interval {
-                        0 => block_number == *start_block,
-                        _ => false,
-                    });
-
-            if *has_once_trigger {
-                triggers.push(EthereumTrigger::Block(
-                    block_ptr.clone(),
-                    EthereumBlockTriggerType::Every,
-                ));
-            }
+    if block_filter.trigger_every_block {
+        triggers.push(EthereumTrigger::Block(
+            block_ptr,
+            EthereumBlockTriggerType::Start,
+        ));
+    } else if !block_filter.polling_intervals.is_empty() {
+        let has_polling_trigger = &block_filter.polling_intervals.iter().any(
+            |(start_block, _, interval)| match interval {
+                0 => false,
+                _ => (block_number - *start_block) % *interval == 0,
+            },
+        );
+        if *has_polling_trigger {
+            triggers.push(EthereumTrigger::Block(
+                block_ptr,
+                EthereumBlockTriggerType::Start,
+            ));
         }
-        _ => {}
     }
 
     triggers
@@ -2273,7 +2236,7 @@ mod tests {
         assert_eq!(
             vec![EthereumTrigger::Block(
                 BlockPtr::from((hash(2), 2)),
-                EthereumBlockTriggerType::Every
+                EthereumBlockTriggerType::End
             )],
             parse_block_triggers(
                 &EthereumBlockFilter {

@@ -27,19 +27,22 @@ export function handleTrigger(event: Trigger): void {
   // We set the value to 0 to test that the subgraph
   // runs initialization handler before all other handlers
   if (event.params.x == 1) {
-    let entity = Foo.load("0");
+    let entity = Foo.load("initialize");
 
     // If the intialization handler is called first
     // this would set the value to -1 for Foo entity with id 0
     // If it is not called first then the value would be 0
-    if (entity) {
+    if (entity != null) {
       entity.value = -1;
+      entity.id = "initialize";
       entity.save();
     }
   }
 
   let obj = new Foo(event.params.x.toString());
+  obj.id = event.params.x.toString();
   obj.value = event.params.x as i64;
+
   obj.save();
 
   if (event.params.x == 1) {
@@ -52,6 +55,7 @@ export function handleTrigger(event: Trigger): void {
 export function initialize(block: ethereum.Block): void {
   log.info("initialize called at block", [block.number.toString()]);
   let entity = new Initialize(block.number.toString());
+  entity.id = block.number.toString();
   entity.block = block.number;
   entity.save();
 
@@ -59,7 +63,8 @@ export function initialize(block: ethereum.Block): void {
   // the value to 0 for Foo entity with id 0
   // This is to test that initialization handler is called
   // before all other handlers
-  let foo = new Foo("0");
+  let foo = new Foo("initialize");
+  foo.id = "initialize";
   foo.value = 0;
   foo.save();
 }

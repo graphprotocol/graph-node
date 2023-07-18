@@ -409,10 +409,18 @@ impl DataSource {
         block: BlockNumber,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
-            // `Every` matches any block handler that has no filter or a polling filter
-            // whose polling interval matches the block number
-            // according to the formula `(block - start_block) % polling_interval == 0`
-            EthereumBlockTriggerType::Every => self
+            // Start matches only initialization handlers with a `once` filter
+            EthereumBlockTriggerType::Start => self
+                .mapping
+                .block_handlers
+                .iter()
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Once) => block == self.start_block,
+                    _ => false,
+                })
+                .cloned(),
+            // End matches all handlers without a filter or with a `polling` filter
+            EthereumBlockTriggerType::End => self
                 .mapping
                 .block_handlers
                 .iter()
@@ -429,9 +437,8 @@ impl DataSource {
                         };
                         should_trigger
                     }
-                    Some(BlockHandlerFilter::Once) => block == self.start_block,
-                    Some(BlockHandlerFilter::Call) => false,
                     None => true,
+                    _ => false,
                 })
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
