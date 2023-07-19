@@ -246,53 +246,51 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         // Ensure that there is at most one instance of each type of block handler
         // and that a combination of a non-filtered block handler and a filtered block handler is not allowed.
-        let has_too_many_block_handlers = {
-            let mut non_filtered_block_handler_count = 0;
-            let mut call_filtered_block_handler_count = 0;
-            let mut polling_filtered_block_handler_count = 0;
-            let mut initialization_handler_count = 0;
-            self.mapping
-                .block_handlers
-                .iter()
-                .for_each(|block_handler| {
-                    match block_handler.filter {
-                        None => non_filtered_block_handler_count += 1,
-                        Some(ref filter) => match filter {
-                            BlockHandlerFilter::Call => call_filtered_block_handler_count += 1,
-                            BlockHandlerFilter::Once => initialization_handler_count += 1,
-                            BlockHandlerFilter::Polling { every: _ } => {
-                                polling_filtered_block_handler_count += 1
-                            }
-                        },
-                    };
-                });
 
-            let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
-            // If there is a non-filtered block handler, we need to check if there are any
-            // filtered block handlers
-            // If there are, we do not allow that combination
-            let has_both_filtered_and_non_filtered = has_non_filtered_block_handler
-                && (call_filtered_block_handler_count > 0
-                    || polling_filtered_block_handler_count > 0
-                    || initialization_handler_count > 0);
+        let mut non_filtered_block_handler_count = 0;
+        let mut call_filtered_block_handler_count = 0;
+        let mut polling_filtered_block_handler_count = 0;
+        let mut initialization_handler_count = 0;
+        self.mapping
+            .block_handlers
+            .iter()
+            .for_each(|block_handler| {
+                match block_handler.filter {
+                    None => non_filtered_block_handler_count += 1,
+                    Some(ref filter) => match filter {
+                        BlockHandlerFilter::Call => call_filtered_block_handler_count += 1,
+                        BlockHandlerFilter::Once => initialization_handler_count += 1,
+                        BlockHandlerFilter::Polling { every: _ } => {
+                            polling_filtered_block_handler_count += 1
+                        }
+                    },
+                };
+            });
 
-            if has_both_filtered_and_non_filtered {
-                errors.push(anyhow!(
-                    "data source has both filtered and non-filtered block handlers, \
+        let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
+        // If there is a non-filtered block handler, we need to check if there are any
+        // filtered block handlers
+        // If there are, we do not allow that combination
+        let has_both_filtered_and_non_filtered = has_non_filtered_block_handler
+            && (call_filtered_block_handler_count > 0
+                || polling_filtered_block_handler_count > 0
+                || initialization_handler_count > 0);
+
+        if has_both_filtered_and_non_filtered {
+            errors.push(anyhow!(
+                "data source has both filtered and non-filtered block handlers, \
                      this is not allowed"
-                ));
-            }
+            ));
+        }
 
-            // Check the number of handlers for each type
-            // If there is more than one of any type, we have too many handlers
-            let has_too_many = non_filtered_block_handler_count > 1
-                || call_filtered_block_handler_count > 1
-                || initialization_handler_count > 1
-                || polling_filtered_block_handler_count > 1;
+        // Check the number of handlers for each type
+        // If there is more than one of any type, we have too many handlers
+        let has_too_many = non_filtered_block_handler_count > 1
+            || call_filtered_block_handler_count > 1
+            || initialization_handler_count > 1
+            || polling_filtered_block_handler_count > 1;
 
-            has_too_many || has_both_filtered_and_non_filtered
-        };
-        if has_too_many_block_handlers {
+        if has_too_many {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 

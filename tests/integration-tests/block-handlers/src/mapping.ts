@@ -7,7 +7,7 @@ import {
   Foo,
   Initialize,
 } from "../generated/schema";
-import { ContractTemplate } from "../../../runner-tests/block-handlers/generated/templates";
+import { ContractTemplate } from "../generated/templates";
 
 export function handleBlock(block: ethereum.Block): void {
   log.info("handleBlock {}", [block.number.toString()]);
