@@ -3,10 +3,19 @@ import { Contract, Trigger } from "../generated/Contract/Contract";
 import {
   BlockFromOtherPollingHandler,
   BlockFromPollingHandler,
+  Block,
   Foo,
   Initialize,
 } from "../generated/schema";
 import { ContractTemplate } from "../../../runner-tests/block-handlers/generated/templates";
+
+export function handleBlock(block: ethereum.Block): void {
+  log.info("handleBlock {}", [block.number.toString()]);
+  let blockEntity = new Block(block.number.toString());
+  blockEntity.number = block.number;
+  blockEntity.hash = block.hash;
+  blockEntity.save();
+}
 
 export function handleBlockPolling(block: ethereum.Block): void {
   log.info("handleBlockPolling {}", [block.number.toString()]);
@@ -15,6 +24,7 @@ export function handleBlockPolling(block: ethereum.Block): void {
   blockEntity.hash = block.hash;
   blockEntity.save();
 }
+
 export function handleBlockPollingFromTemplate(block: ethereum.Block): void {
   log.info("===> handleBlockPollingFromTemplate {}", [block.number.toString()]);
   let blockEntity = new BlockFromOtherPollingHandler(block.number.toString());

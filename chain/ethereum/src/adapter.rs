@@ -632,6 +632,7 @@ impl EthereumBlockFilter {
                         Some(BlockHandlerFilter::Call) => true,
                         _ => false,
                     });
+
                 let has_block_handler_without_filter = data_source
                     .mapping
                     .block_handlers

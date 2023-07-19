@@ -104,6 +104,30 @@ contract("Contract", (accounts) => {
     await waitForSubgraphToBeSynced();
   });
 
+  it("test non-filtered blockHandler", async () => {
+    // Also test that multiple block constraints do not result in a graphql error.
+    let result = await fetchSubgraph({
+      query: `{
+        blocks(orderBy: number, first: 10) { id number }
+      }`,
+    });
+    expect(result.errors).to.be.undefined;
+    expect(result.data).to.deep.equal({
+      blocks: [
+        { id: "1", number: "1" },
+        { id: "2", number: "2" },
+        { id: "3", number: "3" },
+        { id: "4", number: "4" },
+        { id: "5", number: "5" },
+        { id: "6", number: "6" },
+        { id: "7", number: "7" },
+        { id: "8", number: "8" },
+        { id: "9", number: "9" },
+        { id: "10", number: "10" },
+      ],
+    });
+  });
+
   it("test query", async () => {
     // Also test that multiple block constraints do not result in a graphql error.
     let result = await fetchSubgraph({
