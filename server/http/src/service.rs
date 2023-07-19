@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::env;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -326,12 +327,16 @@ where
         let headers = req.headers();
         let content_type = headers.get("content-type");
 
-        if method == Method::POST && (content_type.is_none()) {
-            return self.handle_requests_without_content_type().boxed();
-        }
+        let less_strict_graphql_compliance = env::var("LESS_STRICT_GRAPHQL_COMPLIANCE").is_ok();
 
-        if method == Method::POST && !self.has_request_body(&req) {
-            return self.handle_requests_without_body().boxed();
+        if !less_strict_graphql_compliance {
+            if method == Method::POST && (content_type.is_none()) {
+                return self.handle_requests_without_content_type().boxed();
+            }
+
+            if method == Method::POST && !self.has_request_body(&req) {
+                return self.handle_requests_without_body().boxed();
+            }
         }
 
         let is_mutation = req
