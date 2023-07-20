@@ -262,7 +262,7 @@ impl Drop for TestContext {
 pub struct Stores {
     network_name: String,
     chain_head_listener: Arc<ChainHeadUpdateListener>,
-    network_store: Arc<Store>,
+    pub network_store: Arc<Store>,
     chain_store: Arc<ChainStore>,
 }
 

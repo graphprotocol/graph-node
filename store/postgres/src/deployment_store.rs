@@ -918,25 +918,24 @@ impl DeploymentStore {
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
         let indexer = *indexer;
-        let site3 = site.cheap_clone();
-        let site4 = site.cheap_clone();
-        let site5 = site.cheap_clone();
+        let site2 = site.cheap_clone();
         let store = self.cheap_clone();
-        let block2 = block.cheap_clone();
 
-        let entities = self
+        let entities: Option<(Vec<Entity>, BlockPtr)> = self
             .with_conn(move |conn, cancel| {
+                let site = site.clone();
                 cancel.check_cancel()?;
 
-                let layout = store.layout(conn, site4.cheap_clone())?;
+                let layout = store.layout(conn, site.cheap_clone())?;
 
                 if !layout.supports_proof_of_indexing() {
                     return Ok(None);
                 }
 
                 conn.transaction::<_, CancelableError<anyhow::Error>, _>(move || {
+                    let mut block_ptr = block.cheap_clone();
                     let latest_block_ptr =
-                        match Self::block_ptr_with_conn(conn, site4.cheap_clone())? {
+                        match Self::block_ptr_with_conn(conn, site.cheap_clone())? {
                             Some(inner) => inner,
                             None => return Ok(None),
                         };
@@ -951,30 +950,38 @@ impl DeploymentStore {
                     // The best we can do right now is just to make sure that the block number
                     // is high enough.
                     if latest_block_ptr.number < block.number {
-                        return Ok(None);
-                    }
+                        // If a subgraph has failed deterministically then any blocks past head
+                        // should return the same POI
+                        let fatal_error = ErrorDetail::fatal(conn, &site.deployment)?;
+                        block_ptr = match fatal_error {
+                            Some(se) => TryInto::<SubgraphError>::try_into(se)?
+                                .block_ptr
+                                .unwrap_or(block_ptr),
+                            None => return Ok(None),
+                        };
+                    };
 
                     let query = EntityQuery::new(
-                        site4.deployment.cheap_clone(),
-                        block.number,
+                        site.deployment.cheap_clone(),
+                        block_ptr.number,
                         EntityCollection::All(vec![(
                             POI_OBJECT.cheap_clone(),
                             AttributeNames::All,
                         )]),
                     );
                     let entities = store
-                        .execute_query::<Entity>(conn, site4, query)
+                        .execute_query::<Entity>(conn, site, query)
                         .map(|(entities, _)| entities)
                         .map_err(anyhow::Error::from)?;
 
-                    Ok(Some(entities))
+                    Ok(Some((entities, block_ptr)))
                 })
                 .map_err(Into::into)
             })
             .await?;
 
-        let entities = if let Some(entities) = entities {
-            entities
+        let (entities, block_ptr) = if let Some((entities, bp)) = entities {
+            (entities, bp)
         } else {
             return Ok(None);
         };
@@ -995,10 +1002,10 @@ impl DeploymentStore {
             })
             .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
 
-        let info = self.subgraph_info(&site5).map_err(anyhow::Error::from)?;
+        let info = self.subgraph_info(&site2).map_err(anyhow::Error::from)?;
 
         let mut finisher =
-            ProofOfIndexingFinisher::new(&block2, &site3.deployment, &indexer, info.poi_version);
+            ProofOfIndexingFinisher::new(&block_ptr, &site2.deployment, &indexer, info.poi_version);
         for (name, region) in by_causality_region.drain() {
             finisher.add_causality_region(&name, &region);
         }
