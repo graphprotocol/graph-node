@@ -5,7 +5,7 @@ use graph::data::query::Trace;
 use web3::types::Address;
 
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::store::{BlockStore, EntityType, Store};
+use graph::components::store::{BlockPtrForNumber, BlockStore, EntityType, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;
@@ -14,6 +14,9 @@ use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
 use crate::auth::PoiProtection;
+
+/// Timeout for calls to fetch the block from JSON-RPC or Firehose.
+const BLOCK_HASH_FROM_NUMBER_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug)]
 struct PublicProofOfIndexingRequest {
@@ -212,62 +215,10 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<BlockNumber>("blockNumber")
             .expect("Valid blockNumber required");
 
-        macro_rules! try_resolve_for_chain {
-            ( $typ:path ) => {
-                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
-
-                if let Some(blockchain) = blockchain {
-                    debug!(
-                        self.logger,
-                        "Fetching block hash from number";
-                        "network" => &network,
-                        "block_number" => block_number,
-                    );
-
-                    let block_ptr_res = blockchain
-                        .block_pointer_from_number(&self.logger, block_number)
-                        .await;
-
-                        if let Err(e) = block_ptr_res {
-                            warn!(
-                                self.logger,
-                                "Failed to fetch block hash from number";
-                                "network" => &network,
-                                "chain" => <$typ as Blockchain>::KIND.to_string(),
-                                "block_number" => block_number,
-                                "error" => e.to_string(),
-                            );
-                            return Ok(r::Value::Null);
-                        }
-
-                    let block_ptr = block_ptr_res.unwrap();
-                    return Ok(r::Value::String(block_ptr.hash_hex()));
-                }
-            };
+        match self.block_ptr_for_number(network, block_number).await? {
+            Some(block_ptr) => Ok(r::Value::String(block_ptr.hash_hex())),
+            None => Ok(r::Value::Null),
         }
-
-        // Ugly, but we can't get back an object trait from the `BlockchainMap`,
-        // so this seems like the next best thing.
-        try_resolve_for_chain!(graph_chain_ethereum::Chain);
-        try_resolve_for_chain!(graph_chain_arweave::Chain);
-        try_resolve_for_chain!(graph_chain_cosmos::Chain);
-        try_resolve_for_chain!(graph_chain_near::Chain);
-
-        // If you're adding support for a new chain and this `match` clause just
-        // gave you a compiler error, then this message is for you! You need to
-        // add a new `try_resolve!` macro invocation above for your new chain
-        // type.
-        match BlockchainKind::Ethereum {
-            // Note: we don't actually care about substreams here.
-            BlockchainKind::Substreams
-            | BlockchainKind::Arweave
-            | BlockchainKind::Ethereum
-            | BlockchainKind::Cosmos
-            | BlockchainKind::Near => (),
-        }
-
-        // The given network does not exist.
-        Ok(r::Value::Null)
     }
 
     async fn resolve_cached_ethereum_calls(
@@ -405,7 +356,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(poi)
     }
 
-    fn resolve_public_proofs_of_indexing(
+    async fn resolve_public_proofs_of_indexing(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -420,41 +371,41 @@ impl<S: Store> IndexNodeResolver<S> {
             return Err(QueryExecutionError::TooExpensive);
         }
 
-        Ok(r::Value::List(
-            requests
-                .into_iter()
-                .map(|request| {
-                    match futures::executor::block_on(
-                        self.store.get_public_proof_of_indexing(
-                            &request.deployment,
-                            request.block_number,
-                        ),
-                    ) {
-                        Ok(Some(poi)) => (Some(poi), request),
-                        Ok(None) => (None, request),
-                        Err(e) => {
-                            error!(
-                                self.logger,
-                                "Failed to query public proof of indexing";
-                                "subgraph" => &request.deployment,
-                                "block" => format!("{}", request.block_number),
-                                "error" => format!("{:?}", e)
-                            );
-                            (None, request)
-                        }
-                    }
-                })
-                .map(|(poi_result, request)| PublicProofOfIndexingResult {
+        let mut public_poi_results = vec![];
+        for request in requests {
+            let (poi_result, request) = match self
+                .store
+                .get_public_proof_of_indexing(&request.deployment, request.block_number, self)
+                .await
+            {
+                Ok(Some(poi)) => (Some(poi), request),
+                Ok(None) => (None, request),
+                Err(e) => {
+                    error!(
+                        self.logger,
+                        "Failed to query public proof of indexing";
+                        "subgraph" => &request.deployment,
+                        "block" => format!("{}", request.block_number),
+                        "error" => format!("{:?}", e)
+                    );
+                    (None, request)
+                }
+            };
+
+            public_poi_results.push(
+                PublicProofOfIndexingResult {
                     deployment: request.deployment,
                     block: match poi_result {
                         Some((ref block, _)) => block.clone(),
                         None => PartialBlockPtr::from(request.block_number),
                     },
                     proof_of_indexing: poi_result.map(|(_, poi)| poi),
-                })
-                .map(IntoValue::into_value)
-                .collect(),
-        ))
+                }
+                .into_value(),
+            )
+        }
+
+        Ok(r::Value::List(public_poi_results))
     }
 
     fn resolve_indexing_status_for_version(
@@ -516,6 +467,85 @@ impl<S: Store> IndexNodeResolver<S> {
                 })
                 .collect(),
         ))
+    }
+
+    async fn block_ptr_for_number(
+        &self,
+        network: String,
+        block_number: BlockNumber,
+    ) -> Result<Option<BlockPtr>, QueryExecutionError> {
+        macro_rules! try_resolve_for_chain {
+            ( $typ:path ) => {
+                let blockchain = self.blockchain_map.get::<$typ>(network.to_string()).ok();
+
+                if let Some(blockchain) = blockchain {
+                    debug!(
+                        self.logger,
+                        "Fetching block hash from number";
+                        "network" => &network,
+                        "block_number" => block_number,
+                    );
+
+                let block_ptr_res = tokio::time::timeout(BLOCK_HASH_FROM_NUMBER_TIMEOUT, blockchain
+                    .block_pointer_from_number(&self.logger, block_number)
+                    .map_err(Error::from))
+                    .await
+                    .map_err(Error::from)
+                    .and_then(|x| x);
+
+                        if let Err(e) = block_ptr_res {
+                            warn!(
+                                self.logger,
+                                "Failed to fetch block hash from number";
+                                "network" => &network,
+                                "chain" => <$typ as Blockchain>::KIND.to_string(),
+                                "block_number" => block_number,
+                                "error" => e.to_string(),
+                            );
+                            return Ok(None);
+                        }
+
+                    let block_ptr = block_ptr_res.unwrap();
+                    return Ok(Some(block_ptr));
+                }
+            };
+        }
+
+        // Ugly, but we can't get back an object trait from the `BlockchainMap`,
+        // so this seems like the next best thing.
+        try_resolve_for_chain!(graph_chain_ethereum::Chain);
+        try_resolve_for_chain!(graph_chain_arweave::Chain);
+        try_resolve_for_chain!(graph_chain_cosmos::Chain);
+        try_resolve_for_chain!(graph_chain_near::Chain);
+
+        // If you're adding support for a new chain and this `match` clause just
+        // gave you a compiler error, then this message is for you! You need to
+        // add a new `try_resolve!` macro invocation above for your new chain
+        // type.
+        match BlockchainKind::Ethereum {
+            // Note: we don't actually care about substreams here.
+            BlockchainKind::Substreams
+            | BlockchainKind::Arweave
+            | BlockchainKind::Ethereum
+            | BlockchainKind::Cosmos
+            | BlockchainKind::Near => (),
+        }
+
+        // The given network does not exist.
+        Ok(None)
+    }
+}
+
+#[async_trait]
+impl<S: Store> BlockPtrForNumber for IndexNodeResolver<S> {
+    async fn block_ptr_for_number(
+        &self,
+        network: String,
+        block_number: BlockNumber,
+    ) -> Result<Option<BlockPtr>, Error> {
+        self.block_ptr_for_number(network, block_number)
+            .map_err(Error::from)
+            .await
     }
 }
 
@@ -643,7 +673,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
 
             // The top-level `publicProofsOfIndexing` field
             (None, "PublicProofOfIndexingResult", "publicProofsOfIndexing") => {
-                self.resolve_public_proofs_of_indexing(field)
+                self.resolve_public_proofs_of_indexing(field).await
             }
 
             // Resolve fields of `Object` values (e.g. the `chains` field of `ChainIndexingStatus`)
