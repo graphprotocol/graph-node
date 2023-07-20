@@ -188,6 +188,8 @@ pub struct DerivedEntityQuery {
     pub entity_field: Word,
     /// The value to compare against
     pub value: Word,
+    /// Boolean indicating if the id is of the type `Bytes`
+    pub id_is_bytes: bool,
 
     /// This is the causality region of the data source that created the entity.
     ///

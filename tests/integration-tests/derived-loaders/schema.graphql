@@ -1,3 +1,14 @@
+type BFoo @entity {
+  id: Bytes!
+  value: Int8!
+  bar: BBar! @derivedFrom(field: "fooValue")
+}
+
+type BBar @entity {
+  id: Bytes!
+  fooValue: BFoo!
+}
+
 type Foo @entity {
   id: ID!
   value: Int8!
