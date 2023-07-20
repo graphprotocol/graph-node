@@ -79,8 +79,27 @@ contract("Contract", (accounts) => {
     await waitForSubgraphToBeSynced();
   });
 
-  it("test query", async () => {
-    // Also test that multiple block constraints do not result in a graphql error.
+  it("should return correct BFoos", async () => {
+    let result = await fetchSubgraph({
+      query: `{
+        bfoos(orderBy: id) { id value bar { id } }
+      }`,
+    });
+
+    expect(result.errors).to.be.undefined;
+    expect(result.data).to.deep.equal({
+      bfoos: [
+        {
+          id: "0x30",
+          value: "1",
+          bar: { id: "0x31" },
+        },
+      ],
+    });
+  });
+
+
+  it("should return correct Foos", async () => {
     let result = await fetchSubgraph({
       query: `{
         foos(orderBy: id) { id value bar { id } }

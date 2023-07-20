@@ -199,13 +199,14 @@ impl EntityCache {
         &mut self,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
-        let (base_type, field) = self.schema.get_field_related(eref)?;
+        let (base_type, field, id_is_bytes) = self.schema.get_field_related(eref)?;
 
         let query = DerivedEntityQuery {
             entity_type: EntityType::new(base_type.to_string()),
             entity_field: field.name.clone().to_snake_case().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
+            id_is_bytes: id_is_bytes,
         };
 
         let entities = self.store.get_derived(&query)?;
