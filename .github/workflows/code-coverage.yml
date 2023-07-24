@@ -48,7 +48,7 @@ jobs:
           cache: yarn
           cache-dependency-path: "tests/integration-tests/yarn.lock"
       - name: Install lld
-        run: sudo apt-get install -y lld jq
+        run: sudo apt-get install -y lld jq protobuf-compiler
       - uses: actions-rs/cargo@v1
         with:
           command: install
