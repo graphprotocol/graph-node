@@ -65,6 +65,7 @@ type SubgraphIndexingStatus {
   chains: [ChainIndexingStatus!]!
   entityCount: BigInt!
   node: String
+  paused: Boolean!
   historyBlocks: Int!
 }
 

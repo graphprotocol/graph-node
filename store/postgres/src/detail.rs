@@ -242,6 +242,7 @@ pub(crate) fn info_from_details(
         subgraph: deployment,
         synced,
         health,
+        paused: None,
         fatal_error,
         non_fatal_errors,
         chains: vec![chain],
