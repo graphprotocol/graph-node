@@ -2,6 +2,7 @@ use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
+    itertools::Itertools,
     prelude::{
         anyhow::{anyhow, bail, Context, Result},
         info,
@@ -518,8 +519,14 @@ fn default_blockchain_kind() -> BlockchainKind {
 
 impl Chain {
     fn validate(&mut self) -> Result<()> {
-        // `Config` validates that `self.shard` references a configured shard
+        let mut labels = self.providers.iter().map(|p| &p.label).collect_vec();
+        labels.sort();
+        labels.dedup();
+        if labels.len() != self.providers.len() {
+            return Err(anyhow!("Provider labels must be unique"));
+        }
 
+        // `Config` validates that `self.shard` references a configured shard
         for provider in self.providers.iter_mut() {
             provider.validate()?
         }
@@ -1147,7 +1154,7 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::Web3Rule;
+    use crate::config::{ChainSection, Web3Rule};
 
     use super::{
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Transport, Web3Provider,
@@ -1701,5 +1708,56 @@ mod tests {
     fn web3rules_have_the_right_order() {
         assert!(SubgraphLimit::Unlimited > SubgraphLimit::Limit(10));
         assert!(SubgraphLimit::Limit(10) > SubgraphLimit::Disabled);
+    }
+
+    #[test]
+    fn duplicated_labels_are_not_allowed_within_chain() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "vip"
+            provider = [
+                { label = "mainnet1", url = "http://127.0.0.1", features = [], headers = { Authorization = "Bearer foo" } },
+                { label = "mainnet1", url = "http://127.0.0.1", features = [ "archive", "traces" ] }
+            ]
+            "#,
+        )
+        .unwrap();
+
+        let err = actual.validate();
+        assert_eq!(true, err.is_err());
+        let err = err.unwrap_err();
+        assert_eq!(
+            true,
+            err.to_string().contains("unique"),
+            "result: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn duplicated_labels_are_allowed_on_different_chain() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "vip"
+            provider = [
+                { label = "mainnet1", url = "http://127.0.0.1", features = [], headers = { Authorization = "Bearer foo" } },
+                { label = "mainnet2", url = "http://127.0.0.1", features = [ "archive", "traces" ] }
+            ]
+            [mainnet2]
+            shard = "vip"
+            provider = [
+                { label = "mainnet1", url = "http://127.0.0.1", features = [], headers = { Authorization = "Bearer foo" } },
+                { label = "mainnet2", url = "http://127.0.0.1", features = [ "archive", "traces" ] }
+            ]
+            "#,
+        )
+        .unwrap();
+
+        let result = actual.validate();
+        assert_eq!(true, result.is_ok(), "error: {:?}", result.unwrap_err());
     }
 }

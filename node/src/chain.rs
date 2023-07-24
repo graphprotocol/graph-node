@@ -324,7 +324,7 @@ where
             .flatten()
             .into_iter()
             .map(|(chain_id, endpoint)| (chain_id, endpoint, logger.clone()))
-            .map(|(chain_id, endpoint, logger)| async move {
+            .map(|((chain_id, _), endpoint, logger)| async move {
                 let logger = logger.new(o!("provider" => endpoint.provider.to_string()));
                 info!(
                     logger, "Connecting to Firehose to get chain identifier";

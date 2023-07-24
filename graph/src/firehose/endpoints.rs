@@ -4,6 +4,7 @@ use crate::{
     blockchain::BlockPtr,
     cheap_clone::CheapClone,
     components::store::BlockNumber,
+    data::value::Word,
     endpoint::{ConnectionType, EndpointMetrics, Provider, RequestLabels},
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, info},
@@ -16,7 +17,13 @@ use futures03::StreamExt;
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
 use slog::Logger;
-use std::{collections::BTreeMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    ops::ControlFlow,
+    sync::Arc,
+    time::Duration,
+};
 use tonic::codegen::InterceptedService;
 use tonic::{
     codegen::CompressionEncoding,
@@ -494,18 +501,21 @@ impl FirehoseNetworks {
         }
     }
 
-    /// Returns a `Vec` of tuples where the first element of the tuple is
-    /// the chain's id and the second one is an endpoint for this chain.
-    /// There can be mulitple tuple with the same chain id but with different
-    /// endpoint where multiple providers exist for a single chain id.
-    pub fn flatten(&self) -> Vec<(String, Arc<FirehoseEndpoint>)> {
+    /// Returns a `HashMap` where the key is the chain's id and the key is an endpoint for this chain.
+    /// There can be mulitple keys with the same chain id but with different
+    /// endpoint where multiple providers exist for a single chain id. Providers with the same
+    /// label do not need to be tested individually, if one is working, every other endpoint in the
+    /// pool should also work.
+    pub fn flatten(&self) -> HashMap<(String, Word), Arc<FirehoseEndpoint>> {
         self.networks
             .iter()
             .flat_map(|(chain_id, firehose_endpoints)| {
-                firehose_endpoints
-                    .0
-                    .iter()
-                    .map(move |endpoint| (chain_id.clone(), endpoint.clone()))
+                firehose_endpoints.0.iter().map(move |endpoint| {
+                    (
+                        (chain_id.clone(), endpoint.provider.clone()),
+                        endpoint.clone(),
+                    )
+                })
             })
             .collect()
     }
