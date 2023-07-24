@@ -127,6 +127,10 @@ where
                 // There's no point in calling it if we have no current or parent block
                 // pointers, because there would be: no block to revert to or to search
                 // errors from (first execution).
+                //
+                // We attempt to unfail deterministic errors to mitigate deterministic
+                // errors caused by wrong data being consumed from the providers. It has
+                // been a frequent case in the past so this helps recover on a larger scale.
                 let _outcome = self
                     .inputs
                     .store
