@@ -51,8 +51,6 @@ pub fn assert_error_response(
     let json: serde_json::Value =
         serde_json::from_str(&body).expect("GraphQL response is not valid JSON");
 
-    println!("{:?}", json);
-    json.as_object()
         .expect("GraphQL response must be an object")
         .get("errors")
         .expect("GraphQL error response must contain an \"errors\" field")
