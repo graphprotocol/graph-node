@@ -26,7 +26,7 @@ graphql-parser = "0.4.0"
 lazy_static = "1.4.0"
 num-bigint = { version = "^0.2.6", features = ["serde"] }
 num_cpus = "1.16.0"
-num-traits = "0.2.15"
+num-traits = "0.2.16"
 rand = "0.8.4"
 regex = "1.5.4"
 semver = { version = "1.0.18", features = ["serde"] }
