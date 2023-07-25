@@ -190,8 +190,10 @@ impl QueryResults {
 
     pub fn as_http_response<T: From<String>>(&self) -> http::Response<T> {
         let status_code = http::StatusCode::OK;
+
         let json =
             serde_json::to_string(self).expect("Failed to serialize GraphQL response to JSON");
+
         http::Response::builder()
             .status(status_code)
             .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
