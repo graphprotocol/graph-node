@@ -1010,6 +1010,7 @@ mod test {
             source: crate::data_source::Source {
                 account,
                 start_block: 10,
+                end_block: None,
                 accounts: partial_accounts,
             },
             mapping: Mapping {

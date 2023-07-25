@@ -255,6 +255,7 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
 
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
+    fn end_block(&self) -> Option<BlockNumber>;
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;

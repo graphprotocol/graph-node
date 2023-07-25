@@ -489,6 +489,43 @@ specVersion: 0.0.8
 }
 
 #[tokio::test]
+async fn parse_data_source_with_end_block() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+      endBlock: 9562481
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.8
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_8).await;
+    // Check if end block is parsed correctly
+    let data_source = manifest.data_sources.first().unwrap();
+    let end_block = data_source.as_onchain().unwrap().end_block;
+
+    assert_eq!(Some(9562481), end_block);
+}
+
+#[tokio::test]
 async fn parse_block_handlers_with_both_polling_and_once_filter() {
     const YAML: &str = "
 dataSources:

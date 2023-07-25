@@ -428,6 +428,8 @@ pub struct Source {
     pub abi: String,
     #[serde(rename = "startBlock", default)]
     pub start_block: BlockNumber,
+    #[serde(rename = "endBlock", default)]
+    pub end_block: Option<BlockNumber>,
 }
 
 pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {

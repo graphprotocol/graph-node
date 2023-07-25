@@ -83,6 +83,10 @@ impl blockchain::DataSource<Chain> for DataSource {
         kinds
     }
 
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
@@ -505,6 +509,8 @@ pub struct MappingMessageHandler {
 pub struct Source {
     #[serde(rename = "startBlock", default)]
     pub start_block: BlockNumber,
+    #[serde(rename = "endBlock")]
+    pub(crate) end_block: Option<BlockNumber>,
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Deserialize)]
@@ -657,7 +663,10 @@ mod tests {
                 kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
-                source: Source { start_block: 1 },
+                source: Source {
+                    start_block: 1,
+                    end_block: None,
+                },
                 mapping: Mapping {
                     api_version: semver::Version::new(0, 0, 0),
                     language: "".to_string(),
@@ -679,7 +688,10 @@ mod tests {
                 kind: "cosmos".to_string(),
                 network: None,
                 name: "Test".to_string(),
-                source: Source { start_block: 1 },
+                source: Source {
+                    start_block: 1,
+                    end_block: None,
+                },
                 mapping: Mapping {
                     api_version: semver::Version::new(0, 0, 0),
                     language: "".to_string(),
