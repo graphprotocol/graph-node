@@ -7,7 +7,9 @@ use std::time::Duration;
 use assert_json_diff::assert_json_eq;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
+use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
@@ -798,6 +800,65 @@ async fn fatal_error() -> anyhow::Result<()> {
     assert!(status.fatal_error.is_none());
 
     Ok(())
+}
+
+#[tokio::test]
+async fn arweave_file_data_sources() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("arweave-file-data-sources").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+
+    // HASH used in the mappings.
+    let id = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
+
+    // This test assumes the file data sources will be processed in the same block in which they are
+    // created. But the test might fail due to a race condition if for some reason it takes longer
+    // than expected to fetch the file from arweave. The sleep here will conveniently happen after the
+    // data source is added to the offchain monitor but before the monitor is checked, in an an
+    // attempt to ensure the monitor has enough time to fetch the file.
+    let adapter_selector = NoopAdapterSelector {
+        x: PhantomData,
+        triggers_in_block_sleep: Duration::from_millis(1500),
+    };
+    let chain = chain(blocks.clone(), &stores, Some(Arc::new(adapter_selector))).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(test_ptr(2)).await;
+
+    let store = ctx.store.cheap_clone();
+    let writable = store
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(Vec::new()))
+        .await
+        .unwrap();
+    let datasources = writable.load_dynamic_data_sources(vec![]).await.unwrap();
+    assert_eq!(datasources.len(), 1);
+    let ds = datasources.first().unwrap();
+    assert_ne!(ds.causality_region, CausalityRegion::ONCHAIN);
+    assert_eq!(ds.done_at.is_some(), true);
+    assert_eq!(
+        ds.param.as_ref().unwrap(),
+        &Bytes::from(Word::from(id).as_bytes())
+    );
+
+    let content_bytes = ctx.arweave_resolver.get(&Word::from(id)).await.unwrap();
+    let content = String::from_utf8(content_bytes.into()).unwrap();
+    let query_res = ctx
+        .query(&format!(r#"{{ file(id: "{id}") {{ id, content }} }}"#,))
+        .await
+        .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(object! { file: object!{ id: id, content: content.clone() } })
+    );
 }
 
 #[tokio::test]

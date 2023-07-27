@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 
 use graph::data::value::Word;
+
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;

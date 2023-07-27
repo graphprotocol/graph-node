@@ -1,4 +1,4 @@
-use crate::polling_monitor::IpfsService;
+use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
@@ -30,6 +30,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     instances: SubgraphKeepAlive,
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
+    arweave_service: ArweaveService,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
 }
@@ -165,6 +166,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         metrics_registry: Arc<MetricsRegistry>,
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
+        arweave_service: ArweaveService,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -180,6 +182,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             ipfs_service,
             static_filters,
             env_vars,
+            arweave_service,
         }
     }
 
@@ -387,6 +390,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             registry.cheap_clone(),
             &manifest.id,
             self.ipfs_service.clone(),
+            self.arweave_service.clone(),
         );
 
         // Initialize deployment_head with current deployment head. Any sort of trouble in
