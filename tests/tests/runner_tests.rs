@@ -429,6 +429,52 @@ async fn derived_loaders() {
 }
 
 #[tokio::test]
+async fn end_block() -> anyhow::Result<()> {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("end-block").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        let block_4 = empty_block(block_3.ptr(), test_ptr(4));
+        let block_5 = empty_block(block_4.ptr(), test_ptr(5));
+        let block_6 = empty_block(block_5.ptr(), test_ptr(6));
+        let block_7 = empty_block(block_6.ptr(), test_ptr(7));
+        let block_8 = empty_block(block_7.ptr(), test_ptr(8));
+        let block_9 = empty_block(block_8.ptr(), test_ptr(9));
+        let block_10 = empty_block(block_9.ptr(), test_ptr(10));
+        vec![
+            block_0, block_1, block_2, block_3, block_4, block_5, block_6, block_7, block_8,
+            block_9, block_10,
+        ]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let chain = chain(blocks, &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(stop_block).await;
+
+    // query the last Block entity to check if its 8th block
+    let query_res = ctx
+        .query(r#"{ blocks(first: 1, orderBy: number, orderDirection: desc) { number } }"#)
+        .await
+        .unwrap();
+    assert_eq!(
+        query_res,
+        Some(object! { blocks: vec![object!{ number: "8" }] })
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn file_data_sources() {
     let RunnerTestRecipe {
         stores,
