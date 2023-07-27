@@ -437,9 +437,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_data_sources, persisted_off_chain_data_sources) = self
-            .handle_offchain_triggers(offchain_events, &block)
-            .await?;
+        let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
+            self.handle_offchain_triggers(offchain_events, &block)
+                .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -459,6 +459,24 @@ where
             );
         }
 
+        // EBTODO: Since endBlock reached datasources are ignored in match_and_decode. This might actually not be needed.
+        let end_block_reached_datasources = self.ctx.hosts().iter().filter_map(|host| {
+            if let Some(ds) = host.data_source().as_onchain() {
+                if ds.end_block() == Some(block_ptr.number) {
+                    let mut stored_dynamic_data_source = ds.as_stored_dynamic_data_source();
+                    stored_dynamic_data_source.done_at = Some(block_ptr.number);
+                    Some(stored_dynamic_data_source)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+
+        let processed_datasources = end_block_reached_datasources
+            .chain(processed_offchain_data_sources.into_iter())
+            .collect::<Vec<_>>();
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
         let _section = self.metrics.host.stopwatch.start_section("transact_block");
@@ -495,7 +513,7 @@ where
                 &self.metrics.host.stopwatch,
                 persisted_data_sources,
                 deterministic_errors,
-                processed_data_sources,
+                processed_datasources,
                 is_non_fatal_errors_active,
             )
             .await

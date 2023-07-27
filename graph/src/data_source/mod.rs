@@ -8,7 +8,7 @@ mod tests;
 
 use crate::{
     blockchain::{
-        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
+        Block, BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
         TriggerData as _, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
     },
     components::{
@@ -177,9 +177,19 @@ impl<C: Blockchain> DataSource<C> {
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
         match (self, trigger) {
-            (Self::Onchain(ds), TriggerData::Onchain(trigger)) => ds
-                .match_and_decode(trigger, block, logger)
-                .map(|t| t.map(|t| t.map(MappingTrigger::Onchain))),
+            (Self::Onchain(ds), TriggerData::Onchain(trigger)) => {
+                // If the data source has an `endBlock` field, check that the trigger block is
+                // within the range of blocks that the data source is supposed to handle.
+                // Otherwise, ignore the trigger.
+                if let Some(end_block) = ds.end_block() {
+                    if end_block < block.number() {
+                        return Ok(None);
+                    }
+                }
+
+                ds.match_and_decode(trigger, block, logger)
+                    .map(|t| t.map(|t| t.map(MappingTrigger::Onchain)))
+            }
             (Self::Offchain(ds), TriggerData::Offchain(trigger)) => {
                 Ok(ds.match_and_decode(trigger))
             }

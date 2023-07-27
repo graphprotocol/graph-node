@@ -176,6 +176,7 @@ where
             return vec![];
         }
 
+        // EBTODO
         self.hosts
             .hosts()
             .iter()
@@ -215,7 +216,6 @@ where
         self.causality_region_seq.next_val()
     }
 
-    #[cfg(debug_assertions)]
     pub fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts.hosts()
     }
