@@ -70,7 +70,7 @@ fn data_source_helpers() {
 
 fn new_datasource() -> offchain::DataSource {
     offchain::DataSource::new(
-        "theKind".into(),
+        offchain::OffchainDataSourceKind::Ipfs,
         "theName".into(),
         0,
         Source::Ipfs(CidFile {

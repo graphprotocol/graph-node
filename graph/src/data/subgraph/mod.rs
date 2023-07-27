@@ -722,7 +722,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
-            network: network,
+            network,
         }
     }
 
@@ -836,7 +836,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         if spec_version < SPEC_VERSION_0_0_7
             && data_sources
                 .iter()
-                .any(|ds| OFFCHAIN_KINDS.contains(&ds.kind()))
+                .any(|ds| OFFCHAIN_KINDS.contains_key(ds.kind().as_str()))
         {
             bail!(
                 "Offchain data sources not supported prior to {}",

@@ -107,10 +107,10 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
-    pub fn kind(&self) -> &str {
+    pub fn kind(&self) -> String {
         match self {
-            Self::Onchain(ds) => ds.kind(),
-            Self::Offchain(ds) => &ds.kind,
+            Self::Onchain(ds) => ds.kind().to_owned(),
+            Self::Offchain(ds) => ds.kind.to_string(),
         }
     }
 
@@ -302,7 +302,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
     pub fn kind(&self) -> String {
         match self {
             Self::Onchain(ds) => ds.kind().to_string(),
-            Self::Offchain(ds) => ds.kind.to_owned(),
+            Self::Offchain(ds) => ds.kind.to_string(),
         }
     }
 }
@@ -402,6 +402,7 @@ impl<T> TriggerWithHandler<T> {
     }
 }
 
+#[derive(Debug)]
 pub enum TriggerData<C: Blockchain> {
     Onchain(C::TriggerData),
     Offchain(offchain::TriggerData),
@@ -467,7 +468,7 @@ macro_rules! deserialize_data_source {
                     .ok_or(serde::de::Error::missing_field("kind"))?
                     .as_str()
                     .unwrap_or("?");
-                if OFFCHAIN_KINDS.contains(&kind) {
+                if OFFCHAIN_KINDS.contains_key(&kind) {
                     offchain::$t::deserialize(map.into_deserializer())
                         .map_err(serde::de::Error::custom)
                         .map($t::Offchain)

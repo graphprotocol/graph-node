@@ -6,27 +6,91 @@ use crate::{
         store::{BlockNumber, EntityType, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
-    data::store::scalar::Bytes,
+    data::{store::scalar::Bytes, value::Word},
     data_source,
     ipfs_client::CidFile,
     prelude::{DataSourceContext, Link},
 };
-use anyhow::{self, Context, Error};
+use anyhow::{anyhow, Context, Error};
+use itertools::Itertools;
+use lazy_static::lazy_static;
 use serde::Deserialize;
 use slog::{info, Logger};
 use std::{
+    collections::HashMap,
     fmt,
+    str::FromStr,
     sync::{atomic::AtomicI32, Arc},
 };
 
 use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
 
-pub const OFFCHAIN_KINDS: &[&str] = &["file/ipfs"];
+lazy_static! {
+    pub static ref OFFCHAIN_KINDS: HashMap<&'static str, OffchainDataSourceKind> = [
+        ("file/ipfs", OffchainDataSourceKind::Ipfs),
+        ("file/arweave", OffchainDataSourceKind::Arweave),
+    ]
+    .into_iter()
+    .collect();
+}
 const NOT_DONE_VALUE: i32 = -1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OffchainDataSourceKind {
+    Ipfs,
+    Arweave,
+}
+impl OffchainDataSourceKind {
+    pub fn try_parse_source(&self, bs: Bytes) -> Result<Source, anyhow::Error> {
+        let source = match self {
+            OffchainDataSourceKind::Ipfs => {
+                let cid_file = CidFile::try_from(bs)?;
+                Source::Ipfs(cid_file)
+            }
+            OffchainDataSourceKind::Arweave => {
+                let base64 = Word::from(String::from_utf8(bs.to_vec())?);
+                Source::Arweave(base64)
+            }
+        };
+        Ok(source)
+    }
+}
+
+impl ToString for OffchainDataSourceKind {
+    fn to_string(&self) -> String {
+        // This is less performant than hardcoding the values but makes it more difficult
+        // to be used incorrectly, since this map is quite small it should be fine.
+        OFFCHAIN_KINDS
+            .iter()
+            .find_map(|(str, kind)| {
+                if kind.eq(self) {
+                    Some(str.to_string())
+                } else {
+                    None
+                }
+            })
+            // the kind is validated based on OFFCHAIN_KINDS so it's guaranteed to exist
+            .unwrap()
+    }
+}
+
+impl FromStr for OffchainDataSourceKind {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        OFFCHAIN_KINDS
+            .iter()
+            .find_map(|(str, kind)| if str.eq(&s) { Some(kind.clone()) } else { None })
+            .ok_or(anyhow!(
+                "unsupported offchain datasource kind: {s}, expected one of: {}",
+                OFFCHAIN_KINDS.iter().map(|x| x.0).join(",")
+            ))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct DataSource {
-    pub kind: String,
+    pub kind: OffchainDataSourceKind,
     pub name: String,
     pub manifest_idx: u32,
     pub source: Source,
@@ -39,7 +103,7 @@ pub struct DataSource {
 
 impl DataSource {
     pub fn new(
-        kind: String,
+        kind: OffchainDataSourceKind,
         name: String,
         manifest_idx: u32,
         source: Source,
@@ -104,11 +168,13 @@ impl DataSource {
             template.name
         ))?;
 
-        let source = match source.parse() {
-            Ok(source) => Source::Ipfs(source),
-
-            // Ignore data sources created with an invalid CID.
-            Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
+        let source = match template.kind {
+            OffchainDataSourceKind::Ipfs => match source.parse() {
+                Ok(source) => Source::Ipfs(source),
+                // Ignore data sources created with an invalid CID.
+                Err(e) => return Err(DataSourceCreationError::Ignore(source, e)),
+            },
+            OffchainDataSourceKind::Arweave => Source::Arweave(Word::from(source)),
         };
 
         Ok(Self {
@@ -139,10 +205,7 @@ impl DataSource {
     }
 
     pub fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        let param = match self.source {
-            Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
-        };
-
+        let param = self.source.clone().into();
         let done_at = self.done_at.load(std::sync::atomic::Ordering::SeqCst);
         let done_at = if done_at == NOT_DONE_VALUE {
             None
@@ -180,9 +243,7 @@ impl DataSource {
         } = stored;
 
         let param = param.context("no param on stored data source")?;
-        let cid_file = CidFile::try_from(param)?;
-
-        let source = Source::Ipfs(cid_file);
+        let source = template.kind.try_parse_source(param)?;
         let context = Arc::new(context.map(serde_json::from_value).transpose()?);
 
         Ok(Self {
@@ -232,9 +293,12 @@ impl DataSource {
     }
 }
 
+pub type Base64 = Word;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Source {
     Ipfs(CidFile),
+    Arweave(Base64),
 }
 
 impl Source {
@@ -247,6 +311,16 @@ impl Source {
     pub fn address(&self) -> Option<Vec<u8>> {
         match self {
             Source::Ipfs(ref cid) => Some(cid.to_bytes()),
+            Source::Arweave(ref base64) => Some(base64.as_bytes().to_vec()),
+        }
+    }
+}
+
+impl Into<Bytes> for Source {
+    fn into(self) -> Bytes {
+        match self {
+            Source::Ipfs(ref link) => Bytes::from(link.to_bytes()),
+            Source::Arweave(ref base64) => Bytes::from(base64.as_bytes()),
         }
     }
 }
@@ -298,18 +372,13 @@ impl UnresolvedDataSource {
             "kind" => &self.kind,
             "source" => format_args!("{:?}", &self.source),
         );
-        let source = match self.kind.as_str() {
-            "file/ipfs" => Source::Ipfs(self.source.file.link.parse()?),
-            _ => {
-                anyhow::bail!(
-                    "offchain data source has invalid `kind`, expected `file/ipfs` but found {}",
-                    self.kind
-                );
-            }
-        };
+
+        let kind = OffchainDataSourceKind::from_str(self.kind.as_str())?;
+        let source = kind.try_parse_source(Bytes::from(self.source.file.link.as_bytes()))?;
+
         Ok(DataSource {
             manifest_idx,
-            kind: self.kind,
+            kind,
             name: self.name,
             source,
             mapping: self.mapping.resolve(resolver, logger).await?,
@@ -349,7 +418,7 @@ pub struct UnresolvedDataSourceTemplate {
 
 #[derive(Clone, Debug)]
 pub struct DataSourceTemplate {
-    pub kind: String,
+    pub kind: OffchainDataSourceKind,
     pub network: Option<String>,
     pub name: String,
     pub manifest_idx: u32,
@@ -363,6 +432,8 @@ impl UnresolvedDataSourceTemplate {
         logger: &Logger,
         manifest_idx: u32,
     ) -> Result<DataSourceTemplate, Error> {
+        let kind = OffchainDataSourceKind::from_str(&self.kind)?;
+
         let mapping = self
             .mapping
             .resolve(resolver, logger)
@@ -370,7 +441,7 @@ impl UnresolvedDataSourceTemplate {
             .with_context(|| format!("failed to resolve data source template {}", self.name))?;
 
         Ok(DataSourceTemplate {
-            kind: self.kind,
+            kind,
             network: self.network,
             name: self.name,
             manifest_idx,
@@ -398,5 +469,35 @@ impl fmt::Debug for TriggerData {
                 _source: &self.source
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::str::FromStr;
+
+    use crate::{
+        data::{store::scalar::Bytes, value::Word},
+        ipfs_client::CidFile,
+    };
+
+    use super::{OffchainDataSourceKind, Source};
+
+    #[test]
+    fn test_source_bytes_round_trip() {
+        let base64 = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
+        let cid = CidFile::from_str("QmVkvoPGi9jvvuxsHDVJDgzPEzagBaWSZRYoRDzU244HjZ").unwrap();
+
+        let ipfs_source: Bytes = Source::Ipfs(cid.clone()).into();
+        let s = OffchainDataSourceKind::Ipfs
+            .try_parse_source(ipfs_source)
+            .unwrap();
+        assert! { matches!(s, Source::Ipfs(ipfs) if ipfs.eq(&cid))};
+
+        let arweave_source = Source::Arweave(Word::from(base64));
+        let s = OffchainDataSourceKind::Arweave
+            .try_parse_source(arweave_source.into())
+            .unwrap();
+        assert! { matches!(s, Source::Arweave(b64) if b64.eq(&base64))};
     }
 }
