@@ -767,7 +767,7 @@ impl EthereumAdapter {
                 filter
                     .polling_intervals
                     .iter()
-                    .any(|(start_block, _, interval)| match polling_filter_type {
+                    .any(|(start_block, interval)| match polling_filter_type {
                         BlockPollingFilterType::Once => {
                             (*interval == 0) && (block_number == start_block)
                         }
@@ -1716,12 +1716,14 @@ pub(crate) fn parse_block_triggers(
             EthereumBlockTriggerType::End,
         ));
     } else if !block_filter.polling_intervals.is_empty() {
-        let has_polling_trigger = &block_filter.polling_intervals.iter().any(
-            |(start_block, _, interval)| match interval {
-                0 => false,
-                _ => (block_number - *start_block) % *interval == 0,
-            },
-        );
+        let has_polling_trigger =
+            &block_filter
+                .polling_intervals
+                .iter()
+                .any(|(start_block, interval)| match interval {
+                    0 => false,
+                    _ => (block_number - *start_block) % *interval == 0,
+                });
         if *has_polling_trigger {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3,
@@ -1751,12 +1753,14 @@ pub(crate) fn parse_initialization_triggers(
             EthereumBlockTriggerType::Start,
         ));
     } else if !block_filter.polling_intervals.is_empty() {
-        let has_polling_trigger = &block_filter.polling_intervals.iter().any(
-            |(start_block, _, interval)| match interval {
-                0 => false,
-                _ => (block_number - *start_block) % *interval == 0,
-            },
-        );
+        let has_polling_trigger =
+            &block_filter
+                .polling_intervals
+                .iter()
+                .any(|(start_block, interval)| match interval {
+                    0 => false,
+                    _ => (block_number - *start_block) % *interval == 0,
+                });
         if *has_polling_trigger {
             triggers.push(EthereumTrigger::Block(
                 block_ptr,

@@ -161,7 +161,6 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
             polling_intervals: _polling_intervals,
             contract_addresses: _contract_addresses,
             trigger_every_block,
-            ..
         } = self.block.clone();
 
         let log_filters: Vec<LogFilter> = self.log.into();
@@ -585,8 +584,8 @@ impl From<&EthereumBlockFilter> for EthereumCallFilter {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct EthereumBlockFilter {
-    /// Used for polling block handlers, a hashset of (start_block, address, polling_interval)
-    pub polling_intervals: HashSet<(BlockNumber, Address, i32)>,
+    /// Used for polling block handlers, a hashset of (start_block, polling_interval)
+    pub polling_intervals: HashSet<(BlockNumber, i32)>,
     pub contract_addresses: HashSet<(BlockNumber, Address)>,
     pub trigger_every_block: bool,
 }
@@ -649,11 +648,9 @@ impl EthereumBlockFilter {
                         .into_iter()
                         .filter_map(|block_handler| match block_handler.filter {
                             Some(BlockHandlerFilter::Polling { every }) => {
-                                Some((data_source.start_block, data_source.address.unwrap(), every))
+                                Some((data_source.start_block, every))
                             }
-                            Some(BlockHandlerFilter::Once) => {
-                                Some((data_source.start_block, data_source.address.unwrap(), 0))
-                            }
+                            Some(BlockHandlerFilter::Once) => Some((data_source.start_block, 0)),
                             _ => None,
                         })
                         .collect(),
@@ -701,36 +698,18 @@ impl EthereumBlockFilter {
             }
         }
 
-        for (other_start_block, other_address, other_polling_interval) in &polling_intervals {
-            let conflict = self.polling_intervals.iter().find(
-                |(_, current_address, current_polling_interval)| {
-                    *current_address == *other_address
-                        && *current_polling_interval == *other_polling_interval
+        for (other_start_block, other_polling_interval) in &polling_intervals {
+            if self.polling_intervals.iter().any(
+                |(current_start_block, current_polling_interval)| {
+                    *current_polling_interval == *other_polling_interval
+                        && *current_start_block == *other_start_block
                 },
-            );
-
-            if let Some((conflict_start_block, conflict_address, _)) = conflict {
-                // Conflict found, handle it here
-                // Remove the conflicting interval and insert the new one only if it has a lower start block
-                if other_start_block < conflict_start_block {
-                    self.polling_intervals.remove(&(
-                        *conflict_start_block,
-                        *conflict_address,
-                        *other_polling_interval,
-                    ));
-                    self.polling_intervals.insert((
-                        *other_start_block,
-                        *other_address,
-                        *other_polling_interval,
-                    ));
-                }
+            ) {
+                // Already exists, do nothing
             } else {
-                // No conflict found or new interval has a lower start block, insert the polling interval
-                self.polling_intervals.insert((
-                    *other_start_block,
-                    *other_address,
-                    *other_polling_interval,
-                ));
+                // No conflict found, insert the polling interval
+                self.polling_intervals
+                    .insert((*other_start_block, *other_polling_interval));
             }
         }
     }
@@ -1368,7 +1347,7 @@ mod tests {
         };
 
         let extension = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(1, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(1, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
         };
@@ -1380,22 +1359,19 @@ mod tests {
             base.contract_addresses,
         );
 
-        assert_eq!(
-            HashSet::from_iter(vec![(1, address(1), 3)]),
-            base.polling_intervals,
-        );
+        assert_eq!(HashSet::from_iter(vec![(1, 3)]), base.polling_intervals,);
     }
 
     #[test]
-    fn extending_ethereum_block_filter_conflict_picks_lowest_block_from_ext() {
+    fn extending_ethereum_block_filter_conflict_includes_one_copy() {
         let mut base = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(3, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(3, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
         };
 
         let extension = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(2, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(2, 3), (3, 3)]),
             contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
             trigger_every_block: false,
         };
@@ -1408,7 +1384,7 @@ mod tests {
         );
 
         assert_eq!(
-            HashSet::from_iter(vec![(2, address(1), 3)]),
+            HashSet::from_iter(vec![(2, 3), (3, 3)]),
             base.polling_intervals,
         );
     }
@@ -1416,13 +1392,13 @@ mod tests {
     #[test]
     fn extending_ethereum_block_filter_conflict_picks_lowest_block_from_base() {
         let mut base = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(2, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(2, 3)]),
             contract_addresses: HashSet::from_iter(vec![(2, address(1))]),
             trigger_every_block: false,
         };
 
         let extension = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(3, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(3, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: false,
         };
@@ -1434,10 +1410,7 @@ mod tests {
             base.contract_addresses,
         );
 
-        assert_eq!(
-            HashSet::from_iter(vec![(2, address(1), 3)]),
-            base.polling_intervals,
-        );
+        assert_eq!(HashSet::from_iter(vec![(2, 3)]), base.polling_intervals,);
     }
 
     #[test]
@@ -1463,7 +1436,7 @@ mod tests {
     fn extending_ethereum_block_filter_every_block_in_base_and_merge_contract_addresses_and_polling_intervals(
     ) {
         let mut base = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(10, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(10, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
             trigger_every_block: true,
         };
@@ -1481,22 +1454,19 @@ mod tests {
             HashSet::from_iter(vec![(10, address(2))]),
             base.contract_addresses,
         );
-        assert_eq!(
-            HashSet::from_iter(vec![(10, address(1), 3)]),
-            base.polling_intervals,
-        );
+        assert_eq!(HashSet::from_iter(vec![(10, 3)]), base.polling_intervals,);
     }
 
     #[test]
     fn extending_ethereum_block_filter_every_block_in_ext_and_merge_contract_addresses() {
         let mut base = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(10, address(1), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(10, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
             trigger_every_block: false,
         };
 
         let extension = EthereumBlockFilter {
-            polling_intervals: HashSet::from_iter(vec![(10, address(2), 3)]),
+            polling_intervals: HashSet::from_iter(vec![(10, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(1))]),
             trigger_every_block: true,
         };
@@ -1509,7 +1479,7 @@ mod tests {
             base.contract_addresses,
         );
         assert_eq!(
-            HashSet::from_iter(vec![(10, address(1), 3), (10, address(2), 3)]),
+            HashSet::from_iter(vec![(10, 3), (10, 3)]),
             base.polling_intervals,
         );
     }
