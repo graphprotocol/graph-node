@@ -9,6 +9,7 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
+use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
 use tiny_keccak::{keccak256, Keccak};
@@ -93,7 +94,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name,
             manifest_idx: template.manifest_idx,
             address: Some(address),
-            start_block: 0,
+            start_block: creation_block,
             mapping: template.mapping,
             context: Arc::new(context),
             creation_block: Some(creation_block),
@@ -218,7 +219,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name.clone(),
             manifest_idx,
             address,
-            start_block: 0,
+            start_block: creation_block.unwrap_or(0),
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
@@ -426,13 +427,7 @@ impl DataSource {
                     Some(BlockHandlerFilter::Polling { every }) => {
                         // POLLING_TODO: Get creation block if start_block is zero
                         let start_block = self.start_block;
-                        let should_trigger = match every {
-                            // 0 is an invalid polling interval
-                            // A polling interval of 0 is used internally to indicate
-                            // that the block handler should be triggered once
-                            0 => false,
-                            _ => (block - start_block) % every == 0,
-                        };
+                        let should_trigger = (block - start_block) % every.get() as i32 == 0;
                         should_trigger
                     }
                     None => true,
@@ -1108,7 +1103,7 @@ pub enum BlockHandlerFilter {
     // This filter will trigger once at the startBlock
     Once,
     // This filter will trigger in a recurring interval set by the `every` field.
-    Polling { every: i32 },
+    Polling { every: NonZeroU32 },
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]

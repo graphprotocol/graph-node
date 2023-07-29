@@ -191,9 +191,9 @@ contract("Contract", (accounts) => {
     expect(result.errors).to.be.undefined;
     expect(result.data).to.deep.equal({
       blockFromOtherPollingHandlers: [
+        { id: "2", number: "2" },
+        { id: "4", number: "4" },
         { id: "6", number: "6" },
-        { id: "8", number: "8" },
-        { id: "10", number: "10" },
       ],
     });
   });

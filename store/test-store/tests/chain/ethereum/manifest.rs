@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -416,7 +417,12 @@ specVersion: 0.0.8
     let filter = data_source.mapping.block_handlers[0].filter.clone();
 
     assert_eq!(0, validation_errors.len());
-    assert_eq!(BlockHandlerFilter::Polling { every: 10 }, filter.unwrap());
+    assert_eq!(
+        BlockHandlerFilter::Polling {
+            every: NonZeroU32::new(10).unwrap()
+        },
+        filter.unwrap()
+    );
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
@@ -478,7 +484,9 @@ specVersion: 0.0.8
     assert_eq!(
         vec![
             Some(BlockHandlerFilter::Once),
-            Some(BlockHandlerFilter::Polling { every: 10 })
+            Some(BlockHandlerFilter::Polling {
+                every: NonZeroU32::new(10).unwrap()
+            })
         ],
         filters
     );
@@ -539,7 +547,12 @@ specVersion: 0.0.8
 
     assert_eq!(1, validation_errors.len());
     assert_eq!(
-        vec![None, Some(BlockHandlerFilter::Polling { every: 10 })],
+        vec![
+            None,
+            Some(BlockHandlerFilter::Polling {
+                every: NonZeroU32::new(10).unwrap()
+            })
+        ],
         filters
     );
 
