@@ -144,10 +144,16 @@ where
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
+            let current_ptr = self.inputs.store.block_ptr();
 
             let static_filters = self.inputs.static_filters
                 || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
 
+            // if static_filters is enabled, build a minimal filter with the static data sources and
+            // add the necessary filters based on templates.
+            // if not enabled we just stick to the filter based on all the data sources.
+            // This specifically removes dynamic data sources based filters because these can be derived
+            // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
             let filter = if static_filters {
                 if !self.inputs.static_filters {
                     info!(self.logger, "forcing subgraph to use static filters.")
@@ -156,7 +162,16 @@ where
                 let static_data_sources = self.ctx.instance().static_data_sources();
 
                 let mut filter = C::TriggerFilter::from_data_sources(
-                    static_data_sources.iter().filter_map(|ds| ds.as_onchain()),
+                    static_data_sources
+                        .iter()
+                        .filter_map(|ds| ds.as_onchain())
+                        // Filter out data sources that have reached their end block.
+                        .filter(|ds| match ds.end_block() {
+                            Some(end_block) => {
+                                current_ptr.as_ref().map(|ptr| ptr.number).unwrap_or(0) > end_block
+                            }
+                            None => true,
+                        }),
                 );
 
                 filter.extend_with_template(

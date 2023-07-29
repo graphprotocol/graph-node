@@ -320,36 +320,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .with_context(|| format!("no chain configured for network {}", network))?
             .clone();
 
-        // if static_filters is enabled, build a minimal filter with the static data sources and
-        // add the necessary filters based on templates.
-        // if not enabled we just stick to the filter based on all the data sources.
-        // This specifically removes dynamic data sources based filters because these can be derived
-        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-        // let static_filters =
-        // self.static_filters || manifest.data_sources.len() >= ENV_VARS.static_filters_threshold;
-
-        // let filter = if static_filters {
-        //     if !self.static_filters {
-        //         info!(logger, "forcing subgraph to use static filters.")
-        //     }
-
-        //     let onchain_static_data_sources =
-        //         static_data_sources.iter().filter_map(|d| d.as_onchain());
-
-        //     let mut filter = C::TriggerFilter::from_data_sources(onchain_static_data_sources);
-
-        //     filter.extend_with_template(
-        //         manifest
-        //             .templates
-        //             .iter()
-        //             .filter_map(|ds| ds.as_onchain())
-        //             .cloned(),
-        //     );
-        //     filter
-        // } else {
-        //     C::TriggerFilter::from_data_sources(onchain_data_sources.iter())
-        // };
-
         let start_blocks: Vec<BlockNumber> = data_sources
             .iter()
             .filter_map(|d| d.as_onchain().map(|d: &C::DataSource| d.start_block()))
