@@ -66,7 +66,8 @@ where
 {
     instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
-    pub filter: C::TriggerFilter,
+    // EBTODO
+    // pub filter: C::TriggerFilter,
     pub offchain_monitor: OffchainMonitor,
     trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 }
@@ -75,14 +76,14 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn new(
         instance: SubgraphInstance<C, T>,
         instances: SubgraphKeepAlive,
-        filter: C::TriggerFilter,
+        // filter: C::TriggerFilter,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     ) -> Self {
         Self {
             instance,
             instances,
-            filter,
+            // filter,
             offchain_monitor,
             trigger_processor,
         }

@@ -16,6 +16,7 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     network: String,
     host_builder: T,
     templates: Arc<Vec<DataSourceTemplate<C>>>,
+    static_data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
     /// The hosts represent the data sources in the subgraph. There is one host per data source.
@@ -36,6 +37,8 @@ where
     pub fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
+        static_data_sources: Vec<DataSource<C>>,
+        data_sources: Vec<DataSource<C>>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
         offchain_monitor: &mut OffchainMonitor,
@@ -49,6 +52,7 @@ where
             host_builder,
             subgraph_id,
             network,
+            static_data_sources: Arc::new(static_data_sources),
             hosts: Hosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -59,7 +63,7 @@ where
         // Create a new runtime host for each data source in the subgraph manifest;
         // we use the same order here as in the subgraph manifest to make the
         // event processing behavior predictable
-        for ds in manifest.data_sources {
+        for ds in data_sources {
             // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
             // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
             // `IndexingContext`.
@@ -218,6 +222,14 @@ where
 
     pub fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts.hosts()
+    }
+
+    pub fn static_data_sources(&self) -> Arc<Vec<DataSource<C>>> {
+        self.static_data_sources.clone()
+    }
+
+    pub fn templates(&self) -> Arc<Vec<DataSourceTemplate<C>>> {
+        self.templates.clone()
     }
 }
 

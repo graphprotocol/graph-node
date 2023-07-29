@@ -145,11 +145,43 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
 
-            let mut block_stream =
-                new_block_stream(&self.inputs, &self.ctx.filter, &self.metrics.subgraph)
-                    .await?
-                    .map_err(CancelableError::Error)
-                    .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let static_filters = self.inputs.static_filters
+                || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
+
+            let filter = if static_filters {
+                if !self.inputs.static_filters {
+                    info!(self.logger, "forcing subgraph to use static filters.")
+                }
+
+                let static_data_sources = self.ctx.instance().static_data_sources();
+
+                let mut filter = C::TriggerFilter::from_data_sources(
+                    static_data_sources.iter().filter_map(|ds| ds.as_onchain()),
+                );
+
+                filter.extend_with_template(
+                    self.ctx
+                        .instance()
+                        .templates()
+                        .iter()
+                        .filter_map(|ds| ds.as_onchain())
+                        .cloned(),
+                );
+
+                filter
+            } else {
+                C::TriggerFilter::from_data_sources(
+                    self.ctx
+                        .hosts()
+                        .iter()
+                        .filter_map(|h| h.data_source().as_onchain()),
+                )
+            };
+
+            let mut block_stream = new_block_stream(&self.inputs, &filter, &self.metrics.subgraph)
+                .await?
+                .map_err(CancelableError::Error)
+                .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned
@@ -675,11 +707,6 @@ where
             );
             block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }
-
-        // Merge filters from data sources into the block stream builder
-        self.ctx
-            .filter
-            .extend(data_sources.iter().filter_map(|ds| ds.as_onchain()));
     }
 }
 
