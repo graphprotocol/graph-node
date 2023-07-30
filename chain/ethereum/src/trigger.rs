@@ -303,10 +303,14 @@ impl EthereumTrigger {
 impl Ord for EthereumTrigger {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
+            // Block triggers with `EthereumBlockTriggerType::Start` always come
+            (Self::Block(_, EthereumBlockTriggerType::Start), _) => Ordering::Less,
+            (_, Self::Block(_, EthereumBlockTriggerType::Start)) => Ordering::Greater,
+
             // Keep the order when comparing two block triggers
             (Self::Block(..), Self::Block(..)) => Ordering::Equal,
 
-            // Block triggers always come last
+            // Block triggers with `EthereumBlockTriggerType::End` always come last
             (Self::Block(..), _) => Ordering::Greater,
             (_, Self::Block(..)) => Ordering::Less,
 
