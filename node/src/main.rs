@@ -379,6 +379,18 @@ async fn main() {
             Some(&eth_firehose_only_networks)
         };
 
+        if !opt.disable_block_ingestor && eth_networks.networks.len() != 0 {
+            let eth_network_names = Vec::from_iter(eth_networks.networks.keys());
+            let fh_only = match eth_firehose_only_networks {
+                Some(firehose_only) => Some(Vec::from_iter(firehose_only.networks.keys())),
+                None => None,
+            };
+            network_store
+                .block_store()
+                .cleanup_ethereum_shallow_blocks(eth_network_names, fh_only)
+                .unwrap();
+        }
+
         let ethereum_chains = ethereum_networks_as_chains(
             &mut blockchain_map,
             &logger,
