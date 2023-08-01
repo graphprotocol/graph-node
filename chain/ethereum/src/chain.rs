@@ -48,7 +48,7 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
-        parse_initialization_triggers, parse_log_triggers,
+        parse_log_triggers,
     },
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
@@ -644,11 +644,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             }
             BlockFinality::NonFinal(full_block) => {
                 let mut triggers = Vec::new();
-                // Initialization triggers are always run first
-                triggers.append(&mut parse_initialization_triggers(
-                    &filter.block,
-                    full_block,
-                ));
                 triggers.append(&mut parse_log_triggers(
                     &filter.log,
                     &full_block.ethereum_block,

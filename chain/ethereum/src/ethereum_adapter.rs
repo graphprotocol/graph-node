@@ -1698,6 +1698,10 @@ pub(crate) fn parse_block_triggers(
     };
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(
+            block_ptr.clone(),
+            EthereumBlockTriggerType::Start,
+        ));
+        triggers.push(EthereumTrigger::Block(
             block_ptr,
             EthereumBlockTriggerType::End,
         ));
@@ -1710,6 +1714,23 @@ pub(crate) fn parse_block_triggers(
                     0 => false,
                     _ => (block_number - *start_block) % *interval == 0,
                 });
+
+        let has_once_trigger =
+            &block_filter
+                .polling_intervals
+                .iter()
+                .any(|(start_block, interval)| match interval {
+                    0 => block_number == *start_block,
+                    _ => false,
+                });
+
+        if *has_once_trigger {
+            triggers.push(EthereumTrigger::Block(
+                block_ptr3.clone(),
+                EthereumBlockTriggerType::Start,
+            ));
+        }
+
         if *has_polling_trigger {
             triggers.push(EthereumTrigger::Block(
                 block_ptr3,
@@ -1717,44 +1738,6 @@ pub(crate) fn parse_block_triggers(
             ));
         }
     }
-    triggers
-}
-
-pub(crate) fn parse_initialization_triggers(
-    block_filter: &EthereumBlockFilter,
-    block: &EthereumBlockWithCalls,
-) -> Vec<EthereumTrigger> {
-    if block_filter.is_empty() {
-        return vec![];
-    }
-
-    let block_ptr = BlockPtr::from(&block.ethereum_block);
-    let block_number = block_ptr.number;
-
-    let mut triggers = vec![];
-
-    if block_filter.trigger_every_block {
-        triggers.push(EthereumTrigger::Block(
-            block_ptr,
-            EthereumBlockTriggerType::Start,
-        ));
-    } else if !block_filter.polling_intervals.is_empty() {
-        let has_polling_trigger =
-            &block_filter
-                .polling_intervals
-                .iter()
-                .any(|(start_block, interval)| match interval {
-                    0 => false,
-                    _ => (block_number - *start_block) % *interval == 0,
-                });
-        if *has_polling_trigger {
-            triggers.push(EthereumTrigger::Block(
-                block_ptr,
-                EthereumBlockTriggerType::Start,
-            ));
-        }
-    }
-
     triggers
 }
 
@@ -2224,10 +2207,13 @@ mod tests {
         };
 
         assert_eq!(
-            vec![EthereumTrigger::Block(
-                BlockPtr::from((hash(2), 2)),
-                EthereumBlockTriggerType::End
-            )],
+            vec![
+                EthereumTrigger::Block(
+                    BlockPtr::from((hash(2), 2)),
+                    EthereumBlockTriggerType::Start
+                ),
+                EthereumTrigger::Block(BlockPtr::from((hash(2), 2)), EthereumBlockTriggerType::End)
+            ],
             parse_block_triggers(
                 &EthereumBlockFilter {
                     polling_intervals: HashSet::new(),
