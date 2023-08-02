@@ -346,7 +346,6 @@ mod data {
                   data         jsonb not null
                 );
                 create index blocks_number ON {nsp}.blocks using btree(number);
-                create index blocks_expr_idx ON {nsp}.blocks USING BTREE ((data->'block'->'data')) where data->'block'->'data' = 'null'::jsonb;
 
                 create table {nsp}.call_cache (
 	              id               bytea not null primary key,
@@ -419,14 +418,18 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn cleanup_shallow_blocks(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        pub(super) fn cleanup_shallow_blocks(
+            &self,
+            conn: &PgConnection,
+            lowest_block: i32,
+        ) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             };
             conn.batch_execute(&format!(
-                "delete from {} WHERE data->'block'->'data' = 'null'::jsonb;",
-                table_name
+                "delete from {} WHERE number >= {} AND data->'block'->'data' = 'null'::jsonb;",
+                table_name, lowest_block,
             ))?;
             Ok(())
         }
@@ -1566,9 +1569,9 @@ impl ChainStore {
             .delete_blocks_by_hash(&conn, &self.chain, block_hashes)
     }
 
-    pub fn cleanup_shallow_blocks(&self) -> Result<(), StoreError> {
+    pub fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
-        self.storage.cleanup_shallow_blocks(&conn)?;
+        self.storage.cleanup_shallow_blocks(&conn, lowest_block)?;
         Ok(())
     }
 

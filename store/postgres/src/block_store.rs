@@ -456,9 +456,15 @@ impl BlockStore {
                     continue;
                 };
             }
+            match store.chain_head_block(&&store.chain).unwrap_or(None) {
+                Some(head) => {
+                    let lower_bound = head - ENV_VARS.reorg_threshold;
 
-            info!(&self.logger, "Cleaning shallow blocks on non-firehose chain"; "network" => &store.chain);
-            store.cleanup_shallow_blocks()?
+                    info!(&self.logger, "Cleaning shallow blocks on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
+                    store.cleanup_shallow_blocks(lower_bound)?
+                }
+                None => {}
+            }
         }
         Ok(())
     }
