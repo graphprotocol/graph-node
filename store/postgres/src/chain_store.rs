@@ -434,6 +434,15 @@ mod data {
             Ok(())
         }
 
+        pub(super) fn remove_cursor(&self, conn: &PgConnection) -> Result<(), StoreError> {
+            use public::ethereum_networks::dsl::*;
+
+            update(ethereum_networks)
+                .set(head_block_cursor.eq(None as Option<String>))
+                .execute(conn)?;
+            Ok(())
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
@@ -1572,6 +1581,12 @@ impl ChainStore {
     pub fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
         let conn = self.get_conn()?;
         self.storage.cleanup_shallow_blocks(&conn, lowest_block)?;
+        Ok(())
+    }
+
+    pub fn remove_cursor(&self) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.remove_cursor(&conn)?;
         Ok(())
     }
 

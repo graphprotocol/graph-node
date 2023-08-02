@@ -460,10 +460,17 @@ impl BlockStore {
                 Some(head) => {
                     let lower_bound = head - ENV_VARS.reorg_threshold;
 
-                    info!(&self.logger, "Cleaning shallow blocks on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
+                    info!(&self.logger, "Cleaning shallow blocks and cursor on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
+                    let ret = store.remove_cursor();
+                    if ret.is_err() {
+                        return ret;
+                    }
                     store.cleanup_shallow_blocks(lower_bound)?
                 }
-                None => {}
+                None => {
+                    info!(&self.logger, "Cleaning any cursor on non-firehose chain"; "network" => &store.chain);
+                    store.remove_cursor()?
+                }
             }
         }
         Ok(())
