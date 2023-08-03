@@ -456,21 +456,18 @@ impl BlockStore {
                     continue;
                 };
             }
-            match store.chain_head_block(&&store.chain).unwrap_or(None) {
-                Some(head) => {
-                    let lower_bound = head - ENV_VARS.reorg_threshold;
+            if let Some(head) = store.chain_head_block(&&store.chain)? {
+                let lower_bound = head.saturating_sub(ENV_VARS.reorg_threshold * 2);
 
-                    info!(&self.logger, "Cleaning shallow blocks and cursor on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
-                    let ret = store.remove_cursor();
-                    if ret.is_err() {
-                        return ret;
-                    }
-                    store.cleanup_shallow_blocks(lower_bound)?
+                info!(&self.logger, "Cleaning shallow blocks and cursor on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
+                let ret = store.remove_cursor();
+                if ret.is_err() {
+                    return ret;
                 }
-                None => {
-                    info!(&self.logger, "Cleaning any cursor on non-firehose chain"; "network" => &store.chain);
-                    store.remove_cursor()?
-                }
+                store.cleanup_shallow_blocks(lower_bound)?
+            } else {
+                info!(&self.logger, "Cleaning any cursor on non-firehose chain"; "network" => &store.chain);
+                store.remove_cursor()?
             }
         }
         Ok(())
