@@ -270,17 +270,14 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
         // If there is a non-filtered block handler, we need to check if there are any
-        // filtered block handlers
+        // filtered block handlers except for the ones with call filter
         // If there are, we do not allow that combination
-        let has_both_filtered_and_non_filtered = has_non_filtered_block_handler
-            && (call_filtered_block_handler_count > 0
-                || polling_filtered_block_handler_count > 0
-                || initialization_handler_count > 0);
+        let has_restricted_filtered_and_non_filtered_combination = has_non_filtered_block_handler
+            && (polling_filtered_block_handler_count > 0 || initialization_handler_count > 0);
 
-        if has_both_filtered_and_non_filtered {
+        if has_restricted_filtered_and_non_filtered_combination {
             errors.push(anyhow!(
-                "data source has both filtered and non-filtered block handlers, \
-                     this is not allowed"
+                "data source has a combination of filtered and non-filtered block handlers that is not allowed"
             ));
         }
 
@@ -425,7 +422,6 @@ impl DataSource {
                 .iter()
                 .find(move |handler| match handler.filter {
                     Some(BlockHandlerFilter::Polling { every }) => {
-                        // POLLING_TODO: Get creation block if start_block is zero
                         let start_block = self.start_block;
                         let should_trigger = (block - start_block) % every.get() as i32 == 0;
                         should_trigger

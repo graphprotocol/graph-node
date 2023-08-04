@@ -699,18 +699,8 @@ impl EthereumBlockFilter {
         }
 
         for (other_start_block, other_polling_interval) in &polling_intervals {
-            if self.polling_intervals.iter().any(
-                |(current_start_block, current_polling_interval)| {
-                    *current_polling_interval == *other_polling_interval
-                        && *current_start_block == *other_start_block
-                },
-            ) {
-                // Already exists, do nothing
-            } else {
-                // No conflict found, insert the polling interval
-                self.polling_intervals
-                    .insert((*other_start_block, *other_polling_interval));
-            }
+            self.polling_intervals
+                .insert((*other_start_block, *other_polling_interval));
         }
     }
 
@@ -720,12 +710,13 @@ impl EthereumBlockFilter {
 
     /// An empty filter is one that never matches.
     pub fn is_empty(&self) -> bool {
+        let Self {
+            contract_addresses,
+            polling_intervals,
+            trigger_every_block,
+        } = self;
         // If we are triggering every block, we are of course not empty
-        if self.trigger_every_block {
-            return false;
-        }
-
-        self.contract_addresses.is_empty() && self.polling_intervals.is_empty()
+        !*trigger_every_block && contract_addresses.is_empty() && polling_intervals.is_empty()
     }
 
     fn find_contract_address(&self, candidate: &Address) -> Option<(i32, Address)> {
