@@ -442,6 +442,19 @@ impl BlockStore {
         Ok(())
     }
 
+    // cleanup_ethereum_shallow_blocks will delete cached blocks previously produced by firehose on
+    // an ethereum chain that is not currently configured to use firehose provider.
+    //
+    // This is to prevent an issue where firehose stores "shallow" blocks (with null data) in `chainX.blocks`
+    // table but RPC provider requires those blocks to be full.
+    //
+    // - This issue only affects ethereum chains.
+    // - This issue only happens when switching providers from firehose back to RPC
+    // - Only the shallow blocks close to HEAD need to be deleted, the older blocks don't need data.
+    // - Deleting everything or creating an index on empty data would cause too much performance
+    // hit on graph-node startup.
+    //
+    // Discussed here: https://github.com/graphprotocol/graph-node/pull/4790
     pub fn cleanup_ethereum_shallow_blocks(
         &self,
         ethereum_networks: Vec<&String>,
