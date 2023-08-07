@@ -434,13 +434,35 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn remove_cursor(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        pub(super) fn remove_cursor(
+            &self,
+            conn: &PgConnection,
+            chain: &str,
+        ) -> Result<Option<BlockNumber>, StoreError> {
+            use diesel::dsl::not;
             use public::ethereum_networks::dsl::*;
 
-            update(ethereum_networks)
-                .set(head_block_cursor.eq(None as Option<String>))
-                .execute(conn)?;
-            Ok(())
+            match update(
+                ethereum_networks
+                    .filter(name.eq(chain))
+                    .filter(not(head_block_cursor.is_null())),
+            )
+            .set(head_block_cursor.eq(None as Option<String>))
+            .returning(head_block_number)
+            .get_result::<Option<i64>>(conn)
+            {
+                Ok(res) => match res {
+                    Some(num) => Ok(Some(num as i32)),
+                    None => Ok(None),
+                },
+                Err(e) => {
+                    if e == diesel::result::Error::NotFound {
+                        return Ok(None);
+                    }
+                    Err(e)
+                }
+            }
+            .map_err(Into::into)
         }
 
         /// Insert a block. If the table already contains a block with the
@@ -1584,10 +1606,10 @@ impl ChainStore {
         Ok(())
     }
 
-    pub fn remove_cursor(&self) -> Result<(), StoreError> {
+    // remove_cursor delete the chain_store cursor and return true if it was present
+    pub fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         let conn = self.get_conn()?;
-        self.storage.remove_cursor(&conn)?;
-        Ok(())
+        self.storage.remove_cursor(&conn, chain)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {

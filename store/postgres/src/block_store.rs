@@ -449,7 +449,8 @@ impl BlockStore {
     // table but RPC provider requires those blocks to be full.
     //
     // - This issue only affects ethereum chains.
-    // - This issue only happens when switching providers from firehose back to RPC
+    // - This issue only happens when switching providers from firehose back to RPC. it is gated by
+    // the presence of a cursor in the chainX.blocks table for a chain configured without firehose.
     // - Only the shallow blocks close to HEAD need to be deleted, the older blocks don't need data.
     // - Deleting everything or creating an index on empty data would cause too much performance
     // hit on graph-node startup.
@@ -469,18 +470,20 @@ impl BlockStore {
                     continue;
                 };
             }
-            if let Some(head) = store.chain_head_block(&&store.chain)? {
-                let lower_bound = head.saturating_sub(ENV_VARS.reorg_threshold * 2);
 
-                info!(&self.logger, "Cleaning shallow blocks and cursor on non-firehose chain"; "network" => &store.chain, "lower_bound" => lower_bound);
-                let ret = store.remove_cursor();
-                if ret.is_err() {
-                    return ret;
+            match store.remove_cursor(&&store.chain) {
+                Ok(res) => {
+                    if let Some(head_block) = res {
+                        let lower_bound = head_block.saturating_sub(ENV_VARS.reorg_threshold * 2);
+                        info!(&self.logger, "Removed cursor for non-firehose chain, now cleaning shallow blocks"; "network" => &store.chain, "lower_bound" => lower_bound);
+                        if let Err(e) = store.cleanup_shallow_blocks(lower_bound) {
+                            return Err(e);
+                        };
+                    };
                 }
-                store.cleanup_shallow_blocks(lower_bound)?
-            } else {
-                info!(&self.logger, "Cleaning any cursor on non-firehose chain"; "network" => &store.chain);
-                store.remove_cursor()?
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
         Ok(())
