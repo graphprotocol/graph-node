@@ -538,7 +538,7 @@ version = "3.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae6371b8bdc8b7d3959e9cf7b22d4435ef3e79e138688421ec654acf8c81b008"
 dependencies = [
- "heck 0.4.1",
+ "heck",
  "proc-macro-error",
  "proc-macro2",
  "quote",
@@ -996,7 +996,7 @@ version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c8910921b014e2af16298f006de12aa08af894b71f0f49a486ab6d74b17bbed"
 dependencies = [
- "heck 0.4.1",
+ "heck",
  "proc-macro2",
  "quote",
  "syn 1.0.107",
@@ -1632,7 +1632,7 @@ name = "graph-chain-common"
 version = "0.31.0"
 dependencies = [
  "anyhow",
- "heck 0.4.1",
+ "heck",
  "protobuf 3.2.0",
  "protobuf-parse",
 ]
@@ -1810,7 +1810,7 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.31.0"
 dependencies = [
- "heck 0.4.1",
+ "heck",
  "proc-macro2",
  "quote",
  "syn 1.0.107",
@@ -2075,15 +2075,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7f66481bfee273957b1f20485a4ff3362987f85b2c236580d81b4eb7a326429"
 dependencies = [
  "http",
-]
-
-[[package]]
-name = "heck"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
-dependencies = [
- "unicode-segmentation",
 ]
 
 [[package]]
@@ -3402,7 +3393,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb5320c680de74ba083512704acb90fe00f28f79207286a848e730c45dd73ed6"
 dependencies = [
  "bytes",
- "heck 0.4.1",
+ "heck",
  "itertools 0.10.5",
  "lazy_static",
  "log",
@@ -4292,14 +4283,15 @@ checksum = "aaf86bbcfd1fa9670b7a129f64fc0c9fcbbfe4f1bc4210e9e98fe71ffc12cde2"
 
 [[package]]
 name = "strum_macros"
-version = "0.21.1"
+version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d06aaeeee809dbc59eb4556183dd927df67db1540de5be8d3ec0b6636358a5ec"
+checksum = "ad8d03b598d3d0fff69bf533ee3ef19b8eeb342729596df84bcc7e1f96ec4059"
 dependencies = [
- "heck 0.3.3",
+ "heck",
  "proc-macro2",
  "quote",
- "syn 1.0.107",
+ "rustversion",
+ "syn 2.0.12",
 ]
 
 [[package]]
@@ -5021,12 +5013,6 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-width"
