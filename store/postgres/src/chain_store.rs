@@ -450,17 +450,16 @@ mod data {
             .set(head_block_cursor.eq(None as Option<String>))
             .returning(head_block_number)
             .get_result::<Option<i64>>(conn)
+            .optional()
             {
                 Ok(res) => match res {
-                    Some(num) => Ok(Some(num as i32)),
+                    Some(opt_num) => match opt_num {
+                        Some(num) => Ok(Some(num as i32)),
+                        None => Ok(None),
+                    },
                     None => Ok(None),
                 },
-                Err(e) => {
-                    if e == diesel::result::Error::NotFound {
-                        return Ok(None);
-                    }
-                    Err(e)
-                }
+                Err(e) => Err(e),
             }
             .map_err(Into::into)
         }
