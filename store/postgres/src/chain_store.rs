@@ -418,6 +418,52 @@ mod data {
             Ok(())
         }
 
+        pub(super) fn cleanup_shallow_blocks(
+            &self,
+            conn: &PgConnection,
+            lowest_block: i32,
+        ) -> Result<(), StoreError> {
+            let table_name = match &self {
+                Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
+                Storage::Private(Schema { blocks, .. }) => &blocks.qname,
+            };
+            conn.batch_execute(&format!(
+                "delete from {} WHERE number >= {} AND data->'block'->'data' = 'null'::jsonb;",
+                table_name, lowest_block,
+            ))?;
+            Ok(())
+        }
+
+        pub(super) fn remove_cursor(
+            &self,
+            conn: &PgConnection,
+            chain: &str,
+        ) -> Result<Option<BlockNumber>, StoreError> {
+            use diesel::dsl::not;
+            use public::ethereum_networks::dsl::*;
+
+            match update(
+                ethereum_networks
+                    .filter(name.eq(chain))
+                    .filter(not(head_block_cursor.is_null())),
+            )
+            .set(head_block_cursor.eq(None as Option<String>))
+            .returning(head_block_number)
+            .get_result::<Option<i64>>(conn)
+            .optional()
+            {
+                Ok(res) => match res {
+                    Some(opt_num) => match opt_num {
+                        Some(num) => Ok(Some(num as i32)),
+                        None => Ok(None),
+                    },
+                    None => Ok(None),
+                },
+                Err(e) => Err(e),
+            }
+            .map_err(Into::into)
+        }
+
         /// Insert a block. If the table already contains a block with the
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
@@ -1551,6 +1597,18 @@ impl ChainStore {
         let conn = self.get_conn()?;
         self.storage
             .delete_blocks_by_hash(&conn, &self.chain, block_hashes)
+    }
+
+    pub fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.cleanup_shallow_blocks(&conn, lowest_block)?;
+        Ok(())
+    }
+
+    // remove_cursor delete the chain_store cursor and return true if it was present
+    pub fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
+        let conn = self.get_conn()?;
+        self.storage.remove_cursor(&conn, chain)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {

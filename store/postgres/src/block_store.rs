@@ -7,7 +7,7 @@ use std::{
 use graph::{
     blockchain::ChainIdentifier,
     components::store::BlockStore as BlockStoreTrait,
-    prelude::{error, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    prelude::{error, info, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
 };
 use graph::{constraint_violation, prelude::CheapClone};
 use graph::{
@@ -439,6 +439,44 @@ impl BlockStore {
 
         self.stores.write().unwrap().remove(chain);
 
+        Ok(())
+    }
+
+    // cleanup_ethereum_shallow_blocks will delete cached blocks previously produced by firehose on
+    // an ethereum chain that is not currently configured to use firehose provider.
+    //
+    // This is to prevent an issue where firehose stores "shallow" blocks (with null data) in `chainX.blocks`
+    // table but RPC provider requires those blocks to be full.
+    //
+    // - This issue only affects ethereum chains.
+    // - This issue only happens when switching providers from firehose back to RPC. it is gated by
+    // the presence of a cursor in the public.ethereum_networks table for a chain configured without firehose.
+    // - Only the shallow blocks close to HEAD need to be deleted, the older blocks don't need data.
+    // - Deleting everything or creating an index on empty data would cause too much performance
+    // hit on graph-node startup.
+    //
+    // Discussed here: https://github.com/graphprotocol/graph-node/pull/4790
+    pub fn cleanup_ethereum_shallow_blocks(
+        &self,
+        ethereum_networks: Vec<&String>,
+        firehose_only_networks: Option<Vec<&String>>,
+    ) -> Result<(), StoreError> {
+        for store in self.stores.read().unwrap().values() {
+            if !ethereum_networks.contains(&&store.chain) {
+                continue;
+            };
+            if let Some(fh_nets) = firehose_only_networks.clone() {
+                if fh_nets.contains(&&store.chain) {
+                    continue;
+                };
+            }
+
+            if let Some(head_block) = store.remove_cursor(&&store.chain)? {
+                let lower_bound = head_block.saturating_sub(ENV_VARS.reorg_threshold * 2);
+                info!(&self.logger, "Removed cursor for non-firehose chain, now cleaning shallow blocks"; "network" => &store.chain, "lower_bound" => lower_bound);
+                store.cleanup_shallow_blocks(lower_bound)?;
+            }
+        }
         Ok(())
     }
 
