@@ -37,7 +37,6 @@ where
     pub fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,
-        static_data_sources: Vec<DataSource<C>>,
         data_sources: Vec<DataSource<C>>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
@@ -52,7 +51,7 @@ where
             host_builder,
             subgraph_id,
             network,
-            static_data_sources: Arc::new(static_data_sources),
+            static_data_sources: Arc::new(manifest.data_sources),
             hosts: Hosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -180,7 +179,6 @@ where
             return vec![];
         }
 
-        // EBTODO
         self.hosts
             .hosts()
             .iter()

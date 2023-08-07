@@ -80,6 +80,10 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
         todo!()
     }
 
+    fn has_expired(&self, _: BlockNumber) -> bool {
+        todo!()
+    }
+
     fn name(&self) -> &str {
         todo!()
     }

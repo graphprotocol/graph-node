@@ -296,7 +296,7 @@ impl DataSourcesTable {
 
     // Remove offchain data sources by checking the causality region, which currently uniquely
     // identifies an offchain data source.
-    pub(super) fn update_processed_datasources_status(
+    pub(super) fn update_offchain_status(
         &self,
         conn: &PgConnection,
         data_sources: &write::DataSources,
@@ -313,7 +313,6 @@ impl DataSourcesTable {
                     .bind::<Integer, _>(ds.causality_region)
                     .execute(conn)?;
 
-                // EBTODO: understand this error, see if how it needs to be modified to account for non-offchain data sources that reached endBlock
                 if count > 1 {
                     return Err(constraint_violation!(
                     "expected to remove at most one offchain data source but would remove {}, causality region: {}",

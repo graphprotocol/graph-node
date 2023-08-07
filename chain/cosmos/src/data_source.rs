@@ -87,6 +87,13 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.source.end_block
     }
 
+    fn has_expired(&self, block: BlockNumber) -> bool {
+        match self.source.end_block {
+            Some(end_block) => block > end_block,
+            None => false,
+        }
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,

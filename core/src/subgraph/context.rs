@@ -182,10 +182,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn instance(&self) -> &SubgraphInstance<C, T> {
         &self.instance
     }
-
-    pub fn hosts(&self) -> &[Arc<T::Host>] {
-        self.instance.hosts()
-    }
 }
 
 pub struct OffchainMonitor {

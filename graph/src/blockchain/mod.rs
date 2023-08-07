@@ -255,7 +255,11 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
 
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
-    fn end_block(&self) -> Option<BlockNumber>;
+
+    /// If the data source has an `endBlock`, check whether the trigger block is
+    /// within the range of blocks that the data source is supposed to handle.
+    /// Otherwise, ignore the trigger.
+    fn has_expired(&self, block: BlockNumber) -> bool;
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;

@@ -254,13 +254,9 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name.clone(),
             manifest_idx,
             address,
-<<<<<<< HEAD
             start_block: creation_block.unwrap_or(0),
-=======
-            start_block: 0,
             // EBTODO: Re-evaluate if this needs to be set to done_at,
             end_block: done_at,
->>>>>>> 95c048847 (graph,chain,store/test-store : Allow new param `endBlock` in manifest)
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,

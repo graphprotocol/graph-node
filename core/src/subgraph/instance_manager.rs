@@ -290,18 +290,16 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // Dynamic data sources are loaded by appending them to the manifest.
         //
         // Refactor: Preferrably we'd avoid any mutation of the manifest.
-        let (manifest, static_data_sources, dynamic_data_sources) = {
+        let (manifest, dynamic_data_sources) = {
             let dynamic_data_sources =
                 load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
                     .await
                     .context("Failed to load dynamic data sources")?;
 
-            let static_data_sources = manifest.data_sources.clone();
-
-            (manifest, static_data_sources, dynamic_data_sources)
+            (manifest, dynamic_data_sources)
         };
 
-        let mut data_sources = static_data_sources.clone();
+        let mut data_sources = manifest.data_sources.clone();
         data_sources.extend(dynamic_data_sources);
 
         info!(logger, "Data source count at start: {}", data_sources.len());
@@ -402,7 +400,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let instance = super::context::instance::SubgraphInstance::from_manifest(
             &logger,
             manifest,
-            static_data_sources,
             data_sources,
             host_builder,
             host_metrics.clone(),
