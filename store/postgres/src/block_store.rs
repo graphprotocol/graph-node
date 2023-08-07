@@ -474,9 +474,7 @@ impl BlockStore {
             if let Some(head_block) = store.remove_cursor(&&store.chain)? {
                 let lower_bound = head_block.saturating_sub(ENV_VARS.reorg_threshold * 2);
                 info!(&self.logger, "Removed cursor for non-firehose chain, now cleaning shallow blocks"; "network" => &store.chain, "lower_bound" => lower_bound);
-                if let Err(e) = store.cleanup_shallow_blocks(lower_bound) {
-                    return Err(e);
-                };
+                store.cleanup_shallow_blocks(lower_bound)?;
             }
         }
         Ok(())
