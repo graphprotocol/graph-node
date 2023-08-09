@@ -157,8 +157,9 @@ async fn derived_loaders() {
         let block_0 = genesis();
         let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
         push_test_log(&mut block_1, "0");
+        push_test_log(&mut block_1, "1");
         let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
-        push_test_log(&mut block_2, "1");
+        push_test_log(&mut block_2, "2");
         vec![block_0, block_1, block_2]
     };
 
@@ -167,27 +168,25 @@ async fn derived_loaders() {
     let chain = chain(blocks, &stores, None).await;
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
-    ctx.start_and_sync_to(test_ptr(1)).await;
-
-    // BUG: There is a bug that prevents the derived fields from being loaded correctly
-    // when the entities are loaded from the cache
-    // So the following test wont work
-    // let query_res = ctx
-    //     .query(&format!(
-    //         r#"{{ testResult(id: "0") {{ id barDerived bBarDerived }} }}"#,
-    //     ))
-    //     .await
-    //     .unwrap();
-    // assert_json_eq!(
-    //     query_res,
-    //     Some(object! { testResult: object!{
-    //         id: "0",
-    //         barDerived: "1",
-    //         bBarDerived: "1",
-    //     }})
-    // );
     ctx.start_and_sync_to(stop_block).await;
 
+    // Test loadRelated in the same handler
+    let query_res = ctx
+        .query(&format!(
+            r#"{{ testResult(id: "0") {{ id barDerived bBarDerived }} }}"#,
+        ))
+        .await
+        .unwrap();
+    assert_json_eq!(
+        query_res,
+        Some(object! { testResult: object!{
+            id: "0",
+            barDerived: "1",
+            bBarDerived: "1",
+        }})
+    );
+
+    // Test loadRelated in same block
     let query_res = ctx
         .query(&format!(
             r#"{{ testResult(id: "1") {{ id barDerived bBarDerived }} }}"#,
@@ -198,6 +197,22 @@ async fn derived_loaders() {
         query_res,
         Some(object! { testResult: object!{
             id: "1",
+            barDerived: "0",
+            bBarDerived: "0x30",
+        }})
+    );
+
+    // Test loadRelated in a different block
+    let query_res = ctx
+        .query(&format!(
+            r#"{{ testResult(id: "2") {{ id barDerived bBarDerived }} }}"#,
+        ))
+        .await
+        .unwrap();
+    assert_json_eq!(
+        query_res,
+        Some(object! { testResult: object!{
+            id: "2",
             barDerived: "0",
             bBarDerived: "0x30",
         }})

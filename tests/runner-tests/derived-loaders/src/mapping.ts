@@ -20,9 +20,10 @@ export function handleTestEvent(event: TestEvent): void {
     bBar.fooValue = Bytes.fromUTF8("0");
     bBar.save();
 
+    // Test loading from entities created in the same handler
     let fooLoaded = Foo.load("0");
-    let barDerived = fooLoaded!.bar.load();
     let bFooLoaded = BFoo.load(Bytes.fromUTF8("0"));
+    let barDerived = fooLoaded!.bar.load();
     let bBarDerived: BBar[] = bFooLoaded!.bar.load();
 
     let testResult = new TestResult("0");
@@ -37,6 +38,7 @@ export function handleTestEvent(event: TestEvent): void {
     testResult.save();
   }
 
+  // Test loading from entities created in the same block
   if (event.params.testCommand == "1") {
     let fooLoaded = Foo.load("0");
     let barDerived = fooLoaded!.bar.load();
@@ -44,6 +46,25 @@ export function handleTestEvent(event: TestEvent): void {
     let bBarDerived = bFooLoaded!.bar.load();
 
     let testResult1 = new TestResult("1");
+
+    if (barDerived.length > 0) {
+      testResult1.barDerived = barDerived[0].id;
+    }
+
+    if (bBarDerived.length > 0) {
+      testResult1.bBarDerived = bBarDerived[0].id;
+    }
+    testResult1.save();
+  }
+
+  // Testing loading from entities created in the different blocks
+  if (event.params.testCommand == "2") {
+    let fooLoaded = Foo.load("0");
+    let barDerived = fooLoaded!.bar.load();
+    let bFooLoaded = BFoo.load(Bytes.fromUTF8("0"));
+    let bBarDerived = bFooLoaded!.bar.load();
+
+    let testResult1 = new TestResult("2");
 
     if (barDerived.length > 0) {
       testResult1.barDerived = barDerived[0].id;
