@@ -209,11 +209,33 @@ impl EntityCache {
             id_is_bytes: id_is_bytes,
         };
 
+        // Get the entities from the store and insert it into the cache if it's not already there
         let entities = self.store.get_derived(&query)?;
-        entities.iter().for_each(|(key, e)| {
-            self.current.insert(key.clone(), Some(e.clone()));
+
+        entities.iter().for_each(|(k, v)| {
+            // Only insert to the cache if it's not already there
+            if !self.current.contains_key(k) {
+                self.current.insert(k.clone(), Some(v.clone()));
+            }
         });
-        let entities: Vec<Entity> = entities.values().cloned().collect();
+
+        // Get the derived entities from the cache
+        let entities = self
+            .current
+            .filter(|key, entity: &Option<Entity>| {
+                key.entity_type == query.entity_type && // Check if entity_type matches
+            entity.as_ref().map_or(false, |e| {
+                // Check if value in the field indicated by entity_field matches the value from
+                // the query
+                e.get(&query.entity_field.to_camel_case())
+                    .map(|v| v.to_string())
+                    .map(|word| word == query.value.to_string())
+                    .unwrap_or(false)
+            })
+            })
+            .filter_map(|entity| entity.clone())
+            .collect();
+
         Ok(entities)
     }
 
