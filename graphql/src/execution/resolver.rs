@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use graph::components::store::UnitStream;
-use graph::data::query::Trace;
+use graph::data::query::{CacheStatus, Trace};
 use graph::prelude::{async_trait, s, tokio, Error, QueryExecutionError};
 use graph::schema::ApiSchema;
 use graph::{
@@ -8,6 +10,8 @@ use graph::{
 };
 
 use crate::execution::{ast as a, ExecutionContext};
+
+use super::Query;
 
 /// A GraphQL resolver that can resolve entities, enum values, scalar types and interfaces/unions.
 #[async_trait]
@@ -121,5 +125,9 @@ pub trait Resolver: Sized + Send + Sync + 'static {
 
     fn post_process(&self, _result: &mut QueryResult) -> Result<(), Error> {
         Ok(())
+    }
+
+    fn record_work(&self, _query: &Query, _elapsed: Duration, _cache_status: CacheStatus) {
+        // by default, record nothing
     }
 }

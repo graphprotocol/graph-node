@@ -156,6 +156,7 @@ where
                 error_policy,
                 query.schema.id().clone(),
                 metrics.cheap_clone(),
+                self.load_manager.cheap_clone(),
             )
             .await?;
             max_block = max_block.max(resolver.block_number());
@@ -168,7 +169,6 @@ where
                     deadline: ENV_VARS.graphql.query_timeout.map(|t| Instant::now() + t),
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
-                    load_manager: self.load_manager.clone(),
                     trace,
                 },
             )
@@ -268,6 +268,7 @@ where
                 max_first: ENV_VARS.graphql.max_first,
                 max_skip: ENV_VARS.graphql.max_skip,
                 graphql_metrics: self.graphql_metrics.clone(),
+                load_manager: self.load_manager.cheap_clone(),
             },
         )
     }

@@ -2,8 +2,6 @@ use graph::prelude::{BlockPtr, CheapClone, QueryExecutionError, QueryResult};
 use std::sync::Arc;
 use std::time::Instant;
 
-use graph::data::graphql::effort::LoadManager;
-
 use crate::execution::{ast as a, *};
 
 /// Utilities for working with GraphQL query ASTs.
@@ -25,8 +23,6 @@ pub struct QueryExecutionOptions<R> {
 
     /// Maximum value for the `skip` argument
     pub max_skip: u32,
-
-    pub load_manager: Arc<LoadManager>,
 
     /// Whether to include an execution trace in the result
     pub trace: bool,
@@ -76,9 +72,8 @@ where
     .await;
     let elapsed = start.elapsed();
     let cache_status = ctx.cache_status.load();
-    options
-        .load_manager
-        .record_work(query.shape_hash, elapsed, cache_status);
+    ctx.resolver
+        .record_work(query.as_ref(), elapsed, cache_status);
     query.log_cache_status(
         &selection_set,
         block_ptr.map(|b| b.number).unwrap_or(0),

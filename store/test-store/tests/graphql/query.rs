@@ -625,6 +625,7 @@ async fn run_subscription(
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
         graphql_metrics: graphql_metrics(),
+        load_manager: LOAD_MANAGER.clone(),
     };
     let schema = STORE
         .subgraph_store()

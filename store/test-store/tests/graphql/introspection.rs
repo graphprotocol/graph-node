@@ -12,7 +12,6 @@ use graph_graphql::prelude::{
     a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,
 };
 use test_store::graphql_metrics;
-use test_store::LOAD_MANAGER;
 
 /// Mock resolver used in tests that don't need a resolver.
 #[derive(Clone)]
@@ -568,7 +567,6 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         deadline: None,
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
-        load_manager: LOAD_MANAGER.clone(),
         trace: false,
     };
 

@@ -2,17 +2,18 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
-use graph::components::store::*;
+use graph::components::store::{SubscriptionManager, UnitStream};
+use graph::data::graphql::effort::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
-use graph::data::query::Trace;
+use graph::data::query::{CacheStatus, Trace};
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
 use graph::schema::{ast as sast, ApiSchema, META_FIELD_TYPE};
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
-use crate::execution::ast as a;
+use crate::execution::{ast as a, Query};
 use crate::metrics::GraphQLMetrics;
-use crate::prelude::*;
+use crate::prelude::{ExecutionContext, Resolver};
 use crate::query::ext::BlockConstraint;
 use crate::store::query::collect_entities_from_query_field;
 
@@ -28,6 +29,7 @@ pub struct StoreResolver {
     has_non_fatal_errors: bool,
     error_policy: ErrorPolicy,
     graphql_metrics: Arc<GraphQLMetrics>,
+    load_manager: Arc<LoadManager>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +66,7 @@ impl StoreResolver {
         store: Arc<dyn QueryStore>,
         subscription_manager: Arc<dyn SubscriptionManager>,
         graphql_metrics: Arc<GraphQLMetrics>,
+        load_manager: Arc<LoadManager>,
     ) -> Self {
         StoreResolver {
             logger: logger.new(o!("component" => "StoreResolver")),
@@ -76,6 +79,7 @@ impl StoreResolver {
             has_non_fatal_errors: false,
             error_policy: ErrorPolicy::Deny,
             graphql_metrics,
+            load_manager,
         }
     }
 
@@ -93,6 +97,7 @@ impl StoreResolver {
         error_policy: ErrorPolicy,
         deployment: DeploymentHash,
         graphql_metrics: Arc<GraphQLMetrics>,
+        load_manager: Arc<LoadManager>,
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
@@ -110,6 +115,7 @@ impl StoreResolver {
             has_non_fatal_errors,
             error_policy,
             graphql_metrics,
+            load_manager,
         };
         Ok(resolver)
     }
@@ -384,5 +390,10 @@ impl Resolver for StoreResolver {
             ErrorPolicy::Allow => (),
         }
         Ok(())
+    }
+
+    fn record_work(&self, query: &Query, elapsed: Duration, cache_status: CacheStatus) {
+        self.load_manager
+            .record_work(query.shape_hash, elapsed, cache_status);
     }
 }

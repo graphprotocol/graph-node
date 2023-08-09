@@ -141,8 +141,6 @@ where
             Err(e) => return Ok(QueryResults::from(QueryResult::from(e))),
         };
 
-        let load_manager = self.graphql_runner.load_manager();
-
         // Run the query using the index node resolver
         let query_clone = query.cheap_clone();
         let logger = self.logger.cheap_clone();
@@ -159,7 +157,6 @@ where
                 deadline: None,
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,
-                load_manager,
                 trace: false,
             };
             let result = execute_query(query_clone.cheap_clone(), None, None, options).await;
