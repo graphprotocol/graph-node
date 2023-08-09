@@ -181,8 +181,8 @@ async fn derived_loaders() {
         query_res,
         Some(object! { testResult: object!{
             id: "0",
-            barDerived: "1",
-            bBarDerived: "1",
+            barDerived: "0",
+            bBarDerived: "0x30",
         }})
     );
 

@@ -177,14 +177,10 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         })
     }
 
-    pub fn filter<'a, F>(&'a self, predicate: F) -> impl Iterator<Item = &'a V>
-    where
-        F: Fn(&K, &V) -> bool,
-    {
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&K, &V)> {
         self.queue
             .iter()
-            .filter(move |entry| predicate(&entry.0.key, &entry.0.value))
-            .map(|entry| &entry.0.value)
+            .map(|entry| (&entry.0.key, &entry.0.value))
     }
 
     pub fn get(&mut self, key: &K) -> Option<&V> {

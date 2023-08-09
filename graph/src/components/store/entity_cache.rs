@@ -219,21 +219,47 @@ impl EntityCache {
             }
         });
 
-        // Get the derived entities from the cache
-        let entities = self
-            .current
-            .filter(|key, entity: &Option<Entity>| {
-                key.entity_type == query.entity_type && // Check if entity_type matches
-            entity.as_ref().map_or(false, |e| {
-                // Check if value in the field indicated by entity_field matches the value from
-                // the query
-                e.get(&query.entity_field.to_camel_case())
-                    .map(|v| v.to_string())
-                    .map(|word| word == query.value.to_string())
-                    .unwrap_or(false)
+        // Insert `None` for entities that are not in the store and not in the current cache
+        // but are present in updates or handler_updates
+        // The updates will be applied before returning the entities
+        self.updates.iter().for_each(|(k, _)| {
+            if !self.current.contains_key(k) {
+                self.current.insert(k.clone(), None);
+            }
+        });
+
+        self.handler_updates.iter().for_each(|(k, _)| {
+            if !self.current.contains_key(k) {
+                self.current.insert(k.clone(), None);
+            }
+        });
+
+        // Retrieve the derived entities from the cache by filtering the cached entities.
+        // Include entities if either a matching value is found in the specified entity field
+        // as indicated by `query`, or if the entity is None.
+        let entities = self.current.iter().filter(|(key, entity)| {
+            key.entity_type == query.entity_type
+                && entity.as_ref().map_or(true, |e| {
+                    e.get(&query.entity_field.to_camel_case())
+                        .map(|v| v.to_string() == query.value.to_string())
+                        .unwrap_or(false)
+                })
+        });
+
+        let entities = entities
+            .filter_map(|(key, entity)| {
+                let mut entity: Option<Cow<'_, Entity>> = entity.to_owned().map(Cow::Owned);
+
+                if let Some(op) = self.updates.get(&key).cloned() {
+                    op.apply_to(&mut entity).ok()?;
+                }
+
+                if let Some(op) = self.handler_updates.get(&key).cloned() {
+                    op.apply_to(&mut entity).ok()?;
+                }
+
+                entity.map(|e| e.into_owned())
             })
-            })
-            .filter_map(|entity| entity.clone())
             .collect();
 
         Ok(entities)
