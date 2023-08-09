@@ -22,8 +22,6 @@ struct QueryEffort {
 /// Track the effort for queries (identified by their ShapeHash) over a
 /// time window.
 struct QueryEffortInner {
-    window_size: Duration,
-    bin_size: Duration,
     effort: HashMap<u64, MovingStats>,
     total: MovingStats,
 }
@@ -65,16 +63,14 @@ impl QueryEffort {
 impl QueryEffortInner {
     fn new(window_size: Duration, bin_size: Duration) -> Self {
         Self {
-            window_size,
-            bin_size,
             effort: HashMap::default(),
             total: MovingStats::new(window_size, bin_size),
         }
     }
 
     fn add(&mut self, shape_hash: u64, duration: Duration) {
-        let window_size = self.window_size;
-        let bin_size = self.bin_size;
+        let window_size = self.total.window_size;
+        let bin_size = self.total.bin_size;
         let now = Instant::now();
         self.effort
             .entry(shape_hash)
