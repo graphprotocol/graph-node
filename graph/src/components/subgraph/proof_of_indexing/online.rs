@@ -210,7 +210,8 @@ impl ProofOfIndexing {
                 logger,
                 "Proof of indexing event";
                 "event" => &event,
-                "causality_region" => causality_region
+                "causality_region" => causality_region,
+                "block_number" => self.block_number
             );
         }
 
