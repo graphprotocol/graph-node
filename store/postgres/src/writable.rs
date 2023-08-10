@@ -1065,8 +1065,14 @@ impl Queue {
             &self.queue,
             BTreeMap::new(),
             |mut map: BTreeMap<EntityKey, Option<Entity>>, batch, at| {
-                // See if we have changes for any of the keys.
+                // See if we have changes for any of the keys. Since we are
+                // going from newest to oldest block, do not clobber already
+                // existing entries in map as that would make us use an
+                // older value.
                 for key in &keys {
+                    if map.contains_key(key) {
+                        continue;
+                    }
                     match batch.last_op(key, at) {
                         Some(EntityOp::Write { key: _, entity }) => {
                             map.insert(key.clone(), Some(entity.clone()));
@@ -1133,7 +1139,14 @@ impl Queue {
             &self.queue,
             BTreeMap::new(),
             |mut map: BTreeMap<EntityKey, Option<Entity>>, batch, at| {
-                map.extend(effective_ops(batch, derived_query, at));
+                // Since we are going newest to oldest, do not clobber
+                // already existing entries in map as that would make us
+                // produce stale values
+                for (k, v) in effective_ops(batch, derived_query, at) {
+                    if !map.contains_key(&k) {
+                        map.insert(k, v);
+                    }
+                }
                 map
             },
         );
