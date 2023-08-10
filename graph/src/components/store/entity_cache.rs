@@ -1,5 +1,4 @@
 use anyhow::anyhow;
-use inflector::Inflector;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
@@ -203,65 +202,62 @@ impl EntityCache {
 
         let query = DerivedEntityQuery {
             entity_type: EntityType::new(base_type.to_string()),
-            entity_field: field.name.clone().to_snake_case().into(),
+            entity_field: field.name.clone().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
             id_is_bytes: id_is_bytes,
         };
 
-        // Get the entities from the store and insert it into the cache if it's not already there
-        let entities = self.store.get_derived(&query)?;
-
-        entities.iter().for_each(|(k, v)| {
-            // Only insert to the cache if it's not already there
-            if !self.current.contains_key(k) {
-                self.current.insert(k.clone(), Some(v.clone()));
+        // Merge updates and handler_updates
+        let mut merged_updates = self.updates.clone();
+        for (key, op) in &self.handler_updates {
+            if let Some(existing_op) = merged_updates.get_mut(key) {
+                existing_op.accumulate(op.clone());
+            } else {
+                merged_updates.insert(key.clone(), op.clone());
             }
-        });
+        }
 
-        // Insert `None` for entities that are not in the store and not in the current cache
-        // but are present in updates or handler_updates
-        // The updates will be applied before returning the entities
-        self.updates.iter().for_each(|(k, _)| {
-            if !self.current.contains_key(k) {
-                self.current.insert(k.clone(), None);
+        // Update the cache with entities from the store that are not in the cache
+        for (key, entity) in self.store.get_derived(&query)? {
+            if !self.current.contains_key(&key) {
+                self.current.insert(key.clone(), Some(entity));
             }
-        });
+        }
 
-        self.handler_updates.iter().for_each(|(k, _)| {
-            if !self.current.contains_key(k) {
-                self.current.insert(k.clone(), None);
-            }
-        });
+        let mut entity_map = HashMap::new();
 
-        // Retrieve the derived entities from the cache by filtering the cached entities.
-        // Include entities if either a matching value is found in the specified entity field
-        // as indicated by `query`, or if the entity is None.
-        let entities = self.current.iter().filter(|(key, entity)| {
-            key.entity_type == query.entity_type
-                && entity.as_ref().map_or(true, |e| {
-                    e.get(&query.entity_field.to_camel_case())
-                        .map(|v| v.to_string() == query.value.to_string())
-                        .unwrap_or(false)
-                })
-        });
-
-        let entities = entities
-            .filter_map(|(key, entity)| {
-                let mut entity: Option<Cow<'_, Entity>> = entity.to_owned().map(Cow::Owned);
-
-                if let Some(op) = self.updates.get(&key).cloned() {
-                    op.apply_to(&mut entity).ok()?;
+        // Check inside self.current for entities that match the query
+        for (key, opt_entity) in self.current.iter() {
+            if let Some(entity) = opt_entity {
+                if query.matches(key, entity) {
+                    if let Some(op) = merged_updates.get(key).cloned() {
+                        let mut entity_cow = Some(Cow::Borrowed(entity));
+                        op.apply_to(&mut entity_cow)
+                            .map_err(|e| key.unknown_attribute(e))?;
+                        entity_map.insert(key.clone(), entity_cow.unwrap().into_owned());
+                    } else {
+                        entity_map.insert(key.clone(), entity.clone());
+                    }
                 }
+            }
+        }
 
-                if let Some(op) = self.handler_updates.get(&key).cloned() {
-                    op.apply_to(&mut entity).ok()?;
+        // Now, check for entities in merged_updates not present in the entity_map and that match the query
+        for (key, op) in &merged_updates {
+            if !entity_map.contains_key(key) {
+                match op {
+                    EntityOp::Update(entity) | EntityOp::Overwrite(entity) => {
+                        if query.matches(key, entity) {
+                            entity_map.insert(key.clone(), entity.clone());
+                        }
+                    }
+                    EntityOp::Remove => {}
                 }
+            }
+        }
 
-                entity.map(|e| e.into_owned())
-            })
-            .collect();
-
+        let entities = entity_map.into_values().collect();
         Ok(entities)
     }
 

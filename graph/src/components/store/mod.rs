@@ -20,6 +20,7 @@ use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt::Display;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -197,6 +198,22 @@ pub struct DerivedEntityQuery {
     /// doing the lookup. So if the entity exists but was created on a different causality region,
     /// the lookup will return empty.
     pub causality_region: CausalityRegion,
+}
+
+impl DerivedEntityQuery {
+    /// Checks if a given key and entity match this query.
+    pub fn matches(&self, key: &EntityKey, entity: &Entity) -> bool {
+        key.entity_type == self.entity_type
+            && entity
+                .get(&self.entity_field)
+                .map(|v| match v {
+                    Value::String(s) => s.as_str() == self.value.as_str(),
+                    Value::Bytes(b) => Bytes::from_str(self.value.as_str())
+                        .map_or(false, |bytes_value| &bytes_value == b),
+                    _ => false,
+                })
+                .unwrap_or(false)
+    }
 }
 
 impl EntityKey {

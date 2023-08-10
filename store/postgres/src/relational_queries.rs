@@ -27,6 +27,7 @@ use graph::{
     components::store::{AttributeNames, EntityType},
     data::store::scalar,
 };
+use inflector::Inflector;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -1764,7 +1765,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             }
             out.push_sql(") and ");
         }
-        out.push_identifier(entity_field.as_str())?;
+        out.push_identifier(entity_field.to_snake_case().as_str())?;
         out.push_sql(" = ");
         if *id_is_bytes {
             out.push_sql("decode(");
