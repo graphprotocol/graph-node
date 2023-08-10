@@ -218,6 +218,8 @@ impl EntityCache {
             }
         }
 
+        let mut keys_to_remove = Vec::new();
+
         // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
         for (key, entity) in entity_map.iter_mut() {
             let mut entity_cow = Some(Cow::Borrowed(entity));
@@ -234,24 +236,33 @@ impl EntityCache {
 
             if let Some(updated_entity) = entity_cow {
                 *entity = updated_entity.into_owned();
+            } else {
+                // if entity_cow is None, it means that the entity was removed by an update
+                // mark the key for removal from the map
+                keys_to_remove.push(key.clone());
             }
         }
 
-        // A helper function to apply an update and return the resulting entity if it matches the query
-        fn apply_update(
+        // Remove the marked keys from the map
+        for key in keys_to_remove {
+            entity_map.remove(&key);
+        }
+
+        // A helper function that checks if an update matches the query and returns the updated entity if it does
+        fn matches_query(
             op: &EntityOp,
             query: &DerivedEntityQuery,
             key: &EntityKey,
         ) -> Result<Option<Entity>, anyhow::Error> {
             match op {
-                EntityOp::Update(entity) | EntityOp::Overwrite(entity) => {
-                    if query.matches(key, entity) {
-                        return Ok(Some(entity.clone()));
-                    }
+                EntityOp::Update(entity) | EntityOp::Overwrite(entity)
+                    if query.matches(key, entity) =>
+                {
+                    Ok(Some(entity.clone()))
                 }
-                EntityOp::Remove => {}
+                EntityOp::Remove => Ok(None),
+                _ => Ok(None),
             }
-            Ok(None)
         }
 
         // Iterate over self.updates to find entities that:
@@ -262,16 +273,19 @@ impl EntityCache {
         // - Add the entity to entity_map.
         for (key, op) in self.updates.iter() {
             if !entity_map.contains_key(key) {
-                if let Some(entity) = apply_update(op, &query, key)? {
-                    if let Some(handler_op) = self.handler_updates.get(key) {
-                        // If there's an update from handler_updates, apply it
-                        if let Some(updated_entity) = apply_update(handler_op, &query, key)? {
-                            entity_map.insert(key.clone(), updated_entity);
-                            continue; // Move to the next iteration since the entity is already updated and inserted
-                        }
+                if let Some(entity) = matches_query(op, &query, key)? {
+                    if let Some(handler_op) = self.handler_updates.get(key).cloned() {
+                        // If there's a corresponding update in handler_updates, apply it to the entity
+                        // and insert the updated entity into entity_map
+                        let mut entity_cow = Some(Cow::Borrowed(&entity));
+                        handler_op
+                            .apply_to(&mut entity_cow)
+                            .map_err(|e| key.unknown_attribute(e))?;
+                        entity_map.insert(key.clone(), entity_cow.unwrap().into_owned());
+                    } else {
+                        // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
+                        entity_map.insert(key.clone(), entity);
                     }
-                    // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
-                    entity_map.insert(key.clone(), entity);
                 }
             }
         }
@@ -283,7 +297,7 @@ impl EntityCache {
         // If these conditions are met, add the entity to entity_map.
         for (key, handler_op) in self.handler_updates.iter() {
             if !entity_map.contains_key(key) && !self.updates.contains_key(key) {
-                if let Some(entity) = apply_update(handler_op, &query, key)? {
+                if let Some(entity) = matches_query(handler_op, &query, key)? {
                     entity_map.insert(key.clone(), entity);
                 }
             }
