@@ -1761,7 +1761,16 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                out.push_bind_param::<Text, _>(&value.entity_id.as_str())?;
+
+                if *id_is_bytes {
+                    out.push_sql("decode(");
+                    out.push_bind_param::<Text, _>(
+                        &value.entity_id.as_str().strip_prefix("0x").unwrap(),
+                    )?;
+                    out.push_sql(", 'hex')");
+                } else {
+                    out.push_bind_param::<Text, _>(&value.entity_id.as_str())?;
+                }
             }
             out.push_sql(") and ");
         }
