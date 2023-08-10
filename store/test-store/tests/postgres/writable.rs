@@ -1,11 +1,14 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
+use graph::data::value::Word;
+use graph::data_source::CausalityRegion;
 use graph::schema::InputSchema;
 use lazy_static::lazy_static;
+use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
+use graph::components::store::{DeploymentLocator, DerivedEntityQuery, EntityKey, WritableStore};
 use graph::data::subgraph::*;
 use graph::semver::Version;
 use graph::{entity, prelude::*};
@@ -125,32 +128,43 @@ async fn pause_writer(deployment: &DeploymentLocator) {
     writable::allow_steps(deployment, 0).await;
 }
 
-async fn resume_writer(deployment: &DeploymentLocator, steps: usize) {
-    writable::allow_steps(deployment, steps).await;
-    flush(deployment).await.unwrap();
-}
-
-#[test]
-fn tracker() {
-    run_test(|store, writable, deployment| async move {
+/// Test that looking up entities when several changes to the same entity
+/// are queued works. When `batch` is true, the changes all reside in one
+/// batch. If it is false, each change is in its own batch.
+///
+/// `read_count` lets us look up entities in different ways to exercise
+/// different methods in `WritableStore`
+fn get_with_pending<F>(batch: bool, read_count: F)
+where
+    F: Send + Fn(&dyn WritableStore) -> i32 + Sync + 'static,
+{
+    run_test(move |store, writable, deployment| async move {
         let subgraph_store = store.subgraph_store();
 
-        let read_count = || {
-            let counter = writable.get(&count_key("1")).unwrap().unwrap();
-            counter.get("count").unwrap().as_int().unwrap()
-        };
+        let read_count = || read_count(writable.as_ref());
+
+        if !batch {
+            writable.deployment_synced().unwrap();
+        }
+
         for count in 1..4 {
             insert_count(&subgraph_store, &deployment, count).await;
         }
+
+        // Test reading back with pending writes to the same entity
         pause_writer(&deployment).await;
+        for count in 4..7 {
+            insert_count(&subgraph_store, &deployment, count).await;
+        }
+        assert_eq!(6, read_count());
 
-        // Test reading back with a pending write
-        insert_count(&subgraph_store, &deployment, 4).await;
-        assert_eq!(4, read_count());
-        resume_writer(&deployment, 1).await;
-        assert_eq!(4, read_count());
+        writable.flush().await.unwrap();
+        assert_eq!(6, read_count());
 
-        // Test reading back with a pending revert
+        // Test reading back with pending writes and a pending revert
+        for count in 7..10 {
+            insert_count(&subgraph_store, &deployment, count).await;
+        }
         writable
             .revert_block_operations(block_pointer(2), FirehoseCursor::None)
             .await
@@ -158,12 +172,67 @@ fn tracker() {
 
         assert_eq!(2, read_count());
 
-        resume_writer(&deployment, 1).await;
-        assert_eq!(2, read_count());
-
-        // There shouldn't be anything left to do, but make sure of that
         writable.flush().await.unwrap();
+        assert_eq!(2, read_count());
     })
+}
+
+/// Get the count using `WritableStore::get_many`
+fn count_get_many(writable: &dyn WritableStore) -> i32 {
+    let key = count_key("1");
+    let keys = BTreeSet::from_iter(vec![key.clone()]);
+    let counter = writable.get_many(keys).unwrap().get(&key).unwrap().clone();
+    counter.get("count").unwrap().as_int().unwrap()
+}
+
+/// Get the count using `WritableStore::get`
+fn count_get(writable: &dyn WritableStore) -> i32 {
+    let counter = writable.get(&count_key("1")).unwrap().unwrap();
+    counter.get("count").unwrap().as_int().unwrap()
+}
+
+fn count_get_derived(writable: &dyn WritableStore) -> i32 {
+    let key = count_key("1");
+    let query = DerivedEntityQuery {
+        entity_type: key.entity_type.clone(),
+        entity_field: Word::from("id"),
+        value: key.entity_id.clone(),
+        id_is_bytes: false,
+        causality_region: CausalityRegion::ONCHAIN,
+    };
+    let map = writable.get_derived(&query).unwrap();
+    let counter = map.get(&key).unwrap();
+    counter.get("count").unwrap().as_int().unwrap()
+}
+
+#[test]
+fn get_batch() {
+    get_with_pending(true, count_get);
+}
+
+#[test]
+fn get_nobatch() {
+    get_with_pending(false, count_get);
+}
+
+#[test]
+fn get_many_batch() {
+    get_with_pending(true, count_get_many);
+}
+
+#[test]
+fn get_many_nobatch() {
+    get_with_pending(false, count_get_many);
+}
+
+#[test]
+fn get_derived_batch() {
+    get_with_pending(true, count_get_derived);
+}
+
+#[test]
+fn get_derived_nobatch() {
+    get_with_pending(false, count_get_derived);
 }
 
 #[test]

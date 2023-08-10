@@ -732,6 +732,16 @@ pub(crate) mod test_support {
             queue.push(()).await
         }
     }
+
+    pub async fn flush_steps(deployment: graph::components::store::DeploymentId) {
+        let queue = {
+            let mut map = STEPS.lock().unwrap();
+            map.remove(&deployment)
+        };
+        if let Some(queue) = queue {
+            queue.push(()).await;
+        }
+    }
 }
 
 impl std::fmt::Debug for Queue {
@@ -994,6 +1004,10 @@ impl Queue {
     /// Wait for the background writer to finish processing queued entries
     async fn flush(&self) -> Result<(), StoreError> {
         self.check_err()?;
+
+        #[cfg(debug_assertions)]
+        test_support::flush_steps(self.store.site.id.into()).await;
+
         // Turn off batching so the queue doesn't wait for a batch to become
         // full, but restore the old behavior once the queue is empty.
         let batching = self.batch_writes.load(Ordering::SeqCst);
