@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
@@ -208,36 +208,32 @@ impl EntityCache {
             id_is_bytes: id_is_bytes,
         };
 
-        for (key, entity) in self.store.get_derived(&query)? {
+        let mut entity_map = self.store.get_derived(&query)?;
+
+        for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
             // This is to avoid overwriting updates
             if !self.current.contains_key(&key) {
-                self.current.insert(key.clone(), Some(entity));
+                self.current.insert(key.clone(), Some(entity.clone()));
             }
         }
 
-        let mut entity_map = BTreeMap::new();
-        // Check inside self.current for entities that match the `DerivedEntityQuery`
-        // and apply any updates from `updates` and `handler_updates`.
-        for (key, opt_entity) in self.current.iter() {
-            if let Some(entity) = opt_entity {
-                if query.matches(key, entity) {
-                    let mut entity_cow = Some(Cow::Borrowed(entity));
+        // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
+        for (key, entity) in entity_map.iter_mut() {
+            let mut entity_cow = Some(Cow::Borrowed(entity));
 
-                    if let Some(op) = self.updates.get_mut(key).cloned() {
-                        op.apply_to(&mut entity_cow)
-                            .map_err(|e| key.unknown_attribute(e))?;
-                    }
+            if let Some(op) = self.updates.get(key).cloned() {
+                op.apply_to(&mut entity_cow)
+                    .map_err(|e| key.unknown_attribute(e))?;
+            }
 
-                    if let Some(op) = self.handler_updates.get(key).cloned() {
-                        op.apply_to(&mut entity_cow)
-                            .map_err(|e| key.unknown_attribute(e))?;
-                    }
+            if let Some(op) = self.handler_updates.get(key).cloned() {
+                op.apply_to(&mut entity_cow)
+                    .map_err(|e| key.unknown_attribute(e))?;
+            }
 
-                    if let Some(entity) = entity_cow {
-                        entity_map.insert(key.clone(), entity.into_owned());
-                    }
-                }
+            if let Some(updated_entity) = entity_cow {
+                *entity = updated_entity.into_owned();
             }
         }
 
