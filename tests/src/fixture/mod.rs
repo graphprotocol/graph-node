@@ -389,7 +389,7 @@ pub async fn setup<C: Blockchain>(
 
     // Graphql runner
     let subscription_manager = Arc::new(PanicSubscriptionManager {});
-    let load_manager = LoadManager::new(&logger, Vec::new(), mock_registry.clone());
+    let load_manager = LoadManager::new(&logger, Vec::new(), Vec::new(), mock_registry.clone());
     let graphql_runner = Arc::new(GraphQlRunner::new(
         &logger,
         stores.network_store.clone(),

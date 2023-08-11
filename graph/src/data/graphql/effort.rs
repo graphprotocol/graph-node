@@ -184,7 +184,7 @@ impl Decision {
 
 pub struct LoadManager {
     logger: Logger,
-    effort: QueryEffort,
+    effort: HashMap<String, QueryEffort>,
     /// List of query shapes that have been statically blocked through
     /// configuration
     blocked_queries: HashSet<u64>,
@@ -202,6 +202,7 @@ pub struct LoadManager {
 impl LoadManager {
     pub fn new(
         logger: &Logger,
+        shards: Vec<String>,
         blocked_queries: Vec<Arc<q::Document>>,
         registry: Arc<MetricsRegistry>,
     ) -> Self {
@@ -248,9 +249,15 @@ impl LoadManager {
             })
             .collect::<HashMap<_, _>>();
 
+        let effort = HashMap::from_iter(
+            shards
+                .into_iter()
+                .map(|shard| (shard, QueryEffort::default())),
+        );
+
         Self {
             logger,
-            effort: QueryEffort::default(),
+            effort,
             blocked_queries,
             jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
@@ -265,7 +272,7 @@ impl LoadManager {
     /// was cached or had to actually run
     pub fn record_work(
         &self,
-        _shard: &str,
+        shard: &str,
         _deployment: DeploymentId,
         shape_hash: u64,
         duration: Duration,
@@ -275,7 +282,9 @@ impl LoadManager {
             .get(&cache_status)
             .map(GenericCounter::inc);
         if !ENV_VARS.load_management_is_disabled() {
-            self.effort.add(shape_hash, duration, &self.effort_gauge);
+            self.effort
+                .get(shard)
+                .map(|effort| effort.add(shape_hash, duration, &self.effort_gauge));
         }
     }
 
@@ -328,7 +337,7 @@ impl LoadManager {
     pub fn decide(
         &self,
         wait_stats: &PoolWaitStats,
-        _shard: &str,
+        shard: &str,
         _deployment: DeploymentId,
         shape_hash: u64,
         query: &str,
@@ -356,7 +365,11 @@ impl LoadManager {
             return Proceed;
         }
 
-        let (query_effort, total_effort) = self.effort.current_effort(shape_hash);
+        let (query_effort, total_effort) = self
+            .effort
+            .get(shard)
+            .map(|effort| effort.current_effort(shape_hash))
+            .unwrap_or((None, Duration::ZERO));
         // When `total_effort` is `Duratino::ZERO`, we haven't done any work. All are
         // welcome
         if total_effort.is_zero() {

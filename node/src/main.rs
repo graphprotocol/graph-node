@@ -444,8 +444,10 @@ async fn main() {
 
         let blockchain_map = Arc::new(blockchain_map);
 
+        let shards: Vec<_> = config.stores.keys().cloned().collect();
         let load_manager = Arc::new(LoadManager::new(
             &logger,
+            shards,
             expensive_queries,
             metrics_registry.clone(),
         ));

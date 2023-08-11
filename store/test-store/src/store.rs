@@ -57,6 +57,7 @@ lazy_static! {
     pub static ref METRICS_REGISTRY: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &LOGGER,
+        CONFIG.stores.keys().cloned().collect(),
         Vec::new(),
         METRICS_REGISTRY.clone(),
     ));
