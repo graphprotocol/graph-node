@@ -11,7 +11,7 @@ use graph::blockchain::{
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::store::BlockStore;
 use graph::components::subgraph::Settings;
-use graph::data::graphql::effort::LoadManager;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoints, FirehoseNetworks};

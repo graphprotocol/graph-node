@@ -5,7 +5,7 @@ use graph::bail;
 use graph::endpoint::EndpointMetrics;
 use graph::log::logger_with_levels;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
-use graph::{data::graphql::effort::LoadManager, prelude::chrono, prometheus::Registry};
+use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     prelude::{
         anyhow::{self, Context as AnyhowContextTrait},

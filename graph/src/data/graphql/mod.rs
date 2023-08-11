@@ -23,7 +23,7 @@ pub use self::values::{
 
 pub mod shape_hash;
 
-pub mod effort;
+pub mod load_manager;
 
 pub mod object_or_interface;
 pub use object_or_interface::ObjectOrInterface;

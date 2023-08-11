@@ -20,7 +20,7 @@ use graph::components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeL
 use graph::components::metrics::MetricsRegistry;
 use graph::components::store::{BlockStore, DeploymentLocator};
 use graph::components::subgraph::Settings;
-use graph::data::graphql::effort::LoadManager;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::env::EnvVars;

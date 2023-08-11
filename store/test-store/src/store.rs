@@ -1,6 +1,6 @@
 use diesel::{self, PgConnection};
 use graph::blockchain::mock::MockDataSource;
-use graph::data::graphql::effort::LoadManager;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};

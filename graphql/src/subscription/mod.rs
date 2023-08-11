@@ -2,7 +2,7 @@ use std::result::Result;
 use std::time::{Duration, Instant};
 
 use graph::components::store::UnitStream;
-use graph::data::graphql::effort::LoadManager;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::schema::ApiSchema;
 use graph::{components::store::SubscriptionManager, prelude::*, schema::ErrorPolicy};
 

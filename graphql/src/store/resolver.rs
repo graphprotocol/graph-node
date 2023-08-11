@@ -3,7 +3,7 @@ use std::result;
 use std::sync::Arc;
 
 use graph::components::store::{SubscriptionManager, UnitStream};
-use graph::data::graphql::effort::LoadManager;
+use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, Trace};
 use graph::data::value::{Object, Word};

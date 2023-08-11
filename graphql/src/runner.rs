@@ -14,7 +14,7 @@ use graph::{
         SubscriptionError, SubscriptionResult, ENV_VARS,
     },
 };
-use graph::{data::graphql::effort::LoadManager, prelude::QueryStoreManager};
+use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};
 use graph::{
     data::query::{QueryResults, QueryTarget},
     prelude::QueryStore,
