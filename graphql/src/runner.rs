@@ -273,10 +273,6 @@ where
         )
     }
 
-    fn load_manager(&self) -> Arc<LoadManager> {
-        self.load_manager.clone()
-    }
-
     fn metrics(&self) -> Arc<dyn GraphQLMetricsTrait> {
         self.graphql_metrics.clone()
     }

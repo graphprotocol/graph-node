@@ -1,8 +1,8 @@
 use futures::prelude::*;
 
+use crate::data::query::QueryResults;
 use crate::data::query::{Query, QueryTarget};
 use crate::data::subscription::{Subscription, SubscriptionError, SubscriptionResult};
-use crate::data::{graphql::effort::LoadManager, query::QueryResults};
 use crate::prelude::DeploymentHash;
 
 use async_trait::async_trait;
@@ -40,8 +40,6 @@ pub trait GraphQlRunner: Send + Sync + 'static {
         subscription: Subscription,
         target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError>;
-
-    fn load_manager(&self) -> Arc<LoadManager>;
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics>;
 }

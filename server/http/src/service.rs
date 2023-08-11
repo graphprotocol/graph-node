@@ -474,10 +474,7 @@ mod tests {
     use hyper::service::Service;
     use hyper::{Body, Method, Request};
 
-    use graph::data::{
-        graphql::effort::LoadManager,
-        query::{QueryResults, QueryTarget},
-    };
+    use graph::data::query::{QueryResults, QueryTarget};
     use graph::prelude::*;
 
     use crate::test_utils;
@@ -526,10 +523,6 @@ mod tests {
             _target: QueryTarget,
         ) -> Result<SubscriptionResult, SubscriptionError> {
             unreachable!();
-        }
-
-        fn load_manager(&self) -> Arc<LoadManager> {
-            unimplemented!()
         }
 
         fn metrics(&self) -> Arc<dyn GraphQLMetrics> {

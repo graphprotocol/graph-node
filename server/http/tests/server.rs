@@ -3,7 +3,6 @@ use hyper::{Body, Client, Request};
 use std::time::Duration;
 
 use graph::data::{
-    graphql::effort::LoadManager,
     query::{QueryResults, QueryTarget},
     value::{Object, Word},
 };
@@ -72,10 +71,6 @@ impl GraphQlRunner for TestGraphQlRunner {
         _target: QueryTarget,
     ) -> Result<SubscriptionResult, SubscriptionError> {
         unreachable!();
-    }
-
-    fn load_manager(&self) -> Arc<LoadManager> {
-        unimplemented!()
     }
 
     fn metrics(&self) -> Arc<dyn GraphQLMetrics> {
