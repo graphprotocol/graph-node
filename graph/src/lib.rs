@@ -115,9 +115,7 @@ pub mod prelude {
         EthereumBlock, EthereumBlockWithCalls, EthereumCall, LightEthereumBlock,
         LightEthereumBlockExt,
     };
-    pub use crate::components::graphql::{
-        GraphQLMetrics, GraphQlRunner, QueryLoadManager, SubscriptionResultFuture,
-    };
+    pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner, SubscriptionResultFuture};
     pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
     pub use crate::components::metrics::{
         stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter, CounterVec, Gauge, GaugeVec,
