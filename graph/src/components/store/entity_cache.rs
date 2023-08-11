@@ -243,11 +243,6 @@ impl EntityCache {
             }
         }
 
-        // Remove the marked keys from the map
-        for key in keys_to_remove {
-            entity_map.remove(&key);
-        }
-
         // A helper function that checks if an update matches the query and returns the updated entity if it does
         fn matches_query(
             op: &EntityOp,
@@ -281,7 +276,10 @@ impl EntityCache {
                         handler_op
                             .apply_to(&mut entity_cow)
                             .map_err(|e| key.unknown_attribute(e))?;
-                        entity_map.insert(key.clone(), entity_cow.unwrap().into_owned());
+
+                        if let Some(updated_entity) = entity_cow {
+                            entity_map.insert(key.clone(), updated_entity.into_owned());
+                        }
                     } else {
                         // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
                         entity_map.insert(key.clone(), entity);
@@ -301,6 +299,11 @@ impl EntityCache {
                     entity_map.insert(key.clone(), entity);
                 }
             }
+        }
+
+        // Remove keys that were marked for removal
+        for key in keys_to_remove {
+            entity_map.remove(&key);
         }
 
         Ok(entity_map.into_values().collect())
