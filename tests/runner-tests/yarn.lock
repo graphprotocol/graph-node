@@ -903,10 +903,49 @@
     which "2.0.2"
     yaml "1.10.2"
 
+"@graphprotocol/graph-cli@0.53.0":
+  version "0.53.0"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-cli/-/graph-cli-0.53.0.tgz#7a7a6b6197ec28d6da661f9dc7da8a3198ce2f77"
+  integrity sha512-K6mvEgaHrNlldbNfAL7DKQhJnp8mSuHkDwBXZm4tbdEbwKneItRObjIOEtgAcfK+Gei1mT6pTO4I+8N7tIg9XA==
+  dependencies:
+    "@float-capital/float-subgraph-uncrashable" "^0.0.0-alpha.4"
+    "@oclif/core" "2.8.6"
+    "@whatwg-node/fetch" "^0.8.4"
+    assemblyscript "0.19.23"
+    binary-install-raw "0.0.13"
+    chalk "3.0.0"
+    chokidar "3.5.3"
+    debug "4.3.4"
+    docker-compose "0.23.19"
+    dockerode "2.5.8"
+    fs-extra "9.1.0"
+    glob "9.3.5"
+    gluegun "5.1.2"
+    graphql "15.5.0"
+    immutable "4.2.1"
+    ipfs-http-client "55.0.0"
+    jayson "4.0.0"
+    js-yaml "3.14.1"
+    prettier "1.19.1"
+    request "2.88.2"
+    semver "7.4.0"
+    sync-request "6.1.0"
+    tmp-promise "3.0.3"
+    web3-eth-abi "1.7.0"
+    which "2.0.2"
+    yaml "1.10.2"
+
 "@graphprotocol/graph-ts@0.30.0":
   version "0.30.0"
   resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.30.0.tgz#591dee3c7d9fc236ad57ce0712779e94aef9a50a"
   integrity sha512-h5tJqlsZXglGYM0PcBsBOqof4PT0Fr4Z3QBTYN/IjMF3VvRX2A8/bdpqaAnva+2N0uAfXXwRcwcOcW5O35yzXw==
+  dependencies:
+    assemblyscript "0.19.10"
+
+"@graphprotocol/graph-ts@0.31.0":
+  version "0.31.0"
+  resolved "https://registry.yarnpkg.com/@graphprotocol/graph-ts/-/graph-ts-0.31.0.tgz#730668c0369828b31bef81e8d9bc66b9b48e3480"
+  integrity sha512-xreRVM6ho2BtolyOh2flDkNoGZximybnzUnF53zJVp0+Ed0KnAlO1/KOCUYw06euVI9tk0c9nA2Z/D5SIQV2Rg==
   dependencies:
     assemblyscript "0.19.10"
 
@@ -1276,6 +1315,41 @@
   version "2.8.4"
   resolved "https://registry.yarnpkg.com/@oclif/core/-/core-2.8.4.tgz#7b453be6d4cd060ff4990bc8e31824a1de308354"
   integrity sha512-VlFDhoAJ1RDwcpDF46wAlciWTIryapMUViACttY9GwX6Ci6Lud1awe/pC3k4jad5472XshnPQV4bHAl4a/yxpA==
+  dependencies:
+    "@types/cli-progress" "^3.11.0"
+    ansi-escapes "^4.3.2"
+    ansi-styles "^4.3.0"
+    cardinal "^2.1.1"
+    chalk "^4.1.2"
+    clean-stack "^3.0.1"
+    cli-progress "^3.12.0"
+    debug "^4.3.4"
+    ejs "^3.1.8"
+    fs-extra "^9.1.0"
+    get-package-type "^0.1.0"
+    globby "^11.1.0"
+    hyperlinker "^1.0.0"
+    indent-string "^4.0.0"
+    is-wsl "^2.2.0"
+    js-yaml "^3.14.1"
+    natural-orderby "^2.0.3"
+    object-treeify "^1.1.33"
+    password-prompt "^1.1.2"
+    semver "^7.3.7"
+    string-width "^4.2.3"
+    strip-ansi "^6.0.1"
+    supports-color "^8.1.1"
+    supports-hyperlinks "^2.2.0"
+    ts-node "^10.9.1"
+    tslib "^2.5.0"
+    widest-line "^3.1.0"
+    wordwrap "^1.0.0"
+    wrap-ansi "^7.0.0"
+
+"@oclif/core@2.8.6":
+  version "2.8.6"
+  resolved "https://registry.yarnpkg.com/@oclif/core/-/core-2.8.6.tgz#7eb6984108f471ad0d719d3c07cde14c47ab17c5"
+  integrity sha512-1QlPaHMhOORySCXkQyzjsIsy2GYTilOw3LkjeHkCgsPJQjAT4IclVytJusWktPbYNys9O+O4V23J44yomQvnBQ==
   dependencies:
     "@types/cli-progress" "^3.11.0"
     ansi-escapes "^4.3.2"
