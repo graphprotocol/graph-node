@@ -212,7 +212,6 @@ impl EntityCache {
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
-            // This is to avoid overwriting updates
             if !self.current.contains_key(&key) {
                 self.current.insert(key.clone(), Some(entity.clone()));
             }
@@ -301,7 +300,11 @@ impl EntityCache {
             }
         }
 
-        // Remove keys that were marked for removal
+        // Remove entities that are in the store but have been removed by an update.
+        // We do this last since the loops over updates and handler_updates are only
+        // concerned with entities that are not in the store yet and by leaving removed
+        // keys in entity_map we avoid processing these updates a second time when we
+        // already looked at them when we went through entity_map
         for key in keys_to_remove {
             entity_map.remove(&key);
         }
