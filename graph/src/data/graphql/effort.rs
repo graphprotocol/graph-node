@@ -15,14 +15,26 @@ use crate::prelude::q;
 use crate::prelude::{debug, info, o, warn, Logger, ENV_VARS};
 use crate::util::stats::MovingStats;
 
+#[derive(PartialEq, Eq, Hash, Debug)]
+struct QueryRef {
+    id: DeploymentId,
+    shape_hash: u64,
+}
+
+impl QueryRef {
+    fn new(id: DeploymentId, shape_hash: u64) -> Self {
+        QueryRef { id, shape_hash }
+    }
+}
+
 struct QueryEffort {
     inner: Arc<RwLock<QueryEffortInner>>,
 }
 
-/// Track the effort for queries (identified by their ShapeHash) over a
-/// time window.
+/// Track the effort for queries (identified by their deployment id and
+/// shape hash) over a time window.
 struct QueryEffortInner {
-    effort: HashMap<u64, MovingStats>,
+    effort: HashMap<QueryRef, MovingStats>,
     total: MovingStats,
 }
 
@@ -41,9 +53,9 @@ impl QueryEffort {
         }
     }
 
-    pub fn add(&self, shape_hash: u64, duration: Duration, gauge: &Gauge) {
+    pub fn add(&self, qref: QueryRef, duration: Duration, gauge: &Gauge) {
         let mut inner = self.inner.write().unwrap();
-        inner.add(shape_hash, duration);
+        inner.add(qref, duration);
         gauge.set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
     }
 
@@ -52,10 +64,10 @@ impl QueryEffort {
     /// at all, return `ZERO_DURATION` as the total effort. If we have no
     /// data for the particular query, return `None` as the effort
     /// for the query
-    pub fn current_effort(&self, shape_hash: u64) -> (Option<Duration>, Duration) {
+    pub fn current_effort(&self, qref: &QueryRef) -> (Option<Duration>, Duration) {
         let inner = self.inner.read().unwrap();
         let total_effort = inner.total.duration();
-        let query_effort = inner.effort.get(&shape_hash).map(|stats| stats.duration());
+        let query_effort = inner.effort.get(qref).map(|stats| stats.duration());
         (query_effort, total_effort)
     }
 }
@@ -68,12 +80,12 @@ impl QueryEffortInner {
         }
     }
 
-    fn add(&mut self, shape_hash: u64, duration: Duration) {
+    fn add(&mut self, qref: QueryRef, duration: Duration) {
         let window_size = self.total.window_size;
         let bin_size = self.total.bin_size;
         let now = Instant::now();
         self.effort
-            .entry(shape_hash)
+            .entry(qref)
             .or_insert_with(|| MovingStats::new(window_size, bin_size))
             .add_at(now, duration);
         self.total.add_at(now, duration);
@@ -273,7 +285,7 @@ impl LoadManager {
     pub fn record_work(
         &self,
         shard: &str,
-        _deployment: DeploymentId,
+        deployment: DeploymentId,
         shape_hash: u64,
         duration: Duration,
         cache_status: CacheStatus,
@@ -282,9 +294,10 @@ impl LoadManager {
             .get(&cache_status)
             .map(GenericCounter::inc);
         if !ENV_VARS.load_management_is_disabled() {
+            let qref = QueryRef::new(deployment, shape_hash);
             self.effort
                 .get(shard)
-                .map(|effort| effort.add(shape_hash, duration, &self.effort_gauge));
+                .map(|effort| effort.add(qref, duration, &self.effort_gauge));
         }
     }
 
@@ -338,7 +351,7 @@ impl LoadManager {
         &self,
         wait_stats: &PoolWaitStats,
         shard: &str,
-        _deployment: DeploymentId,
+        deployment: DeploymentId,
         shape_hash: u64,
         query: &str,
     ) -> Decision {
@@ -365,10 +378,11 @@ impl LoadManager {
             return Proceed;
         }
 
+        let qref = QueryRef::new(deployment, shape_hash);
         let (query_effort, total_effort) = self
             .effort
             .get(shard)
-            .map(|effort| effort.current_effort(shape_hash))
+            .map(|effort| effort.current_effort(&qref))
             .unwrap_or((None, Duration::ZERO));
         // When `total_effort` is `Duratino::ZERO`, we haven't done any work. All are
         // welcome
