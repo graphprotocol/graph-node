@@ -199,13 +199,15 @@ pub struct LoadManager {
     logger: Logger,
     effort: HashMap<String, ShardEffort>,
     /// List of query shapes that have been statically blocked through
-    /// configuration
+    /// configuration. We should really also include the deployment, but
+    /// that would require a change to the format of the file from which
+    /// these queries are read
     blocked_queries: HashSet<u64>,
     /// List of query shapes that have caused more than `JAIL_THRESHOLD`
     /// proportion of the work while the system was overloaded. Currently,
     /// there is no way for a query to get out of jail other than
     /// restarting the process
-    jailed_queries: RwLock<HashSet<u64>>,
+    jailed_queries: RwLock<HashSet<QueryRef>>,
     kill_state: RwLock<KillState>,
     effort_gauge: Box<Gauge>,
     query_counters: HashMap<CacheStatus, Counter>,
@@ -365,7 +367,9 @@ impl LoadManager {
             return Proceed;
         }
 
-        if self.jailed_queries.read().unwrap().contains(&shape_hash) {
+        let qref = QueryRef::new(deployment, shape_hash);
+
+        if self.jailed_queries.read().unwrap().contains(&qref) {
             return if ENV_VARS.load_simulate {
                 Proceed
             } else {
@@ -379,7 +383,6 @@ impl LoadManager {
             return Proceed;
         }
 
-        let qref = QueryRef::new(deployment, shape_hash);
         let (query_effort, total_effort) = self
             .effort
             .get(shard)
@@ -406,11 +409,12 @@ impl LoadManager {
                 // effort in an overload situation gets killed
                 warn!(self.logger, "Jailing query";
                 "query" => query,
+                "sgd" => format!("sgd{}", qref.id),
                 "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
-                self.jailed_queries.write().unwrap().insert(shape_hash);
+                self.jailed_queries.write().unwrap().insert(qref);
                 return if ENV_VARS.load_simulate {
                     Proceed
                 } else {
@@ -428,6 +432,7 @@ impl LoadManager {
             if ENV_VARS.load_simulate {
                 debug!(self.logger, "Declining query";
                     "query" => query,
+                    "sgd" => format!("sgd{}", qref.id),
                     "wait_ms" => wait_ms.as_millis(),
                     "query_weight" => format!("{:.2}", query_effort / total_effort),
                     "kill_rate" => format!("{:.4}", kill_rate),
