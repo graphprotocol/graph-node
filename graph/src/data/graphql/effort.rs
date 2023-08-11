@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
-use crate::components::store::PoolWaitStats;
+use crate::components::store::{DeploymentId, PoolWaitStats};
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
@@ -263,7 +263,14 @@ impl LoadManager {
     /// Record that we spent `duration` amount of work for the query
     /// `shape_hash`, where `cache_status` indicates whether the query
     /// was cached or had to actually run
-    pub fn record_work(&self, shape_hash: u64, duration: Duration, cache_status: CacheStatus) {
+    pub fn record_work(
+        &self,
+        _shard: &str,
+        _deployment: DeploymentId,
+        shape_hash: u64,
+        duration: Duration,
+        cache_status: CacheStatus,
+    ) {
         self.query_counters
             .get(&cache_status)
             .map(GenericCounter::inc);
@@ -318,7 +325,14 @@ impl LoadManager {
     /// case, we also do not take any locks when asked to update statistics,
     /// or to check whether we are overloaded; these operations amount to
     /// noops.
-    pub fn decide(&self, wait_stats: &PoolWaitStats, shape_hash: u64, query: &str) -> Decision {
+    pub fn decide(
+        &self,
+        wait_stats: &PoolWaitStats,
+        _shard: &str,
+        _deployment: DeploymentId,
+        shape_hash: u64,
+        query: &str,
+    ) -> Decision {
         use Decision::*;
 
         if self.blocked_queries.contains(&shape_hash) {

@@ -393,7 +393,12 @@ impl Resolver for StoreResolver {
     }
 
     fn record_work(&self, query: &Query, elapsed: Duration, cache_status: CacheStatus) {
-        self.load_manager
-            .record_work(query.shape_hash, elapsed, cache_status);
+        self.load_manager.record_work(
+            self.store.shard(),
+            self.store.deployment_id(),
+            query.shape_hash,
+            elapsed,
+            cache_status,
+        );
     }
 }

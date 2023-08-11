@@ -136,6 +136,8 @@ where
         self.load_manager
             .decide(
                 &store.wait_stats().map_err(QueryExecutionError::from)?,
+                store.shard(),
+                store.deployment_id(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )
@@ -248,6 +250,8 @@ where
             .load_manager
             .decide(
                 &store.wait_stats().map_err(QueryExecutionError::from)?,
+                store.shard(),
+                store.deployment_id(),
                 query.shape_hash,
                 query.query_text.as_ref(),
             )
