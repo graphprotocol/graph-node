@@ -27,29 +27,30 @@ impl QueryRef {
     }
 }
 
-struct QueryEffort {
-    inner: Arc<RwLock<QueryEffortInner>>,
+/// Statistics about the query effort for a single database shard
+struct ShardEffort {
+    inner: Arc<RwLock<ShardEffortInner>>,
 }
 
 /// Track the effort for queries (identified by their deployment id and
 /// shape hash) over a time window.
-struct QueryEffortInner {
+struct ShardEffortInner {
     effort: HashMap<QueryRef, MovingStats>,
     total: MovingStats,
 }
 
 /// Create a `QueryEffort` that uses the window and bin sizes configured in
 /// the environment
-impl Default for QueryEffort {
+impl Default for ShardEffort {
     fn default() -> Self {
         Self::new(ENV_VARS.load_window_size, ENV_VARS.load_bin_size)
     }
 }
 
-impl QueryEffort {
+impl ShardEffort {
     pub fn new(window_size: Duration, bin_size: Duration) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(QueryEffortInner::new(window_size, bin_size))),
+            inner: Arc::new(RwLock::new(ShardEffortInner::new(window_size, bin_size))),
         }
     }
 
@@ -72,7 +73,7 @@ impl QueryEffort {
     }
 }
 
-impl QueryEffortInner {
+impl ShardEffortInner {
     fn new(window_size: Duration, bin_size: Duration) -> Self {
         Self {
             effort: HashMap::default(),
@@ -196,7 +197,7 @@ impl Decision {
 
 pub struct LoadManager {
     logger: Logger,
-    effort: HashMap<String, QueryEffort>,
+    effort: HashMap<String, ShardEffort>,
     /// List of query shapes that have been statically blocked through
     /// configuration
     blocked_queries: HashSet<u64>,
@@ -264,7 +265,7 @@ impl LoadManager {
         let effort = HashMap::from_iter(
             shards
                 .into_iter()
-                .map(|shard| (shard, QueryEffort::default())),
+                .map(|shard| (shard, ShardEffort::default())),
         );
 
         Self {
