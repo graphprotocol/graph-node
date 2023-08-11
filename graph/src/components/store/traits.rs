@@ -557,6 +557,13 @@ pub trait QueryStore: Send + Sync {
 
     /// A permit should be acquired before starting query execution.
     async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
+
+    /// Report the name of the shard in which the subgraph is stored. This
+    /// should only be used for reporting and monitoring
+    fn shard(&self) -> &str;
+
+    /// Return the deployment id that is queried by this `QueryStore`
+    fn deployment_id(&self) -> DeploymentId;
 }
 
 /// A view of the store that can provide information about the indexing status

@@ -1,5 +1,5 @@
 use crate::deployment_store::{DeploymentStore, ReplicaId};
-use graph::components::store::QueryStore as QueryStoreTrait;
+use graph::components::store::{DeploymentId, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::value::Object;
 use graph::prelude::*;
@@ -126,5 +126,13 @@ impl QueryStoreTrait for QueryStore {
 
     async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
         self.store.query_permit(self.replica_id).await
+    }
+
+    fn shard(&self) -> &str {
+        self.site.shard.as_str()
+    }
+
+    fn deployment_id(&self) -> DeploymentId {
+        self.site.id.into()
     }
 }
