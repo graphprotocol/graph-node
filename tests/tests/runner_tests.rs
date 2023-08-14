@@ -146,6 +146,165 @@ async fn typename() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn derived_loaders() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("derived-loaders").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_log(&mut block_1, "1_0");
+        push_test_log(&mut block_1, "1_1");
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        push_test_log(&mut block_2, "2_0");
+        vec![block_0, block_1, block_2]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let chain = chain(blocks, &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(stop_block).await;
+
+    // This test tests that derived loaders work correctly.
+    // The test fixture has 2 entities, `Bar` and `BBar`, which are derived from `Foo` and `BFoo`.
+    // Where `Foo` and `BFoo` are the same entity, but `BFoo` uses Bytes as the ID type.
+    // This test tests multiple edge cases of derived loaders:
+    // - The derived loader is used in the same handler as the entity is created.
+    // - The derived loader is used in the same block as the entity is created.
+    // - The derived loader is used in a later block than the entity is created.
+    // This is to test the cases where the entities are loaded from the store, `EntityCache.updates` and `EntityCache.handler_updates`
+    // It also tests cases where derived entities are updated and deleted when
+    // in same handler, same block and later block as the entity is created/updated.
+    // For more details on the test cases, see `tests/runner-tests/derived-loaders/src/mapping.ts`
+    // Where the test cases are documented in the code.
+
+    let query_res = ctx
+    .query(&format!(
+        r#"{{ testResult(id:"1_0", block: {{ number: 1 }} ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#,
+    ))
+    .await
+    .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(object! {
+            testResult: object! {
+                id: "1_0",
+                barDerived: vec![
+                    object! {
+                        id: "0_1_0",
+                        value: "0",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "1_1_0",
+                        value: "0",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "2_1_0",
+                        value: "0",
+                        value2: "0"
+                    }
+                ],
+                bBarDerived: vec![
+                    object! {
+                        id: "0x305f315f30",
+                        value: "0",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "0x315f315f30",
+                        value: "0",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "0x325f315f30",
+                        value: "0",
+                        value2: "0"
+                    }
+                ]
+            }
+        })
+    );
+
+    let query_res = ctx
+    .query(&format!(
+        r#"{{ testResult(id:"1_1", block: {{ number: 1 }} ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#,
+    ))
+    .await
+    .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(object! {
+            testResult: object! {
+                id: "1_1",
+                barDerived: vec![
+                    object! {
+                        id: "0_1_1",
+                        value: "1",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "2_1_1",
+                        value: "0",
+                        value2: "0"
+                    }
+                ],
+                bBarDerived: vec![
+                    object! {
+                        id: "0x305f315f31",
+                        value: "1",
+                        value2: "0"
+                    },
+                    object! {
+                        id: "0x325f315f31",
+                        value: "0",
+                        value2: "0"
+                    }
+                ]
+            }
+        })
+    );
+
+    let query_res = ctx.query(
+    &format!(
+        r#"{{ testResult(id:"2_0" ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#
+    )
+)
+.await
+.unwrap();
+    assert_json_eq!(
+        query_res,
+        Some(object! {
+            testResult: object! {
+                id: "2_0",
+                barDerived: vec![
+                    object! {
+                        id: "0_2_0",
+                        value: "2",
+                        value2: "0"
+                    }
+                ],
+                bBarDerived: vec![
+                    object! {
+                        id: "0x305f325f30",
+                        value: "2",
+                        value2: "0"
+                    }
+                ]
+            }
+        })
+    );
+}
+
+#[tokio::test]
 async fn file_data_sources() {
     let RunnerTestRecipe {
         stores,

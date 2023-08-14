@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::{Duration, Instant};
@@ -10,6 +11,8 @@ use graph::components::store::{
     Batch, DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore,
 };
 use graph::constraint_violation;
+use graph::data::store::scalar::Bytes;
+use graph::data::store::Value;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -1100,7 +1103,12 @@ impl Queue {
         fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
             entity
                 .get(&derived_query.entity_field)
-                .map(|related_id| related_id.as_str() == Some(&derived_query.value))
+                .map(|v| match v {
+                    Value::String(s) => s.as_str() == derived_query.value.as_str(),
+                    Value::Bytes(b) => Bytes::from_str(derived_query.value.as_str())
+                        .map_or(false, |bytes_value| &bytes_value == b),
+                    _ => false,
+                })
                 .unwrap_or(false)
         }
 

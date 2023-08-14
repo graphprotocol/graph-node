@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: test
     source:
-      address: "0xCfEB869F69431e42cdB54A4F4f105C19C080A601"
+      address: "0x0000000000000000000000000000000000000000"
       abi: Contract
     mapping:
       kind: ethereum/events
@@ -18,6 +18,6 @@ dataSources:
       entities:
         - Call
       eventHandlers:
-        - event: Trigger(uint16)
-          handler: handleTrigger
+        - event: TestEvent(string)
+          handler: handleTestEvent
       file: ./src/mapping.ts
