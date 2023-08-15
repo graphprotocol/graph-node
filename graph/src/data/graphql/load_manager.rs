@@ -7,13 +7,15 @@ use std::iter::FromIterator;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use crate::components::metrics::{Counter, Gauge, MetricsRegistry};
+use crate::components::metrics::{Counter, GaugeVec, MetricsRegistry};
 use crate::components::store::{DeploymentId, PoolWaitStats};
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
 use crate::prelude::{debug, info, o, warn, Logger, ENV_VARS};
 use crate::util::stats::MovingStats;
+
+const SHARD_LABEL: [&str; 1] = ["shard"];
 
 #[derive(PartialEq, Eq, Hash, Debug)]
 struct QueryRef {
@@ -54,10 +56,12 @@ impl ShardEffort {
         }
     }
 
-    pub fn add(&self, qref: QueryRef, duration: Duration, gauge: &Gauge) {
+    pub fn add(&self, shard: &str, qref: QueryRef, duration: Duration, gauge: &GaugeVec) {
         let mut inner = self.inner.write().unwrap();
         inner.add(qref, duration);
-        gauge.set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
+        gauge
+            .with_label_values(&[shard])
+            .set(inner.total.average().unwrap_or(Duration::ZERO).as_millis() as f64);
     }
 
     /// Return what we know right now about the effort for the query
@@ -209,9 +213,9 @@ pub struct LoadManager {
     /// restarting the process
     jailed_queries: RwLock<HashSet<QueryRef>>,
     kill_state: RwLock<KillState>,
-    effort_gauge: Box<Gauge>,
+    effort_gauge: Box<GaugeVec>,
     query_counters: HashMap<CacheStatus, Counter>,
-    kill_rate_gauge: Box<Gauge>,
+    kill_rate_gauge: Box<GaugeVec>,
 }
 
 impl LoadManager {
@@ -236,18 +240,19 @@ impl LoadManager {
         };
         info!(logger, "Creating LoadManager in {} mode", mode,);
 
+        let shard_label: Vec<_> = SHARD_LABEL.into_iter().map(String::from).collect();
         let effort_gauge = registry
-            .new_gauge(
+            .new_gauge_vec(
                 "query_effort_ms",
                 "Moving average of time spent running queries",
-                HashMap::new(),
+                shard_label.clone(),
             )
             .expect("failed to create `query_effort_ms` counter");
         let kill_rate_gauge = registry
-            .new_gauge(
+            .new_gauge_vec(
                 "query_kill_rate",
                 "The rate at which the load manager kills queries",
-                HashMap::new(),
+                shard_label,
             )
             .expect("failed to create `query_kill_rate` counter");
         let query_counters = CacheStatus::iter()
@@ -300,7 +305,7 @@ impl LoadManager {
             let qref = QueryRef::new(deployment, shape_hash);
             self.effort
                 .get(shard)
-                .map(|effort| effort.add(qref, duration, &self.effort_gauge));
+                .map(|effort| effort.add(shard, qref, duration, &self.effort_gauge));
         }
     }
 
@@ -529,7 +534,9 @@ impl LoadManager {
                 Skip => { /* do nothing */ }
             }
         }
-        self.kill_rate_gauge.set(kill_rate);
+        self.kill_rate_gauge
+            .with_label_values(&[shard])
+            .set(kill_rate);
         kill_rate
     }
 }
