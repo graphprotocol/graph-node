@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures03::prelude::Stream;
 use reqwest::Client;
 use serde_json::Value;
-use slog::{debug, o, Logger};
+use slog::{debug, Logger};
 use thiserror::Error;
 
 use crate::cheap_clone::CheapClone;
@@ -64,6 +64,8 @@ impl CheapClone for FileSizeLimit {}
 
 impl Default for ArweaveClient {
     fn default() -> Self {
+        use slog::o;
+
         Self {
             base_url: "https://arweave.net".parse().unwrap(),
             client: Client::default(),
@@ -77,7 +79,7 @@ impl ArweaveClient {
         Self {
             base_url,
             logger,
-            ..Default::default()
+            client: Client::default(),
         }
     }
 }

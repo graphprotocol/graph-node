@@ -49,6 +49,7 @@ pub async fn run(
     store_builder: StoreBuilder,
     network_name: String,
     ipfs_url: Vec<String>,
+    arweave_url: String,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -73,7 +74,10 @@ pub async fn run(
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
     );
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver = Arc::new(ArweaveClient::new(
+        logger.cheap_clone(),
+        arweave_url.parse().expect("invalid arweave url"),
+    ));
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),
         env_vars.mappings.ipfs_timeout,
