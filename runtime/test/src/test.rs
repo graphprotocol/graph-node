@@ -1245,7 +1245,8 @@ async fn test_store_set_id() {
                 }
 
                 type Binary @entity {
-                    id: Bytes!
+                    id: Bytes!,
+                    name: String,
                 }",
             )
             .await;
@@ -1388,4 +1389,144 @@ async fn test_store_set_id() {
         .store_setv(BINARY, BID, vec![("id", Value::Int(32))])
         .expect_err("id must be Bytes");
     err_says(err, "Entity has non-string `id` attribute");
+}
+
+/// Test setting fields that are not defined in the schema
+/// This should return an error
+#[tokio::test]
+async fn test_store_set_invalid_fields() {
+    struct Host {
+        ctx: MappingContext<Chain>,
+        host_exports: host_exports::test_support::HostExports<Chain>,
+        stopwatch: StopwatchMetrics,
+        gas: GasCounter,
+    }
+
+    impl Host {
+        async fn new() -> Host {
+            let version = ENV_VARS.mappings.max_api_version.clone();
+            let wasm_file = wasm_file_path("boolean.wasm", API_VERSION_0_0_5);
+
+            let ds = mock_data_source(&wasm_file, version.clone());
+
+            let store = STORE.clone();
+            let deployment = DeploymentHash::new("hostStoreSetInvalidFields".to_string()).unwrap();
+            let deployment = test_store::create_test_subgraph(
+                &deployment,
+                "type User @entity {
+                    id: ID!,
+                    name: String,
+                }
+
+                type Binary @entity {
+                    id: Bytes!,
+                    test: String,
+                    test2: String,
+                }",
+            )
+            .await;
+
+            let ctx = mock_context(deployment.clone(), ds, store.subgraph_store(), version);
+            let host_exports = host_exports::test_support::HostExports::new(&ctx);
+
+            let metrics_registry = Arc::new(MetricsRegistry::mock());
+            let stopwatch = StopwatchMetrics::new(
+                ctx.logger.clone(),
+                deployment.hash.clone(),
+                "test",
+                metrics_registry.clone(),
+            );
+            let gas = GasCounter::new();
+
+            Host {
+                ctx,
+                host_exports,
+                stopwatch,
+                gas,
+            }
+        }
+
+        fn store_set(
+            &mut self,
+            entity_type: &str,
+            id: &str,
+            data: Vec<(&str, &str)>,
+        ) -> Result<(), HostExportError> {
+            let data: Vec<_> = data.into_iter().map(|(k, v)| (k, Value::from(v))).collect();
+            self.store_setv(entity_type, id, data)
+        }
+
+        fn store_setv(
+            &mut self,
+            entity_type: &str,
+            id: &str,
+            data: Vec<(&str, Value)>,
+        ) -> Result<(), HostExportError> {
+            let id = String::from(id);
+            let data = HashMap::from_iter(data.into_iter().map(|(k, v)| (Word::from(k), v)));
+            self.host_exports.store_set(
+                &self.ctx.logger,
+                &mut self.ctx.state,
+                &self.ctx.proof_of_indexing,
+                entity_type.to_string(),
+                id,
+                data,
+                &self.stopwatch,
+                &self.gas,
+            )
+        }
+    }
+
+    #[track_caller]
+    fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
+        let err = err.to_string();
+        assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
+    }
+
+    const UID: &str = "u1";
+    const USER: &str = "User";
+    const BID: &str = "0xdeadbeef";
+    const BINARY: &str = "Binary";
+
+    let mut host = Host::new().await;
+
+    host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .unwrap();
+
+    let err = host
+        .store_set(
+            USER,
+            UID,
+            vec![
+                ("id", "u1"),
+                ("name", "user1"),
+                ("test", "invalid_field"),
+                ("test2", "invalid_field"),
+            ],
+        )
+        .err()
+        .unwrap();
+
+    // The order of `test` and `test2` is not guranteed
+    // So we just check the string contains them
+    let err_string = err.to_string();
+    dbg!(err_string.as_str());
+    assert!(err_string
+        .contains("The provided entity has fields not defined in the schema for entity `User`"));
+    assert!(err_string.contains("test"));
+    assert!(err_string.contains("test2"));
+
+    let err = host
+        .store_set(
+            USER,
+            UID,
+            vec![("id", "u1"), ("name", "user1"), ("test3", "invalid_field")],
+        )
+        .err()
+        .unwrap();
+
+    err_says(
+        err,
+        "Unknown key `test3`. It probably is not part of the schema",
+    )
 }
