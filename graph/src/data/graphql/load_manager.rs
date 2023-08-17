@@ -212,7 +212,8 @@ pub struct LoadManager {
     /// there is no way for a query to get out of jail other than
     /// restarting the process
     jailed_queries: RwLock<HashSet<QueryRef>>,
-    kill_state: RwLock<KillState>,
+    /// Per shard state of whether we are killing queries or not
+    kill_state: HashMap<String, RwLock<KillState>>,
     effort_gauge: Box<GaugeVec>,
     query_counters: HashMap<CacheStatus, Counter>,
     kill_rate_gauge: Box<GaugeVec>,
@@ -271,8 +272,14 @@ impl LoadManager {
 
         let effort = HashMap::from_iter(
             shards
+                .iter()
+                .map(|shard| (shard.clone(), ShardEffort::default())),
+        );
+
+        let kill_state = HashMap::from_iter(
+            shards
                 .into_iter()
-                .map(|shard| (shard, ShardEffort::default())),
+                .map(|shard| (shard, RwLock::new(KillState::new()))),
         );
 
         Self {
@@ -280,7 +287,7 @@ impl LoadManager {
             effort,
             blocked_queries,
             jailed_queries: RwLock::new(HashSet::new()),
-            kill_state: RwLock::new(KillState::new()),
+            kill_state,
             effort_gauge,
             query_counters,
             kill_rate_gauge,
@@ -383,7 +390,7 @@ impl LoadManager {
         }
 
         let (overloaded, wait_ms) = self.overloaded(wait_stats);
-        let (kill_rate, last_update) = self.kill_state();
+        let (kill_rate, last_update) = self.kill_state(shard);
         if !overloaded && kill_rate == 0.0 {
             return Proceed;
         }
@@ -430,7 +437,7 @@ impl LoadManager {
 
         // Kill random queries in case we have no queries, or not enough queries
         // that cause at least 20% of the effort
-        let kill_rate = self.update_kill_rate(kill_rate, last_update, overloaded, wait_ms);
+        let kill_rate = self.update_kill_rate(shard, kill_rate, last_update, overloaded, wait_ms);
         let decline =
             thread_rng().gen_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
         if decline {
@@ -458,13 +465,14 @@ impl LoadManager {
         (overloaded, store_avg.unwrap_or(Duration::ZERO))
     }
 
-    fn kill_state(&self) -> (f64, Instant) {
-        let state = self.kill_state.read().unwrap();
+    fn kill_state(&self, shard: &str) -> (f64, Instant) {
+        let state = self.kill_state.get(shard).unwrap().read().unwrap();
         (state.kill_rate, state.last_update)
     }
 
     fn update_kill_rate(
         &self,
+        shard: &str,
         mut kill_rate: f64,
         last_update: Instant,
         overloaded: bool,
@@ -498,7 +506,7 @@ impl LoadManager {
                 kill_rate = (kill_rate - KILL_RATE_STEP_DOWN).max(0.0);
             }
             let event = {
-                let mut state = self.kill_state.write().unwrap();
+                let mut state = self.kill_state.get(shard).unwrap().write().unwrap();
                 state.kill_rate = kill_rate;
                 state.last_update = now;
                 state.log_event(now, kill_rate, overloaded)
