@@ -51,6 +51,19 @@ const THINGS_GQL: &str = r#"
             }
         ]
     ) @fulltext(
+        name: "userSearch2"
+        language: en
+        algorithm: rank
+        include: [
+            {
+                entity: "User",
+                fields: [
+                    { name: "name"},
+                    { name: "email"},
+                ]
+            }
+        ]
+    ) @fulltext(
         name: "nullableStringsSearch"
         language: en
         algorithm: rank
@@ -1195,6 +1208,20 @@ fn check_find() {
                 vec!["1"],
                 user_query().filter(EntityFilter::Equal(
                     "userSearch".into(),
+                    "Jono & achangedemail@email.com".into(),
+                )),
+            );
+        // Test with a second fulltext search; we had a bug that caused only
+        // one search index to be populated (see issue #4794)
+        let checker = checker
+            .check(
+                vec!["3"],
+                user_query().filter(EntityFilter::Equal("userSearch2".into(), "Shaq:*".into())),
+            )
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Equal(
+                    "userSearch2".into(),
                     "Jono & achangedemail@email.com".into(),
                 )),
             );

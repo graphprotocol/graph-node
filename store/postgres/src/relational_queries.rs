@@ -1812,10 +1812,9 @@ struct FulltextValues<'a>(HashMap<&'a Word, Vec<(&'a str, Value)>>);
 
 impl<'a> FulltextValues<'a> {
     fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Self {
-        let mut map = HashMap::new();
+        let mut map: HashMap<&Word, Vec<(&str, Value)>> = HashMap::new();
         for column in table.columns.iter().filter(|column| column.is_fulltext()) {
             for row in rows {
-                let mut fulltext = Vec::new();
                 if let Some(fields) = column.fulltext_fields.as_ref() {
                     let fulltext_field_values = fields
                         .iter()
@@ -1823,11 +1822,10 @@ impl<'a> FulltextValues<'a> {
                         .cloned()
                         .collect::<Vec<Value>>();
                     if !fulltext_field_values.is_empty() {
-                        fulltext.push((column.field.as_str(), Value::List(fulltext_field_values)));
+                        map.entry(row.id)
+                            .or_default()
+                            .push((column.field.as_str(), Value::List(fulltext_field_values)));
                     }
-                }
-                if !fulltext.is_empty() {
-                    map.insert(row.id, fulltext);
                 }
             }
         }
