@@ -3,10 +3,9 @@ use crate::prelude::{impl_slog_value, Value};
 use stable_hash_legacy::StableHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
-use strum::AsStaticRef as _;
-use strum_macros::AsStaticStr;
+use strum_macros::IntoStaticStr;
 
-#[derive(AsStaticStr)]
+#[derive(IntoStaticStr)]
 pub enum ProofOfIndexingEvent<'a> {
     /// For when an entity is removed from the store.
     RemoveEntity { entity_type: &'a str, id: &'a str },
@@ -64,8 +63,8 @@ impl stable_hash_legacy::StableHash for ProofOfIndexingEvent<'_> {
         use stable_hash_legacy::prelude::*;
         use ProofOfIndexingEvent::*;
 
-        self.as_static()
-            .stable_hash(sequence_number.next_child(), state);
+        let str: &'static str = self.into();
+        str.stable_hash(sequence_number.next_child(), state);
         match self {
             RemoveEntity { entity_type, id } => {
                 entity_type.stable_hash(sequence_number.next_child(), state);
@@ -123,7 +122,7 @@ impl stable_hash::StableHash for ProofOfIndexingEvent<'_> {
 /// sorted.
 impl fmt::Debug for ProofOfIndexingEvent<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut builder = f.debug_struct(self.as_static());
+        let mut builder = f.debug_struct(self.into());
         match self {
             Self::RemoveEntity { entity_type, id } => {
                 builder.field("entity_type", entity_type);
