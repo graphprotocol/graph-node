@@ -14,11 +14,11 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
+use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::{borrow::Cow, collections::HashSet};
 use strum_macros::IntoStaticStr;
 
 use super::{
@@ -850,12 +850,14 @@ impl Entity {
             field_names_iter: impl Iterator<Item = &'a str>,
             object_type: &ObjectType<'_, String>,
         ) -> Result<(), Error> {
-            let fields_set: HashSet<_> =
-                object_type.fields.iter().map(|f| f.name.as_str()).collect();
-
             // Fields that are not in `object_type.fields`
             let missing_fields: Vec<_> = field_names_iter
-                .filter(|field_name| !fields_set.contains(field_name))
+                .filter(|field_name| {
+                    !object_type
+                        .fields
+                        .iter()
+                        .any(|field| field.name.as_str() == *field_name)
+                })
                 .collect();
 
             // If `missing_fields` is not empty that means this entity
