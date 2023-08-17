@@ -206,7 +206,7 @@ impl EntityCache {
             entity_field: field.name.clone().to_snake_case().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
-            id_is_bytes: id_is_bytes,
+            id_is_bytes,
         };
 
         let entities = self.store.get_derived(&query)?;

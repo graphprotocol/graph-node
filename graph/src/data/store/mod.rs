@@ -18,8 +18,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
-use strum::AsStaticRef as _;
-use strum_macros::AsStaticStr;
+use strum_macros::IntoStaticStr;
 
 use super::{
     graphql::{ext::DirectiveFinder, TypeExt as _},
@@ -186,7 +185,7 @@ pub enum IdType {
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "data")]
-#[derive(AsStaticStr)]
+#[derive(IntoStaticStr)]
 pub enum Value {
     String(String),
     Int(i32),
@@ -215,7 +214,7 @@ impl stable_hash_legacy::StableHash for Value {
             return;
         }
         stable_hash_legacy::StableHash::stable_hash(
-            &self.as_static().to_string(),
+            &Into::<&str>::into(self).to_string(),
             sequence_number.next_child(),
             state,
         );
