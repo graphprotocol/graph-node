@@ -63,16 +63,17 @@ jobs:
         ports:
           - 5001:5001
       postgres:
-        image: postgres
+        image: bitnami/postgresql
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: graph_node_test
           POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+          POSTGRESQL_EXTRA_FLAGS: "-c max_connections=1000"
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
         ports:
           - 5432:5432
     env:
