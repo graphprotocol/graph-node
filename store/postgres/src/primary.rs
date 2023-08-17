@@ -623,12 +623,14 @@ mod queries {
         let nodes: HashMap<_, _> = a::table
             .inner_join(ds::table.on(ds::id.eq(a::id)))
             .filter(ds::subgraph.eq(any(ids)))
-            .select((ds::subgraph, a::node_id))
-            .load::<(String, String)>(conn)?
+            .select((ds::subgraph, a::node_id, a::paused_at.is_not_null()))
+            .load::<(String, String, bool)>(conn)?
             .into_iter()
+            .map(|(subgraph, node, paused)| (subgraph, (node, paused)))
             .collect();
         for mut info in infos {
-            info.node = nodes.get(&info.subgraph).cloned()
+            info.node = nodes.get(&info.subgraph).map(|(node, _)| node.clone());
+            info.paused = nodes.get(&info.subgraph).map(|(_, paused)| *paused);
         }
         Ok(())
     }

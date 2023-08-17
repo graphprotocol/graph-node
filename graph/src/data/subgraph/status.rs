@@ -103,6 +103,7 @@ pub struct Info {
     pub health: SubgraphHealth,
     pub fatal_error: Option<SubgraphError>,
     pub non_fatal_errors: Vec<SubgraphError>,
+    pub paused: Option<bool>,
 
     /// Indexing status on different chains involved in the subgraph's data sources.
     pub chains: Vec<ChainInfo>,
@@ -124,6 +125,7 @@ impl IntoValue for Info {
             entity_count,
             fatal_error,
             health,
+            paused,
             node,
             non_fatal_errors,
             synced,
@@ -164,6 +166,7 @@ impl IntoValue for Info {
             subgraph: subgraph,
             synced: synced,
             health: r::Value::from(health),
+            paused: paused,
             fatalError: fatal_error_val,
             nonFatalErrors: non_fatal_errors,
             chains: chains.into_iter().map(|chain| chain.into_value()).collect::<Vec<_>>(),
