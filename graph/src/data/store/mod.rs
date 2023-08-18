@@ -649,27 +649,59 @@ pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>
 
 impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum EntityValidationError {
-    #[error("The provided entity has fields not defined in the schema for entity `{0}`: {1}")]
-    FieldsNotDefined(String, String),
-
-    #[error("Entity {0}[{1}]: unknown entity type `{0}`")]
-    UnknownEntityType(String, String),
-
-    #[error("Entity {0}[{1}]: field `{2}` is of type {3}, but the value `{4}` contains a {5} at index {6}")]
-    MismatchedElementTypeInList(String, String, String, String, String, String, usize),
-
     #[error(
-        "Entity {0}[{1}]: the value `{2}` for field `{3}` must have type {4} but has type {5}"
+        "The provided entity has fields not defined in the schema for entity `{entity}`: {fields}`"
     )]
-    InvalidFieldType(String, String, String, String, String, String),
+    FieldsNotDefined { entity: String, fields: String },
 
-    #[error("Entity {0}[{1}]: missing value for non-nullable field `{2}`")]
-    MissingValueForNonNullableField(String, String, String),
+    #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
+    UnknownEntityType { entity: String, id: String },
 
-    #[error("Entity {0}[{1}]: field `{2}` is derived and cannot be set")]
-    CannotSetDerivedField(String, String, String),
+    #[error("Entity {entity}[{entity_id}]: field `{field}` is of type {expected_type}, but the value `{value}` contains a {actual_type} at index {index}")]
+    MismatchedElementTypeInList {
+        entity: String,
+        entity_id: String,
+        field: String,
+        expected_type: String,
+        value: String,
+        actual_type: String,
+        index: usize,
+    },
+
+    #[error("Entity {entity}[{entity_id}]: the value `{value}` for field `{field}` must have type {expected_type} but has type {actual_type}")]
+    InvalidFieldType {
+        entity: String,
+        entity_id: String,
+        value: String,
+        field: String,
+        expected_type: String,
+        actual_type: String,
+    },
+
+    #[error("Entity {entity}[{entity_id}]: missing value for non-nullable field `{field}`")]
+    MissingValueForNonNullableField {
+        entity: String,
+        entity_id: String,
+        field: String,
+    },
+
+    #[error("Entity {entity}[{entity_id}]: field `{field}` is derived and cannot be set")]
+    CannotSetDerivedField {
+        entity: String,
+        entity_id: String,
+        field: String,
+    },
+
+    #[error("Unknown key `{0}`. It probably is not part of the schema")]
+    UnknownKey(String),
+
+    #[error("Internal error: no id attribute for entity `{entity}`")]
+    MissingIdAttribute { entity: String },
+
+    #[error("Unsupported type for `id` attribute")]
+    UnsupportedTypeForIDAttribute,
 }
 
 /// The `entity!` macro is a convenient way to create entities in tests. It
@@ -705,15 +737,14 @@ macro_rules! entity {
 }
 
 impl Entity {
-    pub fn make<I: IntoEntityIterator>(pool: Arc<AtomPool>, iter: I) -> Result<Entity, Error> {
+    pub fn make<I: IntoEntityIterator>(
+        pool: Arc<AtomPool>,
+        iter: I,
+    ) -> Result<Entity, EntityValidationError> {
         let mut obj = Object::new(pool);
         for (key, value) in iter {
-            obj.insert(key, value).map_err(|e| {
-                anyhow!(
-                    "Unknown key `{}`. It probably is not part of the schema",
-                    e.not_interned()
-                )
-            })?;
+            obj.insert(key, value)
+                .map_err(|e| EntityValidationError::UnknownKey(e.not_interned()))?;
         }
         let entity = Entity(obj);
         entity.check_id()?;
@@ -756,15 +787,14 @@ impl Entity {
         v
     }
 
-    fn check_id(&self) -> Result<(), Error> {
+    fn check_id(&self) -> Result<(), EntityValidationError> {
         match self.get("id") {
-            None => Err(anyhow!(
-                "internal error: no id attribute for entity `{:?}`",
-                self.0
-            )),
+            None => Err(EntityValidationError::MissingIdAttribute {
+                entity: format!("{:?}", self.0),
+            }),
             Some(Value::String(_)) => Ok(()),
             Some(Value::Bytes(_)) => Ok(()),
-            _ => Err(anyhow!("Entity has non-string `id` attribute")),
+            _ => Err(EntityValidationError::UnsupportedTypeForIDAttribute),
         }
     }
 
@@ -888,10 +918,10 @@ impl Entity {
                 .collect();
 
             if !missing_fields.is_empty() {
-                Err(EntityValidationError::FieldsNotDefined(
-                    object_type.name.clone(),
-                    missing_fields.join(", "),
-                ))
+                Err(EntityValidationError::FieldsNotDefined {
+                    entity: object_type.name.clone(),
+                    fields: missing_fields.join(", "),
+                })
             } else {
                 Ok(())
             }
@@ -905,10 +935,10 @@ impl Entity {
         }
 
         let object_type = schema.find_object_type(&key.entity_type).ok_or_else(|| {
-            EntityValidationError::UnknownEntityType(
-                key.entity_type.to_string(),
-                key.entity_id.to_string(),
-            )
+            EntityValidationError::UnknownEntityType {
+                entity: key.entity_type.to_string(),
+                id: key.entity_id.to_string(),
+            }
         })?;
 
         validate_missing_fields(self.0.iter().map(|(k, _)| k), object_type)?;
@@ -926,46 +956,46 @@ impl Entity {
                             for (index, elt) in elts.iter().enumerate() {
                                 if !elt.is_assignable(&scalar_type, false) {
                                     return Err(
-                                        EntityValidationError::MismatchedElementTypeInList(
-                                            key.entity_type.to_string(),
-                                            key.entity_id.to_string(),
-                                            field.name.to_string(),
-                                            field.field_type.to_string(),
-                                            value.to_string(),
-                                            elt.type_name().to_string(),
+                                        EntityValidationError::MismatchedElementTypeInList {
+                                            entity: key.entity_type.to_string(),
+                                            entity_id: key.entity_id.to_string(),
+                                            field: field.name.to_string(),
+                                            expected_type: field.field_type.to_string(),
+                                            value: value.to_string(),
+                                            actual_type: elt.type_name().to_string(),
                                             index,
-                                        ),
+                                        },
                                     );
                                 }
                             }
                         }
                     }
                     if !value.is_assignable(&scalar_type, field.field_type.is_list()) {
-                        return Err(EntityValidationError::InvalidFieldType(
-                            key.entity_type.to_string(),
-                            key.entity_id.to_string(),
-                            value.to_string(),
-                            field.name.to_string(),
-                            field.field_type.to_string(),
-                            value.type_name().to_string(),
-                        ));
+                        return Err(EntityValidationError::InvalidFieldType {
+                            entity: key.entity_type.to_string(),
+                            entity_id: key.entity_id.to_string(),
+                            value: value.to_string(),
+                            field: field.name.to_string(),
+                            expected_type: field.field_type.to_string(),
+                            actual_type: value.type_name().to_string(),
+                        });
                     }
                 }
                 (None, false) => {
                     if field.field_type.is_non_null() {
-                        return Err(EntityValidationError::MissingValueForNonNullableField(
-                            key.entity_type.to_string(),
-                            key.entity_id.to_string(),
-                            field.name.to_string(),
-                        ));
+                        return Err(EntityValidationError::MissingValueForNonNullableField {
+                            entity: key.entity_type.to_string(),
+                            entity_id: key.entity_id.to_string(),
+                            field: field.name.to_string(),
+                        });
                     }
                 }
                 (Some(_), true) => {
-                    return Err(EntityValidationError::CannotSetDerivedField(
-                        key.entity_type.to_string(),
-                        key.entity_id.to_string(),
-                        field.name.to_string(),
-                    ));
+                    return Err(EntityValidationError::CannotSetDerivedField {
+                        entity: key.entity_type.to_string(),
+                        entity_id: key.entity_id.to_string(),
+                        field: field.name.to_string(),
+                    });
                 }
                 (None, true) => {
                     // derived fields should not be set

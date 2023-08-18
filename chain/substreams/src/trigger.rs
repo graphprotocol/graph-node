@@ -256,7 +256,10 @@ where
                     let id = state.entity_cache.schema.id_value(&key)?;
                     data.insert(Word::from("id"), id);
 
-                    let entity = state.entity_cache.make_entity(data)?;
+                    let entity = state.entity_cache.make_entity(data).map_err(|err| {
+                        MappingError::Unknown(anyhow!("Failed to make entity: {}", err))
+                    })?;
+
                     state.entity_cache.set(key, entity)?;
                 }
                 Operation::Delete => {

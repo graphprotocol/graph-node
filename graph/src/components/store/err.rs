@@ -1,4 +1,5 @@
 use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
+use crate::data::store::EntityValidationError;
 use crate::prelude::QueryExecutionError;
 use crate::util::intern::Error as InternError;
 
@@ -11,6 +12,8 @@ use tokio::task::JoinError;
 pub enum StoreError {
     #[error("store error: {0:#}")]
     Unknown(Error),
+    #[error("Entity validation failed: {0}")]
+    EntityValidationError(EntityValidationError),
     #[error(
         "tried to set entity of type `{0}` with ID \"{1}\" but an entity of type `{2}`, \
          which has an interface in common with `{0}`, exists with the same ID"
@@ -84,6 +87,7 @@ impl Clone for StoreError {
     fn clone(&self) -> Self {
         match self {
             Self::Unknown(arg0) => Self::Unknown(anyhow!("{}", arg0)),
+            Self::EntityValidationError(arg0) => Self::EntityValidationError(arg0.clone()),
             Self::ConflictingId(arg0, arg1, arg2) => {
                 Self::ConflictingId(arg0.clone(), arg1.clone(), arg2.clone())
             }

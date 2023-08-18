@@ -220,7 +220,11 @@ query Query ($id: String) {{
             map
         };
 
-        Ok(Some(schema.make_entity(map)?))
+        Ok(Some(
+            schema
+                .make_entity(map)
+                .map_err(|e| StoreError::EntityValidationError(e))?,
+        ))
     }
 }
 
