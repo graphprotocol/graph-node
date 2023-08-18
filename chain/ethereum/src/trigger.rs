@@ -260,7 +260,8 @@ impl Eq for EthereumTrigger {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EthereumBlockTriggerType {
-    Every,
+    Start,
+    End,
     WithCallTo(Address),
 }
 
@@ -293,7 +294,8 @@ impl EthereumTrigger {
             EthereumTrigger::Log(log, _) => Some(&log.address),
 
             // Unfiltered block triggers match any data source address.
-            EthereumTrigger::Block(_, EthereumBlockTriggerType::Every) => None,
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::End) => None,
+            EthereumTrigger::Block(_, EthereumBlockTriggerType::Start) => None,
         }
     }
 }
@@ -301,10 +303,14 @@ impl EthereumTrigger {
 impl Ord for EthereumTrigger {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
+            // Block triggers with `EthereumBlockTriggerType::Start` always come
+            (Self::Block(_, EthereumBlockTriggerType::Start), _) => Ordering::Less,
+            (_, Self::Block(_, EthereumBlockTriggerType::Start)) => Ordering::Greater,
+
             // Keep the order when comparing two block triggers
             (Self::Block(..), Self::Block(..)) => Ordering::Equal,
 
-            // Block triggers always come last
+            // Block triggers with `EthereumBlockTriggerType::End` always come last
             (Self::Block(..), _) => Ordering::Greater,
             (_, Self::Block(..)) => Ordering::Less,
 

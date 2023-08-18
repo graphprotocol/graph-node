@@ -18,7 +18,7 @@ use crate::{
 fn test_trigger_ordering() {
     let block1 = EthereumTrigger::Block(
         BlockPtr::from((H256::random(), 1u64)),
-        EthereumBlockTriggerType::Every,
+        EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(
@@ -117,7 +117,7 @@ fn test_trigger_ordering() {
 fn test_trigger_dedup() {
     let block1 = EthereumTrigger::Block(
         BlockPtr::from((H256::random(), 1u64)),
-        EthereumBlockTriggerType::Every,
+        EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(

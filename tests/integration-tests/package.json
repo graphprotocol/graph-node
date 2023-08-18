@@ -10,6 +10,7 @@
     "remove-then-update",
     "value-roundtrip",
     "int8",
-    "derived-loaders"
+    "derived-loaders",
+    "block-handlers"
   ]
 }

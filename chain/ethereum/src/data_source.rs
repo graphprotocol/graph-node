@@ -9,6 +9,7 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
+use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
 use tiny_keccak::{keccak256, Keccak};
@@ -25,7 +26,9 @@ use graph::{
     },
 };
 
-use graph::data::subgraph::{calls_host_fn, DataSourceContext, Source};
+use graph::data::subgraph::{
+    calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
+};
 
 use crate::chain::Chain;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
@@ -91,7 +94,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name,
             manifest_idx: template.manifest_idx,
             address: Some(address),
-            start_block: 0,
+            start_block: creation_block,
             mapping: template.mapping,
             context: Arc::new(context),
             creation_block: Some(creation_block),
@@ -216,7 +219,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             name: template.name.clone(),
             manifest_idx,
             address,
-            start_block: 0,
+            start_block: creation_block.unwrap_or(0),
             mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block,
@@ -242,23 +245,50 @@ impl blockchain::DataSource<Chain> for DataSource {
             errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
         };
 
-        // Validate that there are no more than one of each type of block_handler
-        let has_too_many_block_handlers = {
-            let mut non_filtered_block_handler_count = 0;
-            let mut call_filtered_block_handler_count = 0;
-            self.mapping
-                .block_handlers
-                .iter()
-                .for_each(|block_handler| {
-                    if block_handler.filter.is_none() {
-                        non_filtered_block_handler_count += 1
-                    } else {
-                        call_filtered_block_handler_count += 1
-                    }
-                });
-            non_filtered_block_handler_count > 1 || call_filtered_block_handler_count > 1
-        };
-        if has_too_many_block_handlers {
+        // Ensure that there is at most one instance of each type of block handler
+        // and that a combination of a non-filtered block handler and a filtered block handler is not allowed.
+
+        let mut non_filtered_block_handler_count = 0;
+        let mut call_filtered_block_handler_count = 0;
+        let mut polling_filtered_block_handler_count = 0;
+        let mut initialization_handler_count = 0;
+        self.mapping
+            .block_handlers
+            .iter()
+            .for_each(|block_handler| {
+                match block_handler.filter {
+                    None => non_filtered_block_handler_count += 1,
+                    Some(ref filter) => match filter {
+                        BlockHandlerFilter::Call => call_filtered_block_handler_count += 1,
+                        BlockHandlerFilter::Once => initialization_handler_count += 1,
+                        BlockHandlerFilter::Polling { every: _ } => {
+                            polling_filtered_block_handler_count += 1
+                        }
+                    },
+                };
+            });
+
+        let has_non_filtered_block_handler = non_filtered_block_handler_count > 0;
+        // If there is a non-filtered block handler, we need to check if there are any
+        // filtered block handlers except for the ones with call filter
+        // If there are, we do not allow that combination
+        let has_restricted_filtered_and_non_filtered_combination = has_non_filtered_block_handler
+            && (polling_filtered_block_handler_count > 0 || initialization_handler_count > 0);
+
+        if has_restricted_filtered_and_non_filtered_combination {
+            errors.push(anyhow!(
+                "data source has a combination of filtered and non-filtered block handlers that is not allowed"
+            ));
+        }
+
+        // Check the number of handlers for each type
+        // If there is more than one of any type, we have too many handlers
+        let has_too_many = non_filtered_block_handler_count > 1
+            || call_filtered_block_handler_count > 1
+            || initialization_handler_count > 1
+            || polling_filtered_block_handler_count > 1;
+
+        if has_too_many {
             errors.push(anyhow!("data source has duplicated block handlers"));
         }
 
@@ -281,6 +311,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn api_version(&self) -> semver::Version {
         self.mapping.api_version.clone()
+    }
+
+    fn min_spec_version(&self) -> semver::Version {
+        self.mapping
+            .block_handlers
+            .iter()
+            .fold(MIN_SPEC_VERSION, |mut min, handler| {
+                min = match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every: _ }) => SPEC_VERSION_0_0_8,
+                    Some(BlockHandlerFilter::Once) => SPEC_VERSION_0_0_8,
+                    _ => min,
+                };
+                min
+            })
     }
 
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
@@ -358,13 +402,33 @@ impl DataSource {
     fn handler_for_block(
         &self,
         trigger_type: &EthereumBlockTriggerType,
+        block: BlockNumber,
     ) -> Option<MappingBlockHandler> {
         match trigger_type {
-            EthereumBlockTriggerType::Every => self
+            // Start matches only initialization handlers with a `once` filter
+            EthereumBlockTriggerType::Start => self
                 .mapping
                 .block_handlers
                 .iter()
-                .find(move |handler| handler.filter.is_none())
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Once) => block == self.start_block,
+                    _ => false,
+                })
+                .cloned(),
+            // End matches all handlers without a filter or with a `polling` filter
+            EthereumBlockTriggerType::End => self
+                .mapping
+                .block_handlers
+                .iter()
+                .find(move |handler| match handler.filter {
+                    Some(BlockHandlerFilter::Polling { every }) => {
+                        let start_block = self.start_block;
+                        let should_trigger = (block - start_block) % every.get() as i32 == 0;
+                        should_trigger
+                    }
+                    None => true,
+                    _ => false,
+                })
                 .cloned(),
             EthereumBlockTriggerType::WithCallTo(_address) => self
                 .mapping
@@ -534,7 +598,7 @@ impl DataSource {
 
         match trigger {
             EthereumTrigger::Block(_, trigger_type) => {
-                let handler = match self.handler_for_block(trigger_type) {
+                let handler = match self.handler_for_block(trigger_type, block.number()) {
                     Some(handler) => handler,
                     None => return Ok(None),
                 };
@@ -1032,6 +1096,10 @@ pub enum BlockHandlerFilter {
     // Call filter will trigger on all blocks where the data source contract
     // address has been called
     Call,
+    // This filter will trigger once at the startBlock
+    Once,
+    // This filter will trigger in a recurring interval set by the `every` field.
+    Polling { every: NonZeroU32 },
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
