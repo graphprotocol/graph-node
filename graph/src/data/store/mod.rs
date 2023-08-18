@@ -1,7 +1,7 @@
 use crate::{
     components::store::{DeploymentLocator, EntityKey, EntityType},
     data::graphql::ObjectTypeExt,
-    prelude::{anyhow::Context, lazy_static, q, r, s, CacheWeight, QueryExecutionError},
+    prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::InputSchema,
     util::intern::AtomPool,
@@ -20,6 +20,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 use strum_macros::IntoStaticStr;
+use thiserror::Error;
 
 use super::{
     graphql::{ext::DirectiveFinder, TypeExt as _},
@@ -648,6 +649,29 @@ pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>
 
 impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
 
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum EntityValidationError {
+    #[error("The provided entity has fields not defined in the schema for entity `{0}`: {1}")]
+    FieldsNotDefined(String, String),
+
+    #[error("Entity {0}[{1}]: unknown entity type `{0}`")]
+    UnknownEntityType(String, String),
+
+    #[error("Entity {0}[{1}]: field `{2}` is of type {3}, but the value `{4}` contains a {5} at index {6}")]
+    MismatchedElementTypeInList(String, String, String, String, String, String, usize),
+
+    #[error(
+        "Entity {0}[{1}]: the value `{2}` for field `{3}` must have type {4} but has type {5}"
+    )]
+    InvalidFieldType(String, String, String, String, String, String),
+
+    #[error("Entity {0}[{1}]: missing value for non-nullable field `{2}`")]
+    MissingValueForNonNullableField(String, String, String),
+
+    #[error("Entity {0}[{1}]: field `{2}` is derived and cannot be set")]
+    CannotSetDerivedField(String, String, String),
+}
+
 /// The `entity!` macro is a convenient way to create entities in tests. It
 /// can not be used in production code since it panics when creating the
 /// entity goes wrong.
@@ -802,7 +826,11 @@ impl Entity {
     /// Validate that this entity matches the object type definition in the
     /// schema. An entity that passes these checks can be stored
     /// successfully in the subgraph's database schema
-    pub fn validate(&self, schema: &InputSchema, key: &EntityKey) -> Result<(), anyhow::Error> {
+    pub fn validate(
+        &self,
+        schema: &InputSchema,
+        key: &EntityKey,
+    ) -> Result<(), EntityValidationError> {
         fn scalar_value_type(schema: &InputSchema, field_type: &s::Type) -> ValueType {
             use s::TypeDefinition as t;
             match field_type {
@@ -849,8 +877,7 @@ impl Entity {
         fn validate_missing_fields<'a>(
             field_names_iter: impl Iterator<Item = &'a str>,
             object_type: &ObjectType<'_, String>,
-        ) -> Result<(), Error> {
-            // Fields that are not in `object_type.fields`
+        ) -> Result<(), EntityValidationError> {
             let missing_fields: Vec<_> = field_names_iter
                 .filter(|field_name| {
                     !object_type
@@ -860,12 +887,9 @@ impl Entity {
                 })
                 .collect();
 
-            // If `missing_fields` is not empty that means this entity
-            // has fields that are not defined in the schema
             if !missing_fields.is_empty() {
-                Err(anyhow!(
-                    "The provided entity has fields not defined in the schema for entity `{}`: {}",
-                    object_type.name,
+                Err(EntityValidationError::FieldsNotDefined(
+                    object_type.name.clone(),
                     missing_fields.join(", "),
                 ))
             } else {
@@ -879,10 +903,11 @@ impl Entity {
             // type for them, and validation would therefore fail
             return Ok(());
         }
-        let object_type = schema.find_object_type(&key.entity_type).with_context(|| {
-            format!(
-                "Entity {}[{}]: unknown entity type `{}`",
-                key.entity_type, key.entity_id, key.entity_type
+
+        let object_type = schema.find_object_type(&key.entity_type).ok_or_else(|| {
+            EntityValidationError::UnknownEntityType(
+                key.entity_type.to_string(),
+                key.entity_id.to_string(),
             )
         })?;
 
@@ -900,50 +925,47 @@ impl Entity {
                         if let Value::List(elts) = value {
                             for (index, elt) in elts.iter().enumerate() {
                                 if !elt.is_assignable(&scalar_type, false) {
-                                    anyhow::bail!(
-                                        "Entity {}[{}]: field `{}` is of type {}, but the value `{}` \
-                                        contains a {} at index {}",
-                                        key.entity_type,
-                                        key.entity_id,
-                                        field.name,
-                                        &field.field_type,
-                                        value,
-                                        elt.type_name(),
-                                        index
+                                    return Err(
+                                        EntityValidationError::MismatchedElementTypeInList(
+                                            key.entity_type.to_string(),
+                                            key.entity_id.to_string(),
+                                            field.name.to_string(),
+                                            field.field_type.to_string(),
+                                            value.to_string(),
+                                            elt.type_name().to_string(),
+                                            index,
+                                        ),
                                     );
                                 }
                             }
                         }
                     }
                     if !value.is_assignable(&scalar_type, field.field_type.is_list()) {
-                        anyhow::bail!(
-                            "Entity {}[{}]: the value `{}` for field `{}` must have type {} but has type {}",
-                            key.entity_type,
-                            key.entity_id,
-                            value,
-                            field.name,
-                            &field.field_type,
-                            value.type_name()
-                        );
+                        return Err(EntityValidationError::InvalidFieldType(
+                            key.entity_type.to_string(),
+                            key.entity_id.to_string(),
+                            value.to_string(),
+                            field.name.to_string(),
+                            field.field_type.to_string(),
+                            value.type_name().to_string(),
+                        ));
                     }
                 }
                 (None, false) => {
                     if field.field_type.is_non_null() {
-                        anyhow::bail!(
-                            "Entity {}[{}]: missing value for non-nullable field `{}`",
-                            key.entity_type,
-                            key.entity_id,
-                            field.name,
-                        );
+                        return Err(EntityValidationError::MissingValueForNonNullableField(
+                            key.entity_type.to_string(),
+                            key.entity_id.to_string(),
+                            field.name.to_string(),
+                        ));
                     }
                 }
                 (Some(_), true) => {
-                    anyhow::bail!(
-                        "Entity {}[{}]: field `{}` is derived and can not be set",
-                        key.entity_type,
-                        key.entity_id,
-                        field.name,
-                    );
+                    return Err(EntityValidationError::CannotSetDerivedField(
+                        key.entity_type.to_string(),
+                        key.entity_id.to_string(),
+                        field.name.to_string(),
+                    ));
                 }
                 (None, true) => {
                     // derived fields should not be set
@@ -1132,7 +1154,7 @@ fn entity_validation() {
     thing.set("cruft", "wat").unwrap();
     check(
         thing,
-        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+        "Entity Thing[t8]: field `cruft` is derived and cannot be set",
     );
 }
 
