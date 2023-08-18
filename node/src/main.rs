@@ -239,7 +239,12 @@ async fn main() {
         ENV_VARS.mappings.ipfs_timeout,
         ENV_VARS.mappings.ipfs_request_limit,
     );
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver = Arc::new(ArweaveClient::new(
+        logger.cheap_clone(),
+        opt.arweave
+            .parse()
+            .expect("unable to parse arweave gateway address"),
+    ));
 
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),

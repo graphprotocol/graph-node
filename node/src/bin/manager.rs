@@ -87,6 +87,14 @@ pub struct Opt {
     pub ipfs: Vec<String>,
     #[clap(
         long,
+        value_name = "{HOST:PORT|URL}",
+        default_value = "https://arweave.net",
+        env = "GRAPH_NODE_ARWEAVE_URL",
+        help = "HTTP base URL for arweave gateway"
+    )]
+    pub arweave: String,
+    #[clap(
+        long,
         default_value = "3",
         help = "the size for connection pools. Set to 0 to use pool size from\nconfiguration file corresponding to NODE_ID\n"
     )]
@@ -774,6 +782,7 @@ struct Context {
     node_id: NodeId,
     config: Cfg,
     ipfs_url: Vec<String>,
+    arweave_url: String,
     fork_base: Option<Url>,
     registry: Arc<MetricsRegistry>,
     pub prometheus_registry: Arc<Registry>,
@@ -785,6 +794,7 @@ impl Context {
         node_id: NodeId,
         config: Cfg,
         ipfs_url: Vec<String>,
+        arweave_url: String,
         fork_base: Option<Url>,
         version_label: Option<String>,
     ) -> Self {
@@ -812,6 +822,7 @@ impl Context {
             fork_base,
             registry,
             prometheus_registry,
+            arweave_url,
         }
     }
 
@@ -1041,6 +1052,7 @@ async fn main() -> anyhow::Result<()> {
         node,
         config,
         opt.ipfs,
+        opt.arweave,
         fork_base,
         version_label.clone(),
     );
@@ -1171,6 +1183,7 @@ async fn main() -> anyhow::Result<()> {
             let store_builder = ctx.store_builder().await;
             let job_name = version_label.clone();
             let ipfs_url = ctx.ipfs_url.clone();
+            let arweave_url = ctx.arweave_url.clone();
             let metrics_ctx = MetricsContext {
                 prometheus: ctx.prometheus_registry.clone(),
                 registry: registry.clone(),
@@ -1183,6 +1196,7 @@ async fn main() -> anyhow::Result<()> {
                 store_builder,
                 network_name,
                 ipfs_url,
+                arweave_url,
                 config,
                 metrics_ctx,
                 node_id,
