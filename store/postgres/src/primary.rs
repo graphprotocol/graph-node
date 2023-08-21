@@ -1334,10 +1334,11 @@ impl<'a> Connection<'a> {
             .map(|_| ())
     }
 
-    /// Remove all subgraph versions and the entry in `deployment_schemas` for
-    /// subgraph `id` in a transaction
+    /// Remove all subgraph versions, the entry in `deployment_schemas` and the entry in
+    /// `subgraph_features` for subgraph `id` in a transaction
     pub fn drop_site(&self, site: &Site) -> Result<(), StoreError> {
         use deployment_schemas as ds;
+        use subgraph_features as f;
         use subgraph_version as v;
         use unused_deployments as u;
 
@@ -1355,6 +1356,9 @@ impl<'a> Connection<'a> {
             if !exists {
                 delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
                     .execute(conn)?;
+
+                // Remove the entry in `subgraph_features`
+                delete(f::table.filter(f::id.eq(site.deployment.as_str()))).execute(conn)?;
             }
 
             update(u::table.filter(u::id.eq(site.id)))
