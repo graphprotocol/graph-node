@@ -524,7 +524,10 @@ fn subgraph_features() {
         );
         assert_eq!(1, data_source_kinds.len());
 
-        test_store::remove_subgraph(&id)
+        test_store::remove_subgraph(&id);
+        let features = get_subgraph_features(id.to_string());
+        // Subgraph was removed, so we expect the entry to be removed from `subgraph_features` table
+        assert!(features.is_none());
     })
 }
 
