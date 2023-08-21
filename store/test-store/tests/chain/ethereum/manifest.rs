@@ -6,6 +6,7 @@ use std::time::Duration;
 use graph::blockchain::DataSource;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
+use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
 use graph::prelude::{
@@ -157,7 +158,7 @@ specVersion: 0.0.7
         DataSourceTemplate::Offchain(ds) => ds,
         DataSourceTemplate::Onchain(_) => unreachable!(),
     };
-    assert_eq!(data_source.kind, "file/ipfs");
+    assert_eq!(data_source.kind, OffchainDataSourceKind::Ipfs);
 }
 
 #[tokio::test]

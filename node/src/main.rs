@@ -8,6 +8,7 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, Blockchain, BlockchainBuilder, BlockchainKind, BlockchainMap,
 };
+use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::store::BlockStore;
 use graph::components::subgraph::Settings;
 use graph::data::graphql::effort::LoadManager;
@@ -23,7 +24,7 @@ use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
 use graph_chain_substreams as substreams;
-use graph_core::polling_monitor::ipfs_service;
+use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -237,6 +238,22 @@ async fn main() {
         ENV_VARS.mappings.max_ipfs_file_bytes as u64,
         ENV_VARS.mappings.ipfs_timeout,
         ENV_VARS.mappings.ipfs_request_limit,
+    );
+    let arweave_resolver = Arc::new(ArweaveClient::new(
+        logger.cheap_clone(),
+        opt.arweave
+            .parse()
+            .expect("unable to parse arweave gateway address"),
+    ));
+
+    let arweave_service = arweave_service(
+        arweave_resolver.cheap_clone(),
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+        match env_vars.mappings.max_ipfs_file_bytes {
+            0 => FileSizeLimit::Unlimited,
+            n => FileSizeLimit::MaxBytes(n as u64),
+        },
     );
 
     // Convert the clients into a link resolver. Since we want to get past
@@ -498,6 +515,7 @@ async fn main() {
             metrics_registry.clone(),
             link_resolver.clone(),
             ipfs_service,
+            arweave_service,
             static_filters,
         );
 

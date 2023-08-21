@@ -16,6 +16,7 @@ use graph::anyhow::{bail, format_err};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockchainKind, BlockchainMap};
 use graph::cheap_clone::CheapClone;
+use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::store::{BlockStore as _, DeploymentLocator};
 use graph::components::subgraph::Settings;
 use graph::endpoint::EndpointMetrics;
@@ -28,7 +29,7 @@ use graph::prelude::{
 };
 use graph::slog::{debug, info, Logger};
 use graph_chain_ethereum as ethereum;
-use graph_core::polling_monitor::ipfs_service;
+use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
     SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar,
@@ -48,6 +49,7 @@ pub async fn run(
     store_builder: StoreBuilder,
     network_name: String,
     ipfs_url: Vec<String>,
+    arweave_url: String,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -71,6 +73,19 @@ pub async fn run(
         env_vars.mappings.max_ipfs_file_bytes as u64,
         env_vars.mappings.ipfs_timeout,
         env_vars.mappings.ipfs_request_limit,
+    );
+    let arweave_resolver = Arc::new(ArweaveClient::new(
+        logger.cheap_clone(),
+        arweave_url.parse().expect("invalid arweave url"),
+    ));
+    let arweave_service = arweave_service(
+        arweave_resolver.cheap_clone(),
+        env_vars.mappings.ipfs_timeout,
+        env_vars.mappings.ipfs_request_limit,
+        match env_vars.mappings.max_ipfs_file_bytes {
+            0 => FileSizeLimit::Unlimited,
+            n => FileSizeLimit::MaxBytes(n as u64),
+        },
     );
 
     let endpoint_metrics = Arc::new(EndpointMetrics::new(
@@ -177,6 +192,7 @@ pub async fn run(
         metrics_registry.clone(),
         link_resolver.cheap_clone(),
         ipfs_service,
+        arweave_service,
         static_filters,
     );
 

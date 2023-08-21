@@ -8,6 +8,7 @@
     "file-data-sources",
     "derived-loaders",
     "block-handlers",
-    "typename"
+    "typename",
+    "arweave-file-data-sources"
   ]
 }

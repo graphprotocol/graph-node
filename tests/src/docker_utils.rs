@@ -1,3 +1,4 @@
+use bollard::exec::StartExecResults;
 use bollard::image::CreateImageOptions;
 use bollard::models::HostConfig;
 use bollard::{container, Docker};
@@ -228,6 +229,7 @@ impl ServiceContainer {
                 cmd: Some(vec!["createdb", "-E", "UTF8", "--locale=C", db_name]),
                 user: Some("postgres"),
                 attach_stdout: Some(true),
+                attach_stderr: Some(true),
                 ..Default::default()
             };
 
@@ -238,7 +240,19 @@ impl ServiceContainer {
 
             // 2. Start Exec
             let mut stream = docker.client.start_exec(&message.id, None);
-            while let Some(_) = stream.next().await { /* consume stream */ }
+            let mut std_err = vec![];
+            loop {
+                match stream.next().await {
+                    Some(Ok(StartExecResults::Attached { log })) => match log {
+                        container::LogOutput::StdErr { message } => {
+                            std_err.push(String::from_utf8(message.to_vec()).unwrap());
+                        }
+                        _ => {}
+                    },
+                    None => break,
+                    _ => { /* consume stream */ }
+                }
+            }
 
             // 3. Inspect exec
             let inspect = docker.client.inspect_exec(&message.id).await?;
@@ -246,8 +260,8 @@ impl ServiceContainer {
                 Some(0) => return Ok(()),
                 code if attempt < EXEC_TRIES => {
                     println!(
-                        "failed to run 'createdb' (exit code: {:?}) Will try again, attempt {attempt} of {EXEC_TRIES}",
-                        code
+                        "failed to run 'createdb' (exit code: {:?}) Will try again, attempt {attempt} of {EXEC_TRIES}, stderr:\n {}",
+                        code, std_err.join("\n")
                     );
                     tokio::time::sleep(Duration::from_secs(5)).await;
                 }
