@@ -722,7 +722,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
-            network: network,
+            network,
         }
     }
 
