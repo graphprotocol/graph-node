@@ -74,6 +74,8 @@ pub enum QueryExecutionError {
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
     DeploymentNotFound(String),
+    IdMissing,
+    IdNotString,
 }
 
 impl QueryExecutionError {
@@ -130,7 +132,9 @@ impl QueryExecutionError {
             | InvalidSubgraphManifest
             | ValidationError(_, _)
             | ResultTooBig(_, _)
-            | DeploymentNotFound(_) => false,
+            | DeploymentNotFound(_)
+            | IdMissing
+            | IdNotString => false,
         }
     }
 }
@@ -274,7 +278,9 @@ impl fmt::Display for QueryExecutionError {
             SubgraphManifestResolveError(e) => write!(f, "failed to resolve subgraph manifest: {}", e),
             InvalidSubgraphManifest => write!(f, "invalid subgraph manifest file"),
             ResultTooBig(actual, limit) => write!(f, "the result size of {} is larger than the allowed limit of {}", actual, limit),
-            DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name)
+            DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name),
+            IdMissing => write!(f, "Entity is missing an `id` attribute"),
+            IdNotString => write!(f, "Entity is missing an `id` attribute")
         }
     }
 }
