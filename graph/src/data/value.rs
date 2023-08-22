@@ -275,11 +275,18 @@ impl CacheWeight for Object {
 
 impl std::fmt::Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        f.debug_map()
+            .entries(self.0.into_iter().map(|e| {
+                (
+                    e.key.as_ref().map(|w| w.as_str()).unwrap_or("---"),
+                    &e.value,
+                )
+            }))
+            .finish()
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -503,6 +510,21 @@ impl From<Value> for q::Value {
                 }
                 q::Value::Object(rmap)
             }
+        }
+    }
+}
+
+impl std::fmt::Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Int(i) => f.debug_tuple("Int").field(i).finish(),
+            Value::Float(n) => f.debug_tuple("Float").field(n).finish(),
+            Value::String(s) => write!(f, "{s:?}"),
+            Value::Boolean(b) => write!(f, "{b}"),
+            Value::Null => write!(f, "null"),
+            Value::Enum(e) => write!(f, "{e}"),
+            Value::List(l) => f.debug_list().entries(l).finish(),
+            Value::Object(o) => write!(f, "{o:?}"),
         }
     }
 }
