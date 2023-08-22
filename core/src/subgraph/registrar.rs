@@ -13,6 +13,9 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
+use graph::tokio_retry::Retry;
+use graph::util::futures::retry_strategy;
+use graph::util::futures::RETRY_DEFAULT_LIMIT;
 
 pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
@@ -518,15 +521,18 @@ async fn resolve_start_block(
         .expect("cannot identify minimum start block because there are no data sources")
     {
         0 => Ok(None),
-        min_start_block => chain
-            .block_pointer_from_number(logger, min_start_block - 1)
-            .await
-            .map(Some)
-            .map_err(move |_| {
-                SubgraphRegistrarError::ManifestValidationError(vec![
-                    SubgraphManifestValidationError::BlockNotFound(min_start_block.to_string()),
-                ])
-            }),
+        min_start_block => Retry::spawn(retry_strategy(Some(2), RETRY_DEFAULT_LIMIT), move || {
+            chain
+                .block_pointer_from_number(&logger, min_start_block - 1)
+                .inspect_err(move |e| warn!(&logger, "Failed to get block number: {}", e))
+        })
+        .await
+        .map(Some)
+        .map_err(move |_| {
+            SubgraphRegistrarError::ManifestValidationError(vec![
+                SubgraphManifestValidationError::BlockNotFound(min_start_block.to_string()),
+            ])
+        }),
     }
 }
 

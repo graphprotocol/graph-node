@@ -53,6 +53,7 @@ pub use semver;
 pub use slog;
 pub use stable_hash_legacy;
 pub use tokio;
+pub use tokio_retry;
 pub use tokio_stream;
 pub use url;
 

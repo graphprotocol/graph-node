@@ -9,6 +9,8 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
+pub const RETRY_DEFAULT_LIMIT: Duration = Duration::from_secs(30);
+
 /// Generic helper function for retrying async operations with built-in logging.
 ///
 /// To use this helper, do the following:
@@ -271,7 +273,7 @@ where
 
     let mut attempt_count = 0;
 
-    Retry::spawn(retry_strategy(limit_opt), move || {
+    Retry::spawn(retry_strategy(limit_opt, RETRY_DEFAULT_LIMIT), move || {
         let operation_name = operation_name.clone();
         let logger = logger.clone();
         let condition = condition.clone();
@@ -347,11 +349,17 @@ where
     })
 }
 
-fn retry_strategy(limit_opt: Option<usize>) -> Box<dyn Iterator<Item = Duration> + Send> {
+pub fn retry_strategy(
+    limit_opt: Option<usize>,
+    max_delay: Duration,
+) -> Box<dyn Iterator<Item = Duration> + Send> {
     // Exponential backoff, but with a maximum
-    let max_delay_ms = 30_000;
     let backoff = ExponentialBackoff::from_millis(2)
-        .max_delay(Duration::from_millis(max_delay_ms))
+        .max_delay(Duration::from_millis(
+            // This should be fine, if the value is too high it will crash during
+            // testing.
+            max_delay.as_millis().try_into().unwrap(),
+        ))
         .map(jitter);
 
     // Apply limit (maximum retry count)
