@@ -634,6 +634,9 @@ where
 lazy_static! {
     /// The name of the id attribute, `"id"`
     pub static ref ID: Word = Word::from("id");
+    /// The name of the parent_id attribute that we inject into query
+    /// results
+    pub static ref PARENT_ID: Word = Word::from("g$parent_id");
 }
 
 /// An entity is represented as a map of attribute names to values.

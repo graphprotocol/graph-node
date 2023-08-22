@@ -3,6 +3,7 @@ use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, EntityKey, EntityType, GetScope,
     LoadRelatedRequest, ReadStore, StoredDynamicDataSource, WritableStore,
 };
+use graph::data::store::PARENT_ID;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::schema::InputSchema;
@@ -741,7 +742,7 @@ fn no_internal_keys() {
         #[track_caller]
         fn check(entity: &Entity) {
             assert_eq!(None, entity.get("__typename"));
-            assert_eq!(None, entity.get("g$parent_id"));
+            assert_eq!(None, entity.get(&*PARENT_ID));
         }
         let key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
 

@@ -4,6 +4,7 @@
 use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
+use graph::data::store::PARENT_ID;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
@@ -401,7 +402,7 @@ impl<'a> Join<'a> {
         let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
         for child in children.iter() {
             match child
-                .get("g$parent_id")
+                .get(&*PARENT_ID)
                 .expect("the query that produces 'child' ensures there is always a g$parent_id")
             {
                 r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
