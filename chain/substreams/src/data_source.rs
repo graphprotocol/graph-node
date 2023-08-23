@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{anyhow, Error};
 use graph::{
@@ -24,7 +24,7 @@ const DYNAMIC_DATA_SOURCE_ERROR: &str = "Substreams do not support dynamic data 
 const TEMPLATE_ERROR: &str = "Substreams do not support templates";
 
 const ALLOWED_MAPPING_KIND: [&str; 1] = ["substreams/graph-entities"];
-
+const SUBSTREAMS_HANDLER_KIND: &str = "substreams";
 #[derive(Clone, Debug, PartialEq)]
 /// Represents the DataSource portion of the manifest once it has been parsed
 /// and the substream spkg has been downloaded + parsed.
@@ -78,6 +78,11 @@ impl blockchain::DataSource<Chain> for DataSource {
     // runtime is not needed for substreams, it will cause the host creation to be skipped.
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
         None
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        // This is placeholder, substreams do not have a handler kind.
+        vec![SUBSTREAMS_HANDLER_KIND].into_iter().collect()
     }
 
     // match_and_decode only seems to be used on the default trigger processor which substreams

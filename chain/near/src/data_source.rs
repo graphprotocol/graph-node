@@ -12,12 +12,15 @@ use graph::{
     },
     semver,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::chain::Chain;
 use crate::trigger::{NearTrigger, ReceiptWithOutcome};
 
 pub const NEAR_KIND: &str = "near";
+const BLOCK_HANDLER_KIND: &str = "block";
+const RECEIPT_HANDLER_KIND: &str = "receipt";
 
 /// Runtime representation of a data source.
 #[derive(Clone, Debug)]
@@ -73,6 +76,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        if self.handler_for_block().is_some() {
+            kinds.insert(BLOCK_HANDLER_KIND);
+        }
+
+        if self.handler_for_receipt().is_some() {
+            kinds.insert(RECEIPT_HANDLER_KIND);
+        }
+
+        kinds
     }
 
     fn match_and_decode(

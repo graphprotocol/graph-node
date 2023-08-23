@@ -18,6 +18,10 @@ use crate::codec;
 use crate::trigger::CosmosTrigger;
 
 pub const COSMOS_KIND: &str = "cosmos";
+const BLOCK_HANDLER_KIND: &str = "block";
+const EVENT_HANDLER_KIND: &str = "event";
+const TRANSACTION_HANDLER_KIND: &str = "transaction";
+const MESSAGE_HANDLER_KIND: &str = "message";
 
 const DYNAMIC_DATA_SOURCE_ERROR: &str = "Cosmos subgraphs do not support dynamic data sources";
 const TEMPLATE_ERROR: &str = "Cosmos subgraphs do not support templates";
@@ -47,6 +51,36 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        let Mapping {
+            block_handlers,
+            event_handlers,
+            transaction_handlers,
+            message_handlers,
+            ..
+        } = &self.mapping;
+
+        if !block_handlers.is_empty() {
+            kinds.insert(BLOCK_HANDLER_KIND);
+        }
+
+        if !event_handlers.is_empty() {
+            kinds.insert(EVENT_HANDLER_KIND);
+        }
+
+        if !transaction_handlers.is_empty() {
+            kinds.insert(TRANSACTION_HANDLER_KIND);
+        }
+
+        if !message_handlers.is_empty() {
+            kinds.insert(MESSAGE_HANDLER_KIND);
+        }
+
+        kinds
     }
 
     fn match_and_decode(

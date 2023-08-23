@@ -33,6 +33,8 @@ lazy_static! {
     .into_iter()
     .collect();
 }
+
+const OFFCHAIN_HANDLER_KIND: &str = "offchain";
 const NOT_DONE_VALUE: i32 = -1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,6 +159,10 @@ impl DataSource {
         // function should be updated to return the minimum spec version
         // required for each kind
         SPEC_VERSION_0_0_7
+    }
+
+    pub fn handler_kind(&self) -> &str {
+        OFFCHAIN_HANDLER_KIND
     }
 }
 

@@ -22,7 +22,11 @@ use anyhow::Error;
 use semver::Version;
 use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+    sync::Arc,
+};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -155,6 +159,13 @@ impl<C: Blockchain> DataSource<C> {
             // been enforced.
             Self::Onchain(_) => EntityTypeAccess::Any,
             Self::Offchain(ds) => EntityTypeAccess::Restriced(ds.mapping.entities.clone()),
+        }
+    }
+
+    pub fn handler_kinds(&self) -> HashSet<&str> {
+        match self {
+            Self::Onchain(ds) => ds.handler_kinds(),
+            Self::Offchain(ds) => vec![ds.handler_kind()].into_iter().collect(),
         }
     }
 

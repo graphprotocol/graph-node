@@ -9,7 +9,7 @@ use crate::{
 use anyhow::Error;
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::{convert::TryFrom, sync::Arc};
+use std::{collections::HashSet, convert::TryFrom, sync::Arc};
 
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
@@ -67,6 +67,10 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn start_block(&self) -> crate::components::store::BlockNumber {
+        todo!()
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
         todo!()
     }
 
