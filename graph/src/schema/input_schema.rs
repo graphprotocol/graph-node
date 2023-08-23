@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -16,7 +16,7 @@ use crate::data::subgraph::schema::POI_DIGEST;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
-use crate::util::intern::AtomPool;
+use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
 use super::{ApiSchema, Schema, SchemaValidationError};
@@ -35,6 +35,8 @@ pub struct InputSchema {
 pub struct Inner {
     schema: Schema,
     immutable_types: HashSet<EntityType>,
+    // Maps each entity type to its field names
+    field_names: HashMap<EntityType, Vec<Atom>>,
     pool: Arc<AtomPool>,
 }
 
@@ -59,10 +61,26 @@ impl InputSchema {
 
         let pool = Arc::new(atom_pool(&schema.document));
 
+        let field_names = HashMap::from_iter(
+            schema
+                .document
+                .get_object_type_definitions()
+                .into_iter()
+                .map(|obj_type| {
+                    let fields: Vec<_> = obj_type
+                        .fields
+                        .iter()
+                        .map(|field| pool.lookup(&field.name).unwrap())
+                        .collect();
+                    (EntityType::from(obj_type), fields)
+                }),
+        );
+
         Self {
             inner: Arc::new(Inner {
                 schema,
                 immutable_types,
+                field_names,
                 pool,
             }),
         }
@@ -352,6 +370,14 @@ impl InputSchema {
         iter: I,
     ) -> Result<Entity, Error> {
         Entity::try_make(self.inner.pool.clone(), iter)
+    }
+
+    pub fn has_field(&self, entity_type: &EntityType, field: Atom) -> bool {
+        self.inner
+            .field_names
+            .get(entity_type)
+            .map(|fields| fields.contains(&field))
+            .unwrap_or(false)
     }
 }
 

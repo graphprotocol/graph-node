@@ -9,7 +9,6 @@ use crate::{
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
 use anyhow::{anyhow, Error};
-use graphql_parser::schema::ObjectType;
 use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
@@ -651,10 +650,8 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum EntityValidationError {
-    #[error(
-        "The provided entity has fields not defined in the schema for entity `{entity}`: {fields}`"
-    )]
-    FieldsNotDefined { entity: String, fields: String },
+    #[error("The provided entity has fields not defined in the schema for entity `{entity}`")]
+    FieldsNotDefined { entity: String },
 
     #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
     UnknownEntityType { entity: String, id: String },
@@ -698,7 +695,7 @@ pub enum EntityValidationError {
     UnknownKey(String),
 
     #[error("Internal error: no id attribute for entity `{entity}`")]
-    MissingIdAttribute { entity: String },
+    MissingIDAttribute { entity: String },
 
     #[error("Unsupported type for `id` attribute")]
     UnsupportedTypeForIDAttribute,
@@ -789,7 +786,7 @@ impl Entity {
 
     fn check_id(&self) -> Result<(), EntityValidationError> {
         match self.get("id") {
-            None => Err(EntityValidationError::MissingIdAttribute {
+            None => Err(EntityValidationError::MissingIDAttribute {
                 entity: format!("{:?}", self.0),
             }),
             Some(Value::String(_)) => Ok(()),
@@ -904,29 +901,6 @@ impl Entity {
             }
         }
 
-        fn validate_missing_fields<'a>(
-            field_names_iter: impl Iterator<Item = &'a str>,
-            object_type: &ObjectType<'_, String>,
-        ) -> Result<(), EntityValidationError> {
-            let missing_fields: Vec<_> = field_names_iter
-                .filter(|field_name| {
-                    !object_type
-                        .fields
-                        .iter()
-                        .any(|field| field.name.as_str() == *field_name)
-                })
-                .collect();
-
-            if !missing_fields.is_empty() {
-                Err(EntityValidationError::FieldsNotDefined {
-                    entity: object_type.name.clone(),
-                    fields: missing_fields.join(", "),
-                })
-            } else {
-                Ok(())
-            }
-        }
-
         if key.entity_type.is_poi() {
             // Users can't modify Poi entities, and therefore they do not
             // need to be validated. In addition, the schema has no object
@@ -941,7 +915,13 @@ impl Entity {
             }
         })?;
 
-        validate_missing_fields(self.0.iter().map(|(k, _)| k), object_type)?;
+        for field in self.0.atoms() {
+            if !schema.has_field(&key.entity_type, field) {
+                return Err(EntityValidationError::FieldsNotDefined {
+                    entity: key.entity_type.clone().into_string(),
+                });
+            }
+        }
 
         for field in &object_type.fields {
             let is_derived = field.is_derived();

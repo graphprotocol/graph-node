@@ -1439,8 +1439,6 @@ async fn test_store_set_invalid_fields() {
     dbg!(err_string.as_str());
     assert!(err_string
         .contains("The provided entity has fields not defined in the schema for entity `User`"));
-    assert!(err_string.contains("test"));
-    assert!(err_string.contains("test2"));
 
     let err = host
         .store_set(
