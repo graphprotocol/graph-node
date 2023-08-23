@@ -97,6 +97,7 @@ contract("Contract", (accounts) => {
           features
           dataSources
           network
+          handlers
         }
       }`,
       variables: { deployment },
@@ -108,6 +109,7 @@ contract("Contract", (accounts) => {
         apiVersion: "0.0.6",
         features: ["nonFatalErrors"],
         dataSources: ["ethereum/contract"],
+        handlers: ["block"],
         network: "test",
       },
     });

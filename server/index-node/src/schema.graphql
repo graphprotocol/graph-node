@@ -148,6 +148,7 @@ type SubgraphFeatures {
   specVersion: String!
   features: [Feature!]!
   dataSources: [String!]!
+  handlers: [String!]!
   network: String
 }
 

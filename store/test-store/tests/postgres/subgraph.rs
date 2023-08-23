@@ -509,6 +509,7 @@ fn subgraph_features() {
             features,
             data_source_kinds,
             network,
+            handler_kinds,
         } = get_subgraph_features(id.to_string()).unwrap();
 
         assert_eq!(NAME, subgraph_id.as_str());
@@ -523,6 +524,9 @@ fn subgraph_features() {
             features
         );
         assert_eq!(1, data_source_kinds.len());
+        assert_eq!(handler_kinds.len(), 2);
+        assert!(handler_kinds.contains(&"mock_handler_1".to_string()));
+        assert!(handler_kinds.contains(&"mock_handler_2".to_string()));
 
         test_store::remove_subgraph(&id);
         let features = get_subgraph_features(id.to_string());

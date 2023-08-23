@@ -4,6 +4,7 @@ const { system, patching } = require("gluegun");
 const { createApolloFetch } = require("apollo-fetch");
 
 const Web3 = require("web3");
+const assert = require("assert");
 const Contract = artifacts.require("./Contract.sol");
 
 const srcDir = path.join(__dirname, "..");
@@ -210,5 +211,37 @@ contract("Contract", (accounts) => {
     expect(result.data).to.deep.equal({
       initializes: [{ id: "1", block: "1" }],
     });
+  });
+
+  it("test subgraphFeatures endpoint returns handlers correctly", async () => {
+    let meta = await fetchSubgraph({
+      query: `{ _meta { deployment } }`,
+    });
+
+    let deployment = meta.data._meta.deployment;
+    console.log("deployment", deployment);
+
+    let subgraph_features = await fetchSubgraphs({
+      query: `query GetSubgraphFeatures($deployment: String!) {
+        subgraphFeatures(subgraphId: $deployment) {
+          specVersion
+          apiVersion
+          features
+          dataSources
+          network
+          handlers
+        }
+      }`,
+      variables: { deployment },
+    });
+
+    expect(subgraph_features.data.subgraphFeatures.handlers)
+      .to.be.an("array")
+      .that.include.members([
+        "block_filter_polling",
+        "block_filter_once",
+        "block",
+        "event",
+      ]);
   });
 });

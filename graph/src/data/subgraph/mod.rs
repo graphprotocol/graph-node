@@ -507,6 +507,7 @@ pub struct DeploymentFeatures {
     pub features: Vec<String>,
     pub data_source_kinds: Vec<String>,
     pub network: String,
+    pub handler_kinds: Vec<String>,
 }
 
 impl IntoValue for DeploymentFeatures {
@@ -517,6 +518,7 @@ impl IntoValue for DeploymentFeatures {
             apiVersion: self.api_version,
             features: self.features,
             dataSources: self.data_source_kinds,
+            handlers: self.handler_kinds,
             network: self.network,
         }
     }
@@ -695,6 +697,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .map(|v| v.version().map(|v| v.to_string()))
             .flatten();
 
+        let handler_kinds = self
+            .data_sources
+            .iter()
+            .map(|ds| ds.handler_kinds())
+            .flatten()
+            .collect::<HashSet<_>>();
+
         let features: Vec<String> = self
             .features
             .iter()
@@ -722,6 +731,10 @@ impl<C: Blockchain> SubgraphManifest<C> {
             features,
             spec_version,
             data_source_kinds: data_source_kinds.into_iter().collect_vec(),
+            handler_kinds: handler_kinds
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect_vec(),
             network,
         }
     }
