@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use slog::Logger;
 use std::{
     any::Any,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{self, Debug},
     str::FromStr,
     sync::Arc,
@@ -274,6 +274,8 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
         MIN_SPEC_VERSION
     }
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
+
+    fn handler_kinds(&self) -> HashSet<&str>;
 
     /// Checks if `trigger` matches this data source, and if so decodes it into a `MappingTrigger`.
     /// A return of `Ok(None)` mean the trigger does not match.

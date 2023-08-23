@@ -9,6 +9,7 @@ use graph::prelude::futures03::future::try_join;
 use graph::prelude::futures03::stream::FuturesOrdered;
 use graph::prelude::{Link, SubgraphManifestValidationError};
 use graph::slog::{o, trace};
+use std::collections::HashSet;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -35,6 +36,9 @@ use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
+const EVENT_HANDLER_KIND: &str = "event";
+const CALL_HANDLER_KIND: &str = "call";
+const BLOCK_HANDLER_KIND: &str = "block";
 
 /// Runtime representation of a data source.
 // Note: Not great for memory usage that this needs to be `Clone`, considering how there may be tens
@@ -104,6 +108,29 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn address(&self) -> Option<&[u8]> {
         self.address.as_ref().map(|x| x.as_bytes())
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        let Mapping {
+            event_handlers,
+            call_handlers,
+            block_handlers,
+            ..
+        } = &self.mapping;
+
+        if !event_handlers.is_empty() {
+            kinds.insert(EVENT_HANDLER_KIND);
+        }
+        if !call_handlers.is_empty() {
+            kinds.insert(CALL_HANDLER_KIND);
+        }
+        for handler in block_handlers.iter() {
+            kinds.insert(handler.kind());
+        }
+
+        kinds
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -1088,6 +1115,19 @@ impl UnresolvedMappingABI {
 pub struct MappingBlockHandler {
     pub handler: String,
     pub filter: Option<BlockHandlerFilter>,
+}
+
+impl MappingBlockHandler {
+    pub fn kind(&self) -> &str {
+        match &self.filter {
+            Some(filter) => match filter {
+                BlockHandlerFilter::Call => "block_filter_call",
+                BlockHandlerFilter::Once => "block_filter_once",
+                BlockHandlerFilter::Polling { .. } => "block_filter_polling",
+            },
+            None => BLOCK_HANDLER_KIND,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]

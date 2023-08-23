@@ -12,13 +12,15 @@ use graph::{
     },
     semver,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::chain::Chain;
 use crate::trigger::ArweaveTrigger;
 
 pub const ARWEAVE_KIND: &str = "arweave";
-
+const BLOCK_HANDLER_KIND: &str = "block";
+const TRANSACTION_HANDLER_KIND: &str = "transaction";
 /// Runtime representation of a data source.
 #[derive(Clone, Debug)]
 pub struct DataSource {
@@ -45,6 +47,20 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn handler_kinds(&self) -> HashSet<&str> {
+        let mut kinds = HashSet::new();
+
+        if self.handler_for_block().is_some() {
+            kinds.insert(BLOCK_HANDLER_KIND);
+        }
+
+        if self.handler_for_transaction().is_some() {
+            kinds.insert(TRANSACTION_HANDLER_KIND);
+        }
+
+        kinds
     }
 
     fn match_and_decode(
