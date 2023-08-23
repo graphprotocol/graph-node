@@ -85,6 +85,7 @@ table! {
         api_version -> Nullable<Text>,
         features -> Array<Text>,
         data_sources -> Array<Text>,
+        handlers -> Array<Text>,
         network -> Text,
     }
 }
@@ -1126,6 +1127,7 @@ impl<'a> Connection<'a> {
                 f::api_version,
                 f::features,
                 f::data_sources,
+                f::handlers,
                 f::network,
             ))
             .first::<(
@@ -1134,18 +1136,22 @@ impl<'a> Connection<'a> {
                 Option<String>,
                 Vec<String>,
                 Vec<String>,
+                Vec<String>,
                 String,
             )>(conn)
             .optional()?;
 
         let features = features.map(
-            |(id, spec_version, api_version, features, data_sources, network)| DeploymentFeatures {
-                id,
-                spec_version,
-                api_version,
-                features,
-                data_source_kinds: data_sources,
-                network: network,
+            |(id, spec_version, api_version, features, data_sources, handlers, network)| {
+                DeploymentFeatures {
+                    id,
+                    spec_version,
+                    api_version,
+                    features,
+                    data_source_kinds: data_sources,
+                    handler_kinds: handlers,
+                    network: network,
+                }
             },
         );
 
@@ -1155,14 +1161,25 @@ impl<'a> Connection<'a> {
     pub fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
         use subgraph_features as f;
 
+        let DeploymentFeatures {
+            id,
+            spec_version,
+            api_version,
+            features,
+            data_source_kinds,
+            handler_kinds,
+            network,
+        } = features;
+
         let conn = self.conn.as_ref();
         let changes = (
-            f::id.eq(features.id),
-            f::spec_version.eq(features.spec_version),
-            f::api_version.eq(features.api_version),
-            f::features.eq(features.features),
-            f::data_sources.eq(features.data_source_kinds),
-            f::network.eq(features.network),
+            f::id.eq(id),
+            f::spec_version.eq(spec_version),
+            f::api_version.eq(api_version),
+            f::features.eq(features),
+            f::data_sources.eq(data_source_kinds),
+            f::handlers.eq(handler_kinds),
+            f::network.eq(network),
         );
 
         insert_into(f::table)

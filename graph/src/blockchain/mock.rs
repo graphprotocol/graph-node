@@ -71,7 +71,9 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn handler_kinds(&self) -> HashSet<&str> {
-        todo!()
+        vec!["mock_handler_1", "mock_handler_2"]
+            .into_iter()
+            .collect()
     }
 
     fn name(&self) -> &str {
