@@ -410,10 +410,23 @@ pub struct EntityRange {
 }
 
 impl EntityRange {
+    /// The default value for `first` that we use when the user doesn't
+    /// specify one
+    pub const FIRST: u32 = 100;
+
     /// Query for the first `n` entities.
     pub fn first(n: u32) -> Self {
         Self {
             first: Some(n),
+            skip: 0,
+        }
+    }
+}
+
+impl std::default::Default for EntityRange {
+    fn default() -> Self {
+        Self {
+            first: Some(Self::FIRST),
             skip: 0,
         }
     }
@@ -591,7 +604,7 @@ impl EntityQuery {
             collection,
             filter: None,
             order: EntityOrder::Default,
-            range: EntityRange::first(100),
+            range: EntityRange::default(),
             logger: None,
             query_id: None,
             trace: false,
