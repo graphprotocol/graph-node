@@ -973,8 +973,9 @@ impl<'a> QueryFilter<'a> {
             }
             Child(child) => {
                 if child_filter_ancestor {
-                    return Err(StoreError::QueryExecutionError(
-                        "Child filters can not be nested".to_string(),
+                    return Err(StoreError::ChildFilterNestingNotSupportedError(
+                        child.attr.to_string(),
+                        filter.to_string(),
                     ));
                 }
 

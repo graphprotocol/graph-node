@@ -49,6 +49,7 @@ pub enum QueryExecutionError {
     EntityFieldError(String, String),
     ListTypesError(String, Vec<String>),
     ListFilterError(String),
+    ChildFilterNestingNotSupportedError(String, String),
     ValueParseError(String, String),
     AttributeTypeError(String, String),
     EntityParseError(String),
@@ -94,6 +95,7 @@ impl QueryExecutionError {
             | OrderByNotSupportedError(_, _)
             | OrderByNotSupportedForType(_)
             | FilterNotSupportedError(_, _)
+            | ChildFilterNestingNotSupportedError(_, _)
             | UnknownField(_, _, _)
             | EmptyQuery
             | MultipleSubscriptionFields
@@ -196,6 +198,9 @@ impl fmt::Display for QueryExecutionError {
             }
             FilterNotSupportedError(value, filter) => {
                 write!(f, "Filter not supported by value `{}`: `{}`", value, filter)
+            }
+            ChildFilterNestingNotSupportedError(value, filter) => {
+                write!(f, "Child filter nesting not supported by value `{}`: `{}`", value, filter)
             }
             UnknownField(_, t, s) => {
                 write!(f, "Type `{}` has no field `{}`", t, s)
@@ -302,6 +307,9 @@ impl From<StoreError> for QueryExecutionError {
         match e {
             StoreError::DeploymentNotFound(id_or_name) => {
                 QueryExecutionError::DeploymentNotFound(id_or_name)
+            }
+            StoreError::ChildFilterNestingNotSupportedError(attr, filter) => {
+                QueryExecutionError::ChildFilterNestingNotSupportedError(attr, filter)
             }
             _ => QueryExecutionError::StoreError(CloneableAnyhowError(Arc::new(e.into()))),
         }

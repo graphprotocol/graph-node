@@ -26,6 +26,8 @@ pub enum StoreError {
     MalformedDirective(String),
     #[error("query execution failed: {0}")]
     QueryExecutionError(String),
+    #[error("Child filter nesting not supported by value `{0}`: `{1}`")]
+    ChildFilterNestingNotSupportedError(String, String),
     #[error("invalid identifier: {0}")]
     InvalidIdentifier(String),
     #[error(
@@ -94,6 +96,9 @@ impl Clone for StoreError {
             }
             Self::MalformedDirective(arg0) => Self::MalformedDirective(arg0.clone()),
             Self::QueryExecutionError(arg0) => Self::QueryExecutionError(arg0.clone()),
+            Self::ChildFilterNestingNotSupportedError(arg0, arg1) => {
+                Self::ChildFilterNestingNotSupportedError(arg0.clone(), arg1.clone())
+            }
             Self::InvalidIdentifier(arg0) => Self::InvalidIdentifier(arg0.clone()),
             Self::DuplicateBlockProcessing(arg0, arg1) => {
                 Self::DuplicateBlockProcessing(arg0.clone(), arg1.clone())
