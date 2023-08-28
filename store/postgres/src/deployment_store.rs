@@ -709,6 +709,7 @@ impl DeploymentStore {
         entity_name: &str,
         field_names: Vec<String>,
         index_method: Method,
+        after: Option<BlockNumber>,
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
@@ -726,11 +727,22 @@ impl DeploymentStore {
             let index_exprs = resolve_index_exprs(column_names_to_types);
             let table_name = &table.name;
             let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
-            let sql = format!(
+            let mut sql = format!(
                 "create index concurrently if not exists {index_name} \
                  on {schema_name}.{table_name} using {index_method} \
-                 ({index_exprs})"
+                 ({index_exprs}) ",
             );
+
+            // If 'after' is provided and the table is not immutable, add a WHERE clause for partial indexing
+            if let Some(after) = after {
+                if !table.immutable {
+                    sql.push_str(&format!(
+                        " where coalesce(upper({}), 2147483647) > {}",
+                        BLOCK_RANGE_COLUMN, after
+                    ));
+                }
+            }
+
             // This might take a long time.
             conn.execute(&sql)?;
             // check if the index creation was successfull

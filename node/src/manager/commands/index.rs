@@ -24,6 +24,10 @@ fn validate_fields<T: AsRef<str>>(fields: &[T]) -> Result<(), anyhow::Error> {
     }
     Ok(())
 }
+
+/// `after` allows for the creation of a partial index
+/// starting from a specified block number. This can improve
+/// performance for queries that are close to the subgraph head.
 pub async fn create(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
@@ -31,6 +35,7 @@ pub async fn create(
     entity_name: &str,
     field_names: Vec<String>,
     index_method: String,
+    after: Option<i32>,
 ) -> Result<(), anyhow::Error> {
     validate_fields(&field_names)?;
     let deployment_locator = search.locate_unique(&pool)?;
@@ -39,7 +44,13 @@ pub async fn create(
         .parse::<Method>()
         .map_err(|()| anyhow!("unknown index method `{}`", index_method))?;
     match store
-        .create_manual_index(&deployment_locator, entity_name, field_names, index_method)
+        .create_manual_index(
+            &deployment_locator,
+            entity_name,
+            field_names,
+            index_method,
+            after,
+        )
         .await
     {
         Ok(()) => Ok(()),
