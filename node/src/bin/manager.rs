@@ -664,6 +664,10 @@ pub enum IndexCommand {
             possible_values = &["btree", "hash", "gist", "spgist", "gin", "brin"]
         )]
         method: String,
+
+        #[clap(long)]
+        /// Specifies a starting block number for creating a partial index.
+        after: Option<i32>,
     },
     /// Lists existing indexes for a given Entity
     List {
@@ -1405,6 +1409,7 @@ async fn main() -> anyhow::Result<()> {
                     entity,
                     fields,
                     method,
+                    after,
                 } => {
                     commands::index::create(
                         subgraph_store,
@@ -1413,6 +1418,7 @@ async fn main() -> anyhow::Result<()> {
                         &entity,
                         fields,
                         method,
+                        after,
                     )
                     .await
                 }

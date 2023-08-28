@@ -1117,10 +1117,11 @@ impl SubgraphStoreInner {
         entity_name: &str,
         field_names: Vec<String>,
         index_method: Method,
+        after: Option<BlockNumber>,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
         store
-            .create_manual_index(site, entity_name, field_names, index_method)
+            .create_manual_index(site, entity_name, field_names, index_method, after)
             .await
     }
 
