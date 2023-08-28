@@ -52,7 +52,9 @@ use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::DeploymentId;
 use crate::relational::index::{CreateIndex, Method};
-use crate::relational::{Layout, LayoutCache, SqlName, Table};
+use crate::relational::{
+    ColumnType, Layout, LayoutCache, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
+};
 use crate::relational_queries::FromEntityData;
 use crate::{advisory_lock, catalog, retry};
 use crate::{connection_pool::ConnectionPool, detail};
@@ -674,7 +676,10 @@ impl DeploymentStore {
 
         conn.transaction(|| {
             for table in tables {
-                let columns = resolve_column_names(table, &columns)?;
+                let columns = resolve_column_names(table, &columns)?
+                    .iter()
+                    .map(|(name, _)| *name)
+                    .collect::<Vec<&SqlName>>();
                 catalog::set_stats_target(&conn, &site.namespace, &table.name, &columns, target)?;
             }
             Ok(())
@@ -711,15 +716,20 @@ impl DeploymentStore {
             let schema_name = site.namespace.clone();
             let layout = store.layout(conn, site)?;
             let table = resolve_table_name(&layout, &entity_name)?;
-            let column_names = resolve_column_names(table, &field_names)?;
+            let column_names_to_types = resolve_column_names(table, &field_names)?;
+            let column_names = column_names_to_types
+                .iter()
+                .map(|(name, _)| *name)
+                .collect::<Vec<&SqlName>>();
+
             let column_names_sep_by_underscores = column_names.join("_");
-            let column_names_sep_by_commas = column_names.join(", ");
+            let index_exprs = resolve_index_exprs(column_names_to_types);
             let table_name = &table.name;
             let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
             let sql = format!(
                 "create index concurrently if not exists {index_name} \
                  on {schema_name}.{table_name} using {index_method} \
-                 ({column_names_sep_by_commas})"
+                 ({index_exprs})"
             );
             // This might take a long time.
             conn.execute(&sql)?;
@@ -1843,8 +1853,11 @@ fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table
 fn resolve_column_names<'a, T: AsRef<str>>(
     table: &'a Table,
     field_names: &[T],
-) -> Result<Vec<&'a SqlName>, StoreError> {
-    fn lookup<'a>(table: &'a Table, field: &str) -> Result<&'a SqlName, StoreError> {
+) -> Result<Vec<(&'a SqlName, Option<&'a ColumnType>)>, StoreError> {
+    fn lookup<'a>(
+        table: &'a Table,
+        field: &str,
+    ) -> Result<(&'a SqlName, &'a ColumnType), StoreError> {
         table
             .column_for_field(field)
             .or_else(|_error| {
@@ -1853,19 +1866,35 @@ fn resolve_column_names<'a, T: AsRef<str>>(
                     .column(&sql_name)
                     .ok_or_else(|| StoreError::UnknownField(field.to_string()))
             })
-            .map(|column| &column.name)
+            .map(|column| (&column.name, &column.column_type))
     }
 
     field_names
         .iter()
         .map(|f| {
             if f.as_ref() == BLOCK_RANGE_COLUMN || f.as_ref() == BLOCK_COLUMN {
-                Ok(table.block_column())
+                Ok((table.block_column(), None))
             } else {
-                lookup(table, f.as_ref())
+                lookup(table, f.as_ref()).map(|(name, column_type)| (name, Some(column_type)))
             }
         })
         .collect()
+}
+
+fn resolve_index_exprs(column_names_to_types: Vec<(&SqlName, Option<&ColumnType>)>) -> String {
+    column_names_to_types
+        .iter()
+        .map(|(name, column_type)| match column_type {
+            Some(ColumnType::String) => {
+                format!("left({}, {})", name, STRING_PREFIX_SIZE)
+            }
+            Some(ColumnType::Bytes) => {
+                format!("substring({}, 1, {})", name, BYTE_ARRAY_PREFIX_SIZE)
+            }
+            _ => name.to_string(),
+        })
+        .collect::<Vec<String>>()
+        .join(",")
 }
 
 /// A helper to log progress during pruning that is kicked off from
