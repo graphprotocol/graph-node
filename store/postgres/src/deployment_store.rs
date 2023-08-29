@@ -726,7 +726,15 @@ impl DeploymentStore {
             let column_names_sep_by_underscores = column_names.join("_");
             let index_exprs = resolve_index_exprs(column_names_to_types);
             let table_name = &table.name;
-            let index_name = format!("manual_{table_name}_{column_names_sep_by_underscores}");
+            let index_name = format!(
+                "manual_{table_name}_{column_names_sep_by_underscores}{}",
+                if let Some(after_value) = after {
+                    format!("_{}", after_value)
+                } else {
+                    String::new()
+                }
+            );
+
             let mut sql = format!(
                 "create index concurrently if not exists {index_name} \
                  on {schema_name}.{table_name} using {index_method} \
@@ -740,6 +748,11 @@ impl DeploymentStore {
                         " where coalesce(upper({}), 2147483647) > {}",
                         BLOCK_RANGE_COLUMN, after
                     ));
+                } else {
+                    return Err(CancelableError::Error(StoreError::Unknown(anyhow!(
+                        "Partial index not allowed on immutable table `{}`",
+                        table_name
+                    ))));
                 }
             }
 
