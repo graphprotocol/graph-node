@@ -530,6 +530,31 @@ impl Chain {
         for provider in self.providers.iter_mut() {
             provider.validate()?
         }
+
+        if !matches!(self.protocol, BlockchainKind::Substreams) {
+            let has_only_substreams_providers = self
+                .providers
+                .iter()
+                .all(|provider| matches!(provider.details, ProviderDetails::Substreams(_)));
+            if has_only_substreams_providers {
+                bail!(
+                    "{} protocol requires an rpc or firehose endpoint defined",
+                    self.protocol
+                );
+            }
+        }
+
+        // When using substreams protocol, only substreams endpoints are allowed
+        if matches!(self.protocol, BlockchainKind::Substreams) {
+            let has_non_substreams_providers = self
+                .providers
+                .iter()
+                .any(|provider| !matches!(provider.details, ProviderDetails::Substreams(_)));
+            if has_non_substreams_providers {
+                bail!("Substreams protocol only supports substreams providers");
+            }
+        }
+
         Ok(())
     }
 }
@@ -1310,6 +1335,47 @@ mod tests {
             true,
             "{}",
             err_str
+        );
+    }
+
+    #[test]
+    fn fails_if_non_substreams_provider_for_substreams_protocol() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            protocol = "substreams"
+            provider = [
+              { label = "firehose", details = { type = "firehose", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
+            ]
+        "#,
+        )
+        .unwrap();
+        let err = actual.validate().unwrap_err().to_string();
+
+        assert!(err.contains("only supports substreams providers"), "{err}");
+    }
+
+    #[test]
+    fn fails_if_only_substreams_provider_for_non_substreams_protocol() {
+        let mut actual = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            protocol = "ethereum"
+            provider = [
+              { label = "firehose", details = { type = "substreams", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
+            ]
+        "#,
+        )
+        .unwrap();
+        let err = actual.validate().unwrap_err().to_string();
+
+        assert!(
+            err.contains("ethereum protocol requires an rpc or firehose endpoint defined"),
+            "{err}"
         );
     }
 
