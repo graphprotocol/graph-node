@@ -513,6 +513,6 @@ fn entity_validation() {
     thing.set("cruft", "wat").unwrap();
     check(
         thing,
-        "Entity Thing[t8]: field `cruft` is derived and can not be set",
+        "Entity Thing[t8]: field `cruft` is derived and cannot be set",
     );
 }

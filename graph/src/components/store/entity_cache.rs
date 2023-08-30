@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityKey, EntityOperation};
-use crate::data::store::IntoEntityIterator;
+use crate::data::store::{EntityValidationError, IntoEntityIterator};
 use crate::prelude::ENV_VARS;
 use crate::schema::InputSchema;
 use crate::util::intern::Error as InternError;
@@ -117,7 +117,10 @@ impl EntityCache {
     }
 
     /// Make a new entity. The entity is not part of the cache
-    pub fn make_entity<I: IntoEntityIterator>(&self, iter: I) -> Result<Entity, anyhow::Error> {
+    pub fn make_entity<I: IntoEntityIterator>(
+        &self,
+        iter: I,
+    ) -> Result<Entity, EntityValidationError> {
         self.schema.make_entity(iter)
     }
 

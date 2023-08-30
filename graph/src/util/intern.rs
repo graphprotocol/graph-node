@@ -287,6 +287,10 @@ impl<V> Object<V> {
     fn same_pool(&self, other: &Object<V>) -> bool {
         Arc::ptr_eq(&self.pool, &other.pool)
     }
+
+    pub fn atoms(&self) -> AtomIter<'_, V> {
+        AtomIter::new(self)
+    }
 }
 
 impl<V: NullValue> Object<V> {
@@ -371,6 +375,31 @@ impl<V> Iterator for ObjectOwningIter<V> {
                 // unwrap: we only add entries that are backed by the pool
                 let key = self.pool.get(entry.key).unwrap();
                 return Some((Word::from(key), entry.value));
+            }
+        }
+        None
+    }
+}
+
+pub struct AtomIter<'a, V> {
+    iter: std::slice::Iter<'a, Entry<V>>,
+}
+
+impl<'a, V> AtomIter<'a, V> {
+    fn new(object: &'a Object<V>) -> Self {
+        Self {
+            iter: object.entries.as_slice().iter(),
+        }
+    }
+}
+
+impl<'a, V> Iterator for AtomIter<'a, V> {
+    type Item = Atom;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entry) = self.iter.next() {
+            if entry.key != TOMBSTONE_KEY {
+                return Some(entry.key);
             }
         }
         None
