@@ -63,6 +63,7 @@ ENV postgres_host ""
 ENV postgres_user ""
 ENV postgres_pass ""
 ENV postgres_db ""
+ENV postgres_args "sslmode=prefer"
 # The full URL to the IPFS node
 ENV ipfs ""
 # The etherum network(s) to connect to. Set this to a space-separated
