@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::blockchain::DataSource;
+use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
 use graph::data_source::offchain::OffchainDataSourceKind;
@@ -370,6 +371,59 @@ specVersion: 0.0.2
             msg
         );
     })
+}
+
+#[tokio::test]
+async fn parse_data_source_context() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    context:
+      foo:
+        type: String
+        data: bar
+      qux:
+        type: Int
+        data: 42
+    source:
+      address: \"0x0000000000000000000000000000000000000000\"
+      abi: Factory
+      startBlock: 9562480
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+      blockHandlers:
+        - handler: handleBlock
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.8
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_8).await;
+    let data_source = manifest
+        .data_sources
+        .iter()
+        .find_map(|ds| ds.as_onchain().cloned())
+        .unwrap();
+
+    let context = data_source.context.as_ref().clone().unwrap();
+    let sorted = context.sorted();
+
+    assert_eq!(sorted.len(), 2);
+    assert_eq!(sorted[0], ("foo".into(), Value::String("bar".into())));
+    assert_eq!(sorted[1], ("qux".into(), Value::Int(42)));
 }
 
 #[tokio::test]
