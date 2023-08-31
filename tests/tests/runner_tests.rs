@@ -701,6 +701,37 @@ async fn template_static_filters_false_positives() {
 }
 
 #[tokio::test]
+async fn parse_data_source_context() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("data-sources").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        vec![block_0, block_1, block_2]
+    };
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(blocks, &stores, None).await;
+
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(r#"{ data(id: "0") { id, foo, bar } }"#)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! { data: object!{ id: "0", foo: "test", bar: 1 } })
+    );
+}
+
+#[tokio::test]
 async fn retry_create_ds() {
     let RunnerTestRecipe {
         stores,
