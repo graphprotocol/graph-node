@@ -415,14 +415,18 @@ pub fn drop_schema(conn: &PgConnection, nsp: &str) -> Result<(), StoreError> {
     Ok(conn.batch_execute(&query)?)
 }
 
-pub fn migration_count(conn: &PgConnection) -> Result<i64, StoreError> {
+pub fn migration_count(conn: &PgConnection) -> Result<usize, StoreError> {
     use __diesel_schema_migrations as m;
 
     if !table_exists(conn, NAMESPACE_PUBLIC, &MIGRATIONS_TABLE)? {
         return Ok(0);
     }
 
-    m::table.count().get_result(conn).map_err(StoreError::from)
+    m::table
+        .count()
+        .get_result(conn)
+        .map(|n: i64| n as usize)
+        .map_err(StoreError::from)
 }
 
 pub fn account_like(conn: &PgConnection, site: &Site) -> Result<HashSet<String>, StoreError> {
