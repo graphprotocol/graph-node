@@ -225,6 +225,19 @@ impl DocumentExt for Document {
     }
 }
 
+pub trait DefinitionExt {
+    fn is_root_query_type(&self) -> bool;
+}
+
+impl DefinitionExt for Definition {
+    fn is_root_query_type(&self) -> bool {
+        match self {
+            Definition::TypeDefinition(TypeDefinition::Object(t)) => t.name == "Query",
+            _ => false,
+        }
+    }
+}
+
 pub trait TypeExt {
     fn get_base_type(&self) -> &str;
     fn is_list(&self) -> bool;
