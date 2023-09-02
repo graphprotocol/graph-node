@@ -79,7 +79,7 @@ Please do not merge master into your branch as you develop your pull
 request; instead, rebase your branch on top of the latest master if your
 pull request branch is long-lived.
 
-We try to keep the hostory of the `master` branch linear, and avoid merge
+We try to keep the history of the `master` branch linear, and avoid merge
 commits. Once your pull request is approved, merge it following these
 steps:
 ```
