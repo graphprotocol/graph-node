@@ -106,6 +106,55 @@ where
         self.run_inner(break_on_restart).await
     }
 
+    fn build_filter(&self, current_ptr: Option<BlockPtr>) -> C::TriggerFilter {
+        let static_filters = self.inputs.static_filters
+            || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
+
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // if not enabled we just stick to the filter based on all the data sources.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+        let filter = if static_filters {
+            if !self.inputs.static_filters {
+                info!(self.logger, "forcing subgraph to use static filters.")
+            }
+
+            let data_sources = self.ctx.instance().data_sources.clone();
+
+            let mut filter = C::TriggerFilter::from_data_sources(
+                data_sources
+                    .iter()
+                    .filter_map(|ds| ds.as_onchain())
+                    // Filter out data sources that have reached their end block if the block is final.
+                    .filter(|ds| match current_ptr.as_ref() {
+                        Some(block) => !ds.has_expired(block.number),
+                        None => false,
+                    }),
+            );
+
+            let templates = self.ctx.instance().templates.clone();
+
+            filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
+
+            filter
+        } else {
+            C::TriggerFilter::from_data_sources(
+                self.ctx
+                    .instance()
+                    .hosts()
+                    .iter()
+                    .filter_map(|h| h.data_source().as_onchain())
+                    .filter(|ds| match current_ptr.as_ref() {
+                        Some(block) => !ds.has_expired(block.number),
+                        None => false,
+                    }),
+            )
+        };
+
+        filter
+    }
+
     pub async fn run(self) -> Result<(), Error> {
         self.run_inner(false).await.map(|_| ())
     }
@@ -146,51 +195,7 @@ where
             let block_stream_cancel_handle = block_stream_canceler.handle();
             let current_ptr = self.inputs.store.block_ptr();
 
-            let static_filters = self.inputs.static_filters
-                || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
-
-            // if static_filters is enabled, build a minimal filter with the static data sources and
-            // add the necessary filters based on templates.
-            // if not enabled we just stick to the filter based on all the data sources.
-            // This specifically removes dynamic data sources based filters because these can be derived
-            // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-            let filter = if static_filters {
-                if !self.inputs.static_filters {
-                    info!(self.logger, "forcing subgraph to use static filters.")
-                }
-
-                let static_data_sources = self.ctx.instance().static_data_sources();
-
-                let mut filter = C::TriggerFilter::from_data_sources(
-                    static_data_sources
-                        .iter()
-                        .filter_map(|ds| ds.as_onchain())
-                        // Filter out data sources that have reached their end block.
-                        .filter(|ds| match current_ptr.as_ref() {
-                            Some(block) => !ds.has_expired(block.number),
-                            None => true,
-                        }),
-                );
-
-                filter.extend_with_template(
-                    self.ctx
-                        .instance()
-                        .templates()
-                        .iter()
-                        .filter_map(|ds| ds.as_onchain())
-                        .cloned(),
-                );
-
-                filter
-            } else {
-                C::TriggerFilter::from_data_sources(
-                    self.ctx
-                        .instance()
-                        .hosts()
-                        .iter()
-                        .filter_map(|h| h.data_source().as_onchain()),
-                )
-            };
+            let filter = self.build_filter(current_ptr.clone());
 
             let mut block_stream = new_block_stream(&self.inputs, &filter, &self.metrics.subgraph)
                 .await?

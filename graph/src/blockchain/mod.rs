@@ -259,7 +259,7 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
     /// If the data source has an `endBlock`, check whether the trigger block is
     /// within the range of blocks that the data source is supposed to handle.
     /// Otherwise, ignore the trigger.
-    fn has_expired(&self, block: BlockNumber) -> bool;
+    fn end_block(&self) -> Option<BlockNumber>;
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;
@@ -297,6 +297,11 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
 
     /// Used as part of manifest validation. If there are no errors, return an empty vector.
     fn validate(&self) -> Vec<Error>;
+
+    fn has_expired(&self, block: BlockNumber) -> bool {
+        self.end_block()
+            .map_or(false, |end_block| block > end_block)
+    }
 }
 
 #[async_trait]

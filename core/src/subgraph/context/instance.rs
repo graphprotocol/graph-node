@@ -15,8 +15,9 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
-    templates: Arc<Vec<DataSourceTemplate<C>>>,
-    static_data_sources: Arc<Vec<DataSource<C>>>,
+    pub templates: Arc<Vec<DataSourceTemplate<C>>>,
+    /// The data sources declared in the subgraph manifest. This Does not include dynamic data sources.
+    pub data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
     /// The hosts represent the data sources in the subgraph. There is one host per data source.
@@ -51,7 +52,7 @@ where
             host_builder,
             subgraph_id,
             network,
-            static_data_sources: Arc::new(manifest.data_sources),
+            data_sources: Arc::new(manifest.data_sources),
             hosts: Hosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -220,14 +221,6 @@ where
 
     pub fn hosts(&self) -> &[Arc<T::Host>] {
         &self.hosts.hosts()
-    }
-
-    pub fn static_data_sources(&self) -> Arc<Vec<DataSource<C>>> {
-        self.static_data_sources.clone()
-    }
-
-    pub fn templates(&self) -> Arc<Vec<DataSourceTemplate<C>>> {
-        self.templates.clone()
     }
 }
 

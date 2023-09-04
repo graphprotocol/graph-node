@@ -47,8 +47,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.initial_block.unwrap_or(0)
     }
 
-    fn has_expired(&self, _: BlockNumber) -> bool {
-        false
+    fn end_block(&self) -> Option<BlockNumber> {
+        None
     }
 
     fn name(&self) -> &str {
