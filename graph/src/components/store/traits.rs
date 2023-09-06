@@ -249,6 +249,8 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
 }
 
 pub trait DeploymentCursorTracker: Sync + Send + 'static {
+    fn input_schema(&self) -> Arc<InputSchema>;
+
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
 
@@ -265,6 +267,10 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
 
     fn firehose_cursor(&self) -> FirehoseCursor {
         (**self).firehose_cursor()
+    }
+
+    fn input_schema(&self) -> Arc<InputSchema> {
+        (**self).input_schema()
     }
 }
 

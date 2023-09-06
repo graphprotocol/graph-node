@@ -9,6 +9,7 @@ use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::FirehoseEndpoint;
 use graph::prelude::{MetricsRegistry, TryFutureExt};
+use graph::schema::InputSchema;
 use graph::{
     anyhow::Result,
     blockchain::{
@@ -40,6 +41,18 @@ pub struct NearStreamBuilder {}
 
 #[async_trait]
 impl BlockStreamBuilder<Chain> for NearStreamBuilder {
+    async fn build_substreams(
+        &self,
+        _chain: &Chain,
+        _schema: Arc<InputSchema>,
+        _deployment: DeploymentLocator,
+        _block_cursor: FirehoseCursor,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        unimplemented!()
+    }
+
     async fn build_firehose(
         &self,
         chain: &Chain,

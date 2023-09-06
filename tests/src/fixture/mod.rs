@@ -33,6 +33,7 @@ use graph::prelude::{
     SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
     TriggerProcessor,
 };
+use graph::schema::InputSchema;
 use graph::slog::crit;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
@@ -580,6 +581,18 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
             .await
     }
 
+    async fn build_substreams(
+        &self,
+        _chain: &C,
+        _schema: Arc<InputSchema>,
+        _deployment: DeploymentLocator,
+        _block_cursor: FirehoseCursor,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<C::TriggerFilter>,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        unimplemented!();
+    }
+
     async fn build_polling(
         &self,
         _chain: &C,
@@ -607,6 +620,18 @@ impl<C: Blockchain> BlockStreamBuilder<C> for StaticStreamBuilder<C>
 where
     C::TriggerData: Clone,
 {
+    async fn build_substreams(
+        &self,
+        _chain: &C,
+        _schema: Arc<InputSchema>,
+        _deployment: DeploymentLocator,
+        _block_cursor: FirehoseCursor,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<C::TriggerFilter>,
+    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
+        unimplemented!()
+    }
+
     async fn build_firehose(
         &self,
         _chain: &C,
@@ -647,7 +672,11 @@ struct StaticStream<C: Blockchain> {
     stream: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
 }
 
-impl<C: Blockchain> BlockStream<C> for StaticStream<C> {}
+impl<C: Blockchain> BlockStream<C> for StaticStream<C> {
+    fn buffer_size_hint(&self) -> usize {
+        1
+    }
+}
 
 impl<C: Blockchain> Stream for StaticStream<C> {
     type Item = Result<BlockStreamEvent<C>, Error>;

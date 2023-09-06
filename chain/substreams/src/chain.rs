@@ -3,12 +3,11 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, EmptyNodeCapabilities,
-    NoopRuntimeAdapter,
+    BasicBlockchainBuilder, BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, EntityKey};
 use graph::firehose::FirehoseEndpoints;
-use graph::prelude::{BlockHash, CheapClone, LoggerFactory, MetricsRegistry};
+use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
 use graph::{
     blockchain::{
         self,
@@ -20,13 +19,29 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
+
 use std::sync::Arc;
+
+// ParsedChanges are an internal representation of the equivalent operations defined on the
+// graph-out format used by substreams.
+// Unset serves as a sentinel value, if for some reason an unknown value is sent or the value
+// was empty then it's probably an unintended behaviour. This code was moved here for performance
+// reasons, but the validation is still performed during trigger processing so while Unset will
+// very likely just indicate an error somewhere, as far as the stream is concerned we just pass
+// that along and let the downstream components deal with it.
+#[derive(Debug, Clone)]
+pub enum ParsedChanges {
+    Unset,
+    Delete(EntityKey),
+    Upsert { key: EntityKey, entity: Entity },
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct Block {
     pub hash: BlockHash,
     pub number: BlockNumber,
     pub changes: EntityChanges,
+    pub parsed_changes: Vec<ParsedChanges>,
 }
 
 impl blockchain::Block for Block {
@@ -112,19 +127,18 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
-        start_blocks: Vec<BlockNumber>,
+        _start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
-        unified_api_version: UnifiedMappingApiVersion,
+        _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
-            .build_firehose(
+            .build_substreams(
                 self,
+                store.input_schema(),
                 deployment,
                 store.firehose_cursor(),
-                start_blocks,
                 store.block_ptr(),
                 filter,
-                unified_api_version,
             )
             .await
     }
@@ -177,7 +191,7 @@ impl Blockchain for Chain {
     }
 }
 
-impl BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
+impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
     fn build(self) -> super::Chain {
         let BasicBlockchainBuilder {
             logger_factory,

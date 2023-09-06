@@ -10,6 +10,7 @@ use graph::prelude::{
     BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
+use graph::schema::InputSchema;
 use graph::{
     blockchain::{
         block_stream::{
@@ -100,6 +101,18 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             logger,
             chain.registry.clone(),
         )))
+    }
+
+    async fn build_substreams(
+        &self,
+        _chain: &Chain,
+        _schema: Arc<InputSchema>,
+        _deployment: DeploymentLocator,
+        _block_cursor: FirehoseCursor,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<<Chain as Blockchain>::TriggerFilter>,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        unimplemented!()
     }
 
     async fn build_polling(

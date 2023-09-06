@@ -1,4 +1,4 @@
-use super::block_stream::SubstreamsMapper;
+use super::block_stream::{SubstreamsMapper, SUBSTREAMS_BUFFER_STREAM_SIZE};
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
@@ -321,4 +321,8 @@ impl<C: Blockchain> Stream for SubstreamsBlockStream<C> {
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for SubstreamsBlockStream<C> {}
+impl<C: Blockchain> BlockStream<C> for SubstreamsBlockStream<C> {
+    fn buffer_size_hint(&self) -> usize {
+        SUBSTREAMS_BUFFER_STREAM_SIZE
+    }
+}
