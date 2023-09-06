@@ -1884,6 +1884,7 @@ dependencies = [
  "blake3 1.4.1",
  "either",
  "futures 0.3.16",
+ "git-testament",
  "graph",
  "graph-chain-arweave",
  "graph-chain-cosmos",
