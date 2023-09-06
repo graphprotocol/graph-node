@@ -79,8 +79,7 @@ impl Trace {
             (Self::Query { children, .. }, Self::Query { .. }) => {
                 children.push((name.to_string(), trace))
             }
-            (Self::None, Self::None) | (Self::Root { .. }, Self::None) => { /* tracing is turned off */
-            }
+            (_, Self::None) => { /* ignore, we didn't record any work */ }
             (s, t) => {
                 unreachable!("can not add child self: {:#?} trace: {:#?}", s, t)
             }

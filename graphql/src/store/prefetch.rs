@@ -659,12 +659,15 @@ fn selects_id_only(field: &a::Field, query: &EntityQuery) -> bool {
     if query.filter.is_some() || query.range.skip != 0 {
         return false;
     }
+    // We can only skip the query if it orders by id or no ordering is
+    // specified
     match &query.order {
         EntityOrder::Ascending(attr, _) => {
             if attr != ID.as_str() {
                 return false;
             }
         }
+        EntityOrder::Default | EntityOrder::Unordered => {}
         _ => {
             return false;
         }
