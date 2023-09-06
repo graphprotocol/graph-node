@@ -5,7 +5,7 @@ use graph::prelude::{CheapClone, Error, SubgraphInstanceMetrics};
 use std::sync::Arc;
 
 const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
-const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 1;
+const BUFFERED_FIREHOSE_STREAM_SIZE: usize = 100;
 
 pub async fn new_block_stream<C: Blockchain>(
     inputs: &IndexingInputs<C>,

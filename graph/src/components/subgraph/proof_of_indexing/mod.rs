@@ -35,7 +35,10 @@ pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::{BlockPtr, DeploymentHash, Value};
+    use crate::{
+        prelude::{BlockPtr, DeploymentHash, Value},
+        schema::InputSchema,
+    };
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
@@ -110,8 +113,8 @@ mod tests {
 
             let online = hex::encode(finisher.finish());
             let offline = hex::encode(offline);
-            assert_eq!(&online, &offline);
-            assert_eq!(&online, hardcoded);
+            assert_eq!(&online, &offline, "case: {}", case.name);
+            assert_eq!(&online, hardcoded, "case: {}", case.name);
 
             if let Some(prev) = cache.insert(offline, case.name) {
                 panic!("Found conflict for case: {} == {}", case.name, prev);
@@ -130,14 +133,35 @@ mod tests {
     /// in each case the reference and online versions match
     #[test]
     fn online_vs_reference() {
-        let data = hashmap! {
-            "val".into() => Value::Int(1)
-        };
-        let data_empty = hashmap! {};
-        let data2 = hashmap! {
-            "key".into() => Value::String("s".to_owned()),
-            "null".into() => Value::Null,
-        };
+        let id = DeploymentHash::new("Qm123").unwrap();
+
+        let data_schema =
+            InputSchema::parse("type User @entity { id: String!, val: Int }", id.clone()).unwrap();
+        let data = data_schema
+            .make_entity(hashmap! {
+                "id".into() => Value::String("id".to_owned()),
+                "val".into() => Value::Int(1)
+            })
+            .unwrap();
+
+        let empty_schema =
+            InputSchema::parse("type User @entity { id: String! }", id.clone()).unwrap();
+        let data_empty = empty_schema
+            .make_entity(hashmap! { "id".into() => Value::String("id".into())})
+            .unwrap();
+
+        let data2_schema = InputSchema::parse(
+            "type User @entity { id: String!, key: String!, null: String }",
+            id,
+        )
+        .unwrap();
+        let data2 = data2_schema
+            .make_entity(hashmap! {
+                "id".into() => Value::String("id".to_owned()),
+                "key".into() => Value::String("s".to_owned()),
+                "null".into() => Value::Null,
+            })
+            .unwrap();
 
         let mut cases = vec![
             // Simple case of basically nothing

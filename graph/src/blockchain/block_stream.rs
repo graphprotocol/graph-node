@@ -11,6 +11,7 @@ use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
+use crate::schema::InputSchema;
 use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
 
@@ -109,6 +110,16 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<C::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<C>>>;
+
+    async fn build_substreams(
+        &self,
+        chain: &C,
+        schema: Arc<InputSchema>,
+        deployment: DeploymentLocator,
+        block_cursor: FirehoseCursor,
+        subgraph_current_block: Option<BlockPtr>,
+        filter: Arc<C::TriggerFilter>,
     ) -> Result<Box<dyn BlockStream<C>>>;
 
     async fn build_polling(

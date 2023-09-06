@@ -429,7 +429,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             deployment: deployment.clone(),
             features,
             start_blocks,
-            stop_block,
+            stop_block: Some(17580000),
             store,
             debug_fork,
             triggers_adapter,

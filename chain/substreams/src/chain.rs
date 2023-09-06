@@ -2,9 +2,9 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter};
-use graph::components::store::DeploymentCursorTracker;
+use graph::components::store::{DeploymentCursorTracker, EntityKey};
 use graph::firehose::FirehoseEndpoints;
-use graph::prelude::{BlockHash, LoggerFactory, MetricsRegistry};
+use graph::prelude::{BlockHash, Entity, LoggerFactory, MetricsRegistry};
 use graph::{
     blockchain::{
         self,
@@ -16,13 +16,22 @@ use graph::{
     prelude::{async_trait, BlockNumber, ChainStore},
     slog::Logger,
 };
+
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub enum ParsedChanges {
+    Unset,
+    Delete(EntityKey),
+    Upsert { key: EntityKey, entity: Entity },
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct Block {
     pub hash: BlockHash,
     pub number: BlockNumber,
     pub changes: EntityChanges,
+    pub parsed_changes: Vec<ParsedChanges>,
 }
 
 impl blockchain::Block for Block {
@@ -108,19 +117,18 @@ impl Blockchain for Chain {
         &self,
         deployment: DeploymentLocator,
         store: impl DeploymentCursorTracker,
-        start_blocks: Vec<BlockNumber>,
+        _start_blocks: Vec<BlockNumber>,
         filter: Arc<Self::TriggerFilter>,
-        unified_api_version: UnifiedMappingApiVersion,
+        _unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
         self.block_stream_builder
-            .build_firehose(
+            .build_substreams(
                 self,
+                store.input_schema(),
                 deployment,
                 store.firehose_cursor(),
-                start_blocks,
                 store.block_ptr(),
                 filter,
-                unified_api_version,
             )
             .await
     }

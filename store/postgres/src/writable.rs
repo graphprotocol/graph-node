@@ -1457,6 +1457,10 @@ impl DeploymentCursorTracker for WritableStore {
     fn firehose_cursor(&self) -> FirehoseCursor {
         self.block_cursor.lock().unwrap().clone()
     }
+
+    fn input_schema(&self) -> Arc<InputSchema> {
+        self.store.input_schema()
+    }
 }
 
 #[async_trait::async_trait]
