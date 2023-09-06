@@ -106,7 +106,8 @@ where
         self.run_inner(break_on_restart).await
     }
 
-    fn build_filter(&self, current_ptr: Option<BlockPtr>) -> C::TriggerFilter {
+    fn build_filter(&self) -> C::TriggerFilter {
+        let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.inputs.static_filters
             || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
 
@@ -145,6 +146,7 @@ where
                     .hosts()
                     .iter()
                     .filter_map(|h| h.data_source().as_onchain())
+                    // Filter out data sources that have reached their end block if the block is final.
                     .filter(|ds| match current_ptr.as_ref() {
                         Some(block) => !ds.has_expired(block.number),
                         None => false,
@@ -193,9 +195,7 @@ where
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
-            let current_ptr = self.inputs.store.block_ptr();
-
-            let filter = self.build_filter(current_ptr.clone());
+            let filter = self.build_filter();
 
             let mut block_stream = new_block_stream(&self.inputs, &filter, &self.metrics.subgraph)
                 .await?
@@ -326,10 +326,19 @@ where
             }
         };
 
+        // Check if there are any datasources that have reached their end block
+        // ie. they expired in the current block.
+        let has_end_block_reached_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
+
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
+        let created_data_sources_needs_restart =
+            !self.inputs.static_filters && block_state.has_created_on_chain_data_sources();
+
+        // Determine if the block stream needs to be restarted due to newly created on-chain data sources
+        // or data sources that have reached their end block.
         let needs_restart =
-            block_state.has_created_on_chain_data_sources() && !self.inputs.static_filters;
+            created_data_sources_needs_restart || has_end_block_reached_data_sources;
 
         {
             let _section = self
@@ -1067,7 +1076,7 @@ where
         if let Err(e) = self
             .inputs
             .store
-            .revert_block_operations(revert_to_ptr, cursor)
+            .revert_block_operations(revert_to_ptr.clone(), cursor)
             .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
@@ -1087,7 +1096,22 @@ where
 
         self.revert_state(subgraph_ptr.number)?;
 
-        Ok(Action::Continue)
+        // If any datasource has reached its end block in the range [revert_to_ptr, subgraph_ptr]
+        // then we need to restart the blockstream to reset the TriggerFilter.
+        let needs_restart: bool = self
+            .inputs
+            .end_blocks
+            .range(revert_to_ptr.number..=subgraph_ptr.number)
+            .next()
+            .is_some();
+
+        let action = if needs_restart {
+            Action::Restart
+        } else {
+            Action::Continue
+        };
+
+        Ok(action)
     }
 
     async fn handle_err(

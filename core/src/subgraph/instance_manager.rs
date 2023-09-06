@@ -2,6 +2,7 @@ use crate::polling_monitor::{ArweaveService, IpfsService};
 use crate::subgraph::context::{IndexingContext, SubgraphKeepAlive};
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::loader::load_dynamic_data_sources;
+use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
@@ -323,6 +324,15 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .filter_map(|d| d.as_onchain().map(|d: &C::DataSource| d.start_block()))
             .collect();
 
+        let end_blocks: BTreeSet<BlockNumber> = data_sources
+            .iter()
+            .filter_map(|d| {
+                d.as_onchain()
+                    .map(|d: &C::DataSource| d.end_block())
+                    .flatten()
+            })
+            .collect();
+
         let templates = Arc::new(manifest.templates.clone());
 
         // Obtain the debug fork from the subgraph store
@@ -411,6 +421,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             deployment: deployment.clone(),
             features,
             start_blocks,
+            end_blocks,
             stop_block,
             store,
             debug_fork,
