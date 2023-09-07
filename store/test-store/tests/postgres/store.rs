@@ -11,7 +11,7 @@ use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, EntityKey, WritableStore};
+use graph::components::store::{DeploymentLocator, EntityKey, ReadStore, WritableStore};
 use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
@@ -330,7 +330,7 @@ fn delete_entity() {
 #[test]
 fn get_entity_1() {
     run_test(|_, writable, _| async move {
-        let schema = writable.input_schema();
+        let schema = ReadStore::input_schema(&writable);
 
         let key = EntityKey::data(USER.to_owned(), "1".to_owned());
         let result = writable.get(&key).unwrap();
@@ -357,7 +357,7 @@ fn get_entity_1() {
 #[test]
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
-        let schema = writable.input_schema();
+        let schema = ReadStore::input_schema(&writable);
         let key = EntityKey::data(USER.to_owned(), "3".to_owned());
         let result = writable.get(&key).unwrap();
 

@@ -80,6 +80,10 @@ impl SubstreamsMapper<Chain> for Mapper {
                     Some(schema) => parse_changes(&changes, schema)?,
                     None => vec![],
                 };
+                let mut triggers = vec![];
+                if changes.entity_changes.len() >= 1 {
+                    triggers.push(TriggerData {});
+                }
 
                 // Even though the trigger processor for substreams doesn't care about TriggerData
                 // there are a bunch of places in the runner that check if trigger data
@@ -96,7 +100,7 @@ impl SubstreamsMapper<Chain> for Mapper {
                             changes,
                             parsed_changes,
                         },
-                        vec![TriggerData {}],
+                        triggers,
                         logger,
                     ),
                     FirehoseCursor::from(cursor.clone()),
