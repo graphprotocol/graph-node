@@ -182,14 +182,12 @@ impl blockchain::DataSource<Chain> for DataSource {
             address,
             mapping,
             context,
-            // EBTODO: Re-evaluate if endBlock need to be considered
-            end_block: _,
-
             // The creation block is ignored for detection duplicate data sources.
             // Contract ABI equality is implicit in `mapping.abis` equality.
             creation_block: _,
             contract_abi: _,
             start_block: _,
+            end_block: _,
         } = self;
 
         // mapping_request_sender, host_metrics, and (most of) host_exports are operational structs
@@ -349,7 +347,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    fn min_spec_version(&self) -> semver::Version {
+    fn min_spec_version_inner(&self) -> semver::Version {
         self.mapping
             .block_handlers
             .iter()

@@ -16,7 +16,7 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     network: String,
     host_builder: T,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
-    /// The data sources declared in the subgraph manifest. This Does not include dynamic data sources.
+    /// The data sources declared in the subgraph manifest. This does not include dynamic data sources.
     pub data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
@@ -35,6 +35,8 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
+    /// Create a new subgraph instance from the given manifest and data sources.
+    /// `data_sources` must contain all data sources declared in the manifest + all dynamic data sources.
     pub fn from_manifest(
         logger: &Logger,
         manifest: SubgraphManifest<C>,

@@ -288,18 +288,12 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // that is done
         store.start_subgraph_deployment(&logger).await?;
 
-        // Dynamic data sources are loaded by appending them to the manifest.
-        //
-        // Refactor: Preferrably we'd avoid any mutation of the manifest.
-        let (manifest, dynamic_data_sources) = {
-            let dynamic_data_sources =
-                load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
-                    .await
-                    .context("Failed to load dynamic data sources")?;
+        let dynamic_data_sources =
+            load_dynamic_data_sources(store.clone(), logger.clone(), &manifest)
+                .await
+                .context("Failed to load dynamic data sources")?;
 
-            (manifest, dynamic_data_sources)
-        };
-
+        // Combine the data sources from the manifest with the dynamic data sources
         let mut data_sources = manifest.data_sources.clone();
         data_sources.extend(dynamic_data_sources);
 
@@ -324,7 +318,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .filter_map(|d| d.as_onchain().map(|d: &C::DataSource| d.start_block()))
             .collect();
 
-        let end_blocks: BTreeSet<BlockNumber> = data_sources
+        let end_blocks: BTreeSet<BlockNumber> = manifest
+            .data_sources
             .iter()
             .filter_map(|d| {
                 d.as_onchain()
