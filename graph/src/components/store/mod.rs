@@ -499,11 +499,15 @@ impl EntityLink {
             entity_type: &EntityType,
             parent: String,
             children: Vec<String>,
+            first: usize,
         ) -> Vec<Object> {
-            children
+            let mut objs: Vec<_> = children
                 .into_iter()
                 .map(|child| basic_object(entity_type, parent.clone(), child))
-                .collect()
+                .collect();
+            objs.sort_by(obj_cmp);
+            objs.truncate(first);
+            objs
         }
 
         fn obj_key<'a>(obj: &'a Object) -> Option<(&'a str, &'a str)> {
@@ -524,7 +528,7 @@ impl EntityLink {
                 match link {
                     ParentLink::List(ids) => {
                         for (parent, children) in parents.into_iter().zip(ids) {
-                            objects.extend(basic_objects(&entity_type, parent, children));
+                            objects.extend(basic_objects(&entity_type, parent, children, first));
                         }
                     }
                     ParentLink::Scalar(ids) => {
@@ -536,7 +540,6 @@ impl EntityLink {
                 // Sort the objects by parent id and child id just as
                 // running a query would
                 objects.sort_by(obj_cmp);
-                objects.truncate(first);
                 Some(objects)
             }
         }
@@ -575,7 +578,8 @@ impl EntityWindow {
     /// typename set if this window already contains enough information for
     /// that. If not, return `None`.
     ///
-    /// The list that is returned is sorted and truncated to `first` many
+    /// The list that is returned is sorted. If there are multiple children
+    /// per parent, the sorted list of children is truncated to `first` many
     /// entries.
     ///
     /// This makes it possible to avoid running a query when all that is
