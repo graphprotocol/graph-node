@@ -581,6 +581,7 @@ async fn insert_test_entities(
         vec![
             entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5, birthDate: timestamp.clone(), vid: 2i64 },
             entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20, birthDate: timestamp.clone(), vid: 3i64 },
+            entity! { is => id: "m5", name: "Paul", mainBand: "b2", bands: vec!["b2"], favoriteCount: 2 , birthDate: timestamp.clone(), vid: 4i64 },
         ],
     )];
     let entities1 = insert_ops(&manifest.schema, entities1);
@@ -771,7 +772,8 @@ fn can_query_one_to_one_relationship() {
                 object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: "10", birthDate: "1710837304040956" },
                 object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: "100", birthDate: "1710837304040956" },
                 object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: "5", birthDate: "1710837304040956" },
-                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20", birthDate: "1710837304040956" }
+                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20", birthDate: "1710837304040956" },
+                object! { name: "Paul", mainBand: object! { name: "The Amateurs" }, favoriteCount: "2", birthDate: "1710837304040956" }
             ],
             songStats: vec![
                 object! {
@@ -815,7 +817,8 @@ fn can_filter_by_timestamp() {
                 object! { name: "John" },
                 object! { name: "Lisa" },
                 object! { name: "Tom" },
-                object! { name: "Valerie" }
+                object! { name: "Valerie" },
+                object! { name: "Paul" },
             ],
         };
         let data = extract_data!(result).unwrap();
@@ -868,6 +871,9 @@ fn can_query_one_to_many_relationships_in_both_directions() {
                 object! {
                     name: "Valerie", writtenSongs: Vec::<String>::new()
                 },
+                object! {
+                    name: "Paul", writtenSongs: Vec::<String>::new()
+                },
             ]
         };
 
@@ -906,15 +912,16 @@ fn can_query_many_to_many_relationship() {
 
         let the_amateurs = object! {
             name: "The Amateurs",
-            members: members(vec![ "John", "Tom" ])
+            members: members(vec![ "John", "Tom", "Paul" ])
         };
 
         let exp = object! {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
                 object! { name: "Lisa", bands: vec![ the_musicians.clone() ] },
-                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
-                object! { name: "Valerie", bands: Vec::<String>::new() }
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs.clone() ] },
+                object! { name: "Valerie", bands: Vec::<String>::new() },
+                object! { name: "Paul", bands: vec![ the_amateurs ] }
             ]
         };
 
@@ -996,10 +1003,12 @@ fn can_query_with_sorting_by_child_entity() {
                 object! { name: "Valerie", mainBand: r::Value::Null },
                 object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
                 object! { name: "John", mainBand: object! { name: "The Musicians" } },
+                object! { name: "Paul",  mainBand: object! { name: "The Amateurs"} },
                 object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
                 ],
             asc: vec![
                 object! { name: "Tom",  mainBand: object! { name: "The Amateurs"} },
+                object! { name: "Paul",  mainBand: object! { name: "The Amateurs"} },
                 object! { name: "John", mainBand: object! { name: "The Musicians" } },
                 object! { name: "Lisa", mainBand: object! { name: "The Musicians" } },
                 object! { name: "Valerie", mainBand: r::Value::Null },
@@ -1307,7 +1316,8 @@ fn can_query_with_child_filter_on_list_type_field() {
         let exp = object! {
             musicians: vec![
                 object! { name: "John", bands: vec![ the_musicians.clone(), the_amateurs.clone() ]},
-                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs ] },
+                object! { name: "Tom", bands: vec![ the_musicians, the_amateurs.clone() ] },
+                object! { name: "Paul", bands: vec![ the_amateurs ] },
             ]
         };
 
@@ -1352,7 +1362,8 @@ fn can_query_with_child_filter_on_named_type_field() {
     run_query(QUERY, |result, _| {
         let exp = object! {
             musicians: vec![
-                object! { name: "Tom", mainBand: object! { id: "b2"} }
+                object! { name: "Tom", mainBand: object! { id: "b2"} },
+                object! { name: "Paul", mainBand: object! { id: "b2"} }
             ]
         };
 
@@ -1703,7 +1714,7 @@ fn skip_directive_works_with_query_variables() {
 
     run_query((QUERY, object! { skip: true }), |result, _| {
         // Assert that only names are returned
-        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
+        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie", "Paul"]
             .into_iter()
             .map(|name| object! { name: name })
             .collect();
@@ -1719,7 +1730,8 @@ fn skip_directive_works_with_query_variables() {
                 object! { id: "m1", name: "John" },
                 object! { id: "m2", name: "Lisa"},
                 object! { id: "m3", name: "Tom" },
-                object! { id: "m4", name: "Valerie" }
+                object! { id: "m4", name: "Valerie" },
+                object! { id: "m5", name: "Paul" }
             ]
         };
         let data = extract_data!(result).unwrap();
@@ -1745,7 +1757,8 @@ fn include_directive_works_with_query_variables() {
                 object! { id: "m1", name: "John" },
                 object! { id: "m2", name: "Lisa"},
                 object! { id: "m3", name: "Tom" },
-                object! { id: "m4", name: "Valerie" }
+                object! { id: "m4", name: "Valerie" },
+                object! { id: "m5", name: "Paul" }
             ]
         };
         let data = extract_data!(result).unwrap();
@@ -1754,7 +1767,7 @@ fn include_directive_works_with_query_variables() {
 
     run_query((QUERY, object! { include: false }), |result, _| {
         // Assert that only names are returned
-        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
+        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie", "Paul"]
             .into_iter()
             .map(|name| object! { name: name })
             .collect();
@@ -1894,7 +1907,7 @@ fn skip_is_nullable() {
 ";
 
     run_query(QUERY, |result, _| {
-        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
+        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie", "Paul"]
             .into_iter()
             .map(|name| object! { name: name })
             .collect();
@@ -1915,7 +1928,7 @@ fn first_is_nullable() {
 ";
 
     run_query(QUERY, |result, _| {
-        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie"]
+        let musicians: Vec<_> = ["John", "Lisa", "Tom", "Valerie", "Paul"]
             .into_iter()
             .map(|name| object! { name: name })
             .collect();
@@ -1992,7 +2005,8 @@ fn can_filter_by_relationship_fields() {
 
         let exp = object! {
             musicians: vec![
-                object! { id: "m3", name: "Tom", mainBand: object! { id: "b2"} }
+                object! { id: "m3", name: "Tom", mainBand: object! { id: "b2"} },
+                object! { id: "m5", name: "Paul", mainBand: object! { id: "b2"} }
             ],
             bands: vec![
                 object! {
@@ -2074,6 +2088,10 @@ fn can_use_nested_filter() {
                 object! {
                     name: "Valerie",
                     bands: Vec::<r::Value>::new(),
+                },
+                object! {
+                    name: "Paul",
+                    bands: vec![ object! { id: "b2" }]
                 }
             ]
         };
@@ -2096,7 +2114,7 @@ fn ignores_invalid_field_arguments() {
             // Without validations
             Ok(Some(r::Value::Object(obj))) => match obj.get("musicians").unwrap() {
                 r::Value::List(lst) => {
-                    assert_eq!(4, lst.len());
+                    assert_eq!(5, lst.len());
                 }
                 _ => panic!("expected a list of values"),
             },
@@ -2202,6 +2220,7 @@ fn missing_variable() {
                 object! { id: "m2" },
                 object! { id: "m3" },
                 object! { id: "m4" },
+                object! { id: "m5" },
             ]
         };
 
@@ -2232,6 +2251,7 @@ fn missing_variable() {
                 object! { id: "m2" },
                 object! { id: "m3" },
                 object! { id: "m4" },
+                object! { id: "m5" },
             ]
         };
 
@@ -2326,13 +2346,15 @@ fn query_at_block() {
          up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
+    let all_musicians = vec!["m1", "m2", "m3", "m4", "m5"];
+
     musicians_at("number: 7000", Err(BLOCK_NOT_INDEXED), "n7000");
     musicians_at("number: 0", Ok(vec!["m1", "m2"]), "n0");
-    musicians_at("number: 1", Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+    musicians_at("number: 1", Ok(all_musicians.clone()), "n1");
 
     musicians_at(&hash(&BLOCKS[0]), Ok(vec!["m1", "m2"]), "h0");
-    musicians_at(&hash(&BLOCKS[1]), Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at(&hash(&BLOCKS[2]), Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at(&hash(&BLOCKS[1]), Ok(all_musicians.clone()), "h1");
+    musicians_at(&hash(&BLOCKS[2]), Ok(all_musicians.clone()), "h2");
     musicians_at(&hash(&BLOCKS[3]), Err(BLOCK_NOT_INDEXED2), "h3");
     musicians_at(&hash(&BLOCKS[4]), Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
@@ -2371,17 +2393,19 @@ fn query_at_block_with_vars() {
          up to block number 2 and data for block number 3 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
+    let all_musicians = vec!["m1", "m2", "m3", "m4", "m5"];
+
     musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
     musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0");
-    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+    musicians_at_nr(1, Ok(all_musicians.clone()), "n1");
 
     musicians_at_nr_gte(7000, Err(BLOCK_NOT_INDEXED), "ngte7000");
-    musicians_at_nr_gte(0, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte0");
-    musicians_at_nr_gte(1, Ok(vec!["m1", "m2", "m3", "m4"]), "ngte1");
+    musicians_at_nr_gte(0, Ok(all_musicians.clone()), "ngte0");
+    musicians_at_nr_gte(1, Ok(all_musicians.clone()), "ngte1");
 
     musicians_at_hash(&BLOCKS[0], Ok(vec!["m1", "m2"]), "h0");
-    musicians_at_hash(&BLOCKS[1], Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCKS[2], Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
+    musicians_at_hash(&BLOCKS[1], Ok(all_musicians.clone()), "h1");
+    musicians_at_hash(&BLOCKS[2], Ok(all_musicians.clone()), "h2");
     musicians_at_hash(&BLOCKS[3], Err(BLOCK_NOT_INDEXED2), "h3");
     musicians_at_hash(&BLOCKS[4], Err(BLOCK_HASH_NOT_FOUND), "h4");
 }
@@ -2822,6 +2846,7 @@ fn can_query_with_or_and_filter() {
             musicians: vec![
                 object! { name: "John", id: "m1" },
                 object! { name: "Tom", id: "m3" },
+                object! { name: "Paul", id: "m5" },
             ],
         };
         let data = extract_data!(result).unwrap();
@@ -2847,6 +2872,7 @@ fn can_query_with_or_explicit_and_filter() {
             musicians: vec![
                 object! { name: "John", id: "m1" },
                 object! { name: "Tom", id: "m3" },
+                object! { name: "Paul", id: "m5" },
             ],
         };
         let data = extract_data!(result).unwrap();
@@ -3048,4 +3074,80 @@ fn simple_aggregation() {
         let data = extract_data!(result).unwrap();
         assert_eq!(data, exp);
     })
+}
+
+/// Check that if we have entities where a related entity is null, followed
+/// by one where it is not null that the children are joined correctly to
+/// their respective parent
+#[test]
+fn children_are_joined_correctly() {
+    // Get just the `id` for the `mainBand` and `bands`
+    const QUERY1: &str = "
+    query {
+        musicians {
+          id
+          mainBand { id }
+          bands { id }
+        }
+      }
+    ";
+
+    // Get the `id` and one more attribute for the `mainBand` and `bands`
+    const QUERY2: &str = "
+    query {
+        musicians {
+          id
+          mainBand { id name }
+          bands { id name }
+        }
+      }
+    ";
+
+    run_query(QUERY1, |result, _| {
+        fn b1() -> r::Value {
+            object! { id: "b1" }
+        }
+        fn b2() -> r::Value {
+            object! { id: "b2" }
+        }
+        let null = r::Value::Null;
+        let none = Vec::<r::Value>::new();
+
+        let exp = object! {
+            musicians: vec![
+                object! { id: "m1", mainBand: b1(), bands: vec![ b1(), b2() ] },
+                object! { id: "m2", mainBand: b1(), bands: vec![ b1() ] },
+                object! { id: "m3", mainBand: b2(), bands: vec![ b1(), b2() ] },
+                object! { id: "m4", mainBand: null, bands: none },
+                object! { id: "m5", mainBand: b2(), bands: vec![ b2() ] },
+            ],
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
+
+    run_query(QUERY2, |result, _| {
+        fn b1() -> r::Value {
+            object! { id: "b1", name: "The Musicians" }
+        }
+        fn b2() -> r::Value {
+            object! { id: "b2", name: "The Amateurs" }
+        }
+        let null = r::Value::Null;
+        let none = Vec::<r::Value>::new();
+
+        let exp = object! {
+            musicians: vec![
+                object! { id: "m1", mainBand: b1(), bands: vec![ b1(), b2() ] },
+                object! { id: "m2", mainBand: b1(), bands: vec![ b1() ]  },
+                object! { id: "m3", mainBand: b2(), bands: vec![ b1(), b2() ]  },
+                object! { id: "m4", mainBand: null, bands: none },
+                object! { id: "m5", mainBand: b2(), bands: vec![ b2() ]  },
+            ],
+        };
+
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    });
 }
