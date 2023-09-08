@@ -2102,13 +2102,7 @@ enum ParentIds {
 impl ParentIds {
     fn new(link: ParentLink) -> Self {
         match link {
-            ParentLink::Scalar(child_ids) => {
-                // Remove `None` child ids; query generation doesn't require
-                // that parent and child ids are in strict 1:1
-                // correspondence
-                let child_ids = child_ids.into_iter().filter_map(|c| c).collect();
-                ParentIds::Scalar(child_ids)
-            }
+            ParentLink::Scalar(child_ids) => ParentIds::Scalar(child_ids),
             ParentLink::List(child_ids) => {
                 // Postgres will only accept child_ids, which is a Vec<Vec<String>>
                 // if all Vec<String> are the same length. We therefore pad

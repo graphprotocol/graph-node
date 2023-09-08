@@ -461,7 +461,7 @@ pub enum ParentLink {
     /// The parent stores the id of one child. The ith entry in the
     /// vector contains the id of the child of the parent with id
     /// `EntityWindow.ids[i]`
-    Scalar(Vec<Option<String>>),
+    Scalar(Vec<String>),
 }
 
 /// How many children a parent can have when the child stores
@@ -484,34 +484,25 @@ pub enum EntityLink {
 }
 
 impl EntityLink {
-    /// Return a list of objects that have only the `id`, parent id, and
-    /// typename set using the child ids from `self` when `self` is
-    /// `Parent`. If `self` is `Direct`, return `None`
-    ///
-    /// The list that is returned is sorted and truncated to `first` many
-    /// entries.
-    ///
-    /// This makes it possible to avoid running a query when all that is
-    /// needed is the `id` of the children
-    pub fn to_basic_objects(self, parents: &Vec<String>, first: usize) -> Option<Vec<Object>> {
+    fn to_basic_objects(self, parents: Vec<String>, first: usize) -> Option<Vec<Object>> {
         use crate::data::value::Value as V;
 
-        fn basic_object(entity_type: &EntityType, parent: &str, child: String) -> Object {
+        fn basic_object(entity_type: &EntityType, parent: String, child: String) -> Object {
             let mut obj = Vec::new();
             obj.push((ID.clone(), V::String(child)));
             obj.push((Word::from("__typename"), V::String(entity_type.to_string())));
-            obj.push((PARENT_ID.clone(), V::String(parent.to_string())));
+            obj.push((PARENT_ID.clone(), V::String(parent)));
             Object::from_iter(obj)
         }
 
         fn basic_objects(
             entity_type: &EntityType,
-            parent: &str,
+            parent: String,
             children: Vec<String>,
         ) -> Vec<Object> {
             children
                 .into_iter()
-                .map(|child| basic_object(entity_type, parent, child))
+                .map(|child| basic_object(entity_type, parent.clone(), child))
                 .collect()
         }
 
@@ -532,15 +523,13 @@ impl EntityLink {
                 let mut objects = Vec::new();
                 match link {
                     ParentLink::List(ids) => {
-                        for (parent, children) in parents.iter().zip(ids) {
+                        for (parent, children) in parents.into_iter().zip(ids) {
                             objects.extend(basic_objects(&entity_type, parent, children));
                         }
                     }
                     ParentLink::Scalar(ids) => {
-                        for (parent, child) in parents.iter().zip(ids) {
-                            if let Some(child) = child {
-                                objects.push(basic_object(&entity_type, parent, child));
-                            }
+                        for (parent, child) in parents.into_iter().zip(ids) {
+                            objects.push(basic_object(&entity_type, parent, child));
                         }
                     }
                 }
@@ -579,6 +568,21 @@ pub struct EntityWindow {
     /// How to get the parent id
     pub link: EntityLink,
     pub column_names: AttributeNames,
+}
+
+impl EntityWindow {
+    /// Return a list of objects that have only the `id`, parent id, and
+    /// typename set if this window already contains enough information for
+    /// that. If not, return `None`.
+    ///
+    /// The list that is returned is sorted and truncated to `first` many
+    /// entries.
+    ///
+    /// This makes it possible to avoid running a query when all that is
+    /// needed is the `id` of the children
+    pub fn to_basic_objects(self, first: usize) -> Option<Vec<Object>> {
+        self.link.to_basic_objects(self.ids, first)
+    }
 }
 
 /// The base collections from which we are going to get entities for use in

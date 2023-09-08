@@ -555,7 +555,7 @@ fn query() {
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Parent(
                 THING.clone(),
-                ParentLink::Scalar(vec![Some(ROOT.to_owned()), Some(ROOT.to_owned())]),
+                ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()]),
             ),
             column_names: AttributeNames::All,
         }]);

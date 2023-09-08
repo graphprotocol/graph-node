@@ -295,12 +295,10 @@ impl<'a> JoinCond<'a> {
                         // those and the parent ids
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
-                            .map(|(id, node)| {
-                                (
-                                    id,
-                                    node.get(child_field)
-                                        .and_then(|value| value.as_str().map(|s| s.to_string())),
-                                )
+                            .filter_map(|(id, node)| {
+                                node.get(child_field)
+                                    .and_then(|value| value.as_str())
+                                    .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
 
@@ -312,28 +310,25 @@ impl<'a> JoinCond<'a> {
                         // parent ids
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
-                            .map(|(id, node)| {
-                                (
-                                    id,
-                                    node.get(child_field)
-                                        .and_then(|value| match value {
-                                            r::Value::List(values) => {
-                                                let values: Vec<_> = values
-                                                    .iter()
-                                                    .filter_map(|value| {
-                                                        value.as_str().map(|value| value.to_owned())
-                                                    })
-                                                    .collect();
-                                                if values.is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(values)
-                                                }
+                            .filter_map(|(id, node)| {
+                                node.get(child_field)
+                                    .and_then(|value| match value {
+                                        r::Value::List(values) => {
+                                            let values: Vec<_> = values
+                                                .iter()
+                                                .filter_map(|value| {
+                                                    value.as_str().map(|value| value.to_owned())
+                                                })
+                                                .collect();
+                                            if values.is_empty() {
+                                                None
+                                            } else {
+                                                Some(values)
                                             }
-                                            _ => None,
-                                        })
-                                        .unwrap_or(Vec::new()),
-                                )
+                                        }
+                                        _ => None,
+                                    })
+                                    .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
                         (ids, ParentLink::List(child_ids))
@@ -738,14 +733,9 @@ fn fetch(
             let mut windows = windows;
             // unwrap: we checked that len is 1
             let window = windows.pop().unwrap();
-            let parent_ids = parents
-                .iter()
-                .map(|parent| parent.id())
-                .collect::<Result<_, _>>()
-                .map_err(QueryExecutionError::from)?;
-            // unwrap: we checked in the if condition that the window has child ids
             let first = query.range.first.unwrap_or(EntityRange::FIRST) as usize;
-            let objs = window.link.to_basic_objects(&parent_ids, first).unwrap();
+            // unwrap: we checked in the if condition that the window has child ids
+            let objs = window.to_basic_objects(first).unwrap();
             return Ok((objs.into_iter().map(Node::from).collect(), Trace::None));
         }
         query.collection = EntityCollection::Window(windows);
