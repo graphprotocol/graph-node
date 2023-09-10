@@ -97,11 +97,14 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat
+    && apt-get install -y libpq-dev ca-certificates netcat \
+    && useradd -m graphuser \
+    && echo "graphuser:graphuser" | chpasswd
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
 COPY --from=graph-node-build /etc/image-info /etc/image-info
 COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
+USER graphuser
 CMD ["start"]
