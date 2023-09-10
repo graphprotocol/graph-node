@@ -2,6 +2,7 @@ version: '3'
 services:
   graph-node:
     image: graphprotocol/graph-node
+    user: "1000:1000"
     ports:
       - '8000:8000'
       - '8001:8001'
