@@ -296,12 +296,10 @@ impl<'a> JoinCond<'a> {
                         // those and the parent ids
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
-                            .map(|(id, node)| {
-                                (
-                                    id,
-                                    node.get(child_field)
-                                        .and_then(|value| value.as_str().map(|s| s.to_string())),
-                                )
+                            .filter_map(|(id, node)| {
+                                node.get(child_field)
+                                    .and_then(|value| value.as_str())
+                                    .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
 
@@ -313,28 +311,25 @@ impl<'a> JoinCond<'a> {
                         // parent ids
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
-                            .map(|(id, node)| {
-                                (
-                                    id,
-                                    node.get(child_field)
-                                        .and_then(|value| match value {
-                                            r::Value::List(values) => {
-                                                let values: Vec<_> = values
-                                                    .iter()
-                                                    .filter_map(|value| {
-                                                        value.as_str().map(|value| value.to_owned())
-                                                    })
-                                                    .collect();
-                                                if values.is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(values)
-                                                }
+                            .filter_map(|(id, node)| {
+                                node.get(child_field)
+                                    .and_then(|value| match value {
+                                        r::Value::List(values) => {
+                                            let values: Vec<_> = values
+                                                .iter()
+                                                .filter_map(|value| {
+                                                    value.as_str().map(|value| value.to_owned())
+                                                })
+                                                .collect();
+                                            if values.is_empty() {
+                                                None
+                                            } else {
+                                                Some(values)
                                             }
-                                            _ => None,
-                                        })
-                                        .unwrap_or(Vec::new()),
-                                )
+                                        }
+                                        _ => None,
+                                    })
+                                    .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
                         (ids, ParentLink::List(child_ids))

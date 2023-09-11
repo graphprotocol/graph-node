@@ -461,7 +461,7 @@ pub enum ParentLink {
     /// The parent stores the id of one child. The ith entry in the
     /// vector contains the id of the child of the parent with id
     /// `EntityWindow.ids[i]`
-    Scalar(Vec<Option<String>>),
+    Scalar(Vec<String>),
 }
 
 /// How many children a parent can have when the child stores
