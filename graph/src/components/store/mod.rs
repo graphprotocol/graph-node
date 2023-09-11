@@ -30,7 +30,7 @@ use crate::blockchain::Block;
 use crate::components::store::write::EntityModification;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::*;
-use crate::data::value::{Object, Word};
+use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::schema::InputSchema;
 use crate::util::intern;
@@ -481,84 +481,6 @@ pub enum EntityLink {
     Direct(WindowAttribute, ChildMultiplicity),
     /// Join with the parents table to get at the parent id
     Parent(EntityType, ParentLink),
-}
-
-impl EntityLink {
-    /// Return a list of objects that have only the `id`, parent id, and
-    /// typename set using the child ids from `self` when `self` is
-    /// `Parent`. If `self` is `Direct`, return `None`
-    ///
-    /// The list that is returned is sorted and truncated to `first` many
-    /// entries.
-    ///
-    /// This makes it possible to avoid running a query when all that is
-    /// needed is the `id` of the children
-    pub fn to_basic_objects(self, parents: &Vec<String>, first: usize) -> Option<Vec<Object>> {
-        use crate::data::value::Value as V;
-
-        fn basic_object(entity_type: &EntityType, parent: &str, child: String) -> Object {
-            let mut obj = Vec::new();
-            obj.push((ID.clone(), V::String(child)));
-            obj.push((Word::from("__typename"), V::String(entity_type.to_string())));
-            obj.push((PARENT_ID.clone(), V::String(parent.to_string())));
-            Object::from_iter(obj)
-        }
-
-        fn basic_objects(
-            entity_type: &EntityType,
-            parent: &str,
-            children: Vec<String>,
-        ) -> Vec<Object> {
-            children
-                .into_iter()
-                .map(|child| basic_object(entity_type, parent, child))
-                .collect()
-        }
-
-        fn obj_key<'a>(obj: &'a Object) -> Option<(&'a str, &'a str)> {
-            match (obj.get(&*PARENT_ID), obj.get(ID.as_str())) {
-                (Some(V::String(p)), Some(V::String(id))) => Some((p, id)),
-                _ => None,
-            }
-        }
-
-        fn obj_cmp(a: &Object, b: &Object) -> std::cmp::Ordering {
-            obj_key(a).cmp(&obj_key(b))
-        }
-
-        match self {
-            EntityLink::Direct(_, _) => return None,
-            EntityLink::Parent(entity_type, link) => {
-                let mut objects = Vec::new();
-                match link {
-                    ParentLink::List(ids) => {
-                        for (parent, children) in parents.iter().zip(ids) {
-                            objects.extend(basic_objects(&entity_type, parent, children));
-                        }
-                    }
-                    ParentLink::Scalar(ids) => {
-                        for (parent, child) in parents.iter().zip(ids) {
-                            if let Some(child) = child {
-                                objects.push(basic_object(&entity_type, parent, child));
-                            }
-                        }
-                    }
-                }
-                // Sort the objects by parent id and child id just as
-                // running a query would
-                objects.sort_by(obj_cmp);
-                objects.truncate(first);
-                Some(objects)
-            }
-        }
-    }
-
-    pub fn has_child_ids(&self) -> bool {
-        match self {
-            EntityLink::Direct(_, _) => false,
-            EntityLink::Parent(_, _) => true,
-        }
-    }
 }
 
 /// Window results of an `EntityQuery` query along the parent's id:

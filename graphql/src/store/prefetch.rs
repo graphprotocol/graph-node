@@ -1,11 +1,12 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
+use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
-use graph::data::store::{ID, PARENT_ID};
+use graph::data::store::PARENT_ID;
 use graph::data::value::{Object, Word};
-use graph::prelude::{r, CacheWeight, CheapClone, EntityQuery, EntityRange};
+use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
 use std::collections::BTreeMap;
@@ -170,11 +171,11 @@ impl ValueExt for r::Value {
 }
 
 impl Node {
-    fn id(&self) -> Result<String, QueryExecutionError> {
+    fn id(&self) -> Result<String, Error> {
         match self.get("id") {
-            None => Err(QueryExecutionError::IdMissing),
+            None => Err(anyhow!("Entity is missing an `id` attribute")),
             Some(r::Value::String(s)) => Ok(s.clone()),
-            _ => Err(QueryExecutionError::IdNotString),
+            _ => Err(anyhow!("Entity has non-string `id` attribute")),
         }
     }
 
@@ -657,30 +658,6 @@ fn execute_field(
     .map_err(|e| vec![e])
 }
 
-/// Check whether `field` only selects the `id` of its children and whether
-/// it is safe to skip running `query` if we have all child ids in memory
-/// already.
-fn selects_id_only(field: &a::Field, query: &EntityQuery) -> bool {
-    if query.filter.is_some() || query.range.skip != 0 {
-        return false;
-    }
-    match &query.order {
-        EntityOrder::Ascending(attr, _) => {
-            if attr != ID.as_str() {
-                return false;
-            }
-        }
-        _ => {
-            return false;
-        }
-    }
-    field
-        .selection_set
-        .single_field()
-        .map(|field| field.name.as_str() == ID.as_str())
-        .unwrap_or(false)
-}
-
 /// Query child entities for `parents` from the store. The `join` indicates
 /// in which child field to look for the parent's id/join field. When
 /// `is_single` is `true`, there is at most one child per parent.
@@ -726,23 +703,6 @@ fn fetch(
         let windows = join.windows(parents, multiplicity, &query.collection);
         if windows.is_empty() {
             return Ok((vec![], Trace::None));
-        }
-        // See if we can short-circuit query execution and just reuse what
-        // we already have in memory. We could do this probably even with
-        // multiple windows, but this covers the most common case.
-        if windows.len() == 1 && windows[0].link.has_child_ids() && selects_id_only(field, &query) {
-            let mut windows = windows;
-            // unwrap: we checked that len is 1
-            let window = windows.pop().unwrap();
-            let parent_ids = parents
-                .iter()
-                .map(|parent| parent.id())
-                .collect::<Result<_, _>>()
-                .map_err(QueryExecutionError::from)?;
-            // unwrap: we checked in the if condition that the window has child ids
-            let first = query.range.first.unwrap_or(EntityRange::FIRST) as usize;
-            let objs = window.link.to_basic_objects(&parent_ids, first).unwrap();
-            return Ok((objs.into_iter().map(Node::from).collect(), Trace::None));
         }
         query.collection = EntityCollection::Window(windows);
     }
