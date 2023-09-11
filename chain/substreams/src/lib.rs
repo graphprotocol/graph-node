@@ -4,6 +4,7 @@ mod codec;
 mod data_source;
 mod trigger;
 
+pub mod block_ingestor;
 pub mod mapper;
 
 pub use block_stream::BlockStreamBuilder;

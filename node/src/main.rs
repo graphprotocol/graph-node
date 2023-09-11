@@ -7,6 +7,7 @@ use graph::blockchain::client::ChainClient;
 
 use graph::blockchain::{
     BasicBlockchainBuilder, Blockchain, BlockchainBuilder, BlockchainKind, BlockchainMap,
+    ChainIdentifier,
 };
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::store::BlockStore;
@@ -289,7 +290,7 @@ async fn main() {
         create_firehose_networks(logger.clone(), &config, endpoint_metrics.cheap_clone())
     };
 
-    let substreams_networks_by_kind = if query_only {
+    let mut substreams_networks_by_kind = if query_only {
         BTreeMap::new()
     } else {
         create_substreams_networks(logger.clone(), &config, endpoint_metrics.clone())
@@ -368,6 +369,24 @@ async fn main() {
         .await
         .unwrap();
 
+        let substreams_networks = substreams_networks_by_kind
+            .remove(&BlockchainKind::Substreams)
+            .unwrap_or_else(FirehoseNetworks::new);
+
+        let substream_idents = substreams_networks
+            .networks
+            .keys()
+            .map(|name| {
+                (
+                    name.clone(),
+                    ChainIdentifier {
+                        net_version: name.to_string(),
+                        genesis_block_hash: BlockHash::default(),
+                    },
+                )
+            })
+            .collect::<BTreeMap<String, ChainIdentifier>>();
+
         // Note that both `eth_firehose_only_idents` and `ethereum_idents` contain Ethereum
         // networks. If the same network is configured in both RPC and Firehose, the RPC ident takes
         // precedence. This is necessary because Firehose endpoints currently have no `net_version`.
@@ -377,6 +396,7 @@ async fn main() {
         network_identifiers.extend(arweave_idents);
         network_identifiers.extend(near_idents);
         network_identifiers.extend(cosmos_idents);
+        network_identifiers.extend(substream_idents);
 
         let network_store = store_builder.network_store(network_identifiers);
 
@@ -442,6 +462,16 @@ async fn main() {
             metrics_registry.clone(),
         );
 
+        let substreams_chains = networks_as_chains::<substreams::Chain>(
+            &mut blockchain_map,
+            &logger,
+            &substreams_networks,
+            None,
+            network_store.as_ref(),
+            &logger_factory,
+            metrics_registry.clone(),
+        );
+
         let blockchain_map = Arc::new(blockchain_map);
 
         let shards: Vec<_> = config.stores.keys().cloned().collect();
@@ -480,16 +510,13 @@ async fn main() {
                 ethereum_chains,
                 arweave_chains,
                 near_chains,
-                cosmos_chains
+                cosmos_chains,
+                substreams_chains
             );
 
             ingestors.into_iter().for_each(|ingestor| {
                 let logger = logger.clone();
-                info!(
-                    logger,
-                    "Starting firehose block ingestor for network";
-                    "network_name" => &ingestor.network_name()
-                );
+                info!(logger,"Starting block ingestor for network";"network_name" => &ingestor.network_name());
 
                 graph::spawn(ingestor.run());
             });
@@ -738,7 +765,10 @@ where
         for (network_name, firehose_endpoints) in substreams_networks.networks.iter() {
             let chain_store = blockchain_map
                 .get::<C>(network_name.clone())
-                .expect("any substreams endpoint needs an rpc or firehose chain defined")
+                .expect(&format!(
+                    "{} requires an rpc or firehose endpoint defined",
+                    network_name
+                ))
                 .chain_store();
 
             blockchain_map.insert::<substreams::Chain>(
