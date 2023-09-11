@@ -109,10 +109,6 @@ pub struct EnvVarsStore {
     /// is 10_000 which corresponds to 10MB. Setting this to 0 disables
     /// write batching.
     pub write_batch_size: usize,
-    /// Disable the optimization that skips certain child queries for
-    /// entities. Only as a safety valve. Remove after 2023-09-30 if the
-    /// optimization has not caused any issues
-    pub disable_child_optimization: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -154,7 +150,6 @@ impl From<InnerStore> for EnvVarsStore {
             history_slack_factor: x.history_slack_factor.0,
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
-            disable_child_optimization: x.disable_child_optimization.0,
         }
     }
 }
@@ -208,8 +203,6 @@ pub struct InnerStore {
     write_batch_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]
     write_batch_size: usize,
-    #[envconfig(from = "GRAPH_STORE_DISABLE_CHILD_OPTIMIZATION", default = "false")]
-    disable_child_optimization: EnvVarBoolean,
 }
 
 #[derive(Clone, Copy, Debug)]

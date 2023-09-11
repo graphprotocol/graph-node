@@ -730,11 +730,7 @@ fn fetch(
         // See if we can short-circuit query execution and just reuse what
         // we already have in memory. We could do this probably even with
         // multiple windows, but this covers the most common case.
-        if !ENV_VARS.store.disable_child_optimization
-            && windows.len() == 1
-            && windows[0].link.has_child_ids()
-            && selects_id_only(field, &query)
-        {
+        if windows.len() == 1 && windows[0].link.has_child_ids() && selects_id_only(field, &query) {
             let mut windows = windows;
             // unwrap: we checked that len is 1
             let window = windows.pop().unwrap();
