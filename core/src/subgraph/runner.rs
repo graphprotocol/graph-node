@@ -116,7 +116,7 @@ where
         // if not enabled we just stick to the filter based on all the data sources.
         // This specifically removes dynamic data sources based filters because these can be derived
         // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-        let filter = if static_filters {
+        if static_filters {
             if !self.inputs.static_filters {
                 info!(self.logger, "forcing subgraph to use static filters.")
             }
@@ -152,9 +152,7 @@ where
                         None => false,
                     }),
             )
-        };
-
-        filter
+        }
     }
 
     pub async fn run(self) -> Result<(), Error> {
