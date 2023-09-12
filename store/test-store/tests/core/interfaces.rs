@@ -1298,6 +1298,10 @@ async fn mixed_mutability() {
 
 #[tokio::test]
 async fn derived_interface_bytes() {
+    fn b(s: &str) -> Value {
+        Value::Bytes(s.parse().unwrap())
+    }
+
     let subgraph_id = "DerivedInterfaceBytes";
     let document = r#" type Pool {
         id: Bytes!,
@@ -1322,9 +1326,9 @@ async fn derived_interface_bytes() {
     let query = "query { pools { trades { id } } }";
 
     let entities = vec![
-        ("Pool", entity! { schema =>  id: "0xf001" }),
-        ("Sell", entity! { schema =>  id: "0xc0", pool: "0xf001"}),
-        ("Buy", entity! { schema =>  id: "0xb0", pool: "0xf001"}),
+        ("Pool", entity! { schema =>  id: b("0xf001") }),
+        ("Sell", entity! { schema =>  id: b("0xc0"), pool: "0xf001"}),
+        ("Buy", entity! { schema =>  id: b("0xb0"), pool: "0xf001"}),
     ];
 
     let res = insert_and_query(subgraph_id, document, entities, query)

@@ -21,7 +21,6 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fmt::Display;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -31,7 +30,7 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::constraint_violation;
 use crate::data::store::scalar::Bytes;
-use crate::data::store::Value;
+use crate::data::store::{Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::env::ENV_VARS;
@@ -57,7 +56,7 @@ pub struct LoadRelatedRequest {
     /// Name of the entity type.
     pub entity_type: EntityType,
     /// ID of the individual entity.
-    pub entity_id: Word,
+    pub entity_id: Id,
     /// Field the shall be loaded
     pub entity_field: Word,
 
@@ -76,9 +75,7 @@ pub struct DerivedEntityQuery {
     /// The field to check
     pub entity_field: Word,
     /// The value to compare against
-    pub value: Word,
-    /// Boolean indicating if the id is of the type `Bytes`
-    pub id_is_bytes: bool,
+    pub value: Id,
 
     /// This is the causality region of the data source that created the entity.
     ///
@@ -94,12 +91,7 @@ impl DerivedEntityQuery {
         key.entity_type == self.entity_type
             && entity
                 .get(&self.entity_field)
-                .map(|v| match v {
-                    Value::String(s) => s.as_str() == self.value.as_str(),
-                    Value::Bytes(b) => Bytes::from_str(self.value.as_str())
-                        .map_or(false, |bytes_value| &bytes_value == b),
-                    _ => false,
-                })
+                .map(|v| &self.value == v)
                 .unwrap_or(false)
     }
 }
@@ -324,11 +316,11 @@ impl WindowAttribute {
 pub enum ParentLink {
     /// The parent stores a list of child ids. The ith entry in the outer
     /// vector contains the id of the children for `EntityWindow.ids[i]`
-    List(Vec<Vec<String>>),
+    List(Vec<IdList>),
     /// The parent stores the id of one child. The ith entry in the
     /// vector contains the id of the child of the parent with id
     /// `EntityWindow.ids[i]`
-    Scalar(Vec<String>),
+    Scalar(IdList),
 }
 
 /// How many children a parent can have when the child stores
@@ -364,7 +356,7 @@ pub struct EntityWindow {
     /// The entity type for this window
     pub child_type: EntityType,
     /// The ids of parents that should be considered for this window
-    pub ids: Vec<String>,
+    pub ids: IdList,
     /// How to get the parent id
     pub link: EntityLink,
     pub column_names: AttributeNames,
@@ -512,7 +504,7 @@ impl EntityQuery {
             if windows.len() == 1 {
                 let window = windows.first().expect("we just checked");
                 if window.ids.len() == 1 {
-                    let id = window.ids.first().expect("we just checked");
+                    let id = window.ids.first().expect("we just checked").to_value();
                     if let EntityLink::Direct(attribute, _) = &window.link {
                         let filter = match attribute {
                             WindowAttribute::Scalar(name) => {

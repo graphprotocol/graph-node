@@ -282,7 +282,7 @@ fn create_test_entity(
     };
 
     EntityOperation::Set {
-        key: entity_type.key(id),
+        key: entity_type.parse_key(id).unwrap(),
         data: test_entity,
     }
 }
@@ -305,7 +305,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u6
 #[test]
 fn delete_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = USER_TYPE.key("3");
+        let entity_key = USER_TYPE.parse_key("3").unwrap();
 
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
@@ -334,7 +334,7 @@ fn get_entity_1() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
 
-        let key = USER_TYPE.key("1");
+        let key = USER_TYPE.parse_key("1").unwrap();
         let result = writable.get(&key).unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
@@ -360,7 +360,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
-        let key = USER_TYPE.key("3");
+        let key = USER_TYPE.parse_key("3").unwrap();
         let result = writable.get(&key).unwrap();
 
         let expected_entity = entity! { schema =>
@@ -383,7 +383,7 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = USER_TYPE.key("7");
+        let entity_key = USER_TYPE.parse_key("7").unwrap();
         let test_entity = create_test_entity(
             "7",
             &*USER_TYPE,
@@ -413,7 +413,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = USER_TYPE.key("1");
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
 
         let op = create_test_entity(
             "1",
@@ -459,7 +459,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = USER_TYPE.key("1");
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1024,7 +1024,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = USER_TYPE.key("2");
+        let del_key = USER_TYPE.parse_key("2").unwrap();
 
         // Process deletion
         transact_and_wait(
@@ -1069,7 +1069,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = USER_TYPE.key("1");
+        let entity_key = USER_TYPE.parse_key("1").unwrap();
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1165,7 +1165,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let schema = writable.input_schema();
 
         // Create operations to add a user
-        let user_key = USER_TYPE.key("1");
+        let user_key = USER_TYPE.parse_key("1").unwrap();
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
@@ -1295,7 +1295,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: USER_TYPE.key(id.as_str()),
+                    key: USER_TYPE.parse_key(id.as_str()).unwrap(),
                     data: data.clone(),
                 })
                 .collect(),
@@ -1306,13 +1306,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Update an entity in the store
         let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
-            key: USER_TYPE.key("1"),
+            key: USER_TYPE.parse_key("1").unwrap(),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: USER_TYPE.key("2"),
+            key: USER_TYPE.parse_key("2").unwrap(),
         };
 
         // Commit update & delete ops
@@ -1501,7 +1501,7 @@ fn handle_large_string_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, name: name };
 
-        let key = USER_TYPE.key(id);
+        let key = USER_TYPE.parse_key(id).unwrap();
 
         EntityModification::insert(key, data, block)
     }
@@ -1558,8 +1558,8 @@ fn handle_large_string_with_index() {
             .iter()
             .map(|e| e.id())
             .collect();
-
-        assert_eq!(vec![ONE], ids);
+        let exp = USER_TYPE.parse_ids(vec![ONE]).unwrap().as_ids();
+        assert_eq!(exp, ids);
 
         // Make sure we check the full string and not just a prefix
         let mut prefix = long_text.clone();
@@ -1578,7 +1578,8 @@ fn handle_large_string_with_index() {
             .collect();
 
         // Users with name 'Cindini' and 'Johnton'
-        assert_eq!(vec!["2", "1"], ids);
+        let exp = USER_TYPE.parse_ids(vec!["2", "1"]).unwrap().as_ids();
+        assert_eq!(exp, ids);
     })
 }
 
@@ -1596,7 +1597,7 @@ fn handle_large_bytea_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
-        let key = USER_TYPE.key(id);
+        let key = USER_TYPE.parse_key(id).unwrap();
 
         EntityModification::insert(key, data, block)
     }
@@ -1659,7 +1660,8 @@ fn handle_large_bytea_with_index() {
             .map(|e| e.id())
             .collect();
 
-        assert_eq!(vec![ONE], ids);
+        let exp = USER_TYPE.parse_ids(vec![ONE]).unwrap().as_ids();
+        assert_eq!(exp, ids);
 
         // Make sure we check the full string and not just a prefix
         let prefix = scalar::Bytes::from(&long_bytea.as_slice()[..64]);
@@ -1677,7 +1679,8 @@ fn handle_large_bytea_with_index() {
             .collect();
 
         // Users with name 'Cindini' and 'Johnton'
-        assert_eq!(vec!["2", "1"], ids);
+        let exp = USER_TYPE.parse_ids(vec!["2", "1"]).unwrap().as_ids();
+        assert_eq!(exp, ids);
     })
 }
 
@@ -1707,10 +1710,9 @@ impl WindowQuery {
             .map(|(child_type, column_names)| {
                 let attribute = WindowAttribute::Scalar("favorite_color".to_owned());
                 let link = EntityLink::Direct(attribute, ChildMultiplicity::Many);
-                let ids = vec!["red", "green", "yellow", "blue"]
-                    .into_iter()
-                    .map(String::from)
-                    .collect();
+                let ids = child_type
+                    .parse_ids(vec!["red", "green", "yellow", "blue"])
+                    .unwrap();
                 EntityWindow {
                     child_type,
                     ids,
@@ -1801,7 +1803,7 @@ fn window() {
         let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
-            key: entity_type.key(id),
+            key: entity_type.parse_key(id).unwrap(),
             data: entity,
         }
     }

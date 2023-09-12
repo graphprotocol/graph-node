@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use graph::data::query::Trace;
+use graph::data::store::Id;
 use graph::schema::EntityType;
 use web3::types::Address;
 
@@ -11,7 +12,7 @@ use graph::components::store::{BlockPtrForNumber, BlockStore, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;
-use graph::data::value::{Object, Word};
+use graph::data::value::Object;
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -589,7 +590,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 
     // First, we isolate updates and deletions with the same entity type.
     let mut updates: BTreeMap<EntityType, Vec<Entity>> = BTreeMap::new();
-    let mut deletions: BTreeMap<EntityType, Vec<Word>> = BTreeMap::new();
+    let mut deletions: BTreeMap<EntityType, Vec<Id>> = BTreeMap::new();
 
     for change in entity_changes {
         match change {

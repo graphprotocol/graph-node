@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, RwLock, TryLockError as RwLockError};
 use std::time::{Duration, Instant};
@@ -9,8 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
-use graph::data::store::scalar::Bytes;
-use graph::data::store::Value;
+use graph::data::store::IdList;
 use graph::data::subgraph::schema;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -238,12 +236,13 @@ impl SyncStore {
         keys: BTreeSet<EntityKey>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut by_type: BTreeMap<(EntityType, CausalityRegion), Vec<String>> = BTreeMap::new();
+        let mut by_type: BTreeMap<(EntityType, CausalityRegion), IdList> = BTreeMap::new();
         for key in keys {
+            let id_type = key.entity_type.id_type()?;
             by_type
                 .entry((key.entity_type, key.causality_region))
-                .or_default()
-                .push(key.entity_id.into());
+                .or_insert_with(|| IdList::new(id_type))
+                .push(key.entity_id)?;
         }
 
         retry::forever(&self.logger, "get_many", || {
@@ -1121,12 +1120,7 @@ impl Queue {
         fn is_related(derived_query: &DerivedEntityQuery, entity: &Entity) -> bool {
             entity
                 .get(&derived_query.entity_field)
-                .map(|v| match v {
-                    Value::String(s) => s.as_str() == derived_query.value.as_str(),
-                    Value::Bytes(b) => Bytes::from_str(derived_query.value.as_str())
-                        .map_or(false, |bytes_value| &bytes_value == b),
-                    _ => false,
-                })
+                .map(|v| &derived_query.value == v)
                 .unwrap_or(false)
         }
 

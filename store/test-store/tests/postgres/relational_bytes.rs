@@ -3,7 +3,6 @@ use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
-use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
@@ -15,6 +14,7 @@ use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::data::store::scalar::{BigDecimal, BigInt};
+use graph::data::store::IdList;
 use graph::prelude::{
     o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
     EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics,
@@ -216,7 +216,7 @@ fn bad_id() {
             layout: &Layout,
             id: &str,
         ) -> Result<Option<Entity>, StoreError> {
-            let key = THING_TYPE.key(id);
+            let key = THING_TYPE.parse_key(id)?;
             layout.find(conn, &key, BLOCK_NUMBER_MAX)
         }
 
@@ -256,7 +256,7 @@ fn bad_id() {
 fn find() {
     run_test(|conn, layout| {
         fn find_entity(conn: &PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
-            let key = THING_TYPE.key(id);
+            let key = THING_TYPE.parse_key(id).unwrap();
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
                 .expect(&format!("Failed to read Thing[{}]", id))
@@ -288,18 +288,22 @@ fn find_many() {
         insert_thing(conn, layout, ID2, NAME2);
 
         let mut id_map = BTreeMap::default();
-        id_map.insert(
-            (THING_TYPE.clone(), CausalityRegion::ONCHAIN),
-            vec![ID.to_string(), ID2.to_string(), "badd".to_string()],
-        );
+        let ids = IdList::try_from_iter(
+            &*THING_TYPE,
+            vec![ID, ID2, "badd"]
+                .into_iter()
+                .map(|id| THING_TYPE.parse_id(id).unwrap()),
+        )
+        .unwrap();
+        id_map.insert((THING_TYPE.clone(), CausalityRegion::ONCHAIN), ids);
 
         let entities = layout
             .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
             .expect("Failed to read many things");
         assert_eq!(2, entities.len());
 
-        let id_key = THING_TYPE.key(ID);
-        let id2_key = THING_TYPE.key(ID2);
+        let id_key = THING_TYPE.parse_key(ID).unwrap();
+        let id2_key = THING_TYPE.parse_key(ID2).unwrap();
         assert!(entities.contains_key(&id_key), "Missing ID");
         assert!(entities.contains_key(&id2_key), "Missing ID2");
     });
@@ -343,7 +347,7 @@ fn delete() {
         insert_entity(conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let key = THING_TYPE.key("ffff");
+        let key = THING_TYPE.parse_key("ffff").unwrap();
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
@@ -355,7 +359,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| key.entity_id = Word::from(TWO_ID))
+            .map(|key| key.entity_id = entity_type.parse_id(TWO_ID).unwrap())
             .expect("Failed to update entity types");
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
@@ -422,7 +426,7 @@ fn make_thing_tree(conn: &PgConnection, layout: &Layout) -> (Entity, Entity, Ent
 
 #[test]
 fn query() {
-    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<Word> {
+    fn fetch(conn: &PgConnection, layout: &Layout, coll: EntityCollection) -> Vec<String> {
         let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
         let query = EntityQuery::new(id, BLOCK_NUMBER_MAX, coll).first(10);
         layout
@@ -430,7 +434,7 @@ fn query() {
             .map(|(entities, _)| entities)
             .expect("the query succeeds")
             .into_iter()
-            .map(|e| e.id())
+            .map(|e| e.id().to_string())
             .collect::<Vec<_>>()
     }
 
@@ -455,7 +459,7 @@ fn query() {
         //   things(where: { children_contains: [CHILD1] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![CHILD1.to_owned()],
+            ids: THING_TYPE.parse_ids(vec![CHILD1]).unwrap(),
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
                 ChildMultiplicity::Many,
@@ -469,7 +473,9 @@ fn query() {
         //   things(where: { children_contains: [GRANDCHILD1, GRANDCHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![GRANDCHILD1.to_owned(), GRANDCHILD2.to_owned()],
+            ids: THING_TYPE
+                .parse_ids(vec![GRANDCHILD1, GRANDCHILD2])
+                .unwrap(),
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
                 ChildMultiplicity::Single,
@@ -483,7 +489,7 @@ fn query() {
         //   things(where: { parent: [ROOT] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![ROOT.to_owned()],
+            ids: THING_TYPE.parse_ids(vec![ROOT]).unwrap(),
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
                 ChildMultiplicity::Many,
@@ -497,7 +503,7 @@ fn query() {
         //   things(where: { parent: [CHILD1, CHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
+            ids: THING_TYPE.parse_ids(vec![CHILD1, CHILD2]).unwrap(),
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
                 ChildMultiplicity::Single,
@@ -512,10 +518,10 @@ fn query() {
         // This is the inner 'children' query
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![ROOT.to_owned()],
+            ids: THING_TYPE.parse_ids(vec![ROOT]).unwrap(),
             link: EntityLink::Parent(
                 THING_TYPE.clone(),
-                ParentLink::List(vec![vec![CHILD1.to_owned(), CHILD2.to_owned()]]),
+                ParentLink::List(vec![THING_TYPE.parse_ids(vec![CHILD1, CHILD2]).unwrap()]),
             ),
             column_names: AttributeNames::All,
         }]);
@@ -527,10 +533,10 @@ fn query() {
         // This is the inner 'parent' query
         let coll = EntityCollection::Window(vec![EntityWindow {
             child_type: THING_TYPE.clone(),
-            ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
+            ids: THING_TYPE.parse_ids(vec![CHILD1, CHILD2]).unwrap(),
             link: EntityLink::Parent(
                 THING_TYPE.clone(),
-                ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()]),
+                ParentLink::Scalar(THING_TYPE.parse_ids(vec![ROOT, ROOT]).unwrap()),
             ),
             column_names: AttributeNames::All,
         }]);

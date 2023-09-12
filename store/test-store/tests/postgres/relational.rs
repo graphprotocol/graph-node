@@ -1,8 +1,7 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
-use graph::data::store::scalar;
-use graph::data::value::Word;
+use graph::data::store::{scalar, Id};
 use graph::entity;
 use graph::prelude::{
     o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
@@ -539,14 +538,22 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &SCALAR_TYPE.parse_key("one").unwrap(),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(conn, &SCALAR_TYPE.key("noone"), BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &SCALAR_TYPE.parse_key("noone").unwrap(),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
     });
@@ -564,7 +571,11 @@ fn insert_null_fulltext_fields() {
 
         // Find entity with null string values
         let entity = layout
-            .find(conn, &NULLABLE_STRINGS_TYPE.key("one"), BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &NULLABLE_STRINGS_TYPE.parse_key("one").unwrap(),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
@@ -591,7 +602,11 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
+            .find(
+                conn,
+                &SCALAR_TYPE.parse_key("one").unwrap(),
+                BLOCK_NUMBER_MAX,
+            )
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -631,7 +646,7 @@ fn update_many() {
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
         let keys: Vec<EntityKey> = ["one", "two", "three"]
             .iter()
-            .map(|id| SCALAR_TYPE.key(*id))
+            .map(|id| SCALAR_TYPE.parse_key(*id).unwrap())
             .collect();
 
         let entities_vec = vec![one, two, three];
@@ -646,7 +661,7 @@ fn update_many() {
             .iter()
             .map(|&id| {
                 layout
-                    .find(conn, &SCALAR_TYPE.key(id), BLOCK_NUMBER_MAX)
+                    .find(conn, &SCALAR_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
                     .unwrap_or_else(|_| panic!("Failed to read Scalar[{}]", id))
                     .unwrap()
             })
@@ -707,7 +722,11 @@ fn serialize_bigdecimal() {
                 .expect("Failed to update");
 
             let actual = layout
-                .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
+                .find(
+                    conn,
+                    &SCALAR_TYPE.parse_key("one").unwrap(),
+                    BLOCK_NUMBER_MAX,
+                )
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
             assert_entity_eq!(entity, actual);
@@ -740,7 +759,7 @@ fn delete() {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]);
 
         // Delete where nothing is getting deleted
-        let key = SCALAR_TYPE.key("no such entity");
+        let key = SCALAR_TYPE.parse_key("no such entity").unwrap();
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
         let mut entity_keys = vec![key];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
@@ -753,7 +772,7 @@ fn delete() {
         // Delete entity two
         entity_keys
             .get_mut(0)
-            .map(|key| key.entity_id = Word::from("two"))
+            .map(|key| key.entity_id = SCALAR_TYPE.parse_id("two").unwrap())
             .expect("Failed to update key");
 
         let group = row_group_delete(&entity_type, 1, entity_keys);
@@ -781,7 +800,7 @@ fn insert_many_and_delete_many() {
         // Delete entities with ids equal to "two" and "three"
         let entity_keys: Vec<_> = vec!["two", "three"]
             .into_iter()
-            .map(|key| SCALAR_TYPE.key(key))
+            .map(|key| SCALAR_TYPE.parse_key(key).unwrap())
             .collect();
         let group = row_group_delete(&*SCALAR_TYPE, 1, entity_keys);
         let num_removed = layout
@@ -849,7 +868,8 @@ fn conflicting_entity() {
     fn check(conn: &PgConnection, layout: &Layout, id: Value, cat: &str, dog: &str, ferret: &str) {
         let conflicting = |types: Vec<&EntityType>| {
             let types = types.into_iter().cloned().collect();
-            layout.conflicting_entity(conn, &id.to_string(), types)
+            let id = Id::try_from(id.clone()).unwrap();
+            layout.conflicting_entity(conn, &id, types)
         };
 
         let cat_type = layout.input_schema.entity_type(cat).unwrap();
@@ -896,7 +916,7 @@ fn revert_block() {
 
         let assert_fred = |name: &str| {
             let fred = layout
-                .find(conn, &CAT_TYPE.key(id), BLOCK_NUMBER_MAX)
+                .find(conn, &CAT_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
                 .unwrap()
                 .expect("there's a fred");
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())

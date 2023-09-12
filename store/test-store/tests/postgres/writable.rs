@@ -107,7 +107,7 @@ fn block_pointer(number: u8) -> BlockPtr {
 }
 
 fn count_key(id: &str) -> EntityKey {
-    COUNTER_TYPE.key(id)
+    COUNTER_TYPE.parse_key(id).unwrap()
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {
@@ -198,7 +198,6 @@ fn count_get_derived(writable: &dyn WritableStore) -> i32 {
         entity_type: key.entity_type.clone(),
         entity_field: Word::from("id"),
         value: key.entity_id.clone(),
-        id_is_bytes: false,
         causality_region: CausalityRegion::ONCHAIN,
     };
     let map = writable.get_derived(&query).unwrap();

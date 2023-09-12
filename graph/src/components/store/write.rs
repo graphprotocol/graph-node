@@ -6,7 +6,7 @@ use crate::{
     cheap_clone::CheapClone,
     components::subgraph::Entity,
     constraint_violation,
-    data::{subgraph::schema::SubgraphError, value::Word},
+    data::{store::Id, subgraph::schema::SubgraphError},
     data_source::CausalityRegion,
     prelude::DeploymentHash,
     util::cache_weight::CacheWeight,
@@ -59,7 +59,7 @@ pub enum EntityModification {
 /// A helper struct for passing entity writes to the outside world, viz. the
 /// SQL query generation that inserts rows
 pub struct EntityWrite<'a> {
-    pub id: &'a Word,
+    pub id: &'a Id,
     pub entity: &'a Entity,
     pub causality_region: CausalityRegion,
     pub block: BlockNumber,
@@ -98,7 +98,7 @@ impl<'a> TryFrom<&'a EntityModification> for EntityWrite<'a> {
 }
 
 impl EntityModification {
-    pub fn id(&self) -> &Word {
+    pub fn id(&self) -> &Id {
         match self {
             EntityModification::Insert { key, .. }
             | EntityModification::Overwrite { key, .. }
@@ -383,7 +383,7 @@ impl RowGroup {
     }
 
     /// Find the most recent entry for `id`
-    fn prev_row_mut(&mut self, id: &Word) -> Option<&mut EntityModification> {
+    fn prev_row_mut(&mut self, id: &Id) -> Option<&mut EntityModification> {
         self.rows.iter_mut().rfind(|emod| emod.id() == id)
     }
 
@@ -475,8 +475,8 @@ impl RowGroup {
         Ok(())
     }
 
-    pub fn ids(&self) -> impl Iterator<Item = &str> {
-        self.rows.iter().map(|emod| emod.id().as_str())
+    pub fn ids(&self) -> impl Iterator<Item = &Id> {
+        self.rows.iter().map(|emod| emod.id())
     }
 }
 
@@ -899,6 +899,7 @@ mod test {
         components::store::{
             write::EntityModification, write::EntityOp, BlockNumber, EntityType, StoreError,
         },
+        data::{store::Id, value::Word},
         entity,
         prelude::DeploymentHash,
         schema::InputSchema,
@@ -909,13 +910,17 @@ mod test {
 
     #[track_caller]
     fn check_runs(values: &[usize], blocks: &[BlockNumber], exp: &[(BlockNumber, &[usize])]) {
+        fn as_id(n: &usize) -> Id {
+            Id::String(Word::from(n.to_string()))
+        }
+
         assert_eq!(values.len(), blocks.len());
 
         let rows = values
             .iter()
             .zip(blocks.iter())
             .map(|(value, block)| EntityModification::Remove {
-                key: ROW_GROUP_TYPE.key(value.to_string()),
+                key: ROW_GROUP_TYPE.key(Id::String(Word::from(value.to_string()))),
                 block: *block,
             })
             .collect();
@@ -931,14 +936,14 @@ mod test {
                     block,
                     entries
                         .iter()
-                        .map(|entry| entry.id().parse().unwrap())
+                        .map(|entry| entry.id().clone())
                         .collect::<Vec<_>>(),
                 )
             })
             .collect::<Vec<_>>();
         let exp = Vec::from_iter(
             exp.into_iter()
-                .map(|(block, values)| (*block, Vec::from_iter(values.iter().cloned()))),
+                .map(|(block, values)| (*block, Vec::from_iter(values.iter().map(as_id)))),
         );
         assert_eq!(exp, act);
     }
@@ -988,7 +993,7 @@ mod test {
             use Mod::*;
 
             let value = value.clone();
-            let key = THING_TYPE.key("one");
+            let key = THING_TYPE.parse_key("one").unwrap();
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
@@ -1092,7 +1097,7 @@ mod test {
     fn last_op() {
         #[track_caller]
         fn is_remove(group: &RowGroup, at: BlockNumber) {
-            let key = THING_TYPE.key("one");
+            let key = THING_TYPE.parse_key("one").unwrap();
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1104,7 +1109,7 @@ mod test {
         }
         #[track_caller]
         fn is_write(group: &RowGroup, at: BlockNumber) {
-            let key = THING_TYPE.key("one");
+            let key = THING_TYPE.parse_key("one").unwrap();
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1117,7 +1122,7 @@ mod test {
 
         use Mod::*;
 
-        let key = THING_TYPE.key("one");
+        let key = THING_TYPE.parse_key("one").unwrap();
 
         // This will result in two mods int the group:
         //   [ InsC(1,2), InsC(2,3) ]

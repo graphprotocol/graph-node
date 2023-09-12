@@ -589,7 +589,7 @@ impl GasSizeOf for BigInt {
 }
 
 /// A byte array that's serialized as a hex string prefixed by `0x`.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Bytes(Box<[u8]>);
 
 impl Deref for Bytes {
@@ -675,6 +675,15 @@ impl<const N: usize> From<[u8; N]> for Bytes {
 impl From<Vec<u8>> for Bytes {
     fn from(vec: Vec<u8>) -> Self {
         Bytes(vec.into())
+    }
+}
+
+impl ToSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
+    fn to_sql<W: Write>(
+        &self,
+        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
+    ) -> diesel::serialize::Result {
+        <_ as ToSql<diesel::sql_types::Binary, _>>::to_sql(self.as_slice(), out)
     }
 }
 

@@ -5,6 +5,7 @@
 use super::{ProofOfIndexingEvent, ProofOfIndexingVersion};
 use crate::{
     blockchain::BlockPtr,
+    data::store::Id,
     prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
     util::stable_hash_glue::AsBytes,
 };
@@ -166,7 +167,7 @@ pub struct ProofOfIndexing {
     /// some data sources (eg: IPFS files) may be unreliable and therefore cannot mix
     /// state with other data sources. This may also give us some freedom to change
     /// the order of triggers in the future.
-    per_causality_region: HashMap<String, BlockEventStream>,
+    per_causality_region: HashMap<Id, BlockEventStream>,
 }
 
 impl fmt::Debug for ProofOfIndexing {
@@ -227,18 +228,18 @@ impl ProofOfIndexing {
     where
         F: FnOnce(&mut BlockEventStream) -> T,
     {
-        if let Some(causality_region) = self.per_causality_region.get_mut(causality_region) {
+        let causality_region = Id::String(causality_region.to_owned().into());
+        if let Some(causality_region) = self.per_causality_region.get_mut(&causality_region) {
             f(causality_region)
         } else {
             let mut entry = BlockEventStream::new(self.block_number, self.version);
             let result = f(&mut entry);
-            self.per_causality_region
-                .insert(causality_region.to_owned(), entry);
+            self.per_causality_region.insert(causality_region, entry);
             result
         }
     }
 
-    pub fn take(self) -> HashMap<String, BlockEventStream> {
+    pub fn take(self) -> HashMap<Id, BlockEventStream> {
         self.per_causality_region
     }
 }
@@ -274,7 +275,7 @@ impl ProofOfIndexingFinisher {
         }
     }
 
-    pub fn add_causality_region(&mut self, name: &str, region: &[u8]) {
+    pub fn add_causality_region(&mut self, name: &Id, region: &[u8]) {
         let mut state = Hashers::from_bytes(region);
 
         // Finish the blocks vec by writing kvp[v], PoICausalityRegion.blocks.len()

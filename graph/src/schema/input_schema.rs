@@ -223,34 +223,7 @@ impl InputSchema {
     ///
     /// When asked to load the related entities from "Account" in the field "wallets"
     /// This function will return the type "Wallet" with the field "account"
-    pub fn get_field_related(
-        &self,
-        key: &LoadRelatedRequest,
-    ) -> Result<(&str, &s::Field, bool), Error> {
-        let id_field = self
-            .inner
-            .schema
-            .document
-            .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type,
-                )
-            })?
-            .field("id")
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown field `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_field,
-                )
-            })?;
-
-        let id_is_bytes = id_field.field_type.get_base_type() == "Bytes";
+    pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &s::Field), Error> {
         let field = self
             .inner
             .schema
@@ -301,7 +274,7 @@ impl InputSchema {
                     )
                 })?;
 
-            Ok((base_type, field, id_is_bytes))
+            Ok((base_type, field))
         } else {
             Err(anyhow!(
                 "Entity {}[{}]: field `{}` is not derived",

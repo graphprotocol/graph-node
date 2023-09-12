@@ -12,8 +12,8 @@ use graph::components::store::{
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
+use graph::data::store::{Id, IdList};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
-use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::futures03::FutureExt;
 use graph::prelude::{
@@ -279,7 +279,7 @@ impl DeploymentStore {
         conn: &PgConnection,
         layout: &Layout,
         entity_type: &EntityType,
-        entity_id: &Word,
+        entity_id: &Id,
     ) -> Result<(), StoreError> {
         // Collect all types that share an interface implementation with this
         // entity type, and make sure there are no conflicting IDs.
@@ -339,12 +339,7 @@ impl DeploymentStore {
             let section = stopwatch.start_section("check_interface_entity_uniqueness");
             for row in group.writes().filter(|emod| emod.creates_entity()) {
                 // WARNING: This will potentially execute 2 queries for each entity key.
-                self.check_interface_entity_uniqueness(
-                    conn,
-                    layout,
-                    &group.entity_type,
-                    &row.id(),
-                )?;
+                self.check_interface_entity_uniqueness(conn, layout, &group.entity_type, row.id())?;
             }
             section.end();
 
@@ -1064,7 +1059,7 @@ impl DeploymentStore {
     pub(crate) fn get_many(
         &self,
         site: Arc<Site>,
-        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {

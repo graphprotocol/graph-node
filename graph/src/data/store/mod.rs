@@ -28,7 +28,7 @@ use super::{
 
 /// Handling of entity ids
 mod id;
-pub use id::IdType;
+pub use id::{Id, IdList, IdRef, IdType};
 
 /// Custom scalars in GraphQL.
 pub mod scalar;
@@ -806,12 +806,8 @@ impl Entity {
     /// string. If it is `Bytes`, return it as a hex string with a `0x`
     /// prefix. If the ID is not set or anything but a `String` or `Bytes`,
     /// return an error
-    pub fn id(&self) -> Word {
-        match self.get("id") {
-            Some(Value::String(s)) => Word::from(s.clone()),
-            Some(Value::Bytes(b)) => Word::from(b.to_string()),
-            None | Some(_) => unreachable!("we checked the id when constructing this entity"),
-        }
+    pub fn id(&self) -> Id {
+        Id::try_from(self.get("id").unwrap().clone()).expect("the id is set to a valid value")
     }
 
     /// Merges an entity update `update` into this entity.
@@ -1047,7 +1043,7 @@ impl std::fmt::Debug for Entity {
 /// possibly a pointer to its parent if the query that constructed it is one
 /// that depends on parents
 pub struct QueryObject {
-    pub parent: Option<r::Value>,
+    pub parent: Option<Id>,
     pub entity: r::Object,
 }
 

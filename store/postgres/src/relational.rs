@@ -30,7 +30,7 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{q, s, serde_json, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME,
 };
@@ -56,7 +56,7 @@ use crate::{
 };
 use graph::components::store::DerivedEntityQuery;
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
-use graph::data::store::BYTES_SCALAR;
+use graph::data::store::{Id, IdList, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
@@ -197,10 +197,22 @@ pub(crate) enum IdType {
 }
 
 impl IdType {
-    pub fn sql_type(&self) -> &str {
-        match self {
-            IdType::String => "text",
-            IdType::Bytes => "bytea",
+    pub fn parse_id(self, json: serde_json::Value) -> Result<Id, StoreError> {
+        const HEX_PREFIX: &str = "\\x";
+        let id_type = graph::data::store::IdType::from(self);
+        if let serde_json::Value::String(s) = json {
+            let s = if s.starts_with(HEX_PREFIX) {
+                Word::from(s.trim_start_matches(HEX_PREFIX))
+            } else {
+                Word::from(s)
+            };
+            id_type.parse(s).map_err(StoreError::from)
+        } else {
+            Err(graph::constraint_violation!(
+                "the value {:?} can not be converted into an id of type {}",
+                json,
+                self
+            ))
         }
     }
 }
@@ -230,6 +242,24 @@ impl TryFrom<&s::Type> for IdType {
                 &name
             )
             .into()),
+        }
+    }
+}
+
+impl From<IdType> for graph::data::store::IdType {
+    fn from(id_type: IdType) -> Self {
+        match id_type {
+            IdType::String => graph::data::store::IdType::String,
+            IdType::Bytes => graph::data::store::IdType::Bytes,
+        }
+    }
+}
+
+impl std::fmt::Display for IdType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IdType::String => write!(f, "String"),
+            IdType::Bytes => write!(f, "Bytes"),
         }
     }
 }
@@ -540,7 +570,7 @@ impl Layout {
     pub fn find_many(
         &self,
         conn: &PgConnection,
-        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), Vec<String>>,
+        ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         if ids_for_type.is_empty() {
@@ -551,12 +581,7 @@ impl Layout {
         for (entity_type, cr) in ids_for_type.keys() {
             tables.push((self.table_for_entity(entity_type)?.as_ref(), *cr));
         }
-        let query = FindManyQuery {
-            _namespace: &self.catalog.site.namespace,
-            ids_for_type,
-            tables,
-            block,
-        };
+        let query = FindManyQuery::new(tables, ids_for_type, block);
         let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type(&self.input_schema);
@@ -637,10 +662,10 @@ impl Layout {
 
         for del in &deletions {
             let entity_type = del.entity_type(&self.input_schema);
-            let entity_id = Word::from(del.id());
 
             // See the doc comment of `FindPossibleDeletionsQuery` for details
             // about why this check is necessary.
+            let entity_id = entity_type.parse_id(del.id())?;
             if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
                 changes.push(EntityOperation::Remove {
                     key: entity_type.key_in(entity_id, del.causality_region()),
@@ -675,7 +700,7 @@ impl Layout {
     pub fn conflicting_entity(
         &self,
         conn: &PgConnection,
-        entity_id: &str,
+        entity_id: &Id,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
@@ -805,7 +830,11 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
-            let ids = group.ids().collect::<Vec<_>>().join(", ");
+            let ids = group
+                .ids()
+                .map(|id| id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
             return Err(constraint_violation!(
                 "entities of type `{}` can not be updated since they are immutable. Entity ids are [{}]",
                 group.entity_type,
@@ -815,8 +844,12 @@ impl Layout {
 
         let section = stopwatch.start_section("update_modification_clamp_range_query");
         for (block, rows) in group.clamps_by_block() {
-            let entity_keys: Vec<&str> = rows.iter().map(|row| row.id().as_str()).collect();
-
+            let entity_keys: Vec<_> = rows.iter().map(|row| row.id()).collect();
+            // FIXME: we clone all the ids here
+            let entity_keys = IdList::try_from_iter(
+                &group.entity_type,
+                entity_keys.into_iter().map(|id| id.to_owned()),
+            )?;
             ClampRangeQuery::new(table, &entity_keys, block)?.execute(conn)?;
         }
         section.end();
@@ -856,9 +889,14 @@ impl Layout {
         let _section = stopwatch.start_section("delete_modification_clamp_range_query");
         let mut count = 0;
         for (block, rows) in group.clamps_by_block() {
-            let ids: Vec<_> = rows.iter().map(|eref| eref.id().as_str()).collect();
+            let ids: Vec<_> = rows.iter().map(|eref| eref.id()).collect();
             for chunk in ids.chunks(DELETE_OPERATION_CHUNK_SIZE) {
-                count += ClampRangeQuery::new(table, chunk, block)?.execute(conn)?
+                // FIXME: we clone all the ids here
+                let chunk = IdList::try_from_iter(
+                    &group.entity_type,
+                    chunk.into_iter().map(|id| (*id).to_owned()),
+                )?;
+                count += ClampRangeQuery::new(table, &chunk, block)?.execute(conn)?
             }
         }
         Ok(count)

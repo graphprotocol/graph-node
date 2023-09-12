@@ -1,6 +1,6 @@
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
-use graph::prelude::SubscriptionResult;
+use graph::prelude::{SubscriptionResult, Value};
 use graph::schema::InputSchema;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
@@ -36,24 +36,75 @@ use test_store::{
     GENESIS_PTR, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, SUBSCRIPTION_MANAGER,
 };
 
+/// Ids for the various entities that we create in `insert_entities` and
+/// access through `IdType` to check results in the tests
 const NETWORK_NAME: &str = "fake_network";
 const SONGS_STRING: [&str; 5] = ["s0", "s1", "s2", "s3", "s4"];
 const SONGS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
 const MEDIA_STRING: [&str; 7] = ["md0", "md1", "md2", "md3", "md4", "md5", "md6"];
 const MEDIA_BYTES: [&str; 7] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4", "0xf5", "0xf6"];
 
+lazy_static! {
+    /// The id of the sole publisher in the test data
+    static ref PUB1: IdVal = IdType::Bytes.parse("0xb1");
+}
+
+/// A convenience wrapper for `Value` and `r::Value` that clones a lot,
+/// which is fine in tests, in order to keep test notation concise
+#[derive(Debug)]
+struct IdVal(Value);
+
+impl From<&IdVal> for Value {
+    fn from(id: &IdVal) -> Self {
+        id.0.clone()
+    }
+}
+
+impl graph::data::graphql::IntoValue for &IdVal {
+    fn into_value(self) -> r::Value {
+        self.0.clone().into()
+    }
+}
+
+impl std::fmt::Display for IdVal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 enum IdType {
     String,
-    #[allow(dead_code)]
     Bytes,
 }
 
 impl IdType {
-    fn songs(&self) -> &[&str] {
+    fn parse(&self, s: &str) -> IdVal {
+        let value = match self {
+            IdType::String => Value::String(s.to_string()),
+            IdType::Bytes => Value::Bytes(s.parse().unwrap()),
+        };
+        IdVal(value)
+    }
+
+    fn songs(&self) -> &[&IdVal] {
+        lazy_static! {
+            static ref SONGS_STRING_VAL: Vec<IdVal> = SONGS_STRING
+                .iter()
+                .map(|s| IdType::String.parse(s))
+                .collect::<Vec<_>>();
+            static ref SONGS_BYTES_VAL: Vec<IdVal> = SONGS_BYTES
+                .iter()
+                .map(|s| IdType::Bytes.parse(s))
+                .collect::<Vec<_>>();
+            static ref SONGS_STRING_REF: Vec<&'static IdVal> =
+                SONGS_STRING_VAL.iter().collect::<Vec<_>>();
+            static ref SONGS_BYTES_REF: Vec<&'static IdVal> =
+                SONGS_BYTES_VAL.iter().collect::<Vec<_>>();
+        }
         match self {
-            IdType::String => SONGS_STRING.as_slice(),
-            IdType::Bytes => SONGS_BYTES.as_slice(),
+            IdType::String => SONGS_STRING_REF.as_slice(),
+            IdType::Bytes => SONGS_BYTES_REF.as_slice(),
         }
     }
 
@@ -341,6 +392,7 @@ async fn insert_test_entities(
     let s = id_type.songs();
     let md = id_type.medias();
     let is = &manifest.schema;
+    let pub1 = &*PUB1;
     let entities0 = vec![
         (
             "Musician",
@@ -349,7 +401,7 @@ async fn insert_test_entities(
                 entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100 },
             ],
         ),
-        ("Publisher", vec![entity! { is => id: "0xb1" }]),
+        ("Publisher", vec![entity! { is => id: pub1 }]),
         (
             "Band",
             vec![
@@ -360,10 +412,10 @@ async fn insert_test_entities(
         (
             "Song",
             vec![
-                entity! { is => id: s[1], sid: "s1", title: "Cheesy Tune",  publisher: "0xb1", writtenBy: "m1", media: vec![md[1], md[2]] },
-                entity! { is => id: s[2], sid: "s2", title: "Rock Tune",    publisher: "0xb1", writtenBy: "m2", media: vec![md[3], md[4]] },
-                entity! { is => id: s[3], sid: "s3", title: "Pop Tune",     publisher: "0xb1", writtenBy: "m1", media: vec![md[5]] },
-                entity! { is => id: s[4], sid: "s4", title: "Folk Tune",    publisher: "0xb1", writtenBy: "m3", media: vec![md[6]] },
+                entity! { is => id: s[1], sid: "s1", title: "Cheesy Tune",  publisher: pub1, writtenBy: "m1", media: vec![md[1], md[2]] },
+                entity! { is => id: s[2], sid: "s2", title: "Rock Tune",    publisher: pub1, writtenBy: "m2", media: vec![md[3], md[4]] },
+                entity! { is => id: s[3], sid: "s3", title: "Pop Tune",     publisher: pub1, writtenBy: "m1", media: vec![md[5]] },
+                entity! { is => id: s[4], sid: "s4", title: "Folk Tune",    publisher: pub1, writtenBy: "m3", media: vec![md[6]] },
             ],
         ),
         (
@@ -1522,8 +1574,8 @@ fn mixed_parent_child_id() {
     run_query(QUERY, |result, _| {
         let exp = object! {
             songs: vec![
-                object! { publisher: object! { id: "0xb1" } },
-                object! { publisher: object! { id: "0xb1" } }
+                object! { publisher: object! { id: &*PUB1 } },
+                object! { publisher: object! { id: &*PUB1 } }
             ]
         };
         let data = extract_data!(result).unwrap();

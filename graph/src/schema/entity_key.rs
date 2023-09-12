@@ -1,10 +1,7 @@
 use std::fmt;
 
-use anyhow::Error;
-
 use crate::components::store::StoreError;
-use crate::data::store::Value;
-use crate::data::value::Word;
+use crate::data::store::{Id, Value};
 use crate::data_source::CausalityRegion;
 use crate::schema::EntityType;
 use crate::util::intern;
@@ -17,7 +14,7 @@ pub struct EntityKey {
     pub entity_type: EntityType,
 
     /// ID of the individual entity.
-    pub entity_id: Word,
+    pub entity_id: Id,
 
     /// This is the causality region of the data source that created the entity.
     ///
@@ -38,7 +35,7 @@ impl EntityKey {
 impl EntityKey {
     pub(in crate::schema) fn new(
         entity_type: EntityType,
-        entity_id: Word,
+        entity_id: Id,
         causality_region: CausalityRegion,
     ) -> Self {
         Self {
@@ -49,8 +46,8 @@ impl EntityKey {
         }
     }
 
-    pub fn id_value(&self) -> Result<Value, Error> {
-        self.entity_type.id_value(self.entity_id.clone())
+    pub fn id_value(&self) -> Value {
+        Value::from(self.entity_id.clone())
     }
 }
 

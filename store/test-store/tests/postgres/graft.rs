@@ -1,5 +1,4 @@
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::data::value::Word;
 use graph::schema::{EntityType, InputSchema};
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
@@ -10,7 +9,7 @@ use graph::components::store::{
     DeploymentLocator, EntityOrder, EntityQuery, PruneReporter, PruneRequest, PruningStrategy,
     VersionStats,
 };
-use graph::data::store::scalar;
+use graph::data::store::{scalar, Id};
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::semver::Version;
@@ -258,7 +257,7 @@ fn create_test_entity(
 
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
     EntityOperation::Set {
-        key: entity_type.key(id),
+        key: entity_type.parse_key(id).unwrap(),
         data: test_entity,
     }
 }
@@ -283,7 +282,7 @@ async fn create_grafted_subgraph(
 fn find_entities(
     store: &DieselSubgraphStore,
     deployment: &DeploymentLocator,
-) -> (Vec<Entity>, Vec<Word>) {
+) -> (Vec<Entity>, Vec<Id>) {
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(USER).unwrap();
     let query = EntityQuery::new(
         deployment.hash.clone(),
@@ -312,7 +311,8 @@ async fn check_graft(
 ) -> Result<(), StoreError> {
     let (entities, ids) = find_entities(store.as_ref(), &deployment);
 
-    assert_eq!(vec!["3", "1", "2"], ids);
+    let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+    assert_eq!(vec!["3", "1", "2"], ids_str);
 
     // Make sure we caught Shaqueeena at block 1, before the change in
     // email address
@@ -322,7 +322,7 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
-        key: USER_TYPE.key("3"),
+        key: USER_TYPE.parse_key("3").unwrap(),
         data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
@@ -401,7 +401,8 @@ fn graft() {
         .expect("grafting onto block 0 works");
 
         let (entities, ids) = find_entities(store.as_ref(), &deployment);
-        assert_eq!(vec!["1"], ids);
+        let ids_str = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+        assert_eq!(vec!["1"], ids_str);
         let shaq = entities.first().unwrap().clone();
         assert_eq!(Some(&Value::from("tonofjohn@email.com")), shaq.get("email"));
         Ok(())
@@ -554,15 +555,17 @@ fn prune() {
         block: BlockNumber,
         exp: Vec<&str>,
     ) {
+        let user_type = TEST_SUBGRAPH_SCHEMA.entity_type("User").unwrap();
         let query = EntityQuery::new(
             src.hash.clone(),
             block,
-            EntityCollection::All(vec![(
-                TEST_SUBGRAPH_SCHEMA.entity_type("User").unwrap(),
-                AttributeNames::All,
-            )]),
+            EntityCollection::All(vec![(user_type.clone(), AttributeNames::All)]),
         );
 
+        let exp = exp
+            .into_iter()
+            .map(|id| user_type.parse_id(id).unwrap())
+            .collect::<Vec<_>>();
         let act: Vec<_> = store
             .find(query)
             .unwrap()

@@ -439,7 +439,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
     let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA };
-    let key = THING_TYPE.key(id);
+    let key = THING_TYPE.parse_key(id).unwrap();
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::insert(key, data, 0),
@@ -1341,7 +1341,7 @@ async fn test_store_set_id() {
     let entity = host.store_get(USER, UID).unwrap().unwrap();
     assert_eq!(
         "u1",
-        entity.id().as_str(),
+        entity.id().to_string(),
         "store.set sets id automatically"
     );
 
@@ -1349,7 +1349,10 @@ async fn test_store_set_id() {
     let err = host
         .store_setv(USER, "0xbeef", vec![("id", beef)])
         .expect_err("setting with Bytes id fails");
-    err_says(err, "must have type ID! but has type Bytes");
+    err_says(
+        err,
+        "Attribute `User.id` has wrong type: expected String but got Bytes",
+    );
 
     host.store_setv(USER, UID, vec![("id", Value::Int(32))])
         .expect_err("id must be a string");
@@ -1362,7 +1365,10 @@ async fn test_store_set_id() {
     let err = host
         .store_set(BINARY, BID, vec![("id", BID), ("name", "user1")])
         .expect_err("setting with string id in values fails");
-    err_says(err, "must have type Bytes! but has type String");
+    err_says(
+        err,
+        "Attribute `Binary.id` has wrong type: expected Bytes but got String",
+    );
 
     host.store_setv(
         BINARY,
@@ -1381,12 +1387,19 @@ async fn test_store_set_id() {
         .expect("setting with no id works");
 
     let entity = host.store_get(BINARY, BID).unwrap().unwrap();
-    assert_eq!(BID, entity.id().as_str(), "store.set sets id automatically");
+    assert_eq!(
+        BID,
+        entity.id().to_string(),
+        "store.set sets id automatically"
+    );
 
     let err = host
         .store_setv(BINARY, BID, vec![("id", Value::Int(32))])
         .expect_err("id must be Bytes");
-    err_says(err, "Unsupported type for `id` attribute");
+    err_says(
+        err,
+        "Attribute `Binary.id` has wrong type: expected Bytes but got Int",
+    );
 }
 
 /// Test setting fields that are not defined in the schema

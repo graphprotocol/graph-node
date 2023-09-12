@@ -195,7 +195,7 @@ where
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
                             entity_type: key.entity_type.as_str(),
-                            id: &key.entity_id,
+                            id: &key.entity_id.to_string(),
                             data: &entity,
                         },
                         causality_region,
@@ -213,11 +213,11 @@ where
                         proof_of_indexing,
                         &ProofOfIndexingEvent::RemoveEntity {
                             entity_type: entity_type.as_str(),
-                            id: id.as_str(),
+                            id: &id.to_string(),
                         },
                         causality_region,
                         logger,
-                    )
+                    );
                 }
             }
         }

@@ -1,15 +1,17 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
-use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
+use graph::data::store::Id;
+use graph::data::store::IdList;
+use graph::data::store::IdType;
 use graph::data::store::QueryObject;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
 use graph::util::cache_weight;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -19,8 +21,8 @@ use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
         s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
-        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, StoreError,
-        Value as StoreValue, WindowAttribute, ENV_VARS,
+        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, Value as StoreValue,
+        WindowAttribute, ENV_VARS,
     },
 };
 
@@ -41,7 +43,7 @@ struct Node {
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
 
-    parent: Option<r::Value>,
+    parent: Option<Id>,
 
     entity: Object,
     /// We are using an `Rc` here for two reasons: it allows us to defer
@@ -163,6 +165,7 @@ impl From<Node> for r::Value {
 
 trait ValueExt {
     fn as_str(&self) -> Option<&str>;
+    fn as_id(&self, id_type: IdType) -> Option<Id>;
 }
 
 impl ValueExt for r::Value {
@@ -172,14 +175,25 @@ impl ValueExt for r::Value {
             _ => None,
         }
     }
+
+    fn as_id(&self, id_type: IdType) -> Option<Id> {
+        match self {
+            r::Value::String(s) => id_type.parse(Word::from(s.as_str())).ok(),
+            _ => None,
+        }
+    }
 }
 
 impl Node {
-    fn id(&self) -> Result<String, Error> {
+    fn id(&self, schema: &InputSchema) -> Result<Id, QueryExecutionError> {
+        let entity_type = schema.entity_type(self.typename())?;
         match self.get("id") {
-            None => Err(anyhow!("Entity is missing an `id` attribute")),
-            Some(r::Value::String(s)) => Ok(s.clone()),
-            _ => Err(anyhow!("Entity has non-string `id` attribute")),
+            None => Err(QueryExecutionError::IdMissing),
+            Some(r::Value::String(s)) => {
+                let id = entity_type.parse_id(s.as_str())?;
+                Ok(id)
+            }
+            _ => Err(QueryExecutionError::IdNotString),
         }
     }
 
@@ -282,38 +296,45 @@ impl<'a> JoinCond<'a> {
 
     fn entity_link(
         &self,
-        parents_by_id: Vec<(String, &Node)>,
+        parents_by_id: Vec<(Id, &Node)>,
         multiplicity: ChildMultiplicity,
-    ) -> (Vec<String>, EntityLink) {
+    ) -> Result<(IdList, EntityLink), QueryExecutionError> {
         match &self.relation {
             JoinRelation::Direct(field) => {
                 // we only need the parent ids
-                let ids = parents_by_id.into_iter().map(|(id, _)| id).collect();
-                (
+                let ids = IdList::try_from_iter(
+                    &self.parent_type,
+                    parents_by_id.into_iter().map(|(id, _)| id),
+                )?;
+                Ok((
                     ids,
                     EntityLink::Direct(field.window_attribute(), multiplicity),
-                )
+                ))
             }
             JoinRelation::Derived(field) => {
                 let (ids, parent_link) = match field {
                     JoinField::Scalar(child_field) => {
                         // child_field contains a String id of the child; extract
                         // those and the parent ids
+                        let id_type = self.child_type.id_type().unwrap();
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
                                 node.get(child_field)
-                                    .and_then(|value| value.as_str())
+                                    .and_then(|value| value.as_id(id_type))
                                     .map(|child_id| (id, child_id.to_owned()))
                             })
                             .unzip();
-
+                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
+                        let child_ids =
+                            IdList::try_from_iter(&self.child_type, child_ids.into_iter())?;
                         (ids, ParentLink::Scalar(child_ids))
                     }
                     JoinField::List(child_field) => {
                         // child_field stores a list of child ids; extract them,
                         // turn them into a list of strings and combine with the
                         // parent ids
+                        let id_type = self.child_type.id_type().unwrap();
                         let (ids, child_ids): (Vec<_>, Vec<_>) = parents_by_id
                             .into_iter()
                             .filter_map(|(id, node)| {
@@ -322,9 +343,7 @@ impl<'a> JoinCond<'a> {
                                         r::Value::List(values) => {
                                             let values: Vec<_> = values
                                                 .iter()
-                                                .filter_map(|value| {
-                                                    value.as_str().map(|value| value.to_owned())
-                                                })
+                                                .filter_map(|value| value.as_id(id_type))
                                                 .collect();
                                             if values.is_empty() {
                                                 None
@@ -337,13 +356,18 @@ impl<'a> JoinCond<'a> {
                                     .map(|child_ids| (id, child_ids))
                             })
                             .unzip();
+                        let ids = IdList::try_from_iter(&self.parent_type, ids.into_iter())?;
+                        let child_ids = child_ids
+                            .into_iter()
+                            .map(|ids| IdList::try_from_iter(&self.child_type, ids.into_iter()))
+                            .collect::<Result<Vec<_>, _>>()?;
                         (ids, ParentLink::List(child_ids))
                     }
                 };
-                (
+                Ok((
                     ids,
                     EntityLink::Parent(self.parent_type.clone(), parent_link),
-                )
+                ))
             }
         }
     }
@@ -380,24 +404,25 @@ impl<'a> Join<'a> {
 
     fn windows(
         &self,
+        schema: &InputSchema,
         parents: &[&mut Node],
         multiplicity: ChildMultiplicity,
         previous_collection: &EntityCollection,
-    ) -> Vec<EntityWindow> {
+    ) -> Result<Vec<EntityWindow>, QueryExecutionError> {
         let mut windows = vec![];
         let column_names_map = previous_collection.entity_types_and_column_names();
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
                 .filter(|parent| parent.typename() == cond.parent_type.as_str())
-                .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
+                .filter_map(|parent| parent.id(schema).ok().map(|id| (id, &**parent)))
                 .collect::<Vec<_>>();
 
             if !parents_by_id.is_empty() {
                 parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
-                let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
+                let (ids, link) = cond.entity_link(parents_by_id, multiplicity)?;
                 let child_type: EntityType = cond.child_type.clone();
                 let column_names = match column_names_map.get(&child_type) {
                     Some(column_names) => column_names.clone(),
@@ -411,7 +436,7 @@ impl<'a> Join<'a> {
                 });
             }
         }
-        windows
+        Ok(windows)
     }
 }
 
@@ -450,6 +475,7 @@ impl<'a> MaybeJoin<'a> {
 /// If `parents` only has one entry, add all children to that one parent. In
 /// particular, this is what happens for toplevel queries.
 fn add_children(
+    schema: &InputSchema,
     parents: &mut [&mut Node],
     children: Vec<Node>,
     response_key: &str,
@@ -466,19 +492,19 @@ fn add_children(
     // children to their parent. This relies on the fact that interfaces
     // make sure that id's are distinct across all implementations of the
     // interface.
-    let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
+    let mut grouped: HashMap<&Id, Vec<Rc<Node>>> = HashMap::default();
     for child in children.iter() {
         let parent = child.parent.as_ref().ok_or_else(|| {
             QueryExecutionError::Panic(format!(
                 "child {}[{}] is missing a parent id",
                 child.typename(),
-                child.id().unwrap_or_else(|_| "<no id>".to_owned())
+                child
+                    .id(schema)
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|_| "<no id>".to_owned())
             ))
         })?;
-        match parent {
-            r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
-            _ => unreachable!("the parent_id returned by the query is always a string"),
-        }
+        grouped.entry(parent).or_default().push(child.clone());
     }
 
     // Add appropriate children using grouped map
@@ -490,7 +516,10 @@ fn add_children(
         // interface level and in nested object type conditions. The values for the interface
         // query are always joined first, and may then be overwritten by the merged selection
         // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-        let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
+        let values = parent
+            .id(schema)
+            .ok()
+            .and_then(|id| grouped.get(&id).cloned());
         parent.set_children(response_key.to_owned(), values.unwrap_or_default());
     }
 
@@ -649,7 +678,12 @@ fn execute_selection_set<'a>(
                         &field.selection_set,
                     ) {
                         Ok((children, trace)) => {
-                            add_children(&mut parents, children, field.response_key())?;
+                            add_children(
+                                &input_schema,
+                                &mut parents,
+                                children,
+                                field.response_key(),
+                            )?;
                             let weight =
                                 parents.iter().map(|parent| parent.weight()).sum::<usize>();
                             check_result_size(ctx, weight)?;
@@ -723,7 +757,7 @@ fn fetch(
         selected_attrs,
         &super::query::SchemaPair {
             api: ctx.query.schema.clone(),
-            input: input_schema,
+            input: input_schema.cheap_clone(),
         },
     )?;
     query.trace = ctx.trace;
@@ -746,7 +780,7 @@ fn fetch(
     if let MaybeJoin::Nested(join) = join {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let windows = join.windows(parents, multiplicity, &query.collection);
+        let windows = join.windows(&input_schema, parents, multiplicity, &query.collection)?;
         if windows.is_empty() {
             return Ok((vec![], Trace::None));
         }

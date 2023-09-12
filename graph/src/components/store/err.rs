@@ -75,10 +75,10 @@ pub enum StoreError {
 #[macro_export]
 macro_rules! constraint_violation {
     ($msg:expr) => {{
-        StoreError::ConstraintViolation(format!("{}", $msg))
+        $crate::prelude::StoreError::ConstraintViolation(format!("{}", $msg))
     }};
     ($fmt:expr, $($arg:tt)*) => {{
-        StoreError::ConstraintViolation(format!($fmt, $($arg)*))
+        $crate::prelude::StoreError::ConstraintViolation(format!($fmt, $($arg)*))
     }}
 }
 

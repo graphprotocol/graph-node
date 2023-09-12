@@ -36,6 +36,7 @@ pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
 mod tests {
     use super::*;
     use crate::{
+        data::store::Id,
         prelude::{BlockPtr, DeploymentHash, Value},
         schema::InputSchema,
     };
@@ -71,7 +72,7 @@ mod tests {
             // pretty foolproof so that the actual usage will also match.
 
             // Create a database which stores intermediate PoIs
-            let mut db = HashMap::<String, Vec<u8>>::new();
+            let mut db = HashMap::<Id, Vec<u8>>::new();
 
             let mut block_count = 1;
             for causality_region in case.data.causality_regions.values() {

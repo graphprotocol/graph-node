@@ -5,7 +5,7 @@ use serde::Serialize;
 
 use crate::{
     cheap_clone::CheapClone,
-    data::store::Value,
+    data::store::{Id, IdList},
     data::{graphql::ObjectOrInterface, store::IdType, value::Word},
     data_source::causality_region::CausalityRegion,
     prelude::s,
@@ -57,27 +57,52 @@ impl EntityType {
     }
 
     /// Create a key from this type for an onchain entity
-    pub fn key(&self, id: impl Into<Word>) -> EntityKey {
+    pub fn key(&self, id: Id) -> EntityKey {
         self.key_in(id, CausalityRegion::ONCHAIN)
     }
 
     /// Create a key from this type for an entity in the given causality region
-    pub fn key_in(&self, id: impl Into<Word>, causality_region: CausalityRegion) -> EntityKey {
-        EntityKey::new(self.cheap_clone(), id.into(), causality_region)
+    pub fn key_in(&self, id: Id, causality_region: CausalityRegion) -> EntityKey {
+        EntityKey::new(self.cheap_clone(), id, causality_region)
     }
 
-    /// Construct a `Value` for the given id and parse it into the correct
-    /// type if necessary
-    pub fn id_value(&self, id: impl Into<Word>) -> Result<Value, Error> {
+    /// Construct an `Id` from the given string and parse it into the
+    /// correct type if necessary
+    pub fn parse_id(&self, id: impl Into<Word>) -> Result<Id, Error> {
         let id = id.into();
         let id_type = self
             .schema
             .id_type(self.atom)
             .with_context(|| format!("error determining id_type for {}[{}]", self.as_str(), id))?;
-        match id_type {
-            IdType::String => Ok(Value::String(id.to_string())),
-            IdType::Bytes => Ok(Value::Bytes(id.parse()?)),
-        }
+        id_type.parse(id)
+    }
+
+    /// Construct an `IdList` from a list of given strings and parse them
+    /// into the correct type if necessary
+    pub fn parse_ids(&self, ids: Vec<impl Into<Word>>) -> Result<IdList, Error> {
+        let ids: Vec<_> = ids
+            .into_iter()
+            .map(|id| self.parse_id(id))
+            .collect::<Result<_, _>>()?;
+        IdList::try_from_iter(self, ids.into_iter()).map_err(|e| anyhow::anyhow!("error: {}", e))
+    }
+
+    /// Parse the given `id` into an `Id` and construct a key for an onchain
+    /// entity from it
+    pub fn parse_key(&self, id: impl Into<Word>) -> Result<EntityKey, Error> {
+        let id_value = self.parse_id(id)?;
+        Ok(self.key(id_value))
+    }
+
+    /// Parse the given `id` into an `Id` and construct a key for an entity
+    /// in the give causality region from it
+    pub fn parse_key_in(
+        &self,
+        id: impl Into<Word>,
+        causality_region: CausalityRegion,
+    ) -> Result<EntityKey, Error> {
+        let id_value = self.parse_id(id.into())?;
+        Ok(self.key_in(id_value, causality_region))
     }
 
     fn same_pool(&self, other: &EntityType) -> bool {
