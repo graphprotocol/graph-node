@@ -141,3 +141,35 @@ pub enum ArweaveClientError {
     #[error("Unknown error")]
     Unknown(#[from] reqwest::Error),
 }
+
+#[cfg(test)]
+mod test {
+    use serde_derive::Deserialize;
+
+    use crate::{
+        components::link_resolver::{ArweaveClient, ArweaveResolver},
+        data_source::offchain::Base64,
+    };
+
+    // This test ensures that passing txid/filename works when the txid refers to manifest.
+    // the actual data seems to have some binary header and footer so these ranges were found
+    // by inspecting the data with hexdump.
+    #[tokio::test]
+    async fn fetch_bundler_url() {
+        let url = Base64::from("Rtdn3QWEzM88MPC2dpWyV5waO7Vuz3VwPl_usS2WoHM/DriveManifest.json");
+        #[derive(Deserialize, Debug, PartialEq)]
+        struct Manifest {
+            pub manifest: String,
+        }
+
+        let client = ArweaveClient::default();
+        let no_header = &client.get(&url).await.unwrap()[1295..320078];
+        let content: Manifest = serde_json::from_slice(no_header).unwrap();
+        assert_eq!(
+            content,
+            Manifest {
+                manifest: "arweave/paths".to_string(),
+            }
+        );
+    }
+}
