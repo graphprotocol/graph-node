@@ -37,7 +37,7 @@ use std::time::{Duration, Instant};
 use graph::components::store::EntityCollection;
 use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersion};
 use graph::constraint_violation;
-use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, POI_DIGEST, POI_OBJECT};
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::prelude::{
     anyhow, debug, info, o, warn, web3, AttributeNames, BlockNumber, BlockPtr, CheapClone,
     DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
@@ -955,6 +955,8 @@ impl DeploymentStore {
         let indexer = *indexer;
         let site2 = site.cheap_clone();
         let store = self.cheap_clone();
+        let info = self.subgraph_info(&site)?;
+        let poi_digest = info.input.poi_digest();
 
         let entities: Option<(Vec<Entity>, BlockPtr)> = self
             .with_conn(move |conn, cancel| {
@@ -1000,7 +1002,7 @@ impl DeploymentStore {
                         site.deployment.cheap_clone(),
                         block_ptr.number,
                         EntityCollection::All(vec![(
-                            POI_OBJECT.cheap_clone(),
+                            info.input.poi_type().clone(),
                             AttributeNames::All,
                         )]),
                     );
@@ -1025,7 +1027,7 @@ impl DeploymentStore {
             .into_iter()
             .map(|e| {
                 let causality_region = e.id();
-                let digest = match e.get(POI_DIGEST.as_str()) {
+                let digest = match e.get(poi_digest.as_str()) {
                     Some(Value::Bytes(b)) => Ok(b.clone()),
                     other => Err(anyhow::anyhow!(
                         "Entity has non-bytes digest attribute: {:?}",
@@ -1036,8 +1038,6 @@ impl DeploymentStore {
                 Ok((causality_region, digest))
             })
             .collect::<Result<HashMap<_, _>, anyhow::Error>>()?;
-
-        let info = self.subgraph_info(&site2).map_err(anyhow::Error::from)?;
 
         let mut finisher =
             ProofOfIndexingFinisher::new(&block_ptr, &site2.deployment, &indexer, info.poi_version);

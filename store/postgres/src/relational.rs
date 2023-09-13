@@ -55,7 +55,7 @@ use crate::{
 use graph::components::store::{DerivedEntityQuery, EntityKey, EntityType};
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
 use graph::data::store::BYTES_SCALAR;
-use graph::data::subgraph::schema::{POI_DIGEST, POI_OBJECT, POI_TABLE};
+use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
     QueryExecutionError, StoreError, StoreEvent, ValueType, BLOCK_NUMBER_MAX,
@@ -346,7 +346,7 @@ impl Layout {
             })
             .collect::<Result<Vec<_>, _>>()?;
         if catalog.use_poi {
-            tables.push(Self::make_poi_table(&catalog, tables.len()))
+            tables.push(Self::make_poi_table(&schema, &catalog, tables.len()))
         }
 
         let tables: Vec<_> = tables.into_iter().map(Arc::new).collect();
@@ -388,16 +388,19 @@ impl Layout {
         })
     }
 
-    fn make_poi_table(catalog: &Catalog, position: usize) -> Table {
+    fn make_poi_table(schema: &InputSchema, catalog: &Catalog, position: usize) -> Table {
+        let poi_type = schema.poi_type();
+        let poi_digest = schema.poi_digest();
+
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
-            object: POI_OBJECT.to_owned(),
+            object: poi_type.to_owned(),
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
             columns: vec![
                 Column {
-                    name: SqlName::from(POI_DIGEST.as_str()),
-                    field: POI_DIGEST.to_string(),
+                    name: SqlName::from(poi_digest.as_str()),
+                    field: poi_digest.to_string(),
                     field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
                         BYTES_SCALAR.to_owned(),
                     ))),
@@ -429,7 +432,7 @@ impl Layout {
     }
 
     pub fn supports_proof_of_indexing(&self) -> bool {
-        self.tables.contains_key(&*POI_OBJECT)
+        self.tables.contains_key(self.input_schema.poi_type())
     }
 
     pub fn create_relational_schema(

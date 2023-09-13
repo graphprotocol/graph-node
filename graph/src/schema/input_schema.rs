@@ -12,7 +12,7 @@ use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, Va
 use crate::data::store::{
     self, scalar, EntityValidationError, IntoEntityIterator, TryIntoEntityIterator,
 };
-use crate::data::subgraph::schema::POI_DIGEST;
+use crate::data::value::Word;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
 use crate::schema::api_schema;
@@ -20,6 +20,11 @@ use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
 use super::{ApiSchema, Schema, SchemaValidationError};
+
+/// The name of the PoI entity type
+const POI_OBJECT: &str = "Poi$";
+/// The name of the digest attribute of POI entities
+const POI_DIGEST: &str = "digest";
 
 /// The internal representation of a subgraph schema, i.e., the
 /// `schema.graphql` file that is part of a subgraph. Any code that deals
@@ -38,6 +43,8 @@ pub struct Inner {
     // Maps each entity type to its field names
     field_names: HashMap<EntityType, Vec<Atom>>,
     pool: Arc<AtomPool>,
+
+    poi_type: EntityType,
 }
 
 impl CheapClone for InputSchema {
@@ -76,12 +83,15 @@ impl InputSchema {
                 }),
         );
 
+        let poi_type = EntityType::new(POI_OBJECT.to_string());
+
         Self {
             inner: Arc::new(Inner {
                 schema,
                 immutable_types,
                 field_names,
                 pool,
+                poi_type,
             }),
         }
     }
@@ -379,13 +389,24 @@ impl InputSchema {
             .map(|fields| fields.contains(&field))
             .unwrap_or(false)
     }
+
+    pub fn poi_type(&self) -> &EntityType {
+        &self.inner.poi_type
+    }
+
+    pub fn poi_digest(&self) -> Word {
+        Word::from(POI_DIGEST)
+    }
 }
 
 /// Create a new pool that contains the names of all the types defined
 /// in the document and the names of all their fields
 fn atom_pool(document: &s::Document) -> AtomPool {
     let mut pool = AtomPool::new();
-    pool.intern(POI_DIGEST.as_str()); // Attribute of PoI object
+
+    pool.intern(POI_OBJECT); // Name of PoI entity type
+    pool.intern(POI_DIGEST); // Attribute of PoI object
+
     for definition in &document.definitions {
         match definition {
             s::Definition::TypeDefinition(typedef) => match typedef {

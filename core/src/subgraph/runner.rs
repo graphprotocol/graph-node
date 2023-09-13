@@ -14,9 +14,8 @@ use graph::components::{
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::schema::POI_DIGEST;
 use graph::data::subgraph::{
-    schema::{SubgraphError, SubgraphHealth, POI_OBJECT},
+    schema::{SubgraphError, SubgraphHealth},
     SubgraphFeature,
 };
 use graph::data_source::{
@@ -1079,12 +1078,13 @@ async fn update_proof_of_indexing(
         key: EntityKey,
         digest: Bytes,
     ) -> Result<(), Error> {
+        let digest_name = entity_cache.schema.poi_digest();
         let data = vec![
             (
                 graph::data::store::ID.clone(),
                 Value::from(key.entity_id.to_string()),
             ),
-            (POI_DIGEST.clone(), Value::from(digest)),
+            (digest_name, Value::from(digest)),
         ];
         let poi = entity_cache.make_entity(data)?;
         entity_cache.set(key, poi)
@@ -1097,7 +1097,7 @@ async fn update_proof_of_indexing(
     for (causality_region, stream) in proof_of_indexing.drain() {
         // Create the special POI entity key specific to this causality_region
         let entity_key = EntityKey {
-            entity_type: POI_OBJECT.to_owned(),
+            entity_type: entity_cache.schema.poi_type().clone(),
 
             // There are two things called causality regions here, one is the causality region for
             // the poi which is a string and the PoI entity id. The other is the data source
@@ -1109,10 +1109,11 @@ async fn update_proof_of_indexing(
         };
 
         // Grab the current digest attribute on this entity
+        let poi_digest = entity_cache.schema.poi_digest().clone();
         let prev_poi = entity_cache
             .get(&entity_key, GetScope::Store)
             .map_err(Error::from)?
-            .map(|entity| match entity.get(POI_DIGEST.as_str()) {
+            .map(|entity| match entity.get(poi_digest.as_str()) {
                 Some(Value::Bytes(b)) => b.clone(),
                 _ => panic!("Expected POI entity to have a digest and for it to be bytes"),
             });
