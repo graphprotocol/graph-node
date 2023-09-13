@@ -17,7 +17,6 @@ pub use write::Batch;
 
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
-use graphql_parser::schema as s;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
@@ -38,7 +37,7 @@ use crate::data::store::Value;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::env::ENV_VARS;
-use crate::prelude::{Attribute, DeploymentHash, SubscriptionFilter, ValueType};
+use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
 use crate::schema::InputSchema;
 use crate::util::intern;
 use crate::util::stats::MovingStats;
@@ -75,14 +74,14 @@ impl fmt::Display for EntityType {
     }
 }
 
-impl<'a> From<&s::ObjectType<'a, String>> for EntityType {
-    fn from(object_type: &s::ObjectType<'a, String>) -> Self {
+impl<'a> From<&s::ObjectType> for EntityType {
+    fn from(object_type: &s::ObjectType) -> Self {
         EntityType::new(object_type.name.clone())
     }
 }
 
-impl<'a> From<&s::InterfaceType<'a, String>> for EntityType {
-    fn from(interface_type: &s::InterfaceType<'a, String>) -> Self {
+impl<'a> From<&s::InterfaceType> for EntityType {
+    fn from(interface_type: &s::InterfaceType) -> Self {
         EntityType::new(interface_type.name.clone())
     }
 }
