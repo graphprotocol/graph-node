@@ -1,7 +1,7 @@
-use super::{BlockNumber, DeploymentHash, DeploymentSchemaVersion};
-use crate::data::store::EntityValidationError;
+use super::{BlockNumber, DeploymentSchemaVersion};
 use crate::prelude::QueryExecutionError;
 use crate::util::intern::Error as InternError;
+use crate::{data::store::EntityValidationError, prelude::DeploymentHash};
 
 use anyhow::{anyhow, Error};
 use diesel::result::Error as DieselError;
