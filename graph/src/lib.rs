@@ -202,7 +202,7 @@ pub mod prelude {
     });
     static_graphql!(s, schema, {
         Field, Directive, InterfaceType, ObjectType, Value, TypeDefinition,
-        EnumType, Type, Document, ScalarType, InputValue, DirectiveDefinition,
+        EnumType, Type, Definition, Document, ScalarType, InputValue, DirectiveDefinition,
         UnionType, InputObjectType, EnumValue,
     });
 

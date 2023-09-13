@@ -6,10 +6,10 @@ use inflector::Inflector;
 use lazy_static::lazy_static;
 
 use crate::components::store::EntityType;
-use crate::data::graphql::ObjectOrInterface;
+use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
-use crate::data::graphql::ext::{DirectiveExt, DocumentExt, ValueExt};
+use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
 use crate::prelude::*;
 use thiserror::Error;
@@ -223,7 +223,7 @@ impl ApiSchema {
     }
 
     #[cfg(debug_assertions)]
-    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition<'static, String>> {
+    pub fn definitions(&self) -> impl Iterator<Item = &s::Definition> {
         self.schema.document.definitions.iter()
     }
 }
@@ -233,8 +233,24 @@ lazy_static! {
         let schema = include_str!("introspection.graphql");
         parse_schema(schema).expect("the schema `introspection.graphql` is invalid")
     };
+    pub static ref INTROSPECTION_QUERY_TYPE: ast::ObjectType = {
+        let root_query_type = INTROSPECTION_SCHEMA
+            .get_root_query_type()
+            .expect("Schema does not have a root query type");
+        ast::ObjectType::from(Arc::new(root_query_type.clone()))
+    };
 }
 
+pub fn is_introspection_field(name: &str) -> bool {
+    INTROSPECTION_QUERY_TYPE.field(name).is_some()
+}
+
+/// Extend `schema` with the definitions from the introspection schema and
+/// modify the root query type to contain the fields from the introspection
+/// schema's root query type.
+///
+/// This results in a schema that combines the original schema with the
+/// introspection schema
 fn add_introspection_schema(schema: &mut Document) {
     fn introspection_fields() -> Vec<Field> {
         // Generate fields for the root query fields in an introspection schema,
@@ -274,9 +290,16 @@ fn add_introspection_schema(schema: &mut Document) {
         ]
     }
 
-    schema
-        .definitions
-        .extend(INTROSPECTION_SCHEMA.definitions.iter().cloned());
+    // Add all definitions from the introspection schema to the schema,
+    // except for the root query type as that qould clobber the 'real' root
+    // query type
+    schema.definitions.extend(
+        INTROSPECTION_SCHEMA
+            .definitions
+            .iter()
+            .filter(|dfn| !dfn.is_root_query_type())
+            .cloned(),
+    );
 
     let query_type = schema
         .definitions

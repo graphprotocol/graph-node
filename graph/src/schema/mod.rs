@@ -31,7 +31,7 @@ pub mod ast;
 mod fulltext;
 mod input_schema;
 
-pub use api::{api_schema, APISchemaError};
+pub use api::{api_schema, is_introspection_field, APISchemaError, INTROSPECTION_QUERY_TYPE};
 
 pub use api::{ApiSchema, ErrorPolicy};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};

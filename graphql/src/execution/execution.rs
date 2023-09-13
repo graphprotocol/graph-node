@@ -7,7 +7,7 @@ use graph::{
         value::{Object, Word},
     },
     prelude::{s, CheapClone},
-    schema::META_FIELD_NAME,
+    schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
     util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
@@ -24,7 +24,6 @@ use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
 use crate::execution::ast as a;
-use crate::introspection::{is_introspection_field, INTROSPECTION_QUERY_TYPE};
 use crate::prelude::*;
 
 lazy_static! {
