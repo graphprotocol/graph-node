@@ -1955,6 +1955,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-chain-starknet",
+ "graph-chain-substreams",
  "graph-graphql",
  "graphql-parser",
  "http",
