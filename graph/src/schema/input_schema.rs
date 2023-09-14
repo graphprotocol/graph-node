@@ -286,10 +286,7 @@ impl InputSchema {
     }
 
     pub fn types_for_interface(&self, intf: &s::InterfaceType) -> Option<&Vec<s::ObjectType>> {
-        self.inner
-            .schema
-            .types_for_interface
-            .get(&EntityType::new(intf.name.clone()))
+        self.inner.schema.types_for_interface.get(&intf.name)
     }
 
     pub fn find_object_type(&self, entity_type: &EntityType) -> Option<&s::ObjectType> {
@@ -313,7 +310,7 @@ impl InputSchema {
         self.inner.schema.document.get_object_type_definitions()
     }
 
-    pub fn interface_types(&self) -> &BTreeMap<EntityType, Vec<s::ObjectType>> {
+    pub fn interface_types(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
         &self.inner.schema.types_for_interface
     }
 

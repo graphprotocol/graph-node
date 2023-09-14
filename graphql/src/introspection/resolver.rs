@@ -196,7 +196,7 @@ fn object_interfaces(
 ) -> r::Value {
     r::Value::List(
         schema
-            .interfaces_for_type(&object_type.into())
+            .interfaces_for_type(&object_type.name)
             .unwrap_or(&vec![])
             .iter()
             .map(|typedef| interface_type_object(schema, type_objects, typedef))

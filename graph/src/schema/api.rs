@@ -5,7 +5,6 @@ use graphql_parser::{schema::TypeDefinition, Pos};
 use inflector::Inflector;
 use lazy_static::lazy_static;
 
-use crate::components::store::EntityType;
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
@@ -136,12 +135,12 @@ impl ApiSchema {
         &self.schema
     }
 
-    pub fn types_for_interface(&self) -> &BTreeMap<EntityType, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
         &self.schema.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &EntityType) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<InterfaceType>> {
         self.schema.interfaces_for_type(type_name)
     }
 

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use graph::{
-    components::store::EntityType,
     data::graphql::ObjectOrInterface,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
     schema::{ast::ObjectType, ApiSchema},
@@ -351,7 +350,7 @@ pub(crate) fn resolve_object_types(
         .ok_or_else(|| QueryExecutionError::AbstractTypeError(name.to_string()))?
     {
         s::TypeDefinition::Interface(intf) => {
-            for obj_ty in &schema.types_for_interface()[&EntityType::new(intf.name.to_string())] {
+            for obj_ty in &schema.types_for_interface()[&intf.name] {
                 let obj_ty = schema.object_type(obj_ty);
                 set.insert(obj_ty.into());
             }

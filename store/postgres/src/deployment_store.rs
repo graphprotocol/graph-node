@@ -298,10 +298,10 @@ impl DeploymentStore {
         let entity_type_str = entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
             schema
-                .interfaces_for_type(entity_type)
+                .interfaces_for_type(entity_type.as_str())
                 .into_iter()
                 .flatten()
-                .flat_map(|interface| &types_for_interface[&EntityType::from(interface)])
+                .flat_map(|interface| &types_for_interface[&interface.name])
                 .map(EntityType::from)
                 .filter(|type_name| type_name != entity_type),
         );

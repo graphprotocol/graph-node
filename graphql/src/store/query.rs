@@ -27,7 +27,7 @@ pub(crate) fn build_query<'a>(
     entity: impl Into<ObjectOrInterface<'a>>,
     block: BlockNumber,
     field: &a::Field,
-    types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
+    types_for_interface: &'a BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
     mut column_names: SelectedAttributes,
@@ -39,8 +39,7 @@ pub(crate) fn build_query<'a>(
             let selected_columns = column_names.get(object);
             vec![((*object).into(), selected_columns)]
         }
-        ObjectOrInterface::Interface(interface) => types_for_interface
-            [&EntityType::from(*interface)]
+        ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
             .iter()
             .map(|o| {
                 let selected_columns = column_names.get(o);
@@ -575,13 +574,12 @@ fn build_order_by(
                         })?
                     }
                     ObjectOrInterface::Interface(_) => {
-                        let object_types = schema
-                            .types_for_interface()
-                            .get(&EntityType::new(entity.name().to_string()))
-                            .ok_or(QueryExecutionError::EntityFieldError(
+                        let object_types = schema.types_for_interface().get(entity.name()).ok_or(
+                            QueryExecutionError::EntityFieldError(
                                 entity.name().to_owned(),
                                 parent_field_name.clone(),
-                            ))?;
+                            ),
+                        )?;
 
                         if let Some(first_entity) = object_types.first() {
                             sast::get_field(first_entity, parent_field_name.as_str()).ok_or_else(
@@ -636,7 +634,7 @@ fn build_order_by(
                     ObjectOrInterface::Interface(interface) => {
                         let entity_types = schema
                             .types_for_interface()
-                            .get(&EntityType::new(interface.name.to_string()))
+                            .get(&interface.name)
                             .map(|object_types| {
                                 object_types
                                     .iter()

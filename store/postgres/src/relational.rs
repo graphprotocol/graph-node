@@ -312,7 +312,7 @@ impl Layout {
                         // they have a String `id` field
                         // see also: id-type-for-unimplemented-interfaces
                         let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
-                        Ok((interface.clone(), id_type))
+                        Ok((EntityType::from(interface.as_str()), id_type))
                     }
                 })
         });
