@@ -32,3 +32,6 @@ incremental = false
 
 [profile.dev]
 incremental = false
+
+[profile.release]
+debug = 1
