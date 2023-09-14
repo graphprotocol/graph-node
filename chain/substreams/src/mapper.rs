@@ -7,7 +7,7 @@ use crate::{codec, Block, Chain, EntityChanges, ParsedChanges, TriggerData};
 use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
 };
-use graph::components::store::{EntityKey, EntityType};
+use graph::components::store::EntityKey;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
@@ -131,7 +131,7 @@ fn parse_changes(
     let mut parsed_changes = vec![];
     for entity_change in changes.entity_changes.iter() {
         let mut parsed_data: HashMap<Word, Value> = HashMap::default();
-        let entity_type = EntityType::new(entity_change.entity.to_string());
+        let entity_type = schema.entity_type(&entity_change.entity)?;
 
         // Make sure that the `entity_id` gets set to a value
         // that is safe for roundtrips through the database. In

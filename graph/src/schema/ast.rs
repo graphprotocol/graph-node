@@ -406,6 +406,7 @@ pub fn is_list(field_type: &s::Type) -> bool {
 #[test]
 fn entity_validation() {
     use crate::components::store::EntityKey;
+    use crate::components::store::EntityType;
     use crate::data::store;
     use crate::entity;
     use crate::prelude::{DeploymentHash, Entity};
@@ -432,6 +433,7 @@ fn entity_validation() {
     lazy_static! {
         static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
+        static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
 
     fn make_thing(name: &str) -> Entity {
@@ -440,7 +442,7 @@ fn entity_validation() {
 
     fn check(thing: Entity, errmsg: &str) {
         let id = thing.id();
-        let key = EntityKey::data("Thing".to_owned(), id.clone());
+        let key = EntityKey::onchain(&*THING_TYPE, id.clone());
 
         let err = thing.validate(&SCHEMA, &key);
         if errmsg.is_empty() {

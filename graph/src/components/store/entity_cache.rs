@@ -13,7 +13,7 @@ use crate::schema::InputSchema;
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
 
-use super::{BlockNumber, DerivedEntityQuery, EntityType, LoadRelatedRequest, StoreError};
+use super::{BlockNumber, DerivedEntityQuery, LoadRelatedRequest, StoreError};
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -204,7 +204,7 @@ impl EntityCache {
         let (base_type, field, id_is_bytes) = self.schema.get_field_related(eref)?;
 
         let query = DerivedEntityQuery {
-            entity_type: EntityType::new(base_type.to_string()),
+            entity_type: self.schema.entity_type(base_type)?,
             entity_field: field.name.clone().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,

@@ -182,7 +182,7 @@ impl WritableStore for MockStore {
 
 fn make_band_key(id: &'static str) -> EntityKey {
     EntityKey {
-        entity_type: EntityType::new("Band".to_string()),
+        entity_type: SCHEMA.entity_type("Band").unwrap(),
         entity_id: id.into(),
         causality_region: CausalityRegion::ONCHAIN,
     }
@@ -234,7 +234,7 @@ fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<Enti
     let mut map = BTreeMap::new();
     for entity in entities {
         let key = EntityKey {
-            entity_type: EntityType::new(entity_type.to_string()),
+            entity_type: SCHEMA.entity_type(entity_type).unwrap(),
             entity_id: entity.id().into(),
             causality_region: CausalityRegion::ONCHAIN,
         };
@@ -349,6 +349,8 @@ lazy_static! {
         1u64
     )
         .into();
+    static ref WALLET_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(WALLET).unwrap();
+    static ref ACCOUNT_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(ACCOUNT).unwrap();
 }
 
 fn remove_test_data(store: Arc<DieselSubgraphStore>) {
@@ -458,7 +460,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityO
         entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
-        key: EntityKey::data(ACCOUNT.to_owned(), id.to_owned()),
+        key: EntityKey::onchain(&*ACCOUNT_TYPE, id),
         data: test_entity,
     }
 }
@@ -469,7 +471,7 @@ fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
 fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
     let test_wallet = create_wallet_entity(id, account_id, balance);
     EntityOperation::Set {
-        key: EntityKey::data(WALLET.to_owned(), id.to_owned()),
+        key: EntityKey::onchain(&*WALLET_TYPE, id),
         data: test_wallet,
     }
 }
@@ -479,7 +481,7 @@ fn check_for_account_with_multiple_wallets() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         let account_id = "1";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -499,7 +501,7 @@ fn check_for_account_with_single_wallet() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         let account_id = "2";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -517,7 +519,7 @@ fn check_for_account_with_no_wallet() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         let account_id = "3";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -534,7 +536,7 @@ fn check_for_account_that_doesnt_exist() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         let account_id = "4";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -551,7 +553,7 @@ fn check_for_non_existent_field() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         let account_id = "1";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "friends".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -583,7 +585,7 @@ fn check_for_insert_async_store() {
         .await
         .unwrap();
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -615,7 +617,7 @@ fn check_for_insert_async_not_related() {
         .unwrap();
         let account_id = "1";
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -634,7 +636,7 @@ fn check_for_insert_async_not_related() {
 fn check_for_update_async_related() {
     run_store_test(|mut cache, store, deployment, writable| async move {
         let account_id = "1";
-        let entity_key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let entity_key = EntityKey::onchain(&*WALLET_TYPE, "1");
         let wallet_entity_update = create_wallet_operation("1", account_id, 79_i32);
 
         let new_data = match wallet_entity_update {
@@ -653,7 +655,7 @@ fn check_for_update_async_related() {
         .unwrap();
 
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -671,7 +673,7 @@ fn check_for_update_async_related() {
 fn check_for_delete_async_related() {
     run_store_test(|mut cache, store, deployment, _writable| async move {
         let account_id = "1";
-        let del_key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let del_key = EntityKey::onchain(&*WALLET_TYPE, "1");
         // delete wallet
         transact_entity_operations(
             &store,
@@ -683,7 +685,7 @@ fn check_for_delete_async_related() {
         .unwrap();
 
         let request = LoadRelatedRequest {
-            entity_type: EntityType::new(ACCOUNT.to_string()),
+            entity_type: ACCOUNT_TYPE.clone(),
             entity_field: "wallets".into(),
             entity_id: account_id.into(),
             causality_region: CausalityRegion::ONCHAIN,
@@ -701,12 +703,12 @@ fn check_for_delete_async_related() {
 fn scoped_get() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         // Key for an existing entity that is in the store
-        let key1 = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let key1 = EntityKey::onchain(&*WALLET_TYPE, "1");
         let wallet1 = create_wallet_entity("1", "1", 67);
 
         // Create a new entity that is not in the store
         let wallet5 = create_wallet_entity("5", "5", 100);
-        let key5 = EntityKey::data(WALLET.to_owned(), "5".to_owned());
+        let key5 = EntityKey::onchain(&*WALLET_TYPE, "5");
         cache.set(key5.clone(), wallet5.clone()).unwrap();
 
         // For the new entity, we can retrieve it with either scope
@@ -748,7 +750,7 @@ fn no_internal_keys() {
             assert_eq!(None, entity.get("__typename"));
             assert_eq!(None, entity.get(&*PARENT_ID));
         }
-        let key = EntityKey::data(WALLET.to_owned(), "1".to_owned());
+        let key = EntityKey::onchain(&*WALLET_TYPE, "1");
 
         let wallet = writable.get(&key).unwrap().unwrap();
         check(&wallet);

@@ -95,6 +95,7 @@ lazy_static! {
     .enumerate()
     .map(|(idx, hash)| BlockPtr::try_from((*hash, idx as i64)).unwrap())
     .collect();
+    static ref USER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(USER).unwrap();
 }
 
 /// Test harness for running database integration tests.
@@ -255,8 +256,9 @@ fn create_test_entity(
         favorite_color: favorite_color
     };
 
+    let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
     EntityOperation::Set {
-        key: EntityKey::data(entity_type.to_string(), id),
+        key: EntityKey::onchain(&entity_type, id),
         data: test_entity,
     }
 }
@@ -282,10 +284,11 @@ fn find_entities(
     store: &DieselSubgraphStore,
     deployment: &DeploymentLocator,
 ) -> (Vec<Entity>, Vec<Word>) {
+    let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(USER).unwrap();
     let query = EntityQuery::new(
         deployment.hash.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![(EntityType::from(USER), AttributeNames::All)]),
+        EntityCollection::All(vec![(entity_type, AttributeNames::All)]),
     )
     .order(EntityOrder::Descending(
         "name".to_string(),
@@ -319,7 +322,7 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
-        key: EntityKey::data(USER.to_owned(), "3"),
+        key: EntityKey::onchain(&*USER_TYPE, "3"),
         data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
@@ -555,7 +558,7 @@ fn prune() {
             src.hash.clone(),
             block,
             EntityCollection::All(vec![(
-                EntityType::new("User".to_string()),
+                TEST_SUBGRAPH_SCHEMA.entity_type("User").unwrap(),
                 AttributeNames::All,
             )]),
         );

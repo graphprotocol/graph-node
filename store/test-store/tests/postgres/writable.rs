@@ -8,7 +8,9 @@ use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, DerivedEntityQuery, EntityKey, WritableStore};
+use graph::components::store::{
+    DeploymentLocator, DerivedEntityQuery, EntityKey, EntityType, WritableStore,
+};
 use graph::data::subgraph::*;
 use graph::semver::Version;
 use graph::{entity, prelude::*};
@@ -32,6 +34,7 @@ lazy_static! {
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
         InputSchema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
+    static ref COUNTER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER).unwrap();
 }
 
 /// Inserts test data into the store.
@@ -106,7 +109,7 @@ fn block_pointer(number: u8) -> BlockPtr {
 }
 
 fn count_key(id: &str) -> EntityKey {
-    EntityKey::data(COUNTER.to_owned(), id.to_owned())
+    EntityKey::onchain(&*COUNTER_TYPE, id)
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {

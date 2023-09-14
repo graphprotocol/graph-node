@@ -907,14 +907,20 @@ pub(crate) fn health(conn: &PgConnection, id: DeploymentId) -> Result<SubgraphHe
 pub(crate) fn entities_with_causality_region(
     conn: &PgConnection,
     id: DeploymentId,
+    schema: &InputSchema,
 ) -> Result<Vec<EntityType>, StoreError> {
     use subgraph_manifest as sm;
 
     sm::table
         .filter(sm::id.eq(id))
         .select(sm::entities_with_causality_region)
-        .get_result(conn)
+        .get_result::<Vec<String>>(conn)
         .map_err(|e| e.into())
+        .map(|ents| {
+            ents.into_iter()
+                .map(|ent| schema.entity_type(&ent).unwrap())
+                .collect()
+        })
 }
 
 /// Reverts the errors and updates the subgraph health if necessary.
@@ -1080,7 +1086,11 @@ pub fn create_deployment(
         history_blocks: history_blocks_override,
     } = deployment;
     let earliest_block_number = start_block.as_ref().map(|ptr| ptr.number).unwrap_or(0);
-    let entities_with_causality_region = Vec::from_iter(entities_with_causality_region.into_iter());
+    let entities_with_causality_region = Vec::from_iter(
+        entities_with_causality_region
+            .into_iter()
+            .map(|et| et.as_str().to_owned()),
+    );
 
     let deployment_values = (
         d::id.eq(site.id),

@@ -236,11 +236,14 @@ impl DeploymentStore {
 
     pub(crate) fn load_deployment(
         &self,
-        site: &Site,
+        site: Arc<Site>,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let conn = self.get_conn()?;
-        Ok(detail::deployment_entity(&conn, site)
-            .with_context(|| format!("Deployment details not found for {}", site.deployment))?)
+        let layout = self.layout(&conn, site.clone())?;
+        Ok(
+            detail::deployment_entity(&conn, &site, &layout.input_schema)
+                .with_context(|| format!("Deployment details not found for {}", site.deployment))?,
+        )
     }
 
     // Remove the data and metadata for the deployment `site`. This operation
@@ -288,21 +291,16 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self
-            .subgraph_info_with_conn(conn, &layout.site)?
-            .api
-            .get(&Default::default())
-            .expect("API schema should be present")
-            .clone();
-        let types_for_interface = schema.types_for_interface();
+        let schema = self.subgraph_info_with_conn(conn, &layout.site)?.input;
         let entity_type_str = entity_type.to_string();
         let types_with_shared_interface = Vec::from_iter(
             schema
                 .interfaces_for_type(entity_type.as_str())
                 .into_iter()
                 .flatten()
-                .flat_map(|interface| &types_for_interface[&interface.name])
-                .map(EntityType::from)
+                .flat_map(|interface| schema.types_for_interface(interface))
+                .flatten()
+                .map(|object_type| schema.entity_type(object_type).unwrap())
                 .filter(|type_name| type_name != entity_type),
         );
 
@@ -1520,7 +1518,7 @@ impl DeploymentStore {
 
             let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
             let dst_manifest_idx_and_name = self
-                .load_deployment(&dst.site)?
+                .load_deployment(dst.site.clone())?
                 .manifest
                 .template_idx_and_name()?;
 
@@ -1861,7 +1859,7 @@ impl DeploymentStore {
 /// search using the latter if the search for the former fails.
 fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table, StoreError> {
     layout
-        .table_for_entity(&EntityType::new(name.to_owned()))
+        .table_for_entity(&layout.input_schema.entity_type(name)?)
         .map(Deref::deref)
         .or_else(|_error| {
             let sql_name = SqlName::from(name);

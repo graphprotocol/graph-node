@@ -62,7 +62,7 @@ impl WritableSubgraphStore {
         self.0.layout(id)
     }
 
-    fn load_deployment(&self, site: &Site) -> Result<SubgraphDeploymentEntity, StoreError> {
+    fn load_deployment(&self, site: Arc<Site>) -> Result<SubgraphDeploymentEntity, StoreError> {
         self.0.load_deployment(site)
     }
 
@@ -139,7 +139,7 @@ impl SyncStore {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
-                    let deployment_entity = self.store.load_deployment(&src.site)?;
+                    let deployment_entity = self.store.load_deployment(src.site.clone())?;
                     Some((src, base_ptr, deployment_entity))
                 }
                 None => None,

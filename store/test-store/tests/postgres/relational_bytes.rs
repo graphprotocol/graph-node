@@ -7,7 +7,7 @@ use graph::data::store::scalar;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
-use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry};
+use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::InputSchema;
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -63,7 +63,7 @@ lazy_static! {
         name: "Beef",
     };
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
-    static ref THING: EntityType = EntityType::from("Thing");
+    static ref THING_TYPE: EntityType = THINGS_SCHEMA.entity_type("Thing").unwrap();
     static ref MOCK_STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
         THINGS_SUBGRAPH_ID.clone(),
@@ -122,9 +122,9 @@ pub fn row_group_delete(
 }
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
-    let key = EntityKey::data(entity_type.to_owned(), entity.id());
+    let entity_type = layout.input_schema.entity_type(entity_type).unwrap();
+    let key = EntityKey::onchain(&entity_type, entity.id());
 
-    let entity_type = EntityType::from(entity_type);
     let entities = vec![(key.clone(), entity)];
     let group = row_group_insert(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
@@ -215,14 +215,19 @@ where
 #[test]
 fn bad_id() {
     run_test(|conn, layout| {
+        fn find(
+            conn: &PgConnection,
+            layout: &Layout,
+            id: &str,
+        ) -> Result<Option<Entity>, StoreError> {
+            let key = EntityKey::onchain(&*THING_TYPE, id);
+            layout.find(conn, &key, BLOCK_NUMBER_MAX)
+        }
+
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = layout.find(
-            conn,
-            &EntityKey::data(THING.as_str(), "bad"),
-            BLOCK_NUMBER_MAX,
-        );
+        let res = find(conn, layout, "bad");
         assert!(res.is_err());
         assert_eq!(
             "store error: Odd number of digits",
@@ -230,11 +235,7 @@ fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = layout.find(
-            conn,
-            &EntityKey::data(THING.as_str(), "\\xbadd"),
-            BLOCK_NUMBER_MAX,
-        );
+        let res = find(conn, layout, "\\xbadd");
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'\\\\\' at position 0",
@@ -242,19 +243,11 @@ fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = layout.find(
-            conn,
-            &EntityKey::data(THING.as_str(), "0xbadd"),
-            BLOCK_NUMBER_MAX,
-        );
+        let res = find(conn, layout, "0xbadd");
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = layout.find(
-            conn,
-            &EntityKey::data(THING.as_str(), "nope"),
-            BLOCK_NUMBER_MAX,
-        );
+        let res = find(conn, layout, "nope");
         assert!(res.is_err());
         assert_eq!(
             "store error: Invalid character \'n\' at position 0",
@@ -266,26 +259,24 @@ fn bad_id() {
 #[test]
 fn find() {
     run_test(|conn, layout| {
+        fn find_entity(conn: &PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
+            let key = EntityKey::onchain(&*THING_TYPE, id);
+            layout
+                .find(conn, &key, BLOCK_NUMBER_MAX)
+                .expect(&format!("Failed to read Thing[{}]", id))
+        }
+
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
         insert_thing(conn, layout, ID, NAME);
 
         // Happy path: find existing entity
-        let entity = layout
-            .find(conn, &EntityKey::data(THING.as_str(), ID), BLOCK_NUMBER_MAX)
-            .expect("Failed to read Thing[deadbeef]")
-            .unwrap();
+        let entity = find_entity(conn, layout, ID).unwrap();
         assert_entity_eq!(scrub(&BEEF_ENTITY), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
-        let entity = layout
-            .find(
-                conn,
-                &EntityKey::data(THING.as_str(), "badd"),
-                BLOCK_NUMBER_MAX,
-            )
-            .expect("Failed to read Thing[badd]");
+        let entity = find_entity(conn, layout, "badd");
         assert!(entity.is_none());
     });
 }
@@ -302,7 +293,7 @@ fn find_many() {
 
         let mut id_map = BTreeMap::default();
         id_map.insert(
-            (THING.clone(), CausalityRegion::ONCHAIN),
+            (THING_TYPE.clone(), CausalityRegion::ONCHAIN),
             vec![ID.to_string(), ID2.to_string(), "badd".to_string()],
         );
 
@@ -313,12 +304,12 @@ fn find_many() {
 
         let id_key = EntityKey {
             entity_id: ID.into(),
-            entity_type: THING.clone(),
+            entity_type: THING_TYPE.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
         let id2_key = EntityKey {
             entity_id: ID2.into(),
-            entity_type: THING.clone(),
+            entity_type: THING_TYPE.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
         assert!(entities.contains_key(&id_key), "Missing ID");
@@ -334,7 +325,7 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo").unwrap();
-        let key = EntityKey::data("Thing".to_owned(), entity.id());
+        let key = EntityKey::onchain(&*THING_TYPE, entity.id());
 
         let entity_id = entity.id();
         let entity_type = key.entity_type.clone();
@@ -347,7 +338,7 @@ fn update() {
         let actual = layout
             .find(
                 conn,
-                &EntityKey::data(THING.as_str(), entity_id),
+                &EntityKey::onchain(&*THING_TYPE, entity_id),
                 BLOCK_NUMBER_MAX,
             )
             .expect("Failed to read Thing[deadbeef]")
@@ -368,7 +359,7 @@ fn delete() {
         insert_entity(conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let key = EntityKey::data("Thing".to_owned(), "ffff".to_owned());
+        let key = EntityKey::onchain(&*THING_TYPE, "ffff".to_owned());
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
@@ -472,14 +463,14 @@ fn query() {
         // for a discussion of the various types of relationships and queries
 
         // EntityCollection::All
-        let coll = EntityCollection::All(vec![(THING.clone(), AttributeNames::All)]);
+        let coll = EntityCollection::All(vec![(THING_TYPE.clone(), AttributeNames::All)]);
         let things = fetch(conn, layout, coll);
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type A, many
         //   things(where: { children_contains: [CHILD1] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![CHILD1.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
@@ -493,7 +484,7 @@ fn query() {
         // EntityCollection::Window, type A, single
         //   things(where: { children_contains: [GRANDCHILD1, GRANDCHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![GRANDCHILD1.to_owned(), GRANDCHILD2.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::List("children".to_string()),
@@ -507,7 +498,7 @@ fn query() {
         // EntityCollection::Window, type B, many
         //   things(where: { parent: [ROOT] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![ROOT.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
@@ -521,7 +512,7 @@ fn query() {
         // EntityCollection::Window, type B, single
         //   things(where: { parent: [CHILD1, CHILD2] }) { id }
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Direct(
                 WindowAttribute::Scalar("parent".to_string()),
@@ -536,10 +527,10 @@ fn query() {
         //   things { children { id } }
         // This is the inner 'children' query
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![ROOT.to_owned()],
             link: EntityLink::Parent(
-                THING.clone(),
+                THING_TYPE.clone(),
                 ParentLink::List(vec![vec![CHILD1.to_owned(), CHILD2.to_owned()]]),
             ),
             column_names: AttributeNames::All,
@@ -551,10 +542,10 @@ fn query() {
         //   things { parent { id } }
         // This is the inner 'parent' query
         let coll = EntityCollection::Window(vec![EntityWindow {
-            child_type: THING.clone(),
+            child_type: THING_TYPE.clone(),
             ids: vec![CHILD1.to_owned(), CHILD2.to_owned()],
             link: EntityLink::Parent(
-                THING.clone(),
+                THING_TYPE.clone(),
                 ParentLink::Scalar(vec![ROOT.to_owned(), ROOT.to_owned()]),
             ),
             column_names: AttributeNames::All,

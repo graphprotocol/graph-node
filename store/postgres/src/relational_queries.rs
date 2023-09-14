@@ -486,8 +486,8 @@ pub struct EntityDeletion {
 }
 
 impl EntityDeletion {
-    pub fn entity_type(&self) -> EntityType {
-        EntityType::new(self.entity.clone())
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     pub fn id(&self) -> &str {
@@ -513,8 +513,8 @@ pub struct EntityData {
 }
 
 impl EntityData {
-    pub fn entity_type(&self) -> EntityType {
-        EntityType::new(self.entity.clone())
+    pub fn entity_type(&self, schema: &InputSchema) -> EntityType {
+        schema.entity_type(&self.entity).unwrap()
     }
 
     /// Map the `EntityData` using the schema information in `Layout`
@@ -523,7 +523,7 @@ impl EntityData {
         layout: &Layout,
         parent_type: Option<&ColumnType>,
     ) -> Result<T, StoreError> {
-        let entity_type = EntityType::new(self.entity.clone());
+        let entity_type = layout.input_schema.entity_type(&self.entity)?;
         let table = layout.table_for_entity(&entity_type)?;
 
         use serde_json::Value as j;

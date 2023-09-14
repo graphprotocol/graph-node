@@ -63,15 +63,6 @@ impl<'a> From<&'a s::InterfaceType> for ObjectOrInterface<'a> {
     }
 }
 
-impl<'a> From<ObjectOrInterface<'a>> for EntityType {
-    fn from(ooi: ObjectOrInterface) -> Self {
-        match ooi {
-            ObjectOrInterface::Object(ty) => EntityType::from(ty),
-            ObjectOrInterface::Interface(ty) => EntityType::from(ty),
-        }
-    }
-}
-
 impl<'a> ObjectOrInterface<'a> {
     pub fn is_object(self) -> bool {
         match self {

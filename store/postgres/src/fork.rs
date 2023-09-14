@@ -6,7 +6,7 @@ use std::{
 
 use graph::{
     block_on,
-    components::store::{EntityType, SubgraphFork as SubgraphForkTrait},
+    components::store::SubgraphFork as SubgraphForkTrait,
     data::graphql::ext::DirectiveFinder,
     prelude::{
         info,
@@ -130,7 +130,7 @@ impl SubgraphFork {
     }
 
     fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
-        let entity_type = EntityType::new(entity_type.to_string());
+        let entity_type = self.schema.entity_type(entity_type)?;
         let entity: Option<&ObjectType> = self.schema.find_object_type(&entity_type);
 
         if entity.is_none() {

@@ -2,7 +2,6 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use diesel::{debug_query, pg::Pg};
 use graph::{
-    components::store::EntityType,
     prelude::{r, serde_json as json, DeploymentHash, EntityFilter},
     schema::InputSchema,
 };
@@ -49,7 +48,7 @@ fn filter_contains(filter: EntityFilter, sql: &str) {
     }";
     let layout = test_layout(SCHEMA);
     let table = layout
-        .table_for_entity(&EntityType::new("Thing".to_string()))
+        .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
         .unwrap();
     let filter = QueryFilter::new(&filter, table.as_ref(), &layout, Default::default()).unwrap();
     let query = debug_query::<Pg, _>(&filter);

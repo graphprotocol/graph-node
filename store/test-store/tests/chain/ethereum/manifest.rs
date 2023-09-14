@@ -16,10 +16,7 @@ use graph::prelude::{
 };
 use graph::{
     blockchain::NodeCapabilities as _,
-    components::{
-        link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
-        store::EntityType,
-    },
+    components::link_resolver::{JsonValueStream, LinkResolver as LinkResolverTrait},
     data::subgraph::SubgraphFeature,
 };
 
@@ -211,9 +208,12 @@ specVersion: 0.0.2
 
         // Adds an example entity.
         let thing = entity! { schema => id: "datthing" };
-        test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
-            .await
-            .unwrap();
+        test_store::insert_entities(
+            &deployment,
+            vec![(schema.entity_type("Thing").unwrap(), thing)],
+        )
+        .await
+        .unwrap();
 
         let error = SubgraphError {
             subgraph_id: deployment.hash.clone(),
@@ -308,9 +308,12 @@ specVersion: 0.0.2
         );
 
         let thing = entity! { schema => id: "datthing" };
-        test_store::insert_entities(&deployment, vec![(EntityType::from("Thing"), thing)])
-            .await
-            .unwrap();
+        test_store::insert_entities(
+            &deployment,
+            vec![(schema.entity_type("Thing").unwrap(), thing)],
+        )
+        .await
+        .unwrap();
 
         // Validation against subgraph that has not reached the graft point fails
         let unvalidated = resolve_unvalidated(YAML).await;

@@ -564,6 +564,8 @@ pub trait QueryStore: Send + Sync {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
+    fn input_schema(&self) -> Result<Arc<InputSchema>, QueryExecutionError>;
+
     fn network_name(&self) -> &str;
 
     /// A permit should be acquired before starting query execution.

@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::schema::{ast as sast, ApiSchema};
+use graph::schema::{ast as sast, InputSchema};
 use graph::{components::store::EntityType, data::graphql::*};
 use graph::{
     data::graphql::ext::DirectiveFinder,
@@ -255,6 +255,7 @@ struct JoinCond<'a> {
 
 impl<'a> JoinCond<'a> {
     fn new(
+        schema: &InputSchema,
         parent_type: &'a s::ObjectType,
         child_type: &'a s::ObjectType,
         field_name: &str,
@@ -269,8 +270,8 @@ impl<'a> JoinCond<'a> {
                 JoinRelation::Derived(JoinField::new(field))
             };
         JoinCond {
-            parent_type: parent_type.into(),
-            child_type: child_type.into(),
+            parent_type: schema.entity_type(parent_type).unwrap(),
+            child_type: schema.entity_type(child_type).unwrap(),
             relation,
         }
     }
@@ -356,7 +357,7 @@ struct Join<'a> {
 impl<'a> Join<'a> {
     /// Construct a `Join` based on the parent field pointing to the child
     fn new(
-        schema: &'a ApiSchema,
+        schema: &'a InputSchema,
         parent_type: &'a s::ObjectType,
         child_type: ObjectOrInterface<'a>,
         field_name: &str,
@@ -367,7 +368,7 @@ impl<'a> Join<'a> {
 
         let conds = child_types
             .iter()
-            .map(|child_type| JoinCond::new(parent_type, child_type, field_name))
+            .map(|child_type| JoinCond::new(schema, parent_type, child_type, field_name))
             .collect();
 
         Join { child_type, conds }
@@ -560,6 +561,7 @@ fn execute_selection_set<'a>(
     selection_set: &a::SelectionSet,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
+    let input_schema = resolver.store.input_schema()?;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
     let at_root = is_root_node(parents.iter());
 
@@ -598,7 +600,7 @@ fn execute_selection_set<'a>(
                 MaybeJoin::Root { child_type }
             } else {
                 MaybeJoin::Nested(Join::new(
-                    ctx.query.schema.as_ref(),
+                    &input_schema,
                     object_type,
                     child_type,
                     &field.name,
@@ -696,6 +698,7 @@ fn fetch(
     multiplicity: ChildMultiplicity,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
+    let input_schema = resolver.store.input_schema()?;
     let mut query = build_query(
         join.child_type(),
         resolver.block_number(),
@@ -704,7 +707,10 @@ fn fetch(
         ctx.max_first,
         ctx.max_skip,
         selected_attrs,
-        &ctx.query.schema,
+        &super::query::SchemaPair {
+            api: ctx.query.schema.clone(),
+            input: input_schema,
+        },
     )?;
     query.trace = ctx.trace;
     query.query_id = Some(ctx.query.query_id.clone());

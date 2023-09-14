@@ -1099,6 +1099,7 @@ fn entity_validation() {
         static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
         static ref SCHEMA: InputSchema =
             InputSchema::parse(DOCUMENT, SUBGRAPH.clone()).expect("Failed to parse test schema");
+        static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
 
     fn make_thing(name: &str) -> Entity {
@@ -1107,7 +1108,7 @@ fn entity_validation() {
 
     fn check(thing: Entity, errmsg: &str) {
         let id = thing.id();
-        let key = EntityKey::data("Thing".to_owned(), id.clone());
+        let key = EntityKey::onchain(&*THING_TYPE, id.clone());
 
         let err = thing.validate(&SCHEMA, &key);
         if errmsg.is_empty() {

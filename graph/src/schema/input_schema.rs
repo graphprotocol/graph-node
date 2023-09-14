@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Error};
 use store::Entity;
 
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{EntityKey, EntityType, LoadRelatedRequest};
+use crate::components::store::{AsEntityTypeName, EntityKey, EntityType, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
 use crate::data::store::{
@@ -57,16 +57,18 @@ impl CheapClone for InputSchema {
 
 impl InputSchema {
     fn create(schema: Schema) -> Self {
+        let pool = Arc::new(atom_pool(&schema.document));
+
         let immutable_types = HashSet::from_iter(
             schema
                 .document
                 .get_object_type_definitions()
                 .into_iter()
                 .filter(|obj_type| obj_type.is_immutable())
-                .map(Into::into),
+                .map(|obj_type| EntityType::new(&pool, &obj_type.name))
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
         );
-
-        let pool = Arc::new(atom_pool(&schema.document));
 
         let field_names = HashMap::from_iter(
             schema
@@ -79,11 +81,13 @@ impl InputSchema {
                         .iter()
                         .map(|field| pool.lookup(&field.name).unwrap())
                         .collect();
-                    (EntityType::from(obj_type), fields)
-                }),
+                    EntityType::new(&pool, &obj_type.name).map(|t| (t, fields))
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap(),
         );
 
-        let poi_type = EntityType::new(POI_OBJECT.to_string());
+        let poi_type = EntityType::new(&pool, POI_OBJECT).unwrap();
 
         Self {
             inner: Arc::new(Inner {
@@ -124,6 +128,10 @@ impl InputSchema {
     pub fn raw(document: &str, hash: &str) -> Self {
         let hash = DeploymentHash::new(hash).unwrap();
         Self::parse(document, hash).unwrap()
+    }
+
+    pub fn schema(&self) -> &Schema {
+        &self.inner.schema
     }
 
     /// Generate the `ApiSchema` for use with GraphQL queries for this
@@ -289,6 +297,11 @@ impl InputSchema {
         self.inner.schema.types_for_interface.get(&intf.name)
     }
 
+    /// Returns `None` if the type implements no interfaces.
+    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<s::InterfaceType>> {
+        self.inner.schema.interfaces_for_type(type_name)
+    }
+
     pub fn find_object_type(&self, entity_type: &EntityType) -> Option<&s::ObjectType> {
         self.inner
             .schema
@@ -394,6 +407,22 @@ impl InputSchema {
     pub fn poi_digest(&self) -> Word {
         Word::from(POI_DIGEST)
     }
+
+    pub fn atom(&self, s: &str) -> Option<Atom> {
+        self.inner.pool.lookup(s)
+    }
+
+    pub fn pool(&self) -> &Arc<AtomPool> {
+        &self.inner.pool
+    }
+
+    /// Return the entity type for `named`. If the entity type does not
+    /// exist, return an error. Generally, an error should only be possible
+    /// of `named` is based on user input. If `named` is an internal object,
+    /// like a `ObjectType`, it is safe to unwrap the result
+    pub fn entity_type<N: AsEntityTypeName>(&self, named: N) -> Result<EntityType, Error> {
+        EntityType::new(&self.inner.pool, named.name())
+    }
 }
 
 /// Create a new pool that contains the names of all the types defined
@@ -452,4 +481,27 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     }
 
     pool
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::prelude::DeploymentHash;
+
+    use super::InputSchema;
+
+    const SCHEMA: &str = r#"
+      type Thing @entity {
+        id: ID!
+        name: String!
+      }
+    "#;
+
+    #[test]
+    fn entity_type() {
+        let id = DeploymentHash::new("test").unwrap();
+        let schema = InputSchema::parse(SCHEMA, id).unwrap();
+
+        assert_eq!("Thing", schema.entity_type("Thing").unwrap().as_str());
+        assert!(schema.entity_type("NonExistent").is_err());
+    }
 }

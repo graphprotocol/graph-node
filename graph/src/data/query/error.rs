@@ -322,6 +322,12 @@ impl From<SubgraphManifestResolveError> for QueryExecutionError {
     }
 }
 
+impl From<anyhow::Error> for QueryExecutionError {
+    fn from(e: anyhow::Error) -> Self {
+        QueryExecutionError::Panic(e.to_string())
+    }
+}
+
 /// Error caused while processing a [Query](struct.Query.html) request.
 #[derive(Clone, Debug)]
 pub enum QueryError {

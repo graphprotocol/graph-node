@@ -12,8 +12,13 @@ fn test_layout(gql: &str) -> Layout {
     let schema = InputSchema::parse(gql, subgraph.clone()).expect("Test schema invalid");
     let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
-    let catalog = Catalog::for_tests(site.clone(), BTreeSet::from_iter(["FileThing".into()]))
-        .expect("Can not create catalog");
+    let ents = {
+        match schema.entity_type("FileThing") {
+            Ok(entity_type) => BTreeSet::from_iter(vec![entity_type]),
+            Err(_) => BTreeSet::new(),
+        }
+    };
+    let catalog = Catalog::for_tests(site.clone(), ents).expect("Can not create catalog");
     Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
 }
 
@@ -82,7 +87,7 @@ fn generate_ddl() {
 fn exlusion_ddl() {
     let layout = test_layout(THING_GQL);
     let table = layout
-        .table_for_entity(&EntityType::new("Thing".to_string()))
+        .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
         .unwrap();
 
     // When `as_constraint` is false, just create an index

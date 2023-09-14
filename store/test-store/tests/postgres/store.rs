@@ -124,6 +124,8 @@ lazy_static! {
         5u64
     )
         .into();
+    static ref USER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(USER).unwrap();
+    static ref PERSON_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type("Person").unwrap();
 }
 
 /// Test harness for running database integration tests.
@@ -187,7 +189,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_1 = create_test_entity(
         "1",
-        USER,
+        &*USER_TYPE,
         "Johnton",
         "tonofjohn@email.com",
         67_i32,
@@ -206,7 +208,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_2 = create_test_entity(
         "2",
-        USER,
+        &*USER_TYPE,
         "Cindini",
         "dinici@email.com",
         43_i32,
@@ -216,7 +218,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     );
     let test_entity_3_1 = create_test_entity(
         "3",
-        USER,
+        &*USER_TYPE,
         "Shaqueeena",
         "queensha@email.com",
         28_i32,
@@ -235,7 +237,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_3_2 = create_test_entity(
         "3",
-        USER,
+        &*USER_TYPE,
         "Shaqueeena",
         "teeko@email.com",
         28_i32,
@@ -258,7 +260,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 /// Creates a test entity.
 fn create_test_entity(
     id: &str,
-    entity_type: &str,
+    entity_type: &EntityType,
     name: &str,
     email: &str,
     age: i32,
@@ -280,7 +282,7 @@ fn create_test_entity(
     };
 
     EntityOperation::Set {
-        key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
+        key: EntityKey::onchain(entity_type, id),
         data: test_entity,
     }
 }
@@ -303,7 +305,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u6
 #[test]
 fn delete_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "3".to_owned());
+        let entity_key = EntityKey::onchain(&*USER_TYPE, "3");
 
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
@@ -332,7 +334,7 @@ fn get_entity_1() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
 
-        let key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let key = EntityKey::onchain(&*USER_TYPE, "1");
         let result = writable.get(&key).unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
@@ -358,7 +360,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
-        let key = EntityKey::data(USER.to_owned(), "3".to_owned());
+        let key = EntityKey::onchain(&*USER_TYPE, "3");
         let result = writable.get(&key).unwrap();
 
         let expected_entity = entity! { schema =>
@@ -381,10 +383,10 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "7".to_owned());
+        let entity_key = EntityKey::onchain(&*USER_TYPE, "7".to_owned());
         let test_entity = create_test_entity(
             "7",
-            USER,
+            &*USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -411,11 +413,11 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
 
         let op = create_test_entity(
             "1",
-            USER,
+            &*USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -457,7 +459,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -536,7 +538,7 @@ fn user_query() -> EntityQuery {
     EntityQuery::new(
         TEST_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(vec![(EntityType::from(USER), AttributeNames::All)]),
+        EntityCollection::All(vec![(USER_TYPE.clone(), AttributeNames::All)]),
     )
 }
 
@@ -894,10 +896,10 @@ fn find() {
     });
 }
 
-fn make_entity_change(entity_type: &str) -> EntityChange {
+fn make_entity_change(entity_type: &EntityType) -> EntityChange {
     EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: EntityType::new(entity_type.to_owned()),
+        entity_type: entity_type.to_owned(),
     }
 }
 
@@ -949,12 +951,12 @@ async fn check_events(
 // Subscribe to store events
 fn subscribe(
     subgraph: &DeploymentHash,
-    entity_type: &str,
+    entity_type: &EntityType,
 ) -> StoreEventStream<impl Stream<Item = Arc<StoreEvent>, Error = ()> + Send> {
     let subscription =
         SUBSCRIPTION_MANAGER.subscribe(FromIterator::from_iter([SubscriptionFilter::Entities(
             subgraph.clone(),
-            EntityType::new(entity_type.to_owned()),
+            entity_type.to_owned(),
         )]));
 
     StoreEventStream::new(subscription)
@@ -964,7 +966,7 @@ async fn check_basic_revert(
     store: Arc<DieselStore>,
     expected: StoreEvent,
     deployment: &DeploymentLocator,
-    entity_type: &str,
+    entity_type: &EntityType,
 ) {
     let this_query = user_query()
         .filter(EntityFilter::Equal(
@@ -1003,10 +1005,10 @@ async fn check_basic_revert(
 #[test]
 fn revert_block_basic_user() {
     run_test(|store, _, deployment| async move {
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         let count = get_entity_count(store.clone(), &deployment.hash);
-        check_basic_revert(store.clone(), expected, &deployment, USER).await;
+        check_basic_revert(store.clone(), expected, &deployment, &*USER_TYPE).await;
         assert_eq!(count, get_entity_count(store.clone(), &deployment.hash));
     })
 }
@@ -1022,7 +1024,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey::data(USER.to_owned(), "2".to_owned());
+        let del_key = EntityKey::onchain(&*USER_TYPE, "2");
 
         // Process deletion
         transact_and_wait(
@@ -1034,7 +1036,7 @@ fn revert_block_with_delete() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Revert deletion
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -1057,7 +1059,7 @@ fn revert_block_with_delete() {
         assert_eq!(&test_value, returned_name.unwrap());
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         // The last event is the one for the reversion
         check_events(subscription, vec![expected]).await
@@ -1067,7 +1069,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1087,7 +1089,7 @@ fn revert_block_with_partial_update() {
         .await
         .unwrap();
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Perform revert operation, reversing the partial update
         let count = get_entity_count(store.clone(), &deployment.hash);
@@ -1101,7 +1103,7 @@ fn revert_block_with_partial_update() {
         assert_eq!(reverted_entity, original_entity);
 
         // Check that the subscription notified us of the changes
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         check_events(subscription, vec![expected]).await
     })
@@ -1163,7 +1165,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let schema = writable.input_schema();
 
         // Create operations to add a user
-        let user_key = EntityKey::data(USER.to_owned(), "1".to_owned());
+        let user_key = EntityKey::onchain(&*USER_TYPE, "1");
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
@@ -1208,7 +1210,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             **loaded_dds[0].param.as_ref().unwrap()
         );
 
-        let subscription = subscribe(&deployment.hash, USER);
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE);
 
         // Revert block that added the user and the dynamic data source
         revert_block(&store, &deployment, &TEST_BLOCK_2_PTR).await;
@@ -1232,7 +1234,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             changes: HashSet::from_iter(
                 vec![EntityChange::Data {
                     subgraph_id: DeploymentHash::new("testsubgraph").unwrap(),
-                    entity_type: EntityType::new(USER.into()),
+                    entity_type: USER_TYPE.to_owned(),
                 }]
                 .into_iter(),
             ),
@@ -1276,7 +1278,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             )
             .unwrap();
 
-        let subscription = subscribe(&subgraph_id, USER);
+        let subscription = subscribe(&subgraph_id, &*USER_TYPE);
 
         // Add two entities to the store
         let added_entities = vec![
@@ -1293,7 +1295,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey::data(USER.to_owned(), id.clone()),
+                    key: EntityKey::onchain(&*USER_TYPE, id),
                     data: data.clone(),
                 })
                 .collect(),
@@ -1304,13 +1306,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Update an entity in the store
         let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
-            key: EntityKey::data(USER.to_owned(), "1".to_owned()),
+            key: EntityKey::onchain(&*USER_TYPE, "1"),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey::data(USER.to_owned(), "2".to_owned()),
+            key: EntityKey::onchain(&*USER_TYPE, "2"),
         };
 
         // Commit update & delete ops
@@ -1324,26 +1326,25 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         .unwrap();
 
         // We're expecting two events to be written to the subscription stream
-        let user_type = EntityType::new(USER.to_owned());
         let expected = vec![
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.clone(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.clone(),
                 },
             ]),
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.clone(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: user_type.clone(),
+                    entity_type: USER_TYPE.clone(),
                 },
             ]),
         ];
@@ -1355,7 +1356,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
 #[test]
 fn throttle_subscription_delivers() {
     run_test(|store, _, deployment| async move {
-        let subscription = subscribe(&deployment.hash, USER)
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
             .throttle_while_syncing(
                 &LOGGER,
                 store
@@ -1372,7 +1373,7 @@ fn throttle_subscription_delivers() {
 
         let user4 = create_test_entity(
             "4",
-            USER,
+            &*USER_TYPE,
             "Steve",
             "nieve@email.com",
             72_i32,
@@ -1390,7 +1391,7 @@ fn throttle_subscription_delivers() {
         .await
         .unwrap();
 
-        let expected = StoreEvent::new(vec![make_entity_change(USER)]);
+        let expected = StoreEvent::new(vec![make_entity_change(&*USER_TYPE)]);
 
         check_events(subscription, vec![expected]).await
     })
@@ -1400,7 +1401,7 @@ fn throttle_subscription_delivers() {
 fn throttle_subscription_throttles() {
     run_test(|store, _, deployment| async move {
         // Throttle for a very long time (30s)
-        let subscription = subscribe(&deployment.hash, USER)
+        let subscription = subscribe(&deployment.hash, &*USER_TYPE)
             .throttle_while_syncing(
                 &LOGGER,
                 store
@@ -1417,7 +1418,7 @@ fn throttle_subscription_throttles() {
 
         let user4 = create_test_entity(
             "4",
-            USER,
+            &*USER_TYPE,
             "Steve",
             "nieve@email.com",
             72_i32,
@@ -1500,7 +1501,7 @@ fn handle_large_string_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, name: name };
 
-        let key = EntityKey::data(USER.to_owned(), id.to_owned());
+        let key = EntityKey::onchain(&*USER_TYPE, id);
 
         EntityModification::insert(key, data, block)
     }
@@ -1595,7 +1596,7 @@ fn handle_large_bytea_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
-        let key = EntityKey::data(USER.to_owned(), id.to_owned());
+        let key = EntityKey::onchain(&*USER_TYPE, id);
 
         EntityModification::insert(key, data, block)
     }
@@ -1761,8 +1762,8 @@ impl WindowQuery {
     fn against_color_and_age(self) -> Self {
         let mut query = self.0;
         query.collection = EntityCollection::All(vec![
-            (EntityType::from(USER), AttributeNames::All),
-            (EntityType::from("Person"), AttributeNames::All),
+            (USER_TYPE.clone(), AttributeNames::All),
+            (PERSON_TYPE.clone(), AttributeNames::All),
         ]);
         WindowQuery(query, self.1).default_window()
     }
@@ -1791,21 +1792,26 @@ impl WindowQuery {
 
 #[test]
 fn window() {
-    fn make_color_and_age(entity_type: &str, id: &str, color: &str, age: i32) -> EntityOperation {
+    fn make_color_and_age(
+        entity_type: &EntityType,
+        id: &str,
+        color: &str,
+        age: i32,
+    ) -> EntityOperation {
         let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
-            key: EntityKey::data(entity_type.to_owned(), id.to_owned()),
+            key: EntityKey::onchain(entity_type, id),
             data: entity,
         }
     }
 
     fn make_user(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age(USER, id, color, age)
+        make_color_and_age(&*USER_TYPE, id, color, age)
     }
 
     fn make_person(id: &str, color: &str, age: i32) -> EntityOperation {
-        make_color_and_age("Person", id, color, age)
+        make_color_and_age(&*PERSON_TYPE, id, color, age)
     }
 
     let ops = vec![
@@ -2055,7 +2061,7 @@ fn reorg_tracking() {
     ) {
         let test_entity_1 = create_test_entity(
             "1",
-            USER,
+            &*USER_TYPE,
             "Johnton",
             "tonofjohn@email.com",
             age,

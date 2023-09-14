@@ -312,7 +312,7 @@ impl Layout {
                         // they have a String `id` field
                         // see also: id-type-for-unimplemented-interfaces
                         let id_type = types.iter().next().cloned().unwrap_or(IdType::String);
-                        Ok((EntityType::from(interface.as_str()), id_type))
+                        Ok((schema.entity_type(interface).unwrap(), id_type))
                     }
                 })
         });
@@ -321,7 +321,9 @@ impl Layout {
         // and interfaces in the schema
         let id_types = object_types
             .iter()
-            .map(|obj_type| IdType::try_from(*obj_type).map(|t| (EntityType::from(*obj_type), t)))
+            .map(|obj_type| {
+                IdType::try_from(*obj_type).map(|t| (schema.entity_type(*obj_type).unwrap(), t))
+            })
             .chain(id_types_for_interface)
             .collect::<Result<IdTypeMap, _>>()?;
 
@@ -331,6 +333,7 @@ impl Layout {
             .enumerate()
             .map(|(i, obj_type)| {
                 Table::new(
+                    schema,
                     obj_type,
                     &catalog,
                     schema
@@ -341,7 +344,7 @@ impl Layout {
                     i as u32,
                     catalog
                         .entities_with_causality_region
-                        .contains(&EntityType::from(*obj_type)),
+                        .contains(&schema.entity_type(*obj_type).unwrap()),
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -554,7 +557,7 @@ impl Layout {
         };
         let mut entities: BTreeMap<EntityKey, Entity> = BTreeMap::new();
         for data in query.load::<EntityData>(conn)? {
-            let entity_type = data.entity_type();
+            let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
 
             let key = EntityKey {
@@ -589,7 +592,7 @@ impl Layout {
         let mut entities = BTreeMap::new();
 
         for data in query.load::<EntityData>(conn)? {
-            let entity_type = data.entity_type();
+            let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
             let key = EntityKey {
                 entity_type,
@@ -625,7 +628,7 @@ impl Layout {
         let mut changes = Vec::new();
 
         for entity_data in inserts_or_updates.into_iter() {
-            let entity_type = entity_data.entity_type();
+            let entity_type = entity_data.entity_type(&self.input_schema);
             let data: Entity = entity_data.deserialize_with_layout(self, None)?;
             let entity_id = data.id();
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
@@ -641,7 +644,7 @@ impl Layout {
         }
 
         for del in &deletions {
-            let entity_type = del.entity_type();
+            let entity_type = del.entity_type(&self.input_schema);
             let entity_id = Word::from(del.id());
 
             // See the doc comment of `FindPossibleDeletionsQuery` for details
@@ -1050,6 +1053,7 @@ impl From<IdType> for ColumnType {
 
 impl ColumnType {
     fn from_field_type(
+        schema: &InputSchema,
         field_type: &q::Type,
         catalog: &Catalog,
         enums: &EnumMap,
@@ -1059,7 +1063,11 @@ impl ColumnType {
         let name = named_type(field_type);
 
         // See if its an object type defined in the schema
-        if let Some(id_type) = id_types.get(&EntityType::new(name.to_string())) {
+        if let Some(id_type) = schema
+            .entity_type(name)
+            .ok()
+            .and_then(|entity_type| id_types.get(&entity_type))
+        {
             return Ok((*id_type).into());
         }
 
@@ -1139,6 +1147,7 @@ pub struct Column {
 
 impl Column {
     fn new(
+        schema: &InputSchema,
         table_name: &SqlName,
         field: &s::Field,
         catalog: &Catalog,
@@ -1156,6 +1165,7 @@ impl Column {
         } else {
             let is_existing_text_column = catalog.is_existing_text_column(table_name, &sql_name);
             ColumnType::from_field_type(
+                schema,
                 &field.field_type,
                 catalog,
                 enums,
@@ -1313,6 +1323,7 @@ pub struct Table {
 
 impl Table {
     fn new(
+        schema: &InputSchema,
         defn: &s::ObjectType,
         catalog: &Catalog,
         fulltexts: Vec<FulltextDefinition>,
@@ -1328,14 +1339,14 @@ impl Table {
             .fields
             .iter()
             .filter(|field| !field.is_derived())
-            .map(|field| Column::new(&table_name, field, catalog, enums, id_types))
+            .map(|field| Column::new(schema, &table_name, field, catalog, enums, id_types))
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let immutable = defn.is_immutable();
 
         let table = Table {
-            object: EntityType::from(defn),
+            object: schema.entity_type(defn)?,
             name: table_name,
             qualified_name,
             // Default `is_account_like` to `false`; the caller should call
@@ -1476,7 +1487,8 @@ impl LayoutCache {
 
     fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
-        let has_causality_region = deployment::entities_with_causality_region(conn, site.id)?;
+        let has_causality_region =
+            deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
         let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site)

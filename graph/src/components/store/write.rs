@@ -922,12 +922,12 @@ mod test {
             .iter()
             .zip(blocks.iter())
             .map(|(value, block)| EntityModification::Remove {
-                key: EntityKey::data("RowGroup".to_string(), value.to_string()),
+                key: EntityKey::onchain(&*ROW_GROUP_TYPE, value.to_string()),
                 block: *block,
             })
             .collect();
         let group = RowGroup {
-            entity_type: EntityType::new("Entry".to_string()),
+            entity_type: ENTRY_TYPE.clone(),
             rows,
             immutable: false,
         };
@@ -964,11 +964,18 @@ mod test {
         check_runs(&[10, 20, 11], &[1, 2, 1], exp);
     }
 
-    const GQL: &str = "type Thing @entity { id: ID!, count: Int! }";
+    // A very fake schema that allows us to get the entity types we need
+    const GQL: &str = r#"
+      type Thing @entity { id: ID!, count: Int! }
+      type RowGroup @entity { id: ID! }
+      type Entry @entity { id: ID! }
+    "#;
     lazy_static! {
         static ref DEPLOYMENT: DeploymentHash = DeploymentHash::new("batchAppend").unwrap();
         static ref SCHEMA: InputSchema = InputSchema::parse(GQL, DEPLOYMENT.clone()).unwrap();
-        static ref ENTITY_TYPE: EntityType = EntityType::new("Thing".to_string());
+        static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
+        static ref ROW_GROUP_TYPE: EntityType = SCHEMA.entity_type("RowGroup").unwrap();
+        static ref ENTRY_TYPE: EntityType = SCHEMA.entity_type("Entry").unwrap();
     }
 
     /// Convenient notation for changes to a fixed entity
@@ -988,7 +995,7 @@ mod test {
             use Mod::*;
 
             let value = value.clone();
-            let key = EntityKey::data("Thing", "one");
+            let key = EntityKey::onchain(&*THING_TYPE, "one");
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
@@ -1028,7 +1035,7 @@ mod test {
     impl Group {
         fn new() -> Self {
             Self {
-                group: RowGroup::new(ENTITY_TYPE.clone(), false),
+                group: RowGroup::new(THING_TYPE.clone(), false),
             }
         }
 
@@ -1092,7 +1099,7 @@ mod test {
     fn last_op() {
         #[track_caller]
         fn is_remove(group: &RowGroup, at: BlockNumber) {
-            let key = EntityKey::data("Thing", "one");
+            let key = EntityKey::onchain(&*THING_TYPE, "one");
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1104,7 +1111,7 @@ mod test {
         }
         #[track_caller]
         fn is_write(group: &RowGroup, at: BlockNumber) {
-            let key = EntityKey::data("Thing", "one");
+            let key = EntityKey::onchain(&*THING_TYPE, "one");
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1117,7 +1124,7 @@ mod test {
 
         use Mod::*;
 
-        let key = EntityKey::data("Thing", "one");
+        let key = EntityKey::onchain(&*THING_TYPE, "one");
 
         // This will result in two mods int the group:
         //   [ InsC(1,2), InsC(2,3) ]

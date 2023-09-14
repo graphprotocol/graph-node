@@ -137,6 +137,16 @@ impl AtomPool {
     }
 }
 
+impl<S: AsRef<str>> FromIterator<S> for AtomPool {
+    fn from_iter<I: IntoIterator<Item = S>>(iter: I) -> Self {
+        let mut pool = AtomPool::new();
+        for s in iter {
+            pool.intern(s.as_ref());
+        }
+        pool
+    }
+}
+
 /// A marker for an empty entry in an `Object`
 const TOMBSTONE_KEY: Atom = Atom(AtomInt::MAX);
 

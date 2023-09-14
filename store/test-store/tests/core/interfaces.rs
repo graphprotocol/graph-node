@@ -4,7 +4,7 @@ use graph::entity;
 use graph::schema::InputSchema;
 use pretty_assertions::assert_eq;
 
-use graph::{components::store::EntityType, data::graphql::object};
+use graph::data::graphql::object;
 use graph::{data::query::QueryTarget, prelude::*};
 use test_store::*;
 
@@ -17,10 +17,10 @@ async fn insert_and_query(
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = create_test_subgraph(&subgraph_id, schema).await;
-
+    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
     let entities = entities
         .into_iter()
-        .map(|(entity_type, data)| (EntityType::new(entity_type.to_owned()), data))
+        .map(|(entity_type, data)| (schema.entity_type(entity_type).unwrap(), data))
         .collect();
 
     insert_entities(&deployment, entities).await?;

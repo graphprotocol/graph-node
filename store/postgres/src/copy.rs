@@ -485,7 +485,7 @@ impl TableState {
             .into_iter()
             .map(
                 |(id, entity_type, current_vid, target_vid, size, duration_ms)| {
-                    let entity_type = EntityType::new(entity_type);
+                    let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
                     let src =
                         resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id);
                     let dst = resolve_entity(

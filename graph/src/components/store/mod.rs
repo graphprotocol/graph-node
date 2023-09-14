@@ -3,12 +3,12 @@ mod err;
 mod traits;
 pub mod write;
 
+use anyhow::{bail, Error};
 pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
 use futures03::future::{FutureExt, TryFutureExt};
 use slog::{trace, Logger};
 
 pub use super::subgraph::Entity;
-use diesel::types::{FromSql, ToSql};
 pub use err::StoreError;
 use itertools::Itertools;
 use strum_macros::Display;
@@ -21,17 +21,18 @@ use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use std::{fmt, io};
 
 use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::constraint_violation;
+use crate::data::graphql::ObjectOrInterface;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::Value;
 use crate::data::value::Word;
@@ -39,7 +40,7 @@ use crate::data_source::CausalityRegion;
 use crate::env::ENV_VARS;
 use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
 use crate::schema::InputSchema;
-use crate::util::intern;
+use crate::util::intern::{self, AtomPool};
 use crate::util::stats::MovingStats;
 
 /// The type name of an entity. This is the string that is used in the
@@ -51,8 +52,11 @@ impl EntityType {
     /// Construct a new entity type. Ideally, this is only called when
     /// `entity_type` either comes from the GraphQL schema, or from
     /// the database from fields that are known to contain a valid entity type
-    pub fn new(entity_type: String) -> Self {
-        Self(entity_type.into())
+    pub fn new(pool: &Arc<AtomPool>, entity_type: &str) -> Result<Self, Error> {
+        match pool.lookup(entity_type) {
+            Some(_) => Ok(EntityType(Word::from(entity_type))),
+            None => bail!("entity type `{}` is not interned", entity_type),
+        }
     }
 
     pub fn as_str(&self) -> &str {
@@ -74,56 +78,57 @@ impl fmt::Display for EntityType {
     }
 }
 
-impl<'a> From<&s::ObjectType> for EntityType {
-    fn from(object_type: &s::ObjectType) -> Self {
-        EntityType::new(object_type.name.clone())
-    }
-}
-
-impl<'a> From<&s::InterfaceType> for EntityType {
-    fn from(interface_type: &s::InterfaceType) -> Self {
-        EntityType::new(interface_type.name.clone())
-    }
-}
-
 impl Borrow<str> for EntityType {
     fn borrow(&self) -> &str {
         &self.0
     }
 }
 
-// This conversion should only be used in tests since it makes it too
-// easy to convert random strings into entity types
-#[cfg(debug_assertions)]
-impl From<&str> for EntityType {
-    fn from(s: &str) -> Self {
-        EntityType::new(s.to_owned())
-    }
-}
-
 impl CheapClone for EntityType {}
-
-impl FromSql<diesel::sql_types::Text, diesel::pg::Pg> for EntityType {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
-        let s = <String as FromSql<_, diesel::pg::Pg>>::from_sql(bytes)?;
-        Ok(EntityType::new(s))
-    }
-}
-
-impl ToSql<diesel::sql_types::Text, diesel::pg::Pg> for EntityType {
-    fn to_sql<W: io::Write>(
-        &self,
-        out: &mut diesel::serialize::Output<W, diesel::pg::Pg>,
-    ) -> diesel::serialize::Result {
-        <str as ToSql<diesel::sql_types::Text, diesel::pg::Pg>>::to_sql(self.0.as_str(), out)
-    }
-}
 
 impl std::fmt::Debug for EntityType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "EntityType({})", self.0)
     }
 }
+
+pub trait AsEntityTypeName {
+    fn name(&self) -> &str;
+}
+
+impl AsEntityTypeName for &str {
+    fn name(&self) -> &str {
+        self
+    }
+}
+
+impl AsEntityTypeName for &String {
+    fn name(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl AsEntityTypeName for &s::ObjectType {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl AsEntityTypeName for &s::InterfaceType {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl AsEntityTypeName for ObjectOrInterface<'_> {
+    fn name(&self) -> &str {
+        match self {
+            ObjectOrInterface::Object(object) => &object.name,
+            ObjectOrInterface::Interface(interface) => &interface.name,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityFilterDerivative(bool);
 
@@ -225,9 +230,9 @@ impl DerivedEntityQuery {
 impl EntityKey {
     // For use in tests only
     #[cfg(debug_assertions)]
-    pub fn data(entity_type: impl Into<String>, entity_id: impl Into<String>) -> Self {
+    pub fn onchain(entity_type: &EntityType, entity_id: impl Into<String>) -> Self {
         Self {
-            entity_type: EntityType::new(entity_type.into()),
+            entity_type: entity_type.clone(),
             entity_id: entity_id.into().into(),
             causality_region: CausalityRegion::ONCHAIN,
         }

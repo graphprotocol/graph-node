@@ -436,9 +436,10 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
     const DOCUMENT: &str = " type Thing @entity { id: String!, value: String!, extra: String }";
     lazy_static! {
         static ref SCHEMA: InputSchema = InputSchema::raw(DOCUMENT, "doesntmatter");
+        static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
     let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA };
-    let key = EntityKey::data("Thing".to_string(), id);
+    let key = EntityKey::onchain(&*THING_TYPE, id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::insert(key, data, 0),
@@ -963,7 +964,7 @@ async fn test_entity_store(api_version: Version) {
 
     let alex = entity! { schema => id: "alex", name: "Alex" };
     let steve = entity! { schema => id: "steve", name: "Steve" };
-    let user_type = EntityType::from("User");
+    let user_type = schema.entity_type("User").unwrap();
     test_store::insert_entities(
         &deployment,
         vec![(user_type.clone(), alex), (user_type, steve)],
@@ -1407,7 +1408,7 @@ async fn test_store_set_invalid_fields() {
         id: ID!,
         name: String
     }
-    
+
     type Binary @entity {
         id: Bytes!,
         test: String,

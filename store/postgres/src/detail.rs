@@ -10,12 +10,12 @@ use diesel::prelude::{
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
-use graph::components::store::EntityType;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
 use graph::prelude::{
     bigdecimal::ToPrimitive, BigDecimal, BlockPtr, DeploymentHash, StoreError,
     SubgraphDeploymentEntity,
 };
+use graph::schema::InputSchema;
 use graph::{constraint_violation, data::subgraph::status, prelude::web3::types::H256};
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -360,33 +360,39 @@ struct StoredSubgraphManifest {
     start_block_number: Option<i32>,
     start_block_hash: Option<Bytes>,
     raw_yaml: Option<String>,
-    entities_with_causality_region: Vec<EntityType>,
+    entities_with_causality_region: Vec<String>,
     on_sync: Option<String>,
     history_blocks: i32,
 }
 
-impl From<StoredSubgraphManifest> for SubgraphManifestEntity {
-    fn from(value: StoredSubgraphManifest) -> Self {
+impl StoredSubgraphManifest {
+    fn as_manifest(self, schema: &InputSchema) -> SubgraphManifestEntity {
+        let e: Vec<_> = self
+            .entities_with_causality_region
+            .into_iter()
+            .map(|s| schema.entity_type(&s).unwrap())
+            .collect();
         SubgraphManifestEntity {
-            spec_version: value.spec_version,
-            description: value.description,
-            repository: value.repository,
-            features: value.features,
-            schema: value.schema,
-            raw_yaml: value.raw_yaml,
-            entities_with_causality_region: value.entities_with_causality_region,
-            history_blocks: value.history_blocks,
+            spec_version: self.spec_version,
+            description: self.description,
+            repository: self.repository,
+            features: self.features,
+            schema: self.schema,
+            raw_yaml: self.raw_yaml,
+            entities_with_causality_region: e,
+            history_blocks: self.history_blocks,
         }
     }
 }
 
 struct StoredDeploymentEntity(crate::detail::DeploymentDetail, StoredSubgraphManifest);
 
-impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
-    type Error = StoreError;
-
-    fn try_from(ent: StoredDeploymentEntity) -> Result<Self, Self::Error> {
-        let (detail, manifest) = (ent.0, ent.1);
+impl StoredDeploymentEntity {
+    fn as_subgraph_deployment(
+        self,
+        schema: &InputSchema,
+    ) -> Result<SubgraphDeploymentEntity, StoreError> {
+        let (detail, manifest) = (self.0, self.1);
 
         let start_block = block(
             &detail.deployment,
@@ -425,7 +431,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
             .map_err(|b| constraint_violation!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
-            manifest: manifest.into(),
+            manifest: manifest.as_manifest(schema),
             failed: detail.failed,
             health: detail.health.into(),
             synced: detail.synced,
@@ -447,6 +453,7 @@ impl TryFrom<StoredDeploymentEntity> for SubgraphDeploymentEntity {
 pub fn deployment_entity(
     conn: &PgConnection,
     site: &Site,
+    schema: &InputSchema,
 ) -> Result<SubgraphDeploymentEntity, StoreError> {
     use subgraph_deployment as d;
     use subgraph_manifest as m;
@@ -459,7 +466,7 @@ pub fn deployment_entity(
         .find(site.id)
         .first::<crate::detail::DeploymentDetail>(conn)?;
 
-    SubgraphDeploymentEntity::try_from(StoredDeploymentEntity(detail, manifest))
+    StoredDeploymentEntity(detail, manifest).as_subgraph_deployment(schema)
 }
 
 #[derive(Queryable, Identifiable, Insertable)]

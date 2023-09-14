@@ -570,7 +570,7 @@ async fn introspection_query(schema: Schema, query: &str) -> QueryResult {
         trace: false,
     };
 
-    let schema = Arc::new(ApiSchema::from_api_schema(schema).unwrap());
+    let schema = Arc::new(ApiSchema::from_graphql_schema(schema).unwrap());
     let result =
         match PreparedQuery::new(&logger, schema, None, query, None, 100, graphql_metrics()) {
             Ok(query) => {

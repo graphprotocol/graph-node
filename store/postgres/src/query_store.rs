@@ -3,7 +3,7 @@ use graph::components::store::{DeploymentId, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::value::Object;
 use graph::prelude::*;
-use graph::schema::ApiSchema;
+use graph::schema::{ApiSchema, InputSchema};
 
 use crate::primary::Site;
 
@@ -118,6 +118,11 @@ impl QueryStoreTrait for QueryStore {
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
         let info = self.store.subgraph_info(&self.site)?;
         Ok(info.api.get(&self.api_version).unwrap().clone())
+    }
+
+    fn input_schema(&self) -> Result<Arc<InputSchema>, QueryExecutionError> {
+        let info = self.store.subgraph_info(&self.site)?;
+        Ok(info.input)
     }
 
     fn network_name(&self) -> &str {

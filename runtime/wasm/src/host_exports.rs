@@ -176,8 +176,9 @@ impl<C: Blockchain> HostExports<C> {
             }
         }
 
+        let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         let key = EntityKey {
-            entity_type: EntityType::new(entity_type),
+            entity_type,
             entity_id: entity_id.into(),
             causality_region: self.data_source_causality_region,
         };
@@ -240,8 +241,9 @@ impl<C: Blockchain> HostExports<C> {
             &self.poi_causality_region,
             logger,
         );
+        let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         let key = EntityKey {
-            entity_type: EntityType::new(entity_type),
+            entity_type,
             entity_id: entity_id.into(),
             causality_region: self.data_source_causality_region,
         };
@@ -262,8 +264,9 @@ impl<C: Blockchain> HostExports<C> {
         gas: &GasCounter,
         scope: GetScope,
     ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
+        let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         let store_key = EntityKey {
-            entity_type: EntityType::new(entity_type),
+            entity_type,
             entity_id: entity_id.into(),
             causality_region: self.data_source_causality_region,
         };
@@ -287,8 +290,9 @@ impl<C: Blockchain> HostExports<C> {
         entity_field: String,
         gas: &GasCounter,
     ) -> Result<Vec<Entity>, anyhow::Error> {
+        let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
         let store_key = LoadRelatedRequest {
-            entity_type: EntityType::new(entity_type),
+            entity_type,
             entity_id: entity_id.into(),
             entity_field: entity_field.into(),
             causality_region: self.data_source_causality_region,

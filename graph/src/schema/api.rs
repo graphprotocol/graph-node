@@ -93,7 +93,7 @@ impl ApiSchema {
     /// In addition, the API schema has an introspection schema mixed into
     /// `api_schema`. In particular, the `Query` type has fields called
     /// `__schema` and `__type`
-    pub fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
+    pub(crate) fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
         add_introspection_schema(&mut api_schema.document);
 
         let query_type = api_schema
@@ -121,6 +121,14 @@ impl ApiSchema {
             subscription_type,
             object_types,
         })
+    }
+
+    /// Create an API Schema that can be used to execute GraphQL queries.
+    /// This method is only meant for schemas that are not derived from a
+    /// subgraph schema, like the schema for the index-node server. Use
+    /// `InputSchema::api_schema` to get an API schema for a subgraph
+    pub fn from_graphql_schema(schema: Schema) -> Result<Self, anyhow::Error> {
+        Self::from_api_schema(schema)
     }
 
     pub fn document(&self) -> &s::Document {

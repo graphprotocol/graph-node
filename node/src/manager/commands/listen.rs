@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, io::Write};
 
 use futures::compat::Future01CompatExt;
-//use futures::future;
+use graph::prelude::DeploymentHash;
+use graph::schema::InputSchema;
 use graph::{
     components::store::{EntityType, SubscriptionManager as _},
     prelude::{serde_json, Error, Stream, SubscriptionFilter},
@@ -58,10 +59,32 @@ pub async fn entities(
     search: &DeploymentSearch,
     entity_types: Vec<String>,
 ) -> Result<(), Error> {
+    // We convert the entity type names into entity types in this very
+    // awkward way to avoid needing to have a SubgraphStore from which we
+    // load the input schema
+    fn as_entity_types(
+        entity_types: Vec<String>,
+        id: &DeploymentHash,
+    ) -> Result<Vec<EntityType>, Error> {
+        use std::fmt::Write;
+
+        let schema = entity_types
+            .iter()
+            .fold(String::new(), |mut buf, entity_type| {
+                writeln!(buf, "type {entity_type} @entity {{ id: ID! }}").unwrap();
+                buf
+            });
+        let schema = InputSchema::parse(&schema, id.clone()).unwrap();
+        entity_types
+            .iter()
+            .map(|et| schema.entity_type(et))
+            .collect::<Result<_, _>>()
+    }
+
     let locator = search.locate_unique(&primary_pool)?;
-    let filter = entity_types
+    let filter = as_entity_types(entity_types, &locator.hash)?
         .into_iter()
-        .map(|et| SubscriptionFilter::Entities(locator.hash.clone(), EntityType::new(et)))
+        .map(|et| SubscriptionFilter::Entities(locator.hash.clone(), et))
         .collect();
 
     println!("waiting for store events from {}", locator);

@@ -298,12 +298,16 @@ async fn insert_test_entities(
     manifest: SubgraphManifest<graph_chain_ethereum::Chain>,
     id_type: IdType,
 ) -> DeploymentLocator {
-    fn insert_ops(entities: Vec<(&str, Vec<Entity>)>) -> Vec<EntityOperation> {
+    fn insert_ops(
+        schema: &InputSchema,
+        entities: Vec<(&str, Vec<Entity>)>,
+    ) -> Vec<EntityOperation> {
         entities
             .into_iter()
             .map(|(typename, entities)| {
-                entities.into_iter().map(|data| EntityOperation::Set {
-                    key: EntityKey::data(typename.to_string(), data.id()),
+                let entity_type = schema.entity_type(typename).unwrap();
+                entities.into_iter().map(move |data| EntityOperation::Set {
+                    key: EntityKey::onchain(&entity_type, data.id()),
                     data,
                 })
             })
@@ -433,7 +437,7 @@ async fn insert_test_entities(
             ],
         ),
     ];
-    let entities0 = insert_ops(entities0);
+    let entities0 = insert_ops(&manifest.schema, entities0);
 
     let entities1 = vec![(
         "Musician",
@@ -442,7 +446,7 @@ async fn insert_test_entities(
             entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20 },
         ],
     )];
-    let entities1 = insert_ops(entities1);
+    let entities1 = insert_ops(&manifest.schema, entities1);
 
     insert_at(entities0, &deployment, GENESIS_PTR.clone()).await;
     insert_at(entities1, &deployment, BLOCK_ONE.clone()).await;
