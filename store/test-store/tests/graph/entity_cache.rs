@@ -29,9 +29,8 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
-    static ref SCHEMA: Arc<InputSchema> = Arc::new(
-        InputSchema::parse(
-            "
+    static ref SCHEMA: InputSchema = InputSchema::parse(
+        "
             type Band @entity {
                 id: ID!
                 name: String!
@@ -39,10 +38,9 @@ lazy_static! {
                 label: String
             }
             ",
-            SUBGRAPH_ID.clone(),
-        )
-        .expect("Test schema invalid")
-    );
+        SUBGRAPH_ID.clone(),
+    )
+    .expect("Test schema invalid");
 }
 
 struct MockStore {
@@ -74,7 +72,7 @@ impl ReadStore for MockStore {
         Ok(self.get_many_res.clone())
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         SCHEMA.clone()
     }
 }
@@ -87,7 +85,7 @@ impl DeploymentCursorTracker for MockStore {
         unimplemented!()
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         todo!()
     }
 }

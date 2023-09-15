@@ -31,6 +31,9 @@ const POI_DIGEST: &str = "digest";
 /// with writing a subgraph should use this struct. Code that deals with
 /// querying subgraphs will instead want to use an `ApiSchema` which can be
 /// generated with the `api_schema` method on `InputSchema`
+///
+/// There's no need to put this into an `Arc`, since `InputSchema` already
+/// does that internally and is `CheapClone`
 #[derive(Clone, Debug, PartialEq)]
 pub struct InputSchema {
     inner: Arc<Inner>,

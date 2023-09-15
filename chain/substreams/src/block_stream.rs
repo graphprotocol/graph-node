@@ -34,7 +34,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
     async fn build_substreams(
         &self,
         chain: &Chain,
-        schema: Arc<InputSchema>,
+        schema: InputSchema,
         deployment: DeploymentLocator,
         block_cursor: FirehoseCursor,
         subgraph_current_block: Option<BlockPtr>,

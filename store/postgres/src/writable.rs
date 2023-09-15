@@ -79,7 +79,7 @@ struct SyncStore {
     store: WritableSubgraphStore,
     writable: Arc<DeploymentStore>,
     site: Arc<Site>,
-    input_schema: Arc<InputSchema>,
+    input_schema: InputSchema,
     manifest_idx_and_name: Arc<Vec<(u32, String)>>,
 }
 
@@ -369,8 +369,8 @@ impl SyncStore {
         .await
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
-        self.input_schema.clone()
+    fn input_schema(&self) -> InputSchema {
+        self.input_schema.cheap_clone()
     }
 }
 
@@ -1444,7 +1444,7 @@ impl ReadStore for WritableStore {
         self.writer.get_derived(key)
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         self.store.input_schema()
     }
 }
@@ -1458,7 +1458,7 @@ impl DeploymentCursorTracker for WritableStore {
         self.block_cursor.lock().unwrap().clone()
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         self.store.input_schema()
     }
 }

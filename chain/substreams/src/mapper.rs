@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::codec::entity_change;
 use crate::{codec, Block, Chain, EntityChanges, ParsedChanges, TriggerData};
@@ -26,7 +25,7 @@ use prost::Message;
 // the store. If schema is None then only the original block is passed. This None should only
 // be used for block ingestion where entity content is empty and gets discarded.
 pub struct Mapper {
-    pub schema: Option<Arc<InputSchema>>,
+    pub schema: Option<InputSchema>,
 }
 
 #[async_trait]
@@ -126,7 +125,7 @@ impl SubstreamsMapper<Chain> for Mapper {
 
 fn parse_changes(
     changes: &EntityChanges,
-    schema: &Arc<InputSchema>,
+    schema: &InputSchema,
 ) -> anyhow::Result<Vec<ParsedChanges>> {
     let mut parsed_changes = vec![];
     for entity_change in changes.entity_changes.iter() {

@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::Mutex,
 };
 
 use graph::{
@@ -41,7 +41,7 @@ struct Variables {
 pub(crate) struct SubgraphFork {
     client: reqwest::Client,
     endpoint: Url,
-    schema: Arc<InputSchema>,
+    schema: InputSchema,
     fetched_ids: Mutex<HashSet<String>>,
     logger: Logger,
 }
@@ -91,7 +91,7 @@ impl SubgraphFork {
     pub(crate) fn new(
         base: Url,
         id: DeploymentHash,
-        schema: Arc<InputSchema>,
+        schema: InputSchema,
         logger: Logger,
     ) -> Result<Self, StoreError> {
         Ok(Self {
@@ -249,8 +249,8 @@ mod tests {
         DeploymentHash::new("test").unwrap()
     }
 
-    fn test_schema() -> Arc<InputSchema> {
-        let schema = InputSchema::new(
+    fn test_schema() -> InputSchema {
+        InputSchema::new(
             DeploymentHash::new("test").unwrap(),
             parse_schema::<String>(
                 r#"type Gravatar @entity {
@@ -262,8 +262,7 @@ mod tests {
             )
             .unwrap(),
         )
-        .unwrap();
-        Arc::new(schema)
+        .unwrap()
     }
 
     fn test_logger() -> Logger {

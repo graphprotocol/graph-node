@@ -1073,11 +1073,11 @@ impl fmt::Display for DeploymentSchemaVersion {
 
 /// A `ReadStore` that is always empty.
 pub struct EmptyStore {
-    schema: Arc<InputSchema>,
+    schema: InputSchema,
 }
 
 impl EmptyStore {
-    pub fn new(schema: Arc<InputSchema>) -> Self {
+    pub fn new(schema: InputSchema) -> Self {
         EmptyStore { schema }
     }
 }
@@ -1098,7 +1098,7 @@ impl ReadStore for EmptyStore {
         Ok(BTreeMap::new())
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         self.schema.cheap_clone()
     }
 }

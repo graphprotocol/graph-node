@@ -106,7 +106,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
     async fn build_substreams(
         &self,
         _chain: &Chain,
-        _schema: Arc<InputSchema>,
+        _schema: InputSchema,
         _deployment: DeploymentLocator,
         _block_cursor: FirehoseCursor,
         _subgraph_current_block: Option<BlockPtr>,

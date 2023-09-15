@@ -124,7 +124,7 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
     async fn build_substreams(
         &self,
         chain: &C,
-        schema: Arc<InputSchema>,
+        schema: InputSchema,
         deployment: DeploymentLocator,
         block_cursor: FirehoseCursor,
         subgraph_current_block: Option<BlockPtr>,

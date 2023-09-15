@@ -137,7 +137,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
     ) -> Result<Vec<EntityOperation>, StoreError>;
 
     /// Return the GraphQL schema supplied by the user
-    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<Arc<InputSchema>, StoreError>;
+    fn input_schema(&self, subgraph_id: &DeploymentHash) -> Result<InputSchema, StoreError>;
 
     /// Return a bool represeting whether there is a pending graft for the subgraph
     fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
@@ -225,7 +225,7 @@ pub trait ReadStore: Send + Sync + 'static {
         query_derived: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError>;
 
-    fn input_schema(&self) -> Arc<InputSchema>;
+    fn input_schema(&self) -> InputSchema;
 }
 
 // This silly impl is needed until https://github.com/rust-lang/rust/issues/65991 is stable.
@@ -248,13 +248,13 @@ impl<T: ?Sized + ReadStore> ReadStore for Arc<T> {
         (**self).get_derived(entity_derived)
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         (**self).input_schema()
     }
 }
 
 pub trait DeploymentCursorTracker: Sync + Send + 'static {
-    fn input_schema(&self) -> Arc<InputSchema>;
+    fn input_schema(&self) -> InputSchema;
 
     /// Get a pointer to the most recently processed block in the subgraph.
     fn block_ptr(&self) -> Option<BlockPtr>;
@@ -274,7 +274,7 @@ impl<T: ?Sized + DeploymentCursorTracker> DeploymentCursorTracker for Arc<T> {
         (**self).firehose_cursor()
     }
 
-    fn input_schema(&self) -> Arc<InputSchema> {
+    fn input_schema(&self) -> InputSchema {
         (**self).input_schema()
     }
 }
@@ -564,7 +564,7 @@ pub trait QueryStore: Send + Sync {
 
     fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError>;
 
-    fn input_schema(&self) -> Result<Arc<InputSchema>, QueryExecutionError>;
+    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError>;
 
     fn network_name(&self) -> &str;
 

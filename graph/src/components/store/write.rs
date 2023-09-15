@@ -1,5 +1,5 @@
 //! Data structures and helpers for writing subgraph changes to the store
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr},
@@ -524,12 +524,12 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 /// A list of entity changes with one group per entity type
 #[derive(Debug)]
 pub struct RowGroups {
-    schema: Arc<InputSchema>,
+    schema: InputSchema,
     pub groups: Vec<RowGroup>,
 }
 
 impl RowGroups {
-    fn new(schema: Arc<InputSchema>) -> Self {
+    fn new(schema: InputSchema) -> Self {
         Self {
             schema,
             groups: Vec::new(),
@@ -633,7 +633,7 @@ pub struct Batch {
 
 impl Batch {
     pub fn new(
-        schema: Arc<InputSchema>,
+        schema: InputSchema,
         block_ptr: BlockPtr,
         firehose_cursor: FirehoseCursor,
         mut raw_mods: Vec<EntityModification>,

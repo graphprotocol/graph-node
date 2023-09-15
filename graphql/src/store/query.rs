@@ -22,7 +22,7 @@ enum OrderDirection {
 
 pub(crate) struct SchemaPair {
     pub api: Arc<ApiSchema>,
-    pub input: Arc<InputSchema>,
+    pub input: InputSchema,
 }
 
 /// Builds a EntityQuery from GraphQL arguments.
@@ -932,7 +932,7 @@ mod tests {
         let api_schema = ApiSchema::from_graphql_schema(api_schema).unwrap();
 
         SchemaPair {
-            input: Arc::new(input_schema),
+            input: input_schema,
             api: Arc::new(api_schema),
         }
     }

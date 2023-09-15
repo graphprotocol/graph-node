@@ -120,7 +120,7 @@ impl QueryStoreTrait for QueryStore {
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
-    fn input_schema(&self) -> Result<Arc<InputSchema>, QueryExecutionError> {
+    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
         let info = self.store.subgraph_info(&self.site)?;
         Ok(info.input)
     }

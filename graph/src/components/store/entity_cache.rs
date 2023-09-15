@@ -86,7 +86,7 @@ pub struct EntityCache {
     /// The store is only used to read entities.
     pub store: Arc<dyn s::ReadStore>,
 
-    pub schema: Arc<InputSchema>,
+    pub schema: InputSchema,
 }
 
 impl Debug for EntityCache {

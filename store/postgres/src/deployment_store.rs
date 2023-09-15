@@ -76,7 +76,7 @@ pub enum ReplicaId {
 #[derive(Clone)]
 pub(crate) struct SubgraphInfo {
     /// The schema as supplied by the user
-    pub(crate) input: Arc<InputSchema>,
+    pub(crate) input: InputSchema,
     /// The schema we derive from `input` with `graphql::schema::api::api_schema`
     pub(crate) api: HashMap<ApiVersion, Arc<ApiSchema>>,
     /// The block number at which this subgraph was grafted onto
@@ -511,7 +511,7 @@ impl DeploymentStore {
         };
 
         let info = SubgraphInfo {
-            input: Arc::new(manifest_info.input_schema),
+            input: manifest_info.input_schema,
             api,
             graft_block,
             debug_fork,

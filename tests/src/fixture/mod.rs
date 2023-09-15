@@ -584,7 +584,7 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
     async fn build_substreams(
         &self,
         _chain: &C,
-        _schema: Arc<InputSchema>,
+        _schema: InputSchema,
         _deployment: DeploymentLocator,
         _block_cursor: FirehoseCursor,
         _subgraph_current_block: Option<BlockPtr>,
@@ -623,7 +623,7 @@ where
     async fn build_substreams(
         &self,
         _chain: &C,
-        _schema: Arc<InputSchema>,
+        _schema: InputSchema,
         _deployment: DeploymentLocator,
         _block_cursor: FirehoseCursor,
         _subgraph_current_block: Option<BlockPtr>,
