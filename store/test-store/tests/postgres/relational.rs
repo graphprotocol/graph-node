@@ -243,7 +243,7 @@ fn insert_entity_at(
     let entities_with_keys_owned = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::onchain(entity_type, entity.id());
+            let key = entity_type.key(entity.id());
             (key, entity)
         })
         .collect::<Vec<(EntityKey, Entity)>>();
@@ -282,7 +282,7 @@ fn update_entity_at(
     let entities_with_keys_owned: Vec<(EntityKey, Entity)> = entities
         .drain(..)
         .map(|entity| {
-            let key = EntityKey::onchain(entity_type, entity.id());
+            let key = entity_type.key(entity.id());
             (key, entity)
         })
         .collect();
@@ -539,22 +539,14 @@ fn find() {
 
         // Happy path: find existing entity
         let entity = layout
-            .find(
-                conn,
-                &EntityKey::onchain(&*SCALAR_TYPE, "one"),
-                BLOCK_NUMBER_MAX,
-            )
+            .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&SCALAR_ENTITY), entity);
 
         // Find non-existing entity
         let entity = layout
-            .find(
-                conn,
-                &EntityKey::onchain(&*SCALAR_TYPE, "noone"),
-                BLOCK_NUMBER_MAX,
-            )
+            .find(conn, &SCALAR_TYPE.key("noone"), BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
     });
@@ -572,11 +564,7 @@ fn insert_null_fulltext_fields() {
 
         // Find entity with null string values
         let entity = layout
-            .find(
-                conn,
-                &EntityKey::onchain(&*NULLABLE_STRINGS_TYPE, "one"),
-                BLOCK_NUMBER_MAX,
-            )
+            .find(conn, &NULLABLE_STRINGS_TYPE.key("one"), BLOCK_NUMBER_MAX)
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
@@ -593,7 +581,7 @@ fn update() {
         entity.set("string", "updated").unwrap();
         entity.remove("strings");
         entity.set("bool", Value::Null).unwrap();
-        let key = EntityKey::onchain(&*SCALAR_TYPE, entity.id());
+        let key = SCALAR_TYPE.key(entity.id());
 
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
         let entities = vec![(key, entity.clone())];
@@ -603,11 +591,7 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(
-                conn,
-                &EntityKey::onchain(&*SCALAR_TYPE, "one"),
-                BLOCK_NUMBER_MAX,
-            )
+            .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -647,7 +631,7 @@ fn update_many() {
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
         let keys: Vec<EntityKey> = ["one", "two", "three"]
             .iter()
-            .map(|id| EntityKey::onchain(&*SCALAR_TYPE, *id))
+            .map(|id| SCALAR_TYPE.key(*id))
             .collect();
 
         let entities_vec = vec![one, two, three];
@@ -662,11 +646,7 @@ fn update_many() {
             .iter()
             .map(|&id| {
                 layout
-                    .find(
-                        conn,
-                        &EntityKey::onchain(&*SCALAR_TYPE, id),
-                        BLOCK_NUMBER_MAX,
-                    )
+                    .find(conn, &SCALAR_TYPE.key(id), BLOCK_NUMBER_MAX)
                     .unwrap_or_else(|_| panic!("Failed to read Scalar[{}]", id))
                     .unwrap()
             })
@@ -718,7 +698,7 @@ fn serialize_bigdecimal() {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d).unwrap();
 
-            let key = EntityKey::onchain(&*SCALAR_TYPE, entity.id());
+            let key = SCALAR_TYPE.key(entity.id());
             let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
             let entities = vec![(key, entity.clone())];
             let group = row_group_update(&entity_type, 0, entities);
@@ -727,11 +707,7 @@ fn serialize_bigdecimal() {
                 .expect("Failed to update");
 
             let actual = layout
-                .find(
-                    conn,
-                    &EntityKey::onchain(&*SCALAR_TYPE, "one"),
-                    BLOCK_NUMBER_MAX,
-                )
+                .find(conn, &SCALAR_TYPE.key("one"), BLOCK_NUMBER_MAX)
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
             assert_entity_eq!(entity, actual);
@@ -764,7 +740,7 @@ fn delete() {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]);
 
         // Delete where nothing is getting deleted
-        let key = EntityKey::onchain(&*SCALAR_TYPE, "no such entity");
+        let key = SCALAR_TYPE.key("no such entity");
         let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
         let mut entity_keys = vec![key];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
@@ -805,7 +781,7 @@ fn insert_many_and_delete_many() {
         // Delete entities with ids equal to "two" and "three"
         let entity_keys: Vec<_> = vec!["two", "three"]
             .into_iter()
-            .map(|key| EntityKey::onchain(&*SCALAR_TYPE, key))
+            .map(|key| SCALAR_TYPE.key(key))
             .collect();
         let group = row_group_delete(&*SCALAR_TYPE, 1, entity_keys);
         let num_removed = layout
@@ -920,7 +896,7 @@ fn revert_block() {
 
         let assert_fred = |name: &str| {
             let fred = layout
-                .find(conn, &EntityKey::onchain(&*CAT_TYPE, id), BLOCK_NUMBER_MAX)
+                .find(conn, &CAT_TYPE.key(id), BLOCK_NUMBER_MAX)
                 .unwrap()
                 .expect("there's a fred");
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())

@@ -5,7 +5,7 @@ use graph::prelude::web3::types::U256;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
-use graph::schema::{EntityKey, EntityType, InputSchema};
+use graph::schema::{EntityType, InputSchema};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph::{entity, prelude::*};
 use graph_chain_ethereum::{Chain, DataSource};
@@ -439,7 +439,7 @@ fn make_thing(id: &str, value: &str) -> (String, EntityModification) {
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
     let data = entity! { SCHEMA => id: id, value: value, extra: USER_DATA };
-    let key = EntityKey::onchain(&*THING_TYPE, id);
+    let key = THING_TYPE.key(id);
     (
         format!("{{ \"id\": \"{}\", \"value\": \"{}\"}}", id, value),
         EntityModification::insert(key, data, 0),

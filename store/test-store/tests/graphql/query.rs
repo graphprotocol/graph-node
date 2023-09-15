@@ -1,7 +1,7 @@
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
-use graph::schema::{EntityKey, InputSchema};
+use graph::schema::InputSchema;
 use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -306,7 +306,7 @@ async fn insert_test_entities(
             .map(|(typename, entities)| {
                 let entity_type = schema.entity_type(typename).unwrap();
                 entities.into_iter().map(move |data| EntityOperation::Set {
-                    key: EntityKey::onchain(&entity_type, data.id()),
+                    key: entity_type.key(data.id()),
                     data,
                 })
             })

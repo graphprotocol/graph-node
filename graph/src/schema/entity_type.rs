@@ -5,12 +5,13 @@ use serde::Serialize;
 
 use crate::{
     cheap_clone::CheapClone,
-    data::{graphql::ObjectOrInterface, store::IdType},
+    data::{graphql::ObjectOrInterface, store::IdType, value::Word},
+    data_source::causality_region::CausalityRegion,
     prelude::s,
     util::intern::Atom,
 };
 
-use super::{input_schema::POI_OBJECT, InputSchema};
+use super::{input_schema::POI_OBJECT, EntityKey, InputSchema};
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -58,6 +59,16 @@ impl EntityType {
 
     pub fn id_type(&self) -> Result<IdType, Error> {
         self.schema.id_type(self)
+    }
+
+    /// Create a key from this type for an onchain entity
+    pub fn key(&self, id: impl Into<Word>) -> EntityKey {
+        self.key_in(id, CausalityRegion::ONCHAIN)
+    }
+
+    /// Create a key from this type for an entity in the given causality region
+    pub fn key_in(&self, id: impl Into<Word>, causality_region: CausalityRegion) -> EntityKey {
+        EntityKey::new(self.cheap_clone(), id.into(), causality_region)
     }
 
     fn same_pool(&self, other: &EntityType) -> bool {

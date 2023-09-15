@@ -2,7 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
-use graph::schema::{EntityKey, EntityType, InputSchema};
+use graph::schema::{EntityType, InputSchema};
 use graph_chain_ethereum::{Mapping, MappingABI};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -282,7 +282,7 @@ fn create_test_entity(
     };
 
     EntityOperation::Set {
-        key: EntityKey::onchain(entity_type, id),
+        key: entity_type.key(id),
         data: test_entity,
     }
 }
@@ -305,7 +305,7 @@ fn get_entity_count(store: Arc<DieselStore>, subgraph_id: &DeploymentHash) -> u6
 #[test]
 fn delete_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::onchain(&*USER_TYPE, "3");
+        let entity_key = USER_TYPE.key("3");
 
         // Check that there is an entity to remove.
         writable.get(&entity_key).unwrap().unwrap();
@@ -334,7 +334,7 @@ fn get_entity_1() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
 
-        let key = EntityKey::onchain(&*USER_TYPE, "1");
+        let key = USER_TYPE.key("1");
         let result = writable.get(&key).unwrap();
 
         let bin_name = Value::Bytes("Johnton".as_bytes().into());
@@ -360,7 +360,7 @@ fn get_entity_1() {
 fn get_entity_3() {
     run_test(|_, writable, _| async move {
         let schema = ReadStore::input_schema(&writable);
-        let key = EntityKey::onchain(&*USER_TYPE, "3");
+        let key = USER_TYPE.key("3");
         let result = writable.get(&key).unwrap();
 
         let expected_entity = entity! { schema =>
@@ -383,7 +383,7 @@ fn get_entity_3() {
 #[test]
 fn insert_entity() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::onchain(&*USER_TYPE, "7".to_owned());
+        let entity_key = USER_TYPE.key("7");
         let test_entity = create_test_entity(
             "7",
             &*USER_TYPE,
@@ -413,7 +413,7 @@ fn insert_entity() {
 #[test]
 fn update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
+        let entity_key = USER_TYPE.key("1");
 
         let op = create_test_entity(
             "1",
@@ -459,7 +459,7 @@ fn update_existing() {
 #[test]
 fn partially_update_existing() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
+        let entity_key = USER_TYPE.key("1");
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1024,7 +1024,7 @@ fn revert_block_with_delete() {
             .desc("name");
 
         // Delete entity with id=2
-        let del_key = EntityKey::onchain(&*USER_TYPE, "2");
+        let del_key = USER_TYPE.key("2");
 
         // Process deletion
         transact_and_wait(
@@ -1069,7 +1069,7 @@ fn revert_block_with_delete() {
 #[test]
 fn revert_block_with_partial_update() {
     run_test(|store, writable, deployment| async move {
-        let entity_key = EntityKey::onchain(&*USER_TYPE, "1");
+        let entity_key = USER_TYPE.key("1");
         let schema = writable.input_schema();
 
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
@@ -1165,7 +1165,7 @@ fn revert_block_with_dynamic_data_source_operations() {
         let schema = writable.input_schema();
 
         // Create operations to add a user
-        let user_key = EntityKey::onchain(&*USER_TYPE, "1");
+        let user_key = USER_TYPE.key("1");
         let partial_entity = entity! { schema => id: "1", name: "Johnny Boy", email: Value::Null };
 
         // Get the original user for comparisons
@@ -1295,7 +1295,7 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             added_entities
                 .iter()
                 .map(|(id, data)| EntityOperation::Set {
-                    key: EntityKey::onchain(&*USER_TYPE, id),
+                    key: USER_TYPE.key(id.as_str()),
                     data: data.clone(),
                 })
                 .collect(),
@@ -1306,13 +1306,13 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
         // Update an entity in the store
         let updated_entity = entity! { schema => id: "1", name: "Johnny" };
         let update_op = EntityOperation::Set {
-            key: EntityKey::onchain(&*USER_TYPE, "1"),
+            key: USER_TYPE.key("1"),
             data: updated_entity.clone(),
         };
 
         // Delete an entity in the store
         let delete_op = EntityOperation::Remove {
-            key: EntityKey::onchain(&*USER_TYPE, "2"),
+            key: USER_TYPE.key("2"),
         };
 
         // Commit update & delete ops
@@ -1501,7 +1501,7 @@ fn handle_large_string_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, name: name };
 
-        let key = EntityKey::onchain(&*USER_TYPE, id);
+        let key = USER_TYPE.key(id);
 
         EntityModification::insert(key, data, block)
     }
@@ -1596,7 +1596,7 @@ fn handle_large_bytea_with_index() {
     ) -> EntityModification {
         let data = entity! { schema => id: id, bin_name: scalar::Bytes::from(name) };
 
-        let key = EntityKey::onchain(&*USER_TYPE, id);
+        let key = USER_TYPE.key(id);
 
         EntityModification::insert(key, data, block)
     }
@@ -1801,7 +1801,7 @@ fn window() {
         let entity = entity! { TEST_SUBGRAPH_SCHEMA => id: id, age: age, favorite_color: color };
 
         EntityOperation::Set {
-            key: EntityKey::onchain(entity_type, id),
+            key: entity_type.key(id),
             data: entity,
         }
     }

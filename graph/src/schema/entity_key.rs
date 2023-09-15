@@ -31,13 +31,15 @@ impl EntityKey {
 }
 
 impl EntityKey {
-    // For use in tests only
-    #[cfg(debug_assertions)]
-    pub fn onchain(entity_type: &EntityType, entity_id: impl Into<String>) -> Self {
+    pub(in crate::schema) fn new(
+        entity_type: EntityType,
+        entity_id: Word,
+        causality_region: CausalityRegion,
+    ) -> Self {
         Self {
-            entity_type: entity_type.clone(),
-            entity_id: entity_id.into().into(),
-            causality_region: CausalityRegion::ONCHAIN,
+            entity_type,
+            entity_id,
+            causality_region,
         }
     }
 

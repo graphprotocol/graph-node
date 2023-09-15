@@ -119,7 +119,7 @@ pub fn row_group_delete(
 
 fn insert_entity(conn: &PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
     let entity_type = layout.input_schema.entity_type(entity_type).unwrap();
-    let key = EntityKey::onchain(&entity_type, entity.id());
+    let key = entity_type.key(entity.id());
 
     let entities = vec![(key.clone(), entity)];
     let group = row_group_insert(&entity_type, 0, entities);
@@ -216,7 +216,7 @@ fn bad_id() {
             layout: &Layout,
             id: &str,
         ) -> Result<Option<Entity>, StoreError> {
-            let key = EntityKey::onchain(&*THING_TYPE, id);
+            let key = THING_TYPE.key(id);
             layout.find(conn, &key, BLOCK_NUMBER_MAX)
         }
 
@@ -256,7 +256,7 @@ fn bad_id() {
 fn find() {
     run_test(|conn, layout| {
         fn find_entity(conn: &PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
-            let key = EntityKey::onchain(&*THING_TYPE, id);
+            let key = THING_TYPE.key(id);
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
                 .expect(&format!("Failed to read Thing[{}]", id))
@@ -321,7 +321,7 @@ fn update() {
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
         entity.set("name", "Moo").unwrap();
-        let key = EntityKey::onchain(&*THING_TYPE, entity.id());
+        let key = THING_TYPE.key(entity.id());
 
         let entity_id = entity.id();
         let entity_type = key.entity_type.clone();
@@ -332,11 +332,7 @@ fn update() {
             .expect("Failed to update");
 
         let actual = layout
-            .find(
-                conn,
-                &EntityKey::onchain(&*THING_TYPE, entity_id),
-                BLOCK_NUMBER_MAX,
-            )
+            .find(conn, &THING_TYPE.key(entity_id), BLOCK_NUMBER_MAX)
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 
@@ -355,7 +351,7 @@ fn delete() {
         insert_entity(conn, layout, "Thing", two);
 
         // Delete where nothing is getting deleted
-        let key = EntityKey::onchain(&*THING_TYPE, "ffff".to_owned());
+        let key = THING_TYPE.key("ffff");
         let entity_type = key.entity_type.clone();
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());

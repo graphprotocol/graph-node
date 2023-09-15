@@ -897,8 +897,7 @@ impl<'a> Iterator for WriteChunkIter<'a> {
 mod test {
     use crate::{
         components::store::{
-            write::EntityModification, write::EntityOp, BlockNumber, EntityKey, EntityType,
-            StoreError,
+            write::EntityModification, write::EntityOp, BlockNumber, EntityType, StoreError,
         },
         entity,
         prelude::DeploymentHash,
@@ -916,7 +915,7 @@ mod test {
             .iter()
             .zip(blocks.iter())
             .map(|(value, block)| EntityModification::Remove {
-                key: EntityKey::onchain(&*ROW_GROUP_TYPE, value.to_string()),
+                key: ROW_GROUP_TYPE.key(value.to_string()),
                 block: *block,
             })
             .collect();
@@ -989,7 +988,7 @@ mod test {
             use Mod::*;
 
             let value = value.clone();
-            let key = EntityKey::onchain(&*THING_TYPE, "one");
+            let key = THING_TYPE.key("one");
             match value {
                 Ins(block) => EntityModification::Insert {
                     key,
@@ -1093,7 +1092,7 @@ mod test {
     fn last_op() {
         #[track_caller]
         fn is_remove(group: &RowGroup, at: BlockNumber) {
-            let key = EntityKey::onchain(&*THING_TYPE, "one");
+            let key = THING_TYPE.key("one");
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1105,7 +1104,7 @@ mod test {
         }
         #[track_caller]
         fn is_write(group: &RowGroup, at: BlockNumber) {
-            let key = EntityKey::onchain(&*THING_TYPE, "one");
+            let key = THING_TYPE.key("one");
             let op = group.last_op(&key, at).unwrap();
 
             assert!(
@@ -1118,7 +1117,7 @@ mod test {
 
         use Mod::*;
 
-        let key = EntityKey::onchain(&*THING_TYPE, "one");
+        let key = THING_TYPE.key("one");
 
         // This will result in two mods int the group:
         //   [ InsC(1,2), InsC(2,3) ]

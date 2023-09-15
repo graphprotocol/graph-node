@@ -107,7 +107,7 @@ fn block_pointer(number: u8) -> BlockPtr {
 }
 
 fn count_key(id: &str) -> EntityKey {
-    EntityKey::onchain(&*COUNTER_TYPE, id)
+    COUNTER_TYPE.key(id)
 }
 
 async fn insert_count(store: &Arc<DieselSubgraphStore>, deployment: &DeploymentLocator, count: u8) {

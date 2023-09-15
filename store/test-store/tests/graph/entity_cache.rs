@@ -458,7 +458,7 @@ fn create_account_entity(id: &str, name: &str, email: &str, age: i32) -> EntityO
         entity! { LOAD_RELATED_SUBGRAPH => id: id, name: name, email: email, age: age };
 
     EntityOperation::Set {
-        key: EntityKey::onchain(&*ACCOUNT_TYPE, id),
+        key: ACCOUNT_TYPE.key(id),
         data: test_entity,
     }
 }
@@ -469,7 +469,7 @@ fn create_wallet_entity(id: &str, account_id: &str, balance: i32) -> Entity {
 fn create_wallet_operation(id: &str, account_id: &str, balance: i32) -> EntityOperation {
     let test_wallet = create_wallet_entity(id, account_id, balance);
     EntityOperation::Set {
-        key: EntityKey::onchain(&*WALLET_TYPE, id),
+        key: WALLET_TYPE.key(id),
         data: test_wallet,
     }
 }
@@ -634,7 +634,7 @@ fn check_for_insert_async_not_related() {
 fn check_for_update_async_related() {
     run_store_test(|mut cache, store, deployment, writable| async move {
         let account_id = "1";
-        let entity_key = EntityKey::onchain(&*WALLET_TYPE, "1");
+        let entity_key = WALLET_TYPE.key("1");
         let wallet_entity_update = create_wallet_operation("1", account_id, 79_i32);
 
         let new_data = match wallet_entity_update {
@@ -671,7 +671,7 @@ fn check_for_update_async_related() {
 fn check_for_delete_async_related() {
     run_store_test(|mut cache, store, deployment, _writable| async move {
         let account_id = "1";
-        let del_key = EntityKey::onchain(&*WALLET_TYPE, "1");
+        let del_key = WALLET_TYPE.key("1");
         // delete wallet
         transact_entity_operations(
             &store,
@@ -701,12 +701,12 @@ fn check_for_delete_async_related() {
 fn scoped_get() {
     run_store_test(|mut cache, _store, _deployment, _writable| async move {
         // Key for an existing entity that is in the store
-        let key1 = EntityKey::onchain(&*WALLET_TYPE, "1");
+        let key1 = WALLET_TYPE.key("1");
         let wallet1 = create_wallet_entity("1", "1", 67);
 
         // Create a new entity that is not in the store
         let wallet5 = create_wallet_entity("5", "5", 100);
-        let key5 = EntityKey::onchain(&*WALLET_TYPE, "5");
+        let key5 = WALLET_TYPE.key("5");
         cache.set(key5.clone(), wallet5.clone()).unwrap();
 
         // For the new entity, we can retrieve it with either scope
@@ -748,7 +748,7 @@ fn no_internal_keys() {
             assert_eq!(None, entity.get("__typename"));
             assert_eq!(None, entity.get(&*PARENT_ID));
         }
-        let key = EntityKey::onchain(&*WALLET_TYPE, "1");
+        let key = WALLET_TYPE.key("1");
 
         let wallet = writable.get(&key).unwrap().unwrap();
         check(&wallet);

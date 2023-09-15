@@ -408,7 +408,7 @@ fn entity_validation() {
     use crate::data::store;
     use crate::entity;
     use crate::prelude::{DeploymentHash, Entity};
-    use crate::schema::{EntityKey, EntityType, InputSchema};
+    use crate::schema::{EntityType, InputSchema};
 
     const DOCUMENT: &str = "
     enum Color { red, yellow, blue }
@@ -440,7 +440,7 @@ fn entity_validation() {
 
     fn check(thing: Entity, errmsg: &str) {
         let id = thing.id();
-        let key = EntityKey::onchain(&*THING_TYPE, id.clone());
+        let key = THING_TYPE.key(id.clone());
 
         let err = thing.validate(&SCHEMA, &key);
         if errmsg.is_empty() {

@@ -1,6 +1,6 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::value::Word;
-use graph::schema::{EntityKey, EntityType, InputSchema};
+use graph::schema::{EntityType, InputSchema};
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
@@ -258,7 +258,7 @@ fn create_test_entity(
 
     let entity_type = TEST_SUBGRAPH_SCHEMA.entity_type(entity_type).unwrap();
     EntityOperation::Set {
-        key: EntityKey::onchain(&entity_type, id),
+        key: entity_type.key(id),
         data: test_entity,
     }
 }
@@ -322,7 +322,7 @@ async fn check_graft(
     // Make our own entries for block 2
     shaq.set("email", "shaq@gmail.com").unwrap();
     let op = EntityOperation::Set {
-        key: EntityKey::onchain(&*USER_TYPE, "3"),
+        key: USER_TYPE.key("3"),
         data: shaq,
     };
     transact_and_wait(&store, &deployment, BLOCKS[2].clone(), vec![op])
