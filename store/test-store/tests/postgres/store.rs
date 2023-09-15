@@ -2,7 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use graph_chain_ethereum::{Mapping, MappingABI};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -16,7 +16,7 @@ use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
     components::store::{
-        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, EntityType, StatusStore,
+        BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore,
         SubscriptionManager as _,
     },
     prelude::ethabi::Contract,

@@ -2,13 +2,13 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::mem::discriminant;
 
 use graph::data::graphql::ext::DirectiveFinder;
+use graph::data::graphql::ObjectOrInterface;
 use graph::data::graphql::TypeExt as _;
 use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::*;
 use graph::schema::ast::{self as sast, FilterOp};
-use graph::schema::{ApiSchema, InputSchema};
-use graph::{components::store::EntityType, data::graphql::ObjectOrInterface};
+use graph::schema::{ApiSchema, EntityType, InputSchema};
 
 use crate::execution::ast as a;
 

@@ -22,11 +22,8 @@ use graph::prelude::{
     EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
     EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{FulltextAlgorithm, InputSchema};
-use graph::{
-    components::store::{AttributeNames, EntityType},
-    data::store::scalar,
-};
+use graph::schema::{EntityType, FulltextAlgorithm, InputSchema};
+use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

@@ -6,9 +6,9 @@ use diesel::{
     sql_types::{Array, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
-use graph::components::store::EntityType;
 use graph::components::store::VersionStats;
 use graph::prelude::BlockNumber;
+use graph::schema::EntityType;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;

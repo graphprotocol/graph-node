@@ -1,5 +1,5 @@
-use crate::schema::Schema;
-use crate::{components::store::EntityType, prelude::s};
+use crate::prelude::s;
+use crate::schema::{EntityType, Schema};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};

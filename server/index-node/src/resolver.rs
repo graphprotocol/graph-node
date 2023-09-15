@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 
 use graph::data::query::Trace;
+use graph::schema::EntityType;
 use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::store::{BlockPtrForNumber, BlockStore, EntityType, Store};
+use graph::components::store::{BlockPtrForNumber, BlockStore, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::status;

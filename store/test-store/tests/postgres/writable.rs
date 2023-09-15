@@ -2,15 +2,13 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use test_store::*;
 
-use graph::components::store::{
-    DeploymentLocator, DerivedEntityQuery, EntityKey, EntityType, WritableStore,
-};
+use graph::components::store::{DeploymentLocator, DerivedEntityQuery, EntityKey, WritableStore};
 use graph::data::subgraph::*;
 use graph::semver::Version;
 use graph::{entity, prelude::*};

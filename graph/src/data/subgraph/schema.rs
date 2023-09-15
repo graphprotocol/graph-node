@@ -9,12 +9,13 @@ use std::str::FromStr;
 use std::{fmt, fmt::Display};
 
 use super::DeploymentHash;
+use crate::blockchain::Blockchain;
 use crate::data::graphql::TryFromValue;
 use crate::data::store::Value;
 use crate::data::subgraph::SubgraphManifest;
 use crate::prelude::*;
+use crate::schema::EntityType;
 use crate::util::stable_hash_glue::impl_stable_hash;
-use crate::{blockchain::Blockchain, components::store::EntityType};
 
 pub const POI_TABLE: &str = "poi2$";
 

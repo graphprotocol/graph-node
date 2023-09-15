@@ -4,9 +4,9 @@ use std::{collections::BTreeSet, io::Write};
 
 use futures::compat::Future01CompatExt;
 use graph::prelude::DeploymentHash;
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use graph::{
-    components::store::{EntityType, SubscriptionManager as _},
+    components::store::SubscriptionManager as _,
     prelude::{serde_json, Error, Stream, SubscriptionFilter},
 };
 use graph_store_postgres::connection_pool::ConnectionPool;

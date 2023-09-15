@@ -13,14 +13,9 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use graph::{blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError};
 use graph::{
-    components::store::EntityType,
-    prelude::{
-        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
-        DeploymentHash, DeploymentState, StoreError,
-    },
-    schema::InputSchema,
+    blockchain::block_stream::FirehoseCursor, data::subgraph::schema::SubgraphError,
+    schema::EntityType,
 };
 use graph::{
     data::subgraph::{
@@ -28,6 +23,13 @@ use graph::{
         SubgraphFeature,
     },
     util::backoff::ExponentialBackoff,
+};
+use graph::{
+    prelude::{
+        anyhow, bigdecimal::ToPrimitive, hex, web3::types::H256, BigDecimal, BlockNumber, BlockPtr,
+        DeploymentHash, DeploymentState, StoreError,
+    },
+    schema::InputSchema,
 };
 use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};

@@ -27,12 +27,14 @@ mod api;
 /// Utilities for working with GraphQL schema ASTs.
 pub mod ast;
 
+mod entity_type;
 mod fulltext;
 mod input_schema;
 
 pub use api::{api_schema, is_introspection_field, APISchemaError, INTROSPECTION_QUERY_TYPE};
 
 pub use api::{ApiSchema, ErrorPolicy};
+pub use entity_type::{AsEntityTypeName, EntityType};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
 pub use input_schema::InputSchema;
 

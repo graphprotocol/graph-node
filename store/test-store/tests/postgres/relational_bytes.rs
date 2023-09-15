@@ -8,21 +8,18 @@ use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
+use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
     o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
     EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics,
     WindowAttribute, BLOCK_NUMBER_MAX,
-};
-use graph::{
-    components::store::EntityType,
-    data::store::scalar::{BigDecimal, BigInt},
 };
 use graph_store_postgres::{
     layout_for_tests::make_dummy_site,

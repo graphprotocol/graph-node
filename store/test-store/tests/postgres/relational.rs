@@ -10,7 +10,7 @@ use graph::prelude::{
     EntityOrder, EntityQuery, Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
@@ -24,7 +24,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use graph::{
-    components::store::{AttributeNames, EntityType},
+    components::store::AttributeNames,
     data::store::scalar::{BigDecimal, BigInt, Bytes},
 };
 use graph_store_postgres::{

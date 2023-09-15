@@ -1,8 +1,9 @@
 //! Various implementations of GasSizeOf;
 
 use crate::{
-    components::store::{EntityKey, EntityType, LoadRelatedRequest},
+    components::store::{EntityKey, LoadRelatedRequest},
     data::store::{scalar::Bytes, Value},
+    schema::EntityType,
 };
 
 use super::{Gas, GasSizeOf, SaturatingInto as _};

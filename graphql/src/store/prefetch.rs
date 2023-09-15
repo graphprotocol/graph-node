@@ -13,8 +13,8 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Instant;
 
-use graph::schema::{ast as sast, InputSchema};
-use graph::{components::store::EntityType, data::graphql::*};
+use graph::data::graphql::*;
+use graph::schema::{ast as sast, EntityType, InputSchema};
 use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{

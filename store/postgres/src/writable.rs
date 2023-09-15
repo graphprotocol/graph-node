@@ -19,7 +19,7 @@ use graph::prelude::{
     BlockNumber, CacheWeight, Entity, MetricsRegistry, SubgraphDeploymentEntity,
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
-use graph::schema::InputSchema;
+use graph::schema::{EntityType, InputSchema};
 use graph::slog::{info, warn};
 use graph::tokio::select;
 use graph::tokio::sync::Notify;
@@ -27,7 +27,7 @@ use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
-    components::store::{self, write::EntityOp, EntityType, WritableStore as WritableStoreTrait},
+    components::store::{self, write::EntityOp, WritableStore as WritableStoreTrait},
     data::subgraph::schema::SubgraphError,
     prelude::{
         BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,

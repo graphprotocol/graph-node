@@ -6,14 +6,15 @@ use std::time::{Duration, Instant};
 
 use graph::data::value::Word;
 
+use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
 use graph::blockchain::Blockchain;
+use graph::components::store::EntityKey;
 use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
-use graph::components::store::{EntityKey, EntityType};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };

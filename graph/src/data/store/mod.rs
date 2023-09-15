@@ -1,9 +1,9 @@
 use crate::{
-    components::store::{DeploymentLocator, EntityKey, EntityType},
+    components::store::{DeploymentLocator, EntityKey},
     data::graphql::ObjectTypeExt,
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
-    schema::InputSchema,
+    schema::{EntityType, InputSchema},
     util::intern::{self, AtomPool},
     util::intern::{Error as InternError, NullValue, Object},
 };

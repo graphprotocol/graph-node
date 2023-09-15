@@ -13,10 +13,11 @@ use crate::{
     },
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, EntityType, StoredDynamicDataSource},
+        store::{BlockNumber, StoredDynamicDataSource},
     },
     data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
+    schema::EntityType,
 };
 use anyhow::Error;
 use semver::Version;

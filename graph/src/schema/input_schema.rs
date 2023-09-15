@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Error};
 use store::Entity;
 
 use crate::cheap_clone::CheapClone;
-use crate::components::store::{AsEntityTypeName, EntityKey, EntityType, LoadRelatedRequest};
+use crate::components::store::{EntityKey, LoadRelatedRequest};
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
 use crate::data::store::{
@@ -19,7 +19,7 @@ use crate::schema::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, Schema, SchemaValidationError};
+use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
 
 /// The name of the PoI entity type
 const POI_OBJECT: &str = "Poi$";

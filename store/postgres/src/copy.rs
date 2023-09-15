@@ -32,9 +32,9 @@ use diesel::{
     RunQueryDsl,
 };
 use graph::{
-    components::store::EntityType,
     constraint_violation,
     prelude::{info, o, warn, BlockNumber, BlockPtr, Logger, StoreError, ENV_VARS},
+    schema::EntityType,
 };
 
 use crate::{

@@ -3,7 +3,6 @@ mod err;
 mod traits;
 pub mod write;
 
-use anyhow::{bail, Error};
 pub use entity_cache::{EntityCache, GetScope, ModificationsAndCache};
 use futures03::future::{FutureExt, TryFutureExt};
 use slog::{trace, Logger};
@@ -18,7 +17,6 @@ pub use write::Batch;
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use serde::{Deserialize, Serialize};
-use std::borrow::Borrow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
@@ -32,102 +30,15 @@ use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::constraint_violation;
-use crate::data::graphql::ObjectOrInterface;
 use crate::data::store::scalar::Bytes;
 use crate::data::store::Value;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::env::ENV_VARS;
-use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
-use crate::schema::InputSchema;
-use crate::util::intern::{self, AtomPool};
+use crate::prelude::{Attribute, DeploymentHash, SubscriptionFilter, ValueType};
+use crate::schema::{EntityType, InputSchema};
+use crate::util::intern;
 use crate::util::stats::MovingStats;
-
-/// The type name of an entity. This is the string that is used in the
-/// subgraph's GraphQL schema as `type NAME @entity { .. }`
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EntityType(Word);
-
-impl EntityType {
-    /// Construct a new entity type. Ideally, this is only called when
-    /// `entity_type` either comes from the GraphQL schema, or from
-    /// the database from fields that are known to contain a valid entity type
-    pub fn new(pool: &Arc<AtomPool>, entity_type: &str) -> Result<Self, Error> {
-        match pool.lookup(entity_type) {
-            Some(_) => Ok(EntityType(Word::from(entity_type))),
-            None => bail!("entity type `{}` is not interned", entity_type),
-        }
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    pub fn into_string(self) -> String {
-        self.0.to_string()
-    }
-
-    pub fn is_poi(&self) -> bool {
-        self.0.as_str() == "Poi$"
-    }
-}
-
-impl fmt::Display for EntityType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl Borrow<str> for EntityType {
-    fn borrow(&self) -> &str {
-        &self.0
-    }
-}
-
-impl CheapClone for EntityType {}
-
-impl std::fmt::Debug for EntityType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "EntityType({})", self.0)
-    }
-}
-
-pub trait AsEntityTypeName {
-    fn name(&self) -> &str;
-}
-
-impl AsEntityTypeName for &str {
-    fn name(&self) -> &str {
-        self
-    }
-}
-
-impl AsEntityTypeName for &String {
-    fn name(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl AsEntityTypeName for &s::ObjectType {
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl AsEntityTypeName for &s::InterfaceType {
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl AsEntityTypeName for ObjectOrInterface<'_> {
-    fn name(&self) -> &str {
-        match self {
-            ObjectOrInterface::Object(object) => &object.name,
-            ObjectOrInterface::Interface(interface) => &interface.name,
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityFilterDerivative(bool);

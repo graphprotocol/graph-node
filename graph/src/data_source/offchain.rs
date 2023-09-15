@@ -3,13 +3,14 @@ use crate::{
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::LinkResolver,
-        store::{BlockNumber, EntityType, StoredDynamicDataSource},
+        store::{BlockNumber, StoredDynamicDataSource},
         subgraph::DataSourceTemplateInfo,
     },
     data::{store::scalar::Bytes, subgraph::SPEC_VERSION_0_0_7, value::Word},
     data_source,
     ipfs_client::CidFile,
     prelude::{DataSourceContext, Link},
+    schema::EntityType,
 };
 use anyhow::{anyhow, Context, Error};
 use itertools::Itertools;
