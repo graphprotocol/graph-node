@@ -410,6 +410,29 @@ impl<'a> Join<'a> {
     }
 }
 
+/// Distinguish between a root GraphQL query and nested queries. For root
+/// queries, there is no parent type, and it doesn't really make sense to
+/// worry about join conditions since there is only one parent (the root).
+/// In particular, the parent type for root queries is `Query` which is not
+/// an entity type, and we would create a `Join` with a fake entity type for
+/// the parent type
+enum MaybeJoin<'a> {
+    Root { child_type: ObjectOrInterface<'a> },
+    Nested(Join<'a>),
+}
+
+impl<'a> MaybeJoin<'a> {
+    fn child_type(&self) -> ObjectOrInterface<'_> {
+        match self {
+            MaybeJoin::Root { child_type } => child_type.clone(),
+            MaybeJoin::Nested(Join {
+                child_type,
+                conds: _,
+            }) => child_type.clone(),
+        }
+    }
+}
+
 /// Link children to their parents. The child nodes are distributed into the
 /// parent nodes according to the `parent_id` returned by the database in
 /// each child as attribute `g$parent_id`, and are stored in the
@@ -538,6 +561,7 @@ fn execute_selection_set<'a>(
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
     let schema = &ctx.query.schema;
     let mut errors: Vec<QueryExecutionError> = Vec::new();
+    let at_root = is_root_node(parents.iter());
 
     // Process all field groups in order
     for (object_type, fields) in selection_set.interior_fields() {
@@ -549,7 +573,7 @@ fn execute_selection_set<'a>(
         }
 
         // Filter out parents that do not match the type condition.
-        let mut parents: Vec<&mut Node> = if is_root_node(parents.iter()) {
+        let mut parents: Vec<&mut Node> = if at_root {
             parents.iter_mut().collect()
         } else {
             parents
@@ -570,12 +594,16 @@ fn execute_selection_set<'a>(
                 .object_or_interface(field_type.field_type.get_base_type())
                 .expect("we only collect fields that are objects or interfaces");
 
-            let join = Join::new(
-                ctx.query.schema.as_ref(),
-                object_type,
-                child_type,
-                &field.name,
-            );
+            let join = if at_root {
+                MaybeJoin::Root { child_type }
+            } else {
+                MaybeJoin::Nested(Join::new(
+                    ctx.query.schema.as_ref(),
+                    object_type,
+                    child_type,
+                    &field.name,
+                ))
+            };
 
             // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
             // If this environment variable is set, the program will use an empty collection that,
@@ -633,7 +661,7 @@ fn execute_field(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     parents: &[&mut Node],
-    join: &Join<'_>,
+    join: &MaybeJoin<'_>,
     field: &a::Field,
     field_definition: &s::Field,
     selected_attrs: SelectedAttributes,
@@ -663,13 +691,13 @@ fn fetch(
     resolver: &StoreResolver,
     ctx: &ExecutionContext<impl Resolver>,
     parents: &[&mut Node],
-    join: &Join<'_>,
+    join: &MaybeJoin<'_>,
     field: &a::Field,
     multiplicity: ChildMultiplicity,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
     let mut query = build_query(
-        join.child_type,
+        join.child_type(),
         resolver.block_number(),
         field,
         ctx.query.schema.types_for_interface(),
@@ -695,7 +723,7 @@ fn fetch(
         );
     }
 
-    if !is_root_node(parents.iter().map(|p| &**p)) {
+    if let MaybeJoin::Nested(join) = join {
         // For anything but the root node, restrict the children we select
         // by the parent list
         let windows = join.windows(parents, multiplicity, &query.collection);
