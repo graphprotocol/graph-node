@@ -373,52 +373,6 @@ impl<'a> Join<'a> {
         Join { child_type, conds }
     }
 
-    /// Perform the join. The child nodes are distributed into the parent nodes
-    /// according to the `parent_id` returned by the database in each child as
-    /// attribute `g$parent_id`, and are stored in the `response_key` entry
-    /// in each parent's `children` map.
-    ///
-    /// The `children` must contain the nodes in the correct order for each
-    /// parent; we simply pick out matching children for each parent but
-    /// otherwise maintain the order in `children`
-    fn perform(parents: &mut [&mut Node], children: Vec<Node>, response_key: &str) {
-        let children: Vec<_> = children.into_iter().map(Rc::new).collect();
-
-        if parents.len() == 1 {
-            let parent = parents.first_mut().expect("we just checked");
-            parent.set_children(response_key.to_owned(), children);
-            return;
-        }
-
-        // Build a map parent_id -> Vec<child> that we will use to add
-        // children to their parent. This relies on the fact that interfaces
-        // make sure that id's are distinct across all implementations of the
-        // interface.
-        let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
-        for child in children.iter() {
-            match child
-                .get(&*PARENT_ID)
-                .expect("the query that produces 'child' ensures there is always a g$parent_id")
-            {
-                r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
-                _ => unreachable!("the parent_id returned by the query is always a string"),
-            }
-        }
-
-        // Add appropriate children using grouped map
-        for parent in parents {
-            // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
-            // matching `children`, the field gets set (to an empty `Vec`).
-            //
-            // This `insert` will overwrite in the case where the response key occurs both at the
-            // interface level and in nested object type conditions. The values for the interface
-            // query are always joined first, and may then be overwritten by the merged selection
-            // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-            let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
-            parent.set_children(response_key.to_owned(), values.unwrap_or_default());
-        }
-    }
-
     fn windows(
         &self,
         parents: &[&mut Node],
@@ -453,6 +407,55 @@ impl<'a> Join<'a> {
             }
         }
         windows
+    }
+}
+
+/// Link children to their parents. The child nodes are distributed into the
+/// parent nodes according to the `parent_id` returned by the database in
+/// each child as attribute `g$parent_id`, and are stored in the
+/// `response_key` entry in each parent's `children` map.
+///
+/// The `children` must contain the nodes in the correct order for each
+/// parent; we simply pick out matching children for each parent but
+/// otherwise maintain the order in `children`
+///
+/// If `parents` only has one entry, add all children to that one parent. In
+/// particular, this is what happens for toplevel queries.
+fn add_children(parents: &mut [&mut Node], children: Vec<Node>, response_key: &str) {
+    let children: Vec<_> = children.into_iter().map(Rc::new).collect();
+
+    if parents.len() == 1 {
+        let parent = parents.first_mut().expect("we just checked");
+        parent.set_children(response_key.to_owned(), children);
+        return;
+    }
+
+    // Build a map parent_id -> Vec<child> that we will use to add
+    // children to their parent. This relies on the fact that interfaces
+    // make sure that id's are distinct across all implementations of the
+    // interface.
+    let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
+    for child in children.iter() {
+        match child
+            .get(&*PARENT_ID)
+            .expect("the query that produces 'child' ensures there is always a g$parent_id")
+        {
+            r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
+            _ => unreachable!("the parent_id returned by the query is always a string"),
+        }
+    }
+
+    // Add appropriate children using grouped map
+    for parent in parents {
+        // Set the `response_key` field in `parent`. Make sure that even if `parent` has no
+        // matching `children`, the field gets set (to an empty `Vec`).
+        //
+        // This `insert` will overwrite in the case where the response key occurs both at the
+        // interface level and in nested object type conditions. The values for the interface
+        // query are always joined first, and may then be overwritten by the merged selection
+        // set under the object type condition. See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
+        let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
+        parent.set_children(response_key.to_owned(), values.unwrap_or_default());
     }
 }
 
@@ -602,7 +605,7 @@ fn execute_selection_set<'a>(
                         &field.selection_set,
                     ) {
                         Ok((children, trace)) => {
-                            Join::perform(&mut parents, children, field.response_key());
+                            add_children(&mut parents, children, field.response_key());
                             let weight =
                                 parents.iter().map(|parent| parent.weight()).sum::<usize>();
                             check_result_size(ctx, weight)?;
