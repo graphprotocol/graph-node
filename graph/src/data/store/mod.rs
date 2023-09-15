@@ -931,7 +931,7 @@ impl Entity {
         for field in self.0.atoms() {
             if !schema.has_field(&key.entity_type, field) {
                 return Err(EntityValidationError::FieldsNotDefined {
-                    entity: key.entity_type.clone().into_string(),
+                    entity: key.entity_type.to_string(),
                 });
             }
         }

@@ -22,7 +22,7 @@ use super::fulltext::FulltextDefinition;
 use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
 
 /// The name of the PoI entity type
-const POI_OBJECT: &str = "Poi$";
+pub(crate) const POI_OBJECT: &str = "Poi$";
 /// The name of the digest attribute of POI entities
 const POI_DIGEST: &str = "digest";
 
@@ -401,18 +401,16 @@ impl InputSchema {
     }
 
     pub fn poi_type(&self) -> EntityType {
-        EntityType::new(&self.inner.pool, POI_OBJECT).unwrap()
+        // unwrap: we make sure to put POI_OBJECT into the pool
+        EntityType::new(self.cheap_clone(), POI_OBJECT).unwrap()
     }
 
     pub fn poi_digest(&self) -> Word {
         Word::from(POI_DIGEST)
     }
 
-    pub fn atom(&self, s: &str) -> Option<Atom> {
-        self.inner.pool.lookup(s)
-    }
-
-    pub fn pool(&self) -> &Arc<AtomPool> {
+    // A helper for the `EntityType` constructor
+    pub(in crate::schema) fn pool(&self) -> &Arc<AtomPool> {
         &self.inner.pool
     }
 
@@ -421,7 +419,7 @@ impl InputSchema {
     /// of `named` is based on user input. If `named` is an internal object,
     /// like a `ObjectType`, it is safe to unwrap the result
     pub fn entity_type<N: AsEntityTypeName>(&self, named: N) -> Result<EntityType, Error> {
-        EntityType::new(&self.inner.pool, named.name())
+        EntityType::new(self.cheap_clone(), named.name())
     }
 }
 
