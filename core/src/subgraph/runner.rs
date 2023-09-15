@@ -6,9 +6,7 @@ use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
-use graph::components::store::{
-    EmptyStore, EntityKey, GetScope, ReadStore, StoredDynamicDataSource,
-};
+use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -23,6 +21,7 @@ use graph::data_source::{
 };
 use graph::env::EnvVars;
 use graph::prelude::*;
+use graph::schema::EntityKey;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

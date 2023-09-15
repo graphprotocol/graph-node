@@ -9,14 +9,14 @@ use graph::data_source::CausalityRegion;
 use graph::data_source::DataSource;
 use graph::log;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
+use graph::schema::EntityKey;
 use graph::schema::EntityType;
 use graph::schema::InputSchema;
 use graph::semver::Version;
 use graph::{
     blockchain::block_stream::FirehoseCursor, blockchain::ChainIdentifier,
-    components::store::DeploymentLocator, components::store::EntityKey,
-    components::store::StatusStore, components::store::StoredDynamicDataSource,
-    data::subgraph::status, prelude::NodeId,
+    components::store::DeploymentLocator, components::store::StatusStore,
+    components::store::StoredDynamicDataSource, data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
     execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,

@@ -13,7 +13,7 @@ use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range
 use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
-use graph::components::store::{DerivedEntityQuery, EntityKey};
+use graph::components::store::DerivedEntityQuery;
 use graph::data::store::{NULL, PARENT_ID};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
@@ -22,7 +22,7 @@ use graph::prelude::{
     EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
     EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
-use graph::schema::{EntityType, FulltextAlgorithm, InputSchema};
+use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;

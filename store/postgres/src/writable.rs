@@ -7,9 +7,7 @@ use std::time::{Duration, Instant};
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
-use graph::components::store::{
-    Batch, DeploymentCursorTracker, DerivedEntityQuery, EntityKey, ReadStore,
-};
+use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
@@ -19,7 +17,7 @@ use graph::prelude::{
     BlockNumber, CacheWeight, Entity, MetricsRegistry, SubgraphDeploymentEntity,
     SubgraphStore as _, BLOCK_NUMBER_MAX,
 };
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::slog::{info, warn};
 use graph::tokio::select;
 use graph::tokio::sync::Notify;

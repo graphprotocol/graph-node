@@ -6,14 +6,13 @@ use crate::{codec, Block, Chain, EntityChanges, ParsedChanges, TriggerData};
 use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
 };
-use graph::components::store::EntityKey;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::BigDecimal;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, BlockPtr, Logger, Value};
-use graph::schema::InputSchema;
+use graph::schema::{EntityKey, InputSchema};
 use graph::slog::o;
 use graph::substreams::Clock;
 use graph::substreams_rpc::response::Message as SubstreamsMessage;

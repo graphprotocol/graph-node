@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
-use crate::components::store::{self as s, Entity, EntityKey, EntityOperation};
+use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, IntoEntityIterator};
 use crate::prelude::ENV_VARS;
-use crate::schema::InputSchema;
+use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
 

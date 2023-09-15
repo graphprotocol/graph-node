@@ -5,9 +5,10 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
-use graph::components::store::{DeploymentCursorTracker, EntityKey};
+use graph::components::store::DeploymentCursorTracker;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
+use graph::schema::EntityKey;
 use graph::{
     blockchain::{
         self,

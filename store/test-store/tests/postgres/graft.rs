@@ -1,14 +1,14 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::value::Word;
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_store_postgres::command_support::OnSync;
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
 use graph::components::store::{
-    DeploymentLocator, EntityKey, EntityOrder, EntityQuery, PruneReporter, PruneRequest,
-    PruningStrategy, VersionStats,
+    DeploymentLocator, EntityOrder, EntityQuery, PruneReporter, PruneRequest, PruningStrategy,
+    VersionStats,
 };
 use graph::data::store::scalar;
 use graph::data::subgraph::schema::*;

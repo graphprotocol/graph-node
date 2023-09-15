@@ -405,11 +405,10 @@ pub fn is_list(field_type: &s::Type) -> bool {
 
 #[test]
 fn entity_validation() {
-    use crate::components::store::EntityKey;
     use crate::data::store;
     use crate::entity;
     use crate::prelude::{DeploymentHash, Entity};
-    use crate::schema::{EntityType, InputSchema};
+    use crate::schema::{EntityKey, EntityType, InputSchema};
 
     const DOCUMENT: &str = "
     enum Color { red, yellow, blue }

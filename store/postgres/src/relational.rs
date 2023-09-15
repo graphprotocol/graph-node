@@ -32,7 +32,7 @@ use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
-    EntityType, FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME,
+    EntityKey, EntityType, FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME,
 };
 use graph::slog::warn;
 use inflector::Inflector;
@@ -54,7 +54,7 @@ use crate::{
         FilterQuery, FindManyQuery, FindQuery, InsertQuery, RevertClampQuery, RevertRemoveQuery,
     },
 };
-use graph::components::store::{DerivedEntityQuery, EntityKey};
+use graph::components::store::DerivedEntityQuery;
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
 use graph::data::store::BYTES_SCALAR;
 use graph::data::subgraph::schema::POI_TABLE;

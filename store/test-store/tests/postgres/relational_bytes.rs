@@ -2,13 +2,12 @@
 use diesel::connection::SimpleConnection as _;
 use diesel::pg::PgConnection;
 use graph::components::store::write::RowGroup;
-use graph::components::store::EntityKey;
 use graph::data::store::scalar;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;

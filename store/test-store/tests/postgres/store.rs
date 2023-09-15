@@ -2,7 +2,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_chain_ethereum::{Mapping, MappingABI};
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -11,7 +11,7 @@ use std::{collections::HashSet, sync::Mutex};
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
 
-use graph::components::store::{DeploymentLocator, EntityKey, ReadStore, WritableStore};
+use graph::components::store::{DeploymentLocator, ReadStore, WritableStore};
 use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,

@@ -1,6 +1,6 @@
 use graph::{
-    components::store::EntityKey,
     prelude::Entity,
+    schema::EntityKey,
     util::{backoff::ExponentialBackoff, lfu_cache::LfuCache},
 };
 use std::time::Instant;

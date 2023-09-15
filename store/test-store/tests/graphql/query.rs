@@ -1,8 +1,7 @@
-use graph::components::store::EntityKey;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::SubscriptionResult;
-use graph::schema::InputSchema;
+use graph::schema::{EntityKey, InputSchema};
 use graphql_parser::Pos;
 use std::iter::FromIterator;
 use std::sync::atomic::{AtomicBool, Ordering};

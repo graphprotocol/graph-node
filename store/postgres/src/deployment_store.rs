@@ -7,7 +7,7 @@ use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
-    Batch, DerivedEntityQuery, EntityKey, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
+    Batch, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
     StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
@@ -43,7 +43,7 @@ use graph::prelude::{
     DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
     StopwatchMetrics, StoreError, StoreEvent, UnfailOutcome, Value, ENV_VARS,
 };
-use graph::schema::{ApiSchema, EntityType, InputSchema};
+use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 use web3::types::Address;
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};

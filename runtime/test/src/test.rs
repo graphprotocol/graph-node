@@ -5,7 +5,7 @@ use graph::prelude::web3::types::U256;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::{components::store::*, ipfs_client::IpfsClient};
 use graph::{entity, prelude::*};
 use graph_chain_ethereum::{Chain, DataSource};

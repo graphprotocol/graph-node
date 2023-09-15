@@ -1,12 +1,12 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    DeploymentCursorTracker, DerivedEntityQuery, EntityKey, GetScope, LoadRelatedRequest,
-    ReadStore, StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
+    StoredDynamicDataSource, WritableStore,
 };
 use graph::data::store::PARENT_ID;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
-use graph::schema::{EntityType, InputSchema};
+use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
     prelude::{DeploymentHash, Entity, EntityCache, EntityModification, Value},
