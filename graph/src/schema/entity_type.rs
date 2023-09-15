@@ -4,7 +4,10 @@ use anyhow::{bail, Error};
 use serde::Serialize;
 
 use crate::{
-    cheap_clone::CheapClone, data::graphql::ObjectOrInterface, prelude::s, util::intern::Atom,
+    cheap_clone::CheapClone,
+    data::{graphql::ObjectOrInterface, store::IdType},
+    prelude::s,
+    util::intern::Atom,
 };
 
 use super::{input_schema::POI_OBJECT, InputSchema};
@@ -43,6 +46,18 @@ impl EntityType {
 
     pub fn is_poi(&self) -> bool {
         self.as_str() == POI_OBJECT
+    }
+
+    pub fn has_field(&self, field: Atom) -> bool {
+        self.schema.has_field(self.atom, field)
+    }
+
+    pub fn is_immutable(&self) -> bool {
+        self.schema.is_immutable(self.atom)
+    }
+
+    pub fn id_type(&self) -> Result<IdType, Error> {
+        self.schema.id_type(self)
     }
 
     fn same_pool(&self, other: &EntityType) -> bool {

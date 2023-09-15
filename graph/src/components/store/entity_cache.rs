@@ -412,7 +412,7 @@ impl EntityCache {
         // is wrong and the store already has a version of the entity from a
         // previous block, the attempt to insert will trigger a constraint
         // violation in the database, ensuring correctness
-        let missing = missing.filter(|key| !self.schema.is_immutable(&key.entity_type));
+        let missing = missing.filter(|key| !key.entity_type.is_immutable());
 
         for (entity_key, entity) in self.store.get_many(missing.cloned().collect())? {
             self.current.insert(entity_key, Some(entity));

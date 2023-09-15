@@ -9,7 +9,6 @@ use crate::{
     data::{subgraph::schema::SubgraphError, value::Word},
     data_source::CausalityRegion,
     prelude::DeploymentHash,
-    schema::InputSchema,
     util::cache_weight::CacheWeight,
 };
 
@@ -524,16 +523,12 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 /// A list of entity changes with one group per entity type
 #[derive(Debug)]
 pub struct RowGroups {
-    schema: InputSchema,
     pub groups: Vec<RowGroup>,
 }
 
 impl RowGroups {
-    fn new(schema: InputSchema) -> Self {
-        Self {
-            schema,
-            groups: Vec::new(),
-        }
+    fn new() -> Self {
+        Self { groups: Vec::new() }
     }
 
     fn group(&self, entity_type: &EntityType) -> Option<&RowGroup> {
@@ -552,7 +547,7 @@ impl RowGroups {
         match pos {
             Some(pos) => &mut self.groups[pos],
             None => {
-                let immutable = self.schema.is_immutable(entity_type);
+                let immutable = entity_type.is_immutable();
                 self.groups
                     .push(RowGroup::new(entity_type.clone(), immutable));
                 // unwrap: we just pushed an entry
@@ -633,7 +628,6 @@ pub struct Batch {
 
 impl Batch {
     pub fn new(
-        schema: InputSchema,
         block_ptr: BlockPtr,
         firehose_cursor: FirehoseCursor,
         mut raw_mods: Vec<EntityModification>,
@@ -654,7 +648,7 @@ impl Batch {
             EntityModification::Remove { .. } => 0,
         });
 
-        let mut mods = RowGroups::new(schema);
+        let mut mods = RowGroups::new();
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;

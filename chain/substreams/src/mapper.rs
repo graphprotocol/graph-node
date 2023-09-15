@@ -142,7 +142,7 @@ fn parse_changes(
         // Needless to say, this is a very ugly hack, and the
         // real fix is what's described in [this
         // issue](https://github.com/graphprotocol/graph-node/issues/4663)
-        let entity_id: String = match schema.id_type(&entity_type)? {
+        let entity_id: String = match entity_type.id_type()? {
             IdType::String => entity_change.id.clone(),
             IdType::Bytes => {
                 if entity_change.id.starts_with("0x") {

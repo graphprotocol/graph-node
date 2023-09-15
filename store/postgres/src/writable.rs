@@ -1537,7 +1537,6 @@ impl WritableStoreTrait for WritableStore {
         is_non_fatal_errors_active: bool,
     ) -> Result<(), StoreError> {
         let batch = Batch::new(
-            self.store.input_schema.cheap_clone(),
             block_ptr_to.clone(),
             firehose_cursor.clone(),
             mods,

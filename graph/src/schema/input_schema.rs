@@ -245,7 +245,10 @@ impl InputSchema {
         }
     }
 
-    pub fn id_type(&self, entity_type: &EntityType) -> Result<store::IdType, Error> {
+    pub(in crate::schema) fn id_type(
+        &self,
+        entity_type: &EntityType,
+    ) -> Result<store::IdType, Error> {
         let base_type = self
             .inner
             .schema
@@ -283,9 +286,8 @@ impl InputSchema {
         }
     }
 
-    pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
-        let atom = self.inner.pool.lookup(entity_type.as_str()).unwrap();
-        self.inner.immutable_types.contains(&atom)
+    pub(in crate::schema) fn is_immutable(&self, entity_type: Atom) -> bool {
+        self.inner.immutable_types.contains(&entity_type)
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&s::TypeDefinition> {
@@ -391,11 +393,10 @@ impl InputSchema {
         Entity::try_make(self.inner.pool.clone(), iter)
     }
 
-    pub fn has_field(&self, entity_type: &EntityType, field: Atom) -> bool {
-        let atom = self.inner.pool.lookup(entity_type.as_str()).unwrap();
+    pub(in crate::schema) fn has_field(&self, entity_type: Atom, field: Atom) -> bool {
         self.inner
             .field_names
-            .get(&atom)
+            .get(&entity_type)
             .map(|fields| fields.contains(&field))
             .unwrap_or(false)
     }
