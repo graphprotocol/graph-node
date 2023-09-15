@@ -39,12 +39,10 @@ pub struct InputSchema {
 #[derive(Debug, PartialEq)]
 pub struct Inner {
     schema: Schema,
-    immutable_types: HashSet<EntityType>,
+    immutable_types: HashSet<Atom>,
     // Maps each entity type to its field names
-    field_names: HashMap<EntityType, Vec<Atom>>,
+    field_names: HashMap<Atom, Vec<Atom>>,
     pool: Arc<AtomPool>,
-
-    poi_type: EntityType,
 }
 
 impl CheapClone for InputSchema {
@@ -59,15 +57,15 @@ impl InputSchema {
     fn create(schema: Schema) -> Self {
         let pool = Arc::new(atom_pool(&schema.document));
 
+        // The `unwrap` of `lookup` is safe because we just created the pool
         let immutable_types = HashSet::from_iter(
             schema
                 .document
                 .get_object_type_definitions()
                 .into_iter()
                 .filter(|obj_type| obj_type.is_immutable())
-                .map(|obj_type| EntityType::new(&pool, &obj_type.name))
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
+                .map(|obj_type| pool.lookup(&obj_type.name).unwrap())
+                .collect::<Vec<_>>(),
         );
 
         let field_names = HashMap::from_iter(
@@ -81,13 +79,11 @@ impl InputSchema {
                         .iter()
                         .map(|field| pool.lookup(&field.name).unwrap())
                         .collect();
-                    EntityType::new(&pool, &obj_type.name).map(|t| (t, fields))
+                    let type_atom = pool.lookup(&obj_type.name).unwrap();
+                    (type_atom, fields)
                 })
-                .collect::<Result<Vec<_>, _>>()
-                .unwrap(),
+                .collect::<Vec<_>>(),
         );
-
-        let poi_type = EntityType::new(&pool, POI_OBJECT).unwrap();
 
         Self {
             inner: Arc::new(Inner {
@@ -95,7 +91,6 @@ impl InputSchema {
                 immutable_types,
                 field_names,
                 pool,
-                poi_type,
             }),
         }
     }
@@ -286,7 +281,8 @@ impl InputSchema {
     }
 
     pub fn is_immutable(&self, entity_type: &EntityType) -> bool {
-        self.inner.immutable_types.contains(entity_type)
+        let atom = self.inner.pool.lookup(entity_type.as_str()).unwrap();
+        self.inner.immutable_types.contains(&atom)
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&s::TypeDefinition> {
@@ -393,15 +389,16 @@ impl InputSchema {
     }
 
     pub fn has_field(&self, entity_type: &EntityType, field: Atom) -> bool {
+        let atom = self.inner.pool.lookup(entity_type.as_str()).unwrap();
         self.inner
             .field_names
-            .get(entity_type)
+            .get(&atom)
             .map(|fields| fields.contains(&field))
             .unwrap_or(false)
     }
 
-    pub fn poi_type(&self) -> &EntityType {
-        &self.inner.poi_type
+    pub fn poi_type(&self) -> EntityType {
+        EntityType::new(&self.inner.pool, POI_OBJECT).unwrap()
     }
 
     pub fn poi_digest(&self) -> Word {

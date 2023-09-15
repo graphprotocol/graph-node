@@ -437,7 +437,7 @@ impl Layout {
     }
 
     pub fn supports_proof_of_indexing(&self) -> bool {
-        self.tables.contains_key(self.input_schema.poi_type())
+        self.tables.contains_key(&self.input_schema.poi_type())
     }
 
     pub fn create_relational_schema(
