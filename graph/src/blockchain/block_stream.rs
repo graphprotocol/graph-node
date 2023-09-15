@@ -316,7 +316,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
     async fn to_block_stream_event(
         &self,
-        logger: &Logger,
+        logger: &mut Logger,
         response: Option<Message>,
         // adapter: &Arc<dyn TriggersAdapter<C>>,
         // filter: &C::TriggerFilter,
