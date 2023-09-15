@@ -3,6 +3,7 @@ use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
 };
 use graph::prelude::{async_trait, BlockHash, BlockNumber, BlockPtr, Logger};
+use graph::slog::o;
 use graph::substreams::Clock;
 use graph::substreams_rpc::response::Message as SubstreamsMessage;
 use prost::Message;
@@ -13,10 +14,14 @@ pub struct Mapper {}
 impl SubstreamsMapper<Chain> for Mapper {
     async fn to_block_stream_event(
         &self,
-        logger: &Logger,
+        logger: &mut Logger,
         message: Option<SubstreamsMessage>,
     ) -> Result<Option<BlockStreamEvent<Chain>>, SubstreamsError> {
         match message {
+            Some(SubstreamsMessage::Session(session_init)) => {
+                *logger = logger.new(o!("trace_id" => session_init.trace_id));
+                return Ok(None);
+            }
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
                 let valid_block = match undo.last_valid_block {
                     Some(clock) => clock,
