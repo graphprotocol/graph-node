@@ -931,13 +931,13 @@ impl Layout {
                 .filter(|id| !unclamped.contains(id))
                 .map(|_| EntityChange::Data {
                     subgraph_id: self.site.deployment.clone(),
-                    entity_type: table.object.clone(),
+                    entity_type: table.object.to_string(),
                 });
             changes.extend(deleted);
             // EntityChange for versions that we just updated or inserted
             let set = unclamped.into_iter().map(|_| EntityChange::Data {
                 subgraph_id: self.site.deployment.clone(),
-                entity_type: table.object.clone(),
+                entity_type: table.object.to_string(),
             });
             changes.extend(set);
         }

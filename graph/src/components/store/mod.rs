@@ -606,7 +606,7 @@ pub enum EntityChange {
     Data {
         subgraph_id: DeploymentHash,
         /// Entity type name of the changed entity.
-        entity_type: EntityType,
+        entity_type: String,
     },
     Assignment {
         deployment: DeploymentLocator,
@@ -618,7 +618,7 @@ impl EntityChange {
     pub fn for_data(subgraph_id: DeploymentHash, key: EntityKey) -> Self {
         Self::Data {
             subgraph_id,
-            entity_type: key.entity_type,
+            entity_type: key.entity_type.to_string(),
         }
     }
 
@@ -629,14 +629,17 @@ impl EntityChange {
         }
     }
 
-    pub fn as_filter(&self) -> SubscriptionFilter {
+    pub fn as_filter(&self, schema: &InputSchema) -> SubscriptionFilter {
         use EntityChange::*;
         match self {
             Data {
                 subgraph_id,
                 entity_type,
                 ..
-            } => SubscriptionFilter::Entities(subgraph_id.clone(), entity_type.clone()),
+            } => SubscriptionFilter::Entities(
+                subgraph_id.clone(),
+                schema.entity_type(entity_type).unwrap(),
+            ),
             Assignment { .. } => SubscriptionFilter::Assignment,
         }
     }
@@ -696,7 +699,7 @@ impl StoreEvent {
                     .into_iter()
                     .map(|entity_type| EntityChange::Data {
                         subgraph_id: deployment.clone(),
-                        entity_type,
+                        entity_type: entity_type.to_string(),
                     }),
             );
         Self::from_set(changes)

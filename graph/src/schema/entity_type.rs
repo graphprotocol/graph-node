@@ -1,7 +1,7 @@
 use std::{borrow::Borrow, fmt, sync::Arc};
 
 use anyhow::{bail, Error};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::{
     cheap_clone::CheapClone,
@@ -12,7 +12,7 @@ use crate::{
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
-#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Serialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityType(Word);
 
 impl EntityType {

@@ -17,7 +17,7 @@ use crate::{
     },
     data_source::offchain::OFFCHAIN_KINDS,
     prelude::{CheapClone as _, DataSourceContext},
-    schema::EntityType,
+    schema::{EntityType, InputSchema},
 };
 use anyhow::Error;
 use semver::Version;
@@ -342,6 +342,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
     pub async fn resolve(
         self,
         resolver: &Arc<dyn LinkResolver>,
+        schema: &InputSchema,
         logger: &Logger,
         manifest_idx: u32,
     ) -> Result<DataSourceTemplate<C>, Error> {
@@ -351,7 +352,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
                 .await
                 .map(DataSourceTemplate::Onchain),
             Self::Offchain(ds) => ds
-                .resolve(resolver, logger, manifest_idx)
+                .resolve(resolver, logger, manifest_idx, schema)
                 .await
                 .map(DataSourceTemplate::Offchain),
         }

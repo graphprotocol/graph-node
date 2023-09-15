@@ -899,7 +899,7 @@ fn find() {
 fn make_entity_change(entity_type: &EntityType) -> EntityChange {
     EntityChange::Data {
         subgraph_id: TEST_SUBGRAPH_ID.clone(),
-        entity_type: entity_type.to_owned(),
+        entity_type: entity_type.to_string(),
     }
 }
 
@@ -1234,7 +1234,7 @@ fn revert_block_with_dynamic_data_source_operations() {
             changes: HashSet::from_iter(
                 vec![EntityChange::Data {
                     subgraph_id: DeploymentHash::new("testsubgraph").unwrap(),
-                    entity_type: USER_TYPE.to_owned(),
+                    entity_type: USER_TYPE.to_string(),
                 }]
                 .into_iter(),
             ),
@@ -1330,21 +1330,21 @@ fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
             ]),
             StoreEvent::new(vec![
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
                 EntityChange::Data {
                     subgraph_id: subgraph_id.clone(),
-                    entity_type: USER_TYPE.clone(),
+                    entity_type: USER_TYPE.to_string(),
                 },
             ]),
         ];

@@ -24,7 +24,10 @@ use graph::semver::Version;
 use graph_chain_ethereum::{BlockHandlerFilter, Chain, NodeCapabilities};
 use test_store::LOGGER;
 
-const GQL_SCHEMA: &str = "type Thing @entity { id: ID! }";
+const GQL_SCHEMA: &str = r#"
+  type Thing @entity { id: ID! }
+  type TestEntity @entity { id: ID! }
+"#;
 const GQL_SCHEMA_FULLTEXT: &str = include_str!("full-text.graphql");
 const MAPPING_WITH_IPFS_FUNC_WASM: &[u8] = include_bytes!("ipfs-on-ethereum-contracts.wasm");
 const ABI: &str = "[{\"type\":\"function\", \"inputs\": [{\"name\": \"i\",\"type\": \"uint256\"}],\"name\":\"get\",\"outputs\": [{\"type\": \"address\",\"name\": \"o\"}]}]";

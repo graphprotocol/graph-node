@@ -12,7 +12,7 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use crate::object;
 use anyhow::{anyhow, Context, Error};
-use futures03::{future::try_join3, stream::FuturesOrdered, TryStreamExt as _};
+use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
 use semver::Version;
 use serde::{de, ser};
@@ -816,8 +816,9 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        let (schema, data_sources, templates) = try_join3(
-            schema.resolve(id.clone(), resolver, logger),
+        let schema = schema.resolve(id.clone(), resolver, logger).await?;
+
+        let (data_sources, templates) = try_join(
             data_sources
                 .into_iter()
                 .enumerate()
@@ -828,7 +829,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 .into_iter()
                 .enumerate()
                 .map(|(idx, template)| {
-                    template.resolve(resolver, logger, ds_count as u32 + idx as u32)
+                    template.resolve(resolver, &schema, logger, ds_count as u32 + idx as u32)
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),

@@ -55,7 +55,7 @@ impl SubscriptionFilter {
                     entity_type,
                     ..
                 },
-            ) => subgraph_id == eid && entity_type == etype,
+            ) => subgraph_id == eid && entity_type == etype.as_str(),
             (Self::Assignment, EntityChange::Assignment { .. }) => true,
             _ => false,
         }
