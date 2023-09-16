@@ -287,7 +287,10 @@ impl InputSchema {
         self.inner.schema.interfaces_for_type(type_name)
     }
 
-    pub fn find_object_type(&self, entity_type: &EntityType) -> Option<&s::ObjectType> {
+    pub(in crate::schema) fn find_object_type(
+        &self,
+        entity_type: &EntityType,
+    ) -> Option<&s::ObjectType> {
         self.inner
             .schema
             .document

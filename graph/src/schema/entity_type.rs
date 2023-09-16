@@ -62,6 +62,10 @@ impl EntityType {
         self.schema.id_type(self)
     }
 
+    pub fn object_type(&self) -> Option<&s::ObjectType> {
+        self.schema.find_object_type(self)
+    }
+
     /// Create a key from this type for an onchain entity
     pub fn key(&self, id: impl Into<Word>) -> EntityKey {
         self.key_in(id, CausalityRegion::ONCHAIN)

@@ -7,13 +7,11 @@ use std::{
 use graph::{
     block_on,
     components::store::SubgraphFork as SubgraphForkTrait,
+    constraint_violation,
     data::graphql::ext::DirectiveFinder,
     prelude::{
-        info,
-        r::Value as RValue,
-        reqwest,
-        s::{Field, ObjectType},
-        serde_json, DeploymentHash, Entity, Logger, Serialize, StoreError, Value, ValueType,
+        info, r::Value as RValue, reqwest, s::Field, serde_json, DeploymentHash, Entity, Logger,
+        Serialize, StoreError, Value, ValueType,
     },
     url::Url,
 };
@@ -47,7 +45,7 @@ pub(crate) struct SubgraphFork {
 }
 
 impl SubgraphForkTrait for SubgraphFork {
-    fn fetch(&self, entity_type: String, id: String) -> Result<Option<Entity>, StoreError> {
+    fn fetch(&self, entity_type_name: String, id: String) -> Result<Option<Entity>, StoreError> {
         {
             let mut fids = self.fetched_ids.lock().map_err(|e| {
                 StoreError::ForkFailure(format!(
@@ -56,22 +54,28 @@ impl SubgraphForkTrait for SubgraphFork {
                 ))
             })?;
             if fids.contains(&id) {
-                info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type, "id" => id);
+                info!(self.logger, "Already fetched entity! Abort!"; "entity_type" => entity_type_name, "id" => id);
                 return Ok(None);
             }
             fids.insert(id.clone());
         }
 
-        info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type, "id" => &id);
+        info!(self.logger, "Fetching entity from {}", &self.endpoint; "entity_type" => &entity_type_name, "id" => &id);
 
         // NOTE: Subgraph fork compatibility checking (similar to the grafting compatibility checks)
         // will be added in the future (in a separate PR).
         // Currently, forking incompatible subgraphs is allowed, but, for example, storing the
         // incompatible fetched entities in the local store results in an error.
+        let entity_type = self.schema.entity_type(&entity_type_name)?;
+        let fields = &entity_type
+            .object_type()
+            .ok_or_else(|| {
+                constraint_violation!("no object type called `{}` found", entity_type_name)
+            })?
+            .fields;
 
-        let fields = self.get_fields_of(&entity_type)?;
         let query = Query {
-            query: self.query_string(&entity_type, fields)?,
+            query: self.query_string(&entity_type_name, fields)?,
             variables: Variables { id },
         };
         let raw_json = block_on(self.send(&query))?;
@@ -82,7 +86,8 @@ impl SubgraphForkTrait for SubgraphFork {
             )));
         }
 
-        let entity = SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type, fields)?;
+        let entity =
+            SubgraphFork::extract_entity(&self.schema, &raw_json, &entity_type_name, fields)?;
         Ok(entity)
     }
 }
@@ -127,20 +132,6 @@ impl SubgraphFork {
                 ))
             })?;
         Ok(res)
-    }
-
-    fn get_fields_of(&self, entity_type: &str) -> Result<&Vec<Field>, StoreError> {
-        let entity_type = self.schema.entity_type(entity_type)?;
-        let entity: Option<&ObjectType> = self.schema.find_object_type(&entity_type);
-
-        if entity.is_none() {
-            return Err(StoreError::ForkFailure(format!(
-                "No object type definition with entity type `{}` found in the GraphQL schema supplied by the user.",
-                entity_type
-            )));
-        }
-
-        Ok(&entity.unwrap().fields)
     }
 
     fn query_string(&self, entity_type: &str, fields: &[Field]) -> Result<String, StoreError> {
@@ -308,14 +299,12 @@ mod tests {
 
     #[test]
     fn test_get_fields_of() {
-        let base = test_base();
-        let id = test_id();
         let schema = test_schema();
-        let logger = test_logger();
 
-        let fork = SubgraphFork::new(base, id, schema, logger).unwrap();
+        let entity_type = schema.entity_type("Gravatar").unwrap();
+        let fields = &entity_type.object_type().unwrap().fields;
 
-        assert_eq!(fork.get_fields_of("Gravatar").unwrap(), &test_fields());
+        assert_eq!(fields, &test_fields());
     }
 
     #[test]
