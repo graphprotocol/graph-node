@@ -562,11 +562,8 @@ impl Layout {
             let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
 
-            let key = EntityKey {
-                entity_type,
-                entity_id: entity_data.id(),
-                causality_region: CausalityRegion::from_entity(&entity_data),
-            };
+            let key =
+                entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
             if entities.contains_key(&key) {
                 return Err(constraint_violation!(
                     "duplicate entity {}[{}] in result set, block = {}",
@@ -596,11 +593,8 @@ impl Layout {
         for data in query.load::<EntityData>(conn)? {
             let entity_type = data.entity_type(&self.input_schema);
             let entity_data: Entity = data.deserialize_with_layout(self, None)?;
-            let key = EntityKey {
-                entity_type,
-                entity_id: entity_data.id(),
-                causality_region: CausalityRegion::from_entity(&entity_data),
-            };
+            let key =
+                entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
 
             entities.insert(key, entity_data);
         }
@@ -636,11 +630,7 @@ impl Layout {
             processed_entities.insert((entity_type.clone(), entity_id.clone()));
 
             changes.push(EntityOperation::Set {
-                key: EntityKey {
-                    entity_type,
-                    entity_id,
-                    causality_region: CausalityRegion::from_entity(&data),
-                },
+                key: entity_type.key_in(entity_id, CausalityRegion::from_entity(&data)),
                 data,
             });
         }
@@ -653,11 +643,7 @@ impl Layout {
             // about why this check is necessary.
             if !processed_entities.contains(&(entity_type.clone(), entity_id.clone())) {
                 changes.push(EntityOperation::Remove {
-                    key: EntityKey {
-                        entity_type,
-                        entity_id,
-                        causality_region: del.causality_region(),
-                    },
+                    key: entity_type.key_in(entity_id, del.causality_region()),
                 });
             }
         }

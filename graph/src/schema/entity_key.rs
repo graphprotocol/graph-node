@@ -22,6 +22,8 @@ pub struct EntityKey {
     /// doing the lookup. So if the entity exists but was created on a different causality region,
     /// the lookup will return empty.
     pub causality_region: CausalityRegion,
+
+    _force_use_of_new: (),
 }
 
 impl EntityKey {
@@ -40,16 +42,17 @@ impl EntityKey {
             entity_type,
             entity_id,
             causality_region,
+            _force_use_of_new: (),
         }
     }
 
     pub fn from(id: &String, load_related_request: &LoadRelatedRequest) -> Self {
         let clone = load_related_request.clone();
-        Self {
-            entity_id: id.clone().into(),
-            entity_type: clone.entity_type,
-            causality_region: clone.causality_region,
-        }
+        Self::new(
+            clone.entity_type,
+            Word::from(id.as_str()),
+            clone.causality_region,
+        )
     }
 }
 

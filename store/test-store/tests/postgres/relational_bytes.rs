@@ -298,16 +298,8 @@ fn find_many() {
             .expect("Failed to read many things");
         assert_eq!(2, entities.len());
 
-        let id_key = EntityKey {
-            entity_id: ID.into(),
-            entity_type: THING_TYPE.clone(),
-            causality_region: CausalityRegion::ONCHAIN,
-        };
-        let id2_key = EntityKey {
-            entity_id: ID2.into(),
-            entity_type: THING_TYPE.clone(),
-            causality_region: CausalityRegion::ONCHAIN,
-        };
+        let id_key = THING_TYPE.key(ID);
+        let id2_key = THING_TYPE.key(ID2);
         assert!(entities.contains_key(&id_key), "Missing ID");
         assert!(entities.contains_key(&id2_key), "Missing ID2");
     });

@@ -1517,12 +1517,6 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
     fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        let EntityKey {
-            entity_type: _,
-            entity_id,
-            causality_region,
-        } = self.key;
-
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
@@ -1532,11 +1526,11 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        self.table.primary_key().eq(entity_id, &mut out)?;
+        self.table.primary_key().eq(&self.key.entity_id, &mut out)?;
         out.push_sql(" and ");
         if self.table.has_causality_region {
             out.push_sql("causality_region = ");
-            out.push_bind_param::<Integer, _>(causality_region)?;
+            out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
         BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)

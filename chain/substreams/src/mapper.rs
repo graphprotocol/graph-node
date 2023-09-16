@@ -12,7 +12,7 @@ use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::BigDecimal;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, BlockPtr, Logger, Value};
-use graph::schema::{EntityKey, InputSchema};
+use graph::schema::InputSchema;
 use graph::slog::o;
 use graph::substreams::Clock;
 use graph::substreams_rpc::response::Message as SubstreamsMessage;
@@ -151,11 +151,9 @@ fn parse_changes(
                 }
             }
         };
-        let key = EntityKey {
-            entity_type,
-            entity_id: Word::from(entity_id),
-            causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
-        };
+        // Substreams don't currently support offchain data
+        let key = entity_type.key_in(Word::from(entity_id), CausalityRegion::ONCHAIN);
+
         let id = schema.id_value(&key)?;
         parsed_data.insert(Word::from("id"), id);
 

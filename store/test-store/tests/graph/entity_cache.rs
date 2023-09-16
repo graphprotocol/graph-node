@@ -179,11 +179,7 @@ impl WritableStore for MockStore {
 }
 
 fn make_band_key(id: &'static str) -> EntityKey {
-    EntityKey {
-        entity_type: SCHEMA.entity_type("Band").unwrap(),
-        entity_id: id.into(),
-        causality_region: CausalityRegion::ONCHAIN,
-    }
+    SCHEMA.entity_type("Band").unwrap().key(id)
 }
 
 fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModification> {
@@ -231,11 +227,7 @@ fn insert_modifications() {
 fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<EntityKey, Entity> {
     let mut map = BTreeMap::new();
     for entity in entities {
-        let key = EntityKey {
-            entity_type: SCHEMA.entity_type(entity_type).unwrap(),
-            entity_id: entity.id().into(),
-            causality_region: CausalityRegion::ONCHAIN,
-        };
+        let key = SCHEMA.entity_type(entity_type).unwrap().key(entity.id());
         map.insert(key, entity);
     }
     map

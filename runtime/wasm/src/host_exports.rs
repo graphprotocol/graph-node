@@ -177,11 +177,7 @@ impl<C: Blockchain> HostExports<C> {
         }
 
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
-        let key = EntityKey {
-            entity_type,
-            entity_id: entity_id.into(),
-            causality_region: self.data_source_causality_region,
-        };
+        let key = entity_type.key_in(entity_id, self.data_source_causality_region);
         self.check_entity_type_access(&key.entity_type)?;
 
         gas.consume_host_fn(gas::STORE_SET.with_args(complexity::Linear, (&key, &data)))?;
@@ -242,11 +238,7 @@ impl<C: Blockchain> HostExports<C> {
             logger,
         );
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
-        let key = EntityKey {
-            entity_type,
-            entity_id: entity_id.into(),
-            causality_region: self.data_source_causality_region,
-        };
+        let key = entity_type.key_in(entity_id, self.data_source_causality_region);
         self.check_entity_type_access(&key.entity_type)?;
 
         gas.consume_host_fn(gas::STORE_REMOVE.with_args(complexity::Size, &key))?;
@@ -265,11 +257,7 @@ impl<C: Blockchain> HostExports<C> {
         scope: GetScope,
     ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
-        let store_key = EntityKey {
-            entity_type,
-            entity_id: entity_id.into(),
-            causality_region: self.data_source_causality_region,
-        };
+        let store_key = entity_type.key_in(entity_id, self.data_source_causality_region);
         self.check_entity_type_access(&store_key.entity_type)?;
 
         let result = state.entity_cache.get(&store_key, scope)?;
