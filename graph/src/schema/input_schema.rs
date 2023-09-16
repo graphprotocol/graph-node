@@ -1,17 +1,14 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::str::FromStr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Error};
+use anyhow::{anyhow, Error};
 use store::Entity;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::LoadRelatedRequest;
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
-use crate::data::store::{
-    self, scalar, EntityValidationError, IntoEntityIterator, TryIntoEntityIterator,
-};
+use crate::data::store::{self, EntityValidationError, IntoEntityIterator, TryIntoEntityIterator};
 use crate::data::value::Word;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
@@ -19,7 +16,7 @@ use crate::schema::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AsEntityTypeName, EntityKey, EntityType, Schema, SchemaValidationError};
+use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -270,19 +267,6 @@ impl InputSchema {
                     s
                 ))
             }
-        }
-    }
-
-    /// Construct a value for the entity type's id attribute
-    pub fn id_value(&self, key: &EntityKey) -> Result<store::Value, Error> {
-        let id_type = self
-            .id_type(&key.entity_type)
-            .with_context(|| format!("error determining id_type for {:?}", key))?;
-        match id_type {
-            store::IdType::String => Ok(store::Value::String(key.entity_id.to_string())),
-            store::IdType::Bytes => Ok(store::Value::Bytes(scalar::Bytes::from_str(
-                &key.entity_id,
-            )?)),
         }
     }
 

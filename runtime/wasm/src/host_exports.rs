@@ -191,7 +191,7 @@ impl<C: Blockchain> HostExports<C> {
                 // The validation will catch the type mismatch
             }
             None => {
-                let value = state.entity_cache.schema.id_value(&key)?;
+                let value = key.entity_type.id_value(key.entity_id.clone())?;
                 data.insert(store::ID.clone(), value);
             }
         }

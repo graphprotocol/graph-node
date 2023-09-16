@@ -1,6 +1,9 @@
 use std::fmt;
 
+use anyhow::Error;
+
 use crate::components::store::{LoadRelatedRequest, StoreError};
+use crate::data::store::Value;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::schema::EntityType;
@@ -53,6 +56,10 @@ impl EntityKey {
             Word::from(id.as_str()),
             clone.causality_region,
         )
+    }
+
+    pub fn id_value(&self) -> Result<Value, Error> {
+        self.entity_type.id_value(self.entity_id.clone())
     }
 }
 

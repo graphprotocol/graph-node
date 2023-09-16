@@ -1,10 +1,11 @@
 use std::{borrow::Borrow, fmt, sync::Arc};
 
-use anyhow::{bail, Error};
+use anyhow::{bail, Context, Error};
 use serde::Serialize;
 
 use crate::{
     cheap_clone::CheapClone,
+    data::store::Value,
     data::{graphql::ObjectOrInterface, store::IdType, value::Word},
     data_source::causality_region::CausalityRegion,
     prelude::s,
@@ -69,6 +70,20 @@ impl EntityType {
     /// Create a key from this type for an entity in the given causality region
     pub fn key_in(&self, id: impl Into<Word>, causality_region: CausalityRegion) -> EntityKey {
         EntityKey::new(self.cheap_clone(), id.into(), causality_region)
+    }
+
+    /// Construct a `Value` for the given id and parse it into the correct
+    /// type if necessary
+    pub fn id_value(&self, id: impl Into<Word>) -> Result<Value, Error> {
+        let id = id.into();
+        let id_type = self
+            .schema
+            .id_type(self)
+            .with_context(|| format!("error determining id_type for {}[{}]", self.as_str(), id))?;
+        match id_type {
+            IdType::String => Ok(Value::String(id.to_string())),
+            IdType::Bytes => Ok(Value::Bytes(id.parse()?)),
+        }
     }
 
     fn same_pool(&self, other: &EntityType) -> bool {

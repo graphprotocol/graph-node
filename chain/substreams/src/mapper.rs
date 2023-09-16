@@ -154,7 +154,7 @@ fn parse_changes(
         // Substreams don't currently support offchain data
         let key = entity_type.key_in(Word::from(entity_id), CausalityRegion::ONCHAIN);
 
-        let id = schema.id_value(&key)?;
+        let id = key.id_value()?;
         parsed_data.insert(Word::from("id"), id);
 
         let changes = match entity_change.operation() {
