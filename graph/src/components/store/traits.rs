@@ -10,8 +10,8 @@ use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
+use crate::data::store::QueryObject;
 use crate::data::subgraph::{status, DeploymentFeatures};
-use crate::data::value::Object;
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::prelude::{DeploymentState, NodeId, QueryExecutionError, SubgraphName};
 use crate::schema::{ApiSchema, InputSchema};
@@ -537,7 +537,7 @@ pub trait QueryStore: Send + Sync {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<Object>, Trace), QueryExecutionError>;
+    ) -> Result<(Vec<QueryObject>, Trace), QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

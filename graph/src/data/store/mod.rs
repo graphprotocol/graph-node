@@ -654,9 +654,6 @@ where
 lazy_static! {
     /// The name of the id attribute, `"id"`
     pub static ref ID: Word = Word::from("id");
-    /// The name of the parent_id attribute that we inject into query
-    /// results
-    pub static ref PARENT_ID: Word = Word::from("g$parent_id");
 }
 
 /// An entity is represented as a map of attribute names to values.
@@ -1065,6 +1062,21 @@ impl std::fmt::Debug for Entity {
             ds.field(k, v);
         }
         ds.finish()
+    }
+}
+
+/// An object that is returned from a query. It's a an `r::Value` which
+/// carries the attributes of the object (`__typename`, `id` etc.) and
+/// possibly a pointer to its parent if the query that constructed it is one
+/// that depends on parents
+pub struct QueryObject {
+    pub parent: Option<r::Value>,
+    pub entity: r::Object,
+}
+
+impl CacheWeight for QueryObject {
+    fn indirect_weight(&self) -> usize {
+        self.parent.indirect_weight() + self.entity.indirect_weight()
     }
 }
 

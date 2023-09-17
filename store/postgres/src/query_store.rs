@@ -1,7 +1,7 @@
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::{DeploymentId, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
-use graph::data::value::Object;
+use graph::data::store::QueryObject;
 use graph::prelude::*;
 use graph::schema::{ApiSchema, InputSchema};
 
@@ -38,7 +38,7 @@ impl QueryStoreTrait for QueryStore {
     fn find_query_values(
         &self,
         query: EntityQuery,
-    ) -> Result<(Vec<Object>, Trace), graph::prelude::QueryExecutionError> {
+    ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
         let conn = self
             .store

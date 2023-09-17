@@ -207,6 +207,6 @@ pub mod prelude {
     });
 
     pub mod r {
-        pub use crate::data::value::Value;
+        pub use crate::data::value::{Object, Value};
     }
 }

@@ -14,7 +14,8 @@ use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
 use graph::components::store::DerivedEntityQuery;
-use graph::data::store::{NULL, PARENT_ID};
+use graph::data::store::QueryObject;
+use graph::data::store::NULL;
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
@@ -52,6 +53,11 @@ const BASE_SQL_COLUMNS: [&str; 2] = ["id", "vid"];
 const POSTGRES_MAX_PARAMETERS: usize = u16::MAX as usize; // 65535
 
 const SORT_KEY_COLUMN: &str = "sort_key$";
+
+/// The name of the parent_id attribute that we inject into queries. Users
+/// outside of this module should access the parent id through the
+/// `QueryObject` struct
+const PARENT_ID: &str = "g$parent_id";
 
 /// Describes at what level a `SELECT` statement is used.
 enum SelectStatementLevel {
@@ -256,6 +262,7 @@ pub trait FromEntityData: Sized {
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         schema: &InputSchema,
+        parent_id: Option<Self::Value>,
         iter: I,
     ) -> Result<Self, StoreError>;
 }
@@ -267,22 +274,28 @@ impl FromEntityData for Entity {
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         schema: &InputSchema,
+        parent_id: Option<Self::Value>,
         iter: I,
     ) -> Result<Self, StoreError> {
+        debug_assert_eq!(None, parent_id);
         schema.try_make_entity(iter).map_err(StoreError::from)
     }
 }
 
-impl FromEntityData for Object {
+impl FromEntityData for QueryObject {
     const WITH_INTERNAL_KEYS: bool = true;
 
     type Value = r::Value;
 
     fn from_data<I: Iterator<Item = Result<(Word, Self::Value), StoreError>>>(
         _schema: &InputSchema,
+        parent: Option<Self::Value>,
         iter: I,
     ) -> Result<Self, StoreError> {
-        <Result<Object, StoreError> as FromIterator<Result<(Word, Self::Value), StoreError>>>::from_iter(iter)
+        let entity = <Result<Object, StoreError> as FromIterator<
+            Result<(Word, Self::Value), StoreError>,
+        >>::from_iter(iter)?;
+        Ok(QueryObject { parent, entity })
     }
 }
 
@@ -525,19 +538,10 @@ impl EntityData {
 
         use serde_json::Value as j;
         match self.data {
-            j::Object(map) => {
-                let typname = std::iter::once(self.entity).filter_map(move |e| {
-                    if T::WITH_INTERNAL_KEYS {
-                        Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
-                    } else {
-                        None
-                    }
-                });
-                let entries = map.into_iter().filter_map(move |(key, json)| {
-                    // Simply ignore keys that do not have an underlying table
-                    // column; those will be things like the block_range that
-                    // is used internally for versioning
-                    if key == PARENT_ID.as_str() {
+            j::Object(mut map) => {
+                let parent_id = map
+                    .remove(PARENT_ID)
+                    .and_then(|json| {
                         if T::WITH_INTERNAL_KEYS {
                             match &parent_type {
                                 None => {
@@ -548,15 +552,29 @@ impl EntityData {
                                         "query unexpectedly produces parent ids"
                                     )))
                                 }
-                                Some(parent_type) => Some(
-                                    T::Value::from_column_value(parent_type, json)
-                                        .map(|value| (PARENT_ID.clone(), value)),
-                                ),
+                                Some(parent_type) => {
+                                    Some(T::Value::from_column_value(parent_type, json))
+                                }
                             }
                         } else {
                             None
                         }
-                    } else if let Some(column) = table.column(&SqlName::verbatim(key)) {
+                    })
+                    .transpose()?;
+                let map = map;
+                let typname = std::iter::once(self.entity).filter_map(move |e| {
+                    if T::WITH_INTERNAL_KEYS {
+                        Some(Ok((Word::from("__typename"), T::Value::from_string(e))))
+                    } else {
+                        None
+                    }
+                });
+                let entries = map.into_iter().filter_map(move |(key, json)| {
+                    // Simply ignore keys that do not have an underlying
+                    // table column; those will be things like the
+                    // block_range that `select *` pulls in but that we
+                    // don't care about here
+                    if let Some(column) = table.column(&SqlName::verbatim(key)) {
                         match T::Value::from_column_value(&column.column_type, json) {
                             Ok(value) if value.is_null() => None,
                             Ok(value) => Some(Ok((Word::from(column.field.to_string()), value))),
@@ -566,7 +584,7 @@ impl EntityData {
                         None
                     }
                 });
-                T::from_data(&layout.input_schema, typname.chain(entries))
+                T::from_data(&layout.input_schema, parent_id, typname.chain(entries))
             }
             _ => unreachable!(
                 "we use `to_json` in our queries, and will therefore always get an object back"

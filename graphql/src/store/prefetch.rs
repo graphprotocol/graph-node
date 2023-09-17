@@ -4,7 +4,7 @@
 use anyhow::{anyhow, Error};
 use graph::constraint_violation;
 use graph::data::query::Trace;
-use graph::data::store::PARENT_ID;
+use graph::data::store::QueryObject;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
 use graph::slog::warn;
@@ -40,6 +40,8 @@ struct Node {
     /// field will have the cache weight of the `entity` plus the weight of
     /// the keys and values of the `children` map, but not of the map itself
     children_weight: usize,
+
+    parent: Option<r::Value>,
 
     entity: Object,
     /// We are using an `Rc` here for two reasons: it allows us to defer
@@ -85,11 +87,12 @@ struct Node {
     children: BTreeMap<Word, Vec<Rc<Node>>>,
 }
 
-impl From<Object> for Node {
-    fn from(entity: Object) -> Self {
+impl From<QueryObject> for Node {
+    fn from(object: QueryObject) -> Self {
         Node {
-            children_weight: entity.weight(),
-            entity,
+            children_weight: object.weight(),
+            parent: object.parent,
+            entity: object.entity,
             children: BTreeMap::default(),
         }
     }
@@ -134,6 +137,7 @@ fn make_root_node() -> Vec<Node> {
     let entity = Object::empty();
     vec![Node {
         children_weight: entity.weight(),
+        parent: None,
         entity,
         children: BTreeMap::default(),
     }]
@@ -460,10 +464,11 @@ fn add_children(parents: &mut [&mut Node], children: Vec<Node>, response_key: &s
     // interface.
     let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
     for child in children.iter() {
-        match child
-            .get(&*PARENT_ID)
-            .expect("the query that produces 'child' ensures there is always a g$parent_id")
-        {
+        let parent = child
+            .parent
+            .as_ref()
+            .expect("the query that produces 'child' ensures there is always a g$parent_id");
+        match parent {
             r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
             _ => unreachable!("the parent_id returned by the query is always a string"),
         }

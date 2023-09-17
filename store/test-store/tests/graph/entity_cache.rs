@@ -3,7 +3,6 @@ use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
     StoredDynamicDataSource, WritableStore,
 };
-use graph::data::store::PARENT_ID;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
 use graph::schema::{EntityKey, EntityType, InputSchema};
@@ -736,16 +735,19 @@ fn scoped_get() {
 fn no_internal_keys() {
     run_store_test(|mut cache, _, _, writable| async move {
         #[track_caller]
-        fn check(entity: &Entity) {
-            assert_eq!(None, entity.get("__typename"));
-            assert_eq!(None, entity.get(&*PARENT_ID));
+        fn check(schema: &InputSchema, key: &EntityKey, entity: &Entity) {
+            // Validate checks that all attributes are actually declared in
+            // the schema
+            entity.validate(schema, key).expect("the entity is valid");
         }
         let key = WALLET_TYPE.key("1");
 
+        let schema = cache.schema.cheap_clone();
+
         let wallet = writable.get(&key).unwrap().unwrap();
-        check(&wallet);
+        check(&schema, &key, &wallet);
 
         let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
-        check(&wallet);
+        check(&schema, &key, &wallet);
     });
 }
