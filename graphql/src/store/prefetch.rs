@@ -449,13 +449,17 @@ impl<'a> MaybeJoin<'a> {
 ///
 /// If `parents` only has one entry, add all children to that one parent. In
 /// particular, this is what happens for toplevel queries.
-fn add_children(parents: &mut [&mut Node], children: Vec<Node>, response_key: &str) {
+fn add_children(
+    parents: &mut [&mut Node],
+    children: Vec<Node>,
+    response_key: &str,
+) -> Result<(), QueryExecutionError> {
     let children: Vec<_> = children.into_iter().map(Rc::new).collect();
 
     if parents.len() == 1 {
         let parent = parents.first_mut().expect("we just checked");
         parent.set_children(response_key.to_owned(), children);
-        return;
+        return Ok(());
     }
 
     // Build a map parent_id -> Vec<child> that we will use to add
@@ -464,10 +468,13 @@ fn add_children(parents: &mut [&mut Node], children: Vec<Node>, response_key: &s
     // interface.
     let mut grouped: BTreeMap<&str, Vec<Rc<Node>>> = BTreeMap::default();
     for child in children.iter() {
-        let parent = child
-            .parent
-            .as_ref()
-            .expect("the query that produces 'child' ensures there is always a g$parent_id");
+        let parent = child.parent.as_ref().ok_or_else(|| {
+            QueryExecutionError::Panic(format!(
+                "child {}[{}] is missing a parent id",
+                child.typename(),
+                child.id().unwrap_or_else(|_| "<no id>".to_owned())
+            ))
+        })?;
         match parent {
             r::Value::String(key) => grouped.entry(key).or_default().push(child.clone()),
             _ => unreachable!("the parent_id returned by the query is always a string"),
@@ -486,6 +493,8 @@ fn add_children(parents: &mut [&mut Node], children: Vec<Node>, response_key: &s
         let values = parent.id().ok().and_then(|id| grouped.get(&*id).cloned());
         parent.set_children(response_key.to_owned(), values.unwrap_or_default());
     }
+
+    Ok(())
 }
 
 /// Run the query in `ctx` in such a manner that we only perform one query
@@ -640,7 +649,7 @@ fn execute_selection_set<'a>(
                         &field.selection_set,
                     ) {
                         Ok((children, trace)) => {
-                            add_children(&mut parents, children, field.response_key());
+                            add_children(&mut parents, children, field.response_key())?;
                             let weight =
                                 parents.iter().map(|parent| parent.weight()).sum::<usize>();
                             check_result_size(ctx, weight)?;
