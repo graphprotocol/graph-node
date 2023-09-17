@@ -2,7 +2,7 @@ use std::fmt;
 
 use anyhow::Error;
 
-use crate::components::store::{LoadRelatedRequest, StoreError};
+use crate::components::store::StoreError;
 use crate::data::store::Value;
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
@@ -47,15 +47,6 @@ impl EntityKey {
             causality_region,
             _force_use_of_new: (),
         }
-    }
-
-    pub fn from(id: &String, load_related_request: &LoadRelatedRequest) -> Self {
-        let clone = load_related_request.clone();
-        Self::new(
-            clone.entity_type,
-            Word::from(id.as_str()),
-            clone.causality_region,
-        )
     }
 
     pub fn id_value(&self) -> Result<Value, Error> {
