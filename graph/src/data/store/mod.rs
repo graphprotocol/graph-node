@@ -22,7 +22,7 @@ use strum_macros::IntoStaticStr;
 use thiserror::Error;
 
 use super::{
-    graphql::{ext::DirectiveFinder, TypeExt as _},
+    graphql::{ext::DirectiveFinder, ObjectOrInterface, TypeExt as _},
     value::Word,
 };
 
@@ -182,7 +182,7 @@ pub enum IdType {
     Bytes,
 }
 
-impl TryFrom<&s::ObjectType> for IdType {
+impl<'a> TryFrom<&s::ObjectType> for IdType {
     type Error = Error;
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {

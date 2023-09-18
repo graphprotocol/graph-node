@@ -7,9 +7,11 @@ use store::Entity;
 use crate::cheap_clone::CheapClone;
 use crate::components::store::LoadRelatedRequest;
 use crate::data::graphql::ext::DirectiveFinder;
-use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
+use crate::data::graphql::{
+    DirectiveExt, DocumentExt, ObjectOrInterface, ObjectTypeExt, TypeExt, ValueExt,
+};
 use crate::data::store::{
-    self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator,
+    self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator, ID,
 };
 use crate::data::value::Word;
 use crate::prelude::q::Value;
@@ -40,7 +42,7 @@ pub struct InputSchema {
     inner: Arc<Inner>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum TypeKind {
     MutableObject(IdType),
     ImmutableObject(IdType),
@@ -71,29 +73,55 @@ struct TypeInfo {
 }
 
 impl TypeInfo {
-    fn new(pool: &AtomPool, obj_type: &s::ObjectType) -> Self {
+    fn new(pool: &AtomPool, typ: ObjectOrInterface<'_>, kind: TypeKind) -> Self {
         // The `unwrap` of `lookup` is safe because the pool was just
         // constructed against the underlying schema
-        let name = pool.lookup(&obj_type.name).unwrap();
-        let fields = obj_type
-            .fields
+        let name = pool.lookup(typ.name()).unwrap();
+        let fields = typ
+            .fields()
             .iter()
             .map(|field| pool.lookup(&field.name).unwrap())
             .collect::<Vec<_>>()
             .into_boxed_slice();
+        Self { name, kind, fields }
+    }
+
+    fn for_object(pool: &AtomPool, obj_type: &s::ObjectType) -> Self {
         let id_type = IdType::try_from(obj_type).expect("validation caught any issues here");
         let kind = if obj_type.is_immutable() {
             TypeKind::ImmutableObject(id_type)
         } else {
             TypeKind::MutableObject(id_type)
         };
-        Self { name, kind, fields }
+        Self::new(pool, obj_type.into(), kind)
+    }
+
+    fn for_interface(pool: &AtomPool, intf_type: &s::InterfaceType) -> Self {
+        Self::new(pool, intf_type.into(), TypeKind::Interface)
+    }
+
+    fn for_poi(pool: &AtomPool) -> Self {
+        // The way we handle the PoI type is a bit of a hack. We pretend
+        // it's an object type, but trying to look up the `s::ObjectType`
+        // for it will turn up nothing.
+        // See also https://github.com/graphprotocol/graph-node/issues/4873
+        let name = pool.lookup(POI_OBJECT).unwrap();
+        let fields =
+            vec![pool.lookup(&ID).unwrap(), pool.lookup(POI_DIGEST).unwrap()].into_boxed_slice();
+        Self {
+            name,
+            kind: TypeKind::MutableObject(IdType::String),
+            fields,
+        }
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Inner {
     schema: Schema,
+    /// A list of all the object and interface types in the `schema` with
+    /// some important information extracted from the schema. The list is
+    /// sorted by the name atom (not the string name) of the types
     type_infos: Box<[TypeInfo]>,
     pool: Arc<AtomPool>,
 }
@@ -110,12 +138,20 @@ impl InputSchema {
     fn create(schema: Schema) -> Self {
         let pool = Arc::new(atom_pool(&schema.document));
 
-        let mut type_infos: Vec<_> = schema
+        let obj_types = schema
             .document
             .get_object_type_definitions()
             .into_iter()
             .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
-            .map(|obj_type| TypeInfo::new(&pool, obj_type))
+            .map(|obj_type| TypeInfo::for_object(&pool, obj_type));
+        let intf_types = schema
+            .document
+            .get_interface_type_definitions()
+            .into_iter()
+            .map(|intf_type| TypeInfo::for_interface(&pool, intf_type));
+        let mut type_infos: Vec<_> = obj_types
+            .chain(intf_types)
+            .chain(vec![TypeInfo::for_poi(&pool)])
             .collect();
         type_infos.sort_by_key(|ti| ti.name);
         let type_infos = type_infos.into_boxed_slice();
@@ -426,7 +462,8 @@ impl InputSchema {
 
     pub fn poi_type(&self) -> EntityType {
         // unwrap: we make sure to put POI_OBJECT into the pool
-        EntityType::new(self.cheap_clone(), POI_OBJECT).unwrap()
+        let atom = self.inner.pool.lookup(POI_OBJECT).unwrap();
+        EntityType::new(self.cheap_clone(), atom)
     }
 
     pub fn poi_digest(&self) -> Word {
@@ -440,10 +477,22 @@ impl InputSchema {
 
     /// Return the entity type for `named`. If the entity type does not
     /// exist, return an error. Generally, an error should only be possible
-    /// of `named` is based on user input. If `named` is an internal object,
+    /// if `named` is based on user input. If `named` is an internal object,
     /// like a `ObjectType`, it is safe to unwrap the result
     pub fn entity_type<N: AsEntityTypeName>(&self, named: N) -> Result<EntityType, Error> {
-        EntityType::new(self.cheap_clone(), named.name())
+        let name = named.name();
+        self.inner
+            .pool
+            .lookup(name)
+            .and_then(|atom| self.type_info(atom))
+            .map(|ti| EntityType::new(self.cheap_clone(), ti.name))
+            .ok_or_else(|| {
+                anyhow!(
+                    "internal error: entity type `{}` does not exist in {}",
+                    name,
+                    self.inner.schema.id
+                )
+            })
     }
 }
 
@@ -507,7 +556,11 @@ fn atom_pool(document: &s::Document) -> AtomPool {
 
 #[cfg(test)]
 mod tests {
-    use crate::prelude::DeploymentHash;
+    use crate::{
+        data::store::ID,
+        prelude::DeploymentHash,
+        schema::input_schema::{POI_DIGEST, POI_OBJECT},
+    };
 
     use super::InputSchema;
 
@@ -524,6 +577,14 @@ mod tests {
         let schema = InputSchema::parse(SCHEMA, id).unwrap();
 
         assert_eq!("Thing", schema.entity_type("Thing").unwrap().as_str());
+
+        let poi = schema.entity_type(POI_OBJECT).unwrap();
+        assert_eq!(POI_OBJECT, poi.as_str());
+        assert!(poi.has_field(schema.pool().lookup(&ID).unwrap()));
+        assert!(poi.has_field(schema.pool().lookup(POI_DIGEST).unwrap()));
+        // This is not ideal, but we don't have an object type for the PoI
+        assert_eq!(None, poi.object_type());
+
         assert!(schema.entity_type("NonExistent").is_err());
     }
 }

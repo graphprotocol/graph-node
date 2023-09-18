@@ -1,6 +1,6 @@
 use std::{borrow::Borrow, fmt, sync::Arc};
 
-use anyhow::{bail, Context, Error};
+use anyhow::{Context, Error};
 use serde::Serialize;
 
 use crate::{
@@ -27,18 +27,8 @@ pub struct EntityType {
 }
 
 impl EntityType {
-    /// Construct a new entity type. Ideally, this is only called when
-    /// `entity_type` either comes from the GraphQL schema, or from
-    /// the database from fields that are known to contain a valid entity type
-    // This method is only meant to be used in `InputSchema`; all external
-    // constructions of an `EntityType` need to go through that struct
-    pub(in crate::schema) fn new(schema: InputSchema, name: &str) -> Result<Self, Error> {
-        let atom = match schema.pool().lookup(name) {
-            Some(atom) => atom,
-            None => bail!("entity type `{name}` is not interned"),
-        };
-
-        Ok(EntityType { schema, atom })
+    pub(in crate::schema) fn new(schema: InputSchema, atom: Atom) -> Self {
+        EntityType { schema, atom }
     }
 
     pub fn as_str(&self) -> &str {
