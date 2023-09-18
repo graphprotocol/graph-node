@@ -182,6 +182,26 @@ pub enum IdType {
     Bytes,
 }
 
+impl TryFrom<&s::ObjectType> for IdType {
+    type Error = Error;
+
+    fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
+        let base_type = obj_type.field("id").unwrap().field_type.get_base_type();
+
+        match base_type {
+            "ID" | "String" => Ok(IdType::String),
+            "Bytes" => Ok(IdType::Bytes),
+            s => {
+                return Err(anyhow!(
+                    "Entity type {} uses illegal type {} for id column",
+                    obj_type.name,
+                    s
+                ))
+            }
+        }
+    }
+}
+
 // Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]

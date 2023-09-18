@@ -24,7 +24,10 @@ type AtomInt = u16;
 
 /// An atom in a pool. To look up the underlying string, surrounding code
 /// needs to know the pool for it.
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+///
+/// The ordering for atoms is based on their integer value, and has no
+/// connection to how the strings they represent would be ordered
+#[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Copy, Debug)]
 pub struct Atom(AtomInt);
 
 /// An atom and the underlying pool. A `FatAtom` can be used in place of a

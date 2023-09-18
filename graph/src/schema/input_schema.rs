@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
@@ -8,7 +8,9 @@ use crate::cheap_clone::CheapClone;
 use crate::components::store::LoadRelatedRequest;
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
-use crate::data::store::{self, EntityValidationError, IntoEntityIterator, TryIntoEntityIterator};
+use crate::data::store::{
+    self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator,
+};
 use crate::data::value::Word;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
@@ -16,7 +18,9 @@ use crate::schema::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
+use super::{
+    ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError, SCHEMA_TYPE_NAME,
+};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -37,11 +41,60 @@ pub struct InputSchema {
 }
 
 #[derive(Debug, PartialEq)]
+enum TypeKind {
+    MutableObject(IdType),
+    ImmutableObject(IdType),
+    Interface,
+}
+
+impl TypeKind {
+    fn is_object(&self) -> bool {
+        match self {
+            TypeKind::MutableObject(_) | TypeKind::ImmutableObject(_) => true,
+            TypeKind::Interface => false,
+        }
+    }
+
+    fn id_type(&self) -> Option<IdType> {
+        match self {
+            TypeKind::MutableObject(id_type) | TypeKind::ImmutableObject(id_type) => Some(*id_type),
+            TypeKind::Interface => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct TypeInfo {
+    name: Atom,
+    kind: TypeKind,
+    fields: Box<[Atom]>,
+}
+
+impl TypeInfo {
+    fn new(pool: &AtomPool, obj_type: &s::ObjectType) -> Self {
+        // The `unwrap` of `lookup` is safe because the pool was just
+        // constructed against the underlying schema
+        let name = pool.lookup(&obj_type.name).unwrap();
+        let fields = obj_type
+            .fields
+            .iter()
+            .map(|field| pool.lookup(&field.name).unwrap())
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let id_type = IdType::try_from(obj_type).expect("validation caught any issues here");
+        let kind = if obj_type.is_immutable() {
+            TypeKind::ImmutableObject(id_type)
+        } else {
+            TypeKind::MutableObject(id_type)
+        };
+        Self { name, kind, fields }
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Inner {
     schema: Schema,
-    immutable_types: HashSet<Atom>,
-    // Maps each entity type to its field names
-    field_names: HashMap<Atom, Vec<Atom>>,
+    type_infos: Box<[TypeInfo]>,
     pool: Arc<AtomPool>,
 }
 
@@ -57,39 +110,20 @@ impl InputSchema {
     fn create(schema: Schema) -> Self {
         let pool = Arc::new(atom_pool(&schema.document));
 
-        // The `unwrap` of `lookup` is safe because we just created the pool
-        let immutable_types = HashSet::from_iter(
-            schema
-                .document
-                .get_object_type_definitions()
-                .into_iter()
-                .filter(|obj_type| obj_type.is_immutable())
-                .map(|obj_type| pool.lookup(&obj_type.name).unwrap())
-                .collect::<Vec<_>>(),
-        );
-
-        let field_names = HashMap::from_iter(
-            schema
-                .document
-                .get_object_type_definitions()
-                .into_iter()
-                .map(|obj_type| {
-                    let fields: Vec<_> = obj_type
-                        .fields
-                        .iter()
-                        .map(|field| pool.lookup(&field.name).unwrap())
-                        .collect();
-                    let type_atom = pool.lookup(&obj_type.name).unwrap();
-                    (type_atom, fields)
-                })
-                .collect::<Vec<_>>(),
-        );
+        let mut type_infos: Vec<_> = schema
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
+            .map(|obj_type| TypeInfo::new(&pool, obj_type))
+            .collect();
+        type_infos.sort_by_key(|ti| ti.name);
+        let type_infos = type_infos.into_boxed_slice();
 
         Self {
             inner: Arc::new(Inner {
                 schema,
-                immutable_types,
-                field_names,
+                type_infos,
                 pool,
             }),
         }
@@ -242,36 +276,39 @@ impl InputSchema {
         }
     }
 
-    pub(in crate::schema) fn id_type(
-        &self,
-        entity_type: &EntityType,
-    ) -> Result<store::IdType, Error> {
-        let base_type = self
-            .inner
-            .schema
-            .document
-            .get_object_type_definition(entity_type.as_str())
-            .ok_or_else(|| anyhow!("unknown entity type `{}`", entity_type))?
-            .field("id")
-            .unwrap()
-            .field_type
-            .get_base_type();
-
-        match base_type {
-            "ID" | "String" => Ok(store::IdType::String),
-            "Bytes" => Ok(store::IdType::Bytes),
-            s => {
-                return Err(anyhow!(
-                    "Entity type {} uses illegal type {} for id column",
-                    entity_type,
-                    s
-                ))
-            }
-        }
+    fn type_info(&self, atom: Atom) -> Option<&TypeInfo> {
+        self.inner
+            .type_infos
+            .binary_search_by_key(&atom, |ti| ti.name)
+            .map(|idx| &self.inner.type_infos[idx])
+            .ok()
     }
 
+    pub(in crate::schema) fn id_type(&self, entity_type: Atom) -> Result<store::IdType, Error> {
+        fn unknown_name(pool: &AtomPool, atom: Atom) -> Error {
+            match pool.get(atom) {
+                Some(name) => anyhow!("Entity type `{name}` is not defined in the schema"),
+                None => anyhow!(
+                    "Invalid atom for id_type lookup (atom is probably from a different pool)"
+                ),
+            }
+        }
+
+        let type_info = self
+            .type_info(entity_type)
+            .ok_or_else(|| unknown_name(&self.inner.pool, entity_type))?;
+
+        type_info.kind.id_type().ok_or_else(|| {
+            let name = self.inner.pool.get(entity_type).unwrap();
+            anyhow!("Entity type `{}` does not have an `id` field", name)
+        })
+    }
+
+    /// Check if `entity_type` is an immutable object type
     pub(in crate::schema) fn is_immutable(&self, entity_type: Atom) -> bool {
-        self.inner.immutable_types.contains(&entity_type)
+        self.type_info(entity_type)
+            .map(|ti| matches!(ti.kind, TypeKind::ImmutableObject(_)))
+            .unwrap_or(false)
     }
 
     pub fn get_named_type(&self, name: &str) -> Option<&s::TypeDefinition> {
@@ -380,11 +417,10 @@ impl InputSchema {
         Entity::try_make(self.inner.pool.clone(), iter)
     }
 
+    /// Check if `entity_type` is an object type and has a field `field`
     pub(in crate::schema) fn has_field(&self, entity_type: Atom, field: Atom) -> bool {
-        self.inner
-            .field_names
-            .get(&entity_type)
-            .map(|fields| fields.contains(&field))
+        self.type_info(entity_type)
+            .map(|ti| ti.kind.is_object() && ti.fields.contains(&field))
             .unwrap_or(false)
     }
 

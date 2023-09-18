@@ -59,7 +59,7 @@ impl EntityType {
     }
 
     pub fn id_type(&self) -> Result<IdType, Error> {
-        self.schema.id_type(self)
+        self.schema.id_type(self.atom)
     }
 
     pub fn object_type(&self) -> Option<&s::ObjectType> {
@@ -82,7 +82,7 @@ impl EntityType {
         let id = id.into();
         let id_type = self
             .schema
-            .id_type(self)
+            .id_type(self.atom)
             .with_context(|| format!("error determining id_type for {}[{}]", self.as_str(), id))?;
         match id_type {
             IdType::String => Ok(Value::String(id.to_string())),
