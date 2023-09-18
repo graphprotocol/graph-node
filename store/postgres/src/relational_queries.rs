@@ -153,7 +153,7 @@ trait ForeignKeyClauses {
 
     /// Add `id` as a bind variable to `out`, using the right SQL type
     fn bind_id(&self, id: &str, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        match self.column_type().id_type() {
+        match self.column_type().id_type()? {
             IdType::String => out.push_bind_param::<Text, _>(&id)?,
             IdType::Bytes => out.push_bind_param::<Binary, _>(&str_as_bytes(id)?.as_slice())?,
         }
@@ -168,7 +168,7 @@ trait ForeignKeyClauses {
     where
         S: AsRef<str> + diesel::serialize::ToSql<Text, Pg>,
     {
-        self.column_type().id_type().bind_ids(ids, out)
+        self.column_type().id_type()?.bind_ids(ids, out)
     }
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
@@ -219,7 +219,7 @@ trait ForeignKeyClauses {
                     }
                     match id {
                         None => out.push_sql("null"),
-                        Some(id) => match self.column_type().id_type() {
+                        Some(id) => match self.column_type().id_type()? {
                             IdType::String => {
                                 out.push_sql("'");
                                 out.push_sql(&id.0);
@@ -2270,7 +2270,7 @@ impl<'a> FilterWindow<'a> {
         })
     }
 
-    fn parent_type(&self) -> IdType {
+    fn parent_type(&self) -> QueryResult<IdType> {
         match &self.link {
             TableLink::Direct(column, _) => column.column_type.id_type(),
             TableLink::Parent(parent_table, _) => parent_table.primary_key().column_type.id_type(),
@@ -2747,10 +2747,10 @@ impl<'a> FilterCollection<'a> {
     pub(crate) fn parent_type(&self) -> Result<Option<IdType>, StoreError> {
         match self {
             FilterCollection::All(_) => Ok(None),
-            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type())),
+            FilterCollection::SingleWindow(window) => Ok(Some(window.parent_type()?)),
             FilterCollection::MultiWindow(windows, _) => {
                 if windows.iter().map(FilterWindow::parent_type).all_equal() {
-                    Ok(Some(windows[0].parent_type()))
+                    Ok(Some(windows[0].parent_type()?))
                 } else {
                     Err(graph::constraint_violation!(
                         "all implementors of an interface must use the same type for their `id`"
@@ -4122,7 +4122,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select c.* from ");
         out.push_sql("unnest(");
         // windows always has at least 2 entries
-        windows[0].parent_type().bind_ids(parent_ids, &mut out)?;
+        windows[0].parent_type()?.bind_ids(parent_ids, &mut out)?;
         out.push_sql(") as q(id)\n");
         out.push_sql(" cross join lateral (");
         for (i, window) in windows.iter().enumerate() {
@@ -4311,14 +4311,17 @@ pub struct ReturnedEntityData {
 impl ReturnedEntityData {
     /// Convert primary key ids from Postgres' internal form to the format we
     /// use by stripping `\\x` off the front of bytes strings
-    fn bytes_as_str(table: &Table, mut data: Vec<ReturnedEntityData>) -> Vec<ReturnedEntityData> {
-        match table.primary_key().column_type.id_type() {
-            IdType::String => data,
+    fn bytes_as_str(
+        table: &Table,
+        mut data: Vec<ReturnedEntityData>,
+    ) -> QueryResult<Vec<ReturnedEntityData>> {
+        match table.primary_key().column_type.id_type()? {
+            IdType::String => Ok(data),
             IdType::Bytes => {
                 for entry in data.iter_mut() {
                     entry.id = bytes_as_str(&entry.id);
                 }
-                data
+                Ok(data)
             }
         }
     }
@@ -4367,7 +4370,7 @@ impl<'a> QueryId for RevertRemoveQuery<'a> {
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertRemoveQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
+            .and_then(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
 }
 
@@ -4450,7 +4453,7 @@ impl<'a> QueryId for RevertClampQuery<'a> {
 impl<'a> LoadQuery<PgConnection, ReturnedEntityData> for RevertClampQuery<'a> {
     fn internal_load(self, conn: &PgConnection) -> QueryResult<Vec<ReturnedEntityData>> {
         conn.query_by_name(&self)
-            .map(|data| ReturnedEntityData::bytes_as_str(self.table, data))
+            .and_then(|data| ReturnedEntityData::bytes_as_str(self.table, data))
     }
 }
 

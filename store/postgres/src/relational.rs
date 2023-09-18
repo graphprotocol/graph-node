@@ -22,7 +22,7 @@ use diesel::serialize::Output;
 use diesel::sql_types::Text;
 use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, RunQueryDsl};
+use diesel::{debug_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::RowGroup;
 use graph::constraint_violation;
@@ -1107,15 +1107,18 @@ impl ColumnType {
     }
 
     /// Return the `IdType` corresponding to this column type. This can only
-    /// be called on a column that stores an `ID` and will panic otherwise
-    pub(crate) fn id_type(&self) -> IdType {
+    /// be called on a column that stores an `ID` and will return an error
+    pub(crate) fn id_type(&self) -> QueryResult<IdType> {
         match self {
-            ColumnType::String => IdType::String,
-            ColumnType::Bytes => IdType::Bytes,
-            _ => unreachable!(
-                "only String and BytesId are allowed as primary keys but not {:?}",
-                self
-            ),
+            ColumnType::String => Ok(IdType::String),
+            ColumnType::Bytes => Ok(IdType::Bytes),
+            _ => Err(diesel::result::Error::QueryBuilderError(
+                anyhow!(
+                    "only String and Bytes are allowed as primary keys but not {:?}",
+                    self
+                )
+                .into(),
+            )),
         }
     }
 }
