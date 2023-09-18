@@ -433,6 +433,7 @@ async fn insert_test_entities(
             vec![
                 entity! { is => id: "rl2",  title: "Rock",           songs: vec![s[2]] },
                 entity! { is => id: "rl3",  title: "Cheesy",         songs: vec![s[1]] },
+                entity! { is => id: "rl4",  title: "Silence",        songs: Vec::<graph::prelude::Value>::new() },
             ],
         ),
     ];
@@ -2796,4 +2797,24 @@ fn can_compare_id() {
             assert_eq!(data, exp, "check {} for {:?} ids", cond, id_type);
         })
     }
+}
+
+#[test]
+fn empty_type_c() {
+    // Single `rl4` has no songs. Make sure our SQL query generation does
+    // not cause a syntax error
+    const QUERY: &str = "
+    query {
+        single(id: \"rl4\") {
+            songs { id }
+        }
+    }";
+
+    run_query(QUERY, |result, _| {
+        let exp = object! {
+            single: object! { songs: Vec::<r::Value>::new() }
+        };
+        let data = extract_data!(result).unwrap();
+        assert_eq!(data, exp);
+    })
 }

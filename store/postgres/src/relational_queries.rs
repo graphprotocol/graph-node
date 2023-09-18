@@ -191,57 +191,6 @@ trait ForeignKeyClauses {
         out.push_sql(") as p(g$id) where id = p.g$id)");
         Ok(())
     }
-
-    /// Generate an array of arrays as literal SQL. The `ids` must form a
-    /// valid matrix, i.e. the same numbe of entries in each row. This can
-    /// be achieved by padding them with `None` values. Diesel does not support
-    /// arrays of arrays as bind variables, nor arrays containing nulls, so
-    /// we have to manually serialize the `ids` as literal SQL.
-    fn push_matrix(
-        &self,
-        matrix: &[Vec<Option<SafeString>>],
-        out: &mut AstPass<Pg>,
-    ) -> QueryResult<()> {
-        out.push_sql("array[");
-        if matrix.is_empty() {
-            // If there are no ids, make sure we are producing an
-            // empty array of arrays
-            out.push_sql("array[null]");
-        } else {
-            for (i, ids) in matrix.iter().enumerate() {
-                if i > 0 {
-                    out.push_sql(", ");
-                }
-                out.push_sql("array[");
-                for (j, id) in ids.iter().enumerate() {
-                    if j > 0 {
-                        out.push_sql(", ");
-                    }
-                    match id {
-                        None => out.push_sql("null"),
-                        Some(id) => match self.column_type().id_type()? {
-                            IdType::String => {
-                                out.push_sql("'");
-                                out.push_sql(&id.0);
-                                out.push_sql("'");
-                            }
-                            IdType::Bytes => {
-                                out.push_sql("'\\x");
-                                out.push_sql(id.0.trim_start_matches("0x"));
-                                out.push_sql("'");
-                            }
-                        },
-                    }
-                }
-                out.push_sql("]");
-            }
-        }
-        // Generate '::text[][]' or '::bytea[][]'
-        out.push_sql("]::");
-        out.push_sql(self.column_type().sql_type());
-        out.push_sql("[][]");
-        Ok(())
-    }
 }
 
 impl ForeignKeyClauses for Column {
@@ -2090,22 +2039,9 @@ impl<'a> LoadQuery<PgConnection, ConflictingEntityData> for ConflictingEntityQue
 
 impl<'a, Conn> RunQueryDsl<Conn> for ConflictingEntityQuery<'a> {}
 
-/// A string where we have checked that it is safe to embed it literally
-/// in a string in a SQL query. In particular, we have escaped any use
-/// of the string delimiter `'`.
-///
-/// This is only needed for `ParentIds::List` since we can't send those to
-/// the database as a bind variable, and therefore need to embed them in
-/// the query literally
-#[derive(Debug, Clone)]
-struct SafeString(String);
-
-/// A `ParentLink` where we've made sure for the `List` variant that each
-/// `Vec<Option<String>>` has the same length
-/// Use the provided constructors to make sure this invariant holds
 #[derive(Debug, Clone)]
 enum ParentIds {
-    List(Vec<Vec<Option<SafeString>>>),
+    List(Vec<Vec<String>>),
     Scalar(Vec<String>),
 }
 
@@ -2113,31 +2049,7 @@ impl ParentIds {
     fn new(link: ParentLink) -> Self {
         match link {
             ParentLink::Scalar(child_ids) => ParentIds::Scalar(child_ids),
-            ParentLink::List(child_ids) => {
-                // Postgres will only accept child_ids, which is a Vec<Vec<String>>
-                // if all Vec<String> are the same length. We therefore pad
-                // shorter ones with None, which become nulls in the database
-                let maxlen = child_ids.iter().map(|ids| ids.len()).max().unwrap_or(0);
-                let child_ids = child_ids
-                    .into_iter()
-                    .map(|ids| {
-                        let mut ids: Vec<_> = ids
-                            .into_iter()
-                            .map(|s| {
-                                if s.contains('\'') {
-                                    SafeString(s.replace('\'', "''"))
-                                } else {
-                                    SafeString(s)
-                                }
-                            })
-                            .map(Some)
-                            .collect();
-                        ids.resize_with(maxlen, || None);
-                        ids
-                    })
-                    .collect();
-                ParentIds::List(child_ids)
-            }
+            ParentLink::List(child_ids) => ParentIds::List(child_ids),
         }
     }
 }
@@ -2433,40 +2345,69 @@ impl<'a> FilterWindow<'a> {
     fn children_type_c(
         &self,
         parent_primary_key: &Column,
-        child_ids: &[Vec<Option<SafeString>>],
+        child_ids: &[Vec<String>],
         limit: ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<Pg>,
     ) -> QueryResult<()> {
-        // Generate
-        //      from rows from (unnest({parent_ids}), reduce_dim({child_id_matrix}))
-        //                  as p(id, child_ids)
-        //           cross join lateral
-        //           (select {column names}
-        //              from children c
-        //             where c.id = any(p.child_ids)
-        //               and .. other conditions on c ..
-        //             order by c.{sort_key}
-        //             limit {first} offset {skip}) c
-        //     order by c.{sort_key}
+        out.push_sql("\n/* children_type_c */ ");
 
-        out.push_sql("\n/* children_type_c */  from ");
-        out.push_sql("rows from (unnest(");
-        parent_primary_key.bind_ids(&self.ids, out)?;
-        out.push_sql("), reduce_dim(");
-        self.table.primary_key().push_matrix(child_ids, out)?;
-        out.push_sql(")) as p(id, child_ids)");
-        out.push_sql(" cross join lateral (select ");
-        write_column_names(&self.column_names, self.table, None, out)?;
-        out.push_sql(" from ");
-        out.push_sql(self.table.qualified_name.as_str());
-        out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
-        limit.filter(out);
-        out.push_sql(" and c.id = any(p.child_ids)");
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
-        out.push_sql(") c");
+        // An empty `self.ids` leads to an empty `(values )` clause which is
+        // not legal SQL. In that case we generate some dummy SQL where the
+        // resulting empty table has the same structure as the one we
+        // generate when `self.ids` is not empty
+        if !self.ids.is_empty() {
+            // Generate
+            //      from (values ({parent_id}, {child_ids}), ...)
+            //                     as p(id, child_ids)
+            //           cross join lateral
+            //           (select {column names}
+            //              from children c
+            //             where c.id = any(p.child_ids)
+            //               and .. other conditions on c ..
+            //             order by c.{sort_key}
+            //             limit {first} offset {skip}) c
+            //     order by c.{sort_key}
+
+            out.push_sql("from (values ");
+            for i in 0..self.ids.len() {
+                let parent_id = &self.ids[i];
+                let child_ids = &child_ids[i];
+                if i > 0 {
+                    out.push_sql(", (");
+                } else {
+                    out.push_sql("(");
+                }
+                parent_primary_key.bind_id(parent_id, out)?;
+                out.push_sql(",");
+                self.table.primary_key().bind_ids(child_ids, out)?;
+                out.push_sql(")");
+            }
+            out.push_sql(") as p(id, child_ids)");
+            out.push_sql(" cross join lateral (select ");
+            write_column_names(&self.column_names, self.table, None, out)?;
+            out.push_sql(" from ");
+            out.push_sql(self.table.qualified_name.as_str());
+            out.push_sql(" c where ");
+            BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+            limit.filter(out);
+            out.push_sql(" and c.id = any(p.child_ids)");
+            self.and_filter(out.reborrow())?;
+            limit.restrict(out)?;
+            out.push_sql(") c");
+        } else {
+            // Generate
+            //      from unnest(array[]::text[]) as p(id) cross join
+            //           (select {column names}
+            //              from children c
+            //             where false) c
+
+            out.push_sql("from unnest(array[]::text[]) as p(id) cross join (select ");
+            write_column_names(&self.column_names, self.table, None, out)?;
+            out.push_sql("  from ");
+            out.push_sql(self.table.qualified_name.as_str());
+            out.push_sql(" c where false) c");
+        }
         Ok(())
     }
 
@@ -2628,10 +2569,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                         write!(f, "many:{}={}", col.name(), ids.join(","))?
                     }
                     TableLink::Parent(_, ParentIds::List(css)) => {
-                        let css = css
-                            .iter()
-                            .map(|cs| cs.iter().filter_map(|c| c.as_ref().map(|s| &s.0)).join(","))
-                            .join("],[");
+                        let css = css.iter().map(|cs| cs.join(",")).join("],[");
                         write!(f, "uniq:id=[{}]", css)?
                     }
                     TableLink::Parent(_, ParentIds::Scalar(cs)) => {

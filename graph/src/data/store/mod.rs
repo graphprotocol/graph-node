@@ -22,7 +22,7 @@ use strum_macros::IntoStaticStr;
 use thiserror::Error;
 
 use super::{
-    graphql::{ext::DirectiveFinder, ObjectOrInterface, TypeExt as _},
+    graphql::{ext::DirectiveFinder, TypeExt as _},
     value::Word,
 };
 
