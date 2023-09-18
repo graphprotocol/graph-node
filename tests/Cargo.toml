@@ -7,7 +7,7 @@ edition.workspace = true
 anyhow = "1.0"
 assert-json-diff = "2.0.2"
 async-stream = "0.3.5"
-bollard = "0.10"
+bollard = "0.15"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
@@ -27,7 +27,7 @@ uuid = { version = "1.4.1", features = ["v4"] }
 
 [dev-dependencies]
 anyhow = "1.0.75"
-bollard = "0.10"
+bollard = "0.15"
 lazy_static = "1.4.0"
 tokio-stream = "0.1"
 cid = "0.10.1"
