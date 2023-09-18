@@ -760,8 +760,9 @@ impl EthereumAdapter {
                     .iter()
                     .find_map(|(start_block, interval)| {
                         let has_once_trigger = (*interval == 0) && (block_number == *start_block);
-                        let has_polling_trigger =
-                            *interval > 0 && ((block_number - start_block) % *interval) == 0;
+                        let has_polling_trigger = block_number >= *start_block
+                            && *interval > 0
+                            && ((block_number - start_block) % *interval) == 0;
 
                         if has_once_trigger || has_polling_trigger {
                             let mut triggers = Vec::new();
@@ -1712,7 +1713,10 @@ pub(crate) fn parse_block_triggers(
                 .iter()
                 .any(|(start_block, interval)| match interval {
                     0 => false,
-                    _ => (block_number - *start_block) % *interval == 0,
+                    _ => {
+                        block_number >= *start_block
+                            && (block_number - *start_block) % *interval == 0
+                    }
                 });
 
         let has_once_trigger =
