@@ -6,7 +6,7 @@ type Block @entity {
 
 type TestEventEntity @entity {
   id: ID!
-  block: BigInt!
+  blockHash: String!
   blockNumber: BigInt!
   command: String!
 }

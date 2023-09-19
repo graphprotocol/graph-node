@@ -14,9 +14,10 @@ export function handleBlock(block: ethereum.Block): void {
 export function handleTestEvent(event: TestEvent): void {
   let command = event.params.testCommand;
   let entity = new TestEventEntity(
-    event.transaction.hash.toHex() + '-' + event.logIndex.toString()
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString(),
   );
-  entity.block = event.block.number;
+  entity.blockNumber = event.block.number;
+  entity.blockHash = event.block.hash.toHexString();
   entity.command = command;
   entity.save();
 }

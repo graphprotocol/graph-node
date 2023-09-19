@@ -456,20 +456,66 @@ async fn end_block() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks, &stores, None).await;
+    let chain = chain(blocks.clone(), &stores, None).await;
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
     ctx.start_and_sync_to(stop_block).await;
 
     // query the last Block entity to check if its 8th block
     let query_res = ctx
-        .query(r#"{ blocks(first: 1, orderBy: number, orderDirection: desc) { number } }"#)
+        .query(r#"{ blocks(first: 1, orderBy: number, orderDirection: desc) { number hash } }"#)
         .await
         .unwrap();
+
     assert_eq!(
         query_res,
-        Some(object! { blocks: vec![object!{ number: "8" }] })
+        Some(
+            object! { blocks: vec![object!{ number: "8", hash:"0x0000000000000000000000000000000000000000000000000000000000000008"  }] }
+        )
     );
+
+    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    {
+        ctx.rewind(test_ptr(7));
+
+        // Replace block number 7 with one that contains a different event
+        let mut blocks = blocks[0..8].to_vec().clone();
+
+        let block_8_1_ptr = test_ptr_reorged(8, 1);
+        let block_8_1 = empty_block(test_ptr(7), block_8_1_ptr.clone());
+        blocks.push(block_8_1);
+
+        let stop_block = blocks.last().unwrap().block.ptr();
+
+        chain.set_block_stream(blocks.clone());
+
+        ctx.start_and_sync_to(stop_block).await;
+
+        // query the last Block entity to check if its 8th block
+        let query_res = ctx
+            .query(
+                r#"{ 
+                blocks(first: 1, orderBy: number, orderDirection: desc) { 
+                    number 
+                    hash 
+                }
+            }"#,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            query_res,
+            Some(object! {
+                blocks: vec![
+                    object!{
+                        number: "8",
+                        hash: "0x0000000100000000000000000000000000000000000000000000000000000008"
+                    }
+                ],
+            })
+        );
+    }
 
     Ok(())
 }
