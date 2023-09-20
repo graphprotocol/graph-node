@@ -12,6 +12,7 @@ use graph::{
     components::store::DeploymentLocator,
     data::subgraph::UnifiedMappingApiVersion,
     prelude::{async_trait, BlockNumber, BlockPtr},
+    schema::InputSchema,
     slog::o,
 };
 
@@ -30,17 +31,18 @@ impl BlockStreamBuilder {
 /// is very similar, so we can re-use the configuration and the builder for it.
 /// This is probably something to improve but for now it works.
 impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
-    async fn build_firehose(
+    async fn build_substreams(
         &self,
         chain: &Chain,
+        schema: Arc<InputSchema>,
         deployment: DeploymentLocator,
         block_cursor: FirehoseCursor,
-        _start_blocks: Vec<BlockNumber>,
         subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<TriggerFilter>,
-        _unified_api_version: UnifiedMappingApiVersion,
+        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let mapper = Arc::new(Mapper {});
+        let mapper = Arc::new(Mapper {
+            schema: Some(schema),
+        });
 
         let logger = chain
             .logger_factory
@@ -60,6 +62,19 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
             logger,
             chain.metrics_registry.clone(),
         )))
+    }
+
+    async fn build_firehose(
+        &self,
+        _chain: &Chain,
+        _deployment: DeploymentLocator,
+        _block_cursor: FirehoseCursor,
+        _start_blocks: Vec<BlockNumber>,
+        _subgraph_current_block: Option<BlockPtr>,
+        _filter: Arc<TriggerFilter>,
+        _unified_api_version: UnifiedMappingApiVersion,
+    ) -> Result<Box<dyn BlockStream<Chain>>> {
+        unimplemented!()
     }
 
     async fn build_polling(

@@ -35,7 +35,10 @@ pub type SharedProofOfIndexing = Option<Arc<AtomicRefCell<ProofOfIndexing>>>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::{BlockPtr, DeploymentHash, Value};
+    use crate::{
+        prelude::{BlockPtr, DeploymentHash, Value},
+        schema::InputSchema,
+    };
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
@@ -110,8 +113,8 @@ mod tests {
 
             let online = hex::encode(finisher.finish());
             let offline = hex::encode(offline);
-            assert_eq!(&online, &offline);
-            assert_eq!(&online, hardcoded);
+            assert_eq!(&online, &offline, "case: {}", case.name);
+            assert_eq!(&online, hardcoded, "case: {}", case.name);
 
             if let Some(prev) = cache.insert(offline, case.name) {
                 panic!("Found conflict for case: {} == {}", case.name, prev);
@@ -130,14 +133,35 @@ mod tests {
     /// in each case the reference and online versions match
     #[test]
     fn online_vs_reference() {
-        let data = hashmap! {
-            "val".into() => Value::Int(1)
-        };
-        let data_empty = hashmap! {};
-        let data2 = hashmap! {
-            "key".into() => Value::String("s".to_owned()),
-            "null".into() => Value::Null,
-        };
+        let id = DeploymentHash::new("Qm123").unwrap();
+
+        let data_schema =
+            InputSchema::parse("type User @entity { id: String!, val: Int }", id.clone()).unwrap();
+        let data = data_schema
+            .make_entity(hashmap! {
+                "id".into() => Value::String("id".to_owned()),
+                "val".into() => Value::Int(1)
+            })
+            .unwrap();
+
+        let empty_schema =
+            InputSchema::parse("type User @entity { id: String! }", id.clone()).unwrap();
+        let data_empty = empty_schema
+            .make_entity(hashmap! { "id".into() => Value::String("id".into())})
+            .unwrap();
+
+        let data2_schema = InputSchema::parse(
+            "type User @entity { id: String!, key: String!, null: String }",
+            id,
+        )
+        .unwrap();
+        let data2 = data2_schema
+            .make_entity(hashmap! {
+                "id".into() => Value::String("id".to_owned()),
+                "key".into() => Value::String("s".to_owned()),
+                "null".into() => Value::Null,
+            })
+            .unwrap();
 
         let mut cases = vec![
             // Simple case of basically nothing
@@ -155,8 +179,8 @@ mod tests {
             // Add an event
             Case {
                 name: "one_event",
-                legacy: "9241634bfc8a9a12c796a0de6f326326a74967cd477ee7ce78fbac20a9e9c303",
-                fast: "bb3c37659d4bc799b9dcf3d17b1b1e93847f5fc0b2c50ee6a27f13b5c07f7e97",
+                legacy: "96640d7a35405524bb21da8d86f7a51140634f44568cf9f7df439d0b2b01a435",
+                fast: "8bb3373fb55e02bde3202bac0eeecf1bd9a676856a4dd6667bd809aceda41885",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
                     block_hash: H256::repeat_byte(1),
@@ -182,8 +206,8 @@ mod tests {
             // Try adding a couple more blocks, including an empty block on the end
             Case {
                 name: "multiple_blocks",
-                legacy: "775fa30bbaef2a8659456a317923a36f46e3715e6c9cf43203dd3486af4e361f",
-                fast: "3bb882049e8f4a11cd4a7a005c6ce3b3c779a0e90057a9556c595660e626268d",
+                legacy: "a0346ee0d7e0518f73098b6f9dc020f1cf564fb88e09779abfdf5da736de5e82",
+                fast: "8b0097ad96b21f7e4bd8dcc41985e6e5506b808f1185016ab1073dd8745238ce",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
                     block_hash: H256::repeat_byte(3),
@@ -220,8 +244,8 @@ mod tests {
             // Try adding another causality region
             Case {
                 name: "causality_regions",
-                legacy: "13e6fd2b581911c80d935d4f098b40ef3d87cbc564b5a635c81b06091a381e54",
-                fast: "b2cb70acd4a1337a67df810fe4c5c2fb3d3a3b2b8eb137dbb592bd6014869362",
+                legacy: "cc9449860e5b19b76aa39d6e05c5a560d1cb37a93d4bf64669feb47cfeb452fa",
+                fast: "2041af28678e68406247a5cfb5fe336947da75256c79b35c2f61fc7985091c0e",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
                     block_hash: H256::repeat_byte(3),
@@ -282,8 +306,8 @@ mod tests {
             // Back to the one event case, but try adding some data.
             Case {
                 name: "data",
-                legacy: "cd3020511cf4c88dd2be542aca4f95bb2a67b06e29f444bcdf44009933b8ff31",
-                fast: "a992ba24702615a3f591014f7351acf85a35b75e1f8646fc8d77509c4b5d31ed",
+                legacy: "d304672a249293ee928d99d9cb0576403bdc4b6dbadeb49b98f527277297cdcc",
+                fast: "421ef30a03be64014b9eef2b999795dcabfc601368040df855635e7886eb3822",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
                     block_hash: H256::repeat_byte(1),

@@ -125,7 +125,7 @@ impl SubstreamsBlockIngestor {
 #[async_trait]
 impl BlockIngestor for SubstreamsBlockIngestor {
     async fn run(self: Box<Self>) {
-        let mapper = Arc::new(Mapper {});
+        let mapper = Arc::new(Mapper { schema: None });
         let mut latest_cursor = self.fetch_head_cursor().await;
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));

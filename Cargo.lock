@@ -606,12 +606,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "const_fn_assert"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27d614f23f34f7b5165a77dc1591f497e2518f9cec4b4f4b92bfc4dc6cf7a190"
-
-[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1239,7 +1233,7 @@ dependencies = [
  "serde_json",
  "sha3",
  "thiserror",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -1266,7 +1260,7 @@ dependencies = [
  "impl-rlp",
  "impl-serde",
  "primitive-types",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -1600,8 +1594,8 @@ dependencies = [
  "slog-async",
  "slog-envlogger",
  "slog-term",
- "stable-hash 0.3.3",
- "stable-hash 0.4.2",
+ "stable-hash 0.3.4",
+ "stable-hash 0.4.4",
  "strum",
  "strum_macros",
  "thiserror",
@@ -1773,8 +1767,8 @@ dependencies = [
  "indexmap 2.0.0",
  "lazy_static",
  "parking_lot 0.12.1",
- "stable-hash 0.3.3",
- "stable-hash 0.4.2",
+ "stable-hash 0.3.4",
+ "stable-hash 0.4.4",
 ]
 
 [[package]]
@@ -1962,7 +1956,7 @@ dependencies = [
  "pretty_assertions",
  "rand",
  "serde",
- "stable-hash 0.3.3",
+ "stable-hash 0.3.4",
  "uuid",
 ]
 
@@ -2288,12 +2282,11 @@ dependencies = [
 
 [[package]]
 name = "ibig"
-version = "0.3.2"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c5022ee7f7a2feb0bd2fdc4b8ec882cd14903cebf33e7c1847e3f3a282f8b7"
+checksum = "d7d04a53d0ca4a37b47741ff98dd517a0e1e6a0ec22a72c748e50197052d595b"
 dependencies = [
  "cfg-if 1.0.0",
- "const_fn_assert",
  "num-traits",
  "rand",
  "static_assertions",
@@ -3310,7 +3303,7 @@ dependencies = [
  "impl-codec",
  "impl-rlp",
  "impl-serde",
- "uint",
+ "uint 0.9.1",
 ]
 
 [[package]]
@@ -4237,9 +4230,8 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stable-hash"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10196e68950ed99c0d2db7a30ffaf4dfe0bbf2f9af2ae0457ee8ad396e0a2dd7"
+version = "0.3.4"
+source = "git+https://github.com/graphprotocol/stable-hash?branch=old#7af76261e8098c58bfadd5b7c31810e1c0fdeccb"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.4.6",
@@ -4251,9 +4243,8 @@ dependencies = [
 
 [[package]]
 name = "stable-hash"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af75bd21beb162eab69de76abbb803d4111735ead00d5086dcc6f4ddb3b53cc9"
+version = "0.4.4"
+source = "git+https://github.com/graphprotocol/stable-hash?branch=main#e50aabef55b8c4de581ca5c4ffa7ed8beed7e998"
 dependencies = [
  "blake3 0.3.8",
  "firestorm 0.5.0",
@@ -4261,6 +4252,7 @@ dependencies = [
  "lazy_static",
  "leb128",
  "num-traits",
+ "uint 0.8.5",
  "xxhash-rust",
 ]
 
@@ -4991,6 +4983,18 @@ name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
+
+[[package]]
+name = "uint"
+version = "0.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9db035e67dfaf7edd9aebfe8676afcd63eed53c8a4044fed514c8cccf1835177"
+dependencies = [
+ "byteorder",
+ "crunchy",
+ "rustc-hex",
+ "static_assertions",
+]
 
 [[package]]
 name = "uint"

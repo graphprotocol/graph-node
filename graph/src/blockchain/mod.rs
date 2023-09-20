@@ -136,15 +136,6 @@ impl ChainStoreBlock {
     }
 }
 
-// // ChainClient represents the type of client used to ingest data from the chain. For most chains
-// // this will be either firehose or some sort of rpc client.
-// // If a specific chain requires more than one adapter this should be handled by the chain specifically
-// // as it's not common behavior across chains.
-// pub enum ChainClient<C: Blockchain> {
-//     Firehose(FirehoseEndpoints),
-//     Rpc(C::Client),
-// }
-
 #[async_trait]
 // This is only `Debug` because some tests require that
 pub trait Blockchain: Debug + Sized + Send + Sync + Unpin + 'static {

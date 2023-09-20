@@ -86,6 +86,10 @@ impl DeploymentCursorTracker for MockStore {
     fn firehose_cursor(&self) -> FirehoseCursor {
         unimplemented!()
     }
+
+    fn input_schema(&self) -> Arc<InputSchema> {
+        todo!()
+    }
 }
 
 #[async_trait]

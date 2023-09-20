@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::Error;
 use graph::{
@@ -6,17 +6,12 @@ use graph::{
         self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
     },
     components::{
-        store::{DeploymentLocator, EntityKey, EntityType, SubgraphFork},
+        store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
-    data::{
-        store::{scalar::Bytes, IdType},
-        value::Word,
-    },
-    data_source::{self, CausalityRegion},
+    data_source::{self},
     prelude::{
-        anyhow, async_trait, BigDecimal, BigInt, BlockHash, BlockNumber, BlockState,
-        RuntimeHostBuilder, Value,
+        anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
     slog::Logger,
     substreams::Modules,
@@ -24,8 +19,7 @@ use graph::{
 use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
-use crate::codec;
-use crate::{codec::entity_change::Operation, Block, Chain, NoopDataSourceTemplate};
+use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
 
 #[derive(Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct TriggerData {}
@@ -189,95 +183,37 @@ where
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
         _instrument: bool,
     ) -> Result<BlockState<Chain>, MappingError> {
-        for entity_change in block.changes.entity_changes.iter() {
-            match entity_change.operation() {
-                Operation::Unset => {
+        for parsed_change in block.parsed_changes.clone().into_iter() {
+            match parsed_change {
+                ParsedChanges::Unset => {
                     // Potentially an issue with the server side or
                     // we are running an outdated version. In either case we should abort.
                     return Err(MappingError::Unknown(anyhow!("Detected UNSET entity operation, either a server error or there's a new type of operation and we're running an outdated protobuf")));
                 }
-                Operation::Create | Operation::Update => {
-                    let schema = state.entity_cache.schema.as_ref();
-                    let entity_type = EntityType::new(entity_change.entity.to_string());
-                    // Make sure that the `entity_id` gets set to a value
-                    // that is safe for roundtrips through the database. In
-                    // particular, if the type of the id is `Bytes`, we have
-                    // to make sure that the `entity_id` starts with `0x` as
-                    // that will be what the key for such an entity have
-                    // when it is read from the database.
-                    //
-                    // Needless to say, this is a very ugly hack, and the
-                    // real fix is what's described in [this
-                    // issue](https://github.com/graphprotocol/graph-node/issues/4663)
-                    let entity_id: String = match schema.id_type(&entity_type)? {
-                        IdType::String => entity_change.id.clone(),
-                        IdType::Bytes => {
-                            if entity_change.id.starts_with("0x") {
-                                entity_change.id.clone()
-                            } else {
-                                format!("0x{}", entity_change.id)
-                            }
-                        }
-                    };
-
-                    let mut data: HashMap<Word, Value> = HashMap::from_iter(vec![]);
-                    for field in entity_change.fields.iter() {
-                        let new_value: &codec::value::Typed = match &field.new_value {
-                            Some(codec::Value {
-                                typed: Some(new_value),
-                            }) => new_value,
-                            _ => continue,
-                        };
-
-                        let value: Value = decode_value(new_value)?;
-                        *data
-                            .entry(Word::from(field.name.as_str()))
-                            .or_insert(Value::Null) = value;
-                    }
-
+                ParsedChanges::Upsert { key, entity } => {
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::SetEntity {
-                            entity_type: entity_type.as_str(),
-                            id: &entity_id,
-                            // TODO: This should be an entity so we do not have to build the intermediate HashMap
-                            data: &data,
+                            entity_type: key.entity_type.as_str(),
+                            id: &key.entity_id,
+                            data: &entity,
                         },
                         causality_region,
                         logger,
                     );
 
-                    let key = EntityKey {
-                        entity_type: entity_type,
-                        entity_id: Word::from(entity_id),
-                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
-                    };
-
-                    let id = state.entity_cache.schema.id_value(&key)?;
-                    data.insert(Word::from("id"), id);
-
-                    let entity = state.entity_cache.make_entity(data).map_err(|err| {
-                        MappingError::Unknown(anyhow!("Failed to make entity: {}", err))
-                    })?;
-
                     state.entity_cache.set(key, entity)?;
                 }
-                Operation::Delete => {
-                    let entity_type: &str = &entity_change.entity;
-                    let entity_id: String = entity_change.id.clone();
-                    let key = EntityKey {
-                        entity_type: EntityType::new(entity_type.to_string()),
-                        entity_id: entity_id.clone().into(),
-                        causality_region: CausalityRegion::ONCHAIN, // Substreams don't currently support offchain data
-                    };
-
-                    state.entity_cache.remove(key);
+                ParsedChanges::Delete(entity_key) => {
+                    let entity_type = entity_key.entity_type.cheap_clone();
+                    let id = entity_key.entity_id.clone();
+                    state.entity_cache.remove(entity_key);
 
                     write_poi_event(
                         proof_of_indexing,
                         &ProofOfIndexingEvent::RemoveEntity {
-                            entity_type,
-                            id: &entity_id,
+                            entity_type: entity_type.as_str(),
+                            id: id.as_str(),
                         },
                         causality_region,
                         logger,
@@ -287,172 +223,5 @@ where
         }
 
         Ok(state)
-    }
-}
-
-fn decode_value(value: &crate::codec::value::Typed) -> Result<Value, MappingError> {
-    use codec::value::Typed;
-
-    match value {
-        Typed::Int32(new_value) => Ok(Value::Int(*new_value)),
-
-        Typed::Bigdecimal(new_value) => BigDecimal::from_str(new_value)
-            .map(Value::BigDecimal)
-            .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
-
-        Typed::Bigint(new_value) => BigInt::from_str(new_value)
-            .map(Value::BigInt)
-            .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
-
-        Typed::String(new_value) => {
-            let mut string = new_value.clone();
-
-            // Strip null characters since they are not accepted by Postgres.
-            if string.contains('\u{0000}') {
-                string = string.replace('\u{0000}', "");
-            }
-            Ok(Value::String(string))
-        }
-
-        Typed::Bytes(new_value) => base64::decode(new_value)
-            .map(|bs| Value::Bytes(Bytes::from(bs)))
-            .map_err(|err| MappingError::Unknown(anyhow::Error::from(err))),
-
-        Typed::Bool(new_value) => Ok(Value::Bool(*new_value)),
-
-        Typed::Array(arr) => arr
-            .value
-            .iter()
-            .filter_map(|item| item.typed.as_ref().map(decode_value))
-            .collect::<Result<Vec<Value>, MappingError>>()
-            .map(Value::List),
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::{ops::Add, str::FromStr};
-
-    use crate::codec::value::Typed;
-    use crate::codec::{Array, Value};
-    use crate::trigger::decode_value;
-    use graph::{
-        data::store::scalar::Bytes,
-        prelude::{BigDecimal, BigInt, Value as GraphValue},
-    };
-
-    #[test]
-    fn validate_substreams_field_types() {
-        struct Case {
-            name: String,
-            value: Value,
-            expected_value: GraphValue,
-        }
-
-        let cases = vec![
-            Case {
-                name: "string value".to_string(),
-                value: Value {
-                    typed: Some(Typed::String(
-                        "d4325ee72c39999e778a9908f5fb0803f78e30c441a5f2ce5c65eee0e0eba59d"
-                            .to_string(),
-                    )),
-                },
-                expected_value: GraphValue::String(
-                    "d4325ee72c39999e778a9908f5fb0803f78e30c441a5f2ce5c65eee0e0eba59d".to_string(),
-                ),
-            },
-            Case {
-                name: "bytes value".to_string(),
-                value: Value {
-                    typed: Some(Typed::Bytes(
-                        base64::encode(
-                            hex::decode(
-                                "445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f",
-                            )
-                            .unwrap(),
-                        )
-                        .into_bytes(),
-                    )),
-                },
-                expected_value: GraphValue::Bytes(
-                    Bytes::from_str(
-                        "0x445247fe150195bd866516594e087e1728294aa831613f4d48b8ec618908519f",
-                    )
-                    .unwrap(),
-                ),
-            },
-            Case {
-                name: "int value for block".to_string(),
-                value: Value {
-                    typed: Some(Typed::Int32(12369760)),
-                },
-                expected_value: GraphValue::Int(12369760),
-            },
-            Case {
-                name: "negative int value".to_string(),
-                value: Value {
-                    typed: Some(Typed::Int32(-12369760)),
-                },
-                expected_value: GraphValue::Int(-12369760),
-            },
-            Case {
-                name: "big int".to_string(),
-                value: Value {
-                    typed: Some(Typed::Bigint("123".to_string())),
-                },
-                expected_value: GraphValue::BigInt(BigInt::from(123u64)),
-            },
-            Case {
-                name: "big int > u64".to_string(),
-                value: Value {
-                    typed: Some(Typed::Bigint(
-                        BigInt::from(u64::MAX).add(BigInt::from(1)).to_string(),
-                    )),
-                },
-                expected_value: GraphValue::BigInt(BigInt::from(u64::MAX).add(BigInt::from(1))),
-            },
-            Case {
-                name: "big decimal value".to_string(),
-                value: Value {
-                    typed: Some(Typed::Bigdecimal("3133363633312e35".to_string())),
-                },
-                expected_value: GraphValue::BigDecimal(BigDecimal::new(
-                    BigInt::from(3133363633312u64),
-                    35,
-                )),
-            },
-            Case {
-                name: "bool value".to_string(),
-                value: Value {
-                    typed: Some(Typed::Bool(true)),
-                },
-                expected_value: GraphValue::Bool(true),
-            },
-            Case {
-                name: "string array".to_string(),
-                value: Value {
-                    typed: Some(Typed::Array(Array {
-                        value: vec![
-                            Value {
-                                typed: Some(Typed::String("1".to_string())),
-                            },
-                            Value {
-                                typed: Some(Typed::String("2".to_string())),
-                            },
-                            Value {
-                                typed: Some(Typed::String("3".to_string())),
-                            },
-                        ],
-                    })),
-                },
-                expected_value: GraphValue::List(vec!["1".into(), "2".into(), "3".into()]),
-            },
-        ];
-
-        for case in cases.into_iter() {
-            let value: GraphValue = decode_value(&case.value.typed.unwrap()).unwrap();
-            assert_eq!(case.expected_value, value, "failed case: {}", case.name)
-        }
     }
 }

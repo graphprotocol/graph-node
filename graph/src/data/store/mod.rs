@@ -4,7 +4,7 @@ use crate::{
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::InputSchema,
-    util::intern::AtomPool,
+    util::intern::{self, AtomPool},
     util::intern::{Error as InternError, NullValue, Object},
 };
 use crate::{data::subgraph::DeploymentHash, prelude::EntityChange};
@@ -642,6 +642,16 @@ lazy_static! {
 /// An entity is represented as a map of attribute names to values.
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct Entity(Object<Value>);
+
+impl<'a> IntoIterator for &'a Entity {
+    type Item = (Word, Value);
+
+    type IntoIter = intern::ObjectOwningIter<Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.clone().into_iter()
+    }
+}
 
 pub trait IntoEntityIterator: IntoIterator<Item = (Word, Value)> {}
 

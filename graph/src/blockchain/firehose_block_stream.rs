@@ -1,4 +1,6 @@
-use super::block_stream::{BlockStream, BlockStreamEvent, FirehoseMapper};
+use super::block_stream::{
+    BlockStream, BlockStreamEvent, FirehoseMapper, FIREHOSE_BUFFER_STREAM_SIZE,
+};
 use super::client::ChainClient;
 use super::{Blockchain, TriggersAdapter};
 use crate::blockchain::block_stream::FirehoseCursor;
@@ -421,7 +423,11 @@ impl<C: Blockchain> Stream for FirehoseBlockStream<C> {
     }
 }
 
-impl<C: Blockchain> BlockStream<C> for FirehoseBlockStream<C> {}
+impl<C: Blockchain> BlockStream<C> for FirehoseBlockStream<C> {
+    fn buffer_size_hint(&self) -> usize {
+        FIREHOSE_BUFFER_STREAM_SIZE
+    }
+}
 
 fn must_check_subgraph_continuity(
     logger: &Logger,
