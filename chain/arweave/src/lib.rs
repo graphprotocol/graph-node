@@ -1,6 +1,6 @@
 mod adapter;
 mod chain;
-mod codec;
+pub mod codec;
 mod data_source;
 mod runtime;
 mod trigger;

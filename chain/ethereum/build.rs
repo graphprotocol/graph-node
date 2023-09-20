@@ -3,6 +3,6 @@ fn main() {
 
     tonic_build::configure()
         .out_dir("src/protobuf")
-        .compile(&["proto/codec.proto"], &["proto"])
+        .compile(&["proto/ethereum.proto"], &["proto"])
         .expect("Failed to compile Firehose Ethereum proto(s)");
 }

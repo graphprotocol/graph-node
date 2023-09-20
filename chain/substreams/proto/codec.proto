@@ -1,5 +1,10 @@
 syntax = "proto3";
 
+import "near.proto";
+import "ethereum.proto";
+import "arweave.proto";
+import "cosmos.proto";
+
 package substreams.entity.v1;
 
 message EntityChanges {
@@ -43,4 +48,17 @@ message Field {
   string name = 1;
   optional Value new_value = 3;
   optional Value old_value = 5;
+}
+
+message InnerBlock {
+  oneof block {
+    sf.near.codec.v1.Block near = 1;
+    sf.ethereum.type.v2.Block eth = 2;
+    sf.arweave.type.v1.Block arweave = 3;
+    sf.cosmos.type.v1.Block cosmos = 4;
+  }
+}
+
+message Block {
+  InnerBlock inner = 1;
 }

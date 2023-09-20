@@ -27,5 +27,10 @@ base64 = "0.20.0"
 
 itertools = "0.11.0"
 
+graph-chain-near = { path = "../near" }
+graph-chain-ethereum = { path = "../ethereum" }
+graph-chain-arweave = { path = "../arweave" }
+graph-chain-cosmos = { path = "../cosmos" }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
