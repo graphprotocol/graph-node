@@ -97,9 +97,8 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat whois \
-    && useradd -m graphuser \
-    && echo "graphuser:$(mkpasswd -m sha-512 -s somesalt4325)" | chpasswd
+    && apt-get install -y libpq-dev ca-certificates netcat \
+    && useradd -m graphuser
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
