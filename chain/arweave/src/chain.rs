@@ -127,7 +127,7 @@ impl Blockchain for Chain {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -135,8 +135,6 @@ impl Blockchain for Chain {
             store.block_ptr(),
             store.firehose_cursor(),
             firehose_mapper,
-            adapter,
-            filter,
             start_blocks,
             logger,
             self.metrics_registry.clone(),
@@ -252,16 +250,43 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    adapter: Arc<dyn TriggersAdapterTrait<Chain>>,
+    filter: Arc<TriggerFilter>,
+}
+
+#[async_trait]
+impl SubstreamsMapper<Chain> for FirehoseMapper {
+    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<arweave::Block>, Error> {
+        let block = match output {
+            Some(block) => arweave::Block::decode(block.value.as_ref())?,
+            None => anyhow::bail!("Arweave mapper is expected to always have a block"),
+        };
+
+        Ok(Some(block))
+    }
+
+    async fn block_with_triggers(
+        &self,
+        logger: &Logger,
+        block: arweave::Block,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        self.adapter
+            .triggers_in_block(logger, block, self.filter.as_ref())
+            .await
+    }
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
+    fn trigger_filter(&self) -> &TriggerFilter {
+        self.filter.as_ref()
+    }
+
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
-        filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
@@ -282,12 +307,13 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         //
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
-        let block = codec::Block::decode(any_block.value.as_ref())?;
+        // unwrap: Input cannot be None so output will be error or block.
+        let block = self.decode(Some(&any_block))?.unwrap();
 
         use ForkStep::*;
         match step {
             StepNew => Ok(BlockStreamEvent::ProcessBlock(
-                adapter.triggers_in_block(logger, block, filter).await?,
+                self.block_with_triggers(&logger, block).await?,
                 FirehoseCursor::from(response.cursor.clone()),
             )),
 

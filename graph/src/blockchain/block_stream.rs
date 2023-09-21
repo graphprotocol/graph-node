@@ -1,3 +1,5 @@
+use crate::substreams_rpc::response::Message as SubstreamsMessage;
+use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
@@ -6,7 +8,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::{Block, BlockPtr, Blockchain};
+use super::{Block, BlockPtr, Blockchain, BlockchainKind};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -293,12 +295,12 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
+    fn trigger_filter(&self) -> &C::TriggerFilter;
+
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &Arc<dyn TriggersAdapter<C>>,
-        filter: &C::TriggerFilter,
     ) -> Result<BlockStreamEvent<C>, FirehoseError>;
 
     /// Returns the [BlockPtr] value for this given block number. This is the block pointer
@@ -334,13 +336,72 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
+    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
+
+    async fn block_with_triggers(
+        &self,
+        logger: &Logger,
+        block: C::Block,
+    ) -> Result<BlockWithTriggers<C>, Error>;
+
     async fn to_block_stream_event(
         &self,
         logger: &mut Logger,
-        response: Option<Message>,
-        // adapter: &Arc<dyn TriggersAdapter<C>>,
-        // filter: &C::TriggerFilter,
-    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError>;
+        message: Option<Message>,
+    ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
+        match message {
+            Some(SubstreamsMessage::Session(session_init)) => {
+                *logger = logger.new(o!("trace_id" => session_init.trace_id));
+                return Ok(None);
+            }
+            Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
+                let valid_block = match undo.last_valid_block {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::InvalidUndoError),
+                };
+                let valid_ptr = BlockPtr {
+                    hash: valid_block.id.trim_start_matches("0x").try_into()?,
+                    number: valid_block.number as i32,
+                };
+                return Ok(Some(BlockStreamEvent::Revert(
+                    valid_ptr,
+                    FirehoseCursor::from(undo.last_valid_cursor.clone()),
+                )));
+            }
+
+            Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
+                let BlockScopedData {
+                    output,
+                    clock: _,
+                    cursor,
+                    final_block_height: _,
+                    debug_map_outputs: _,
+                    debug_store_outputs: _,
+                } = block_scoped_data;
+
+                let module_output = match output {
+                    Some(out) => out,
+                    None => return Ok(None),
+                };
+
+                let block = match self.decode(module_output.map_output.as_ref())? {
+                    None => return Ok(None),
+                    Some(block) => block,
+                };
+
+                let block = self.block_with_triggers(&logger, block).await?;
+
+                Ok(Some(BlockStreamEvent::ProcessBlock(
+                    block,
+                    FirehoseCursor::from(cursor.clone()),
+                )))
+            }
+
+            // ignoring Progress messages and SessionInit
+            // We are only interested in Data and Undo signals
+            _ => Ok(None),
+        }
+    }
 }
 
 #[derive(Error, Debug)]

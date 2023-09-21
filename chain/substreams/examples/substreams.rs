@@ -68,7 +68,10 @@ async fn main() -> Result<(), Error> {
             client,
             None,
             None,
-            Arc::new(Mapper { schema: None }),
+            Arc::new(Mapper {
+                schema: None,
+                skip_empty_blocks: false,
+            }),
             package.modules.clone(),
             module_name.to_string(),
             vec![12369621],

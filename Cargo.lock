@@ -1634,6 +1634,7 @@ dependencies = [
 name = "graph-chain-near"
 version = "0.32.0"
 dependencies = [
+ "anyhow",
  "base64 0.20.0",
  "diesel",
  "graph",
@@ -1656,10 +1657,7 @@ dependencies = [
  "envconfig",
  "futures 0.1.31",
  "graph",
- "graph-chain-arweave",
- "graph-chain-cosmos",
- "graph-chain-ethereum",
- "graph-chain-near",
+ "graph-chain-common",
  "graph-runtime-wasm",
  "hex",
  "http",
@@ -1737,6 +1735,7 @@ dependencies = [
  "git-testament",
  "graph",
  "graph-chain-arweave",
+ "graph-chain-common",
  "graph-chain-cosmos",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -4365,6 +4364,7 @@ version = "0.32.0"
 dependencies = [
  "diesel",
  "graph",
+ "graph-chain-common",
  "graph-chain-ethereum",
  "graph-core",
  "graph-graphql",

@@ -10,7 +10,7 @@ use graph::{
         EthereumBlock, LightEthereumBlock,
     },
 };
-use graph_chain_ethereum::codec::{Block, BlockHeader};
+use graph_chain_common::ethereum::{Block, BlockHeader};
 use prost_types::Timestamp;
 
 lazy_static! {
