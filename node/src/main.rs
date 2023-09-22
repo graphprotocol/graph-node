@@ -3,7 +3,7 @@ use ethereum::chain::{EthereumAdapterSelector, EthereumBlockRefetcher, EthereumS
 use ethereum::{BlockIngestor, EthereumNetworks, RuntimeAdapter};
 use git_testament::{git_testament, render_testament};
 use graph::blockchain::client::ChainClient;
-use graph_chain_common::ethereum::HeaderOnlyBlock;
+use graph_chain_ethereum::codec::HeaderOnlyBlock;
 
 use graph::blockchain::{
     BasicBlockchainBuilder, Blockchain, BlockchainBuilder, BlockchainKind, BlockchainMap,

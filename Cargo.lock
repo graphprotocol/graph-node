@@ -3952,7 +3952,7 @@ dependencies = [
  "indexmap 2.0.0",
  "serde",
  "serde_json",
- "time 0.3.17",
+ "time",
 ]
 
 [[package]]

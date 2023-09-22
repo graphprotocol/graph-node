@@ -107,30 +107,3 @@ pub struct Field {
     #[prost(message, optional, tag = "5")]
     pub old_value: ::core::option::Option<Value>,
 }
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct InnerBlock {
-    #[prost(oneof = "inner_block::Block", tags = "1, 2, 3, 4")]
-    pub block: ::core::option::Option<inner_block::Block>,
-}
-/// Nested message and enum types in `InnerBlock`.
-pub mod inner_block {
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Block {
-        #[prost(message, tag = "1")]
-        Near(graph_chain_near::codec::pbcodec::Block),
-        #[prost(message, tag = "2")]
-        Eth(graph_chain_ethereum::codec::pbcodec::Block),
-        #[prost(message, tag = "3")]
-        Arweave(graph_chain_arweave::codec::pbcodec::Block),
-        #[prost(message, tag = "4")]
-        Cosmos(graph_chain_cosmos::codec::Block),
-    }
-}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct Block {
-    #[prost(message, optional, tag = "1")]
-    pub inner: ::core::option::Option<InnerBlock>,
-}

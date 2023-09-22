@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use anyhow::Error;
+use crate::codec::{entity_change, EntityChanges};
+use anyhow::{anyhow, Error};
 use graph::blockchain::block_stream::{BlockWithTriggers, SubstreamsError, SubstreamsMapper};
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
@@ -10,7 +11,6 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::BigDecimal;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::schema::InputSchema;
-use graph_chain_common::substreams::{entity_change, EntityChanges};
 use prost::Message;
 
 use crate::{Block, Chain, ParsedChanges, TriggerData};
@@ -29,19 +29,6 @@ pub struct Mapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for Mapper {
-    async fn block_with_triggers(
-        &self,
-        logger: &Logger,
-        block: Block,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
-        let mut triggers = vec![];
-        if block.changes.entity_changes.len() >= 1 {
-            triggers.push(TriggerData {});
-        }
-
-        Ok(BlockWithTriggers::new(block, triggers, logger))
-    }
-
     fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<Block>, Error> {
         let changes: EntityChanges = match output {
             Some(msg) => {
@@ -68,6 +55,29 @@ impl SubstreamsMapper<Chain> for Mapper {
         };
 
         Ok(Some(block))
+    }
+    async fn block_with_triggers(
+        &self,
+        logger: &Logger,
+        block: Block,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let mut triggers = vec![];
+        if block.changes.entity_changes.len() >= 1 {
+            triggers.push(TriggerData {});
+        }
+
+        Ok(BlockWithTriggers::new(block, triggers, logger))
+    }
+
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let block = self
+            .decode(Some(block))?
+            .ok_or_else(|| anyhow!("expected block to not be empty"))?;
+        self.block_with_triggers(logger, block).await
     }
 }
 
@@ -109,13 +119,12 @@ fn parse_changes(
         let changes = match entity_change.operation() {
             entity_change::Operation::Create | entity_change::Operation::Update => {
                 for field in entity_change.fields.iter() {
-                    let new_value: &graph_chain_common::substreams::value::Typed =
-                        match &field.new_value {
-                            Some(graph_chain_common::substreams::Value {
-                                typed: Some(new_value),
-                            }) => &new_value,
-                            _ => continue,
-                        };
+                    let new_value: &crate::codec::value::Typed = match &field.new_value {
+                        Some(crate::codec::Value {
+                            typed: Some(new_value),
+                        }) => &new_value,
+                        _ => continue,
+                    };
 
                     let value: Value = decode_value(new_value)?;
                     *parsed_data
@@ -137,8 +146,8 @@ fn parse_changes(
     Ok(parsed_changes)
 }
 
-fn decode_value(value: &graph_chain_common::substreams::value::Typed) -> anyhow::Result<Value> {
-    use graph_chain_common::substreams::value::Typed;
+fn decode_value(value: &crate::codec::value::Typed) -> anyhow::Result<Value> {
+    use crate::codec::value::Typed;
 
     match value {
         Typed::Int32(new_value) => Ok(Value::Int(*new_value)),
@@ -181,12 +190,12 @@ mod test {
     use std::{ops::Add, str::FromStr};
 
     use super::decode_value;
+    use crate::codec::value::Typed;
+    use crate::codec::{Array, Value};
     use graph::{
         data::store::scalar::Bytes,
         prelude::{BigDecimal, BigInt, Value as GraphValue},
     };
-    use graph_chain_common::substreams::value::Typed;
-    use graph_chain_common::substreams::{Array, Value};
 
     #[test]
     fn validate_substreams_field_types() {

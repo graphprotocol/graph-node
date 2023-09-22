@@ -736,7 +736,7 @@ pub struct FirehoseMapper {
 impl SubstreamsMapper<Chain> for FirehoseMapper {
     fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<BlockFinality>, Error> {
         let block = match output {
-            Some(block) => ethereum::Block::decode(block.value.as_ref())?,
+            Some(block) => codec::Block::decode(block.value.as_ref())?,
             None => anyhow::bail!("ethereum mapper is expected to always have a block"),
         };
 
@@ -755,6 +755,14 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
         self.adapter
             .triggers_in_block(logger, block, &self.filter)
             .await
+    }
+
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        unimplemented!()
     }
 }
 

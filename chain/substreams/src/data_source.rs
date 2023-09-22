@@ -161,35 +161,6 @@ pub struct UnresolvedDataSource {
     pub mapping: UnresolvedMapping,
 }
 
-/// Replace all the existing params with the provided ones.
-fn patch_module_params(params: Option<Vec<String>>, module: &mut Module) {
-    let params = match params {
-        Some(params) => params,
-        None => return,
-    };
-
-    let mut inputs: Vec<graph::substreams::module::Input> = module
-        .inputs
-        .iter()
-        .flat_map(|input| match input.input {
-            None => None,
-            Some(Input::Params(_)) => None,
-            Some(_) => Some(input.clone()),
-        })
-        .collect();
-
-    inputs.append(
-        &mut params
-            .into_iter()
-            .map(|value| graph::substreams::module::Input {
-                input: Some(Input::Params(Params { value })),
-            })
-            .collect(),
-    );
-
-    module.inputs = inputs;
-}
-
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Text api_version, before parsing and validation.
@@ -216,7 +187,9 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
                 .iter_mut()
                 .find(|module| module.name == self.source.package.module_name)
                 .map(|module| {
-                    patch_module_params(self.source.package.params, module);
+                    if let Some(params) = self.source.package.params {
+                        graph::substreams::patch_module_params(params.join("\n"), module);
+                    }
                     module
                 }),
             None => None,

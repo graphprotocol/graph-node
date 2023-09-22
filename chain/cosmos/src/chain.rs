@@ -348,6 +348,14 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
     }
+
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        unimplemented!()
+    }
 }
 
 #[async_trait]

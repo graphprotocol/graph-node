@@ -1,7 +1,5 @@
 use crate::block_ingestor::SubstreamsBlockIngestor;
-use crate::{
-    data_source::*, EntityChanges, ParsedChanges, TriggerData, TriggerFilter, TriggersAdapter,
-};
+use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersAdapter};
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
@@ -24,6 +22,20 @@ use graph::{
 };
 
 use std::sync::Arc;
+
+// ParsedChanges are an internal representation of the equivalent operations defined on the
+// graph-out format used by substreams.
+// Unset serves as a sentinel value, if for some reason an unknown value is sent or the value
+// was empty then it's probably an unintended behaviour. This code was moved here for performance
+// reasons, but the validation is still performed during trigger processing so while Unset will
+// very likely just indicate an error somewhere, as far as the stream is concerned we just pass
+// that along and let the downstream components deal with it.
+#[derive(Debug, Clone)]
+pub enum ParsedChanges {
+    Unset,
+    Delete(EntityKey),
+    Upsert { key: EntityKey, entity: Entity },
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct Block {

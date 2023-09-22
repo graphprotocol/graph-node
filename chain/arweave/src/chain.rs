@@ -33,7 +33,7 @@ use crate::{
     codec,
     data_source::{DataSource, UnresolvedDataSource},
 };
-use graph::blockchain::block_stream::{BlockStream, FirehoseCursor};
+use graph::blockchain::block_stream::{BlockStream, FirehoseCursor, SubstreamsMapper};
 
 pub struct Chain {
     logger_factory: LoggerFactory,
@@ -257,9 +257,9 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<arweave::Block>, Error> {
+    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<codec::Block>, Error> {
         let block = match output {
-            Some(block) => arweave::Block::decode(block.value.as_ref())?,
+            Some(block) => codec::Block::decode(block.value.as_ref())?,
             None => anyhow::bail!("Arweave mapper is expected to always have a block"),
         };
 
@@ -269,11 +269,18 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
     async fn block_with_triggers(
         &self,
         logger: &Logger,
-        block: arweave::Block,
+        block: codec::Block,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         self.adapter
             .triggers_in_block(logger, block, self.filter.as_ref())
             .await
+    }
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        unimplemented!()
     }
 }
 

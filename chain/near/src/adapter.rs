@@ -4,6 +4,7 @@ use crate::data_source::PartialAccounts;
 use crate::{data_source::DataSource, Chain};
 use graph::blockchain as bc;
 use graph::firehose::{BasicReceiptFilter, PrefixSuffixPair};
+use graph::itertools::Itertools;
 use graph::prelude::*;
 use prost::Message;
 use prost_types::Any;
@@ -15,6 +16,17 @@ const BASIC_RECEIPT_FILTER_TYPE_URL: &str =
 pub struct TriggerFilter {
     pub(crate) block_filter: NearBlockFilter,
     pub(crate) receipt_filter: NearReceiptFilter,
+}
+
+impl TriggerFilter {
+    pub fn to_module_params(&self) -> String {
+        let matches = self.receipt_filter.accounts.iter().join(",");
+        format!(
+            "{}\n{}",
+            self.block_filter.trigger_every_block.to_string(),
+            matches
+        )
+    }
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {

@@ -344,6 +344,12 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         block: C::Block,
     ) -> Result<BlockWithTriggers<C>, Error>;
 
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<C>, Error>;
+
     async fn to_block_stream_event(
         &self,
         logger: &mut Logger,
@@ -384,12 +390,12 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     None => return Ok(None),
                 };
 
-                let block = match self.decode(module_output.map_output.as_ref())? {
+                let map_output = match module_output.map_output {
+                    Some(mo) => mo,
                     None => return Ok(None),
-                    Some(block) => block,
                 };
 
-                let block = self.block_with_triggers(&logger, block).await?;
+                let block = self.decode_triggers(&logger, &map_output).await?;
 
                 Ok(Some(BlockStreamEvent::ProcessBlock(
                     block,
