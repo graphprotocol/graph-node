@@ -25,11 +25,11 @@ those.
 - `DISABLE_BLOCK_INGESTOR`: set to `true` to disable block ingestion. Leave
   unset or set to `false` to leave block ingestion enabled.
 - `ETHEREUM_BLOCK_BATCH_SIZE`: number of Ethereum blocks to request in parallel.
-  Also limits other parallel requests such such as trace_filter. Defaults to 10.
+  Also limits other parallel requests such as trace_filter. Defaults to 10.
 - `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`: Maximum number of blocks to scan for
   triggers in each request (defaults to 1000).
 - `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`: Maximum range size for `eth.getLogs`
-  requests that dont filter on contract address, only event signature (defaults to 500).
+  requests that don't filter on contract address, only event signature (defaults to 500).
 - `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`: Timeout for Ethereum JSON-RPC requests.
 - `GRAPH_ETHEREUM_REQUEST_RETRIES`: Number of times to retry JSON-RPC requests
   made against Ethereum. This is used for requests that will not fail the
