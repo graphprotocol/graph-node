@@ -77,7 +77,7 @@ Not Relevant
 - Fixed `graph-node` panicking on the first startup when both Firehose and RPC providers are configured together. ([#4680](https://github.com/graphprotocol/graph-node/pull/4680))
 - Fixed block ingestor failing to startup with the error `net version for chain mainnet has changed from 0 to 1` when switching from Firehose to an RPC provider. ([#4692](https://github.com/graphprotocol/graph-node/pull/4692))
 - Fixed Firehose endpoints getting rate-limited due to duplicated providers during connection pool initialization. ([#4778](https://github.com/graphprotocol/graph-node/pull/4778))
-- Fixed a determinism issue where stale entities where being returned when using `get_many` and `get_derived` ([#4801]https://github.com/graphprotocol/graph-node/pull/4801)
+- Fixed a determinism issue where stale entities were being returned when using `get_many` and `get_derived` ([#4801]https://github.com/graphprotocol/graph-node/pull/4801)
 
 ### Graphman
 
@@ -629,7 +629,7 @@ This release ships support for API version 0.0.6 in mappings:
 
 #### Block Cache Invalidation and Reset
 
-All cached block data must be refetched to account for the new `Block` and `Trasaction`
+All cached block data must be refetched to account for the new `Block` and `Transaction`
 struct versions, so this release includes a `graph-node` startup check that will:
 
 1. Truncate all block cache tables.
