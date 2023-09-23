@@ -130,7 +130,7 @@ where
                     // Filter out data sources that have reached their end block if the block is final.
                     .filter(|ds| match current_ptr.as_ref() {
                         Some(block) => !ds.has_expired(block.number),
-                        None => false,
+                        None => true,
                     }),
             );
 
@@ -149,7 +149,7 @@ where
                     // Filter out data sources that have reached their end block if the block is final.
                     .filter(|ds| match current_ptr.as_ref() {
                         Some(block) => !ds.has_expired(block.number),
-                        None => false,
+                        None => true,
                     }),
             )
         }
@@ -324,9 +324,11 @@ where
             }
         };
 
-        // Check if there are any datasources that have reached their end block
-        // ie. they expired in the current block.
-        let has_end_block_reached_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
+        // Check if there are any datasources that have expired in this block. ie. they reached their
+        // end block in the previous block.
+        // A dataSource is deemed expired only after its end block has been processed.
+        // To efficiently ignore such expired dataSources, restart the block stream in the block immediately following the end block.
+        let has_expired_data_sources = self.inputs.end_blocks.contains(&(block_ptr.number - 1));
 
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
@@ -335,8 +337,7 @@ where
 
         // Determine if the block stream needs to be restarted due to newly created on-chain data sources
         // or data sources that have reached their end block.
-        let needs_restart =
-            created_data_sources_needs_restart || has_end_block_reached_data_sources;
+        let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
         {
             let _section = self
