@@ -1,6 +1,6 @@
 #[rustfmt::skip]
 #[path = "protobuf/sf.ethereum.r#type.v2.rs"]
-pub mod pbcodec;
+mod pbcodec;
 
 use anyhow::format_err;
 use graph::{

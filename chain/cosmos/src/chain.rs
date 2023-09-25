@@ -1,6 +1,8 @@
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::BlockIngestor;
+use graph::env::EnvVars;
 use graph::prelude::MetricsRegistry;
+use graph::substreams::Clock;
 use std::sync::Arc;
 
 use graph::blockchain::block_stream::{FirehoseCursor, SubstreamsMapper};
@@ -46,7 +48,7 @@ impl std::fmt::Debug for Chain {
 }
 
 impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
-    fn build(self) -> Chain {
+    fn build(self, _config: &Arc<EnvVars>) -> Chain {
         Chain {
             logger_factory: self.logger_factory,
             name: self.name,
@@ -330,7 +332,10 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<crate::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&prost_types::Any>,
+    ) -> Result<Option<crate::Block>, Error> {
         let block = match output {
             Some(block) => crate::Block::decode(block.value.as_ref())?,
             None => anyhow::bail!("cosmos mapper is expected to always have a block"),
@@ -351,8 +356,9 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
 
     async fn decode_triggers(
         &self,
-        logger: &Logger,
-        block: &prost_types::Any,
+        _logger: &Logger,
+        _clock: &Clock,
+        _block: &prost_types::Any,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         unimplemented!()
     }
@@ -389,7 +395,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down struct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode(Some(&any_block))?.unwrap();
+        let block = self.decode_block(Some(&any_block))?.unwrap();
 
         match step {
             ForkStep::StepNew => Ok(BlockStreamEvent::ProcessBlock(

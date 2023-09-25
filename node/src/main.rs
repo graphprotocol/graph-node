@@ -401,6 +401,7 @@ async fn main() {
         let network_store = store_builder.network_store(network_identifiers);
 
         let arweave_chains = networks_as_chains::<arweave::Chain>(
+            &env_vars,
             &mut blockchain_map,
             &logger,
             &arweave_networks,
@@ -443,6 +444,7 @@ async fn main() {
         );
 
         let near_chains = networks_as_chains::<near::Chain>(
+            &env_vars,
             &mut blockchain_map,
             &logger,
             &near_networks,
@@ -453,6 +455,7 @@ async fn main() {
         );
 
         let cosmos_chains = networks_as_chains::<cosmos::Chain>(
+            &env_vars,
             &mut blockchain_map,
             &logger,
             &cosmos_networks,
@@ -463,6 +466,7 @@ async fn main() {
         );
 
         let substreams_chains = networks_as_chains::<substreams::Chain>(
+            &env_vars,
             &mut blockchain_map,
             &logger,
             &substreams_networks,
@@ -710,6 +714,7 @@ async fn main() {
 
 /// Return the hashmap of chains and also add them to `blockchain_map`.
 fn networks_as_chains<C>(
+    config: &Arc<EnvVars>,
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
     firehose_networks: &FirehoseNetworks,
@@ -751,7 +756,7 @@ where
                         firehose_endpoints: endpoints.clone(),
                         metrics_registry: metrics_registry.clone(),
                     }
-                    .build(),
+                    .build(config),
                 ),
             )
         })

@@ -1,3 +1,4 @@
+use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
 use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
@@ -8,7 +9,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::{Block, BlockPtr, Blockchain, BlockchainKind};
+use super::{Block, BlockPtr, Blockchain};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -336,7 +337,7 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 
 #[async_trait]
 pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
+    fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
 
     async fn block_with_triggers(
         &self,
@@ -347,6 +348,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
     async fn decode_triggers(
         &self,
         logger: &Logger,
+        clock: &Clock,
         block: &prost_types::Any,
     ) -> Result<BlockWithTriggers<C>, Error>;
 
@@ -378,7 +380,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
             Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
                 let BlockScopedData {
                     output,
-                    clock: _,
+                    clock,
                     cursor,
                     final_block_height: _,
                     debug_map_outputs: _,
@@ -390,12 +392,17 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     None => return Ok(None),
                 };
 
+                let clock = match clock {
+                    Some(clock) => clock,
+                    None => return Err(SubstreamsError::MissingClockError),
+                };
+
                 let map_output = match module_output.map_output {
                     Some(mo) => mo,
                     None => return Ok(None),
                 };
 
-                let block = self.decode_triggers(&logger, &map_output).await?;
+                let block = self.decode_triggers(&logger, &clock, &map_output).await?;
 
                 Ok(Some(BlockStreamEvent::ProcessBlock(
                     block,

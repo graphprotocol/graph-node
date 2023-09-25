@@ -1,6 +1,6 @@
 #[rustfmt::skip]
 #[path = "protobuf/sf.arweave.r#type.v1.rs"]
-pub mod pbcodec;
+mod pbcodec;
 
 use graph::{blockchain::Block as BlockchainBlock, blockchain::BlockPtr, prelude::BlockNumber};
 

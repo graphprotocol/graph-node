@@ -11,6 +11,7 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::BigDecimal;
 use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::schema::InputSchema;
+use graph::substreams::Clock;
 use prost::Message;
 
 use crate::{Block, Chain, ParsedChanges, TriggerData};
@@ -29,7 +30,7 @@ pub struct Mapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for Mapper {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<Block>, Error> {
+    fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<Block>, Error> {
         let changes: EntityChanges = match output {
             Some(msg) => {
                 Message::decode(msg.value.as_slice()).map_err(SubstreamsError::DecodingError)?
@@ -56,6 +57,7 @@ impl SubstreamsMapper<Chain> for Mapper {
 
         Ok(Some(block))
     }
+
     async fn block_with_triggers(
         &self,
         logger: &Logger,
@@ -72,12 +74,22 @@ impl SubstreamsMapper<Chain> for Mapper {
     async fn decode_triggers(
         &self,
         logger: &Logger,
+        clock: &Clock,
         block: &prost_types::Any,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let block_number: BlockNumber = clock.number.try_into()?;
+        let block_hash = clock.id.as_bytes().to_vec().try_into()?;
+
         let block = self
-            .decode(Some(block))?
+            .decode_block(Some(block))?
             .ok_or_else(|| anyhow!("expected block to not be empty"))?;
-        self.block_with_triggers(logger, block).await
+        self.block_with_triggers(logger, block).await.map(|bt| {
+            let mut block = bt;
+
+            block.block.number = block_number;
+            block.block.hash = block_hash;
+            block
+        })
     }
 }
 

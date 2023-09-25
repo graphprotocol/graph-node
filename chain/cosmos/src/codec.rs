@@ -1,4 +1,4 @@
-pub use crate::protobuf::pbcodec::*;
+pub(crate) use crate::protobuf::pbcodec::*;
 
 use graph::blockchain::Block as BlockchainBlock;
 use graph::{

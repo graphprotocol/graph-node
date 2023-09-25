@@ -8,10 +8,11 @@ use graph::blockchain::{
 use graph::cheap_clone::CheapClone;
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
+use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoint;
 use graph::prelude::{MetricsRegistry, TryFutureExt};
 use graph::schema::InputSchema;
-use graph::substreams::Package;
+use graph::substreams::{Clock, Package};
 use graph::{
     anyhow::Result,
     blockchain::{
@@ -161,6 +162,7 @@ pub struct Chain {
     chain_store: Arc<dyn ChainStore>,
     metrics_registry: Arc<MetricsRegistry>,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
+    prefer_substreams: bool,
 }
 
 impl std::fmt::Debug for Chain {
@@ -170,7 +172,7 @@ impl std::fmt::Debug for Chain {
 }
 
 impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
-    fn build(self) -> Chain {
+    fn build(self, config: &Arc<EnvVars>) -> Chain {
         Chain {
             logger_factory: self.logger_factory,
             name: self.name,
@@ -178,6 +180,7 @@ impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
             client: Arc::new(ChainClient::new_firehose(self.firehose_endpoints)),
             metrics_registry: self.metrics_registry,
             block_stream_builder: Arc::new(NearStreamBuilder {}),
+            prefer_substreams: config.prefer_substreams_block_streams,
         }
     }
 }
@@ -223,6 +226,20 @@ impl Blockchain for Chain {
         filter: Arc<Self::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
     ) -> Result<Box<dyn BlockStream<Self>>, Error> {
+        if self.prefer_substreams {
+            return self
+                .block_stream_builder
+                .build_substreams(
+                    self,
+                    store.input_schema(),
+                    deployment,
+                    store.firehose_cursor(),
+                    store.block_ptr(),
+                    filter,
+                )
+                .await;
+        }
+
         self.block_stream_builder
             .build_firehose(
                 self,
@@ -390,7 +407,10 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<codec::Block>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&prost_types::Any>,
+    ) -> Result<Option<codec::Block>, Error> {
         let block = match output {
             Some(block) => codec::Block::decode(block.value.as_ref())?,
             None => anyhow::bail!("near mapper is expected to always have a block"),
@@ -412,6 +432,7 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
     async fn decode_triggers(
         &self,
         _logger: &Logger,
+        _clock: &Clock,
         message: &prost_types::Any,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let BlockAndReceipts {
@@ -472,7 +493,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode(Some(&any_block))?.unwrap();
+        let block = self.decode_block(Some(&any_block))?.unwrap();
 
         use ForkStep::*;
         match step {

@@ -11,6 +11,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
+use graph::substreams::Clock;
 use graph::{
     blockchain::{
         block_stream::{
@@ -734,7 +735,10 @@ pub struct FirehoseMapper {
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode(&self, output: Option<&prost_types::Any>) -> Result<Option<BlockFinality>, Error> {
+    fn decode_block(
+        &self,
+        output: Option<&prost_types::Any>,
+    ) -> Result<Option<BlockFinality>, Error> {
         let block = match output {
             Some(block) => codec::Block::decode(block.value.as_ref())?,
             None => anyhow::bail!("ethereum mapper is expected to always have a block"),
@@ -759,8 +763,9 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
 
     async fn decode_triggers(
         &self,
-        logger: &Logger,
-        block: &prost_types::Any,
+        _logger: &Logger,
+        _clock: &Clock,
+        _block: &prost_types::Any,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         unimplemented!()
     }
@@ -801,7 +806,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         match step {
             StepNew => {
                 // unwrap: Input cannot be None so output will be error or block.
-                let block = self.decode(Some(&any_block))?.unwrap();
+                let block = self.decode_block(Some(&any_block))?.unwrap();
                 let block_with_triggers = self.block_with_triggers(logger, block).await?;
 
                 Ok(BlockStreamEvent::ProcessBlock(

@@ -7,10 +7,6 @@ use graph::{
     components::link_resolver::LinkResolver,
     prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
     slog::Logger,
-    substreams::{
-        module::input::{Input, Params},
-        Module,
-    },
 };
 
 use prost::Message;

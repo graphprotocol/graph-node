@@ -44,4 +44,3 @@ message Field {
   optional Value new_value = 3;
   optional Value old_value = 5;
 }
-
