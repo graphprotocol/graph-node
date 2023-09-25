@@ -384,19 +384,11 @@ mod test {
         let mut package = gen_package();
         let mut modules = package.modules.unwrap();
         modules.modules.get_mut(0).map(|module| {
-            module.inputs = vec![
-                graph::substreams::module::Input {
-                    input: Some(Input::Params(Params { value: "x".into() })),
-                },
-                graph::substreams::module::Input {
-                    input: Some(Input::Params(Params { value: "y".into() })),
-                },
-                graph::substreams::module::Input {
-                    input: Some(Input::Params(Params {
-                        value: "123".into(),
-                    })),
-                },
-            ]
+            module.inputs = vec![graph::substreams::module::Input {
+                input: Some(Input::Params(Params {
+                    value: "x\ny\n123".into(),
+                })),
+            }]
         });
         package.modules = Some(modules);
 
