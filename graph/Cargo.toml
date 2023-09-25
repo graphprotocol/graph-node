@@ -13,7 +13,7 @@ bytes = "1.0.1"
 cid = "0.10.1"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 diesel_derives = "1.4"
-chrono = "0.4.25"
+chrono = "0.4.31"
 envconfig = "0.10.0"
 Inflector = "0.11.3"
 isatty = "0.1.9"
