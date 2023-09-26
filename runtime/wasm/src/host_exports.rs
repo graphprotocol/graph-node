@@ -229,9 +229,13 @@ impl<C: Blockchain> HostExports<C> {
                     .collect();
 
                 return Err(HostExportError::Deterministic(anyhow!(
-                    "Entity `{}` has fields not in schema: {:?}",
+                    "Entity `{}` has fields not in schema: {}",
                     key.entity_type,
                     invalid_fields
+                        .iter()
+                        .map(|f| f.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 )));
             }
         }

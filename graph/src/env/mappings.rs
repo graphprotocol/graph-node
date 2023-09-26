@@ -16,7 +16,7 @@ pub struct EnvVarsMapping {
     /// kilobytes). The default value is 10 megabytes.
     pub entity_cache_size: usize,
     /// Set by the environment variable `GRAPH_MAX_API_VERSION`. The default
-    /// value is `0.0.7`.
+    /// value is `0.0.8`.
     pub max_api_version: Version,
     /// Set by the environment variable `GRAPH_MAPPING_HANDLER_TIMEOUT`
     /// (expressed in seconds). No default is provided.
@@ -93,7 +93,7 @@ pub struct InnerMappingHandlers {
     entity_cache_dead_weight: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
-    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.7")]
+    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.8")]
     max_api_version: Version,
     #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
     mapping_handler_timeout_in_secs: Option<u64>,
