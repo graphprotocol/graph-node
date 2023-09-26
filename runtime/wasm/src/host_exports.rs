@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::time::{Duration, Instant};
 
+use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
 use never::Never;
@@ -199,13 +200,48 @@ impl<C: Blockchain> HostExports<C> {
             }
         }
 
-        // Filter out any key-value pairs from 'data' where
-        // the key (field name) is not defined in the schema for the given entity type.
-        let filtered_entity_data = data.into_iter().filter(|(k, _)| {
+        // From apiVersion 0.0.8 onwards, we check that the entity data
+        // does not contain fields that are not in the schema and fail
+        if self.api_version >= API_VERSION_0_0_8 {
+            // Quick check for any invalid field
+            let has_invalid_fields = data.iter().any(|(field_name, _)| {
+                !state
+                    .entity_cache
+                    .schema
+                    .has_field_with_name(&key.entity_type, &field_name)
+            });
+
+            // If an invalid field exists, find all and return an error
+            if has_invalid_fields {
+                let invalid_fields: Vec<Word> = data
+                    .iter()
+                    .filter_map(|(field_name, _)| {
+                        if !state
+                            .entity_cache
+                            .schema
+                            .has_field_with_name(&key.entity_type, &field_name)
+                        {
+                            Some(field_name.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                return Err(HostExportError::Deterministic(anyhow!(
+                    "Entity `{}` has fields not in schema: {:?}",
+                    key.entity_type,
+                    invalid_fields
+                )));
+            }
+        }
+
+        // Filter out fields that are not in the schema
+        let filtered_entity_data = data.into_iter().filter(|(field_name, _)| {
             state
                 .entity_cache
                 .schema
-                .has_field_with_name(&key.entity_type, k.as_str())
+                .has_field_with_name(&key.entity_type, field_name)
         });
 
         let entity = state

@@ -928,14 +928,6 @@ impl Entity {
             }
         })?;
 
-        for field in self.0.atoms() {
-            if !schema.has_field(&key.entity_type, field) {
-                return Err(EntityValidationError::FieldsNotDefined {
-                    entity: key.entity_type.clone().into_string(),
-                });
-            }
-        }
-
         for field in &object_type.fields {
             let is_derived = field.is_derived();
             match (self.get(&field.name), is_derived) {
