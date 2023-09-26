@@ -475,25 +475,24 @@ impl EntityData {
                 let parent_id = map
                     .remove(PARENT_ID)
                     .and_then(|json| {
-                        if T::WITH_INTERNAL_KEYS {
-                            match &parent_type {
-                                None => {
-                                    // A query that does not have parents
-                                    // somehow returned parent ids. We have no
-                                    // idea how to deserialize that
-                                    Some(Err(graph::constraint_violation!(
-                                        "query unexpectedly produces parent ids"
-                                    )))
-                                }
-                                Some(parent_type) => Some(
-                                    parent_type
-                                        .id_type()
-                                        .map_err(StoreError::from)
-                                        .and_then(|id_type| id_type.parse_id(json)),
-                                ),
+                        if !T::WITH_INTERNAL_KEYS {
+                            return None;
+                        }
+                        match &parent_type {
+                            None => {
+                                // A query that does not have parents
+                                // somehow returned parent ids. We have no
+                                // idea how to deserialize that
+                                Some(Err(graph::constraint_violation!(
+                                    "query unexpectedly produces parent ids"
+                                )))
                             }
-                        } else {
-                            None
+                            Some(parent_type) => Some(
+                                parent_type
+                                    .id_type()
+                                    .map_err(StoreError::from)
+                                    .and_then(|id_type| id_type.parse_id(json)),
+                            ),
                         }
                     })
                     .transpose()?;
