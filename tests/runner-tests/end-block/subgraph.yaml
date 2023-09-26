@@ -1,4 +1,4 @@
-specVersion: 0.0.8
+specVersion: 0.0.9
 schema:
   file: ./schema.graphql
 dataSources:

@@ -18,7 +18,9 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8},
+    data::subgraph::{
+        UnifiedMappingApiVersion, MIN_SPEC_VERSION, SPEC_VERSION_0_0_9,
+    },
     data_source,
     prelude::DataSourceContext,
     runtime::{gas::GasCounter, AscHeap, HostExportError},
@@ -267,10 +269,10 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
     /// Use `min_spec_version_inner` for custom logic instead.
     /// This method is used to determine the minimum spec version required by the data source.
     fn min_spec_version(&self) -> semver::Version {
-        // If the data source has an end block, then min spec version is 0.0.8
+        // If the data source has an end block, then min spec version is 0.0.9
         let min_version_from_trait = self
             .end_block()
-            .map_or(MIN_SPEC_VERSION, |_| SPEC_VERSION_0_0_8);
+            .map_or(MIN_SPEC_VERSION, |_| SPEC_VERSION_0_0_9);
         let min_version_from_inner = self.min_spec_version_inner();
 
         min_version_from_inner.max(min_version_from_trait)
