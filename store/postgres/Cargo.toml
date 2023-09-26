@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = "0.1.50"
-blake3 = "1.4"
+blake3 = "1.5"
 derive_more = { version = "0.99.17" }
 diesel = { version = "1.4.8", features = [
     "postgres",

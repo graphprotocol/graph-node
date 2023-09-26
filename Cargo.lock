@@ -86,9 +86,9 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "arrayvec"
-version = "0.7.2"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
+checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
 name = "ascii"
@@ -328,7 +328,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72936ee4afc7f8f736d1c38383b56480b5497b4617b4a77bdbf1d2ababc76127"
 dependencies = [
  "arrayref",
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "constant_time_eq 0.1.5",
 ]
 
@@ -339,7 +339,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db539cc2b5f6003621f1cd9ef92d7ded8ea5232c7de0f9faa2de251cd98730d4"
 dependencies = [
  "arrayref",
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "constant_time_eq 0.1.5",
 ]
 
@@ -360,16 +360,15 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.4.1"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "199c42ab6972d92c9f8995f086273d25c42fc0f7b2a1fcefba465c1352d25ba5"
+checksum = "0231f06152bf547e9c2b5194f247cd97aacf6dcd8b15d8e5ec0663f64580da87"
 dependencies = [
  "arrayref",
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "cc",
  "cfg-if 1.0.0",
  "constant_time_eq 0.3.0",
- "digest 0.10.7",
 ]
 
 [[package]]
@@ -1013,7 +1012,6 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer 0.10.2",
  "crypto-common",
- "subtle",
 ]
 
 [[package]]
@@ -1828,7 +1826,7 @@ dependencies = [
 name = "graph-server-index-node"
 version = "0.32.0"
 dependencies = [
- "blake3 1.4.1",
+ "blake3 1.5.0",
  "either",
  "futures 0.3.16",
  "git-testament",
@@ -1885,7 +1883,7 @@ dependencies = [
  "Inflector",
  "anyhow",
  "async-trait",
- "blake3 1.4.1",
+ "blake3 1.5.0",
  "clap",
  "derive_more",
  "diesel",
@@ -2522,7 +2520,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3dc3e9cf2ba50b7b1d7d76a667619f82846caa39e8e8daa8a4962d74acaddca"
 dependencies = [
  "anyhow",
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "async-trait",
  "beef",
  "futures-channel",
@@ -2811,7 +2809,7 @@ checksum = "15e5d911412e631e1de11eb313e4dd71f73fd964401102aab23d6c8327c431ba"
 dependencies = [
  "blake2b_simd",
  "blake2s_simd",
- "blake3 1.4.1",
+ "blake3 1.5.0",
  "core2",
  "digest 0.10.7",
  "multihash-derive",
@@ -2998,7 +2996,7 @@ version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a7f3fcf5e45fc28b84dcdab6b983e77f197ec01f325a33f404ba6855afd1070"
 dependencies = [
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "bitvec",
  "byte-slice-cast",
  "impl-trait-for-tuples",
@@ -5417,7 +5415,7 @@ name = "web3"
 version = "0.19.0-graph"
 source = "git+https://github.com/graphprotocol/rust-web3?branch=graph-patches-onto-0.18#7f8eb6dfcc13a4186f9b42f91de950646bc4a833"
 dependencies = [
- "arrayvec 0.7.2",
+ "arrayvec 0.7.4",
  "base64 0.13.1",
  "bytes",
  "derive_more",
