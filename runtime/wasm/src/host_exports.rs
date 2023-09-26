@@ -199,9 +199,18 @@ impl<C: Blockchain> HostExports<C> {
             }
         }
 
+        // Filter out any key-value pairs from 'data' where
+        // the key (field name) is not defined in the schema for the given entity type.
+        let filtered_entity_data = data.into_iter().filter(|(k, _)| {
+            state
+                .entity_cache
+                .schema
+                .has_field_with_name(&key.entity_type, k.as_str())
+        });
+
         let entity = state
             .entity_cache
-            .make_entity(data.into_iter().map(|(key, value)| (key, value)))
+            .make_entity(filtered_entity_data.map(|(key, value)| (key, value)))
             .map_err(|e| HostExportError::Deterministic(anyhow!(e)))?;
 
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
