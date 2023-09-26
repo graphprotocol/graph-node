@@ -867,7 +867,7 @@ impl Entity {
                 s::Type::NamedType(name) => ValueType::from_str(name).unwrap_or_else(|_| {
                     match schema.get_named_type(name) {
                         Some(t::Object(obj_type)) => {
-                            let id = obj_type.field("id").expect("all object types have an id");
+                            let id = obj_type.field(&*ID).expect("all object types have an id");
                             scalar_value_type(schema, &id.field_type)
                         }
                         Some(t::Interface(intf)) => {
@@ -887,7 +887,7 @@ impl Entity {
                                 }
                                 Some(obj_type) => {
                                     let id =
-                                        obj_type.field("id").expect("all object types have an id");
+                                        obj_type.field(&*ID).expect("all object types have an id");
                                     scalar_value_type(schema, &id.field_type)
                                 }
                             }

@@ -1,6 +1,6 @@
 use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, TypeExt, ValueExt};
 use crate::data::graphql::ObjectTypeExt;
-use crate::data::store::ValueType;
+use crate::data::store::{ValueType, ID};
 use crate::data::subgraph::DeploymentHash;
 use crate::prelude::{
     anyhow,
@@ -786,7 +786,7 @@ impl Schema {
             let id_types: HashSet<&str> = HashSet::from_iter(
                 obj_types
                     .iter()
-                    .filter_map(|obj_type| obj_type.field("id"))
+                    .filter_map(|obj_type| obj_type.field(&*ID))
                     .map(|f| f.field_type.get_base_type())
                     .map(|name| if name == "ID" { "String" } else { name }),
             );
