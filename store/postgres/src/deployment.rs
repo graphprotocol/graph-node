@@ -919,8 +919,11 @@ pub(crate) fn entities_with_causality_region(
         .get_result::<Vec<String>>(conn)
         .map_err(|e| e.into())
         .map(|ents| {
+            // It is possible to have entity types in
+            // `entities_with_causality_region` that are not mentioned in
+            // the schema.
             ents.into_iter()
-                .map(|ent| schema.entity_type(&ent).unwrap())
+                .filter_map(|ent| schema.entity_type(&ent).ok())
                 .collect()
         })
 }

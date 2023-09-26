@@ -16,7 +16,7 @@ use anyhow::{anyhow, Context, Error};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use slog::{info, Logger};
+use slog::{info, warn, Logger};
 use std::{
     collections::HashMap,
     fmt,
@@ -414,11 +414,19 @@ impl UnresolvedMapping {
         logger: &Logger,
     ) -> Result<Mapping, Error> {
         info!(logger, "Resolve offchain mapping"; "link" => &self.file.link);
-        let entities = self
+        // It is possible for a manifest to mention entity types that do not
+        // exist in the schema. Rather than fail the subgraph, which could
+        // fail existing subgraphs, filter them out and just log a warning.
+        let (entities, errs) = self
             .entities
             .iter()
-            .map(|s| schema.entity_type(s))
-            .collect::<Result<_, _>>()?;
+            .map(|s| schema.entity_type(s).map_err(|_| s))
+            .partition::<Vec<_>, _>(Result::is_ok);
+        if !errs.is_empty() {
+            let errs = errs.into_iter().map(Result::unwrap_err).join(", ");
+            warn!(logger, "Ignoring unknown entity types in mapping"; "entities" => errs, "link" => &self.file.link);
+        }
+        let entities = entities.into_iter().map(Result::unwrap).collect::<Vec<_>>();
         Ok(Mapping {
             language: self.language,
             api_version: semver::Version::parse(&self.api_version)?,
