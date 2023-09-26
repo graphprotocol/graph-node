@@ -19,3 +19,4 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 diesel = { version = "1.4.7", features = ["postgres", "serde_json", "numeric", "r2d2"] }
+trigger-filters.path = "../../substreams/trigger-filters" 

@@ -44,8 +44,9 @@ use graph::blockchain::block_stream::{
 };
 
 const NEAR_FILTER_MODULE_NAME: &str = "near_filter";
-const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 443975] =
-    include_bytes!("../../../substreams-trigger-filter-v0.1.0.spkg");
+const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 497306] = include_bytes!(
+    "../../../substreams/substreams-trigger-filter/substreams-trigger-filter-v0.1.0.spkg"
+);
 
 pub struct NearStreamBuilder {}
 

@@ -18,8 +18,9 @@ use graph::{
 };
 use prost::Message;
 
-const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] =
-    include_bytes!("../../../substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg");
+const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] = include_bytes!(
+    "../../../substreams/substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg"
+);
 
 pub struct SubstreamsBlockIngestor {
     chain_store: Arc<dyn ChainStore>,
