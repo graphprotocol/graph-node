@@ -131,6 +131,7 @@ impl ServiceContainer {
             .create_container(
                 Some(container::CreateContainerOptions {
                     name: container_name.clone(),
+                    platform: None,
                 }),
                 service.config(),
             )
@@ -153,7 +154,7 @@ impl ServiceContainer {
     }
 
     pub async fn exposed_ports(&self) -> Result<MappedPorts, DockerError> {
-        use bollard::models::ContainerSummaryInner;
+        use bollard::models::ContainerSummary;
 
         let results = {
             let mut filters = HashMap::new();
@@ -167,7 +168,7 @@ impl ServiceContainer {
         };
 
         let ports = match &results.as_slice() {
-            &[ContainerSummaryInner {
+            &[ContainerSummary {
                 ports: Some(ports), ..
             }] => ports,
             unexpected_response => panic!(
@@ -239,18 +240,21 @@ impl ServiceContainer {
                 .await?;
 
             // 2. Start Exec
-            let mut stream = docker.client.start_exec(&message.id, None);
+            let mut stream = match docker.client.start_exec(&message.id, None).await.unwrap() {
+                StartExecResults::Attached { output, input: _ } => output,
+                StartExecResults::Detached => unreachable!(),
+            };
             let mut std_err = vec![];
             loop {
                 match stream.next().await {
-                    Some(Ok(StartExecResults::Attached { log })) => match log {
+                    Some(Ok(log)) => match log {
                         container::LogOutput::StdErr { message } => {
                             std_err.push(String::from_utf8(message.to_vec()).unwrap());
                         }
                         _ => {}
                     },
                     None => break,
-                    _ => { /* consume stream */ }
+                    _ => {}
                 }
             }
 
