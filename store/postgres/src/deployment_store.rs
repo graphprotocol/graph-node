@@ -27,7 +27,6 @@ use lru_time_cache::LruCache;
 use rand::{seq::SliceRandom, thread_rng};
 use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
-use std::iter::FromIterator;
 use std::ops::Bound;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -289,18 +288,8 @@ impl DeploymentStore {
         // if that's Fred the Dog, Fred the Cat or both.
         //
         // This assumes that there are no concurrent writes to a subgraph.
-        let schema = self.subgraph_info_with_conn(conn, &layout.site)?.input;
         let entity_type_str = entity_type.to_string();
-        let types_with_shared_interface = Vec::from_iter(
-            schema
-                .interfaces_for_type(entity_type.as_str())
-                .into_iter()
-                .flatten()
-                .flat_map(|interface| schema.types_for_interface(interface))
-                .flatten()
-                .map(|object_type| schema.entity_type(object_type).unwrap())
-                .filter(|type_name| type_name != entity_type),
-        );
+        let types_with_shared_interface = entity_type.share_interfaces()?;
 
         if !types_with_shared_interface.is_empty() {
             if let Some(conflicting_entity) =

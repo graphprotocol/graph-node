@@ -741,19 +741,17 @@ fn scoped_get() {
 fn no_internal_keys() {
     run_store_test(|mut cache, _, _, writable| async move {
         #[track_caller]
-        fn check(schema: &InputSchema, key: &EntityKey, entity: &Entity) {
+        fn check(key: &EntityKey, entity: &Entity) {
             // Validate checks that all attributes are actually declared in
             // the schema
-            entity.validate(schema, key).expect("the entity is valid");
+            entity.validate(key).expect("the entity is valid");
         }
         let key = WALLET_TYPE.parse_key("1").unwrap();
 
-        let schema = cache.schema.cheap_clone();
-
         let wallet = writable.get(&key).unwrap().unwrap();
-        check(&schema, &key, &wallet);
+        check(&key, &wallet);
 
         let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
-        check(&schema, &key, &wallet);
+        check(&key, &wallet);
     });
 }

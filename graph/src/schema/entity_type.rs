@@ -12,7 +12,10 @@ use crate::{
     util::intern::Atom,
 };
 
-use super::{input_schema::POI_OBJECT, EntityKey, InputSchema};
+use super::{
+    input_schema::{ObjectType, POI_OBJECT},
+    EntityKey, InputSchema, InterfaceType,
+};
 
 /// The type name of an entity. This is the string that is used in the
 /// subgraph's GraphQL schema as `type NAME @entity { .. }`
@@ -23,7 +26,7 @@ use super::{input_schema::POI_OBJECT, EntityKey, InputSchema};
 #[derive(Clone)]
 pub struct EntityType {
     schema: InputSchema,
-    pub atom: Atom,
+    pub(in crate::schema) atom: Atom,
 }
 
 impl EntityType {
@@ -52,8 +55,8 @@ impl EntityType {
         self.schema.id_type(self.atom)
     }
 
-    pub fn object_type(&self) -> Option<&s::ObjectType> {
-        self.schema.find_object_type(self)
+    pub fn object_type(&self) -> Option<&ObjectType> {
+        self.schema.find_object_type(self.atom)
     }
 
     /// Create a key from this type for an onchain entity
@@ -107,6 +110,16 @@ impl EntityType {
 
     fn same_pool(&self, other: &EntityType) -> bool {
         Arc::ptr_eq(self.schema.pool(), other.schema.pool())
+    }
+
+    pub fn interfaces(&self) -> impl Iterator<Item = &InterfaceType> {
+        self.schema.interfaces(self.atom)
+    }
+
+    /// Return a list of all entity types that implement one of the
+    /// interfaces that `self` implements
+    pub fn share_interfaces(&self) -> Result<Vec<EntityType>, Error> {
+        self.schema.share_interfaces(self.atom)
     }
 }
 

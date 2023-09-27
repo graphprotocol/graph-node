@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
-use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, IntoEntityIterator};
@@ -201,10 +200,10 @@ impl EntityCache {
         &mut self,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
-        let (base_type, field) = self.schema.get_field_related(eref)?;
+        let (entity_type, field) = self.schema.get_field_related(eref)?;
 
         let query = DerivedEntityQuery {
-            entity_type: self.schema.entity_type(base_type)?,
+            entity_type,
             entity_field: field.name.clone().into(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
@@ -325,7 +324,7 @@ impl EntityCache {
     /// returned.
     pub fn set(&mut self, key: EntityKey, entity: Entity) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
-        let is_valid = entity.validate(&self.schema, &key).is_ok();
+        let is_valid = entity.validate(&key).is_ok();
 
         self.entity_op(key.clone(), EntityOp::Update(entity));
 
@@ -333,7 +332,6 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
-            let schema = self.schema.cheap_clone();
             let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
@@ -341,7 +339,7 @@ impl EntityCache {
                     key.entity_id
                 )
             })?;
-            entity.validate(&schema, &key)?;
+            entity.validate(&key)?;
         }
 
         Ok(())

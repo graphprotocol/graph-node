@@ -442,7 +442,7 @@ fn entity_validation() {
         let id = thing.id();
         let key = THING_TYPE.key(id.clone());
 
-        let err = thing.validate(&SCHEMA, &key);
+        let err = thing.validate(&key);
         if errmsg.is_empty() {
             assert!(
                 err.is_ok(),
