@@ -18,8 +18,9 @@ use graph::{
 };
 use prost::Message;
 
-const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] =
-    include_bytes!("../../../substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg");
+const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] = include_bytes!(
+    "../../../substreams/substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg"
+);
 
 pub struct SubstreamsBlockIngestor {
     chain_store: Arc<dyn ChainStore>,
@@ -72,7 +73,7 @@ impl SubstreamsBlockIngestor {
         let mut latest_cursor = cursor;
 
         while let Some(message) = stream.next().await {
-            let (block_ptr, cursor) = match message {
+            let (block, cursor) = match message {
                 Ok(BlockStreamEvent::ProcessBlock(triggers, cursor)) => {
                     (Arc::new(triggers.block), cursor)
                 }
@@ -89,7 +90,7 @@ impl SubstreamsBlockIngestor {
                 }
             };
 
-            let res = self.process_new_block(block_ptr, cursor.to_string()).await;
+            let res = self.process_new_block(block, cursor.to_string()).await;
             if let Err(e) = res {
                 error!(self.logger, "Process block failed: {:#}", e);
                 break;
@@ -107,14 +108,14 @@ impl SubstreamsBlockIngestor {
 
     async fn process_new_block(
         &self,
-        block_ptr: Arc<super::Block>,
+        block: Arc<super::Block>,
         cursor: String,
     ) -> Result<(), Error> {
-        trace!(self.logger, "Received new block to ingest {:?}", block_ptr);
+        trace!(self.logger, "Received new block to ingest {:?}", block);
 
         self.chain_store
             .clone()
-            .set_chain_head(block_ptr, cursor)
+            .set_chain_head(block, cursor)
             .await
             .context("Updating chain head")?;
 
@@ -125,7 +126,10 @@ impl SubstreamsBlockIngestor {
 #[async_trait]
 impl BlockIngestor for SubstreamsBlockIngestor {
     async fn run(self: Box<Self>) {
-        let mapper = Arc::new(Mapper { schema: None });
+        let mapper = Arc::new(Mapper {
+            schema: None,
+            skip_empty_blocks: false,
+        });
         let mut latest_cursor = self.fetch_head_cursor().await;
         let mut backoff =
             ExponentialBackoff::new(Duration::from_millis(250), Duration::from_secs(30));

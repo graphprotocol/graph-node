@@ -175,6 +175,8 @@ pub struct EnvVars {
     /// Set by the env var `GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS` which should point
     /// to a file with subgraph-specific settings
     pub subgraph_settings: Option<String>,
+    /// Whether to prefer substreams blocks streams over firehose when available.
+    pub prefer_substreams_block_streams: bool,
 }
 
 impl EnvVars {
@@ -233,6 +235,7 @@ impl EnvVars {
             static_filters_threshold: inner.static_filters_threshold,
             reorg_threshold: inner.reorg_threshold,
             subgraph_settings: inner.subgraph_settings,
+            prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
         })
     }
 
@@ -353,6 +356,11 @@ struct Inner {
     reorg_threshold: BlockNumber,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]
     subgraph_settings: Option<String>,
+    #[envconfig(
+        from = "GRAPH_EXPERIMENTAL_PREFER_SUBSTREAMS_BLOCK_STREAMS",
+        default = "false"
+    )]
+    prefer_substreams_block_streams: bool,
 }
 
 #[derive(Clone, Debug)]

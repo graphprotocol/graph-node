@@ -1,22 +1,20 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::codec::entity_change;
-use crate::{codec, Block, Chain, EntityChanges, ParsedChanges, TriggerData};
-use graph::blockchain::block_stream::{
-    BlockStreamEvent, BlockWithTriggers, FirehoseCursor, SubstreamsError, SubstreamsMapper,
-};
+use crate::codec::{entity_change, EntityChanges};
+use anyhow::{anyhow, Error};
+use graph::blockchain::block_stream::{BlockWithTriggers, SubstreamsError, SubstreamsMapper};
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::prelude::BigDecimal;
-use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, BlockPtr, Logger, Value};
+use graph::prelude::{async_trait, BigInt, BlockHash, BlockNumber, Logger, Value};
 use graph::schema::InputSchema;
-use graph::slog::o;
 use graph::substreams::Clock;
-use graph::substreams_rpc::response::Message as SubstreamsMessage;
 use prost::Message;
+
+use crate::{Block, Chain, ParsedChanges, TriggerData};
 
 // Mapper will transform the proto content coming from substreams in the graph-out format
 // into the internal Block representation. If schema is passed then additional transformation
@@ -25,100 +23,73 @@ use prost::Message;
 // be used for block ingestion where entity content is empty and gets discarded.
 pub struct Mapper {
     pub schema: Option<InputSchema>,
+    // Block ingestors need the block to be returned so they can populate the cache
+    // block streams, however, can shave some time by just skipping.
+    pub skip_empty_blocks: bool,
 }
 
 #[async_trait]
 impl SubstreamsMapper<Chain> for Mapper {
-    async fn to_block_stream_event(
+    fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<Block>, Error> {
+        let changes: EntityChanges = match output {
+            Some(msg) => {
+                Message::decode(msg.value.as_slice()).map_err(SubstreamsError::DecodingError)?
+            }
+            None => EntityChanges {
+                entity_changes: [].to_vec(),
+            },
+        };
+
+        let parsed_changes = match self.schema.as_ref() {
+            Some(schema) => parse_changes(&changes, schema)?,
+            None if self.skip_empty_blocks => return Ok(None),
+            None => vec![],
+        };
+
+        let hash = BlockHash::zero();
+        let number = BlockNumber::MIN;
+        let block = Block {
+            hash,
+            number,
+            changes,
+            parsed_changes,
+        };
+
+        Ok(Some(block))
+    }
+
+    async fn block_with_triggers(
         &self,
-        logger: &mut Logger,
-        message: Option<SubstreamsMessage>,
-    ) -> Result<Option<BlockStreamEvent<Chain>>, SubstreamsError> {
-        match message {
-            Some(SubstreamsMessage::Session(session_init)) => {
-                *logger = logger.new(o!("trace_id" => session_init.trace_id));
-                return Ok(None);
-            }
-            Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
-                let valid_block = match undo.last_valid_block {
-                    Some(clock) => clock,
-                    None => return Err(SubstreamsError::InvalidUndoError),
-                };
-                let valid_ptr = BlockPtr {
-                    hash: valid_block.id.trim_start_matches("0x").try_into()?,
-                    number: valid_block.number as i32,
-                };
-                return Ok(Some(BlockStreamEvent::Revert(
-                    valid_ptr,
-                    FirehoseCursor::from(undo.last_valid_cursor.clone()),
-                )));
-            }
-
-            Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
-                let module_output = match &block_scoped_data.output {
-                    Some(out) => out,
-                    None => return Ok(None),
-                };
-
-                let clock = match block_scoped_data.clock {
-                    Some(clock) => clock,
-                    None => return Err(SubstreamsError::MissingClockError),
-                };
-
-                let cursor = &block_scoped_data.cursor;
-
-                let Clock {
-                    id: hash,
-                    number,
-                    timestamp: _,
-                } = clock;
-
-                let hash: BlockHash = hash.as_str().try_into()?;
-                let number: BlockNumber = number as BlockNumber;
-
-                let changes: EntityChanges = match module_output.map_output.as_ref() {
-                    Some(msg) => Message::decode(msg.value.as_slice())
-                        .map_err(SubstreamsError::DecodingError)?,
-                    None => EntityChanges {
-                        entity_changes: [].to_vec(),
-                    },
-                };
-
-                let parsed_changes = match self.schema.as_ref() {
-                    Some(schema) => parse_changes(&changes, schema)?,
-                    None => vec![],
-                };
-                let mut triggers = vec![];
-                if changes.entity_changes.len() >= 1 {
-                    triggers.push(TriggerData {});
-                }
-
-                // Even though the trigger processor for substreams doesn't care about TriggerData
-                // there are a bunch of places in the runner that check if trigger data
-                // empty and skip processing if so. This will prolly breakdown
-                // close to head so we will need to improve things.
-
-                // TODO(filipe): Fix once either trigger data can be empty
-                // or we move the changes into trigger data.
-                Ok(Some(BlockStreamEvent::ProcessBlock(
-                    BlockWithTriggers::new(
-                        Block {
-                            hash,
-                            number,
-                            changes,
-                            parsed_changes,
-                        },
-                        triggers,
-                        logger,
-                    ),
-                    FirehoseCursor::from(cursor.clone()),
-                )))
-            }
-
-            // ignoring Progress messages and SessionInit
-            // We are only interested in Data and Undo signals
-            _ => Ok(None),
+        logger: &Logger,
+        block: Block,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let mut triggers = vec![];
+        if block.changes.entity_changes.len() >= 1 {
+            triggers.push(TriggerData {});
         }
+
+        Ok(BlockWithTriggers::new(block, triggers, logger))
+    }
+
+    async fn decode_triggers(
+        &self,
+        logger: &Logger,
+        clock: &Clock,
+        block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let block_number: BlockNumber = clock.number.try_into()?;
+        let block_hash = clock.id.as_bytes().to_vec().try_into()?;
+
+        let block = self
+            .decode_block(Some(block))?
+            .ok_or_else(|| anyhow!("expected block to not be empty"))?;
+        self.block_with_triggers(logger, block).await.map(|bt| {
+            let mut block = bt;
+
+            block.block.number = block_number;
+            block.block.hash = block_hash;
+            block
+        })
     }
 }
 
@@ -160,8 +131,8 @@ fn parse_changes(
         let changes = match entity_change.operation() {
             entity_change::Operation::Create | entity_change::Operation::Update => {
                 for field in entity_change.fields.iter() {
-                    let new_value: &codec::value::Typed = match &field.new_value {
-                        Some(codec::Value {
+                    let new_value: &crate::codec::value::Typed = match &field.new_value {
+                        Some(crate::codec::Value {
                             typed: Some(new_value),
                         }) => &new_value,
                         _ => continue,
@@ -188,7 +159,7 @@ fn parse_changes(
 }
 
 fn decode_value(value: &crate::codec::value::Typed) -> anyhow::Result<Value> {
-    use codec::value::Typed;
+    use crate::codec::value::Typed;
 
     match value {
         Typed::Int32(new_value) => Ok(Value::Int(*new_value)),

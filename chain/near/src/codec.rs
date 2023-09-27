@@ -2,6 +2,10 @@
 #[path = "protobuf/sf.near.codec.v1.rs"]
 pub mod pbcodec;
 
+#[rustfmt::skip]
+#[path = "protobuf/receipts.v1.rs"]
+pub mod substreams_triggers;
+
 use graph::{
     blockchain::Block as BlockchainBlock,
     blockchain::BlockPtr,

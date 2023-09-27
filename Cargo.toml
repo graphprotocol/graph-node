@@ -7,7 +7,7 @@ members = [
     "runtime/*",
     "server/*",
     "store/*",
-    "substreams-head-tracker",
+    "substreams/*",
     "graph",
     "tests",
 ]
@@ -33,3 +33,9 @@ incremental = false
 
 [profile.dev]
 incremental = false
+
+[profile.release]
+lto = true
+opt-level = 's'
+strip = "debuginfo"
+

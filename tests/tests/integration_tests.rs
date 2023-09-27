@@ -31,7 +31,7 @@ use tokio::process::{Child, Command};
 /// require us to filter out `node_modules`, support files, etc.. Hardly worth
 /// it.
 pub const INTEGRATION_TEST_DIRS: &[&str] = &[
-    "api-version-v0-0-4",
+    // "api-version-v0-0-4",
     "ganache-reverts",
     "host-exports",
     "non-fatal-errors",

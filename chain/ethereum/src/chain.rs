@@ -11,6 +11,7 @@ use graph::prelude::{
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry,
 };
 use graph::schema::InputSchema;
+use graph::substreams::Clock;
 use graph::{
     blockchain::{
         block_stream::{
@@ -53,7 +54,9 @@ use crate::{
     },
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
-use graph::blockchain::block_stream::{BlockStream, BlockStreamBuilder, FirehoseCursor};
+use graph::blockchain::block_stream::{
+    BlockStream, BlockStreamBuilder, FirehoseCursor, SubstreamsMapper,
+};
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
@@ -87,7 +90,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             .subgraph_logger(&deployment)
             .new(o!("component" => "FirehoseBlockStream"));
 
-        let firehose_mapper = Arc::new(FirehoseMapper {});
+        let firehose_mapper = Arc::new(FirehoseMapper { adapter, filter });
 
         Ok(Box::new(FirehoseBlockStream::new(
             deployment.hash,
@@ -95,8 +98,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             subgraph_current_block,
             block_cursor,
             firehose_mapper,
-            adapter,
-            filter,
             start_blocks,
             logger,
             chain.registry.clone(),
@@ -727,16 +728,59 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 }
 
-pub struct FirehoseMapper {}
+pub struct FirehoseMapper {
+    adapter: Arc<dyn TriggersAdapterTrait<Chain>>,
+    filter: Arc<TriggerFilter>,
+}
+
+#[async_trait]
+impl SubstreamsMapper<Chain> for FirehoseMapper {
+    fn decode_block(
+        &self,
+        output: Option<&prost_types::Any>,
+    ) -> Result<Option<BlockFinality>, Error> {
+        let block = match output {
+            Some(block) => codec::Block::decode(block.value.as_ref())?,
+            None => anyhow::bail!("ethereum mapper is expected to always have a block"),
+        };
+
+        // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
+        // is empty
+        let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
+
+        Ok(Some(BlockFinality::NonFinal(ethereum_block)))
+    }
+
+    async fn block_with_triggers(
+        &self,
+        logger: &Logger,
+        block: BlockFinality,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        self.adapter
+            .triggers_in_block(logger, block, &self.filter)
+            .await
+    }
+
+    async fn decode_triggers(
+        &self,
+        _logger: &Logger,
+        _clock: &Clock,
+        _block: &prost_types::Any,
+    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        unimplemented!()
+    }
+}
 
 #[async_trait]
 impl FirehoseMapperTrait<Chain> for FirehoseMapper {
+    fn trigger_filter(&self) -> &TriggerFilter {
+        self.filter.as_ref()
+    }
+
     async fn to_block_stream_event(
         &self,
         logger: &Logger,
         response: &firehose::Response,
-        adapter: &Arc<dyn TriggersAdapterTrait<Chain>>,
-        filter: &TriggerFilter,
     ) -> Result<BlockStreamEvent<Chain>, FirehoseError> {
         let step = ForkStep::from_i32(response.step).unwrap_or_else(|| {
             panic!(
@@ -761,15 +805,9 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         use firehose::ForkStep::*;
         match step {
             StepNew => {
-                // See comment(437a9f17-67cc-478f-80a3-804fe554b227) ethereum_block.calls is always Some even if calls
-                // is empty
-                let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
-
-                // triggers in block never actually calls the ethereum traces api.
-                // TODO: Split the trigger parsing from call retrieving.
-                let block_with_triggers = adapter
-                    .triggers_in_block(logger, BlockFinality::NonFinal(ethereum_block), filter)
-                    .await?;
+                // unwrap: Input cannot be None so output will be error or block.
+                let block = self.decode_block(Some(&any_block))?.unwrap();
+                let block_with_triggers = self.block_with_triggers(logger, block).await?;
 
                 Ok(BlockStreamEvent::ProcessBlock(
                     block_with_triggers,

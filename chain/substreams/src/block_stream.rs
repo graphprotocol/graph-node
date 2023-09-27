@@ -42,6 +42,7 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
     ) -> Result<Box<dyn BlockStream<Chain>>> {
         let mapper = Arc::new(Mapper {
             schema: Some(schema),
+            skip_empty_blocks: true,
         });
 
         let logger = chain

@@ -2,7 +2,7 @@ use super::block_stream::{
     BlockStream, BlockStreamEvent, FirehoseMapper, FIREHOSE_BUFFER_STREAM_SIZE,
 };
 use super::client::ChainClient;
-use super::{Blockchain, TriggersAdapter};
+use super::Blockchain;
 use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
 use crate::prelude::*;
@@ -113,8 +113,6 @@ where
         subgraph_current_block: Option<BlockPtr>,
         cursor: FirehoseCursor,
         mapper: Arc<F>,
-        adapter: Arc<dyn TriggersAdapter<C>>,
-        filter: Arc<C::TriggerFilter>,
         start_blocks: Vec<BlockNumber>,
         logger: Logger,
         registry: Arc<MetricsRegistry>,
@@ -140,8 +138,6 @@ where
                 cursor,
                 deployment,
                 mapper,
-                adapter,
-                filter,
                 manifest_start_block_num,
                 subgraph_current_block,
                 logger,
@@ -156,8 +152,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     mut latest_cursor: FirehoseCursor,
     deployment: DeploymentHash,
     mapper: Arc<F>,
-    adapter: Arc<dyn TriggersAdapter<C>>,
-    filter: Arc<C::TriggerFilter>,
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<BlockPtr>,
     logger: Logger,
@@ -242,7 +236,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             };
 
             if endpoint.filters_enabled {
-                request.transforms = filter.as_ref().clone().to_firehose_filter();
+                request.transforms = mapper.trigger_filter().clone().to_firehose_filter();
             }
 
             let mut connect_start = Instant::now();
@@ -267,8 +261,6 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                             manifest_start_block_num,
                             subgraph_current_block.as_ref(),
                             mapper.as_ref(),
-                            &adapter,
-                            &filter,
                             &logger,
                         ).await {
                             Ok(BlockResponse::Proceed(event, cursor)) => {
@@ -356,14 +348,12 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
     manifest_start_block_num: BlockNumber,
     subgraph_current_block: Option<&BlockPtr>,
     mapper: &F,
-    adapter: &Arc<dyn TriggersAdapter<C>>,
-    filter: &C::TriggerFilter,
     logger: &Logger,
 ) -> Result<BlockResponse<C>, Error> {
     let response = result.context("An error occurred while streaming blocks")?;
 
     let event = mapper
-        .to_block_stream_event(logger, &response, adapter, filter)
+        .to_block_stream_event(logger, &response)
         .await
         .context("Mapping block to BlockStreamEvent failed")?;
 

@@ -6,6 +6,7 @@ use graph::blockchain::{
     BasicBlockchainBuilder, BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
 use graph::components::store::DeploymentCursorTracker;
+use graph::env::EnvVars;
 use graph::firehose::FirehoseEndpoints;
 use graph::prelude::{BlockHash, CheapClone, Entity, LoggerFactory, MetricsRegistry};
 use graph::schema::EntityKey;
@@ -193,7 +194,7 @@ impl Blockchain for Chain {
 }
 
 impl blockchain::BlockchainBuilder<super::Chain> for BasicBlockchainBuilder {
-    fn build(self) -> super::Chain {
+    fn build(self, _config: &Arc<EnvVars>) -> Chain {
         let BasicBlockchainBuilder {
             logger_factory,
             name: _,
