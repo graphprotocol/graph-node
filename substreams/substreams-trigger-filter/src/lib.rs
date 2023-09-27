@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 mod pb;
 
 use std::collections::HashSet;
