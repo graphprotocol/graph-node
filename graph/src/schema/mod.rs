@@ -2,11 +2,7 @@ use crate::data::graphql::ext::{DirectiveExt, DirectiveFinder, DocumentExt, Type
 use crate::data::graphql::ObjectTypeExt;
 use crate::data::store::{ValueType, ID};
 use crate::data::subgraph::DeploymentHash;
-use crate::prelude::{
-    anyhow,
-    q::Value,
-    s::{self, Definition, InterfaceType, ObjectType, TypeDefinition, *},
-};
+use crate::prelude::{anyhow, q::Value, s};
 
 use anyhow::Error;
 use graphql_parser::{self, Pos};
@@ -123,10 +119,10 @@ pub struct Schema {
     pub document: s::Document,
 
     // Maps type name to implemented interfaces.
-    pub interfaces_for_type: BTreeMap<String, Vec<InterfaceType>>,
+    pub interfaces_for_type: BTreeMap<String, Vec<s::InterfaceType>>,
 
     // Maps an interface name to the list of entities that implement it.
-    pub types_for_interface: BTreeMap<String, Vec<ObjectType>>,
+    pub types_for_interface: BTreeMap<String, Vec<s::ObjectType>>,
 }
 
 impl Schema {
@@ -155,8 +151,8 @@ impl Schema {
         document: &s::Document,
     ) -> Result<
         (
-            BTreeMap<String, Vec<InterfaceType>>,
-            BTreeMap<String, Vec<ObjectType>>,
+            BTreeMap<String, Vec<s::InterfaceType>>,
+            BTreeMap<String, Vec<s::ObjectType>>,
         ),
         SchemaValidationError,
     > {
@@ -164,7 +160,7 @@ impl Schema {
         // miss interfaces that have no implementors.
         let mut types_for_interface =
             BTreeMap::from_iter(document.definitions.iter().filter_map(|d| match d {
-                Definition::TypeDefinition(TypeDefinition::Interface(t)) => {
+                s::Definition::TypeDefinition(s::TypeDefinition::Interface(t)) => {
                     Some((t.name.to_string(), vec![]))
                 }
                 _ => None,
@@ -177,7 +173,7 @@ impl Schema {
                     .definitions
                     .iter()
                     .find_map(|def| match def {
-                        Definition::TypeDefinition(TypeDefinition::Interface(i))
+                        s::Definition::TypeDefinition(s::TypeDefinition::Interface(i))
                             if i.name.eq(implemented_interface) =>
                         {
                             Some(i.clone())
@@ -211,12 +207,12 @@ impl Schema {
     }
 
     /// Returned map has one an entry for each interface in the schema.
-    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<ObjectType>> {
+    pub fn types_for_interface(&self) -> &BTreeMap<String, Vec<s::ObjectType>> {
         &self.types_for_interface
     }
 
     /// Returns `None` if the type implements no interfaces.
-    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<InterfaceType>> {
+    pub fn interfaces_for_type(&self, type_name: &str) -> Option<&Vec<s::InterfaceType>> {
         self.interfaces_for_type.get(type_name)
     }
 
@@ -231,22 +227,24 @@ impl Schema {
                 arguments: vec![subgraph_id_argument],
             };
 
-            if let Definition::TypeDefinition(ref mut type_definition) = definition {
+            if let s::Definition::TypeDefinition(ref mut type_definition) = definition {
                 let (name, directives) = match type_definition {
-                    TypeDefinition::Object(object_type) => {
+                    s::TypeDefinition::Object(object_type) => {
                         (&object_type.name, &mut object_type.directives)
                     }
-                    TypeDefinition::Interface(interface_type) => {
+                    s::TypeDefinition::Interface(interface_type) => {
                         (&interface_type.name, &mut interface_type.directives)
                     }
-                    TypeDefinition::Enum(enum_type) => (&enum_type.name, &mut enum_type.directives),
-                    TypeDefinition::Scalar(scalar_type) => {
+                    s::TypeDefinition::Enum(enum_type) => {
+                        (&enum_type.name, &mut enum_type.directives)
+                    }
+                    s::TypeDefinition::Scalar(scalar_type) => {
                         (&scalar_type.name, &mut scalar_type.directives)
                     }
-                    TypeDefinition::InputObject(input_object_type) => {
+                    s::TypeDefinition::InputObject(input_object_type) => {
                         (&input_object_type.name, &mut input_object_type.directives)
                     }
-                    TypeDefinition::Union(union_type) => {
+                    s::TypeDefinition::Union(union_type) => {
                         (&union_type.name, &mut union_type.directives)
                     }
                 };
@@ -349,13 +347,16 @@ impl Schema {
             })
     }
 
-    fn validate_fulltext_directive_name(&self, fulltext: &Directive) -> Vec<SchemaValidationError> {
+    fn validate_fulltext_directive_name(
+        &self,
+        fulltext: &s::Directive,
+    ) -> Vec<SchemaValidationError> {
         let name = match fulltext.argument("name") {
             Some(Value::String(name)) => name,
             _ => return vec![SchemaValidationError::FulltextNameUndefined],
         };
 
-        let local_types: Vec<&ObjectType> = self
+        let local_types: Vec<&s::ObjectType> = self
             .document
             .get_object_type_definitions()
             .into_iter()
@@ -403,7 +404,7 @@ impl Schema {
 
     fn validate_fulltext_directive_language(
         &self,
-        fulltext: &Directive,
+        fulltext: &s::Directive,
     ) -> Vec<SchemaValidationError> {
         let language = match fulltext.argument("language") {
             Some(Value::Enum(language)) => language,
@@ -419,7 +420,7 @@ impl Schema {
 
     fn validate_fulltext_directive_algorithm(
         &self,
-        fulltext: &Directive,
+        fulltext: &s::Directive,
     ) -> Vec<SchemaValidationError> {
         let algorithm = match fulltext.argument("algorithm") {
             Some(Value::Enum(algorithm)) => algorithm,
@@ -435,10 +436,10 @@ impl Schema {
 
     fn validate_fulltext_directive_includes(
         &self,
-        fulltext: &Directive,
+        fulltext: &s::Directive,
     ) -> Vec<SchemaValidationError> {
         // Only allow fulltext directive on local types
-        let local_types: Vec<&ObjectType> = self
+        let local_types: Vec<&s::ObjectType> = self
             .document
             .get_object_type_definitions()
             .into_iter()
@@ -617,7 +618,7 @@ impl Schema {
     fn validate_derived_from(&self) -> Result<(), SchemaValidationError> {
         // Helper to construct a DerivedFromInvalid
         fn invalid(
-            object_type: &ObjectType,
+            object_type: &s::ObjectType,
             field_name: &str,
             reason: &str,
         ) -> SchemaValidationError {
@@ -756,8 +757,8 @@ impl Schema {
 
     /// Validate that `object` implements `interface`.
     fn validate_interface_implementation(
-        object: &ObjectType,
-        interface: &InterfaceType,
+        object: &s::ObjectType,
+        interface: &s::InterfaceType,
     ) -> Result<(), SchemaValidationError> {
         // Check that all fields in the interface exist in the object with same name and type.
         let mut missing_fields = vec![];
@@ -800,7 +801,7 @@ impl Schema {
         Ok(())
     }
 
-    fn subgraph_schema_object_type(&self) -> Option<&ObjectType> {
+    fn subgraph_schema_object_type(&self) -> Option<&s::ObjectType> {
         self.document
             .get_object_type_definitions()
             .into_iter()
