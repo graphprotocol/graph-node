@@ -165,14 +165,6 @@ impl InputSchema {
         }
     }
 
-    /// Create a new `InputSchema` from the GraphQL document that resulted
-    /// from parsing a subgraph's `schema.graphql`. The document must have
-    /// already been validated.
-    pub fn new(id: DeploymentHash, document: s::Document) -> Result<Self, SchemaValidationError> {
-        let schema = Schema::new(id, document)?;
-        Ok(Self::create(schema))
-    }
-
     /// A convenience function for creating an `InputSchema` from the string
     /// representation of the subgraph's GraphQL schema `raw` and its
     /// deployment hash `id`. An `InputSchema` that is constructed with this

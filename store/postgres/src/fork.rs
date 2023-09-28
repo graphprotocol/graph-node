@@ -230,7 +230,6 @@ mod tests {
         prelude::{s::Type, DeploymentHash},
         slog::{self, o},
     };
-    use graphql_parser::parse_schema;
 
     fn test_base() -> Url {
         Url::parse("https://api.thegraph.com/subgraph/id/").unwrap()
@@ -241,17 +240,14 @@ mod tests {
     }
 
     fn test_schema() -> InputSchema {
-        InputSchema::new(
-            DeploymentHash::new("test").unwrap(),
-            parse_schema::<String>(
-                r#"type Gravatar @entity {
+        InputSchema::parse(
+            r#"type Gravatar @entity {
   id: ID!
   owner: Bytes!
   displayName: String!
   imageUrl: String!
 }"#,
-            )
-            .unwrap(),
+            DeploymentHash::new("test").unwrap(),
         )
         .unwrap()
     }
