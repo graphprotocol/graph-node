@@ -663,9 +663,6 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum EntityValidationError {
-    #[error("The provided entity has fields not defined in the schema for entity `{entity}`")]
-    FieldsNotDefined { entity: String },
-
     #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
     UnknownEntityType { entity: String, id: String },
 
