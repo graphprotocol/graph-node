@@ -135,7 +135,12 @@ impl CheapClone for InputSchema {
 }
 
 impl InputSchema {
-    fn create(schema: Schema) -> Self {
+    /// A convenience function for creating an `InputSchema` from the string
+    /// representation of the subgraph's GraphQL schema `raw` and its
+    /// deployment hash `id`. An `InputSchema` that is constructed with this
+    /// function still has to be validated after construction.
+    pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
+        let schema = Schema::parse(raw, id)?;
         let pool = Arc::new(atom_pool(&schema.document));
 
         let obj_types = schema
@@ -156,23 +161,13 @@ impl InputSchema {
         type_infos.sort_by_key(|ti| ti.name);
         let type_infos = type_infos.into_boxed_slice();
 
-        Self {
+        Ok(Self {
             inner: Arc::new(Inner {
                 schema,
                 type_infos,
                 pool,
             }),
-        }
-    }
-
-    /// A convenience function for creating an `InputSchema` from the string
-    /// representation of the subgraph's GraphQL schema `raw` and its
-    /// deployment hash `id`. An `InputSchema` that is constructed with this
-    /// function still has to be validated after construction.
-    pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
-        let schema = Schema::parse(raw, id)?;
-
-        Ok(Self::create(schema))
+        })
     }
 
     /// Convenience for tests to construct an `InputSchema`
