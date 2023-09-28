@@ -615,17 +615,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
         }
 
-        self.0
-            .schema
-            .validate()
-            .err()
-            .into_iter()
-            .for_each(|schema_errors| {
-                errors.push(SubgraphManifestValidationError::SchemaValidationError(
-                    schema_errors,
-                ));
-            });
-
         if let Some(graft) = &self.0.graft {
             if validate_graft_base {
                 if let Err(graft_err) = graft.validate(store).await {

@@ -20,9 +20,7 @@ use crate::schema::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{
-    ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError, SCHEMA_TYPE_NAME,
-};
+use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SCHEMA_TYPE_NAME};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -137,10 +135,22 @@ impl CheapClone for InputSchema {
 impl InputSchema {
     /// A convenience function for creating an `InputSchema` from the string
     /// representation of the subgraph's GraphQL schema `raw` and its
-    /// deployment hash `id`. An `InputSchema` that is constructed with this
-    /// function still has to be validated after construction.
+    /// deployment hash `id`. The returned schema is fully validated.
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
-        let schema = Schema::parse(raw, id)?;
+        let schema = Schema::parse(raw, id.clone())?;
+        validations::validate(&schema).map_err(|errors| {
+            anyhow!(
+                "Validation errors in subgraph `{}`:\n{}",
+                id,
+                errors
+                    .into_iter()
+                    .enumerate()
+                    .map(|(n, e)| format!("  ({}) - {}", n + 1, e))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        })?;
+
         let pool = Arc::new(atom_pool(&schema.document));
 
         let obj_types = schema
@@ -390,10 +400,6 @@ impl InputSchema {
 
     pub fn get_fulltext_directives(&self) -> Result<Vec<&s::Directive>, Error> {
         self.inner.schema.document.get_fulltext_directives()
-    }
-
-    pub(crate) fn validate(&self) -> Result<(), Vec<SchemaValidationError>> {
-        validations::validate(&self.inner.schema)
     }
 
     pub fn make_entity<I: IntoEntityIterator>(
