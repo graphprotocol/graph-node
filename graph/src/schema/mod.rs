@@ -104,6 +104,10 @@ pub enum SchemaValidationError {
     FulltextIncludedFieldMissingRequiredProperty,
     #[error("Fulltext entity field, {0}, not found or not a string")]
     FulltextIncludedFieldInvalid(String),
+    #[error("Type {0} is missing an `id` field")]
+    IdFieldMissing(String),
+    #[error("{0}")]
+    IllegalIdType(String),
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.

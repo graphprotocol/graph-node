@@ -540,7 +540,7 @@ mod validations {
             graphql::{
                 ext::DirectiveFinder, DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt,
             },
-            store::{ValueType, ID},
+            store::{IdType, ValueType, ID},
         },
         prelude::s,
         schema::{
@@ -564,6 +564,7 @@ mod validations {
         .map(Result::unwrap_err)
         .collect();
 
+        errors.append(&mut validate_id_types(schema));
         errors.append(&mut validate_fields(schema));
         errors.append(&mut validate_fulltext_directives(schema));
 
@@ -807,6 +808,29 @@ mod validations {
                     ));
                     errors
                 })
+            })
+    }
+
+    /// 1. All object types besides `_Schema_` must have an id field
+    /// 2. The id field must be recognized by IdType
+    fn validate_id_types(schema: &Schema) -> Vec<SchemaValidationError> {
+        schema
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .filter(|obj_type| obj_type.name.ne(SCHEMA_TYPE_NAME))
+            .fold(vec![], |mut errors, object_type| {
+                match object_type.field(&*ID) {
+                    None => errors.push(SchemaValidationError::IdFieldMissing(
+                        object_type.name.clone(),
+                    )),
+                    Some(_) => {
+                        if let Err(e) = IdType::try_from(object_type) {
+                            errors.push(SchemaValidationError::IllegalIdType(e.to_string()));
+                        }
+                    }
+                }
+                errors
             })
     }
 
@@ -1065,6 +1089,38 @@ mod validations {
 
         use super::*;
 
+        fn parse(schema: &str) -> Schema {
+            let hash = DeploymentHash::new("test").unwrap();
+            Schema::parse(schema, hash).unwrap()
+        }
+
+        #[test]
+        fn object_types_have_id() {
+            const NO_ID: &str = "type User @entity { name: String! }";
+            const ID_BIGINT: &str = "type User @entity { id: BigInt! }";
+            const INTF_NO_ID: &str = "interface Person { name: String! }";
+            const ROOT_SCHEMA: &str = "type _Schema_";
+
+            let res = validate(&parse(NO_ID));
+            assert_eq!(
+                res,
+                Err(vec![SchemaValidationError::IdFieldMissing(
+                    "User".to_string()
+                )])
+            );
+
+            let res = validate(&parse(ID_BIGINT));
+            let errs = res.unwrap_err();
+            assert_eq!(1, errs.len());
+            assert!(matches!(errs[0], SchemaValidationError::IllegalIdType(_)));
+
+            let res = validate(&parse(INTF_NO_ID));
+            assert_eq!(Ok(()), res);
+
+            let res = validate(&parse(ROOT_SCHEMA));
+            assert_eq!(Ok(()), res);
+        }
+
         #[test]
         fn interface_implementations_id_type() {
             fn check_schema(bar_id: &str, baz_id: &str, ok: bool) {
@@ -1238,7 +1294,10 @@ type A @entity {
             let dummy_hash = DeploymentHash::new("dummy").unwrap();
 
             for reserved_type in reserved_types {
-                let schema = format!("type {} @entity {{ _: Boolean }}\n", reserved_type);
+                let schema = format!(
+                    "type {} @entity {{ id: String! _: Boolean }}\n",
+                    reserved_type
+                );
 
                 let schema = Schema::parse(&schema, dummy_hash.clone()).unwrap();
 
@@ -1256,12 +1315,15 @@ type A @entity {
         fn test_reserved_filter_and_group_by_types_validation() {
             const SCHEMA: &str = r#"
     type Gravatar @entity {
+        id: String!
         _: Boolean
       }
     type Gravatar_filter @entity {
+        id: String!
         _: Boolean
     }
     type Gravatar_orderBy @entity {
+        id: String!
         _: Boolean
     }
     "#;
