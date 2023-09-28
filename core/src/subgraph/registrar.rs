@@ -406,6 +406,24 @@ where
                 )
                 .await?
             }
+            BlockchainKind::Starknet => {
+                create_subgraph_version::<graph_chain_starknet::Chain, _>(
+                    &logger,
+                    self.store.clone(),
+                    self.chains.cheap_clone(),
+                    name.clone(),
+                    hash.cheap_clone(),
+                    start_block_override,
+                    graft_block_override,
+                    raw,
+                    node_id,
+                    debug_fork,
+                    self.version_switching_mode,
+                    &self.resolver,
+                    history_blocks,
+                )
+                .await?
+            }
         };
 
         debug!(
