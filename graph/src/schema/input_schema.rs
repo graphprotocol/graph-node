@@ -992,7 +992,7 @@ mod validations {
             // when we query, and just assume that that's ok.
             let target_field_type = target_field.field_type.get_base_type();
             if target_field_type != object_type.name
-                && target_field_type != "ID"
+                && &target_field.name != ID.as_str()
                 && !interface_types
                     .iter()
                     .any(|iface| target_field_type.eq(iface.as_str()))

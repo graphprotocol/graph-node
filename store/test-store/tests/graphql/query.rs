@@ -251,7 +251,7 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         played: Int!
     }
 
-    type Publisher {
+    type Publisher @entity {
         id: Bytes!
     }
 
@@ -319,6 +319,9 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
     interface Author {
         id: ID!
         name: String!
+        reviews: [Review!]!
+        bandReviews: [BandReview!]!
+        songReviews: [SongReview!]!
     }
 
     type User implements Author @entity {
@@ -337,6 +340,8 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
         id: ID!
         name: String!
         reviews: [Review!]! @derivedFrom(field: \"author\")
+        bandReviews: [BandReview!]! @derivedFrom(field: \"author\")
+        songReviews: [SongReview!]! @derivedFrom(field: \"author\")
     }
     ";
 

@@ -131,15 +131,16 @@ fn can_copy_from() {
 
     // We allow leaving out and adding types, and leaving out attributes
     // of existing types
-    let dest = test_layout("type Scalar { id: ID } type Other { id: ID, int: Int! }");
+    let dest =
+        test_layout("type Scalar @entity { id: ID } type Other @entity { id: ID, int: Int! }");
     assert!(dest.can_copy_from(&source).is_empty());
 
     // We allow making a non-nullable attribute nullable
-    let dest = test_layout("type Thing { id: ID! }");
+    let dest = test_layout("type Thing @entity { id: ID! }");
     assert!(dest.can_copy_from(&source).is_empty());
 
     // We can not turn a non-nullable attribute into a nullable attribute
-    let dest = test_layout("type Scalar { id: ID! }");
+    let dest = test_layout("type Scalar @entity { id: ID! }");
     assert_eq!(
         vec![
             "The attribute Scalar.id is non-nullable, but the \
@@ -149,7 +150,7 @@ fn can_copy_from() {
     );
 
     // We can not change a scalar field to an array
-    let dest = test_layout("type Scalar { id: ID, string: [String] }");
+    let dest = test_layout("type Scalar @entity { id: ID, string: [String] }");
     assert_eq!(
         vec![
             "The attribute Scalar.string has type [String], \
@@ -166,7 +167,7 @@ fn can_copy_from() {
         source.can_copy_from(&dest)
     );
     // We can not change the underlying type of a field
-    let dest = test_layout("type Scalar { id: ID, color: Int }");
+    let dest = test_layout("type Scalar @entity { id: ID, color: Int }");
     assert_eq!(
         vec![
             "The attribute Scalar.color has type Int, but \
@@ -175,8 +176,8 @@ fn can_copy_from() {
         dest.can_copy_from(&source)
     );
     // We can not change the underlying type of a field in arrays
-    let source = test_layout("type Scalar { id: ID, color: [Int!]! }");
-    let dest = test_layout("type Scalar { id: ID, color: [String!]! }");
+    let source = test_layout("type Scalar @entity { id: ID, color: [Int!]! }");
+    let dest = test_layout("type Scalar @entity { id: ID, color: [String!]! }");
     assert_eq!(
         vec![
             "The attribute Scalar.color has type [String!]!, but \
@@ -196,7 +197,7 @@ const THING_GQL: &str = r#"
 
         enum Size { small, medium, large }
 
-        type Scalar {
+        type Scalar @entity {
             id: ID,
             bool: Boolean,
             int: Int,
