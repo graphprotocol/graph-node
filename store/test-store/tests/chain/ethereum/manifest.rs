@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::num::NonZeroU32;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use graph::blockchain::DataSource;
+use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
@@ -11,8 +13,8 @@ use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
 use graph::prelude::{
-    anyhow, async_trait, serde_yaml, tokio, DeploymentHash, Link, Logger, SubgraphManifest,
-    SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest,
+    anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, Logger,
+    SubgraphManifest, SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest,
 };
 use graph::{
     blockchain::NodeCapabilities as _,
@@ -387,10 +389,34 @@ dataSources:
     name: Factory
     network: mainnet
     context:
-      foo:
+      bool_example:
+        type: Bool
+        data: true
+      int8_example:
+        type: Int8
+        data: 64
+      big_decimal_example:
+        type: BigDecimal
+        data: 10.99
+      bytes_example:
+        type: Bytes
+        data: \"0x68656c6c6f\"
+      list_example:
+        type: List
+        data:
+          - type: Int
+            data: 1
+          - type: Int
+            data: 2
+          - type: Int
+            data: 3
+      big_int_example:
+        type: BigInt
+        data: \"1000000000000000000000000\"
+      string_example:
         type: String
-        data: bar
-      qux:
+        data: \"bar\"
+      int_example:
         type: Int
         data: 42
     source:
@@ -427,9 +453,42 @@ specVersion: 0.0.8
     let context = data_source.context.as_ref().clone().unwrap();
     let sorted = context.sorted();
 
-    assert_eq!(sorted.len(), 2);
-    assert_eq!(sorted[0], ("foo".into(), Value::String("bar".into())));
-    assert_eq!(sorted[1], ("qux".into(), Value::Int(42)));
+    assert_eq!(sorted.len(), 8);
+    assert_eq!(
+        sorted[0],
+        (
+            "big_decimal_example".into(),
+            Value::BigDecimal(BigDecimal::from(10.99))
+        )
+    );
+    assert_eq!(
+        sorted[1],
+        (
+            "big_int_example".into(),
+            Value::BigInt(BigInt::from_str("1000000000000000000000000").unwrap())
+        )
+    );
+    assert_eq!(sorted[2], ("bool_example".into(), Value::Bool(true)));
+    assert_eq!(
+        sorted[3],
+        (
+            "bytes_example".into(),
+            Value::Bytes(Bytes::from_str("0x68656c6c6f").unwrap())
+        )
+    );
+    assert_eq!(sorted[4], ("int8_example".into(), Value::Int8(64)));
+    assert_eq!(sorted[5], ("int_example".into(), Value::Int(42)));
+    assert_eq!(
+        sorted[6],
+        (
+            "list_example".into(),
+            Value::List(vec![Value::Int(1), Value::Int(2), Value::Int(3)])
+        )
+    );
+    assert_eq!(
+        sorted[7],
+        ("string_example".into(), Value::String("bar".into()))
+    );
 }
 
 #[tokio::test]
