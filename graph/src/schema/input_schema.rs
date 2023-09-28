@@ -544,19 +544,29 @@ mod validations {
         },
         prelude::s,
         schema::{
-            FulltextAlgorithm, FulltextLanguage, Schema, SchemaValidationError, Strings,
-            SCHEMA_TYPE_NAME,
+            FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
+            Strings, SCHEMA_TYPE_NAME,
         },
     };
 
-    pub(super) fn validate(schema: &Schema) -> Result<(), Vec<SchemaValidationError>> {
+    /// Helper struct for validations
+    struct Schema<'a> {
+        schema: &'a BaseSchema,
+        subgraph_schema_type: Option<&'a s::ObjectType>,
+        // All entity types, excluding the subgraph schema type
+        entity_types: Vec<&'a s::ObjectType>,
+    }
+
+    pub(super) fn validate(schema: &BaseSchema) -> Result<(), Vec<SchemaValidationError>> {
+        let schema = Schema::new(schema);
+
         let mut errors: Vec<SchemaValidationError> = [
-            validate_schema_types(schema),
-            validate_derived_from(schema),
-            validate_schema_type_has_no_fields(schema),
-            validate_directives_on_schema_type(schema),
-            validate_reserved_types_usage(schema),
-            validate_interface_id_type(schema),
+            schema.validate_no_extra_types(),
+            schema.validate_derived_from(),
+            schema.validate_schema_type_has_no_fields(),
+            schema.validate_directives_on_schema_type(),
+            schema.validate_reserved_types_usage(),
+            schema.validate_interface_id_type(),
         ]
         .into_iter()
         .filter(Result::is_err)
@@ -564,9 +574,9 @@ mod validations {
         .map(Result::unwrap_err)
         .collect();
 
-        errors.append(&mut validate_id_types(schema));
-        errors.append(&mut validate_fields(schema));
-        errors.append(&mut validate_fulltext_directives(schema));
+        errors.append(&mut schema.validate_entity_type_ids());
+        errors.append(&mut schema.validate_fields());
+        errors.append(&mut schema.validate_fulltext_directives());
 
         if errors.is_empty() {
             Ok(())
@@ -575,25 +585,34 @@ mod validations {
         }
     }
 
-    fn validate_schema_type_has_no_fields(schema: &Schema) -> Result<(), SchemaValidationError> {
-        match schema
-            .subgraph_schema_object_type()
-            .and_then(|subgraph_schema_type| {
+    impl<'a> Schema<'a> {
+        fn new(schema: &'a BaseSchema) -> Self {
+            let subgraph_schema_type = schema.subgraph_schema_object_type();
+            let mut entity_types = schema.document.get_object_type_definitions();
+            entity_types.retain(|obj_type| obj_type.name != SCHEMA_TYPE_NAME);
+
+            Schema {
+                schema,
+                subgraph_schema_type,
+                entity_types,
+            }
+        }
+
+        fn validate_schema_type_has_no_fields(&self) -> Result<(), SchemaValidationError> {
+            match self.subgraph_schema_type.and_then(|subgraph_schema_type| {
                 if !subgraph_schema_type.fields.is_empty() {
                     Some(SchemaValidationError::SchemaTypeWithFields)
                 } else {
                     None
                 }
             }) {
-            Some(err) => Err(err),
-            None => Ok(()),
+                Some(err) => Err(err),
+                None => Ok(()),
+            }
         }
-    }
 
-    fn validate_directives_on_schema_type(schema: &Schema) -> Result<(), SchemaValidationError> {
-        match schema
-            .subgraph_schema_object_type()
-            .and_then(|subgraph_schema_type| {
+        fn validate_directives_on_schema_type(&self) -> Result<(), SchemaValidationError> {
+            match self.subgraph_schema_type.and_then(|subgraph_schema_type| {
                 if subgraph_schema_type
                     .directives
                     .iter()
@@ -606,132 +625,124 @@ mod validations {
                     None
                 }
             }) {
-            Some(err) => Err(err),
-            None => Ok(()),
+                Some(err) => Err(err),
+                None => Ok(()),
+            }
         }
-    }
 
-    fn validate_fulltext_directives(schema: &Schema) -> Vec<SchemaValidationError> {
-        subgraph_schema_object_type(schema).map_or(vec![], |subgraph_schema_type| {
-            subgraph_schema_type
+        fn validate_fulltext_directives(&self) -> Vec<SchemaValidationError> {
+            self.subgraph_schema_type
+                .map_or(vec![], |subgraph_schema_type| {
+                    subgraph_schema_type
+                        .directives
+                        .iter()
+                        .filter(|directives| directives.name.eq("fulltext"))
+                        .fold(vec![], |mut errors, fulltext| {
+                            errors.extend(self.validate_fulltext_directive_name(fulltext));
+                            errors.extend(self.validate_fulltext_directive_language(fulltext));
+                            errors.extend(self.validate_fulltext_directive_algorithm(fulltext));
+                            errors.extend(self.validate_fulltext_directive_includes(fulltext));
+                            errors
+                        })
+                })
+        }
+
+        fn validate_fulltext_directive_name(
+            &self,
+            fulltext: &s::Directive,
+        ) -> Vec<SchemaValidationError> {
+            let name = match fulltext.argument("name") {
+                Some(s::Value::String(name)) => name,
+                _ => return vec![SchemaValidationError::FulltextNameUndefined],
+            };
+
+            // Validate that the fulltext field doesn't collide with any top-level Query fields
+            // generated for entity types. The field name conversions should always align with those used
+            // to create the field names in `graphql::schema::api::query_fields_for_type()`.
+            if self.entity_types.iter().any(|typ| {
+                typ.fields.iter().any(|field| {
+                    name == &field.name.as_str().to_camel_case()
+                        || name == &field.name.to_plural().to_camel_case()
+                        || field.name.eq(name)
+                })
+            }) {
+                return vec![SchemaValidationError::FulltextNameCollision(
+                    name.to_string(),
+                )];
+            }
+
+            // Validate that each fulltext directive has a distinct name
+            if self
+                .subgraph_schema_type
+                .unwrap()
                 .directives
                 .iter()
-                .filter(|directives| directives.name.eq("fulltext"))
-                .fold(vec![], |mut errors, fulltext| {
-                    errors.extend(validate_fulltext_directive_name(schema, fulltext));
-                    errors.extend(validate_fulltext_directive_language(fulltext));
-                    errors.extend(validate_fulltext_directive_algorithm(fulltext));
-                    errors.extend(validate_fulltext_directive_includes(schema, fulltext));
-                    errors
+                .filter(|directive| directive.name.eq("fulltext"))
+                .filter_map(|fulltext| {
+                    // Collect all @fulltext directives with the same name
+                    match fulltext.argument("name") {
+                        Some(s::Value::String(n)) if name.eq(n) => Some(n.as_str()),
+                        _ => None,
+                    }
                 })
-        })
-    }
-
-    fn validate_fulltext_directive_name(
-        schema: &Schema,
-        fulltext: &s::Directive,
-    ) -> Vec<SchemaValidationError> {
-        let name = match fulltext.argument("name") {
-            Some(s::Value::String(name)) => name,
-            _ => return vec![SchemaValidationError::FulltextNameUndefined],
-        };
-
-        let local_types: Vec<&s::ObjectType> = schema
-            .document
-            .get_object_type_definitions()
-            .into_iter()
-            .collect();
-
-        // Validate that the fulltext field doesn't collide with any top-level Query fields
-        // generated for entity types. The field name conversions should always align with those used
-        // to create the field names in `graphql::schema::api::query_fields_for_type()`.
-        if local_types.iter().any(|typ| {
-            typ.fields.iter().any(|field| {
-                name == &field.name.as_str().to_camel_case()
-                    || name == &field.name.to_plural().to_camel_case()
-                    || field.name.eq(name)
-            })
-        }) {
-            return vec![SchemaValidationError::FulltextNameCollision(
-                name.to_string(),
-            )];
+                .count()
+                > 1
+            {
+                vec![SchemaValidationError::FulltextNameConflict(
+                    name.to_string(),
+                )]
+            } else {
+                vec![]
+            }
         }
 
-        // Validate that each fulltext directive has a distinct name
-        if schema
-            .subgraph_schema_object_type()
-            .unwrap()
-            .directives
-            .iter()
-            .filter(|directive| directive.name.eq("fulltext"))
-            .filter_map(|fulltext| {
-                // Collect all @fulltext directives with the same name
-                match fulltext.argument("name") {
-                    Some(s::Value::String(n)) if name.eq(n) => Some(n.as_str()),
-                    _ => None,
-                }
-            })
-            .count()
-            > 1
-        {
-            vec![SchemaValidationError::FulltextNameConflict(
-                name.to_string(),
-            )]
-        } else {
-            vec![]
+        fn validate_fulltext_directive_language(
+            &self,
+            fulltext: &s::Directive,
+        ) -> Vec<SchemaValidationError> {
+            let language = match fulltext.argument("language") {
+                Some(s::Value::Enum(language)) => language,
+                _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
+            };
+            match FulltextLanguage::try_from(language.as_str()) {
+                Ok(_) => vec![],
+                Err(_) => vec![SchemaValidationError::FulltextLanguageInvalid(
+                    language.to_string(),
+                )],
+            }
         }
-    }
 
-    fn validate_fulltext_directive_language(fulltext: &s::Directive) -> Vec<SchemaValidationError> {
-        let language = match fulltext.argument("language") {
-            Some(s::Value::Enum(language)) => language,
-            _ => return vec![SchemaValidationError::FulltextLanguageUndefined],
-        };
-        match FulltextLanguage::try_from(language.as_str()) {
-            Ok(_) => vec![],
-            Err(_) => vec![SchemaValidationError::FulltextLanguageInvalid(
-                language.to_string(),
-            )],
+        fn validate_fulltext_directive_algorithm(
+            &self,
+            fulltext: &s::Directive,
+        ) -> Vec<SchemaValidationError> {
+            let algorithm = match fulltext.argument("algorithm") {
+                Some(s::Value::Enum(algorithm)) => algorithm,
+                _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
+            };
+            match FulltextAlgorithm::try_from(algorithm.as_str()) {
+                Ok(_) => vec![],
+                Err(_) => vec![SchemaValidationError::FulltextAlgorithmInvalid(
+                    algorithm.to_string(),
+                )],
+            }
         }
-    }
 
-    fn validate_fulltext_directive_algorithm(
-        fulltext: &s::Directive,
-    ) -> Vec<SchemaValidationError> {
-        let algorithm = match fulltext.argument("algorithm") {
-            Some(s::Value::Enum(algorithm)) => algorithm,
-            _ => return vec![SchemaValidationError::FulltextAlgorithmUndefined],
-        };
-        match FulltextAlgorithm::try_from(algorithm.as_str()) {
-            Ok(_) => vec![],
-            Err(_) => vec![SchemaValidationError::FulltextAlgorithmInvalid(
-                algorithm.to_string(),
-            )],
-        }
-    }
+        fn validate_fulltext_directive_includes(
+            &self,
+            fulltext: &s::Directive,
+        ) -> Vec<SchemaValidationError> {
+            // Validate that each entity in fulltext.include exists
+            let includes = match fulltext.argument("include") {
+                Some(s::Value::List(includes)) if !includes.is_empty() => includes,
+                _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
+            };
 
-    fn validate_fulltext_directive_includes(
-        schema: &Schema,
-        fulltext: &s::Directive,
-    ) -> Vec<SchemaValidationError> {
-        // Only allow fulltext directive on local types
-        let local_types: Vec<&s::ObjectType> = schema
-            .document
-            .get_object_type_definitions()
-            .into_iter()
-            .collect();
-
-        // Validate that each entity in fulltext.include exists
-        let includes = match fulltext.argument("include") {
-            Some(s::Value::List(includes)) if !includes.is_empty() => includes,
-            _ => return vec![SchemaValidationError::FulltextIncludeUndefined],
-        };
-
-        for include in includes {
-            match include.as_object() {
-                None => return vec![SchemaValidationError::FulltextIncludeObjectMissing],
-                Some(include_entity) => {
-                    let (entity, fields) =
+            for include in includes {
+                match include.as_object() {
+                    None => return vec![SchemaValidationError::FulltextIncludeObjectMissing],
+                    Some(include_entity) => {
+                        let (entity, fields) =
                         match (include_entity.get("entity"), include_entity.get("fields")) {
                             (Some(s::Value::String(entity)), Some(s::Value::List(fields))) => {
                                 (entity, fields)
@@ -739,18 +750,21 @@ mod validations {
                             _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
                         };
 
-                    // Validate the included entity type is one of the local types
-                    let entity_type = match local_types
-                        .iter()
-                        .cloned()
-                        .find(|typ| typ.name[..].eq(entity))
-                    {
-                        None => return vec![SchemaValidationError::FulltextIncludedEntityNotFound],
-                        Some(t) => t.clone(),
-                    };
+                        // Validate the included entity type is one of the local types
+                        let entity_type = match self
+                            .entity_types
+                            .iter()
+                            .cloned()
+                            .find(|typ| typ.name[..].eq(entity))
+                        {
+                            None => {
+                                return vec![SchemaValidationError::FulltextIncludedEntityNotFound]
+                            }
+                            Some(t) => t,
+                        };
 
-                    for field_value in fields {
-                        let field_name = match field_value {
+                        for field_value in fields {
+                            let field_name = match field_value {
                             s::Value::Object(field_map) => match field_map.get("name") {
                                 Some(s::Value::String(name)) => name,
                                 _ => return vec![SchemaValidationError::FulltextIncludedFieldMissingRequiredProperty],
@@ -758,8 +772,8 @@ mod validations {
                             _ => return vec![SchemaValidationError::FulltextIncludeEntityMissingOrIncorrectAttributes],
                         };
 
-                        // Validate the included field is a String field on the local entity types specified
-                        if !&entity_type
+                            // Validate the included field is a String field on the local entity types specified
+                            if !&entity_type
                             .fields
                             .iter()
                             .any(|field| {
@@ -771,316 +785,307 @@ mod validations {
                                 field_name.clone(),
                             )];
                         };
-                    }
-                }
-            }
-        }
-        // Fulltext include validations all passed, so we return an empty vector
-        vec![]
-    }
-
-    fn validate_fields(schema: &Schema) -> Vec<SchemaValidationError> {
-        let local_types = schema.document.get_object_and_interface_type_fields();
-        let local_enums = schema
-            .document
-            .get_enum_definitions()
-            .iter()
-            .map(|enu| enu.name.clone())
-            .collect::<Vec<String>>();
-        local_types
-            .iter()
-            .fold(vec![], |errors, (type_name, fields)| {
-                fields.iter().fold(errors, |mut errors, field| {
-                    let base = field.field_type.get_base_type();
-                    if ValueType::is_scalar(base) {
-                        return errors;
-                    }
-                    if local_types.contains_key(base) {
-                        return errors;
-                    }
-                    if local_enums.iter().any(|enu| enu.eq(base)) {
-                        return errors;
-                    }
-                    errors.push(SchemaValidationError::FieldTypeUnknown(
-                        type_name.to_string(),
-                        field.name.to_string(),
-                        base.to_string(),
-                    ));
-                    errors
-                })
-            })
-    }
-
-    /// 1. All object types besides `_Schema_` must have an id field
-    /// 2. The id field must be recognized by IdType
-    fn validate_id_types(schema: &Schema) -> Vec<SchemaValidationError> {
-        schema
-            .document
-            .get_object_type_definitions()
-            .into_iter()
-            .filter(|obj_type| obj_type.name.ne(SCHEMA_TYPE_NAME))
-            .fold(vec![], |mut errors, object_type| {
-                match object_type.field(&*ID) {
-                    None => errors.push(SchemaValidationError::IdFieldMissing(
-                        object_type.name.clone(),
-                    )),
-                    Some(_) => {
-                        if let Err(e) = IdType::try_from(object_type) {
-                            errors.push(SchemaValidationError::IllegalIdType(e.to_string()));
                         }
                     }
                 }
-                errors
-            })
-    }
-
-    /// Checks if the schema is using types that are reserved
-    /// by `graph-node`
-    fn validate_reserved_types_usage(schema: &Schema) -> Result<(), SchemaValidationError> {
-        let document = &schema.document;
-        let object_types: Vec<_> = document
-            .get_object_type_definitions()
-            .into_iter()
-            .map(|obj_type| &obj_type.name)
-            .collect();
-
-        let interface_types: Vec<_> = document
-            .get_interface_type_definitions()
-            .into_iter()
-            .map(|iface_type| &iface_type.name)
-            .collect();
-
-        // TYPE_NAME_filter types for all object and interface types
-        let mut filter_types: Vec<String> = object_types
-            .iter()
-            .chain(interface_types.iter())
-            .map(|type_name| format!("{}_filter", type_name))
-            .collect();
-
-        // TYPE_NAME_orderBy types for all object and interface types
-        let mut order_by_types: Vec<_> = object_types
-            .iter()
-            .chain(interface_types.iter())
-            .map(|type_name| format!("{}_orderBy", type_name))
-            .collect();
-
-        let mut reserved_types: Vec<String> = vec![
-            // The built-in scalar types
-            "Boolean".into(),
-            "ID".into(),
-            "Int".into(),
-            "BigDecimal".into(),
-            "String".into(),
-            "Bytes".into(),
-            "BigInt".into(),
-            // Reserved Query and Subscription types
-            "Query".into(),
-            "Subscription".into(),
-        ];
-
-        reserved_types.append(&mut filter_types);
-        reserved_types.append(&mut order_by_types);
-
-        // `reserved_types` will now only contain
-        // the reserved types that the given schema *is* using.
-        //
-        // That is, if the schema is compliant and not using any reserved
-        // types, then it'll become an empty vector
-        reserved_types.retain(|reserved_type| document.get_named_type(reserved_type).is_some());
-
-        if reserved_types.is_empty() {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::UsageOfReservedTypes(Strings(
-                reserved_types,
-            )))
-        }
-    }
-
-    fn validate_schema_types(schema: &Schema) -> Result<(), SchemaValidationError> {
-        let types_without_entity_directive = schema
-            .document
-            .get_object_type_definitions()
-            .iter()
-            .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
-            .map(|t| t.name.clone())
-            .collect::<Vec<_>>();
-        if types_without_entity_directive.is_empty() {
-            Ok(())
-        } else {
-            Err(SchemaValidationError::EntityDirectivesMissing(Strings(
-                types_without_entity_directive,
-            )))
-        }
-    }
-
-    fn validate_derived_from(schema: &Schema) -> Result<(), SchemaValidationError> {
-        // Helper to construct a DerivedFromInvalid
-        fn invalid(
-            object_type: &s::ObjectType,
-            field_name: &str,
-            reason: &str,
-        ) -> SchemaValidationError {
-            SchemaValidationError::InvalidDerivedFrom(
-                object_type.name.clone(),
-                field_name.to_owned(),
-                reason.to_owned(),
-            )
+            }
+            // Fulltext include validations all passed, so we return an empty vector
+            vec![]
         }
 
-        let type_definitions = schema.document.get_object_type_definitions();
-        let object_and_interface_type_fields =
-            schema.document.get_object_and_interface_type_fields();
-
-        // Iterate over all derived fields in all entity types; include the
-        // interface types that the entity with the `@derivedFrom` implements
-        // and the `field` argument of @derivedFrom directive
-        for (object_type, interface_types, field, target_field) in type_definitions
-            .clone()
-            .iter()
-            .flat_map(|object_type| {
-                object_type
-                    .fields
-                    .iter()
-                    .map(move |field| (object_type, field))
-            })
-            .filter_map(|(object_type, field)| {
-                field.find_directive("derivedFrom").map(|directive| {
-                    (
-                        object_type,
-                        object_type
-                            .implements_interfaces
-                            .iter()
-                            .filter(|iface| {
-                                // Any interface that has `field` can be used
-                                // as the type of the field
-                                schema
-                                    .document
-                                    .find_interface(iface)
-                                    .map(|iface| {
-                                        iface
-                                            .fields
-                                            .iter()
-                                            .any(|ifield| ifield.name.eq(&field.name))
-                                    })
-                                    .unwrap_or(false)
-                            })
-                            .collect::<Vec<_>>(),
-                        field,
-                        directive.argument("field"),
-                    )
+        fn validate_fields(&self) -> Vec<SchemaValidationError> {
+            let local_types = self.schema.document.get_object_and_interface_type_fields();
+            let local_enums = self
+                .schema
+                .document
+                .get_enum_definitions()
+                .iter()
+                .map(|enu| enu.name.clone())
+                .collect::<Vec<String>>();
+            local_types
+                .iter()
+                .fold(vec![], |errors, (type_name, fields)| {
+                    fields.iter().fold(errors, |mut errors, field| {
+                        let base = field.field_type.get_base_type();
+                        if ValueType::is_scalar(base) {
+                            return errors;
+                        }
+                        if local_types.contains_key(base) {
+                            return errors;
+                        }
+                        if local_enums.iter().any(|enu| enu.eq(base)) {
+                            return errors;
+                        }
+                        errors.push(SchemaValidationError::FieldTypeUnknown(
+                            type_name.to_string(),
+                            field.name.to_string(),
+                            base.to_string(),
+                        ));
+                        errors
+                    })
                 })
-            })
-        {
-            // Turn `target_field` into the string name of the field
-            let target_field = target_field.ok_or_else(|| {
-                invalid(
-                    object_type,
-                    &field.name,
-                    "the @derivedFrom directive must have a `field` argument",
-                )
-            })?;
-            let target_field = match target_field {
-                s::Value::String(s) => s,
-                _ => {
-                    return Err(invalid(
-                        object_type,
-                        &field.name,
-                        "the @derivedFrom `field` argument must be a string",
-                    ))
-                }
-            };
+        }
 
-            // Check that the type we are deriving from exists
-            let target_type_name = field.field_type.get_base_type();
-            let target_fields = object_and_interface_type_fields
-                .get(target_type_name)
-                .ok_or_else(|| {
+        /// 1. All object types besides `_Schema_` must have an id field
+        /// 2. The id field must be recognized by IdType
+        fn validate_entity_type_ids(&self) -> Vec<SchemaValidationError> {
+            self.entity_types
+                .iter()
+                .fold(vec![], |mut errors, object_type| {
+                    match object_type.field(&*ID) {
+                        None => errors.push(SchemaValidationError::IdFieldMissing(
+                            object_type.name.clone(),
+                        )),
+                        Some(_) => {
+                            if let Err(e) = IdType::try_from(*object_type) {
+                                errors.push(SchemaValidationError::IllegalIdType(e.to_string()));
+                            }
+                        }
+                    }
+                    errors
+                })
+        }
+
+        /// Checks if the schema is using types that are reserved
+        /// by `graph-node`
+        fn validate_reserved_types_usage(&self) -> Result<(), SchemaValidationError> {
+            let document = &self.schema.document;
+            let object_types: Vec<_> = document
+                .get_object_type_definitions()
+                .into_iter()
+                .map(|obj_type| &obj_type.name)
+                .collect();
+
+            let interface_types: Vec<_> = document
+                .get_interface_type_definitions()
+                .into_iter()
+                .map(|iface_type| &iface_type.name)
+                .collect();
+
+            // TYPE_NAME_filter types for all object and interface types
+            let mut filter_types: Vec<String> = object_types
+                .iter()
+                .chain(interface_types.iter())
+                .map(|type_name| format!("{}_filter", type_name))
+                .collect();
+
+            // TYPE_NAME_orderBy types for all object and interface types
+            let mut order_by_types: Vec<_> = object_types
+                .iter()
+                .chain(interface_types.iter())
+                .map(|type_name| format!("{}_orderBy", type_name))
+                .collect();
+
+            let mut reserved_types: Vec<String> = vec![
+                // The built-in scalar types
+                "Boolean".into(),
+                "ID".into(),
+                "Int".into(),
+                "BigDecimal".into(),
+                "String".into(),
+                "Bytes".into(),
+                "BigInt".into(),
+                // Reserved Query and Subscription types
+                "Query".into(),
+                "Subscription".into(),
+            ];
+
+            reserved_types.append(&mut filter_types);
+            reserved_types.append(&mut order_by_types);
+
+            // `reserved_types` will now only contain
+            // the reserved types that the given schema *is* using.
+            //
+            // That is, if the schema is compliant and not using any reserved
+            // types, then it'll become an empty vector
+            reserved_types.retain(|reserved_type| document.get_named_type(reserved_type).is_some());
+
+            if reserved_types.is_empty() {
+                Ok(())
+            } else {
+                Err(SchemaValidationError::UsageOfReservedTypes(Strings(
+                    reserved_types,
+                )))
+            }
+        }
+
+        fn validate_no_extra_types(&self) -> Result<(), SchemaValidationError> {
+            let types_without_entity_directive = self
+                .schema
+                .document
+                .get_object_type_definitions()
+                .iter()
+                .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
+                .map(|t| t.name.clone())
+                .collect::<Vec<_>>();
+            if types_without_entity_directive.is_empty() {
+                Ok(())
+            } else {
+                Err(SchemaValidationError::EntityDirectivesMissing(Strings(
+                    types_without_entity_directive,
+                )))
+            }
+        }
+
+        fn validate_derived_from(&self) -> Result<(), SchemaValidationError> {
+            // Helper to construct a DerivedFromInvalid
+            fn invalid(
+                object_type: &s::ObjectType,
+                field_name: &str,
+                reason: &str,
+            ) -> SchemaValidationError {
+                SchemaValidationError::InvalidDerivedFrom(
+                    object_type.name.clone(),
+                    field_name.to_owned(),
+                    reason.to_owned(),
+                )
+            }
+
+            let object_and_interface_type_fields =
+                self.schema.document.get_object_and_interface_type_fields();
+
+            // Iterate over all derived fields in all entity types; include the
+            // interface types that the entity with the `@derivedFrom` implements
+            // and the `field` argument of @derivedFrom directive
+            for (object_type, interface_types, field, target_field) in self
+                .entity_types
+                .iter()
+                .flat_map(|object_type| {
+                    object_type
+                        .fields
+                        .iter()
+                        .map(move |field| (object_type, field))
+                })
+                .filter_map(|(object_type, field)| {
+                    field.find_directive("derivedFrom").map(|directive| {
+                        (
+                            object_type,
+                            object_type
+                                .implements_interfaces
+                                .iter()
+                                .filter(|iface| {
+                                    // Any interface that has `field` can be used
+                                    // as the type of the field
+                                    self.schema
+                                        .document
+                                        .find_interface(iface)
+                                        .map(|iface| {
+                                            iface
+                                                .fields
+                                                .iter()
+                                                .any(|ifield| ifield.name.eq(&field.name))
+                                        })
+                                        .unwrap_or(false)
+                                })
+                                .collect::<Vec<_>>(),
+                            field,
+                            directive.argument("field"),
+                        )
+                    })
+                })
+            {
+                // Turn `target_field` into the string name of the field
+                let target_field = target_field.ok_or_else(|| {
                     invalid(
                         object_type,
                         &field.name,
-                        "type must be an existing entity or interface",
+                        "the @derivedFrom directive must have a `field` argument",
                     )
                 })?;
+                let target_field = match target_field {
+                    s::Value::String(s) => s,
+                    _ => {
+                        return Err(invalid(
+                            object_type,
+                            &field.name,
+                            "the @derivedFrom `field` argument must be a string",
+                        ))
+                    }
+                };
 
-            // Check that the type we are deriving from has a field with the
-            // right name and type
-            let target_field = target_fields
-                .iter()
-                .find(|field| field.name.eq(target_field))
-                .ok_or_else(|| {
-                    let msg = format!(
-                        "field `{}` does not exist on type `{}`",
-                        target_field, target_type_name
-                    );
-                    invalid(object_type, &field.name, &msg)
-                })?;
+                // Check that the type we are deriving from exists
+                let target_type_name = field.field_type.get_base_type();
+                let target_fields = object_and_interface_type_fields
+                    .get(target_type_name)
+                    .ok_or_else(|| {
+                        invalid(
+                            object_type,
+                            &field.name,
+                            "type must be an existing entity or interface",
+                        )
+                    })?;
 
-            // The field we are deriving from has to point back to us; as an
-            // exception, we allow deriving from the `id` of another type.
-            // For that, we will wind up comparing the `id`s of the two types
-            // when we query, and just assume that that's ok.
-            let target_field_type = target_field.field_type.get_base_type();
-            if target_field_type != object_type.name
-                && &target_field.name != ID.as_str()
-                && !interface_types
+                // Check that the type we are deriving from has a field with the
+                // right name and type
+                let target_field = target_fields
                     .iter()
-                    .any(|iface| target_field_type.eq(iface.as_str()))
-            {
-                fn type_signatures(name: &str) -> Vec<String> {
-                    vec![
-                        format!("{}", name),
-                        format!("{}!", name),
-                        format!("[{}!]", name),
-                        format!("[{}!]!", name),
-                    ]
-                }
+                    .find(|field| field.name.eq(target_field))
+                    .ok_or_else(|| {
+                        let msg = format!(
+                            "field `{}` does not exist on type `{}`",
+                            target_field, target_type_name
+                        );
+                        invalid(object_type, &field.name, &msg)
+                    })?;
 
-                let mut valid_types = type_signatures(&object_type.name);
-                valid_types.extend(
-                    interface_types
+                // The field we are deriving from has to point back to us; as an
+                // exception, we allow deriving from the `id` of another type.
+                // For that, we will wind up comparing the `id`s of the two types
+                // when we query, and just assume that that's ok.
+                let target_field_type = target_field.field_type.get_base_type();
+                if target_field_type != object_type.name
+                    && &target_field.name != ID.as_str()
+                    && !interface_types
                         .iter()
-                        .flat_map(|iface| type_signatures(iface)),
-                );
-                let valid_types = valid_types.join(", ");
+                        .any(|iface| target_field_type.eq(iface.as_str()))
+                {
+                    fn type_signatures(name: &str) -> Vec<String> {
+                        vec![
+                            format!("{}", name),
+                            format!("{}!", name),
+                            format!("[{}!]", name),
+                            format!("[{}!]!", name),
+                        ]
+                    }
 
-                let msg = format!(
+                    let mut valid_types = type_signatures(&object_type.name);
+                    valid_types.extend(
+                        interface_types
+                            .iter()
+                            .flat_map(|iface| type_signatures(iface)),
+                    );
+                    let valid_types = valid_types.join(", ");
+
+                    let msg = format!(
                     "field `{tf}` on type `{tt}` must have one of the following types: {valid_types}",
                     tf = target_field.name,
                     tt = target_type_name,
                     valid_types = valid_types,
                 );
-                return Err(invalid(object_type, &field.name, &msg));
+                    return Err(invalid(object_type, &field.name, &msg));
+                }
             }
+            Ok(())
         }
-        Ok(())
-    }
 
-    fn validate_interface_id_type(schema: &Schema) -> Result<(), SchemaValidationError> {
-        for (intf, obj_types) in &schema.types_for_interface {
-            let id_types: HashSet<&str> = HashSet::from_iter(
-                obj_types
-                    .iter()
-                    .filter_map(|obj_type| obj_type.field(&*ID))
-                    .map(|f| f.field_type.get_base_type())
-                    .map(|name| if name == "ID" { "String" } else { name }),
-            );
-            if id_types.len() > 1 {
-                return Err(SchemaValidationError::InterfaceImplementorsMixId(
-                    intf.to_string(),
-                    id_types.iter().join(", "),
-                ));
+        fn validate_interface_id_type(&self) -> Result<(), SchemaValidationError> {
+            for (intf, obj_types) in &self.schema.types_for_interface {
+                let id_types: HashSet<&str> = HashSet::from_iter(
+                    obj_types
+                        .iter()
+                        .filter_map(|obj_type| obj_type.field(&*ID))
+                        .map(|f| f.field_type.get_base_type())
+                        .map(|name| if name == "ID" { "String" } else { name }),
+                );
+                if id_types.len() > 1 {
+                    return Err(SchemaValidationError::InterfaceImplementorsMixId(
+                        intf.to_string(),
+                        id_types.iter().join(", "),
+                    ));
+                }
             }
+            Ok(())
         }
-        Ok(())
-    }
-
-    fn subgraph_schema_object_type(schema: &Schema) -> Option<&s::ObjectType> {
-        schema
-            .document
-            .get_object_type_definitions()
-            .into_iter()
-            .find(|object_type| object_type.name.eq(SCHEMA_TYPE_NAME))
     }
 
     #[cfg(test)]
@@ -1089,9 +1094,9 @@ mod validations {
 
         use super::*;
 
-        fn parse(schema: &str) -> Schema {
+        fn parse(schema: &str) -> BaseSchema {
             let hash = DeploymentHash::new("test").unwrap();
-            Schema::parse(schema, hash).unwrap()
+            BaseSchema::parse(schema, hash).unwrap()
         }
 
         #[test]
@@ -1136,7 +1141,8 @@ mod validations {
                 x: Int
             }}"
                 );
-                let schema = Schema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
+                let schema =
+                    BaseSchema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
                 let res = validate(&schema);
                 if ok {
                     assert!(matches!(res, Ok(_)));
@@ -1176,8 +1182,9 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
                 let document = graphql_parser::parse_schema(&raw)
                     .expect("Failed to parse raw schema")
                     .into_static();
-                let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-                match validate_derived_from(&schema) {
+                let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+                let schema = Schema::new(&schema);
+                match schema.validate_derived_from() {
                     Err(ref e) => match e {
                         SchemaValidationError::InvalidDerivedFrom(_, _, msg) => {
                             assert_eq!(errmsg, msg)
@@ -1231,9 +1238,10 @@ type _Schema_ { id: ID! }";
 
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-            let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+            let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+            let schema = Schema::new(&schema);
             assert_eq!(
-                validate_schema_type_has_no_fields(&schema).expect_err(
+                schema.validate_schema_type_has_no_fields().expect_err(
                     "Expected validation to fail due to fields defined on the reserved type"
                 ),
                 SchemaValidationError::SchemaTypeWithFields
@@ -1247,9 +1255,10 @@ type _Schema_ @illegal";
 
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-            let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+            let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+            let schema = Schema::new(&schema);
             assert_eq!(
-                validate_directives_on_schema_type(&schema).expect_err(
+                schema.validate_directives_on_schema_type().expect_err(
                     "Expected validation to fail due to extra imports defined on the reserved type"
                 ),
                 SchemaValidationError::InvalidSchemaTypeDirectives
@@ -1271,8 +1280,9 @@ type A @entity {
 
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
-            let schema = Schema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-            assert_eq!(validate_fields(&schema).len(), 0);
+            let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
+            let schema = Schema::new(&schema);
+            assert_eq!(schema.validate_fields().len(), 0);
         }
 
         #[test]
@@ -1299,7 +1309,7 @@ type A @entity {
                     reserved_type
                 );
 
-                let schema = Schema::parse(&schema, dummy_hash.clone()).unwrap();
+                let schema = BaseSchema::parse(&schema, dummy_hash.clone()).unwrap();
 
                 let errors = validate(&schema).unwrap_err();
                 for error in errors {
@@ -1330,7 +1340,7 @@ type A @entity {
 
             let dummy_hash = DeploymentHash::new("dummy").unwrap();
 
-            let schema = Schema::parse(SCHEMA, dummy_hash).unwrap();
+            let schema = BaseSchema::parse(SCHEMA, dummy_hash).unwrap();
 
             let errors = validate(&schema).unwrap_err();
 
@@ -1378,9 +1388,9 @@ type Gravatar @entity {
 }"#;
 
             let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
-            let schema = Schema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
-
-            assert_eq!(validate_fulltext_directives(&schema), vec![]);
+            let schema = BaseSchema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
+            let schema = Schema::new(&schema);
+            assert_eq!(schema.validate_fulltext_directives(), vec![]);
         }
     }
 }
