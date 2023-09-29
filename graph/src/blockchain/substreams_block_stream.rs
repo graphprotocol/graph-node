@@ -4,6 +4,7 @@ use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
 use crate::prelude::*;
 use crate::substreams::Modules;
+use crate::substreams_rpc::response::Message;
 use crate::substreams_rpc::{Request, Response};
 use crate::util::backoff::ExponentialBackoff;
 use async_stream::try_stream;
@@ -181,6 +182,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
     try_stream! {
             let endpoint = client.firehose_endpoint()?;
             let mut logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
+            let mut last_progress = Instant::now();
 
         loop {
             info!(
@@ -211,7 +213,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
             let result = endpoint.clone().substreams(request).await;
 
             match result {
-                Ok(stream) => {
+                Ok(mut stream) => {
                     info!(&logger, "Blockstreams connected");
 
                     // Track the time it takes to set up the block stream
@@ -220,40 +222,51 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                     let mut last_response_time = Instant::now();
                     let mut expected_stream_end = false;
 
-                    for await response in stream{
-                        match process_substreams_response(
-                            response,
-                            mapper.as_ref(),
-                            &mut logger,
-                        ).await {
-                            Ok(block_response) => {
-                                match block_response {
-                                    None => {}
-                                    Some(BlockResponse::Proceed(event, cursor)) => {
-                                        // Reset backoff because we got a good value from the stream
-                                        backoff.reset();
+                    loop {
+                        info!(&logger, "Waiting for next response");
+                        let item = stream.next().await;
+                        info!(&logger, "Next response received");
+                        match item {
+                            Some(response) => {
+                                match process_substreams_response(
+                                    response,
+                                    mapper.as_ref(),
+                                    &mut logger,
+                                    &mut last_progress,
+                                ).await {
+                                    Ok(block_response) => {
+                                        match block_response {
+                                            None => {}
+                                            Some(BlockResponse::Proceed(event, cursor)) => {
+                                                // Reset backoff because we got a good value from the stream
+                                                backoff.reset();
 
-                                        metrics.observe_response("proceed", &mut last_response_time, &endpoint.provider);
+                                                metrics.observe_response("proceed", &mut last_response_time, &endpoint.provider);
 
-                                        yield event;
+                                                yield event;
 
-                                        latest_cursor = cursor;
+                                                latest_cursor = cursor;
+                                            }
+                                        }
+                                    },
+                                    Err(err) => {
+                                        info!(&logger, "received err");
+                                        // We have an open connection but there was an error processing the Firehose
+                                        // response. We will reconnect the stream after this; this is the case where
+                                        // we actually _want_ to back off in case we keep running into the same error.
+                                        // An example of this situation is if we get invalid block or transaction data
+                                        // that cannot be decoded properly.
+
+                                        metrics.observe_response("error", &mut last_response_time, &endpoint.provider);
+
+                                        error!(logger, "{:#}", err);
+                                        expected_stream_end = true;
+                                        break;
                                     }
                                 }
                             },
-                            Err(err) => {
-                                info!(&logger, "received err");
-                                // We have an open connection but there was an error processing the Firehose
-                                // response. We will reconnect the stream after this; this is the case where
-                                // we actually _want_ to back off in case we keep running into the same error.
-                                // An example of this situation is if we get invalid block or transaction data
-                                // that cannot be decoded properly.
-
-                                metrics.observe_response("error", &mut last_response_time, &endpoint.provider);
-
-                                error!(logger, "{:#}", err);
-                                expected_stream_end = true;
-                                break;
+                            None => {
+                                break
                             }
                         }
                     }
@@ -289,11 +302,32 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     result: Result<Response, Status>,
     mapper: &F,
     logger: &mut Logger,
+    last_progress: &mut Instant,
 ) -> Result<Option<BlockResponse<C>>, Error> {
     let response = match result {
         Ok(v) => v,
         Err(e) => return Err(anyhow!("An error occurred while streaming blocks: {:#}", e)),
     };
+
+    if let Some(Message::Session(ref session)) = response.message {
+        info!(
+            logger,
+            "Received session init";
+            "session" => format!("{:?}", session),
+        );
+    }
+
+    if let Some(Message::Progress(ref progress)) = response.message {
+        if last_progress.elapsed() > Duration::from_secs(30) {
+            info!(
+                logger,
+                "Received progress update";
+                "progress" => format!("{:?}", progress),
+            );
+
+            *last_progress = Instant::now();
+        }
+    }
 
     match mapper
         .to_block_stream_event(logger, response.message)
