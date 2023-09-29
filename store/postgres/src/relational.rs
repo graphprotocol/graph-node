@@ -1009,7 +1009,7 @@ impl ColumnType {
         id_types: &IdTypeMap,
         is_existing_text_column: bool,
     ) -> Result<ColumnType, StoreError> {
-        let name = named_type(field_type);
+        let name = field_type.get_base_type();
 
         // See if its an object type defined in the schema
         if let Some(id_type) = schema
@@ -1193,7 +1193,7 @@ impl Column {
     }
 
     pub fn is_fulltext(&self) -> bool {
-        named_type(&self.field_type) == "fulltext"
+        self.field_type.get_base_type() == "fulltext"
     }
 
     pub fn is_reference(&self) -> bool {
@@ -1394,18 +1394,8 @@ impl Table {
     }
 }
 
-/// Return the enclosed named type for a field type, i.e., the type after
-/// stripping List and NonNull.
-fn named_type(field_type: &q::Type) -> &str {
-    match field_type {
-        q::Type::NamedType(name) => name.as_str(),
-        q::Type::ListType(child) => named_type(child),
-        q::Type::NonNullType(child) => named_type(child),
-    }
-}
-
 fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
-    let name = named_type(field_type);
+    let name = field_type.get_base_type();
 
     !enums.contains_key(name) && !ValueType::is_scalar(name)
 }
