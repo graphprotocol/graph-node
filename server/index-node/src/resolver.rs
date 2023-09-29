@@ -552,6 +552,7 @@ impl<S: Store> IndexNodeResolver<S> {
         try_resolve_for_chain!(graph_chain_arweave::Chain);
         try_resolve_for_chain!(graph_chain_cosmos::Chain);
         try_resolve_for_chain!(graph_chain_near::Chain);
+        try_resolve_for_chain!(graph_chain_starknet::Chain);
 
         // If you're adding support for a new chain and this `match` clause just
         // gave you a compiler error, then this message is for you! You need to
@@ -563,7 +564,8 @@ impl<S: Store> IndexNodeResolver<S> {
             | BlockchainKind::Arweave
             | BlockchainKind::Ethereum
             | BlockchainKind::Cosmos
-            | BlockchainKind::Near => (),
+            | BlockchainKind::Near
+            | BlockchainKind::Starknet => (),
         }
 
         // The given network does not exist.

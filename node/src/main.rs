@@ -24,6 +24,7 @@ use graph_chain_arweave::{self as arweave, Block as ArweaveBlock};
 use graph_chain_cosmos::{self as cosmos, Block as CosmosFirehoseBlock};
 use graph_chain_ethereum as ethereum;
 use graph_chain_near::{self as near, HeaderOnlyBlock as NearFirehoseHeaderOnlyBlock};
+use graph_chain_starknet::{self as starknet, Block as StarknetBlock};
 use graph_chain_substreams as substreams;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
@@ -373,6 +374,15 @@ async fn main() {
             .remove(&BlockchainKind::Substreams)
             .unwrap_or_else(FirehoseNetworks::new);
 
+        let (starknet_networks, starknet_idents) = connect_firehose_networks::<StarknetBlock>(
+            &logger,
+            firehose_networks_by_kind
+                .remove(&BlockchainKind::Starknet)
+                .unwrap_or_else(FirehoseNetworks::new),
+        )
+        .await
+        .unwrap();
+
         let substream_idents = substreams_networks
             .networks
             .keys()
@@ -397,6 +407,7 @@ async fn main() {
         network_identifiers.extend(near_idents);
         network_identifiers.extend(cosmos_idents);
         network_identifiers.extend(substream_idents);
+        network_identifiers.extend(starknet_idents);
 
         let network_store = store_builder.network_store(network_identifiers);
 
@@ -476,6 +487,17 @@ async fn main() {
             metrics_registry.clone(),
         );
 
+        let starknet_chains = networks_as_chains::<starknet::Chain>(
+            &env_vars,
+            &mut blockchain_map,
+            &logger,
+            &starknet_networks,
+            substreams_networks_by_kind.get(&BlockchainKind::Starknet),
+            network_store.as_ref(),
+            &logger_factory,
+            metrics_registry.clone(),
+        );
+
         let blockchain_map = Arc::new(blockchain_map);
 
         let shards: Vec<_> = config.stores.keys().cloned().collect();
@@ -515,7 +537,8 @@ async fn main() {
                 arweave_chains,
                 near_chains,
                 cosmos_chains,
-                substreams_chains
+                substreams_chains,
+                starknet_chains
             );
 
             ingestors.into_iter().for_each(|ingestor| {
