@@ -1,14 +1,13 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-mod pb;
+mod codec;
 
-use std::collections::HashSet;
-
-use pb::receipts::v1::BlockAndReceipts;
+use codec::near::BlockAndReceipts;
 use substreams_entity_change::pb::entity::EntityChanges;
 use substreams_near_core::pb::sf::near::r#type::v1::{
     execution_outcome, receipt::Receipt, Block, IndexerExecutionOutcomeWithReceipt,
 };
+use trigger_filters::NearFilter;
 
 fn status(outcome: &IndexerExecutionOutcomeWithReceipt) -> Option<&execution_outcome::Status> {
     outcome
@@ -37,12 +36,12 @@ fn near_filter(params: String, blk: Block) -> Result<BlockAndReceipts, substream
     let filter = NearFilter::try_from(params.as_str())?;
     let mut out = BlockAndReceipts::default();
 
-    blk.shards = blk
+    let shards: Vec<_> = blk
         .shards
         .into_iter()
-        .map(|shard| {
+        .filter_map(|shard| {
             let mut shard = shard;
-            let receipt_execution_outcomes = shard
+            let receipt_execution_outcomes: Vec<_> = shard
                 .receipt_execution_outcomes
                 .into_iter()
                 .filter(|outcome| {
@@ -73,11 +72,21 @@ fn near_filter(params: String, blk: Block) -> Result<BlockAndReceipts, substream
                     true
                 })
                 .collect();
+
+            if receipt_execution_outcomes.is_empty() {
+                return None;
+            }
+
             shard.receipt_execution_outcomes = receipt_execution_outcomes;
-            shard
+            Some(shard)
         })
         .collect();
 
+    if shards.is_empty() && !filter.every_block {
+        return Ok(BlockAndReceipts::default());
+    }
+
+    blk.shards = shards;
     out.block = Some(blk.clone());
 
     Ok(out)
@@ -97,61 +106,4 @@ fn graph_out(blk: Block) -> Result<EntityChanges, substreams::errors::Error> {
     );
 
     Ok(out)
-}
-
-#[derive(Debug, Default)]
-pub struct NearFilter<'a> {
-    pub accounts: HashSet<&'a str>,
-    pub partial_accounts: HashSet<(Option<&'a str>, Option<&'a str>)>,
-}
-
-impl<'a> NearFilter<'a> {
-    pub fn matches(&self, account: &str) -> bool {
-        let partial_match = self.partial_accounts.iter().any(|partial| match partial {
-            (Some(prefix), Some(suffix)) => {
-                account.starts_with(prefix) && account.ends_with(suffix)
-            }
-            (Some(prefix), None) => account.starts_with(prefix),
-            (None, Some(suffix)) => account.ends_with(suffix),
-            (None, None) => unreachable!(),
-        });
-
-        if !self.accounts.contains(&account) && !partial_match {
-            return false;
-        }
-
-        true
-    }
-}
-
-impl<'a> TryFrom<&'a str> for NearFilter<'a> {
-    type Error = anyhow::Error;
-
-    fn try_from(params: &'a str) -> Result<Self, Self::Error> {
-        let mut accounts: HashSet<&str> = HashSet::default();
-        let mut partial_accounts: HashSet<(Option<&str>, Option<&str>)> = HashSet::default();
-        let mut lines = params.lines();
-        let mut header = lines.next().unwrap().split(",");
-        let accs_len: usize = header.next().unwrap().parse().unwrap();
-        let partials_len: usize = header.next().unwrap().parse().unwrap();
-
-        accounts.extend(
-            lines
-                .by_ref()
-                .take(accs_len)
-                .map(|line| line.split(","))
-                .flatten(),
-        );
-        partial_accounts.extend(lines.take(partials_len).map(|line| {
-            let mut parts = line.split(",");
-            let start = parts.next();
-            let end = parts.next();
-            (start, end)
-        }));
-
-        Ok(NearFilter {
-            accounts,
-            partial_accounts,
-        })
-    }
 }

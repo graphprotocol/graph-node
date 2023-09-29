@@ -34,7 +34,8 @@ impl TriggerFilter {
             .join("\n");
 
         format!(
-            "{},{}\n{}\n{}",
+            "{},{},{}\n{}\n{}",
+            self.block_filter.trigger_every_block,
             self.receipt_filter.accounts.len(),
             self.receipt_filter.partial_accounts.len(),
             matches,
@@ -377,7 +378,10 @@ mod test {
             Case {
                 name: "empty",
                 input: NearReceiptFilter::default(),
-                expected: NearFilter::default(),
+                expected: NearFilter {
+                    every_block: true,
+                    ..Default::default()
+                },
             },
             Case {
                 name: "only full matches",
@@ -388,6 +392,7 @@ mod test {
                 expected: NearFilter {
                     accounts: HashSet::from_iter(vec!["acc1"]),
                     partial_accounts: HashSet::default(),
+                    every_block: false,
                 },
             },
             Case {
@@ -399,6 +404,7 @@ mod test {
                 expected: NearFilter {
                     accounts: HashSet::default(),
                     partial_accounts: HashSet::from_iter(vec![(Some("acc1"), None)]),
+                    every_block: false,
                 },
             },
             Case {
@@ -410,6 +416,7 @@ mod test {
                 expected: NearFilter {
                     accounts: HashSet::from_iter(vec!["acc1"]),
                     partial_accounts: HashSet::from_iter(vec![(Some("s1"), None)]),
+                    every_block: false,
                 },
             },
             Case {
@@ -429,6 +436,7 @@ mod test {
                         (None, Some("s3")),
                         (Some("s2"), Some("s2")),
                     ]),
+                    every_block: true,
                 },
             },
             Case {
@@ -458,13 +466,16 @@ mod test {
                         (None, Some("kjysdfoiua6sd")),
                         (Some("120938pokasd"), Some("102938poai[sd]")),
                     ]),
+                    every_block: true,
                 },
             },
         ];
 
         for case in cases.into_iter() {
             let tf = TriggerFilter {
-                block_filter: NearBlockFilter::default(),
+                block_filter: NearBlockFilter {
+                    trigger_every_block: case.expected.every_block,
+                },
                 receipt_filter: case.input,
             };
             let param = tf.to_module_params();
@@ -481,6 +492,25 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_near_filter_decode() {
+        let params = "false,3,0\npay.reqnetwork.near,native.conversion.reqnetwork.near,requestnetwork.near\n";
+
+        let filter = NearFilter::try_from(params).unwrap();
+        assert_eq!(
+            filter,
+            NearFilter {
+                every_block: false,
+                accounts: HashSet::from_iter(vec![
+                    "pay.reqnetwork.near",
+                    "native.conversion.reqnetwork.near",
+                    "requestnetwork.near"
+                ]),
+                ..Default::default()
+            }
+        );
     }
 
     fn decode_filter(firehose_filter: Vec<Any>) -> BasicReceiptFilter {

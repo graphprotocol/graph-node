@@ -285,7 +285,7 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
         _logger: &Logger,
         _clock: &Clock,
         _block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<Option<BlockWithTriggers<Chain>>, Error> {
         unimplemented!()
     }
 }

@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
@@ -44,7 +43,7 @@ use graph::blockchain::block_stream::{
 };
 
 const NEAR_FILTER_MODULE_NAME: &str = "near_filter";
-const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 497306] = include_bytes!(
+const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 504432] = include_bytes!(
     "../../../substreams/substreams-trigger-filter/substreams-trigger-filter-v0.1.0.spkg"
 );
 
@@ -435,13 +434,17 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
         _logger: &Logger,
         _clock: &Clock,
         message: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<Option<BlockWithTriggers<Chain>>, Error> {
         let BlockAndReceipts {
             block,
             outcome,
             receipt,
         } = BlockAndReceipts::decode(message.value.as_ref())?;
-        let block = block.ok_or_else(|| anyhow!("near block is mandatory on substreams"))?;
+
+        let block = match block {
+            Some(block) => block,
+            None => return Ok(None),
+        };
         let arc_block = Arc::new(block.clone());
 
         let trigger_data = outcome
@@ -456,10 +459,10 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
             })
             .collect();
 
-        Ok(BlockWithTriggers {
+        Ok(Some(BlockWithTriggers {
             block,
             trigger_data,
-        })
+        }))
     }
 }
 

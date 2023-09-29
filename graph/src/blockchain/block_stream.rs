@@ -350,7 +350,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         logger: &Logger,
         clock: &Clock,
         block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<C>, Error>;
+    ) -> Result<Option<BlockWithTriggers<C>>, Error>;
 
     async fn to_block_stream_event(
         &self,
@@ -402,7 +402,10 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     None => return Ok(None),
                 };
 
-                let block = self.decode_triggers(&logger, &clock, &map_output).await?;
+                let block = match self.decode_triggers(&logger, &clock, &map_output).await? {
+                    Some(block) => block,
+                    None => return Ok(None),
+                };
 
                 Ok(Some(BlockStreamEvent::ProcessBlock(
                     block,

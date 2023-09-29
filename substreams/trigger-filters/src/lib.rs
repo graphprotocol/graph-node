@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 #[derive(Debug, Default, PartialEq)]
 pub struct NearFilter<'a> {
+    pub every_block: bool,
     pub accounts: HashSet<&'a str>,
     pub partial_accounts: HashSet<(Option<&'a str>, Option<&'a str>)>,
 }
@@ -37,6 +38,11 @@ impl<'a> TryFrom<&'a str> for NearFilter<'a> {
             .next()
             .ok_or(anyhow!("header line not present"))?
             .split(",");
+        let every_block: bool = header
+            .next()
+            .ok_or(anyhow!("header didn't have the expected format"))?
+            .parse()
+            .map_err(|_| anyhow!("every_block is supposed to be a bool"))?;
         let accs_len: usize = header
             .next()
             .ok_or(anyhow!("header didn't have the expected format"))?
@@ -75,6 +81,7 @@ impl<'a> TryFrom<&'a str> for NearFilter<'a> {
         Ok(NearFilter {
             accounts,
             partial_accounts,
+            every_block,
         })
     }
 }

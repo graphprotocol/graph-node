@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use crate::codec::{entity_change, EntityChanges};
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use graph::blockchain::block_stream::{BlockWithTriggers, SubstreamsError, SubstreamsMapper};
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
@@ -76,19 +76,21 @@ impl SubstreamsMapper<Chain> for Mapper {
         logger: &Logger,
         clock: &Clock,
         block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+    ) -> Result<Option<BlockWithTriggers<Chain>>, Error> {
         let block_number: BlockNumber = clock.number.try_into()?;
         let block_hash = clock.id.as_bytes().to_vec().try_into()?;
 
-        let block = self
-            .decode_block(Some(block))?
-            .ok_or_else(|| anyhow!("expected block to not be empty"))?;
+        let block = match self.decode_block(Some(block))? {
+            Some(block) => block,
+            None => return Ok(None),
+        };
+
         self.block_with_triggers(logger, block).await.map(|bt| {
             let mut block = bt;
 
             block.block.number = block_number;
             block.block.hash = block_hash;
-            block
+            Some(block)
         })
     }
 }
