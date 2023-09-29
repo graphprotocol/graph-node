@@ -28,9 +28,8 @@ use graph::components::store::write::RowGroup;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
-use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::prelude::{q, s, serde_json, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{q, s, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, FulltextConfig, FulltextDefinition, InputSchema, SCHEMA_TYPE_NAME,
 };
@@ -56,7 +55,7 @@ use crate::{
 };
 use graph::components::store::DerivedEntityQuery;
 use graph::data::graphql::ext::{DirectiveFinder, ObjectTypeExt};
-use graph::data::store::{Id, IdList, BYTES_SCALAR};
+use graph::data::store::{Id, IdList, IdType, BYTES_SCALAR};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
     anyhow, info, BlockNumber, DeploymentHash, Entity, EntityChange, EntityOperation, Logger,
@@ -185,82 +184,6 @@ impl FromSql<Text, Pg> for SqlName {
 impl ToSql<Text, Pg> for SqlName {
     fn to_sql<W: std::io::Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
-    }
-}
-
-/// The SQL type to use for GraphQL ID properties. We support
-/// strings and byte arrays
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) enum IdType {
-    String,
-    Bytes,
-}
-
-impl IdType {
-    pub fn parse_id(self, json: serde_json::Value) -> Result<Id, StoreError> {
-        const HEX_PREFIX: &str = "\\x";
-        let id_type = graph::data::store::IdType::from(self);
-        if let serde_json::Value::String(s) = json {
-            let s = if s.starts_with(HEX_PREFIX) {
-                Word::from(s.trim_start_matches(HEX_PREFIX))
-            } else {
-                Word::from(s)
-            };
-            id_type.parse(s).map_err(StoreError::from)
-        } else {
-            Err(graph::constraint_violation!(
-                "the value {:?} can not be converted into an id of type {}",
-                json,
-                self
-            ))
-        }
-    }
-}
-
-impl TryFrom<&s::ObjectType> for IdType {
-    type Error = StoreError;
-
-    fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
-        let pk = obj_type
-            .field(PRIMARY_KEY_COLUMN)
-            .expect("Each ObjectType has an `id` field");
-        Self::try_from(&pk.field_type)
-    }
-}
-
-impl TryFrom<&s::Type> for IdType {
-    type Error = StoreError;
-
-    fn try_from(field_type: &s::Type) -> Result<Self, Self::Error> {
-        let name = named_type(field_type);
-
-        match ValueType::from_str(name)? {
-            ValueType::String => Ok(IdType::String),
-            ValueType::Bytes => Ok(IdType::Bytes),
-            _ => Err(anyhow!(
-                "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
-                &name
-            )
-            .into()),
-        }
-    }
-}
-
-impl From<IdType> for graph::data::store::IdType {
-    fn from(id_type: IdType) -> Self {
-        match id_type {
-            IdType::String => graph::data::store::IdType::String,
-            IdType::Bytes => graph::data::store::IdType::Bytes,
-        }
-    }
-}
-
-impl std::fmt::Display for IdType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            IdType::String => write!(f, "String"),
-            IdType::Bytes => write!(f, "Bytes"),
-        }
     }
 }
 

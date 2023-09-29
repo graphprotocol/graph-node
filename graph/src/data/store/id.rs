@@ -19,7 +19,7 @@ use crate::{
     schema::EntityType,
 };
 
-use super::{scalar, Value, ID};
+use super::{scalar, Value, ValueType, ID};
 
 /// The types that can be used for the `id` of an entity
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -59,6 +59,24 @@ impl<'a> TryFrom<&s::ObjectType> for IdType {
                 obj_type.name,
                 s
             )),
+        }
+    }
+}
+
+impl TryFrom<&s::Type> for IdType {
+    type Error = StoreError;
+
+    fn try_from(field_type: &s::Type) -> Result<Self, Self::Error> {
+        let name = field_type.get_base_type();
+
+        match name.parse()? {
+            ValueType::String => Ok(IdType::String),
+            ValueType::Bytes => Ok(IdType::Bytes),
+            _ => Err(anyhow!(
+                "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
+                &name
+            )
+            .into()),
         }
     }
 }

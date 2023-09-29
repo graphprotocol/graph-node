@@ -14,7 +14,7 @@ use diesel::Connection;
 
 use graph::components::store::write::WriteChunk;
 use graph::components::store::DerivedEntityQuery;
-use graph::data::store::{Id, NULL};
+use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
@@ -35,7 +35,7 @@ use std::str::FromStr;
 
 use crate::block_range::BlockRange;
 use crate::relational::{
-    Column, ColumnType, IdType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
+    Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::{
@@ -442,6 +442,24 @@ impl EntityDeletion {
     }
 }
 
+pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreError> {
+    const HEX_PREFIX: &str = "\\x";
+    if let serde_json::Value::String(s) = json {
+        let s = if s.starts_with(HEX_PREFIX) {
+            Word::from(s.trim_start_matches(HEX_PREFIX))
+        } else {
+            Word::from(s)
+        };
+        id_type.parse(s).map_err(StoreError::from)
+    } else {
+        Err(graph::constraint_violation!(
+            "the value {:?} can not be converted into an id of type {}",
+            json,
+            id_type
+        ))
+    }
+}
+
 /// Helper struct for retrieving entities from the database. With diesel, we
 /// can only run queries that return columns whose number and type are known
 /// at compile time. Because of that, we retrieve the actual data for an
@@ -491,7 +509,7 @@ impl EntityData {
                                 parent_type
                                     .id_type()
                                     .map_err(StoreError::from)
-                                    .and_then(|id_type| id_type.parse_id(json)),
+                                    .and_then(|id_type| parse_id(id_type, json)),
                             ),
                         }
                     })
