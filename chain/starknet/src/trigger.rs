@@ -3,7 +3,7 @@ use graph::{
     runtime::{asc_new, gas::GasCounter, AscPtr, HostExportError},
 };
 use graph_runtime_wasm::module::ToAscPtr;
-use starknet_core::types::FieldElement;
+use starknet_ff::FieldElement;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;

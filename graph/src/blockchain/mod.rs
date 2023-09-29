@@ -396,7 +396,6 @@ pub enum BlockchainKind {
 
     Substreams,
 
-    /// StarkNet chains
     Starknet,
 }
 

@@ -6,7 +6,8 @@ use graph::{
     prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Deserialize, Link, Logger},
     semver,
 };
-use starknet_core::{types::FieldElement, utils::get_selector_from_name};
+use sha3::{Digest, Keccak256};
+use starknet_ff::FieldElement;
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
@@ -271,9 +272,6 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
     }
 }
 
-// Starknet data source templates are not supported at the moment. This should be implemented for
-// the Starknet support to be considered production ready.
-// TODO: support Starknet data source template
 impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn api_version(&self) -> semver::Version {
         todo!()
@@ -296,9 +294,6 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     }
 }
 
-// Starknet data source templates are not supported at the moment. This should be implemented for
-// the Starknet support to be considered production ready.
-// TODO: support Starknet data source template
 #[async_trait]
 impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTemplate {
     #[allow(unused)]
@@ -310,6 +305,38 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
     ) -> Result<DataSourceTemplate, Error> {
         todo!()
     }
+}
+
+// Adapted from:
+//   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L110-L121
+fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<FieldElement> {
+    const DEFAULT_ENTRY_POINT_NAME: &str = "__default__";
+    const DEFAULT_L1_ENTRY_POINT_NAME: &str = "__l1_default__";
+
+    if func_name == DEFAULT_ENTRY_POINT_NAME || func_name == DEFAULT_L1_ENTRY_POINT_NAME {
+        Ok(FieldElement::ZERO)
+    } else {
+        let name_bytes = func_name.as_bytes();
+        if name_bytes.is_ascii() {
+            Ok(starknet_keccak(name_bytes))
+        } else {
+            Err(anyhow!("the provided name contains non-ASCII characters"))
+        }
+    }
+}
+
+// Adapted from:
+//   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L98-L108
+fn starknet_keccak(data: &[u8]) -> FieldElement {
+    let mut hasher = Keccak256::new();
+    hasher.update(data);
+    let mut hash = hasher.finalize();
+
+    // Remove the first 6 bits
+    hash[0] &= 0b00000011;
+
+    // Because we know hash is always 32 bytes
+    FieldElement::from_bytes_be(unsafe { &*(hash[..].as_ptr() as *const [u8; 32]) }).unwrap()
 }
 
 fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<FieldElement>, D::Error>

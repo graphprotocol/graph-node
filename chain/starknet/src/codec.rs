@@ -1,7 +1,6 @@
-#[allow(clippy::all)]
 #[rustfmt::skip]
 #[path = "protobuf/zklend.starknet.r#type.v1.rs"]
-pub mod pbcodec;
+mod pbcodec;
 
 use graph::blockchain::{Block as BlockchainBlock, BlockHash, BlockPtr};
 

@@ -55,15 +55,6 @@ pub struct FirehoseMapper {
 
 pub struct TriggersAdapter;
 
-// impl Chain {
-//     pub fn new(
-//         logger_factory: LoggerFactory,
-//         name: String,
-//         registry: Arc<dyn MetricsRegistry>,
-//         firehose_endpoints: FirehoseEndpoints,
-//         chain_store: Arc<dyn ChainStore>,
-//         block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
-// ) -> Self {
 impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
     fn build(self, _config: &Arc<EnvVars>) -> Chain {
         Chain {
@@ -383,7 +374,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
-    // Used for reprocessing blocks when creating a data source.
     #[allow(unused)]
     async fn triggers_in_block(
         &self,
@@ -391,15 +381,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         block: codec::Block,
         filter: &crate::adapter::TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
-        // We can't do any filtering here as `TriggerFilter` is useless.
-        // TODO: implement trigger filtering once `TriggerFilter` actually does something.
-
         let shared_block = Arc::new(block.clone());
 
         let mut triggers: Vec<_> = shared_block
             .transactions
             .iter()
             .flat_map(|transaction| -> Vec<StarknetTrigger> {
+                let transaction = Arc::new(transaction.clone());
                 transaction
                     .events
                     .iter()
@@ -407,7 +395,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         StarknetTrigger::Event(StarknetEventTrigger {
                             event: Arc::new(event.clone()),
                             block: shared_block.clone(),
-                            transaction: Arc::new(transaction.clone()),
+                            transaction: transaction.clone(),
                         })
                     })
                     .collect()
