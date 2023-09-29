@@ -221,65 +221,41 @@ impl InputSchema {
     /// When asked to load the related entities from "Account" in the field "wallets"
     /// This function will return the type "Wallet" with the field "account"
     pub fn get_field_related(&self, key: &LoadRelatedRequest) -> Result<(&str, &s::Field), Error> {
+        fn field_err(key: &LoadRelatedRequest, err: &str) -> Error {
+            anyhow!(
+                "Entity {}[{}]: {err} `{}`",
+                key.entity_type,
+                key.entity_id,
+                key.entity_field,
+            )
+        }
+
         let field = self
             .inner
             .schema
             .document
             .get_object_type_definition(key.entity_type.as_str())
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown entity type `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_type,
-                )
-            })?
+            .ok_or_else(|| field_err(key, "unknown entity type"))?
             .field(&key.entity_field)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Entity {}[{}]: unknown field `{}`",
-                    key.entity_type,
-                    key.entity_id,
-                    key.entity_field,
-                )
-            })?;
-        if field.is_derived() {
-            let derived_from = field.find_directive("derivedFrom").unwrap();
-            let base_type = field.field_type.get_base_type();
-            let field_name = derived_from.argument("field").unwrap();
-
-            let field = self
-                .inner
-                .schema
-                .document
-                .get_object_type_definition(base_type)
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown entity type `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_type,
-                    )
-                })?
-                .field(field_name.as_str().unwrap())
-                .ok_or_else(|| {
-                    anyhow!(
-                        "Entity {}[{}]: unknown field `{}`",
-                        key.entity_type,
-                        key.entity_id,
-                        key.entity_field,
-                    )
-                })?;
-
-            Ok((base_type, field))
-        } else {
-            Err(anyhow!(
-                "Entity {}[{}]: field `{}` is not derived",
-                key.entity_type,
-                key.entity_id,
-                key.entity_field,
-            ))
+            .ok_or_else(|| field_err(key, "unknown field"))?;
+        if !field.is_derived() {
+            return Err(field_err(key, "field is not derived"));
         }
+
+        let derived_from = field.find_directive("derivedFrom").unwrap();
+        let base_type = field.field_type.get_base_type();
+        let field_name = derived_from.argument("field").unwrap();
+
+        let field = self
+            .inner
+            .schema
+            .document
+            .get_object_type_definition(base_type)
+            .ok_or_else(|| field_err(key, "unknown entity type"))?
+            .field(field_name.as_str().unwrap())
+            .ok_or_else(|| field_err(key, "unknown field"))?;
+
+        Ok((base_type, field))
     }
 
     fn type_info(&self, atom: Atom) -> Option<&TypeInfo> {
