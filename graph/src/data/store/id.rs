@@ -26,6 +26,7 @@ use super::{scalar, Value, ValueType, ID};
 pub enum IdType {
     String,
     Bytes,
+    Int8,
 }
 
 impl IdType {
@@ -34,6 +35,7 @@ impl IdType {
         match self {
             IdType::String => Ok(Id::String(s)),
             IdType::Bytes => Ok(Id::Bytes(s.parse()?)),
+            IdType::Int8 => Ok(Id::Int8(s.parse()?)),
         }
     }
 
@@ -41,6 +43,7 @@ impl IdType {
         match self {
             IdType::String => "String",
             IdType::Bytes => "Bytes",
+            IdType::Int8 => "Int8",
         }
     }
 }
@@ -58,6 +61,7 @@ impl<'a> TryFrom<&s::ObjectType> for IdType {
         match base_type {
             "ID" | "String" => Ok(IdType::String),
             "Bytes" => Ok(IdType::Bytes),
+            "Int8" => Ok(IdType::Int8),
             s => Err(anyhow!(
                 "Entity type {} uses illegal type {} for id column",
                 obj_type.name,
@@ -76,8 +80,9 @@ impl TryFrom<&s::Type> for IdType {
         match name.parse()? {
             ValueType::String => Ok(IdType::String),
             ValueType::Bytes => Ok(IdType::Bytes),
+            ValueType::Int8 => Ok(IdType::Int8),
             _ => Err(anyhow!(
-                "The `id` field has type `{}` but only `String`, `Bytes`, and `ID` are allowed",
+                "The `id` field has type `{}` but only `String`, `Bytes`, `Int8`, and `ID` are allowed",
                 &name
             )
             .into()),
@@ -96,6 +101,7 @@ impl std::fmt::Display for IdType {
 pub enum Id {
     String(Word),
     Bytes(scalar::Bytes),
+    Int8(i64),
 }
 
 impl Id {
@@ -103,6 +109,7 @@ impl Id {
         match self {
             Id::String(_) => IdType::String,
             Id::Bytes(_) => IdType::Bytes,
+            Id::Int8(_) => IdType::Int8,
         }
     }
 }
@@ -113,6 +120,7 @@ impl std::hash::Hash for Id {
         match self {
             Id::String(s) => s.hash(state),
             Id::Bytes(b) => b.hash(state),
+            Id::Int8(i) => i.hash(state),
         }
     }
 }
@@ -122,6 +130,7 @@ impl PartialEq<Value> for Id {
         match (self, other) {
             (Id::String(s), Value::String(v)) => s.as_str() == v.as_str(),
             (Id::Bytes(s), Value::Bytes(v)) => s == v,
+            (Id::Int8(s), Value::Int8(v)) => s == v,
             _ => false,
         }
     }
@@ -140,6 +149,7 @@ impl TryFrom<Value> for Id {
         match value {
             Value::String(s) => Ok(Id::String(Word::from(s))),
             Value::Bytes(b) => Ok(Id::Bytes(b)),
+            Value::Int8(i) => Ok(Id::Int8(i)),
             _ => Err(anyhow!(
                 "expected string or bytes for id but found {:?}",
                 value
@@ -153,6 +163,7 @@ impl From<Id> for Value {
         match value {
             Id::String(s) => Value::String(s.into()),
             Id::Bytes(b) => Value::Bytes(b),
+            Id::Int8(i) => Value::Int8(i),
         }
     }
 }
@@ -162,6 +173,7 @@ impl std::fmt::Display for Id {
         match self {
             Id::String(s) => write!(f, "{}", s),
             Id::Bytes(b) => write!(f, "{}", b),
+            Id::Int8(i) => write!(f, "{}", i),
         }
     }
 }
@@ -171,6 +183,7 @@ impl CacheWeight for Id {
         match self {
             Id::String(s) => s.indirect_weight(),
             Id::Bytes(b) => b.indirect_weight(),
+            Id::Int8(_) => 0,
         }
     }
 }
@@ -180,6 +193,7 @@ impl GasSizeOf for Id {
         match self {
             Id::String(s) => s.gas_size_of(),
             Id::Bytes(b) => b.gas_size_of(),
+            Id::Int8(i) => i.gas_size_of(),
         }
     }
 }
@@ -195,6 +209,7 @@ impl StableHash for Id {
                 // break PoI compatibility
                 stable_hash::StableHash::stable_hash(&b.to_string(), field_address, state)
             }
+            Id::Int8(i) => stable_hash::StableHash::stable_hash(i, field_address, state),
         }
     }
 }
@@ -210,6 +225,7 @@ impl stable_hash_legacy::StableHash for Id {
             Id::Bytes(b) => {
                 stable_hash_legacy::StableHash::stable_hash(&b.to_string(), sequence_number, state)
             }
+            Id::Int8(i) => stable_hash_legacy::StableHash::stable_hash(i, sequence_number, state),
         }
     }
 }
@@ -220,6 +236,7 @@ impl stable_hash_legacy::StableHash for Id {
 pub enum IdRef<'a> {
     String(&'a str),
     Bytes(&'a [u8]),
+    Int8(i64),
 }
 
 impl std::fmt::Display for IdRef<'_> {
@@ -227,6 +244,7 @@ impl std::fmt::Display for IdRef<'_> {
         match self {
             IdRef::String(s) => write!(f, "{}", s),
             IdRef::Bytes(b) => write!(f, "0x{}", hex::encode(b)),
+            IdRef::Int8(i) => write!(f, "{}", i),
         }
     }
 }
@@ -236,6 +254,15 @@ impl<'a> IdRef<'a> {
         match self {
             IdRef::String(s) => Id::String(Word::from(s.to_owned())),
             IdRef::Bytes(b) => Id::Bytes(scalar::Bytes::from(b)),
+            IdRef::Int8(i) => Id::Int8(i),
+        }
+    }
+
+    fn id_type(&self) -> IdType {
+        match self {
+            IdRef::String(_) => IdType::String,
+            IdRef::Bytes(_) => IdType::Bytes,
+            IdRef::Int8(_) => IdType::Int8,
         }
     }
 }
@@ -246,6 +273,7 @@ impl<'a> IdRef<'a> {
 pub enum IdList {
     String(Vec<Word>),
     Bytes(Vec<scalar::Bytes>),
+    Int8(Vec<i64>),
 }
 
 impl IdList {
@@ -253,6 +281,7 @@ impl IdList {
         match typ {
             IdType::String => IdList::String(Vec::new()),
             IdType::Bytes => IdList::Bytes(Vec::new()),
+            IdType::Int8 => IdList::Int8(Vec::new()),
         }
     }
 
@@ -260,11 +289,20 @@ impl IdList {
         match self {
             IdList::String(ids) => ids.len(),
             IdList::Bytes(ids) => ids.len(),
+            IdList::Int8(ids) => ids.len(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn id_type(&self) -> IdType {
+        match self {
+            IdList::String(_) => IdType::String,
+            IdList::Bytes(_) => IdType::Bytes,
+            IdList::Int8(_) => IdType::Int8,
+        }
     }
 
     /// Turn a list of ids into an `IdList` and check that they are all the
@@ -281,8 +319,9 @@ impl IdList {
                         ids.push(id);
                         Ok(ids)
                     }
-                    Id::Bytes(id) => Err(constraint_violation!(
-                        "expected string id, got bytes: {}",
+                    _ => Err(constraint_violation!(
+                        "expected string id, got {}: {}",
+                        id.id_type(),
                         id,
                     )),
                 })?;
@@ -290,16 +329,31 @@ impl IdList {
             }
             IdType::Bytes => {
                 let ids: Vec<scalar::Bytes> = iter.try_fold(vec![], |mut ids, id| match id {
-                    Id::String(id) => Err(constraint_violation!(
-                        "expected bytes id, got string: {}",
-                        id,
-                    )),
                     Id::Bytes(id) => {
                         ids.push(id);
                         Ok(ids)
                     }
+                    _ => Err(constraint_violation!(
+                        "expected bytes id, got {}: {}",
+                        id.id_type(),
+                        id,
+                    )),
                 })?;
                 Ok(IdList::Bytes(ids))
+            }
+            IdType::Int8 => {
+                let ids: Vec<i64> = iter.try_fold(vec![], |mut ids, id| match id {
+                    Id::Int8(id) => {
+                        ids.push(id);
+                        Ok(ids)
+                    }
+                    _ => Err(constraint_violation!(
+                        "expected int8 id, got {}: {}",
+                        id.id_type(),
+                        id,
+                    )),
+                })?;
+                Ok(IdList::Int8(ids))
             }
         }
     }
@@ -321,9 +375,10 @@ impl IdList {
                         ids.push(Word::from(id));
                         Ok(ids)
                     }
-                    IdRef::Bytes(id) => Err(constraint_violation!(
-                        "expected string id, got bytes: 0x{}",
-                        hex::encode(id),
+                    _ => Err(constraint_violation!(
+                        "expected string id, got {}: 0x{}",
+                        id.id_type(),
+                        id,
                     )),
                 })?;
                 Ok(IdList::String(ids))
@@ -331,16 +386,31 @@ impl IdList {
             IdRef::Bytes(b) => {
                 let ids: Vec<_> =
                     iter.try_fold(vec![scalar::Bytes::from(b)], |mut ids, id| match id {
-                        IdRef::String(id) => Err(constraint_violation!(
-                            "expected bytes id, got string: {}",
-                            id,
-                        )),
                         IdRef::Bytes(id) => {
                             ids.push(scalar::Bytes::from(id));
                             Ok(ids)
                         }
+                        _ => Err(constraint_violation!(
+                            "expected bytes id, got {}: {}",
+                            id.id_type(),
+                            id,
+                        )),
                     })?;
                 Ok(IdList::Bytes(ids))
+            }
+            IdRef::Int8(i) => {
+                let ids: Vec<_> = iter.try_fold(vec![i], |mut ids, id| match id {
+                    IdRef::Int8(id) => {
+                        ids.push(id);
+                        Ok(ids)
+                    }
+                    _ => Err(constraint_violation!(
+                        "expected int8 id, got {}: {}",
+                        id.id_type(),
+                        id,
+                    )),
+                })?;
+                Ok(IdList::Int8(ids))
             }
         }
     }
@@ -349,6 +419,7 @@ impl IdList {
         match self {
             IdList::String(ids) => IdRef::String(&ids[index]),
             IdList::Bytes(ids) => IdRef::Bytes(ids[index].as_slice()),
+            IdList::Int8(ids) => IdRef::Int8(ids[index]),
         }
     }
 
@@ -364,6 +435,7 @@ impl IdList {
         match self {
             IdList::String(ids) => Box::new(ids.iter().map(|id| IdRef::String(id))),
             IdList::Bytes(ids) => Box::new(ids.iter().map(|id| IdRef::Bytes(id))),
+            IdList::Int8(ids) => Box::new(ids.iter().map(|id| IdRef::Int8(*id))),
         }
     }
 
@@ -379,6 +451,11 @@ impl IdList {
                 ids.dedup();
                 IdList::Bytes(ids)
             }
+            IdList::Int8(mut ids) => {
+                ids.sort_unstable();
+                ids.dedup();
+                IdList::Int8(ids)
+            }
         }
     }
 
@@ -392,13 +469,15 @@ impl IdList {
                 ids.push(id);
                 Ok(())
             }
-            (IdList::String(_), Id::Bytes(b)) => Err(constraint_violation!(
-                "expected id of type string, but got Bytes[{}]",
-                b
-            )),
-            (IdList::Bytes(_), Id::String(s)) => Err(constraint_violation!(
-                "expected id of type bytes, but got String[{}]",
-                s
+            (IdList::Int8(ids), Id::Int8(id)) => {
+                ids.push(id);
+                Ok(())
+            }
+            (list, id) => Err(constraint_violation!(
+                "expected id of type {}, but got {}[{}]",
+                list.id_type(),
+                id.id_type(),
+                id
             )),
         }
     }
@@ -407,6 +486,7 @@ impl IdList {
         match self {
             IdList::String(ids) => ids.into_iter().map(Id::String).collect(),
             IdList::Bytes(ids) => ids.into_iter().map(Id::Bytes).collect(),
+            IdList::Int8(ids) => ids.into_iter().map(Id::Int8).collect(),
         }
     }
 }

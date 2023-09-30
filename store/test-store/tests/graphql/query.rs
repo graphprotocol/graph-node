@@ -41,8 +41,10 @@ use test_store::{
 const NETWORK_NAME: &str = "fake_network";
 const SONGS_STRING: [&str; 5] = ["s0", "s1", "s2", "s3", "s4"];
 const SONGS_BYTES: [&str; 5] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4"];
+const SONGS_INT: [&str; 5] = ["42", "43", "44", "45", "46"];
 const MEDIA_STRING: [&str; 7] = ["md0", "md1", "md2", "md3", "md4", "md5", "md6"];
 const MEDIA_BYTES: [&str; 7] = ["0xf0", "0xf1", "0xf2", "0xf3", "0xf4", "0xf5", "0xf6"];
+const MEDIA_INT: [&str; 7] = ["52", "53", "54", "55", "56", "57", "58"];
 
 lazy_static! {
     /// The id of the sole publisher in the test data
@@ -53,6 +55,20 @@ lazy_static! {
 /// which is fine in tests, in order to keep test notation concise
 #[derive(Debug)]
 struct IdVal(Value);
+
+impl IdVal {
+    fn as_gql(&self, id_type: IdType) -> String {
+        match (id_type, self) {
+            (IdType::String, IdVal(Value::String(s))) => format!("\"{}\"", s),
+            (IdType::Bytes, IdVal(Value::Bytes(b))) => format!("\"{}\"", b),
+            (IdType::Int8, IdVal(Value::Int8(i))) => format!("{}", i),
+            _ => panic!(
+                "Invalid combination of id type {} and value {self:?}",
+                id_type.as_str()
+            ),
+        }
+    }
+}
 
 impl From<&IdVal> for Value {
     fn from(id: &IdVal) -> Self {
@@ -76,6 +92,7 @@ impl std::fmt::Display for IdVal {
 enum IdType {
     String,
     Bytes,
+    Int8,
 }
 
 impl IdType {
@@ -83,6 +100,7 @@ impl IdType {
         let value = match self {
             IdType::String => Value::String(s.to_string()),
             IdType::Bytes => Value::Bytes(s.parse().unwrap()),
+            IdType::Int8 => Value::Int8(s.parse().unwrap()),
         };
         IdVal(value)
     }
@@ -97,14 +115,21 @@ impl IdType {
                 .iter()
                 .map(|s| IdType::Bytes.parse(s))
                 .collect::<Vec<_>>();
+            static ref SONGS_INT_VAL: Vec<IdVal> = SONGS_INT
+                .iter()
+                .map(|s| IdType::Int8.parse(s))
+                .collect::<Vec<_>>();
             static ref SONGS_STRING_REF: Vec<&'static IdVal> =
                 SONGS_STRING_VAL.iter().collect::<Vec<_>>();
             static ref SONGS_BYTES_REF: Vec<&'static IdVal> =
                 SONGS_BYTES_VAL.iter().collect::<Vec<_>>();
+            static ref SONGS_INT_REF: Vec<&'static IdVal> =
+                SONGS_INT_VAL.iter().collect::<Vec<_>>();
         }
         match self {
             IdType::String => SONGS_STRING_REF.as_slice(),
             IdType::Bytes => SONGS_BYTES_REF.as_slice(),
+            IdType::Int8 => SONGS_INT_REF.as_slice(),
         }
     }
 
@@ -112,6 +137,7 @@ impl IdType {
         match self {
             IdType::String => MEDIA_STRING.as_slice(),
             IdType::Bytes => MEDIA_BYTES.as_slice(),
+            IdType::Int8 => MEDIA_INT.as_slice(),
         }
     }
 
@@ -119,6 +145,7 @@ impl IdType {
         match self {
             IdType::String => "String",
             IdType::Bytes => "Bytes",
+            IdType::Int8 => "Int8",
         }
     }
 
@@ -126,6 +153,7 @@ impl IdType {
         match self {
             IdType::String => "graphqlTestsQuery",
             IdType::Bytes => "graphqlTestsQueryBytes",
+            IdType::Int8 => "graphqlTestsQueryInt8",
         }
     }
 }
@@ -615,7 +643,7 @@ where
         max_complexity,
     } = args.into();
     run_test_sequentially(move |store| async move {
-        for id_type in [IdType::String, IdType::Bytes] {
+        for id_type in [IdType::String, IdType::Bytes, IdType::Int8] {
             let name = id_type.deployment_id();
 
             let deployment = setup(store.as_ref(), name, BTreeSet::new(), id_type).await;
@@ -623,9 +651,10 @@ where
             let mut query = query.clone();
             for (i, id) in id_type.songs().iter().enumerate() {
                 let pat = format!("@S{i}@");
-                let repl = format!("\"{id}\"");
+                let repl = id.as_gql(id_type);
                 query = query.replace(&pat, &repl);
             }
+            dbg!(&query);
 
             let result = {
                 let id = &deployment.hash;

@@ -624,6 +624,13 @@ fn id_type_as_scalar(
     }?;
     let scalar_type = id_type.map(|id_type| match id_type {
         IdType::String | IdType::Bytes => ScalarType::new(String::from("String")),
+        // It would be more logical to use "Int8" here, but currently, that
+        // leads to values being turned into strings, not i64 which causes
+        // database queries to fail in various places. Once this is fixed
+        // (check e.g., `Value::coerce_scalar` in `graph/src/data/value.rs`)
+        // we can turn that into "Int8". For now, queries can only query
+        // Int8 id values up to i32::MAX.
+        IdType::Int8 => ScalarType::new(String::from("Int")),
     });
     Ok(scalar_type)
 }

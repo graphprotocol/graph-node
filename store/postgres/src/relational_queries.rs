@@ -149,6 +149,7 @@ impl PushBindParam for Id {
         match self {
             Id::String(s) => out.push_bind_param::<Text, _>(s),
             Id::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Id::Int8(i) => out.push_bind_param::<Int8, _>(i),
         }
     }
 }
@@ -158,6 +159,7 @@ impl PushBindParam for IdList {
         match self {
             IdList::String(ids) => out.push_bind_param::<Array<Text>, _>(ids),
             IdList::Bytes(ids) => out.push_bind_param::<Array<Binary>, _>(ids),
+            IdList::Int8(ids) => out.push_bind_param::<Array<Int8>, _>(ids),
         }
     }
 }
@@ -167,6 +169,7 @@ impl<'a> PushBindParam for IdRef<'a> {
         match self {
             IdRef::String(s) => out.push_bind_param::<Text, _>(s),
             IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(b),
+            IdRef::Int8(i) => out.push_bind_param::<Int8, _>(i),
         }
     }
 }
@@ -4240,7 +4243,7 @@ impl ReturnedEntityData {
 
         data.into_iter()
             .map(|s| match id_type {
-                IdType::String => id_type.parse(Word::from(s.id)),
+                IdType::String | IdType::Int8 => id_type.parse(Word::from(s.id)),
                 IdType::Bytes => id_type.parse(Word::from(s.id.trim_start_matches("\\x"))),
             })
             .collect::<Result<_, _>>()

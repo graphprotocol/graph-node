@@ -927,6 +927,7 @@ impl From<IdType> for ColumnType {
         match id_type {
             IdType::Bytes => ColumnType::Bytes,
             IdType::String => ColumnType::String,
+            IdType::Int8 => ColumnType::Int8,
         }
     }
 }
@@ -1003,9 +1004,10 @@ impl ColumnType {
         match self {
             ColumnType::String => Ok(IdType::String),
             ColumnType::Bytes => Ok(IdType::Bytes),
+            ColumnType::Int8 => Ok(IdType::Int8),
             _ => Err(diesel::result::Error::QueryBuilderError(
                 anyhow!(
-                    "only String and Bytes are allowed as primary keys but not {:?}",
+                    "only String, Bytes, and Int8 are allowed as primary keys but not {:?}",
                     self
                 )
                 .into(),

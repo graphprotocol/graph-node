@@ -789,8 +789,7 @@ impl Entity {
             None => Err(EntityValidationError::MissingIDAttribute {
                 entity: format!("{:?}", self.0),
             }),
-            Some(Value::String(_)) => Ok(()),
-            Some(Value::Bytes(_)) => Ok(()),
+            Some(Value::String(_)) | Some(Value::Bytes(_)) | Some(Value::Int8(_)) => Ok(()),
             _ => Err(EntityValidationError::UnsupportedTypeForIDAttribute),
         }
     }
