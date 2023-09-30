@@ -187,8 +187,6 @@ impl ToSql<Text, Pg> for SqlName {
     }
 }
 
-type EnumMap = BTreeMap<String, Arc<BTreeSet<String>>>;
-
 #[derive(Debug, Clone)]
 pub struct Layout {
     /// Details of where the subgraph is stored
@@ -197,9 +195,6 @@ pub struct Layout {
     pub tables: HashMap<EntityType, Arc<Table>>,
     /// The database schema for this subgraph
     pub catalog: Catalog,
-    /// Enums defined in the schema and their possible values. The names
-    /// are the original GraphQL names
-    pub enums: EnumMap,
     /// The query to count all entities
     pub count_query: String,
     /// How many blocks of history the subgraph should keep
@@ -217,26 +212,10 @@ impl Layout {
         schema: &InputSchema,
         catalog: Catalog,
     ) -> Result<Self, StoreError> {
-        // Extract enum types
-        let enums: EnumMap = schema
-            .get_enum_definitions()
-            .iter()
-            .map(
-                |enum_type| -> Result<(String, Arc<BTreeSet<String>>), StoreError> {
-                    SqlName::check_valid_identifier(&enum_type.name, "enum")?;
-                    Ok((
-                        enum_type.name.clone(),
-                        Arc::new(
-                            enum_type
-                                .values
-                                .iter()
-                                .map(|value| value.name.clone())
-                                .collect::<BTreeSet<_>>(),
-                        ),
-                    ))
-                },
-            )
-            .collect::<Result<_, _>>()?;
+        // Check that enum type names are valid for SQL
+        for name in schema.enum_types() {
+            SqlName::check_valid_identifier(name, "enum")?;
+        }
 
         // Construct a Table struct for each entity type, except for PoI
         // since we handle that specially
@@ -253,7 +232,6 @@ impl Layout {
                     schema
                         .entity_fulltext_definitions(entity_type.as_str())
                         .map_err(|_| StoreError::FulltextSearchNonDeterministic)?,
-                    &enums,
                     i as u32,
                     catalog.entities_with_causality_region.contains(entity_type),
                 )
@@ -295,7 +273,6 @@ impl Layout {
             site,
             catalog,
             tables,
-            enums,
             count_query,
             history_blocks: i32::MAX,
             input_schema: schema.cheap_clone(),
@@ -961,7 +938,6 @@ impl ColumnType {
         schema: &InputSchema,
         field_type: &q::Type,
         catalog: &Catalog,
-        enums: &EnumMap,
         is_existing_text_column: bool,
     ) -> Result<ColumnType, StoreError> {
         let name = field_type.get_base_type();
@@ -978,7 +954,7 @@ impl ColumnType {
 
         // Check if it's an enum, and if it is, return an appropriate
         // ColumnType::Enum
-        if let Some(values) = enums.get(name) {
+        if let Some(values) = schema.enum_values(name) {
             // We do things this convoluted way to make sure field_type gets
             // snakecased, but the `.` must stay a `.`
             let name = SqlName::qualified_name(&catalog.site.namespace, &SqlName::from(name));
@@ -1059,13 +1035,12 @@ impl Column {
         table_name: &SqlName,
         field: &Field,
         catalog: &Catalog,
-        enums: &EnumMap,
     ) -> Result<Column, StoreError> {
         SqlName::check_valid_identifier(&field.name, "attribute")?;
 
         let sql_name = SqlName::from(&*field.name);
-        let is_reference =
-            sql_name.as_str() != PRIMARY_KEY_COLUMN && is_object_type(&field.field_type, enums);
+
+        let is_reference = schema.is_reference(&field.field_type.get_base_type());
 
         let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
             IdType::try_from(&field.field_type)?.into()
@@ -1075,7 +1050,6 @@ impl Column {
                 schema,
                 &field.field_type,
                 catalog,
-                enums,
                 is_existing_text_column,
             )?
         };
@@ -1233,7 +1207,6 @@ impl Table {
         defn: &EntityType,
         catalog: &Catalog,
         fulltexts: Vec<FulltextDefinition>,
-        enums: &EnumMap,
         position: u32,
         has_causality_region: bool,
     ) -> Result<Table, StoreError> {
@@ -1248,7 +1221,7 @@ impl Table {
             .fields
             .into_iter()
             .filter(|field| !field.is_derived)
-            .map(|field| Column::new(schema, &table_name, field, catalog, enums))
+            .map(|field| Column::new(schema, &table_name, field, catalog))
             .chain(fulltexts.iter().map(Column::new_fulltext))
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
@@ -1349,12 +1322,6 @@ impl Table {
             &crate::block_range::BLOCK_RANGE_COLUMN_SQL
         }
     }
-}
-
-fn is_object_type(field_type: &q::Type, enums: &EnumMap) -> bool {
-    let name = field_type.get_base_type();
-
-    !enums.contains_key(name) && !ValueType::is_scalar(name)
 }
 
 #[derive(Clone)]

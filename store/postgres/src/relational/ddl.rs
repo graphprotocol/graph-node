@@ -45,9 +45,10 @@ impl Layout {
     }
 
     pub(crate) fn write_enum_ddl(&self, out: &mut dyn Write) -> Result<(), fmt::Error> {
-        for (name, values) in &self.enums {
+        for name in self.input_schema.enum_types() {
+            let values = self.input_schema.enum_values(name).unwrap();
             let mut sep = "";
-            let name = SqlName::from(name.as_str());
+            let name = SqlName::from(name);
             write!(
                 out,
                 "create type {}.{}\n    as enum (",

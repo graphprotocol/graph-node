@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
@@ -50,6 +51,13 @@ impl TypeKind {
         match self {
             TypeKind::MutableObject(_) | TypeKind::ImmutableObject(_) => true,
             TypeKind::Interface(_) => false,
+        }
+    }
+
+    fn is_interface(&self) -> bool {
+        match self {
+            TypeKind::MutableObject(_) | TypeKind::ImmutableObject(_) => false,
+            TypeKind::Interface(_) => true,
         }
     }
 
@@ -349,12 +357,51 @@ impl InterfaceType {
 }
 
 #[derive(Debug, PartialEq)]
+struct EnumMap(BTreeMap<String, Arc<BTreeSet<String>>>);
+
+impl EnumMap {
+    fn new(schema: &Schema) -> Self {
+        let map = schema
+            .document
+            .get_enum_definitions()
+            .iter()
+            .map(|enum_type| {
+                (
+                    enum_type.name.clone(),
+                    Arc::new(
+                        enum_type
+                            .values
+                            .iter()
+                            .map(|value| value.name.clone())
+                            .collect::<BTreeSet<_>>(),
+                    ),
+                )
+            })
+            .collect();
+        EnumMap(map)
+    }
+
+    fn names(&self) -> impl Iterator<Item = &str> {
+        self.0.keys().map(|name| name.as_str())
+    }
+
+    fn contains_key(&self, name: &str) -> bool {
+        self.0.contains_key(name)
+    }
+
+    fn values(&self, name: &str) -> Option<Arc<BTreeSet<String>>> {
+        self.0.get(name).cloned()
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Inner {
     schema: Schema,
     /// A list of all the object and interface types in the `schema` with
     /// some important information extracted from the schema. The list is
     /// sorted by the name atom (not the string name) of the types
     type_infos: Box<[TypeInfo]>,
+    enum_map: EnumMap,
     pool: Arc<AtomPool>,
 }
 
@@ -405,10 +452,13 @@ impl InputSchema {
         type_infos.sort_by_key(|ti| ti.name());
         let type_infos = type_infos.into_boxed_slice();
 
+        let enum_map = EnumMap::new(&schema);
+
         Ok(Self {
             inner: Arc::new(Inner {
                 schema,
                 type_infos,
+                enum_map,
                 pool,
             }),
         })
@@ -526,6 +576,19 @@ impl InputSchema {
             .unwrap_or(false)
     }
 
+    /// Return true if `type_name` is the name of an object or interface type
+    pub fn is_reference(&self, type_name: &str) -> bool {
+        self.inner
+            .pool
+            .lookup(type_name)
+            .and_then(|atom| {
+                self.type_info(atom)
+                    .ok()
+                    .map(|ti| ti.kind.is_object() || ti.kind.is_interface())
+            })
+            .unwrap_or(false)
+    }
+
     /// Return a list of the interfaces that `entity_type` implements
     pub fn interfaces(&self, entity_type: Atom) -> impl Iterator<Item = &InterfaceType> {
         let obj_type = self.type_info(entity_type).unwrap();
@@ -568,8 +631,19 @@ impl InputSchema {
         })
     }
 
-    pub fn get_enum_definitions(&self) -> Vec<&s::EnumType> {
-        self.inner.schema.document.get_enum_definitions()
+    /// Return a list of the names of all enum types
+    pub fn enum_types(&self) -> impl Iterator<Item = &str> {
+        self.inner.enum_map.names()
+    }
+
+    /// Check if `name` is the name of an enum type
+    pub fn is_enum_type(&self, name: &str) -> bool {
+        self.inner.enum_map.contains_key(name)
+    }
+
+    /// Return a list of the values of the enum type `name`
+    pub fn enum_values(&self, name: &str) -> Option<Arc<BTreeSet<String>>> {
+        self.inner.enum_map.values(name)
     }
 
     pub fn entity_types(&self) -> Vec<EntityType> {
