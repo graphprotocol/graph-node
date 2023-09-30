@@ -19,7 +19,7 @@ use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;
-use super::{ApiSchema, AsEntityTypeName, EntityType, Schema, SCHEMA_TYPE_NAME};
+use super::{ApiSchema, AsEntityTypeName, EntityType, Schema};
 
 /// The name of the PoI entity type
 pub(crate) const POI_OBJECT: &str = "Poi$";
@@ -408,7 +408,7 @@ impl InputSchema {
             .document
             .get_object_type_definitions()
             .into_iter()
-            .filter(|obj_type| obj_type.name != SCHEMA_TYPE_NAME)
+            .filter(|obj_type| obj_type.find_directive("entity").is_some())
             .map(|obj_type| TypeInfo::for_object(&schema, &pool, obj_type));
         let intf_types = schema
             .document
@@ -813,6 +813,7 @@ mod validations {
             },
             store::{IdType, ValueType, ID},
         },
+        env::ENV_VARS,
         prelude::s,
         schema::{
             FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
@@ -860,7 +861,7 @@ mod validations {
         fn new(schema: &'a BaseSchema) -> Self {
             let subgraph_schema_type = schema.subgraph_schema_object_type();
             let mut entity_types = schema.document.get_object_type_definitions();
-            entity_types.retain(|obj_type| obj_type.name != SCHEMA_TYPE_NAME);
+            entity_types.retain(|obj_type| obj_type.find_directive("entity").is_some());
 
             Schema {
                 schema,
@@ -1181,12 +1182,23 @@ mod validations {
         }
 
         fn validate_no_extra_types(&self) -> Result<(), SchemaValidationError> {
+            let extra_type = if ENV_VARS.enable_timeseries {
+                |t: &&s::ObjectType| {
+                    t.find_directive("entity").is_none()
+                        && !t.name.eq(SCHEMA_TYPE_NAME)
+                        && t.find_directive("aggregation").is_none()
+                }
+            } else {
+                |t: &&s::ObjectType| {
+                    t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
+                }
+            };
             let types_without_entity_directive = self
                 .schema
                 .document
                 .get_object_type_definitions()
-                .iter()
-                .filter(|t| t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME))
+                .into_iter()
+                .filter(extra_type)
                 .map(|t| t.name.clone())
                 .collect::<Vec<_>>();
             if types_without_entity_directive.is_empty() {
@@ -1662,6 +1674,31 @@ type Gravatar @entity {
             let schema = BaseSchema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
             let schema = Schema::new(&schema);
             assert_eq!(schema.validate_fulltext_directives(), vec![]);
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn agg() {
+        if ENV_VARS.enable_timeseries {
+            const SCHEMA: &str = r#"
+            type Data @entity(timeseries: true) {
+                id: Bytes!
+                timestamp: Int8!
+                token: Bytes!
+                price: BigDecimal!
+            }
+            
+            type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+                id: Int8!          # Filled automatically
+                timestamp: Int8!   # Filled automatically
+                token: Bytes!
+                max: BigDecimal! @aggregate(fn: "max", arg: "price")
+                sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
+            }"#;
+
+            let id = crate::prelude::DeploymentHash::new("test").unwrap();
+            let _schema = super::InputSchema::parse(SCHEMA, id).unwrap();
         }
     }
 }
