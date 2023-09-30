@@ -783,7 +783,6 @@ impl Layout {
             let removed = RevertRemoveQuery::new(table, block)
                 .get_results(conn)?
                 .into_iter()
-                .map(|data| data.id)
                 .collect::<HashSet<_>>();
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
@@ -794,7 +793,6 @@ impl Layout {
                 RevertClampQuery::new(table, block - 1)?
                     .get_results(conn)?
                     .into_iter()
-                    .map(|data| data.id)
                     .collect::<HashSet<_>>()
             };
             // Adjust the entity count; we can tell which operation was

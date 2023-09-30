@@ -171,7 +171,7 @@ impl Object {
         ObjectIter::new(self)
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
