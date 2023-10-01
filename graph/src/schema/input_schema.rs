@@ -15,7 +15,7 @@ use crate::data::store::{
 use crate::data::value::Word;
 use crate::prelude::q::Value;
 use crate::prelude::{s, DeploymentHash};
-use crate::schema::api_schema;
+use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use super::fulltext::FulltextDefinition;

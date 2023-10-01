@@ -326,7 +326,7 @@ fn add_introspection_schema(schema: &mut Document) {
 /// The input schema should only have type/enum/interface/union definitions
 /// and must not include a root Query type. This Query type is derived, with
 /// all its fields and their input arguments, based on the existing types.
-pub fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
+pub(in crate::schema) fn api_schema(input_schema: &Document) -> Result<Document, APISchemaError> {
     // Refactor: Take `input_schema` by value.
     let object_types = input_schema.get_object_type_definitions();
     let interface_types = input_schema.get_interface_type_definitions();

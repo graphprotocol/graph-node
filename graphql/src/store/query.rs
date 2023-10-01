@@ -799,7 +799,7 @@ mod tests {
             s::{self, Directive, Field, InputValue, ObjectType, Type, Value as SchemaValue},
             EntityOrder,
         },
-        schema::{ApiSchema, InputSchema, Schema},
+        schema::InputSchema,
     };
     use graphql_parser::Pos;
     use std::{collections::BTreeMap, iter::FromIterator, sync::Arc};
@@ -900,19 +900,6 @@ mod tests {
     }
 
     fn build_default_schema() -> SchemaPair {
-        // These schemas are somewhat nonsensical and just good enough to
-        // run the tests. The `API_SCHEMA` does not look like anything that
-        // would be generated from the `INPUT_SCHEMA`
-        const API_SCHEMA: &str = r#"
-        type Query {
-            aField(first: Int, skip: Int): [SomeType]
-        }
-
-        type SomeType @entity {
-            id: ID!
-            name: String!
-        }
-    "#;
         const INPUT_SCHEMA: &str = r#"
         type Entity1 @entity { id: ID! }
         type Entity2 @entity { id: ID! }
@@ -925,11 +912,7 @@ mod tests {
 
         let id = DeploymentHash::new("id").unwrap();
         let input_schema = InputSchema::parse(INPUT_SCHEMA, id.clone()).unwrap();
-        let api_schema = graphql_parser::parse_schema(API_SCHEMA)
-            .expect("Failed to parse raw schema")
-            .into_static();
-        let api_schema = Schema::new(id, api_schema).unwrap();
-        let api_schema = ApiSchema::from_graphql_schema(api_schema).unwrap();
+        let api_schema = input_schema.api_schema().unwrap();
 
         SchemaPair {
             input: input_schema,
