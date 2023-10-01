@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use graph::components::store::QueryPermit;
-use graph::data::graphql::{object, object_value, ObjectOrInterface};
+use graph::data::graphql::{object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
     async_trait, o, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
