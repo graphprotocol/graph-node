@@ -49,7 +49,11 @@ impl<'a> TryFrom<&s::ObjectType> for IdType {
     type Error = Error;
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
-        let base_type = obj_type.field(&*ID).unwrap().field_type.get_base_type();
+        let base_type = obj_type
+            .field(&*ID)
+            .ok_or_else(|| anyhow!("Type {} does not have an `id` field", obj_type.name))?
+            .field_type
+            .get_base_type();
 
         match base_type {
             "ID" | "String" => Ok(IdType::String),

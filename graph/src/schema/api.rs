@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 
-use graphql_parser::{schema::TypeDefinition, Pos};
+use graphql_parser::Pos;
 use inflector::Inflector;
 use lazy_static::lazy_static;
 
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
+use crate::data::store::IdType;
 use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
@@ -23,6 +24,8 @@ pub enum APISchemaError {
     TypeNotFound(String),
     #[error("Fulltext search is not yet deterministic")]
     FulltextSearchNonDeterministic,
+    #[error("Illegal type for `id`: {0}")]
+    IllegalIdType(String),
 }
 
 // The followoing types are defined in meta.graphql
@@ -72,10 +75,20 @@ impl TryFrom<&r::Value> for ErrorPolicy {
     }
 }
 
-/// The schema used for responding to queries. It is generated from an
-/// `InputSchema` by calling `api_schema` on it. Code that handles GraphQL
-/// queries against a subgraph should use an `ApiSchema` to access the
-/// underlying GraphQL schema
+/// A GraphQL schema used for responding to queries. These schemas can be
+/// generated in one of two ways:
+///
+/// (1) By calling `api_schema()` on an `InputSchema`. This is the way to
+/// generate a query schema for a subgraph.
+///
+/// (2) By parsing an appropriate GraphQL schema from text and calling
+/// `from_graphql_schema`. In that case, it's the caller's responsibility to
+/// make sure that the schema has all the types needed for querying, like
+/// `Query` and `Subscription`
+///
+/// Because of the second point, once constructed, it can not be assumed
+/// that an `ApiSchema` is based on an `InputSchema` and it can only be used
+/// for querying.
 #[derive(Debug)]
 pub struct ApiSchema {
     schema: Schema,
@@ -87,28 +100,28 @@ pub struct ApiSchema {
 }
 
 impl ApiSchema {
-    /// `api_schema` will typically come from `fn api_schema` in the graphql
-    /// crate.
+    /// Set up the `ApiSchema`, mostly by extracting important pieces of
+    /// information from it like `query_type` etc.
     ///
     /// In addition, the API schema has an introspection schema mixed into
     /// `api_schema`. In particular, the `Query` type has fields called
     /// `__schema` and `__type`
-    pub(crate) fn from_api_schema(mut api_schema: Schema) -> Result<Self, anyhow::Error> {
-        add_introspection_schema(&mut api_schema.document);
+    pub(in crate::schema) fn from_api_schema(mut schema: Schema) -> Result<Self, anyhow::Error> {
+        add_introspection_schema(&mut schema.document);
 
-        let query_type = api_schema
+        let query_type = schema
             .document
             .get_root_query_type()
             .context("no root `Query` in the schema")?
             .clone();
-        let subscription_type = api_schema
+        let subscription_type = schema
             .document
             .get_root_subscription_type()
             .cloned()
             .map(Arc::new);
 
         let object_types = HashMap::from_iter(
-            api_schema
+            schema
                 .document
                 .get_object_type_definitions()
                 .into_iter()
@@ -116,7 +129,7 @@ impl ApiSchema {
         );
 
         Ok(Self {
-            schema: api_schema,
+            schema,
             query_type: Arc::new(query_type),
             subscription_type,
             object_types,
@@ -564,6 +577,7 @@ fn field_filter_input_values(
                 .ok_or_else(|| APISchemaError::TypeNotFound(name.clone()))?;
             Ok(match named_type {
                 TypeDefinition::Object(_) | TypeDefinition::Interface(_) => {
+                    let scalar_type = id_type_as_scalar(schema, named_type)?.unwrap();
                     let mut input_values = match ast::get_derived_from_directive(field) {
                         // Only add `where` filter fields for object and interface fields
                         // if they are not @derivedFrom
@@ -572,11 +586,7 @@ fn field_filter_input_values(
                         // `where: { others: ["some-id", "other-id"] }`. In both cases,
                         // we allow ID strings as the values to be passed to these
                         // filters.
-                        None => field_scalar_filter_input_values(
-                            schema,
-                            field,
-                            &ScalarType::new(String::from("String")),
-                        ),
+                        None => field_scalar_filter_input_values(schema, field, &scalar_type),
                     };
                     extend_with_child_filter_input_value(field, name, &mut input_values);
                     input_values
@@ -591,6 +601,31 @@ fn field_filter_input_values(
         }
         Type::NonNullType(ref t) => field_filter_input_values(schema, field, t),
     }
+}
+
+fn id_type_as_scalar(
+    schema: &Document,
+    typedef: &TypeDefinition,
+) -> Result<Option<ScalarType>, APISchemaError> {
+    let id_type = match typedef {
+        TypeDefinition::Object(obj_type) => IdType::try_from(obj_type)
+            .map(Option::Some)
+            .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned())),
+        TypeDefinition::Interface(intf_type) => match intf_type.implements_interfaces.as_slice() {
+            [] => Ok(Some(IdType::String)),
+            [obj_type, ..] => {
+                let obj_type = schema.get_object_type_definition(&obj_type).unwrap();
+                IdType::try_from(obj_type)
+                    .map(Option::Some)
+                    .map_err(|_| APISchemaError::IllegalIdType(obj_type.name.to_owned()))
+            }
+        },
+        _ => Ok(None),
+    }?;
+    let scalar_type = id_type.map(|id_type| match id_type {
+        IdType::String | IdType::Bytes => ScalarType::new(String::from("String")),
+    });
+    Ok(scalar_type)
 }
 
 /// Generates `*_filter` input values for the given scalar field.
@@ -706,7 +741,9 @@ fn field_list_filter_input_values(
                 if ast::get_derived_from_directive(field).is_some() {
                     (None, Some(name.clone()))
                 } else {
-                    (Some(Type::NamedType("String".into())), Some(name.clone()))
+                    let scalar_type = id_type_as_scalar(schema, typedef).unwrap().unwrap();
+                    let named_type = Type::NamedType(scalar_type.name);
+                    (Some(named_type), Some(name.clone()))
                 }
             }
             TypeDefinition::Scalar(ref t) => (Some(Type::NamedType(t.name.clone())), None),
