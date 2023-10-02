@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Error};
@@ -25,6 +26,19 @@ use super::{ApiSchema, AsEntityTypeName, EntityType, Schema};
 pub(crate) const POI_OBJECT: &str = "Poi$";
 /// The name of the digest attribute of POI entities
 const POI_DIGEST: &str = "digest";
+
+mod kw {
+    pub const ENTITY: &str = "entity";
+    pub const IMMUTABLE: &str = "immutable";
+    pub const TIMESERIES: &str = "timeseries";
+    pub const TIMESTAMP: &str = "timestamp";
+    pub const AGGREGATE: &str = "aggregate";
+    pub const AGGREGATION: &str = "aggregation";
+    pub const SOURCE: &str = "source";
+    pub const FUNC: &str = "fn";
+    pub const ARG: &str = "arg";
+    pub const INTERVALS: &str = "intervals";
+}
 
 /// The internal representation of a subgraph schema, i.e., the
 /// `schema.graphql` file that is part of a subgraph. Any code that deals
@@ -361,6 +375,58 @@ impl EnumMap {
 
     fn values(&self, name: &str) -> Option<Arc<BTreeSet<String>>> {
         self.0.get(name).cloned()
+    }
+}
+
+pub enum AggregateFn {
+    Sum,
+    Max,
+    Cnt,
+}
+
+impl FromStr for AggregateFn {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "sum" => Ok(AggregateFn::Sum),
+            "max" => Ok(AggregateFn::Max),
+            "count" => Ok(AggregateFn::Cnt),
+            _ => Err(anyhow!("invalid aggregate function `{}`", s)),
+        }
+    }
+}
+
+impl AggregateFn {
+    pub fn has_arg(&self) -> bool {
+        match self {
+            AggregateFn::Sum | AggregateFn::Max => true,
+            AggregateFn::Cnt => false,
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match self {
+            AggregateFn::Sum => "sum",
+            AggregateFn::Max => "max",
+            AggregateFn::Cnt => "count",
+        }
+    }
+}
+pub enum AggregationInterval {
+    Hour,
+    Day,
+}
+
+impl FromStr for AggregationInterval {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "hour" => Ok(AggregationInterval::Hour),
+            "day" => Ok(AggregationInterval::Day),
+            _ => Err(anyhow!("invalid aggregation interval `{}`", s)),
+        }
     }
 }
 
@@ -816,8 +882,9 @@ mod validations {
         env::ENV_VARS,
         prelude::s,
         schema::{
+            input_schema::{kw, AggregateFn, AggregationInterval},
             FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
-            Strings, SCHEMA_TYPE_NAME,
+            SchemaValidationError as Err, Strings, SCHEMA_TYPE_NAME,
         },
     };
 
@@ -827,6 +894,7 @@ mod validations {
         subgraph_schema_type: Option<&'a s::ObjectType>,
         // All entity types, excluding the subgraph schema type
         entity_types: Vec<&'a s::ObjectType>,
+        aggregations: Vec<&'a s::ObjectType>,
     }
 
     pub(super) fn validate(schema: &BaseSchema) -> Result<(), Vec<SchemaValidationError>> {
@@ -846,10 +914,11 @@ mod validations {
         .map(Result::unwrap_err)
         .collect();
 
+        errors.append(&mut schema.validate_entity_directives());
         errors.append(&mut schema.validate_entity_type_ids());
         errors.append(&mut schema.validate_fields());
         errors.append(&mut schema.validate_fulltext_directives());
-
+        errors.append(&mut schema.validate_aggregations());
         if errors.is_empty() {
             Ok(())
         } else {
@@ -862,11 +931,14 @@ mod validations {
             let subgraph_schema_type = schema.subgraph_schema_object_type();
             let mut entity_types = schema.document.get_object_type_definitions();
             entity_types.retain(|obj_type| obj_type.find_directive("entity").is_some());
+            let mut aggregations = schema.document.get_object_type_definitions();
+            aggregations.retain(|obj_type| obj_type.find_directive("aggregation").is_some());
 
             Schema {
                 schema,
                 subgraph_schema_type,
                 entity_types,
+                aggregations,
             }
         }
 
@@ -1096,6 +1168,54 @@ mod validations {
                         errors
                     })
                 })
+        }
+
+        /// The `@entity` direactive accepts two flags `immutable` and
+        /// `timeseries`, and when `timeseries` is `true`, `immutable` can
+        /// not be `false`.
+        ///
+        /// For timeseries, also check that there is a `timestamp` field of
+        /// type `Int8`
+        fn validate_entity_directives(&self) -> Vec<SchemaValidationError> {
+            fn bool_arg(
+                dir: &s::Directive,
+                name: &str,
+            ) -> Result<Option<bool>, SchemaValidationError> {
+                let arg = dir.argument(name);
+                match arg {
+                    Some(s::Value::Boolean(b)) => Ok(Some(*b)),
+                    Some(_) => Err(SchemaValidationError::EntityDirectiveNonBooleanArgValue(
+                        name.to_owned(),
+                    )),
+                    None => Ok(None),
+                }
+            }
+
+            self.entity_types
+                .iter()
+                .filter_map(|object_type| {
+                    let dir = object_type.find_directive(kw::ENTITY).unwrap();
+                    let timeseries = match bool_arg(dir, kw::TIMESERIES) {
+                        Ok(b) => b.unwrap_or(false),
+                        Err(e) => return Some(e),
+                    };
+                    let immutable = match bool_arg(dir, kw::IMMUTABLE) {
+                        Ok(b) => b.unwrap_or(timeseries),
+                        Err(e) => return Some(e),
+                    };
+                    if timeseries {
+                        if !immutable {
+                            Some(SchemaValidationError::MutableTimeseries(
+                                object_type.name.clone(),
+                            ))
+                        } else {
+                            Self::valid_timestamp_field(object_type)
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect()
         }
 
         /// 1. All object types besides `_Schema_` must have an id field
@@ -1369,10 +1489,340 @@ mod validations {
             }
             Ok(())
         }
+
+        fn validate_aggregations(&self) -> Vec<SchemaValidationError> {
+            /// Aggregations must have an `id` field with the same type as
+            /// the id field for the source type
+            fn valid_id_field(
+                agg_type: &s::ObjectType,
+                src_id_type: IdType,
+                errors: &mut Vec<Err>,
+            ) {
+                match IdType::try_from(agg_type) {
+                    Ok(agg_id_type) => {
+                        if agg_id_type != src_id_type {
+                            errors.push(Err::IllegalIdType(format!(
+                                "The type of the `id` field for aggregation {} must be {}, the same as in the source, but is {}",
+                                agg_type.name, src_id_type, agg_id_type
+                            )))
+                        }
+                    }
+                    Err(e) => errors.push(Err::IllegalIdType(e.to_string())),
+                }
+            }
+
+            fn no_derived_fields(agg_type: &s::ObjectType, errors: &mut Vec<Err>) {
+                for field in &agg_type.fields {
+                    if field.find_directive("derivedFrom").is_some() {
+                        errors.push(Err::AggregationDerivedField(
+                            agg_type.name.to_owned(),
+                            field.name.to_owned(),
+                        ));
+                    }
+                }
+            }
+
+            fn aggregate_fields_are_numbers(agg_type: &s::ObjectType, errors: &mut Vec<Err>) {
+                let errs = agg_type
+                    .fields
+                    .iter()
+                    .filter(|field| field.find_directive(kw::AGGREGATE).is_some())
+                    .map(|field| match field.field_type.value_type() {
+                        Ok(vt) => {
+                            if vt.is_numeric() {
+                                Ok(())
+                            } else {
+                                Err(Err::NonNumericAggregate(
+                                    agg_type.name.to_owned(),
+                                    field.name.to_owned(),
+                                ))
+                            }
+                        }
+                        Err(_) => Err(Err::FieldTypeUnknown(
+                            agg_type.name.to_owned(),
+                            field.name.to_owned(),
+                            field.field_type.get_base_type().to_owned(),
+                        )),
+                    })
+                    .filter_map(|err| err.err());
+                errors.extend(errs);
+            }
+
+            /// * `source` is an existing timeseries type
+            /// * all non-aggregate fields are also fields on the `source`
+            /// type and have the same type
+            /// * `arg` for each `@aggregate` is a numeric type in the
+            /// timeseries, coercible to the type of the field (e.g. `Int ->
+            /// BigDecimal`, but not `BigInt -> Int8`)
+            fn aggregate_directive(
+                schema: &Schema,
+                agg_type: &s::ObjectType,
+                errors: &mut Vec<Err>,
+            ) {
+                let source = match agg_type
+                    .find_directive(kw::AGGREGATION)
+                    .and_then(|dir| dir.argument(kw::SOURCE))
+                {
+                    Some(s::Value::String(source)) => source,
+                    Some(_) => {
+                        errors.push(Err::AggregationInvalidSource(agg_type.name.to_owned()));
+                        return;
+                    }
+                    None => {
+                        errors.push(Err::AggregationMissingSource(agg_type.name.to_owned()));
+                        return;
+                    }
+                };
+                let source = match schema.entity_types.iter().find(|ty| &ty.name == source) {
+                    Some(source) => *source,
+                    None => {
+                        errors.push(Err::AggregationUnknownSource(
+                            agg_type.name.to_owned(),
+                            source.to_owned(),
+                        ));
+                        return;
+                    }
+                };
+                match source
+                    .find_directive(kw::ENTITY)
+                    .and_then(|dir| dir.argument(kw::TIMESERIES))
+                {
+                    Some(s::Value::Boolean(true)) => { /* ok */ }
+                    Some(_) | None => {
+                        errors.push(Err::AggregationNonTimeseriesSource(
+                            agg_type.name.to_owned(),
+                            source.name.to_owned(),
+                        ));
+                        return;
+                    }
+                }
+                match IdType::try_from(source) {
+                    Ok(id_type) => valid_id_field(agg_type, id_type, errors),
+                    Err(e) => errors.push(Err::IllegalIdType(e.to_string())),
+                };
+
+                let mut has_aggregate = false;
+                for field in agg_type
+                    .fields
+                    .iter()
+                    .filter(|field| field.name != ID.as_str() && field.name != kw::TIMESTAMP)
+                {
+                    match field.find_directive(kw::AGGREGATE) {
+                        Some(agg) => {
+                            // The source field for an aggregate
+                            // must have the same type as the arg
+                            has_aggregate = true;
+                            let func = match agg.argument(kw::FUNC) {
+                                Some(s::Value::Enum(func) | s::Value::String(func)) => func,
+                                Some(v) => {
+                                    errors.push(Err::AggregationInvalidFn(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                        v.to_string(),
+                                    ));
+                                    continue;
+                                }
+                                None => {
+                                    errors.push(Err::AggregationMissingFn(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                            };
+                            let func = match func.parse::<AggregateFn>() {
+                                Ok(func) => func,
+                                Err(_) => {
+                                    errors.push(Err::AggregationInvalidFn(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                        func.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                            };
+                            let arg = match agg.argument(kw::ARG) {
+                                Some(s::Value::String(arg)) => arg,
+                                Some(_) => {
+                                    errors.push(Err::AggregationInvalidArg(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                                None => {
+                                    if func.has_arg() {
+                                        errors.push(Err::AggregationMissingArg(
+                                            agg_type.name.to_owned(),
+                                            field.name.to_owned(),
+                                            func.as_str().to_owned(),
+                                        ));
+                                        continue;
+                                    } else {
+                                        // No arg for a function
+                                        // that does not take an arg
+                                        continue;
+                                    }
+                                }
+                            };
+                            let arg_type = match source.field(arg) {
+                                Some(arg_field) => match arg_field.field_type.value_type() {
+                                    Ok(arg_type) if arg_type.is_numeric() => arg_type,
+                                    Ok(_) | Err(_) => {
+                                        errors.push(Err::AggregationNonNumericArg(
+                                            agg_type.name.to_owned(),
+                                            field.name.to_owned(),
+                                            source.name.to_owned(),
+                                            arg.to_owned(),
+                                        ));
+                                        continue;
+                                    }
+                                },
+                                None => {
+                                    errors.push(Err::AggregationUnknownArg(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                        arg.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                            };
+                            let field_type = match field.field_type.value_type() {
+                                Ok(field_type) => field_type,
+                                Err(_) => {
+                                    errors.push(Err::NonNumericAggregate(
+                                        agg_type.name.to_owned(),
+                                        field.name.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                            };
+                            if arg_type > field_type {
+                                errors.push(Err::AggregationNonMatchingArg(
+                                    agg_type.name.to_owned(),
+                                    field.name.to_owned(),
+                                    arg.to_owned(),
+                                    arg_type.to_str().to_owned(),
+                                    field_type.to_str().to_owned(),
+                                ));
+                            }
+                        }
+                        None => {
+                            // Non-aggregate fields must have the
+                            // same type as the type in the source
+                            let src_field = match source.field(&field.name) {
+                                Some(src_field) => src_field,
+                                None => {
+                                    errors.push(Err::AggregationUnknownField(
+                                        agg_type.name.to_owned(),
+                                        source.name.to_owned(),
+                                        field.name.to_owned(),
+                                    ));
+                                    continue;
+                                }
+                            };
+                            if field.field_type.get_base_type()
+                                != src_field.field_type.get_base_type()
+                            {
+                                errors.push(Err::AggregationNonMatchingType(
+                                    agg_type.name.to_owned(),
+                                    field.name.to_owned(),
+                                    field.field_type.get_base_type().to_owned(),
+                                    src_field.field_type.get_base_type().to_owned(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                if !has_aggregate {
+                    errors.push(Err::PointlessAggregation(agg_type.name.to_owned()));
+                }
+            }
+
+            fn aggregation_intervals(agg_type: &s::ObjectType, errors: &mut Vec<Err>) {
+                let intervals = match agg_type
+                    .find_directive(kw::AGGREGATION)
+                    .and_then(|dir| dir.argument(kw::INTERVALS))
+                {
+                    Some(s::Value::List(intervals)) => intervals,
+                    Some(_) => {
+                        errors.push(Err::AggregationWrongIntervals(agg_type.name.to_owned()));
+                        return;
+                    }
+                    None => {
+                        errors.push(Err::AggregationMissingIntervals(agg_type.name.to_owned()));
+                        return;
+                    }
+                };
+                let intervals = intervals
+                    .iter()
+                    .map(|interval| match interval {
+                        s::Value::String(s) => Ok(s),
+                        _ => Err(Err::AggregationWrongIntervals(agg_type.name.to_owned())),
+                    })
+                    .collect::<Result<Vec<_>, _>>();
+                let intervals = match intervals {
+                    Ok(intervals) => intervals,
+                    Err(err) => {
+                        errors.push(err);
+                        return;
+                    }
+                };
+                if intervals.is_empty() {
+                    errors.push(Err::AggregationWrongIntervals(agg_type.name.to_owned()));
+                    return;
+                }
+                for interval in intervals {
+                    if let Err(_) = interval.parse::<AggregationInterval>() {
+                        errors.push(Err::AggregationInvalidInterval(
+                            agg_type.name.to_owned(),
+                            interval.to_owned(),
+                        ));
+                    }
+                }
+            }
+
+            let mut errors = Vec::new();
+            for agg_type in &self.aggregations {
+                // FIXME: We could make it so that we silently add the `id` and
+                // `timestamp` fields instead of requiring users to always
+                // list them.
+                if let Some(err) = Self::valid_timestamp_field(agg_type) {
+                    errors.push(err);
+                }
+                no_derived_fields(agg_type, &mut errors);
+                aggregate_fields_are_numbers(agg_type, &mut errors);
+                aggregate_directive(self, agg_type, &mut errors);
+                // check timeseries directive has intervals and args
+                aggregation_intervals(agg_type, &mut errors);
+            }
+            errors
+        }
+
+        /// Aggregations must have a `timestamp` field of type Int8
+        /// FIXME: introduce a timestamp type and use that
+        fn valid_timestamp_field(agg_type: &s::ObjectType) -> Option<Err> {
+            let field = match agg_type.field(kw::TIMESTAMP) {
+                Some(field) => field,
+                None => {
+                    return Some(Err::TimestampFieldMissing(agg_type.name.to_owned()));
+                }
+            };
+
+            match field.field_type.value_type() {
+                Ok(ValueType::Int8) => None,
+                Ok(_) | Err(_) => Some(Err::InvalidTimestampType(
+                    agg_type.name.to_owned(),
+                    field.field_type.get_base_type().to_owned(),
+                )),
+            }
+        }
     }
 
     #[cfg(test)]
     mod tests {
+        use std::ffi::OsString;
+
         use crate::prelude::DeploymentHash;
 
         use super::*;
@@ -1675,30 +2125,80 @@ type Gravatar @entity {
             let schema = Schema::new(&schema);
             assert_eq!(schema.validate_fulltext_directives(), vec![]);
         }
-    }
 
-    #[test]
-    #[ignore]
-    fn agg() {
-        if ENV_VARS.enable_timeseries {
-            const SCHEMA: &str = r#"
-            type Data @entity(timeseries: true) {
-                id: Bytes!
-                timestamp: Int8!
-                token: Bytes!
-                price: BigDecimal!
+        #[test]
+        fn agg() {
+            // The test files for this test are all GraphQL schemas that
+            // must all have a comment as the first line. For a test that is
+            // expected to succeed, the comment must be `# valid: ..`. For
+            // tests that are expected to fail validation, the comment must
+            // be `# fail: <err>` where <err> must appear in one of the
+            // error messages when they are formatted as debug output.
+            if ENV_VARS.enable_timeseries {
+                let dir = std::path::PathBuf::from_iter([
+                    env!("CARGO_MANIFEST_DIR"),
+                    "src",
+                    "schema",
+                    "test_schemas",
+                ]);
+                let files = {
+                    let mut files = std::fs::read_dir(dir)
+                        .unwrap()
+                        .into_iter()
+                        .filter_map(|entry| entry.ok())
+                        .map(|entry| entry.path())
+                        .filter(|path| {
+                            path.extension() == Some(OsString::from("graphql").as_os_str())
+                        })
+                        .collect::<Vec<_>>();
+                    files.sort();
+                    files
+                };
+                for file in files {
+                    let schema = std::fs::read_to_string(&file).unwrap();
+                    let file_name = file.file_name().unwrap().to_str().unwrap();
+                    let first_line = schema.lines().next().unwrap();
+                    let (valid, msg) = if first_line.starts_with("# valid:") {
+                        (true, first_line.strip_prefix("# valid:").unwrap())
+                    } else if first_line.starts_with("# fail:") {
+                        (false, first_line.strip_prefix("# fail:").unwrap())
+                    } else {
+                        panic!("test case {file_name} needs a valid/fail annotation");
+                    };
+                    let msg = msg.trim();
+                    let schema = {
+                        let hash = DeploymentHash::new("test").unwrap();
+                        match BaseSchema::parse(&schema, hash) {
+                            Ok(schema) => schema,
+                            Err(e) => panic!("test case {file_name} failed to parse: {e}"),
+                        }
+                    };
+                    let res = validate(&schema);
+                    match (valid, res) {
+                        (true, Err(errs)) => {
+                            panic!("{file_name} should validate: {errs:?}",);
+                        }
+                        (false, Ok(_)) => {
+                            panic!("{file_name} should fail validation");
+                        }
+                        (false, Err(errs)) => {
+                            if errs.iter().any(|err| {
+                                err.to_string().contains(msg) || format!("{err:?}").contains(msg)
+                            }) {
+                                println!("{file_name} failed as expected: {errs:?}",)
+                            } else {
+                                let msgs: Vec<_> = errs.iter().map(|err| err.to_string()).collect();
+                                panic!(
+                                    "{file_name} failed but not with the expected error `{msg}`: {errs:?} {msgs:?}",
+                                )
+                            }
+                        }
+                        (true, Ok(_)) => {
+                            println!("{file_name} validated as expected")
+                        }
+                    }
+                }
             }
-            
-            type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
-                id: Int8!          # Filled automatically
-                timestamp: Int8!   # Filled automatically
-                token: Bytes!
-                max: BigDecimal! @aggregate(fn: "max", arg: "price")
-                sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
-            }"#;
-
-            let id = crate::prelude::DeploymentHash::new("test").unwrap();
-            let _schema = super::InputSchema::parse(SCHEMA, id).unwrap();
         }
     }
 }

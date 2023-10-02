@@ -1,9 +1,11 @@
+use anyhow::Error;
+
 use super::ObjectOrInterface;
 use crate::prelude::s::{
     Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use crate::prelude::ENV_VARS;
+use crate::prelude::{ValueType, ENV_VARS};
 use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use std::collections::{BTreeMap, HashMap};
 
@@ -242,6 +244,9 @@ pub trait TypeExt {
     fn get_base_type(&self) -> &str;
     fn is_list(&self) -> bool;
     fn is_non_null(&self) -> bool;
+    fn value_type(&self) -> Result<ValueType, Error> {
+        self.get_base_type().parse()
+    }
 }
 
 impl TypeExt for Type {

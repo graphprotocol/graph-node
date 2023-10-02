@@ -57,6 +57,8 @@ pub enum SchemaValidationError {
 
     #[error("@entity directive missing on the following types: `{0}`")]
     EntityDirectivesMissing(Strings),
+    #[error("The `{0}` argument of the @entity directive must be a boolean")]
+    EntityDirectiveNonBooleanArgValue(String),
 
     #[error(
         "Entity type `{0}` does not satisfy interface `{1}` because it is missing \
@@ -111,6 +113,62 @@ pub enum SchemaValidationError {
     IdFieldMissing(String),
     #[error("{0}")]
     IllegalIdType(String),
+    #[error("Timeseries {0} is missing a `timestamp` field")]
+    TimestampFieldMissing(String),
+    #[error("Aggregation {0}, field{1}: aggregates must use a numeric type, one of Int, Int8, BigInt, and BigDecimal")]
+    NonNumericAggregate(String, String),
+    #[error("Aggregation {0} is missing the `source` argument")]
+    AggregationMissingSource(String),
+    #[error(
+        "Aggregation {0} has an invalid argument for `source`: it must be the name of a timeseries"
+    )]
+    AggregationInvalidSource(String),
+    #[error("Aggregation {0} is missing an `intervals` argument for the timeseries directive")]
+    AggregationMissingIntervals(String),
+    #[error(
+        "Aggregation {0} has an invalid argument for `intervals`: it must be a non-empty list of strings"
+    )]
+    AggregationWrongIntervals(String),
+    #[error("Aggregation {0}: the interval {1} is not supported")]
+    AggregationInvalidInterval(String, String),
+    #[error("Aggregation {0} has no @aggregate fields")]
+    PointlessAggregation(String),
+    #[error(
+        "Aggregation {0} has a derived field {1} but fields in aggregations can not be derived"
+    )]
+    AggregationDerivedField(String, String),
+    #[error("Timeseries {0} is marked as mutable, it must be immutable")]
+    MutableTimeseries(String),
+    #[error("Timeseries {0} is missing a `timestamp` field")]
+    TimeseriesMissingTimestamp(String),
+    #[error("Type {0} has a `timestamp` field of type {1}, but it must be of type Int8")]
+    InvalidTimestampType(String, String),
+    #[error("Aggregaton {0} uses {1} as the source, but there is no timeseries of that name")]
+    AggregationUnknownSource(String, String),
+    #[error("Aggregation {0} uses {1} as the source, but that type is not a timeseries")]
+    AggregationNonTimeseriesSource(String, String),
+    #[error("Aggregation {0} uses {1} as the source, but that does not have a field {2}")]
+    AggregationUnknownField(String, String, String),
+    #[error("Field {1} in aggregation {0} has type {2} but its type in the source is {3}")]
+    AggregationNonMatchingType(String, String, String, String),
+    #[error("Field {1} in aggregation {0} has an invalid argument for `arg`: it must be a string")]
+    AggregationInvalidArg(String, String),
+    #[error("Field {1} in aggregation {0} uses the unknown aggregation function `{2}`")]
+    AggregationInvalidFn(String, String, String),
+    #[error("Field {1} in aggregation {0} is missing the `fn` argument")]
+    AggregationMissingFn(String, String),
+    #[error("Field {1} in aggregation {0} is missing the `arg` argument since the function {2} requires it")]
+    AggregationMissingArg(String, String, String),
+    #[error(
+        "Field {1} in aggregation {0} has `arg` {2} but the source type does not have such a field"
+    )]
+    AggregationUnknownArg(String, String, String),
+    #[error(
+        "Field {1} in aggregation {0} has `arg` {2} of type {3} but it is of the wider type {4} in the source"
+    )]
+    AggregationNonMatchingArg(String, String, String, String, String),
+    #[error("Field {1} in aggregation {0} has arg `{3}` but that is not a numeric field in {2}")]
+    AggregationNonNumericArg(String, String, String, String),
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.

@@ -12,11 +12,11 @@ use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use stable_hash::{FieldAddress, StableHash, StableHasher};
-use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::{borrow::Cow, cmp::Ordering};
 use strum_macros::IntoStaticStr;
 use thiserror::Error;
 
@@ -172,6 +172,59 @@ impl ValueType {
     /// Return `true` if `s` is the name of a builtin scalar type
     pub fn is_scalar(s: &str) -> bool {
         Self::from_str(s).is_ok()
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            ValueType::BigInt | ValueType::BigDecimal | ValueType::Int | ValueType::Int8 => true,
+            ValueType::Boolean | ValueType::Bytes | ValueType::String => false,
+        }
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            ValueType::Boolean => "Boolean",
+            ValueType::BigInt => "BigInt",
+            ValueType::Bytes => "Bytes",
+            ValueType::BigDecimal => "BigDecimal",
+            ValueType::Int => "Int",
+            ValueType::Int8 => "Int8",
+            ValueType::String => "String",
+        }
+    }
+}
+
+/// Types are ordered by how values for the types can be coerced to 'larger'
+/// types; for example, `Int < BigInt`
+impl PartialOrd for ValueType {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        use Ordering::*;
+        use ValueType::*;
+
+        match (self, other) {
+            (Boolean, Boolean)
+            | (BigInt, BigInt)
+            | (Bytes, Bytes)
+            | (BigDecimal, BigDecimal)
+            | (Int, Int)
+            | (Int8, Int8)
+            | (String, String) => Some(Equal),
+            (BigInt, BigDecimal)
+            | (Int, BigInt)
+            | (Int, BigDecimal)
+            | (Int, Int8)
+            | (Int8, BigInt)
+            | (Int8, BigDecimal) => Some(Less),
+            (BigInt, Int)
+            | (BigInt, Int8)
+            | (BigDecimal, BigInt)
+            | (BigDecimal, Int)
+            | (BigDecimal, Int8)
+            | (Int8, Int) => Some(Greater),
+            (Boolean, _) | (_, Boolean) | (Bytes, _) | (_, Bytes) | (String, _) | (_, String) => {
+                None
+            }
+        }
     }
 }
 
