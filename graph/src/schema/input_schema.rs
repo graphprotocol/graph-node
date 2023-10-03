@@ -57,19 +57,20 @@ pub struct InputSchema {
 enum TypeInfo {
     Object(ObjectType),
     Interface(InterfaceType),
+    Aggregation(Aggregation),
 }
 
 impl TypeInfo {
     fn is_object(&self) -> bool {
         match self {
             TypeInfo::Object(_) => true,
-            TypeInfo::Interface(_) => false,
+            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => false,
         }
     }
 
     fn is_interface(&self) -> bool {
         match self {
-            TypeInfo::Object(_) => false,
+            TypeInfo::Object(_) | TypeInfo::Aggregation(_) => false,
             TypeInfo::Interface(_) => true,
         }
     }
@@ -78,6 +79,7 @@ impl TypeInfo {
         match self {
             TypeInfo::Object(obj_type) => Some(obj_type.id_type),
             TypeInfo::Interface(intf_type) => Some(intf_type.id_type),
+            TypeInfo::Aggregation(agg_type) => Some(agg_type.id_type),
         }
     }
 
@@ -85,6 +87,7 @@ impl TypeInfo {
         match self {
             TypeInfo::Object(obj_type) => &obj_type.fields,
             TypeInfo::Interface(intf_type) => &intf_type.fields,
+            TypeInfo::Aggregation(agg_type) => &agg_type.fields,
         }
     }
 
@@ -92,6 +95,7 @@ impl TypeInfo {
         match self {
             TypeInfo::Object(obj_type) => obj_type.name,
             TypeInfo::Interface(intf_type) => intf_type.name,
+            TypeInfo::Aggregation(agg_type) => agg_type.name,
         }
     }
 
@@ -99,6 +103,7 @@ impl TypeInfo {
         match self {
             TypeInfo::Object(obj_type) => obj_type.immutable,
             TypeInfo::Interface(_) => false,
+            TypeInfo::Aggregation(_) => true,
         }
     }
 }
@@ -143,11 +148,16 @@ impl TypeInfo {
         TypeInfo::Object(ObjectType::for_poi(pool))
     }
 
+    fn for_aggregation(schema: &Schema, pool: &AtomPool, agg_type: &s::ObjectType) -> Self {
+        let agg_type = Aggregation::new(&schema, &pool, agg_type);
+        TypeInfo::Aggregation(agg_type)
+    }
+
     fn interfaces(&self) -> impl Iterator<Item = &str> {
         const NO_INTF: [Word; 0] = [];
         let interfaces = match &self {
             TypeInfo::Object(obj_type) => &obj_type.interfaces,
-            TypeInfo::Interface(_) => NO_INTF.as_slice(),
+            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => NO_INTF.as_slice(),
         };
         interfaces.iter().map(|interface| interface.as_str())
     }
@@ -155,7 +165,7 @@ impl TypeInfo {
     fn object_type(&self) -> Option<&ObjectType> {
         match &self {
             TypeInfo::Object(obj_type) => Some(obj_type),
-            TypeInfo::Interface(_) => None,
+            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
         }
     }
 }
@@ -310,7 +320,7 @@ pub struct InterfaceType {
     /// it is the same for all implementers of an interface. If an interface
     /// is not implemented at all, we arbitrarily use `String`
     pub id_type: IdType,
-    pub fields: Vec<Field>,
+    pub fields: Box<[Field]>,
 }
 
 impl InterfaceType {
@@ -378,6 +388,7 @@ impl EnumMap {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub enum AggregateFn {
     Sum,
     Max,
@@ -413,6 +424,7 @@ impl AggregateFn {
         }
     }
 }
+#[derive(PartialEq, Debug)]
 pub enum AggregationInterval {
     Hour,
     Day,
@@ -427,6 +439,120 @@ impl FromStr for AggregationInterval {
             "day" => Ok(AggregationInterval::Day),
             _ => Err(anyhow!("invalid aggregation interval `{}`", s)),
         }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug)]
+pub struct Arg {
+    pub name: Word,
+    pub value_type: ValueType,
+}
+
+impl Arg {
+    fn new(name: Word, src_type: &s::ObjectType) -> Self {
+        let value_type = src_type
+            .field(&name)
+            .unwrap()
+            .field_type
+            .value_type()
+            .unwrap();
+        Self { name, value_type }
+    }
+}
+#[derive(PartialEq, Debug)]
+pub struct Aggregate {
+    pub name: Word,
+    pub func: AggregateFn,
+    pub arg: Arg,
+    pub field_type: s::Type,
+    pub value_type: ValueType,
+}
+
+impl Aggregate {
+    fn new(
+        _schema: &Schema,
+        src_type: &s::ObjectType,
+        name: &str,
+        field_type: &s::Type,
+        dir: &s::Directive,
+    ) -> Self {
+        let func = dir
+            .argument("fn")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let arg = dir.argument("arg").unwrap().as_str().unwrap();
+        let arg = Arg::new(Word::from(arg), src_type);
+        Aggregate {
+            name: Word::from(name),
+            func,
+            arg,
+            field_type: field_type.clone(),
+            value_type: field_type.get_base_type().parse().unwrap(),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct Aggregation {
+    pub name: Atom,
+    pub id_type: IdType,
+    pub intervals: Box<[AggregationInterval]>,
+    pub source: Atom,
+    /// The non-aggregation fields of the time series
+    pub fields: Box<[Field]>,
+    pub aggregates: Box<[Aggregate]>,
+}
+
+impl Aggregation {
+    pub fn new(schema: &Schema, pool: &AtomPool, agg_type: &s::ObjectType) -> Self {
+        let name = pool.lookup(&agg_type.name).unwrap();
+        let id_type = IdType::try_from(agg_type).expect("validation caught any issues here");
+        let intervals = Self::parse_intervals(agg_type).into_boxed_slice();
+        let source = agg_type
+            .find_directive(kw::AGGREGATION)
+            .unwrap()
+            .argument("source")
+            .unwrap()
+            .as_str()
+            .unwrap();
+        let src_type = schema.document.get_object_type_definition(source).unwrap();
+        let source = pool.lookup(source).unwrap();
+        let fields = agg_type
+            .fields
+            .iter()
+            .filter(|field| field.find_directive(kw::AGGREGATE).is_none())
+            .map(|field| Field::new(schema, &field.name, &field.field_type, false))
+            .collect();
+        let aggregates = agg_type
+            .fields
+            .iter()
+            .filter_map(|field| field.find_directive(kw::AGGREGATE).map(|dir| (field, dir)))
+            .map(|(field, dir)| {
+                Aggregate::new(schema, src_type, &field.name, &field.field_type, dir)
+            })
+            .collect();
+        Self {
+            name,
+            id_type,
+            intervals,
+            source,
+            fields,
+            aggregates,
+        }
+    }
+
+    fn parse_intervals(agg_type: &s::ObjectType) -> Vec<AggregationInterval> {
+        let dir = agg_type.find_directive(kw::AGGREGATION).unwrap();
+        dir.argument(kw::INTERVALS)
+            .unwrap()
+            .as_list()
+            .unwrap()
+            .iter()
+            .map(|interval| interval.as_str().unwrap().parse().unwrap())
+            .collect()
     }
 }
 
@@ -470,6 +596,12 @@ impl InputSchema {
 
         let pool = Arc::new(atom_pool(&schema.document));
 
+        // There are a lot of unwraps in this code; they are all safe
+        // because the validations check for all the ways in which the
+        // unwrapping could go wrong. It would be better to rewrite all this
+        // code so that validation and construction of the internal data
+        // structures happen in one pass which would eliminate the need for
+        // unwrapping
         let obj_types = schema
             .document
             .get_object_type_definitions()
@@ -481,8 +613,15 @@ impl InputSchema {
             .get_interface_type_definitions()
             .into_iter()
             .map(|intf_type| TypeInfo::for_interface(&schema, &pool, intf_type));
+        let agg_types = schema
+            .document
+            .get_object_type_definitions()
+            .into_iter()
+            .filter(|obj_type| obj_type.find_directive(kw::AGGREGATION).is_some())
+            .map(|agg_type| TypeInfo::for_aggregation(&schema, &pool, agg_type));
         let mut type_infos: Vec<_> = obj_types
             .chain(intf_types)
+            .chain(agg_types)
             .chain(vec![TypeInfo::for_poi(&pool)])
             .collect();
         type_infos.sort_by_key(|ti| ti.name());
@@ -656,13 +795,24 @@ impl InputSchema {
             .collect())
     }
 
+    /// Return the object type with name `entity_type`. It is an error to
+    /// call this if `entity_type` refers to an interface or an aggregation
+    /// as they don't have an underlying type that stores data directly
     pub(in crate::schema) fn object_type(&self, entity_type: Atom) -> Result<&ObjectType, Error> {
-        match self.type_info(entity_type)? {
+        let ti = self.type_info(entity_type)?;
+        match ti {
             TypeInfo::Object(obj_type) => Ok(obj_type),
             TypeInfo::Interface(_) => {
                 let name = self.inner.pool.get(entity_type).unwrap();
                 bail!(
                     "expected `{}` to refer to an object type but it's an interface",
+                    name
+                )
+            }
+            TypeInfo::Aggregation(_) => {
+                let name = self.inner.pool.get(entity_type).unwrap();
+                bail!(
+                    "expected `{}` to refer to an object type but it's an aggregation",
                     name
                 )
             }
@@ -930,9 +1080,9 @@ mod validations {
         fn new(schema: &'a BaseSchema) -> Self {
             let subgraph_schema_type = schema.subgraph_schema_object_type();
             let mut entity_types = schema.document.get_object_type_definitions();
-            entity_types.retain(|obj_type| obj_type.find_directive("entity").is_some());
+            entity_types.retain(|obj_type| obj_type.find_directive(kw::ENTITY).is_some());
             let mut aggregations = schema.document.get_object_type_definitions();
-            aggregations.retain(|obj_type| obj_type.find_directive("aggregation").is_some());
+            aggregations.retain(|obj_type| obj_type.find_directive(kw::AGGREGATION).is_some());
 
             Schema {
                 schema,
@@ -1304,13 +1454,13 @@ mod validations {
         fn validate_no_extra_types(&self) -> Result<(), SchemaValidationError> {
             let extra_type = if ENV_VARS.enable_timeseries {
                 |t: &&s::ObjectType| {
-                    t.find_directive("entity").is_none()
+                    t.find_directive(kw::ENTITY).is_none()
                         && !t.name.eq(SCHEMA_TYPE_NAME)
-                        && t.find_directive("aggregation").is_none()
+                        && t.find_directive(kw::AGGREGATION).is_none()
                 }
             } else {
                 |t: &&s::ObjectType| {
-                    t.find_directive("entity").is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
+                    t.find_directive(kw::ENTITY).is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
                 }
             };
             let types_without_entity_directive = self

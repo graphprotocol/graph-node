@@ -140,7 +140,7 @@ pub const BIG_INT_SCALAR: &str = "BigInt";
 pub const BIG_DECIMAL_SCALAR: &str = "BigDecimal";
 pub const INT8_SCALAR: &str = "Int8";
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ValueType {
     Boolean,
     BigInt,

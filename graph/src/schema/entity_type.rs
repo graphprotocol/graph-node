@@ -55,6 +55,9 @@ impl EntityType {
         self.schema.id_type(self.atom)
     }
 
+    /// Return the object type for this entity type. It is an error to call
+    /// this if `entity_type` refers to an interface or an aggregation as
+    /// they don't have an underlying type that stores daa directly
     pub fn object_type(&self) -> Result<&ObjectType, Error> {
         self.schema.object_type(self.atom)
     }
