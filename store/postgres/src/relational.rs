@@ -219,10 +219,12 @@ impl Layout {
 
         // Construct a Table struct for each entity type, except for PoI
         // since we handle that specially
-        let mut tables = schema
-            .entity_types()
+        let entity_tables = schema.entity_types();
+        let ts_tables = schema.ts_entity_types();
+
+        let mut tables = entity_tables
             .iter()
-            .filter(|entity_type| !entity_type.is_poi())
+            .chain(ts_tables.iter())
             .enumerate()
             .map(|(i, entity_type)| {
                 Table::new(
@@ -237,6 +239,8 @@ impl Layout {
                 )
             })
             .collect::<Result<Vec<_>, _>>()?;
+        // Construct tables for timeseries
+
         if catalog.use_poi {
             tables.push(Self::make_poi_table(&schema, &catalog, tables.len()))
         }

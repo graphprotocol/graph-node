@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use pretty_assertions::assert_eq;
+// use pretty_assertions::assert_eq;
 
 use super::*;
 
@@ -81,6 +81,10 @@ fn generate_ddl() {
     let layout = test_layout(FORWARD_ENUM_GQL);
     let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FORWARD_ENUM_SQL, &sql);
+
+    let layout = test_layout(TS_GQL);
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    check_eqv(TS_SQL, &sql);
 }
 
 #[test]
@@ -614,3 +618,73 @@ create index attr_0_1_thing_orientation
     on "sgd0815"."thing" using btree("orientation");
 
 "#;
+
+const TS_GQL: &str = r#"
+type Data @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Int8!
+    amount: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+    id:        Int8!
+    timestamp: Int8!
+    volume:    BigDecimal! @aggregate(fn: "sum", arg: "amount")
+    maxPrice:  BigDecimal! @aggregate(fn: "max", arg: "amount")
+}
+"#;
+
+const TS_SQL: &str = r#"
+create table "sgd0815"."data" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "amount"             numeric not null,
+    unique(id)
+);
+create index brin_data
+    on "sgd0815"."data"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_0_0_data_timestamp
+    on "sgd0815"."data" using btree("timestamp");
+create index attr_0_1_data_amount
+    on "sgd0815"."data" using btree("amount");
+
+create table "sgd0815"."stats_hour" (
+    vid                  bigserial primary key,
+    block$                int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index brin_stats_hour
+    on "sgd0815"."stats_hour"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_1_0_stats_hour_timestamp
+    on "sgd0815"."stats_hour" using btree("timestamp");
+create index attr_1_1_stats_hour_volume
+    on "sgd0815"."stats_hour" using btree("volume");
+create index attr_1_2_stats_hour_max_price
+    on "sgd0815"."stats_hour" using btree("max_price");
+
+create table "sgd0815"."stats_day" (
+    vid                  bigserial primary key,
+    block$               int not null,
+    "id"                 int8 not null,
+    "timestamp"          int8 not null,
+    "volume"             numeric not null,
+    "max_price"          numeric not null,
+    unique(id)
+);
+create index brin_stats_day
+    on "sgd0815"."stats_day"
+ using brin(block$ int4_minmax_ops, vid int8_minmax_ops);
+create index attr_2_0_stats_day_timestamp
+    on "sgd0815"."stats_day" using btree("timestamp");
+create index attr_2_1_stats_day_volume
+    on "sgd0815"."stats_day" using btree("volume");
+create index attr_2_2_stats_day_max_price
+    on "sgd0815"."stats_day" using btree("max_price");"#;

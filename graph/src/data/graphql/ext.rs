@@ -25,13 +25,17 @@ impl ObjectTypeExt for ObjectType {
     }
 
     fn is_immutable(&self) -> bool {
-        self.find_directive("entity")
-            .and_then(|dir| dir.argument("immutable"))
-            .map(|value| match value {
-                Value::Boolean(b) => *b,
-                _ => false,
-            })
-            .unwrap_or(false)
+        let dir = match self.find_directive("entity") {
+            Some(dir) => dir,
+            None => return false,
+        };
+        match (dir.argument("immutable"), dir.argument("timeseries")) {
+            (Some(Value::Boolean(im)), Some(Value::Boolean(ts))) => *im && *ts,
+            (None, Some(Value::Boolean(ts))) => *ts,
+            (Some(Value::Boolean(im)), None) => *im,
+            (None, None) => false,
+            (_, _) => unreachable!("validations ensure we don't get here"),
+        }
     }
 }
 

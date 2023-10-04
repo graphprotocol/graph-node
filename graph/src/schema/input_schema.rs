@@ -124,6 +124,13 @@ impl TypeInfo {
             TypeInfo::Aggregation(_) => TypeKind::Aggregation,
         }
     }
+
+    fn aggregation(&self) -> Option<&Aggregation> {
+        match self {
+            TypeInfo::Aggregation(agg_type) => Some(agg_type),
+            TypeInfo::Interface(_) | TypeInfo::Object(_) => None,
+        }
+    }
 }
 
 impl TypeInfo {
@@ -179,16 +186,9 @@ impl TypeInfo {
         };
         interfaces.iter().map(|interface| interface.as_str())
     }
-
-    fn object_type(&self) -> Option<&ObjectType> {
-        match &self {
-            TypeInfo::Object(obj_type) => Some(obj_type),
-            TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
-        }
-    }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct Field {
     pub name: Word,
     pub field_type: s::Type,
@@ -257,6 +257,9 @@ pub struct ObjectType {
     pub id_type: IdType,
     pub fields: Box<[Field]>,
     pub immutable: bool,
+    /// The name of the aggregation to which this object type belongs if it
+    /// is part of an aggregation
+    aggregation: Option<Atom>,
     interfaces: Box<[Word]>,
     shared_interfaces: Box<[Atom]>,
 }
@@ -291,6 +294,7 @@ impl ObjectType {
             fields,
             id_type,
             immutable,
+            aggregation: None,
             interfaces,
             shared_interfaces,
         }
@@ -320,6 +324,7 @@ impl ObjectType {
             interfaces: Box::new([]),
             id_type: IdType::String,
             immutable: false,
+            aggregation: None,
             fields,
             shared_interfaces: Box::new([]),
         }
@@ -327,6 +332,11 @@ impl ObjectType {
 
     fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|field| field.name == name)
+    }
+
+    /// Return `true` if this object type is part of an aggregation
+    pub fn is_aggregation(&self) -> bool {
+        self.aggregation.is_some()
     }
 }
 
@@ -406,7 +416,7 @@ impl EnumMap {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum AggregateFn {
     Sum,
     Max,
@@ -442,10 +452,23 @@ impl AggregateFn {
         }
     }
 }
-#[derive(PartialEq, Debug)]
+
+/// The supported intervals for timeseries in order of decreasing
+/// granularity. The intervals must all be divisible by the smallest
+/// interval
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub enum AggregationInterval {
     Hour,
     Day,
+}
+
+impl AggregationInterval {
+    fn as_str(&self) -> &'static str {
+        match self {
+            AggregationInterval::Hour => "hour",
+            AggregationInterval::Day => "day",
+        }
+    }
 }
 
 impl FromStr for AggregationInterval {
@@ -511,6 +534,17 @@ impl Aggregate {
             value_type: field_type.get_base_type().parse().unwrap(),
         }
     }
+
+    /// The field needed for the finalised aggregation for hourly/daily
+    /// values
+    fn as_agg_field(&self) -> Field {
+        Field {
+            name: self.name.clone(),
+            field_type: self.field_type.clone(),
+            value_type: self.value_type,
+            is_derived: false,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -522,6 +556,9 @@ pub struct Aggregation {
     /// The non-aggregation fields of the time series
     pub fields: Box<[Field]>,
     pub aggregates: Box<[Aggregate]>,
+    /// The object types for the aggregated data, one for each interval, in
+    /// the same order as `intervals`
+    obj_types: Box<[ObjectType]>,
 }
 
 impl Aggregation {
@@ -538,18 +575,39 @@ impl Aggregation {
             .unwrap();
         let src_type = schema.document.get_object_type_definition(source).unwrap();
         let source = pool.lookup(source).unwrap();
-        let fields = agg_type
+        let fields: Box<[_]> = agg_type
             .fields
             .iter()
             .filter(|field| field.find_directive(kw::AGGREGATE).is_none())
             .map(|field| Field::new(schema, &field.name, &field.field_type, false))
             .collect();
-        let aggregates = agg_type
+        let aggregates: Box<[_]> = agg_type
             .fields
             .iter()
             .filter_map(|field| field.find_directive(kw::AGGREGATE).map(|dir| (field, dir)))
             .map(|(field, dir)| {
                 Aggregate::new(schema, src_type, &field.name, &field.field_type, dir)
+            })
+            .collect();
+
+        let obj_types = intervals
+            .iter()
+            .map(|interval| {
+                let name = format!("{}_{}", &agg_type.name, interval.as_str());
+                let name = pool.lookup(&name).unwrap();
+                ObjectType {
+                    name,
+                    id_type,
+                    fields: fields
+                        .iter()
+                        .cloned()
+                        .chain(aggregates.iter().map(Aggregate::as_agg_field))
+                        .collect(),
+                    immutable: true,
+                    aggregation: Some(name),
+                    interfaces: Box::new([]),
+                    shared_interfaces: Box::new([]),
+                }
             })
             .collect();
         Self {
@@ -559,18 +617,27 @@ impl Aggregation {
             source,
             fields,
             aggregates,
+            obj_types,
         }
     }
 
     fn parse_intervals(agg_type: &s::ObjectType) -> Vec<AggregationInterval> {
         let dir = agg_type.find_directive(kw::AGGREGATION).unwrap();
-        dir.argument(kw::INTERVALS)
+        let mut intervals: Vec<_> = dir
+            .argument(kw::INTERVALS)
             .unwrap()
             .as_list()
             .unwrap()
             .iter()
             .map(|interval| interval.as_str().unwrap().parse().unwrap())
-            .collect()
+            .collect();
+        intervals.sort();
+        intervals.dedup();
+        intervals
+    }
+
+    fn has_object_type(&self, atom: Atom) -> bool {
+        self.obj_types.iter().any(|obj_type| obj_type.name == atom)
     }
 }
 
@@ -735,21 +802,38 @@ impl InputSchema {
     }
 
     fn type_info(&self, atom: Atom) -> Result<&TypeInfo, Error> {
-        self.inner
-            .type_infos
-            .binary_search_by_key(&atom, |ti| ti.name())
-            .map(|idx| &self.inner.type_infos[idx])
-            .map_err(|_| match self.inner.pool.get(atom) {
-                Some(name) => anyhow!(
-                    "internal error: entity type `{}` does not exist in {}",
-                    name,
-                    self.inner.schema.id
-                ),
-                None => anyhow!(
-                    "Invalid atom {atom:?} for type_info lookup in {} (atom is probably from a different pool)",                     self.inner.schema.id
+        for ti in self.inner.type_infos.iter() {
+            match ti {
+                TypeInfo::Object(obj_type) => {
+                    if obj_type.name == atom {
+                        return Ok(ti);
+                    }
+                }
+                TypeInfo::Interface(intf_type) => {
+                    if intf_type.name == atom {
+                        return Ok(ti);
+                    }
+                }
+                TypeInfo::Aggregation(agg_type) => {
+                    if agg_type.has_object_type(atom) {
+                        return Ok(ti);
+                    }
+                }
+            }
+        }
 
-                ),
-            })
+        let err = match self.inner.pool.get(atom) {
+            Some(name) => anyhow!(
+                "internal error: entity type `{}` does not exist in {}",
+                name,
+                self.inner.schema.id
+            ),
+            None => anyhow!(
+                "Invalid atom {atom:?} for type_info lookup in {} (atom is probably from a different pool)",
+                self.inner.schema.id
+            ),
+        };
+        Err(err)
     }
 
     pub(in crate::schema) fn id_type(&self, entity_type: Atom) -> Result<store::IdType, Error> {
@@ -764,6 +848,7 @@ impl InputSchema {
     /// Check if `entity_type` is an immutable object type
     pub(in crate::schema) fn is_immutable(&self, entity_type: Atom) -> bool {
         self.type_info(entity_type)
+            .ok()
             .map(|ti| ti.is_immutable())
             .unwrap_or(false)
     }
@@ -801,6 +886,10 @@ impl InputSchema {
     ) -> Result<Vec<EntityType>, Error> {
         let obj_type = match &self.type_info(entity_type)? {
             TypeInfo::Object(obj_type) => obj_type,
+            TypeInfo::Aggregation(_) => {
+                /* aggregations don't implement interfaces */
+                return Ok(Vec::new());
+            }
             _ => bail!(
                 "expected `{}` to refer to an object type",
                 self.inner.pool.get(entity_type).unwrap_or("<unknown>")
@@ -827,12 +916,11 @@ impl InputSchema {
                     name
                 )
             }
-            TypeInfo::Aggregation(_) => {
-                let name = self.inner.pool.get(entity_type).unwrap();
-                bail!(
-                    "expected `{}` to refer to an object type but it's an aggregation",
-                    name
-                )
+            TypeInfo::Aggregation(agg_type) => {
+                agg_type.obj_types
+                    .iter()
+                    .find(|obj_type| obj_type.name == entity_type)
+                    .ok_or_else(|| anyhow!("type_info returns an aggregation only when it has the requested object type"))
             }
         }
     }
@@ -852,11 +940,30 @@ impl InputSchema {
         self.inner.enum_map.values(name)
     }
 
+    /// Return a list of the entity types defined in the schema, i.e., the
+    /// types that have a `@entity` annotation. This does not include the
+    /// type for the PoI
     pub fn entity_types(&self) -> Vec<EntityType> {
         self.inner
             .type_infos
             .iter()
-            .filter_map(TypeInfo::object_type)
+            .filter_map(|ti| match ti {
+                TypeInfo::Object(obj_type) => Some(obj_type),
+                TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
+            })
+            .map(|obj_type| EntityType::new(self.cheap_clone(), obj_type.name))
+            .filter(|entity_type| !entity_type.is_poi())
+            .collect()
+    }
+
+    /// Return a list of all the entity types for aggregations; these are
+    /// types derived from types with `@aggregation` annotations
+    pub fn ts_entity_types(&self) -> Vec<EntityType> {
+        self.inner
+            .type_infos
+            .iter()
+            .filter_map(TypeInfo::aggregation)
+            .flat_map(|ts_type| ts_type.obj_types.iter())
             .map(|obj_type| EntityType::new(self.cheap_clone(), obj_type.name))
             .collect()
     }
@@ -991,7 +1098,22 @@ fn atom_pool(document: &s::Document) -> AtomPool {
         match definition {
             s::Definition::TypeDefinition(typedef) => match typedef {
                 s::TypeDefinition::Object(t) => {
+                    static NO_VALUE: Vec<Value> = Vec::new();
+
                     pool.intern(&t.name);
+
+                    // For timeseries, also intern the names of the
+                    // additional types we generate.
+                    let intervals = t
+                        .find_directive(kw::AGGREGATION)
+                        .and_then(|dir| dir.argument(kw::INTERVALS))
+                        .and_then(Value::as_list)
+                        .unwrap_or(&NO_VALUE);
+                    for interval in intervals {
+                        if let Some(interval) = interval.as_str() {
+                            pool.intern(&format!("{}_{}", t.name, interval));
+                        }
+                    }
                     for field in &t.fields {
                         pool.intern(&field.name);
                     }
@@ -2380,7 +2502,10 @@ mod tests {
     use crate::{
         data::store::ID,
         prelude::DeploymentHash,
-        schema::input_schema::{POI_DIGEST, POI_OBJECT},
+        schema::{
+            input_schema::{POI_DIGEST, POI_OBJECT},
+            EntityType,
+        },
     };
 
     use super::InputSchema;
@@ -2390,12 +2515,44 @@ mod tests {
         id: ID!
         name: String!
       }
+
+      interface Animal {
+        name: String!
+      }
+
+      type Hippo implements Animal @entity {
+        id: ID!
+        name: String!
+      }
+
+      type Rhino implements Animal @entity {
+        id: ID!
+        name: String!
+      }
+
+      type HippoData @entity(timeseries: true) {
+        id: Int8!
+        hippo: Hippo!
+        timestamp: Int8!
+        weight: BigDecimal!
+      }
+
+      type HippoStats @aggregation(intervals: ["hour"], source: "HippoData") {
+        id: Int8!
+        timestamp: Int8!
+        hippo: Hippo!
+        maxWeight: BigDecimal! @aggregate(fn: "max", arg:"weight")
+      }
     "#;
+
+    fn make_schema() -> InputSchema {
+        let id = DeploymentHash::new("test").unwrap();
+        InputSchema::parse(SCHEMA, id).unwrap()
+    }
 
     #[test]
     fn entity_type() {
-        let id = DeploymentHash::new("test").unwrap();
-        let schema = InputSchema::parse(SCHEMA, id).unwrap();
+        let schema = make_schema();
 
         assert_eq!("Thing", schema.entity_type("Thing").unwrap().as_str());
 
@@ -2440,5 +2597,64 @@ mod tests {
         assert_eq!(vec![cat.clone()], dog.share_interfaces().unwrap());
         assert_eq!(vec![dog], cat.share_interfaces().unwrap());
         assert!(person.share_interfaces().unwrap().is_empty());
+    }
+
+    #[test]
+    fn intern() {
+        static NAMES: &[&str] = &[
+            "Thing",
+            "Animal",
+            "Hippo",
+            "HippoStats",
+            "HippoStats_hour",
+            "id",
+            "name",
+            "timestamp",
+            "hippo",
+            "maxWeight",
+        ];
+
+        let schema = make_schema();
+        let pool = schema.pool();
+
+        for name in NAMES {
+            assert!(pool.lookup(name).is_some(), "The string {name} is interned");
+        }
+    }
+
+    #[test]
+    fn object_type() {
+        let schema = make_schema();
+        let pool = schema.pool();
+
+        let animal = pool.lookup("Animal").unwrap();
+        let hippo = pool.lookup("Hippo").unwrap();
+        let rhino = pool.lookup("Rhino").unwrap();
+        let hippo_data = pool.lookup("HippoData").unwrap();
+        let hippo_stats_hour = pool.lookup("HippoStats_hour").unwrap();
+
+        let animal_ent = EntityType::new(schema.clone(), animal);
+        // Interfaces don't have an object type
+        assert!(animal_ent.object_type().is_err());
+
+        let hippo_ent = EntityType::new(schema.clone(), hippo);
+        let hippo_obj = hippo_ent.object_type().unwrap();
+        assert_eq!(hippo_obj.name, hippo);
+        assert!(!hippo_ent.is_immutable());
+
+        let rhino_ent = EntityType::new(schema.clone(), rhino);
+        assert_eq!(hippo_ent.share_interfaces().unwrap(), vec![rhino_ent]);
+
+        let hippo_data_ent = EntityType::new(schema.clone(), hippo_data);
+        let hippo_data_obj = hippo_data_ent.object_type().unwrap();
+        assert_eq!(hippo_data_obj.name, hippo_data);
+        assert!(hippo_data_ent.share_interfaces().unwrap().is_empty());
+        assert!(hippo_data_ent.is_immutable());
+
+        let hippo_stats_hour_ent = EntityType::new(schema.clone(), hippo_stats_hour);
+        let hippo_stats_hour_obj = schema.object_type(hippo_stats_hour).unwrap();
+        assert_eq!(hippo_stats_hour_obj.name, hippo_stats_hour);
+        assert!(hippo_stats_hour_ent.share_interfaces().unwrap().is_empty());
+        assert!(hippo_stats_hour_ent.is_immutable());
     }
 }

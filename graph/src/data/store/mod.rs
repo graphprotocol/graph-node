@@ -228,6 +228,12 @@ impl PartialOrd for ValueType {
     }
 }
 
+impl From<ValueType> for s::Type {
+    fn from(value_type: ValueType) -> Self {
+        s::Type::NamedType(value_type.to_str().to_owned())
+    }
+}
+
 // Note: Do not modify fields without also making a backward compatible change to the StableHash impl (below)
 /// An attribute value is represented as an enum with variants for all supported value types.
 #[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
