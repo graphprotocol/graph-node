@@ -40,69 +40,56 @@ pub struct InputSchema {
 }
 
 #[derive(Debug, PartialEq)]
-enum TypeKind {
+enum TypeInfo {
     MutableObject(ObjectType),
     ImmutableObject(ObjectType),
     Interface(InterfaceType),
 }
 
-impl TypeKind {
+impl TypeInfo {
     fn is_object(&self) -> bool {
         match self {
-            TypeKind::MutableObject(_) | TypeKind::ImmutableObject(_) => true,
-            TypeKind::Interface(_) => false,
+            TypeInfo::MutableObject(_) | TypeInfo::ImmutableObject(_) => true,
+            TypeInfo::Interface(_) => false,
         }
     }
 
     fn is_interface(&self) -> bool {
         match self {
-            TypeKind::MutableObject(_) | TypeKind::ImmutableObject(_) => false,
-            TypeKind::Interface(_) => true,
+            TypeInfo::MutableObject(_) | TypeInfo::ImmutableObject(_) => false,
+            TypeInfo::Interface(_) => true,
         }
     }
 
     fn id_type(&self) -> Option<IdType> {
         match self {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => {
                 Some(obj_type.id_type)
             }
-            TypeKind::Interface(intf_type) => Some(intf_type.id_type),
+            TypeInfo::Interface(intf_type) => Some(intf_type.id_type),
         }
     }
 
     fn fields(&self) -> &[Field] {
         match self {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => {
                 &obj_type.fields
             }
-            TypeKind::Interface(intf_type) => &intf_type.fields,
+            TypeInfo::Interface(intf_type) => &intf_type.fields,
         }
     }
 
     fn name(&self) -> Atom {
         match self {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => {
                 obj_type.name
             }
-            TypeKind::Interface(intf_type) => intf_type.name,
+            TypeInfo::Interface(intf_type) => intf_type.name,
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
-struct TypeInfo {
-    kind: TypeKind,
-}
-
 impl TypeInfo {
-    fn new(_pool: &AtomPool, kind: TypeKind) -> Self {
-        Self { kind }
-    }
-
-    fn name(&self) -> Atom {
-        self.kind.name()
-    }
-
     fn for_object(schema: &Schema, pool: &AtomPool, obj_type: &s::ObjectType) -> Self {
         let shared_interfaces: Vec<_> = match schema.interfaces_for_type(&obj_type.name) {
             Some(intfs) => {
@@ -120,12 +107,11 @@ impl TypeInfo {
         };
         let object_type =
             ObjectType::new(schema, pool, obj_type, shared_interfaces.into_boxed_slice());
-        let kind = if obj_type.is_immutable() {
-            TypeKind::ImmutableObject(object_type)
+        if obj_type.is_immutable() {
+            TypeInfo::ImmutableObject(object_type)
         } else {
-            TypeKind::MutableObject(object_type)
-        };
-        Self::new(pool, kind)
+            TypeInfo::MutableObject(object_type)
+        }
     }
 
     fn for_interface(schema: &Schema, pool: &AtomPool, intf_type: &s::InterfaceType) -> Self {
@@ -136,7 +122,7 @@ impl TypeInfo {
             .map(|impls| impls.as_slice())
             .unwrap_or_else(|| EMPTY_VEC.as_slice());
         let intf_type = InterfaceType::new(schema, pool, intf_type, implementers);
-        Self::new(pool, TypeKind::Interface(intf_type))
+        TypeInfo::Interface(intf_type)
     }
 
     fn for_poi(pool: &AtomPool) -> Self {
@@ -144,28 +130,26 @@ impl TypeInfo {
         // it's an object type, but trying to look up the `s::ObjectType`
         // for it will turn up nothing.
         // See also https://github.com/graphprotocol/graph-node/issues/4873
-        Self {
-            kind: TypeKind::MutableObject(ObjectType::for_poi(pool)),
-        }
+        TypeInfo::MutableObject(ObjectType::for_poi(pool))
     }
 
     fn interfaces(&self) -> impl Iterator<Item = &str> {
         const NO_INTF: [Word; 0] = [];
-        let interfaces = match &self.kind {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
+        let interfaces = match &self {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => {
                 &obj_type.interfaces
             }
-            TypeKind::Interface(_) => NO_INTF.as_slice(),
+            TypeInfo::Interface(_) => NO_INTF.as_slice(),
         };
         interfaces.iter().map(|interface| interface.as_str())
     }
 
     fn object_type(&self) -> Option<&ObjectType> {
-        match &self.kind {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
+        match &self {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => {
                 Some(obj_type)
             }
-            TypeKind::Interface(_) => None,
+            TypeInfo::Interface(_) => None,
         }
     }
 }
@@ -553,7 +537,7 @@ impl InputSchema {
     pub(in crate::schema) fn id_type(&self, entity_type: Atom) -> Result<store::IdType, Error> {
         let type_info = self.type_info(entity_type)?;
 
-        type_info.kind.id_type().ok_or_else(|| {
+        type_info.id_type().ok_or_else(|| {
             let name = self.inner.pool.get(entity_type).unwrap();
             anyhow!("Entity type `{}` does not have an `id` field", name)
         })
@@ -562,7 +546,7 @@ impl InputSchema {
     /// Check if `entity_type` is an immutable object type
     pub(in crate::schema) fn is_immutable(&self, entity_type: Atom) -> bool {
         self.type_info(entity_type)
-            .map(|ti| matches!(ti.kind, TypeKind::ImmutableObject(_)))
+            .map(|ti| matches!(ti, TypeInfo::ImmutableObject(_)))
             .unwrap_or(false)
     }
 
@@ -574,7 +558,7 @@ impl InputSchema {
             .and_then(|atom| {
                 self.type_info(atom)
                     .ok()
-                    .map(|ti| ti.kind.is_object() || ti.kind.is_interface())
+                    .map(|ti| ti.is_object() || ti.is_interface())
             })
             .unwrap_or(false)
     }
@@ -584,8 +568,8 @@ impl InputSchema {
         let obj_type = self.type_info(entity_type).unwrap();
         obj_type.interfaces().map(|intf| {
             let atom = self.inner.pool.lookup(intf).unwrap();
-            match self.type_info(atom).unwrap().kind {
-                TypeKind::Interface(ref intf_type) => intf_type,
+            match self.type_info(atom).unwrap() {
+                TypeInfo::Interface(ref intf_type) => intf_type,
                 _ => unreachable!("expected `{intf}` to refer to an interface"),
             }
         })
@@ -597,8 +581,8 @@ impl InputSchema {
         &self,
         entity_type: Atom,
     ) -> Result<Vec<EntityType>, Error> {
-        let obj_type = match &self.type_info(entity_type)?.kind {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => obj_type,
+        let obj_type = match &self.type_info(entity_type)? {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => obj_type,
             _ => bail!(
                 "expected `{}` to refer to an object type",
                 self.inner.pool.get(entity_type).unwrap_or("<unknown>")
@@ -612,9 +596,9 @@ impl InputSchema {
     }
 
     pub(in crate::schema) fn find_object_type(&self, entity_type: Atom) -> Option<&ObjectType> {
-        self.type_info(entity_type).ok().map(|ti| match &ti.kind {
-            TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => obj_type,
-            TypeKind::Interface(_) => {
+        self.type_info(entity_type).ok().map(|ti| match ti {
+            TypeInfo::MutableObject(obj_type) | TypeInfo::ImmutableObject(obj_type) => obj_type,
+            TypeInfo::Interface(_) => {
                 let name = self.inner.pool.get(entity_type).unwrap();
                 unreachable!("expected `{}` to refer to an object type", name)
             }
@@ -710,9 +694,7 @@ impl InputSchema {
     pub(in crate::schema) fn has_field(&self, entity_type: Atom, name: Atom) -> bool {
         let name = self.inner.pool.get(name).unwrap();
         self.type_info(entity_type)
-            .map(|ti| {
-                ti.kind.is_object() && ti.kind.fields().iter().any(|field| field.name == name)
-            })
+            .map(|ti| ti.is_object() && ti.fields().iter().any(|field| field.name == name))
             .unwrap_or(false)
     }
 
