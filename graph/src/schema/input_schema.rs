@@ -70,12 +70,12 @@ impl TypeKind {
         }
     }
 
-    fn fields(&self) -> impl Iterator<Item = &Field> {
+    fn fields(&self) -> &[Field] {
         match self {
             TypeKind::MutableObject(obj_type) | TypeKind::ImmutableObject(obj_type) => {
-                obj_type.fields.iter()
+                &obj_type.fields
             }
-            TypeKind::Interface(intf_type) => intf_type.fields.iter(),
+            TypeKind::Interface(intf_type) => &intf_type.fields,
         }
     }
 
@@ -92,19 +92,11 @@ impl TypeKind {
 #[derive(Debug, PartialEq)]
 struct TypeInfo {
     kind: TypeKind,
-    fields: Box<[Atom]>,
 }
 
 impl TypeInfo {
-    fn new(pool: &AtomPool, kind: TypeKind) -> Self {
-        // The `unwrap` of `lookup` is safe because the pool was just
-        // constructed against the underlying schema
-        let fields = kind
-            .fields()
-            .map(|field| pool.lookup(&field.name).unwrap())
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
-        Self { kind, fields }
+    fn new(_pool: &AtomPool, kind: TypeKind) -> Self {
+        Self { kind }
     }
 
     fn name(&self) -> Atom {
@@ -152,11 +144,8 @@ impl TypeInfo {
         // it's an object type, but trying to look up the `s::ObjectType`
         // for it will turn up nothing.
         // See also https://github.com/graphprotocol/graph-node/issues/4873
-        let fields =
-            vec![pool.lookup(&ID).unwrap(), pool.lookup(POI_DIGEST).unwrap()].into_boxed_slice();
         Self {
             kind: TypeKind::MutableObject(ObjectType::for_poi(pool)),
-            fields,
         }
     }
 
@@ -718,9 +707,12 @@ impl InputSchema {
     }
 
     /// Check if `entity_type` is an object type and has a field `field`
-    pub(in crate::schema) fn has_field(&self, entity_type: Atom, field: Atom) -> bool {
+    pub(in crate::schema) fn has_field(&self, entity_type: Atom, name: Atom) -> bool {
+        let name = self.inner.pool.get(name).unwrap();
         self.type_info(entity_type)
-            .map(|ti| ti.kind.is_object() && ti.fields.contains(&field))
+            .map(|ti| {
+                ti.kind.is_object() && ti.kind.fields().iter().any(|field| field.name == name)
+            })
             .unwrap_or(false)
     }
 
