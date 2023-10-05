@@ -856,7 +856,7 @@ impl Entity {
             return Ok(());
         }
 
-        let object_type = key.entity_type.object_type().ok_or_else(|| {
+        let object_type = key.entity_type.object_type().map_err(|_| {
             EntityValidationError::UnknownEntityType {
                 entity: key.entity_type.to_string(),
                 id: key.entity_id.to_string(),

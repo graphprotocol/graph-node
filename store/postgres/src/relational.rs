@@ -1212,7 +1212,7 @@ impl Table {
     ) -> Result<Table, StoreError> {
         SqlName::check_valid_identifier(defn.as_str(), "object")?;
 
-        let object_type = defn.object_type().ok_or_else(|| {
+        let object_type = defn.object_type().map_err(|_| {
             constraint_violation!("The type `{}` is not an object type", defn.as_str())
         })?;
 

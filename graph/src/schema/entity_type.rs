@@ -55,8 +55,8 @@ impl EntityType {
         self.schema.id_type(self.atom)
     }
 
-    pub fn object_type(&self) -> Option<&ObjectType> {
-        self.schema.find_object_type(self.atom)
+    pub fn object_type(&self) -> Result<&ObjectType, Error> {
+        self.schema.object_type(self.atom)
     }
 
     /// Create a key from this type for an onchain entity

@@ -69,7 +69,7 @@ impl SubgraphForkTrait for SubgraphFork {
         let entity_type = self.schema.entity_type(&entity_type_name)?;
         let fields = &entity_type
             .object_type()
-            .ok_or_else(|| {
+            .map_err(|_| {
                 constraint_violation!("no object type called `{}` found", entity_type_name)
             })?
             .fields;

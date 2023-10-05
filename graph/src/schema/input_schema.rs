@@ -504,8 +504,7 @@ impl InputSchema {
         let field_name = derived_from.argument("field").unwrap();
 
         let field = self
-            .find_object_type(entity_type.atom)
-            .ok_or_else(|| field_err(key, "unknown entity type"))?
+            .object_type(entity_type.atom)?
             .field(field_name.as_str().unwrap())
             .ok_or_else(|| field_err(key, "unknown field"))?;
 
@@ -591,14 +590,17 @@ impl InputSchema {
             .collect())
     }
 
-    pub(in crate::schema) fn find_object_type(&self, entity_type: Atom) -> Option<&ObjectType> {
-        self.type_info(entity_type).ok().map(|ti| match ti {
-            TypeInfo::Object(obj_type) => obj_type,
+    pub(in crate::schema) fn object_type(&self, entity_type: Atom) -> Result<&ObjectType, Error> {
+        match self.type_info(entity_type)? {
+            TypeInfo::Object(obj_type) => Ok(obj_type),
             TypeInfo::Interface(_) => {
                 let name = self.inner.pool.get(entity_type).unwrap();
-                unreachable!("expected `{}` to refer to an object type", name)
+                bail!(
+                    "expected `{}` to refer to an object type but it's an interface",
+                    name
+                )
             }
-        })
+        }
     }
 
     /// Return a list of the names of all enum types
@@ -1692,7 +1694,7 @@ mod tests {
         assert_eq!(POI_OBJECT, poi.as_str());
         assert!(poi.has_field(schema.pool().lookup(&ID).unwrap()));
         assert!(poi.has_field(schema.pool().lookup(POI_DIGEST).unwrap()));
-        assert!(poi.object_type().is_some());
+        assert!(poi.object_type().is_ok());
 
         assert!(schema.entity_type("NonExistent").is_err());
     }
