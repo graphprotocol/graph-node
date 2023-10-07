@@ -1448,7 +1448,7 @@ async fn test_store_set_invalid_fields() {
     // So we just check the string contains them
     let err_string = err.to_string();
     dbg!(err_string.as_str());
-    assert!(err_string.contains("Entity `User` has fields not in schema: test2, test"));
+    assert!(err_string.contains("Attempted to set undefined fields [test, test2] for the entity type `User`. Make sure those fields are defined in the schema."));
 
     let err = host
         .store_set(
@@ -1459,7 +1459,7 @@ async fn test_store_set_invalid_fields() {
         .err()
         .unwrap();
 
-    err_says(err, "Entity `User` has fields not in schema: test3");
+    err_says(err, "Attempted to set undefined fields [test3] for the entity type `User`. Make sure those fields are defined in the schema.");
 
     // For apiVersion below 0.0.8, we should not error out
     let mut host2 = Host::new(

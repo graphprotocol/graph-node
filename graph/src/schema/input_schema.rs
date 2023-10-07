@@ -384,12 +384,7 @@ impl InputSchema {
         let field = self.inner.pool.lookup(field);
 
         match field {
-            Some(field) => self
-                .inner
-                .field_names
-                .get(entity_type)
-                .map(|fields| fields.contains(&field))
-                .unwrap_or(false),
+            Some(field_atom) => self.has_field(entity_type, field_atom),
             None => false,
         }
     }
