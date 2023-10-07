@@ -111,6 +111,11 @@ where
         let static_filters = self.inputs.static_filters
             || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
 
+        let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
+            Some(block) => !ds.end_block().map_or(false, |end| block.number <= end),
+            None => true, // No block ptr means we are at startBlock, so we don't filter out anything
+        };
+
         // if static_filters is enabled, build a minimal filter with the static data sources and
         // add the necessary filters based on templates.
         // if not enabled we just stick to the filter based on all the data sources.
@@ -128,10 +133,7 @@ where
                     .iter()
                     .filter_map(|ds| ds.as_onchain())
                     // Filter out data sources that have reached their end block if the block is final.
-                    .filter(|ds| match current_ptr.as_ref() {
-                        Some(block) => !ds.has_expired(block.number),
-                        None => true,
-                    }),
+                    .filter(end_block_filter),
             );
 
             let templates = self.ctx.instance().templates.clone();
@@ -147,10 +149,7 @@ where
                     .iter()
                     .filter_map(|h| h.data_source().as_onchain())
                     // Filter out data sources that have reached their end block if the block is final.
-                    .filter(|ds| match current_ptr.as_ref() {
-                        Some(block) => !ds.has_expired(block.number),
-                        None => true,
-                    }),
+                    .filter(end_block_filter),
             )
         }
     }
@@ -324,11 +323,9 @@ where
             }
         };
 
-        // Check if there are any datasources that have expired in this block. ie. they reached their
-        // end block in the previous block.
-        // A dataSource is deemed expired only after its end block has been processed.
-        // To efficiently ignore such expired dataSources, restart the block stream in the block immediately following the end block.
-        let has_expired_data_sources = self.inputs.end_blocks.contains(&(block_ptr.number - 1));
+        // Check if there are any datasources that have expired in this block. ie: the end_block
+        // of that data source is equal to the block number of the current block.
+        let has_expired_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
 
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
