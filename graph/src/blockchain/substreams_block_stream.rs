@@ -225,7 +225,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                     loop {
                         info!(&logger, "Waiting for next response");
                         let item = stream.next().await;
-                        info!(&logger, "Next response received");
+                        info!(&logger, "Next response received {}", next_response_to_string(&item));
                         match item {
                             Some(response) => {
                                 match process_substreams_response(
@@ -290,6 +290,39 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
             if !skip_backoff {
                 backoff.sleep_async().await;
             }
+        }
+    }
+}
+
+fn next_response_to_string(item: &Option<Result<Response, Status>>) -> String {
+    match item {
+        Some(Ok(response)) => match &response.message {
+            Some(Message::Session(ref session)) => {
+                format!("Session: {:?}", session)
+            }
+            Some(Message::Progress(_)) => {
+                format!("Progress")
+            }
+            Some(Message::BlockScopedData(ref block)) => {
+                let clock = block.clock.as_ref().unwrap();
+
+                format!("Block  #{} ({})", clock.number, clock.id)
+            }
+            Some(Message::BlockUndoSignal(ref block)) => {
+                let back_to = block.last_valid_block.as_ref().unwrap();
+
+                format!("BlockUndo to #{} ({})", back_to.number, back_to.id)
+            }
+            Some(msg) => "Other".to_string(),
+            None => {
+                format!("None")
+            }
+        },
+        Some(Err(status)) => {
+            format!("Error: {:?}", status)
+        }
+        None => {
+            format!("None")
         }
     }
 }
