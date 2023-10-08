@@ -379,6 +379,15 @@ impl InputSchema {
             .map(|fields| fields.contains(&field))
             .unwrap_or(false)
     }
+
+    pub fn has_field_with_name(&self, entity_type: &EntityType, field: &str) -> bool {
+        let field = self.inner.pool.lookup(field);
+
+        match field {
+            Some(field_atom) => self.has_field(entity_type, field_atom),
+            None => false,
+        }
+    }
 }
 
 /// Create a new pool that contains the names of all the types defined

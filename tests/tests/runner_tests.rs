@@ -41,7 +41,24 @@ impl RunnerTestRecipe {
 
         let (stores, hash) = tokio::join!(
             stores("./runner-tests/config.simple.toml"),
-            build_subgraph(&test_dir)
+            build_subgraph(&test_dir, None)
+        );
+
+        Self {
+            stores,
+            subgraph_name,
+            hash,
+        }
+    }
+
+    /// Builds a new test subgraph with a custom deploy command.
+    async fn new_with_custom_cmd(subgraph_name: &str, deploy_cmd: &str) -> Self {
+        let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
+        let test_dir = format!("./runner-tests/{}", subgraph_name);
+
+        let (stores, hash) = tokio::join!(
+            stores("./runner-tests/config.simple.toml"),
+            build_subgraph(&test_dir, Some(deploy_cmd))
         );
 
         Self {
@@ -148,6 +165,80 @@ async fn typename() -> anyhow::Result<()> {
     ctx.start_and_sync_to(stop_block).await;
 
     Ok(())
+}
+
+#[tokio::test]
+async fn api_version_0_0_7() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new_with_custom_cmd("api-version", "deploy:test-0-0-7").await;
+
+    // Before apiVersion 0.0.8 we allowed setting fields not defined in the schema.
+    // This test tests that it is still possible for lower apiVersion subgraphs
+    // to set fields not defined in the schema.
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_log(&mut block_1, "0.0.7");
+        vec![block_0, block_1]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let chain = chain(blocks, &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(&format!(r#"{{ testResults{{ id, message }} }}"#,))
+        .await
+        .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(object! {
+            testResults: vec![
+                object! { id: "0.0.7", message: "0.0.7" },
+            ]
+        })
+    );
+}
+
+#[tokio::test]
+async fn api_version_0_0_8() {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new_with_custom_cmd("api-version", "deploy:test-0-0-8").await;
+
+    // From apiVersion 0.0.8 we disallow setting fields not defined in the schema.
+    // This test tests that it is not possible to set fields not defined in the schema.
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_log(&mut block_1, "0.0.8");
+        vec![block_0, block_1]
+    };
+
+    let chain = chain(blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
+    let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.\twasm backtrace:\t    0: 0x2ebc - <unknown>!src/mapping/handleTestEvent\t in handler `handleTestEvent` at block #1 (0000000000000000000000000000000000000000000000000000000000000001)".to_string();
+    let expected_err = SubgraphError {
+        subgraph_id: ctx.deployment.hash.clone(),
+        message,
+        block_ptr: Some(stop_block),
+        handler: None,
+        deterministic: true,
+    };
+    assert_eq!(err, expected_err);
 }
 
 #[tokio::test]
@@ -954,8 +1045,11 @@ async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
 
     Ok(())
 }
-async fn build_subgraph(dir: &str) -> DeploymentHash {
-    build_subgraph_with_yarn_cmd(dir, "deploy:test").await
+
+/// deploy_cmd is the command to run to deploy the subgraph. If it is None, the
+/// default `yarn deploy:test` is used.
+async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd(dir, deploy_cmd.unwrap_or("deploy:test")).await
 }
 
 async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
