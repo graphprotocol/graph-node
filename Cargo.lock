@@ -1747,7 +1747,7 @@ dependencies = [
 
 [[package]]
 name = "graph-chain-starknet"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "graph",
  "graph-runtime-derive",
@@ -4464,7 +4464,7 @@ dependencies = [
 
 [[package]]
 name = "substreams-trigger-filter"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "anyhow",
  "hex",
@@ -5102,7 +5102,7 @@ dependencies = [
 
 [[package]]
 name = "trigger-filters"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "anyhow",
 ]

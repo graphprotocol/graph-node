@@ -12,7 +12,7 @@
 - **Initialization handler** - A new block handler filter `once` for `ethereum` data sources which enables subgraph developers to create a handle which will be called only once before all other handlers run. This configuration allows the subgraph to use the handler as an initialization handler, performing specific tasks at the start of indexing. [(#4725)](https://github.com/graphprotocol/graph-node/pull/4725)
 - **DataSourceContext in manifest** - `DataSourceContext` in Manifest - DataSourceContext can now be defined in the subgraph manifest. It's a free-form map accessible from the mapping. This feature is useful for templating chain-specific data in subgraphs that use the same codebase across multiple chains.[(#4848)](https://github.com/graphprotocol/graph-node/pull/4848)
 - `graph-node` version in index node API - The Index Node API now features a new query, Version, which can be used to query the current graph-node version and commit. [(#4852)](https://github.com/graphprotocol/graph-node/pull/4852)
-- Added subgraph status to index node API [(#4779)](https://github.com/graphprotocol/graph-node/pull/4779)
+- Added a '`paused`' field to Index Node API, a boolean indicating the subgraph’s pause status. [(#4779)](https://github.com/graphprotocol/graph-node/pull/4779)
 - Proof of Indexing logs now include block number [(#4798)](https://github.com/graphprotocol/graph-node/pull/4798)
 - `subgraph_features` table now tracks details about handlers used in a subgraph [(#4820)](https://github.com/graphprotocol/graph-node/pull/4820)
 - Configurable SSL for Postgres in Dockerfile -  ssl-mode for Postgres can now be configured via the connection string when deploying through Docker, offering enhanced flexibility in database security settings.[(#4840)](https://github.com/graphprotocol/graph-node/pull/4840)
@@ -43,7 +43,7 @@ Not Relevant
 * Update docker-compose.yml by @computeronix in https://github.com/graphprotocol/graph-node/pull/4844
  -->
 
-**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.32.0...e253ee14cda2d8456a86ae8f4e3f74a1a7979953
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.33.0...e253ee14cda2d8456a86ae8f4e3f74a1a7979953
 
 ## v0.32.0
 
