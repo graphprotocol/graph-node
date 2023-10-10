@@ -16,16 +16,25 @@
   <body id="body" class="no-focus-outline">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script type="module">
       import { renderYogaGraphiQL } from "https://unpkg.com/@graphql-yoga/graphiql@4.1.1/dist/yoga-graphiql.es.js";
+
       const endpoint = window.location.pathname.substring(
         0,
         window.location.pathname.length - "/graphql".length
       );
+
       renderYogaGraphiQL(root, {
         endpoint,
         title: "The GraphiQL",
+        logo: React.createElement("img", {
+          src: "https://storage.googleapis.com/graph-web/favicon.png",
+          style: {
+            height: "42px",
+          },
+        }),
       });
     </script>
   </body>
