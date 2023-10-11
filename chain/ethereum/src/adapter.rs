@@ -121,6 +121,21 @@ impl TriggerFilter {
     pub(crate) fn requires_traces(&self) -> bool {
         !self.call.is_empty() || self.block.requires_traces()
     }
+
+    #[cfg(debug_assertions)]
+    pub fn log(&self) -> &EthereumLogFilter {
+        &self.log
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn call(&self) -> &EthereumCallFilter {
+        &self.call
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn block(&self) -> &EthereumBlockFilter {
+        &self.block
+    }
 }
 
 impl bc::TriggerFilter<Chain> for TriggerFilter {
@@ -185,7 +200,7 @@ impl bc::TriggerFilter<Chain> for TriggerFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct EthereumLogFilter {
+pub struct EthereumLogFilter {
     /// Log filters can be represented as a bipartite graph between contracts and events. An edge
     /// exists between a contract and an event if a data source for the contract has a trigger for
     /// the event.
@@ -382,10 +397,20 @@ impl EthereumLogFilter {
         }
         filters.into_iter()
     }
+
+    #[cfg(debug_assertions)]
+    pub fn contract_addresses(&self) -> impl Iterator<Item = Address> + '_ {
+        self.contracts_and_events_graph
+            .nodes()
+            .filter_map(|node| match node {
+                LogFilterNode::Contract(address) => Some(address),
+                LogFilterNode::Event(_) => None,
+            })
+    }
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct EthereumCallFilter {
+pub struct EthereumCallFilter {
     // Each call filter has a map of filters keyed by address, each containing a tuple with
     // start_block and the set of function signatures
     pub contract_addresses_function_signatures:
@@ -583,7 +608,7 @@ impl From<&EthereumBlockFilter> for EthereumCallFilter {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct EthereumBlockFilter {
+pub struct EthereumBlockFilter {
     /// Used for polling block handlers, a hashset of (start_block, polling_interval)
     pub polling_intervals: HashSet<(BlockNumber, i32)>,
     pub contract_addresses: HashSet<(BlockNumber, Address)>,

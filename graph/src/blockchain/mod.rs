@@ -18,9 +18,7 @@ mod types;
 use crate::{
     cheap_clone::CheapClone,
     components::store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
-    data::subgraph::{
-        UnifiedMappingApiVersion, MIN_SPEC_VERSION, SPEC_VERSION_0_0_9,
-    },
+    data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION, SPEC_VERSION_0_0_9},
     data_source,
     prelude::DataSourceContext,
     runtime::{gas::GasCounter, AscHeap, HostExportError},

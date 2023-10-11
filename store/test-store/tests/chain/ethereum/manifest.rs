@@ -6,7 +6,9 @@ use std::time::Duration;
 use graph::blockchain::DataSource;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
-use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
+use graph::data::subgraph::{
+    SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
+};
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
@@ -514,10 +516,10 @@ dataSources:
 schema:
   file:
     /: /ipfs/Qmschema
-specVersion: 0.0.8
+specVersion: 0.0.9
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_8).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_9).await;
     // Check if end block is parsed correctly
     let data_source = manifest.data_sources.first().unwrap();
     let end_block = data_source.as_onchain().unwrap().end_block;

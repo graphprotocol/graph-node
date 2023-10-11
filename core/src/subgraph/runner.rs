@@ -106,14 +106,17 @@ where
         self.run_inner(break_on_restart).await
     }
 
-    fn build_filter(&self) -> C::TriggerFilter {
+    fn build_filter(&mut self) {
         let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.inputs.static_filters
             || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
 
+        // Filter out data sources that have reached their end block
         let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
-            Some(block) => !ds.end_block().map_or(false, |end| block.number <= end),
-            None => true, // No block ptr means we are at startBlock, so we don't filter out anything
+            // We filter out datasources for which the current block is at or past their end block.
+            Some(block) => ds.end_block().map_or(true, |end| block.number < end),
+            // If there is no current block, we keep all datasources.
+            None => true,
         };
 
         // if static_filters is enabled, build a minimal filter with the static data sources and
@@ -121,7 +124,7 @@ where
         // if not enabled we just stick to the filter based on all the data sources.
         // This specifically removes dynamic data sources based filters because these can be derived
         // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-        if static_filters {
+        let filter = if static_filters {
             if !self.inputs.static_filters {
                 info!(self.logger, "forcing subgraph to use static filters.")
             }
@@ -151,7 +154,9 @@ where
                     // Filter out data sources that have reached their end block if the block is final.
                     .filter(end_block_filter),
             )
-        }
+        };
+
+        self.ctx.filter = Some(filter);
     }
 
     pub async fn run(self) -> Result<(), Error> {
@@ -192,12 +197,17 @@ where
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
-            let filter = self.build_filter();
+            // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
+            self.build_filter();
 
-            let mut block_stream = new_block_stream(&self.inputs, &filter, &self.metrics.subgraph)
-                .await?
-                .map_err(CancelableError::Error)
-                .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream = new_block_stream(
+                &self.inputs,
+                self.ctx.filter.as_ref().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                &self.metrics.subgraph,
+            )
+            .await?
+            .map_err(CancelableError::Error)
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned

@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::process::Command;
+use std::str::FromStr;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +16,7 @@ use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::web3::types::Address;
 use graph::prelude::{
     hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
@@ -24,6 +26,7 @@ use graph_tests::fixture::ethereum::{
 };
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
+    TestContext,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
@@ -436,6 +439,26 @@ async fn end_block() -> anyhow::Result<()> {
         hash,
     } = RunnerTestRecipe::new("end-block").await;
 
+    // test if the TriggerFilter includes the given contract address
+    async fn test_filter(
+        ctx: &TestContext,
+        block_ptr: BlockPtr,
+        addr: &Address,
+        should_contain_addr: bool,
+    ) {
+        dbg!(block_ptr.number, should_contain_addr);
+        let runner = ctx.runner(block_ptr.clone()).await;
+        let runner = runner.run_for_test(false).await.unwrap();
+        let filter = runner.context().filter.as_ref().unwrap();
+        let addresses = filter.log().contract_addresses().collect::<Vec<_>>();
+
+        if should_contain_addr {
+            assert!(addresses.contains(&addr));
+        } else {
+            assert!(!addresses.contains(&addr));
+        };
+    }
+
     let blocks = {
         let block_0 = genesis();
         let block_1 = empty_block(block_0.ptr(), test_ptr(1));
@@ -459,7 +482,11 @@ async fn end_block() -> anyhow::Result<()> {
     let chain = chain(blocks.clone(), &stores, None).await;
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
 
-    ctx.start_and_sync_to(stop_block).await;
+    let addr = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
+
+    test_filter(&ctx, test_ptr(5), &addr, true).await;
+
+    test_filter(&ctx, stop_block, &addr, false).await;
 
     // query the last Block entity to check if its 8th block
     let query_res = ctx
@@ -476,20 +503,21 @@ async fn end_block() -> anyhow::Result<()> {
 
     // Unfail the subgraph to test a conflict between an onchain and offchain entity
     {
-        ctx.rewind(test_ptr(7));
+        ctx.rewind(test_ptr(6));
 
-        // Replace block number 7 with one that contains a different event
         let mut blocks = blocks[0..8].to_vec().clone();
 
         let block_8_1_ptr = test_ptr_reorged(8, 1);
         let block_8_1 = empty_block(test_ptr(7), block_8_1_ptr.clone());
         blocks.push(block_8_1);
+        blocks.push(empty_block(block_8_1_ptr, test_ptr(9)));
 
         let stop_block = blocks.last().unwrap().block.ptr();
 
         chain.set_block_stream(blocks.clone());
 
-        ctx.start_and_sync_to(stop_block).await;
+        test_filter(&ctx, test_ptr(7), &addr, true).await;
+        test_filter(&ctx, stop_block, &addr, false).await;
 
         // query the last Block entity to check if its 8th block
         let query_res = ctx

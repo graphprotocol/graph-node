@@ -67,6 +67,7 @@ where
     instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
+    pub filter: Option<C::TriggerFilter>,
     trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 }
 
@@ -81,6 +82,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             instance,
             instances,
             offchain_monitor,
+            filter: None,
             trigger_processor,
         }
     }
