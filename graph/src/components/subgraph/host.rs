@@ -76,7 +76,6 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,
-        block_ptr: BlockPtr,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
         state: BlockState<C>,
         proof_of_indexing: SharedProofOfIndexing,
