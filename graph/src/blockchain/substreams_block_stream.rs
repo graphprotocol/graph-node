@@ -309,7 +309,7 @@ async fn process_substreams_response<C: Blockchain, F: BlockStreamMapper<C>>(
             let cursor = match &event {
                 BlockStreamEvent::Revert(_, cursor) => cursor,
                 BlockStreamEvent::ProcessBlock(_, cursor) => cursor,
-                BlockStreamEvent::ProcessWasmBlock(_, _, _, cursor) => cursor,
+                BlockStreamEvent::ProcessWasmBlock(_, _, _, _, cursor) => cursor,
             }
             .to_string();
 

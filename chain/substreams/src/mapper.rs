@@ -6,6 +6,7 @@ use anyhow::{anyhow, Error};
 use graph::blockchain::block_stream::{
     BlockStreamEvent, BlockStreamMapper, BlockWithTriggers, FirehoseCursor, SubstreamsError,
 };
+use graph::blockchain::BlockTime;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::IdType;
 use graph::data::value::Word;
@@ -49,7 +50,7 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
         let Clock {
             id,
             number,
-            timestamp: _,
+            timestamp,
         } = clock;
 
         let block_ptr = BlockPtr {
@@ -59,8 +60,16 @@ impl BlockStreamMapper<Chain> for WasmBlockMapper {
 
         let block_data = block.into_boxed_slice();
 
+        // This is not a great idea: we really always need a timestamp; if
+        // substreams doesn't give us one, we use a fixed one which will
+        // lead to all kinds of strange behavior
+        let timestamp = timestamp
+            .map(|ts| BlockTime::since_epoch(ts.seconds, ts.nanos as u32))
+            .unwrap_or(BlockTime::NONE);
+
         Ok(BlockStreamEvent::ProcessWasmBlock(
             block_ptr,
+            timestamp,
             block_data,
             self.handler.clone(),
             cursor,

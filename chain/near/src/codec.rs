@@ -8,7 +8,7 @@ pub mod substreams_triggers;
 
 use graph::{
     blockchain::Block as BlockchainBlock,
-    blockchain::BlockPtr,
+    blockchain::{BlockPtr, BlockTime},
     prelude::{hex, web3::types::H256, BlockNumber},
 };
 use std::convert::TryFrom;
@@ -75,6 +75,11 @@ impl BlockchainBlock for Block {
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.parent_ptr()
     }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = i64::try_from(self.header().timestamp).unwrap();
+        BlockTime::since_epoch(ts, 0)
+    }
 }
 
 impl HeaderOnlyBlock {
@@ -100,6 +105,11 @@ impl BlockchainBlock for HeaderOnlyBlock {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         self.header().parent_ptr()
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = i64::try_from(self.header().timestamp).unwrap();
+        BlockTime::since_epoch(ts, 0)
     }
 }
 

@@ -1,5 +1,6 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
+use graph::blockchain::BlockTime;
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
@@ -156,6 +157,10 @@ impl BlockchainBlock for FakeBlock {
         };
 
         Ok(value)
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        BlockTime::NONE
     }
 }
 

@@ -12,7 +12,7 @@ use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use super::substreams_block_stream::SubstreamsLogData;
-use super::{Block, BlockPtr, Blockchain};
+use super::{Block, BlockPtr, BlockTime, Blockchain};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -488,7 +488,7 @@ pub enum BlockStreamEvent<C: Blockchain> {
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
-    ProcessWasmBlock(BlockPtr, Box<[u8]>, String, FirehoseCursor),
+    ProcessWasmBlock(BlockPtr, BlockTime, Box<[u8]>, String, FirehoseCursor),
 }
 
 impl<C: Blockchain> Clone for BlockStreamEvent<C>
@@ -499,9 +499,13 @@ where
         match self {
             Self::Revert(arg0, arg1) => Self::Revert(arg0.clone(), arg1.clone()),
             Self::ProcessBlock(arg0, arg1) => Self::ProcessBlock(arg0.clone(), arg1.clone()),
-            Self::ProcessWasmBlock(arg0, arg1, arg2, arg3) => {
-                Self::ProcessWasmBlock(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
-            }
+            Self::ProcessWasmBlock(arg0, arg1, arg2, arg3, arg4) => Self::ProcessWasmBlock(
+                arg0.clone(),
+                arg1.clone(),
+                arg2.clone(),
+                arg3.clone(),
+                arg4.clone(),
+            ),
         }
     }
 }

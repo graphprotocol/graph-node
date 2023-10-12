@@ -1,6 +1,6 @@
 use crate::{
     bail,
-    blockchain::{BlockPtr, Blockchain},
+    blockchain::{BlockPtr, BlockTime, Blockchain},
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
@@ -216,6 +216,7 @@ impl DataSource {
             data_source::MappingTrigger::Offchain(trigger.clone()),
             self.mapping.handler.clone(),
             BlockPtr::new(Default::default(), self.creation_block.unwrap_or(0)),
+            BlockTime::NONE,
         ))
     }
 

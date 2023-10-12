@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use chrono::{DateTime, Utc};
 use diesel::pg::Pg;
 use diesel::sql_types::{Bytea, Nullable, Text};
 use diesel::types::FromSql;
@@ -9,7 +10,7 @@ use web3::types::{Block, H256};
 
 use crate::data::graphql::IntoValue;
 use crate::object;
-use crate::prelude::{r, BigInt, TryFromValue, ValueMap};
+use crate::prelude::{r, BigInt, TryFromValue, Value, ValueMap};
 use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
 use crate::{cheap_clone::CheapClone, components::store::BlockNumber};
 
@@ -315,5 +316,37 @@ impl fmt::Display for ChainIdentifier {
             "net_version: {}, genesis_block_hash: {}",
             self.net_version, self.genesis_block_hash
         )
+    }
+}
+
+/// The timestamp associated with a block. This is used whenever a time
+/// needs to be connected to data within the block
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BlockTime(DateTime<Utc>);
+
+impl BlockTime {
+    /// A timestamp from a long long time ago used to indicate that we don't
+    /// have a timestamp
+    pub const NONE: Self = Self(DateTime::<Utc>::MIN_UTC);
+
+    pub const MAX: Self = Self(DateTime::<Utc>::MAX_UTC);
+
+    pub const MIN: Self = Self(DateTime::<Utc>::MIN_UTC);
+
+    /// Construct a block time that is the given number of seconds and
+    /// nanoseconds after the Unix epoch
+    pub fn since_epoch(secs: i64, nanos: u32) -> Self {
+        Self(DateTime::from_timestamp(secs, nanos).unwrap())
+    }
+}
+
+impl TryFrom<&Value> for BlockTime {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
+        match value {
+            Value::Int8(ts) => Ok(BlockTime::since_epoch(*ts, 0)),
+            _ => Err(anyhow!("invalid block time: {:?}", value)),
+        }
     }
 }

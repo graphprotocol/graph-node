@@ -5,7 +5,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
+use graph::blockchain::{Block, BlockTime, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
 use graph::components::{
     store::ModificationsAndCache,
@@ -650,6 +650,7 @@ where
         &mut self,
         proof_of_indexing: &SharedProofOfIndexing,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         causality_region: &str,
@@ -663,6 +664,7 @@ where
             .process_block(
                 &self.logger,
                 block_ptr,
+                block_time,
                 block_data,
                 handler,
                 block_state,
@@ -910,14 +912,27 @@ where
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error> {
         let action = match event {
-            Some(Ok(BlockStreamEvent::ProcessWasmBlock(block_ptr, data, handler, cursor))) => {
+            Some(Ok(BlockStreamEvent::ProcessWasmBlock(
+                block_ptr,
+                block_time,
+                data,
+                handler,
+                cursor,
+            ))) => {
                 let _section = self
                     .metrics
                     .stream
                     .stopwatch
                     .start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
-                self.handle_process_wasm_block(block_ptr, data, handler, cursor, cancel_handle)
-                    .await?
+                self.handle_process_wasm_block(
+                    block_ptr,
+                    block_time,
+                    data,
+                    handler,
+                    cursor,
+                    cancel_handle,
+                )
+                .await?
             }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
                 let _section = self
@@ -1051,6 +1066,7 @@ trait StreamEventHandler<C: Blockchain> {
     async fn handle_process_wasm_block(
         &mut self,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         cursor: FirehoseCursor,
@@ -1084,6 +1100,7 @@ where
     async fn handle_process_wasm_block(
         &mut self,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         cursor: FirehoseCursor,
@@ -1113,6 +1130,7 @@ where
                 .process_wasm_block(
                     &proof_of_indexing,
                     block_ptr.clone(),
+                    block_time,
                     block_data,
                     handler,
                     &causality_region,

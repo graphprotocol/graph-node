@@ -74,7 +74,13 @@ impl SubstreamsBlockIngestor {
 
         while let Some(message) = stream.next().await {
             let (block, cursor) = match message {
-                Ok(BlockStreamEvent::ProcessWasmBlock(_block_ptr, _data, _handler, _cursor)) => {
+                Ok(BlockStreamEvent::ProcessWasmBlock(
+                    _block_ptr,
+                    _block_time,
+                    _data,
+                    _handler,
+                    _cursor,
+                )) => {
                     unreachable!("Block ingestor should never receive raw blocks");
                 }
                 Ok(BlockStreamEvent::ProcessBlock(triggers, cursor)) => {

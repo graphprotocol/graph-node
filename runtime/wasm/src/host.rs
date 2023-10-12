@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
+use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{
@@ -182,6 +182,7 @@ where
                     state,
                     host_exports: self.host_exports.cheap_clone(),
                     block_ptr: trigger.block_ptr(),
+                    timestamp: trigger.timestamp(),
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
@@ -222,6 +223,7 @@ where
         logger: &Logger,
         state: BlockState<C>,
         block_ptr: BlockPtr,
+        timestamp: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         proof_of_indexing: SharedProofOfIndexing,
@@ -247,6 +249,7 @@ where
                     state,
                     host_exports: self.host_exports.cheap_clone(),
                     block_ptr: block_ptr.clone(),
+                    timestamp,
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
@@ -303,6 +306,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         state: BlockState<C>,
@@ -314,6 +318,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             logger,
             state,
             block_ptr,
+            block_time,
             block_data,
             handler,
             proof_of_indexing,

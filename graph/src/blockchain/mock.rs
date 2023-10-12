@@ -14,7 +14,7 @@ use std::{collections::HashSet, convert::TryFrom, sync::Arc};
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
     client::ChainClient,
-    BlockIngestor, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
+    BlockIngestor, BlockTime, EmptyNodeCapabilities, HostFn, IngestorError, MappingTriggerTrait,
     TriggerWithHandler,
 };
 
@@ -38,6 +38,10 @@ impl Block for MockBlock {
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
+        todo!()
+    }
+
+    fn timestamp(&self) -> BlockTime {
         todo!()
     }
 }

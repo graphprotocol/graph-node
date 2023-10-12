@@ -51,7 +51,7 @@ pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersA
 pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use noop_runtime_adapter::NoopRuntimeAdapter;
-pub use types::{BlockHash, BlockPtr, ChainIdentifier};
+pub use types::{BlockHash, BlockPtr, BlockTime, ChainIdentifier};
 
 use self::{
     block_stream::{BlockStream, FirehoseCursor},
@@ -94,6 +94,8 @@ pub trait Block: Send + Sync {
     fn data(&self) -> Result<serde_json::Value, serde_json::Error> {
         Ok(serde_json::Value::Null)
     }
+
+    fn timestamp(&self) -> BlockTime;
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1,4 +1,5 @@
 use ethabi::Contract;
+use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::*;
 use graph::data_source;
@@ -102,6 +103,7 @@ pub fn mock_context(
             hash: Default::default(),
             number: 0,
         },
+        timestamp: BlockTime::NONE,
         host_exports: Arc::new(mock_host_exports(
             deployment.hash.clone(),
             data_source,

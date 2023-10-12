@@ -3,7 +3,7 @@ use crate::{data_source::*, EntityChanges, TriggerData, TriggerFilter, TriggersA
 use anyhow::Error;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, EmptyNodeCapabilities, NoopRuntimeAdapter,
+    BasicBlockchainBuilder, BlockIngestor, BlockTime, EmptyNodeCapabilities, NoopRuntimeAdapter,
 };
 use graph::components::store::DeploymentCursorTracker;
 use graph::env::EnvVars;
@@ -56,6 +56,10 @@ impl blockchain::Block for Block {
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
         None
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        BlockTime::NONE
     }
 }
 

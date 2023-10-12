@@ -606,11 +606,11 @@ impl DataSource {
     fn matches_trigger_address(&self, trigger: &EthereumTrigger) -> bool {
         let Some(ds_address) = self.address else {
             // 'wildcard' data sources match any trigger address.
-            return true
+            return true;
         };
 
         let Some(trigger_address) = trigger.address() else {
-             return true
+            return true;
         };
 
         ds_address == *trigger_address
@@ -644,6 +644,7 @@ impl DataSource {
                     },
                     handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                 )))
             }
             EthereumTrigger::Log(log_ref) => {
@@ -753,6 +754,7 @@ impl DataSource {
                     },
                     event_handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                     logging_extras,
                 )))
             }
@@ -863,6 +865,7 @@ impl DataSource {
                     },
                     handler.handler,
                     block.block_ptr(),
+                    block.timestamp(),
                     logging_extras,
                 )))
             }

@@ -127,6 +127,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             trigger.cheap_clone(),
             handler,
             block.ptr(),
+            block.timestamp(),
         )))
     }
 

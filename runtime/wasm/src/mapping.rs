@@ -2,7 +2,7 @@ use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
 use futures::sync::mpsc;
 use futures03::channel::oneshot::Sender;
-use graph::blockchain::{Blockchain, HostFn};
+use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
@@ -197,6 +197,7 @@ pub struct MappingContext<C: Blockchain> {
     pub logger: Logger,
     pub host_exports: Arc<crate::host_exports::HostExports<C>>,
     pub block_ptr: BlockPtr,
+    pub timestamp: BlockTime,
     pub state: BlockState<C>,
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
@@ -213,6 +214,7 @@ impl<C: Blockchain> MappingContext<C> {
             logger: self.logger.cheap_clone(),
             host_exports: self.host_exports.cheap_clone(),
             block_ptr: self.block_ptr.cheap_clone(),
+            timestamp: self.timestamp,
             state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),

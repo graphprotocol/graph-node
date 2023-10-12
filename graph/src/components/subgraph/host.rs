@@ -6,6 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::blockchain::BlockTime;
 use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
@@ -65,6 +66,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         &self,
         logger: &Logger,
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
         state: BlockState<C>,

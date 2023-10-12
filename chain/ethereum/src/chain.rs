@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
-use graph::blockchain::{BlockIngestor, BlockchainKind, TriggersAdapterSelector};
+use graph::blockchain::{BlockIngestor, BlockTime, BlockchainKind, TriggersAdapterSelector};
 use graph::components::store::DeploymentCursorTracker;
 use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, ForkStep};
@@ -587,6 +587,15 @@ impl Block for BlockFinality {
             }
             BlockFinality::NonFinal(block) => json::to_value(&block.ethereum_block),
         }
+    }
+
+    fn timestamp(&self) -> BlockTime {
+        let ts = match self {
+            BlockFinality::Final(block) => block.timestamp,
+            BlockFinality::NonFinal(block) => block.ethereum_block.block.timestamp,
+        };
+        let ts = i64::try_from(ts.as_u64()).unwrap();
+        BlockTime::since_epoch(ts, 0)
     }
 }
 

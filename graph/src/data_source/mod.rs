@@ -8,8 +8,9 @@ mod tests;
 
 use crate::{
     blockchain::{
-        Block, BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
-        TriggerData as _, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
+        Block, BlockPtr, BlockTime, Blockchain, DataSource as _, DataSourceTemplate as _,
+        MappingTriggerTrait, TriggerData as _, UnresolvedDataSource as _,
+        UnresolvedDataSourceTemplate as _,
     },
     components::{
         link_resolver::LinkResolver,
@@ -379,6 +380,7 @@ pub struct TriggerWithHandler<T> {
     pub trigger: T,
     handler: String,
     block_ptr: BlockPtr,
+    timestamp: BlockTime,
     logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
 }
 
@@ -392,25 +394,28 @@ impl<T: fmt::Debug> fmt::Debug for TriggerWithHandler<T> {
 }
 
 impl<T> TriggerWithHandler<T> {
-    pub fn new(trigger: T, handler: String, block_ptr: BlockPtr) -> Self {
-        Self {
+    pub fn new(trigger: T, handler: String, block_ptr: BlockPtr, timestamp: BlockTime) -> Self {
+        Self::new_with_logging_extras(
             trigger,
             handler,
             block_ptr,
-            logging_extras: Arc::new(slog::o! {}),
-        }
+            timestamp,
+            Arc::new(slog::o! {}),
+        )
     }
 
     pub fn new_with_logging_extras(
         trigger: T,
         handler: String,
         block_ptr: BlockPtr,
+        timestamp: BlockTime,
         logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
     ) -> Self {
         TriggerWithHandler {
             trigger,
             handler,
             block_ptr,
+            timestamp,
             logging_extras,
         }
     }
@@ -429,12 +434,17 @@ impl<T> TriggerWithHandler<T> {
             trigger: f(self.trigger),
             handler: self.handler,
             block_ptr: self.block_ptr,
+            timestamp: self.timestamp,
             logging_extras: self.logging_extras,
         }
     }
 
     pub fn block_ptr(&self) -> BlockPtr {
         self.block_ptr.clone()
+    }
+
+    pub fn timestamp(&self) -> BlockTime {
+        self.timestamp
     }
 }
 

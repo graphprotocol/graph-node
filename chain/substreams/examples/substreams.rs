@@ -88,7 +88,7 @@ async fn main() -> Result<(), Error> {
             Some(event) => match event {
                 Err(_) => {}
                 Ok(block_stream_event) => match block_stream_event {
-                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _) => {
+                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _, _) => {
                         unreachable!("Cannot happen with this mapper")
                     }
                     BlockStreamEvent::Revert(_, _) => {}
