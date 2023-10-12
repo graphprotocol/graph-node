@@ -67,7 +67,6 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.source.end_block
     }
 
-
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
