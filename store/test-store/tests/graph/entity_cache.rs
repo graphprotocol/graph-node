@@ -315,7 +315,12 @@ const ACCOUNT_GQL: &str = "
         wallets: [Wallet!]! @derivedFrom(field: \"account\")
     }
 
-    type Wallet @entity {
+    interface Purse {
+        id: ID!
+        balance: Int!
+    }
+
+    type Wallet implements Purse @entity {
         id: ID!
         balance: Int!
         account: Account!
@@ -324,6 +329,7 @@ const ACCOUNT_GQL: &str = "
 
 const ACCOUNT: &str = "Account";
 const WALLET: &str = "Wallet";
+const PURSE: &str = "Purse";
 
 lazy_static! {
     static ref LOAD_RELATED_ID_STRING: String = String::from("loadrelatedsubgraph");
@@ -341,6 +347,7 @@ lazy_static! {
         .into();
     static ref WALLET_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(WALLET).unwrap();
     static ref ACCOUNT_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(ACCOUNT).unwrap();
+    static ref PURSE_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(PURSE).unwrap();
 }
 
 fn remove_test_data(store: Arc<DieselSubgraphStore>) {
@@ -755,4 +762,24 @@ fn no_internal_keys() {
         let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
         check(&key, &wallet);
     });
+}
+
+#[test]
+fn no_interface_mods() {
+    run_store_test(|mut cache, _, _, _| async move {
+        let key = PURSE_TYPE.parse_key("1").unwrap();
+
+        // This should probably be an error, but changing that would not be
+        // backwards compatible
+        assert_eq!(None, cache.get(&key, GetScope::InBlock).unwrap());
+
+        assert!(matches!(
+            cache.get(&key, GetScope::Store),
+            Err(StoreError::UnknownTable(_))
+        ));
+
+        let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
+
+        cache.set(key, entity).unwrap_err();
+    })
 }

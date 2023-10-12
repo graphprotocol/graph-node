@@ -1572,3 +1572,31 @@ async fn generate_id() {
         }
     }
 }
+
+#[tokio::test]
+async fn test_store_intf() {
+    const UID: &str = "u1";
+    const USER: &str = "User";
+    const PERSON: &str = "Person";
+
+    let schema = "type User implements Person @entity {
+        id: String!,
+        name: String,
+    }
+
+    interface Person {
+        id: String!,
+        name: String,
+    }";
+
+    let mut host = Host::new(schema, "hostStoreSetIntf", "boolean.wasm", None).await;
+
+    host.store_set(PERSON, UID, vec![("id", "u1"), ("name", "user1")])
+        .expect_err("can not use store_set with an interface");
+
+    host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
+        .expect("storing user works");
+
+    host.store_get(PERSON, UID)
+        .expect_err("store_get with interface does not work");
+}
