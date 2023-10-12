@@ -13,7 +13,7 @@ use crate::{
 };
 
 use super::{
-    input_schema::{ObjectType, POI_OBJECT},
+    input_schema::{ObjectType, TypeKind, POI_OBJECT},
     EntityKey, InputSchema, InterfaceType,
 };
 
@@ -124,6 +124,13 @@ impl EntityType {
     /// `self`
     pub fn share_interfaces(&self) -> Result<Vec<EntityType>, Error> {
         self.schema.share_interfaces(self.atom)
+    }
+
+    /// Return what kind of type `self` represents
+    pub fn kind(&self) -> TypeKind {
+        self.schema
+            .type_kind(self.atom)
+            .expect("the type must exist")
     }
 }
 

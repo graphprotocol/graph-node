@@ -28,7 +28,7 @@ pub use api::{ApiSchema, ErrorPolicy};
 pub use entity_key::EntityKey;
 pub use entity_type::{AsEntityTypeName, EntityType};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
-pub use input_schema::{Field, InputSchema, InterfaceType, ObjectType};
+pub use input_schema::{Field, InputSchema, InterfaceType, ObjectType, TypeKind};
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
 pub const INTROSPECTION_SCHEMA_FIELD_NAME: &str = "__schema";

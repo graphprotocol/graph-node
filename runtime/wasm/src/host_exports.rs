@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
-use graph::schema::EntityType;
+use graph::schema::{EntityType, TypeKind};
 use never::Never;
 use semver::Version;
 use wasmtime::Trap;
@@ -200,6 +200,18 @@ impl<C: Blockchain> HostExports<C> {
         Ok(())
     }
 
+    /// Ensure that `entity_type` is of the right kind
+    fn expect_object_type(entity_type: &EntityType, op: &str) -> Result<(), HostExportError> {
+        if entity_type.kind() != TypeKind::Object {
+            Err(HostExportError::Deterministic(anyhow!(
+                "Cannot {op} entity of type `{}`. The type must be an @entity type",
+                entity_type.as_str()
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
     pub(crate) fn store_set(
         &self,
         logger: &Logger,
@@ -213,6 +225,8 @@ impl<C: Blockchain> HostExports<C> {
         gas: &GasCounter,
     ) -> Result<(), HostExportError> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
+
+        Self::expect_object_type(&entity_type, "set")?;
 
         let entity_id = if entity_id == "auto" {
             if self.data_source_causality_region != CausalityRegion::ONCHAIN {
@@ -319,6 +333,8 @@ impl<C: Blockchain> HostExports<C> {
             logger,
         );
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
+        Self::expect_object_type(&entity_type, "remove")?;
+
         let key = entity_type.parse_key_in(entity_id, self.data_source_causality_region)?;
         self.check_entity_type_access(&key.entity_type)?;
 
@@ -341,6 +357,8 @@ impl<C: Blockchain> HostExports<C> {
         scope: GetScope,
     ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
         let entity_type = state.entity_cache.schema.entity_type(&entity_type)?;
+        Self::expect_object_type(&entity_type, "get")?;
+
         let store_key = entity_type.parse_key_in(entity_id, self.data_source_causality_region)?;
         self.check_entity_type_access(&store_key.entity_type)?;
 

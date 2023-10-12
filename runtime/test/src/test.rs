@@ -1315,16 +1315,16 @@ impl Host {
     }
 }
 
+#[track_caller]
+fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
+    let err = err.to_string();
+    assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
+}
+
 /// Test the various ways in which `store_set` sets the `id` of entities and
 /// errors when there are issues
 #[tokio::test]
 async fn test_store_set_id() {
-    #[track_caller]
-    fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
-        let err = err.to_string();
-        assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
-    }
-
     const UID: &str = "u1";
     const USER: &str = "User";
     const BID: &str = "0xdeadbeef";
@@ -1421,12 +1421,6 @@ async fn test_store_set_id() {
 /// This should return an error
 #[tokio::test]
 async fn test_store_set_invalid_fields() {
-    #[track_caller]
-    fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
-        let err = err.to_string();
-        assert!(err.contains(exp), "expected `{err}` to contain `{exp}`");
-    }
-
     const UID: &str = "u1";
     const USER: &str = "User";
     const BID: &str = "0xdeadbeef";
@@ -1599,4 +1593,46 @@ async fn test_store_intf() {
 
     host.store_get(PERSON, UID)
         .expect_err("store_get with interface does not work");
+}
+
+#[tokio::test]
+async fn test_store_ts() {
+    const DATA: &str = "Data";
+    const STATS: &str = "Stats";
+    const SID: &str = "1";
+    const DID: &str = "fe";
+
+    let schema = r#"
+    type Data @entity(timeseries: true) {
+        id: Bytes!
+        timestamp: Int8!
+        amount: BigDecimal!
+    }
+    
+    type Stats @aggregation(intervals: ["hour"], source: "Data") {
+        id: Bytes!
+        timestamp: Int8!
+        max: BigDecimal! @aggregate(fn: "max", arg:"amount")
+    }"#;
+
+    let mut host = Host::new(schema, "hostStoreTs", "boolean.wasm", None).await;
+
+    let b20 = Value::BigDecimal(20.into());
+
+    host.store_setv(
+        DATA,
+        DID,
+        vec![("timestamp", Value::Int8(23)), ("amount", b20.clone())],
+    )
+    .expect("Setting 'Data' is allowed");
+
+    let err = host
+        .store_setv(STATS, SID, vec![("amount", b20)])
+        .expect_err("store_set must fail for aggregations");
+    err_says(err, "entity type `Stats` does not exist in hostStoreTs");
+
+    let err = host
+        .store_get(STATS, SID)
+        .expect_err("store_get must fail for timeseries");
+    err_says(err, "entity type `Stats` does not exist in hostStoreTs");
 }

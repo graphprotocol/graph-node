@@ -53,6 +53,16 @@ pub struct InputSchema {
     inner: Arc<Inner>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeKind {
+    /// The type is a normal @entity
+    Object,
+    /// The type is an interface
+    Interface,
+    /// The type is an aggregation
+    Aggregation,
+}
+
 #[derive(Debug, PartialEq)]
 enum TypeInfo {
     Object(ObjectType),
@@ -104,6 +114,14 @@ impl TypeInfo {
             TypeInfo::Object(obj_type) => obj_type.immutable,
             TypeInfo::Interface(_) => false,
             TypeInfo::Aggregation(_) => true,
+        }
+    }
+
+    fn kind(&self) -> TypeKind {
+        match self {
+            TypeInfo::Object(_) => TypeKind::Object,
+            TypeInfo::Interface(_) => TypeKind::Interface,
+            TypeInfo::Aggregation(_) => TypeKind::Aggregation,
         }
     }
 }
@@ -953,6 +971,10 @@ impl InputSchema {
             Some(field) => self.has_field(entity_type.atom, field),
             None => false,
         }
+    }
+
+    pub(in crate::schema) fn type_kind(&self, atom: Atom) -> Option<TypeKind> {
+        self.type_info(atom).ok().map(|ti| ti.kind())
     }
 }
 
