@@ -196,6 +196,21 @@ impl<C: Blockchain> WasmInstance<C> {
         Ok(self.take_ctx().ctx.state)
     }
 
+    pub(crate) fn handle_block(
+        mut self,
+        _logger: &Logger,
+        handler_name: &str,
+        block_data: Box<[u8]>,
+    ) -> Result<(BlockState<C>, Gas), MappingError> {
+        let obj = block_data
+            .to_vec()
+            .to_asc_obj(self.instance_ctx_mut().deref_mut(), &self.gas)?;
+
+        let obj = AscPtr::alloc_obj(obj, self.instance_ctx_mut().deref_mut(), &self.gas)?;
+
+        self.invoke_handler(handler_name, obj, Arc::new(o!()), None)
+    }
+
     pub(crate) fn handle_trigger(
         mut self,
         trigger: TriggerWithHandler<MappingTrigger<C>>,

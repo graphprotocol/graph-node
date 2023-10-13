@@ -17,14 +17,15 @@ use graph::{
     },
     ipfs_client::CidFile,
     prelude::{
-        BlockNumber, BlockState, CancelGuard, CheapClone, DeploymentHash, MetricsRegistry,
-        RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics, TriggerProcessor,
+        BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
+        MetricsRegistry, RuntimeHost, RuntimeHostBuilder, SubgraphCountMetric,
+        SubgraphInstanceMetrics, TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
 };
-use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::{collections::HashMap, time::Instant};
 
 use self::instance::SubgraphInstance;
 
@@ -114,6 +115,65 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         .await
     }
 
+    pub async fn process_block(
+        &self,
+        logger: &Logger,
+        block_ptr: BlockPtr,
+        block_data: Box<[u8]>,
+        handler: String,
+        mut state: BlockState<C>,
+        proof_of_indexing: &SharedProofOfIndexing,
+        causality_region: &str,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
+        instrument: bool,
+    ) -> Result<BlockState<C>, MappingError> {
+        let error_count = state.deterministic_errors.len();
+
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            proof_of_indexing
+                .borrow_mut()
+                .start_handler(causality_region);
+        }
+
+        let start = Instant::now();
+
+        // This flow is expected to have a single data source(and a corresponding host) which
+        // gets executed every block.
+        state = self
+            .instance
+            .hosts()
+            .first()
+            .expect("Expected this flow to have exactly one host")
+            .process_block(
+                logger,
+                block_ptr,
+                block_data,
+                handler,
+                state,
+                proof_of_indexing.cheap_clone(),
+                debug_fork,
+                instrument,
+            )
+            .await?;
+
+        let elapsed = start.elapsed().as_secs_f64();
+        subgraph_metrics.observe_trigger_processing_duration(elapsed);
+
+        if let Some(proof_of_indexing) = proof_of_indexing {
+            if state.deterministic_errors.len() != error_count {
+                assert!(state.deterministic_errors.len() == error_count + 1);
+
+                // If a deterministic error has happened, write a new
+                // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
+                proof_of_indexing
+                    .borrow_mut()
+                    .write_deterministic_error(logger, causality_region);
+            }
+        }
+
+        Ok(state)
+    }
     pub async fn process_trigger_in_hosts(
         &self,
         logger: &Logger,

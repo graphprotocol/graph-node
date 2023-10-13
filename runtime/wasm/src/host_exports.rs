@@ -18,7 +18,7 @@ use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
 };
-use graph::data::store::{self};
+use graph::data::store;
 use graph::data_source::{CausalityRegion, DataSource, DataSourceTemplate, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::ethabi::param_type::Reader;

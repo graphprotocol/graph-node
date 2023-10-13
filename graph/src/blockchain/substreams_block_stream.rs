@@ -1,4 +1,4 @@
-use super::block_stream::{SubstreamsMapper, SUBSTREAMS_BUFFER_STREAM_SIZE};
+use super::block_stream::{BlockStreamMapper, SUBSTREAMS_BUFFER_STREAM_SIZE};
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
@@ -121,7 +121,7 @@ where
         registry: Arc<MetricsRegistry>,
     ) -> Self
     where
-        F: SubstreamsMapper<C> + 'static,
+        F: BlockStreamMapper<C> + 'static,
     {
         let manifest_start_block_num = start_blocks.into_iter().min().unwrap_or(0);
 
@@ -147,7 +147,7 @@ where
     }
 }
 
-fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
+fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     client: Arc<ChainClient<C>>,
     cursor: Option<String>,
     deployment: DeploymentHash,
@@ -289,7 +289,7 @@ enum BlockResponse<C: Blockchain> {
     Proceed(BlockStreamEvent<C>, String),
 }
 
-async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
+async fn process_substreams_response<C: Blockchain, F: BlockStreamMapper<C>>(
     result: Result<Response, Status>,
     mapper: &F,
     logger: &mut Logger,
@@ -309,6 +309,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
             let cursor = match &event {
                 BlockStreamEvent::Revert(_, cursor) => cursor,
                 BlockStreamEvent::ProcessBlock(_, cursor) => cursor,
+                BlockStreamEvent::ProcessWasmBlock(_, _, _, cursor) => cursor,
             }
             .to_string();
 

@@ -9,7 +9,7 @@ use graph::{
         store::{DeploymentLocator, SubgraphFork},
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
     },
-    data_source::{self},
+    data_source,
     prelude::{
         anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
     },
@@ -58,6 +58,9 @@ pub struct TriggerFilter {
     pub(crate) module_name: String,
     pub(crate) start_block: Option<BlockNumber>,
     pub(crate) data_sources_len: u8,
+    // the handler to call for subgraph mappings, if this is set then the binary block content
+    // should be passed to the mappings.
+    pub(crate) mapping_handler: Option<String>,
 }
 
 #[cfg(debug_assertions)]
@@ -96,6 +99,7 @@ impl blockchain::TriggerFilter<Chain> for TriggerFilter {
             module_name,
             start_block,
             data_sources_len,
+            mapping_handler,
         } = self;
 
         if *data_sources_len >= 1 {
@@ -107,6 +111,7 @@ impl blockchain::TriggerFilter<Chain> for TriggerFilter {
             *modules = ds.source.package.modules.clone();
             *module_name = ds.source.module_name.clone();
             *start_block = ds.initial_block;
+            *mapping_handler = ds.mapping.handler.as_ref().map(|h| h.handler.clone());
         }
     }
 
