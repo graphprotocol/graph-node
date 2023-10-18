@@ -378,14 +378,14 @@ where
             (Method::POST, &["subgraphs", "name", subgraph_name]) => self
                 .handle_graphql_query_by_name(subgraph_name.to_owned(), req)
                 .boxed(),
-            (Method::POST, ["subgraphs", "name", subgraph_name_part1, subgraph_name_part2]) => {
-                let subgraph_name = format!("{}/{}", subgraph_name_part1, subgraph_name_part2);
+            (Method::POST, ["subgraphs", "name", ..]) => {
+                let subgraph_name = path_segments[2..].join("/");
                 self.handle_graphql_query_by_name(subgraph_name, req)
                     .boxed()
             }
-            (Method::POST, ["subgraphs", "network", subgraph_name_part1, subgraph_name_part2]) => {
-                let subgraph_name =
-                    format!("network/{}/{}", subgraph_name_part1, subgraph_name_part2);
+            (Method::POST, ["subgraphs", "network", ..]) => {
+                let subgraph_name = path_segments[2..].join("/");
+                let subgraph_name = format!("network/{}", subgraph_name);
                 self.handle_graphql_query_by_name(subgraph_name, req)
                     .boxed()
             }
