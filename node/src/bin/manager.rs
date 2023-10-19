@@ -344,6 +344,16 @@ pub enum Command {
         #[clap(long, short)]
         force: bool,
     },
+
+    // Deploy a subgraph
+    Deploy {
+        deployment: DeploymentSearch,
+
+        #[clap(long, short)]
+        name: String,
+        #[clap(long, short, default_value = "http://localhost:8020")]
+        url: String,
+    },
 }
 
 impl Command {
@@ -1513,6 +1523,12 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+
+        Deploy {
+            deployment,
+            name,
+            url,
+        } => commands::deploy::run(deployment, name, url).await,
     }
 }
 
