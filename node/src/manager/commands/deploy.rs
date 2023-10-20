@@ -1,10 +1,10 @@
-use graph::{
-    anyhow::Ok,
-    prelude::{
-        anyhow::{bail, Result},
-        reqwest,
-        serde_json::{json, Value},
-    },
+use std::sync::Arc;
+
+use graph::prelude::{
+    anyhow::{anyhow, bail, Result},
+    reqwest,
+    serde_json::{json, Value},
+    SubgraphName, SubgraphStore,
 };
 
 use crate::manager::deployment::DeploymentSearch;
@@ -63,18 +63,43 @@ async fn send_deploy_request(name: &str, deployment: &str, url: &str) -> Result<
         ))
     })
 }
+pub async fn run(
+    subgraph_store: Arc<impl SubgraphStore>,
+    deployment: DeploymentSearch,
+    search: DeploymentSearch,
+    url: String,
+    create: bool,
+) -> Result<()> {
+    let hash = match deployment {
+        DeploymentSearch::Hash { hash, shard: _ } => hash,
+        _ => bail!("The `deployment` argument must be a valid IPFS hash"),
+    };
 
-pub async fn run(deployment: DeploymentSearch, name: String, url: String) -> Result<()> {
-    println!("Deploying subgraph `{}` to `{}`", name, url);
-    if let DeploymentSearch::Hash { hash, shard: _ } = deployment {
+    let name = match search {
+        DeploymentSearch::Name { name } => name,
+        _ => bail!("The `name` must be a valid subgraph name"),
+    };
+
+    if create {
+        println!("Creating subgraph `{}`", name);
+        let subgraph_name =
+            SubgraphName::new(name.clone()).map_err(|_| anyhow!("Invalid subgraph name"))?;
+
+        let exists = subgraph_store.subgraph_exists(&subgraph_name)?;
+
+        if exists {
+            bail!("Subgraph with name `{}` already exists", name);
+        }
+
         // Send the subgraph_create request
         send_create_request(&name, &url).await?;
-
-        // Send the subgraph_deploy request
-        send_deploy_request(&name, &hash, &url).await?;
-        println!("Subgraph `{}` deployed to `{}`", name, url);
-        Ok(())
-    } else {
-        bail!("Deployment not found");
+        println!("Subgraph `{}` created", name);
     }
+
+    // Send the subgraph_deploy request
+    println!("Deploying subgraph `{}` to `{}`", hash, name);
+    send_deploy_request(&name, &hash, &url).await?;
+    println!("Subgraph `{}` deployed to `{}`", name, url);
+
+    Ok(())
 }
