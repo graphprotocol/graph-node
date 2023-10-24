@@ -344,6 +344,20 @@ pub enum Command {
         #[clap(long, short)]
         force: bool,
     },
+
+    // Deploy a subgraph
+    Deploy {
+        name: DeploymentSearch,
+        deployment: DeploymentSearch,
+
+        /// The url of the graph-node
+        #[clap(long, short, default_value = "http://localhost:8020")]
+        url: String,
+
+        /// Create the subgraph name if it does not exist
+        #[clap(long, short)]
+        create: bool,
+    },
 }
 
 impl Command {
@@ -1512,6 +1526,18 @@ async fn main() -> anyhow::Result<()> {
                 force,
             )
             .await
+        }
+
+        Deploy {
+            deployment,
+            name,
+            url,
+            create,
+        } => {
+            let store = ctx.store();
+            let subgraph_store = store.subgraph_store();
+
+            commands::deploy::run(subgraph_store, deployment, name, url, create).await
         }
     }
 }
