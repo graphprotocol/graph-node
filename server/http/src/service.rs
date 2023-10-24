@@ -383,16 +383,9 @@ where
                 self.handle_graphql_query_by_name(subgraph_name, req)
                     .boxed()
             }
-            (Method::POST, ["subgraphs", "network", ..]) => {
-                let subgraph_name = path_segments[2..].join("/");
-                let subgraph_name = format!("network/{}", subgraph_name);
-                self.handle_graphql_query_by_name(subgraph_name, req)
-                    .boxed()
-            }
 
             (Method::OPTIONS, ["subgraphs", "name", _])
-            | (Method::OPTIONS, ["subgraphs", "name", _, _])
-            | (Method::OPTIONS, ["subgraphs", "network", _, _]) => self.handle_graphql_options(req),
+            | (Method::OPTIONS, ["subgraphs", "name", _, _]) => self.handle_graphql_options(req),
 
             _ => self.handle_not_found(),
         }
