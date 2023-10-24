@@ -419,6 +419,7 @@ impl UnresolvedSchema {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
     /// The contract address for the data source. We allow data sources
     /// without an address for 'wildcard' triggers that catch all possible
@@ -426,9 +427,8 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub start_block: BlockNumber,
-    #[serde(rename = "endBlock", default)]
     pub end_block: Option<BlockNumber>,
 }
 
@@ -857,6 +857,15 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             bail!(
                 "Offchain data sources not supported prior to {}",
                 SPEC_VERSION_0_0_7
+            );
+        }
+
+        if spec_version < SPEC_VERSION_0_0_9
+            && data_sources.iter().any(|ds| ds.end_block().is_some())
+        {
+            bail!(
+                "Defining `endBlock` in the manifest is not supported prior to {}",
+                SPEC_VERSION_0_0_9
             );
         }
 

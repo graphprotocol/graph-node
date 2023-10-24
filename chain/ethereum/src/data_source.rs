@@ -347,7 +347,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    fn min_spec_version_inner(&self) -> semver::Version {
+    fn min_spec_version(&self) -> semver::Version {
         self.mapping
             .block_handlers
             .iter()

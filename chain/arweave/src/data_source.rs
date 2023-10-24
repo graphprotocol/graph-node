@@ -396,11 +396,11 @@ pub struct TransactionHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Source {
     // A data source that does not have an owner can only have block handlers.
     pub(crate) owner: Option<String>,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub(crate) start_block: BlockNumber,
-    #[serde(rename = "endBlock")]
     pub(crate) end_block: Option<BlockNumber>,
 }

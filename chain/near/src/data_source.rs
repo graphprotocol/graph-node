@@ -497,12 +497,12 @@ impl PartialAccounts {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Source {
     // A data source that does not have an account or accounts can only have block handlers.
     pub(crate) account: Option<String>,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub(crate) start_block: BlockNumber,
-    #[serde(rename = "endBlock")]
     pub(crate) end_block: Option<BlockNumber>,
     pub(crate) accounts: Option<PartialAccounts>,
 }

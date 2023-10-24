@@ -106,7 +106,7 @@ where
         self.run_inner(break_on_restart).await
     }
 
-    fn build_filter(&mut self) {
+    fn build_filter(&self) -> C::TriggerFilter {
         let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.inputs.static_filters
             || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
@@ -156,7 +156,7 @@ where
             )
         };
 
-        self.ctx.filter = Some(filter);
+        filter
     }
 
     pub async fn run(self) -> Result<(), Error> {
@@ -198,7 +198,7 @@ where
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
             // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
-            self.build_filter();
+            self.ctx.filter = Some(self.build_filter());
 
             let mut block_stream = new_block_stream(
                 &self.inputs,
@@ -872,6 +872,7 @@ trait StreamEventHandler<C: Blockchain> {
         err: CancelableError<Error>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
 }
 
 #[async_trait]
@@ -1062,6 +1063,17 @@ where
         }
     }
 
+    /// Determines if the subgraph needs to be restarted.
+    /// Currently returns true when there are data sources that have reached their end block
+    /// in the range between `revert_to_ptr` and `subgraph_ptr`.
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool {
+        self.inputs
+            .end_blocks
+            .range(revert_to_ptr.number..=subgraph_ptr.number)
+            .next()
+            .is_some()
+    }
+
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
@@ -1102,14 +1114,7 @@ where
 
         self.revert_state(subgraph_ptr.number)?;
 
-        // If any datasource has reached its end block in the range [revert_to_ptr, subgraph_ptr]
-        // then we need to restart the blockstream to reset the TriggerFilter.
-        let needs_restart: bool = self
-            .inputs
-            .end_blocks
-            .range(revert_to_ptr.number..=subgraph_ptr.number)
-            .next()
-            .is_some();
+        let needs_restart: bool = self.needs_restart(revert_to_ptr, subgraph_ptr);
 
         let action = if needs_restart {
             Action::Restart

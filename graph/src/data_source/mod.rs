@@ -126,6 +126,13 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn end_block(&self) -> Option<BlockNumber> {
+        match self {
+            Self::Onchain(ds) => ds.end_block(),
+            Self::Offchain(_) => None,
+        }
+    }
+
     pub fn creation_block(&self) -> Option<BlockNumber> {
         match self {
             Self::Onchain(ds) => ds.creation_block(),

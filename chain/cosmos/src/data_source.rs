@@ -506,10 +506,10 @@ pub struct MappingMessageHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub start_block: BlockNumber,
-    #[serde(rename = "endBlock")]
     pub(crate) end_block: Option<BlockNumber>,
 }
 
