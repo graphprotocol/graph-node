@@ -346,8 +346,6 @@ create index attr_0_1_musician_name
     on "sgd0815"."musician" using btree(left("name", 256));
 create index attr_0_2_musician_main_band
     on "sgd0815"."musician" using gist("main_band", block_range);
-create index attr_0_3_musician_bands
-    on "sgd0815"."musician" using gin("bands");
 
 create table "sgd0815"."band" (
         vid                  bigserial primary key,
@@ -368,8 +366,6 @@ create index attr_1_0_band_id
     on "sgd0815"."band" using btree("id");
 create index attr_1_1_band_name
     on "sgd0815"."band" using btree(left("name", 256));
-create index attr_1_2_band_original_songs
-    on "sgd0815"."band" using gin("original_songs");
 
 create table "sgd0815"."song" (
         vid                    bigserial primary key,
@@ -484,8 +480,6 @@ create index attr_2_0_habitat_id
     on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
     on "sgd0815"."habitat" using gist("most_common", block_range);
-create index attr_2_2_habitat_dwellers
-    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 const FULLTEXT_GQL: &str = r#"
@@ -583,8 +577,6 @@ create index attr_2_0_habitat_id
     on "sgd0815"."habitat" using btree("id");
 create index attr_2_1_habitat_most_common
     on "sgd0815"."habitat" using gist("most_common", block_range);
-create index attr_2_2_habitat_dwellers
-    on "sgd0815"."habitat" using gin("dwellers");
 
 "#;
 

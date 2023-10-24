@@ -3,7 +3,7 @@ use std::{
     iter,
 };
 
-use graph::prelude::BLOCK_NUMBER_MAX;
+use graph::prelude::{BLOCK_NUMBER_MAX, ENV_VARS};
 
 use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
@@ -225,7 +225,7 @@ impl Table {
             .filter(not_immutable_pk)
             .filter(not_numeric_list);
 
-        for (i, column) in columns.enumerate() {
+        for (column_index, column) in columns.enumerate() {
             let (method, index_expr) = if column.is_reference() && !column.is_list() {
                 // For foreign keys, index the key together with the block range
                 // since we almost always also have a block_range clause in
@@ -268,17 +268,21 @@ impl Table {
 
                 (method, index_expr)
             };
-            write!(
-            out,
-            "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
-            table_index = self.position,
-            table_name = self.name,
-            column_index = i,
-            column_name = column.name,
-            qname = self.qualified_name,
-            method = method,
-            index_expr = index_expr,
-        )?;
+            // If `create_gin_indexes` is set to false, we don't create
+            // indexes on array attributes. Experience has shown that these
+            // indexes are very expensive to update and can have a very bad
+            // impact on the write performance of the database, but are
+            // hardly ever used or needed by queries.
+            if !column.is_list() || ENV_VARS.store.create_gin_indexes {
+                write!(
+                    out,
+                    "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
+                    table_index = self.position,
+                    table_name = self.name,
+                    column_name = column.name,
+                    qname = self.qualified_name,
+                )?;
+            }
         }
         writeln!(out)
     }

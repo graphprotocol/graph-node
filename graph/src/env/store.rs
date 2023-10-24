@@ -109,6 +109,9 @@ pub struct EnvVarsStore {
     /// is 10_000 which corresponds to 10MB. Setting this to 0 disables
     /// write batching.
     pub write_batch_size: usize,
+    /// Whether to create GIN indexes for array attributes. Set by
+    /// `GRAPH_STORE_CREATE_GIN_INDEXES`. The default is `false`
+    pub create_gin_indexes: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -150,6 +153,7 @@ impl From<InnerStore> for EnvVarsStore {
             history_slack_factor: x.history_slack_factor.0,
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
+            create_gin_indexes: x.create_gin_indexes,
         }
     }
 }
@@ -203,6 +207,8 @@ pub struct InnerStore {
     write_batch_duration_in_secs: u64,
     #[envconfig(from = "GRAPH_STORE_WRITE_BATCH_SIZE", default = "10000")]
     write_batch_size: usize,
+    #[envconfig(from = "GRAPH_STORE_CREATE_GIN_INDEXES", default = "false")]
+    create_gin_indexes: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
