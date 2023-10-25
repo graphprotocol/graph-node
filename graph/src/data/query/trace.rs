@@ -16,13 +16,14 @@ pub enum Trace {
         query_id: String,
         block: BlockNumber,
         elapsed: Mutex<Duration>,
+        conn_wait: Duration,
         children: Vec<(String, Trace)>,
     },
     Query {
         query: String,
         elapsed: Duration,
+        conn_wait: Duration,
         entity_count: usize,
-
         children: Vec<(String, Trace)>,
     },
 }
@@ -48,6 +49,7 @@ impl Trace {
                 query_id: query_id.to_string(),
                 block,
                 elapsed: Mutex::new(Duration::from_millis(0)),
+                conn_wait: Duration::from_millis(0),
                 children: Vec::new(),
             }
         } else {
@@ -66,6 +68,7 @@ impl Trace {
         Trace::Query {
             query: query.to_string(),
             elapsed,
+            conn_wait: Duration::from_millis(0),
             entity_count,
             children: Vec::new(),
         }
@@ -93,6 +96,13 @@ impl Trace {
             Trace::Root { .. } | Trace::Query { .. } => false,
         }
     }
+
+    pub fn conn_wait(&mut self, time: Duration) {
+        match self {
+            Trace::None => { /* nothing to do  */ }
+            Trace::Root { conn_wait, .. } | Trace::Query { conn_wait, .. } => *conn_wait += time,
+        }
+    }
 }
 
 impl Serialize for Trace {
@@ -108,6 +118,7 @@ impl Serialize for Trace {
                 query_id,
                 block,
                 elapsed,
+                conn_wait,
                 children,
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 2))?;
@@ -121,17 +132,20 @@ impl Serialize for Trace {
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
                 }
+                map.serialize_entry("conn_wait_ms", &conn_wait.as_millis())?;
                 map.end()
             }
             Trace::Query {
                 query,
                 elapsed,
+                conn_wait,
                 entity_count,
                 children,
             } => {
                 let mut map = ser.serialize_map(Some(children.len() + 3))?;
                 map.serialize_entry("query", query)?;
                 map.serialize_entry("elapsed_ms", &elapsed.as_millis())?;
+                map.serialize_entry("conn_wait_ms", &conn_wait.as_millis())?;
                 map.serialize_entry("entity_count", entity_count)?;
                 for (child, trace) in children {
                     map.serialize_entry(child, trace)?;
