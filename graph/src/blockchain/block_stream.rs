@@ -6,6 +6,7 @@ use async_stream::stream;
 use futures03::Stream;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -356,9 +357,16 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         &self,
         logger: &mut Logger,
         message: Option<Message>,
+        last_progress: &mut Instant,
     ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
         match message {
             Some(SubstreamsMessage::Session(session_init)) => {
+                info!(
+                    &logger,
+                    "Received session init";
+                    "trace_id" => session_init.trace_id.clone(),
+                    "session" => format!("{:?}", session_init),
+                );
                 *logger = logger.new(o!("trace_id" => session_init.trace_id));
                 return Ok(None);
             }
@@ -408,6 +416,18 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     block,
                     FirehoseCursor::from(cursor.clone()),
                 )))
+            }
+
+            Some(SubstreamsMessage::Progress(progress)) => {
+                if last_progress.elapsed() > Duration::from_secs(30) {
+                    info!(
+                        &logger,
+                        "Received progress update";
+                        "progress" => format!("{:?}", progress),
+                    );
+                    *last_progress = Instant::now();
+                }
+                Ok(None)
             }
 
             // ignoring Progress messages and SessionInit

@@ -161,6 +161,8 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     let mut latest_cursor = cursor.unwrap_or_default();
 
+    let mut last_progress = Instant::now();
+
     let start_block_num = subgraph_current_block
         .as_ref()
         .map(|ptr| {
@@ -225,6 +227,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                             response,
                             mapper.as_ref(),
                             &mut logger,
+                            &mut last_progress,
                         ).await {
                             Ok(block_response) => {
                                 match block_response {
@@ -289,6 +292,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     result: Result<Response, Status>,
     mapper: &F,
     logger: &mut Logger,
+    last_progress: &mut Instant,
 ) -> Result<Option<BlockResponse<C>>, Error> {
     let response = match result {
         Ok(v) => v,
@@ -296,7 +300,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     };
 
     match mapper
-        .to_block_stream_event(logger, response.message)
+        .to_block_stream_event(logger, response.message, last_progress)
         .await
         .context("Mapping message to BlockStreamEvent failed")?
     {
