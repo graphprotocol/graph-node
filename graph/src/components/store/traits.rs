@@ -531,6 +531,11 @@ pub trait EthereumCallCache: Send + Sync + 'static {
     ) -> Result<(), Error>;
 }
 
+pub struct QueryPermit {
+    pub permit: tokio::sync::OwnedSemaphorePermit,
+    pub wait: Duration,
+}
+
 /// Store operations used when serving queries for a specific deployment
 #[async_trait]
 pub trait QueryStore: Send + Sync {
@@ -569,7 +574,7 @@ pub trait QueryStore: Send + Sync {
     fn network_name(&self) -> &str;
 
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
 
     /// Report the name of the shard in which the subgraph is stored. This
     /// should only be used for reporting and monitoring
@@ -584,7 +589,7 @@ pub trait QueryStore: Send + Sync {
 #[async_trait]
 pub trait StatusStore: Send + Sync + 'static {
     /// A permit should be acquired before starting query execution.
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError>;
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError>;
 
     fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError>;
 

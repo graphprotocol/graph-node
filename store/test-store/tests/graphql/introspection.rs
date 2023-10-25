@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::time::Duration;
 
+use graph::components::store::QueryPermit;
 use graph::data::graphql::{object, object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
@@ -49,11 +51,15 @@ impl Resolver for MockResolver {
         Ok(r::Value::Null)
     }
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
-        Ok(Arc::new(tokio::sync::Semaphore::new(1))
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
+        let permit = Arc::new(tokio::sync::Semaphore::new(1))
             .acquire_owned()
             .await
-            .unwrap())
+            .unwrap();
+        Ok(QueryPermit {
+            permit,
+            wait: Duration::from_secs(0),
+        })
     }
 }
 
