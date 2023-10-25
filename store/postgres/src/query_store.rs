@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::{DeploymentId, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
@@ -40,11 +42,18 @@ impl QueryStoreTrait for QueryStore {
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
         assert_eq!(&self.site.deployment, &query.subgraph_id);
+        let start = Instant::now();
         let conn = self
             .store
             .get_replica_conn(self.replica_id)
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
-        self.store.execute_query(&conn, self.site.clone(), query)
+        let wait = start.elapsed();
+        self.store
+            .execute_query(&conn, self.site.clone(), query)
+            .map(|(entities, mut trace)| {
+                trace.conn_wait(wait);
+                (entities, trace)
+            })
     }
 
     /// Return true if the deployment with the given id is fully synced,
