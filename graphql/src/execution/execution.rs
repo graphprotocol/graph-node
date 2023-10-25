@@ -375,6 +375,9 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             // Unwrap: In practice should never fail, but if it does we will catch the panic.
             execute_ctx.resolver.post_process(&mut query_res).unwrap();
             query_res.deployment = Some(execute_ctx.query.schema.id().clone());
+            if let Ok(qp) = _permit {
+                query_res.trace.permit_wait(qp.wait);
+            }
             Arc::new(query_res)
         })
         .await

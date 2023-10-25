@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use graph::components::store::UnitStream;
+use graph::components::store::{QueryPermit, UnitStream};
 use graph::data::query::{CacheStatus, Trace};
-use graph::prelude::{async_trait, s, tokio, Error, QueryExecutionError};
+use graph::prelude::{async_trait, s, Error, QueryExecutionError};
 use graph::schema::ApiSchema;
 use graph::{
     data::graphql::ObjectOrInterface,
@@ -18,7 +18,7 @@ use super::Query;
 pub trait Resolver: Sized + Send + Sync + 'static {
     const CACHEABLE: bool;
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError>;
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError>;
 
     /// Prepare for executing a query by prefetching as much data as possible
     fn prefetch(

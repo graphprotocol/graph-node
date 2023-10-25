@@ -8,7 +8,7 @@ use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::store::{BlockPtrForNumber, BlockStore, Store};
+use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
@@ -797,7 +797,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 impl<S: Store> Resolver for IndexNodeResolver<S> {
     const CACHEABLE: bool = false;
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
         self.store.query_permit().await.map_err(Into::into)
     }
 

@@ -7,6 +7,7 @@ use diesel::{
 use diesel::{sql_query, RunQueryDsl};
 
 use graph::cheap_clone::CheapClone;
+use graph::components::store::QueryPermit;
 use graph::constraint_violation;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{tokio, MetricsRegistry};
@@ -497,16 +498,19 @@ impl ConnectionPool {
         .unwrap();
     }
 
-    pub(crate) async fn query_permit(
-        &self,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
+    pub(crate) async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
         let pool = match &*self.inner.lock(&self.logger) {
             PoolState::Created(pool, _) | PoolState::Ready(pool) => pool.clone(),
             PoolState::Disabled => {
                 return Err(StoreError::DatabaseDisabled);
             }
         };
-        Ok(pool.query_permit().await)
+        let start = Instant::now();
+        let permit = pool.query_permit().await;
+        Ok(QueryPermit {
+            permit,
+            wait: start.elapsed(),
+        })
     }
 
     pub(crate) fn wait_stats(&self) -> Result<PoolWaitStats, StoreError> {

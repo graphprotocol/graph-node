@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
-use graph::components::store::{SubscriptionManager, UnitStream};
+use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, Trace};
@@ -283,7 +283,7 @@ impl StoreResolver {
 impl Resolver for StoreResolver {
     const CACHEABLE: bool = true;
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, QueryExecutionError> {
+    async fn query_permit(&self) -> Result<QueryPermit, QueryExecutionError> {
         self.store.query_permit().await.map_err(Into::into)
     }
 

@@ -8,7 +8,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
     Batch, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
-    StoredDynamicDataSource, VersionStats,
+    QueryPermit, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -17,7 +17,7 @@ use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::prelude::futures03::FutureExt;
 use graph::prelude::{
-    tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
+    ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
@@ -427,10 +427,7 @@ impl DeploymentStore {
         Ok(conn)
     }
 
-    pub(crate) async fn query_permit(
-        &self,
-        replica: ReplicaId,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
+    pub(crate) async fn query_permit(&self, replica: ReplicaId) -> Result<QueryPermit, StoreError> {
         let pool = match replica {
             ReplicaId::Main => &self.pool,
             ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],

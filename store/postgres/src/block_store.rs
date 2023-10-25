@@ -6,14 +6,11 @@ use std::{
 
 use graph::{
     blockchain::ChainIdentifier,
-    components::store::BlockStore as BlockStoreTrait,
+    components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     prelude::{error, info, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
 };
 use graph::{constraint_violation, prelude::CheapClone};
-use graph::{
-    prelude::{tokio, StoreError},
-    util::timed_cache::TimedCache,
-};
+use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 
 use crate::{
     chain_head_listener::ChainHeadUpdateSender, chain_store::ChainStoreMetrics,
@@ -313,7 +310,7 @@ impl BlockStore {
         Ok(block_store)
     }
 
-    pub(crate) async fn query_permit_primary(&self) -> tokio::sync::OwnedSemaphorePermit {
+    pub(crate) async fn query_permit_primary(&self) -> QueryPermit {
         self.mirror
             .primary()
             .query_permit()
