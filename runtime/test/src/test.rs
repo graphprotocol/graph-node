@@ -1226,8 +1226,13 @@ struct Host {
 }
 
 impl Host {
-    async fn new(schema: &str, deployment_hash: &str, wasm_file: &str) -> Host {
-        let version = ENV_VARS.mappings.max_api_version.clone();
+    async fn new(
+        schema: &str,
+        deployment_hash: &str,
+        wasm_file: &str,
+        api_version: Option<Version>,
+    ) -> Host {
+        let version = api_version.unwrap_or(ENV_VARS.mappings.max_api_version.clone());
         let wasm_file = wasm_file_path(wasm_file, API_VERSION_0_0_5);
 
         let ds = mock_data_source(&wasm_file, version.clone());
@@ -1325,7 +1330,7 @@ async fn test_store_set_id() {
         name: String,
     }";
 
-    let mut host = Host::new(schema, "hostStoreSetId", "boolean.wasm").await;
+    let mut host = Host::new(schema, "hostStoreSetId", "boolean.wasm", None).await;
 
     host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
         .expect("setting with same id works");
@@ -1428,7 +1433,13 @@ async fn test_store_set_invalid_fields() {
         test2: String
     }";
 
-    let mut host = Host::new(schema, "hostStoreSetInvalidFields", "boolean.wasm").await;
+    let mut host = Host::new(
+        schema,
+        "hostStoreSetInvalidFields",
+        "boolean.wasm",
+        Some(API_VERSION_0_0_8),
+    )
+    .await;
 
     host.store_set(USER, UID, vec![("id", "u1"), ("name", "user1")])
         .unwrap();
@@ -1451,8 +1462,7 @@ async fn test_store_set_invalid_fields() {
     // So we just check the string contains them
     let err_string = err.to_string();
     dbg!(err_string.as_str());
-    assert!(err_string
-        .contains("The provided entity has fields not defined in the schema for entity `User`"));
+    assert!(err_string.contains("Attempted to set undefined fields [test, test2] for the entity type `User`. Make sure those fields are defined in the schema."));
 
     let err = host
         .store_set(
@@ -1463,8 +1473,30 @@ async fn test_store_set_invalid_fields() {
         .err()
         .unwrap();
 
-    err_says(
-        err,
-        "Unknown key `test3`. It probably is not part of the schema",
+    err_says(err, "Attempted to set undefined fields [test3] for the entity type `User`. Make sure those fields are defined in the schema.");
+
+    // For apiVersion below 0.0.8, we should not error out
+    let mut host2 = Host::new(
+        schema,
+        "hostStoreSetInvalidFields",
+        "boolean.wasm",
+        Some(API_VERSION_0_0_7),
     )
+    .await;
+
+    let err_is_none = host2
+        .store_set(
+            USER,
+            UID,
+            vec![
+                ("id", "u1"),
+                ("name", "user1"),
+                ("test", "invalid_field"),
+                ("test2", "invalid_field"),
+            ],
+        )
+        .err()
+        .is_none();
+
+    assert!(err_is_none);
 }

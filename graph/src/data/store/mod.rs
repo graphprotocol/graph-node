@@ -657,9 +657,6 @@ impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum EntityValidationError {
-    #[error("The provided entity has fields not defined in the schema for entity `{entity}`")]
-    FieldsNotDefined { entity: String },
-
     #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
     UnknownEntityType { entity: String, id: String },
 
@@ -917,14 +914,6 @@ impl Entity {
                 id: key.entity_id.to_string(),
             }
         })?;
-
-        for field in self.0.atoms() {
-            if !key.entity_type.has_field(field) {
-                return Err(EntityValidationError::FieldsNotDefined {
-                    entity: key.entity_type.to_string(),
-                });
-            }
-        }
 
         for field in &object_type.fields {
             let is_derived = field.is_derived();
