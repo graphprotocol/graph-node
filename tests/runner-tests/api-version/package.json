@@ -1,0 +1,29 @@
+{
+  "name": "api-version",
+  "version": "0.1.0",
+  "scripts": {
+    "build-contracts": "../../common/build-contracts.sh",
+    "codegen": "graph codegen --skip-migrations",
+    "test": "yarn build-contracts && truffle test --compile-none --network test",
+    "create:test": "graph create test/api-version --node $GRAPH_NODE_ADMIN_URI",
+    "prepare:0-0-7": "mustache data.0.0.7.json subgraph.template.yaml > subgraph.yaml",
+    "prepare:0-0-8": "mustache data.0.0.8.json  subgraph.template.yaml > subgraph.yaml",
+    "deploy:test-0-0-7": "yarn prepare:0-0-7 && graph deploy test/api-version-0-0-7 --version-label 0.0.7 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI",
+    "deploy:test-0-0-8": "yarn prepare:0-0-8 && graph deploy test/api-version-0-0-8 --version-label 0.0.8 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+  },
+  "devDependencies": {
+    "@graphprotocol/graph-cli": "0.53.0",
+    "@graphprotocol/graph-ts": "0.31.0",
+    "solc": "^0.8.2"
+  },
+  "dependencies": {
+    "@truffle/contract": "^4.3",
+    "@truffle/hdwallet-provider": "^1.2",
+    "apollo-fetch": "^0.7.0",
+    "babel-polyfill": "^6.26.0",
+    "babel-register": "^6.26.0",
+    "gluegun": "^4.6.1",
+    "mustache": "^4.2.0",
+    "truffle": "^5.2"
+  }
+}

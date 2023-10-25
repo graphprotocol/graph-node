@@ -23,7 +23,7 @@ use super::{input_schema::POI_OBJECT, EntityKey, InputSchema};
 #[derive(Clone)]
 pub struct EntityType {
     schema: InputSchema,
-    atom: Atom,
+    pub atom: Atom,
 }
 
 impl EntityType {
