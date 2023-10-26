@@ -103,7 +103,8 @@ fn ethereum_call(
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,
 ) -> Result<AscEnumArray<EthereumValueKind>, HostExportError> {
-    ctx.gas.consume_host_fn(ETHEREUM_CALL)?;
+    ctx.gas
+        .consume_host_fn_with_metrics(ETHEREUM_CALL, "ethereum_call")?;
 
     // For apiVersion >= 0.0.4 the call passed from the mapping includes the
     // function signature; subgraphs using an apiVersion < 0.0.4 don't pass
