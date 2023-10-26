@@ -1,3 +1,4 @@
+use graph::components::metrics::gas::GasMetrics;
 use graph::data::store::scalar;
 use graph::data::subgraph::*;
 use graph::data::value::Word;
@@ -92,10 +93,14 @@ async fn test_valid_module_and_store_with_timeout(
         "test",
         metrics_registry.clone(),
     );
+
+    let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
+
     let host_metrics = Arc::new(HostMetrics::new(
         metrics_registry,
         deployment_id.as_str(),
         stopwatch_metrics,
+        gas_metrics,
     ));
 
     let experimental_features = ExperimentalFeatures {
@@ -1243,14 +1248,16 @@ impl Host {
         let ctx = mock_context(deployment.clone(), ds, store.subgraph_store(), version);
         let host_exports = host_exports::test_support::HostExports::new(&ctx);
 
-        let metrics_registry = Arc::new(MetricsRegistry::mock());
+        let metrics_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
         let stopwatch = StopwatchMetrics::new(
             ctx.logger.clone(),
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
         );
-        let gas = GasCounter::new();
+        let gas_metrics = GasMetrics::new(deployment.hash.clone(), metrics_registry);
+
+        let gas = GasCounter::new(gas_metrics);
 
         Host {
             ctx,
