@@ -5,7 +5,7 @@
     <title>The GraphiQL</title>
     <link
       rel="stylesheet"
-      href="https://unpkg.com/@graphql-yoga/graphiql@4.1.1/dist/style.css"
+      href="https://cdn.jsdelivr.net/npm/@graphql-yoga/graphiql@4.2.0/dist/style.css"
     />
     <link
       rel="icon"
@@ -16,10 +16,8 @@
   <body id="body" class="no-focus-outline">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script type="module">
-      import { renderYogaGraphiQL } from "https://unpkg.com/@graphql-yoga/graphiql@4.1.1/dist/yoga-graphiql.es.js";
+      import { renderYogaGraphiQL } from "https://cdn.jsdelivr.net/npm/@graphql-yoga/graphiql@4.2.0/+esm";
 
       const endpoint = window.location.pathname.substring(
         0,
