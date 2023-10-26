@@ -6,17 +6,19 @@
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@graphql-yoga/graphiql@4.2.0/dist/style.css"
+      crossorigin
     />
     <link
       rel="icon"
       type="image/png"
       href="https://storage.googleapis.com/graph-web/favicon.png"
+      crossorigin
     />
   </head>
   <body id="body" class="no-focus-outline">
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
-    <script type="module">
+    <script type="module" crossorigin>
       import { renderYogaGraphiQL } from "https://cdn.jsdelivr.net/npm/@graphql-yoga/graphiql@4.2.0/+esm";
 
       const endpoint = window.location.pathname.substring(
