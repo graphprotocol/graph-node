@@ -313,7 +313,9 @@ fn next_response_to_string(item: &Option<Result<Response, Status>>) -> String {
 
                 format!("BlockUndo to #{} ({})", back_to.number, back_to.id)
             }
-            Some(msg) => "Other".to_string(),
+            Some(Message::FatalError(_)) => "FatalError".to_string(),
+            Some(Message::DebugSnapshotComplete(_)) => "DebugSnapshotComplete".to_string(),
+            Some(Message::DebugSnapshotData(_)) => "DebugSnapshotData".to_string(),
             None => {
                 format!("None")
             }
