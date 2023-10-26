@@ -338,6 +338,12 @@ impl BlockTime {
     pub fn since_epoch(secs: i64, nanos: u32) -> Self {
         Self(DateTime::from_timestamp(secs, nanos).unwrap())
     }
+
+    /// Construct a block time for tests where blocks are exactly 10s apart
+    #[cfg(debug_assertions)]
+    pub fn for_test(ptr: &BlockPtr) -> Self {
+        Self::since_epoch(ptr.number as i64 * 10, 0)
+    }
 }
 
 impl TryFrom<&Value> for BlockTime {

@@ -2,7 +2,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    blockchain::{block_stream::FirehoseCursor, BlockPtr},
+    blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     cheap_clone::CheapClone,
     components::subgraph::Entity,
     constraint_violation,
@@ -613,6 +613,8 @@ pub enum EntityOp<'a> {
 pub struct Batch {
     /// The last block for which this batch contains changes
     pub block_ptr: BlockPtr,
+    /// The timestamp for the block
+    pub block_time: BlockTime,
     /// The first block for which this batch contains changes
     pub first_block: BlockNumber,
     /// The firehose cursor corresponding to `block_ptr`
@@ -629,6 +631,7 @@ pub struct Batch {
 impl Batch {
     pub fn new(
         block_ptr: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mut raw_mods: Vec<EntityModification>,
         data_sources: Vec<StoredDynamicDataSource>,
@@ -660,6 +663,7 @@ impl Batch {
         Ok(Self {
             block_ptr,
             first_block,
+            block_time,
             firehose_cursor,
             mods,
             data_sources,

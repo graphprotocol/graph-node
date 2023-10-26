@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::query::QueryTarget;
 use graph::data::subgraph::schema::DeploymentCreate;
@@ -1532,6 +1533,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_text, &schema, block),
@@ -1634,6 +1636,7 @@ fn handle_large_bytea_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
+                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_bytea, &schema, block),

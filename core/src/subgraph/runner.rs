@@ -562,6 +562,7 @@ where
         store
             .transact_block_operations(
                 block_ptr,
+                block.timestamp(),
                 firehose_cursor,
                 mods,
                 &self.metrics.host.stopwatch,

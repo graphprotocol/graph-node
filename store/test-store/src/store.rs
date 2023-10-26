@@ -1,5 +1,6 @@
 use diesel::{self, PgConnection};
 use graph::blockchain::mock::MockDataSource;
+use graph::blockchain::BlockTime;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
@@ -283,12 +284,14 @@ pub async fn transact_errors(
         metrics_registry.clone(),
         store.subgraph_store().shard(deployment)?.to_string(),
     );
+    let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .subgraph_store()
         .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
         .await?
         .transact_block_operations(
             block_ptr_to,
+            block_time,
             FirehoseCursor::None,
             Vec::new(),
             &stopwatch_metrics,
@@ -366,9 +369,11 @@ pub async fn transact_entities_and_dynamic_data_sources(
         metrics_registry.clone(),
         store.shard().to_string(),
     );
+    let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .transact_block_operations(
             block_ptr_to,
+            block_time,
             FirehoseCursor::None,
             mods,
             &stopwatch_metrics,

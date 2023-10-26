@@ -4,6 +4,7 @@ use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::FirehoseCursor;
+use crate::blockchain::BlockTime;
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::server::index_node::VersionInfo;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
@@ -325,6 +326,7 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,

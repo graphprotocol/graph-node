@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use std::{collections::BTreeMap, sync::Arc};
 
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
 use graph::constraint_violation;
 use graph::data::store::IdList;
@@ -1521,6 +1522,7 @@ impl WritableStoreTrait for WritableStore {
     async fn transact_block_operations(
         &self,
         block_ptr_to: BlockPtr,
+        block_time: BlockTime,
         firehose_cursor: FirehoseCursor,
         mods: Vec<EntityModification>,
         stopwatch: &StopwatchMetrics,
@@ -1531,6 +1533,7 @@ impl WritableStoreTrait for WritableStore {
     ) -> Result<(), StoreError> {
         let batch = Batch::new(
             block_ptr_to.clone(),
+            block_time,
             firehose_cursor.clone(),
             mods,
             data_sources,

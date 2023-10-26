@@ -1,4 +1,5 @@
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::components::store::{
     DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
     StoredDynamicDataSource, WritableStore,
@@ -127,6 +128,7 @@ impl WritableStore for MockStore {
     async fn transact_block_operations(
         &self,
         _: BlockPtr,
+        _: BlockTime,
         _: FirehoseCursor,
         _: Vec<EntityModification>,
         _: &StopwatchMetrics,
