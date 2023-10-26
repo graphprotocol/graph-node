@@ -1,3 +1,5 @@
+const SERIALIZE_DERIVE: &str = "#[derive(::serde::Serialize)]";
+
 fn main() {
     println!("cargo:rerun-if-changed=proto");
     tonic_build::configure()
@@ -23,6 +25,13 @@ fn main() {
         .protoc_arg("--experimental_allow_proto3_optional")
         .extern_path(".sf.substreams.v1", "crate::substreams")
         .out_dir("src/substreams_rpc")
+        .type_attribute(".sf.substreams.rpc.v2.BlockRange", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.ExternalCallMetric", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.Job", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.ModulesProgress", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.ModuleStats", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.ProcessedBytes", SERIALIZE_DERIVE)
+        .type_attribute(".sf.substreams.rpc.v2.Stage", SERIALIZE_DERIVE)
         .compile(&["proto/substreams-rpc.proto"], &["proto"])
         .expect("Failed to compile Substreams RPC proto(s)");
 }

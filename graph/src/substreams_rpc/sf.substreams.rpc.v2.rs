@@ -169,6 +169,7 @@ pub struct OutputDebugInfo {
     pub cached: bool,
 }
 /// ModulesProgress is a message that is sent every 500ms
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModulesProgress {
@@ -184,6 +185,7 @@ pub struct ModulesProgress {
     #[prost(message, optional, tag = "5")]
     pub processed_bytes: ::core::option::Option<ProcessedBytes>,
 }
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ProcessedBytes {
@@ -206,6 +208,7 @@ pub struct Error {
     #[prost(bool, tag = "4")]
     pub logs_truncated: bool,
 }
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Job {
@@ -220,6 +223,7 @@ pub struct Job {
     #[prost(uint64, tag = "5")]
     pub duration_ms: u64,
 }
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Stage {
@@ -230,6 +234,7 @@ pub struct Stage {
 }
 /// ModuleStats gathers metrics and statistics from each module, running on tier1 or tier2
 /// All the 'count' and 'time_ms' values may include duplicate for each stage going over that module
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModuleStats {
@@ -271,6 +276,7 @@ pub struct ModuleStats {
     #[prost(uint64, tag = "15")]
     pub highest_contiguous_block: u64,
 }
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ExternalCallMetric {
@@ -340,6 +346,7 @@ pub mod store_delta {
         }
     }
 }
+#[derive(::serde::Serialize)]
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BlockRange {

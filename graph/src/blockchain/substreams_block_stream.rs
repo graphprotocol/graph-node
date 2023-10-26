@@ -357,7 +357,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
             info!(
                 logger,
                 "Received progress update";
-                "progress" => format!("{:?}", progress),
+                "progress" => serde_json::to_string(&progress).unwrap(),
             );
 
             *last_progress = Instant::now();
