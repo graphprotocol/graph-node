@@ -164,6 +164,7 @@ mod tests {
 
     use graph::{
         anyhow::anyhow,
+        components::metrics::gas::GasMetrics,
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
@@ -175,7 +176,7 @@ mod tests {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
 
-        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::default());
+        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()));
         assert!(result.is_ok());
     }
 
@@ -188,7 +189,7 @@ mod tests {
             receipt: receipt().unwrap(),
         }));
 
-        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::default());
+        let result = trigger.to_asc_ptr(&mut heap, &GasCounter::new(GasMetrics::mock()));
         assert!(result.is_ok());
     }
 

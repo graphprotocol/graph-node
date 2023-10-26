@@ -176,7 +176,8 @@ impl<C: Blockchain> WasmInstance<C> {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState<C>, anyhow::Error> {
-        let gas = GasCounter::default();
+        let gas_metrics = self.instance_ctx().host_metrics.gas_metrics.clone();
+        let gas = GasCounter::new(gas_metrics);
         let value = asc_new(self.instance_ctx_mut().deref_mut(), value, &gas)?;
         let user_data = asc_new(self.instance_ctx_mut().deref_mut(), user_data, &gas)?;
 
@@ -420,7 +421,7 @@ impl<C: Blockchain> WasmInstance<C> {
 
         // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
         // host fn, they need to be separate from the rest of the context.
-        let gas = GasCounter::default();
+        let gas = GasCounter::new(host_metrics.gas_metrics.clone());
         let deterministic_host_trap = Rc::new(AtomicBool::new(false));
 
         macro_rules! link {
@@ -678,7 +679,8 @@ impl<C: Blockchain> WasmInstance<C> {
                 // of times per handler, but it's not worth having a stopwatch section here because
                 // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
                 // time this was benchmarked it took < 100ns to run.
-                if let Err(e) = gas.consume_host_fn(gas_used.saturating_into()) {
+                if let Err(e) = gas.consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
+                {
                     deterministic_host_trap.store(true, Ordering::SeqCst);
                     return Err(e.into_trap());
                 }
@@ -762,7 +764,10 @@ impl AscHeap for AscHeapCtx {
     fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
-        gas.consume_host_fn(Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64))?;
+        gas.consume_host_fn_with_metrics(
+            Gas::new(GAS_COST_STORE as u64 * bytes.len() as u64),
+            "raw_new",
+        )?;
 
         // We request large chunks from the AssemblyScript allocator to use as arenas that we
         // manage directly.
@@ -807,7 +812,7 @@ impl AscHeap for AscHeapCtx {
     }
 
     fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError> {
-        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * 4))?;
+        gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * 4), "read_u32")?;
         let mut bytes = [0; 4];
         self.memory.read(offset as usize, &mut bytes).map_err(|_| {
             DeterministicHostError::from(anyhow!(
@@ -827,7 +832,10 @@ impl AscHeap for AscHeapCtx {
     ) -> Result<&'a mut [u8], DeterministicHostError> {
         // The cost of reading wasm memory from the host is the same as of reading from wasm using
         // load instructions.
-        gas.consume_host_fn(Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)))?;
+        gas.consume_host_fn_with_metrics(
+            Gas::new(GAS_COST_LOAD as u64 * (buffer.len() as u64)),
+            "read",
+        )?;
 
         let offset = offset as usize;
 
@@ -1213,7 +1221,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         bytes_ptr: AscPtr<Uint8Array>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let bytes: Vec<u8> = asc_get(self, bytes_ptr, gas)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
+        gas.consume_host_fn_with_metrics(
+            gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes),
+            "bytes_to_hex",
+        )?;
 
         // Even an empty string must be prefixed with `0x`.
         // Encodes each byte as a two hex digits.
@@ -1228,7 +1239,10 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         big_int_ptr: AscPtr<AscBigInt>,
     ) -> Result<AscPtr<AscString>, HostExportError> {
         let n: BigInt = asc_get(self, big_int_ptr, gas)?;
-        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)))?;
+        gas.consume_host_fn_with_metrics(
+            gas::DEFAULT_GAS_OP.with_args(gas::complexity::Mul, (&n, &n)),
+            "big_int_to_string",
+        )?;
         asc_new(self, &n.to_string(), gas)
     }
 

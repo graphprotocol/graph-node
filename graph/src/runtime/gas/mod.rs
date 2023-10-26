@@ -3,6 +3,7 @@ mod costs;
 mod ops;
 mod saturating;
 mod size_of;
+use crate::components::metrics::gas::GasMetrics;
 use crate::prelude::{CheapClone, ENV_VARS};
 use crate::runtime::DeterministicHostError;
 pub use combinators::*;
@@ -75,20 +76,33 @@ impl Display for Gas {
     }
 }
 
-#[derive(Clone, Default)]
-pub struct GasCounter(Arc<AtomicU64>);
+#[derive(Clone)]
+pub struct GasCounter(Arc<AtomicU64>, GasMetrics);
 
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
     /// Alias of [`Default::default`].
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(gas_metrics: GasMetrics) -> Self {
+        Self {
+            0: Arc::new(AtomicU64::new(0)),
+            1: gas_metrics,
+        }
     }
 
     /// This should be called once per host export
-    pub fn consume_host_fn(&self, mut amount: Gas) -> Result<(), DeterministicHostError> {
+    pub fn consume_host_fn_inner(
+        &self,
+        mut amount: Gas,
+        method: Option<&str>,
+    ) -> Result<(), DeterministicHostError> {
         amount += costs::HOST_EXPORT_GAS;
+
+        if let Some(method) = method {
+            self.1.track_gas(method, amount.0);
+            self.1.track_operations(method, 1);
+        }
+
         let old = self
             .0
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
@@ -102,6 +116,18 @@ impl GasCounter {
         } else {
             Ok(())
         }
+    }
+
+    pub fn consume_host_fn(&self, amount: Gas) -> Result<(), DeterministicHostError> {
+        self.consume_host_fn_inner(amount, Some("untracked"))
+    }
+
+    pub fn consume_host_fn_with_metrics(
+        &self,
+        amount: Gas,
+        method: &str,
+    ) -> Result<(), DeterministicHostError> {
+        self.consume_host_fn_inner(amount, Some(method))
     }
 
     pub fn get(&self) -> Gas {

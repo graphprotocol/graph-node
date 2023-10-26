@@ -6,6 +6,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures::sync::mpsc;
 
+use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
@@ -87,6 +88,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
 pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
+    pub gas_metrics: GasMetrics,
     pub stopwatch: StopwatchMetrics,
 }
 
@@ -95,6 +97,7 @@ impl HostMetrics {
         registry: Arc<MetricsRegistry>,
         subgraph: &str,
         stopwatch: StopwatchMetrics,
+        gas_metrics: GasMetrics,
     ) -> Self {
         let handler_execution_time = registry
             .new_deployment_histogram_vec(
@@ -118,6 +121,7 @@ impl HostMetrics {
             handler_execution_time,
             host_fn_execution_time,
             stopwatch,
+            gas_metrics,
         }
     }
 

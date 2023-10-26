@@ -6,7 +6,8 @@ use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
+use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities,TriggerFilter};
+use graph::components::metrics::gas::GasMetrics;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data_source::causality_region::CausalityRegionSeq;
@@ -344,6 +345,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             self.metrics_registry.clone(),
         );
 
+        let gas_metrics = GasMetrics::new(deployment.hash.clone(), self.metrics_registry.clone());
+
         let unified_mapping_api_version = manifest.unified_mapping_api_version()?;
         let triggers_adapter = chain.triggers_adapter(&deployment, &required_capabilities, unified_mapping_api_version).map_err(|e|
                 anyhow!(
@@ -355,6 +358,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             registry.cheap_clone(),
             deployment.hash.as_str(),
             stopwatch_metrics.clone(),
+            gas_metrics.clone(),
         ));
 
         let subgraph_metrics = Arc::new(SubgraphInstanceMetrics::new(
