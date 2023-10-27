@@ -70,6 +70,7 @@ pub mod prelude {
     pub use async_trait::async_trait;
     pub use bigdecimal;
     pub use chrono;
+    pub use diesel;
     pub use envconfig;
     pub use ethabi;
     pub use futures::future;

@@ -1,27 +1,12 @@
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::net::TcpListener;
-use std::path::Path;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::AtomicU16;
 
-use anyhow::Context;
-
-const POSTGRESQL_DEFAULT_PORT: u16 = 5432;
-const GANACHE_DEFAULT_PORT: u16 = 8545;
-const IPFS_DEFAULT_PORT: u16 = 5001;
-
-/// Maps `Service => Host` exposed ports.
-pub type MappedPorts = HashMap<u16, u16>;
-
-/// Strip parent directories from filenames
-pub fn basename(path: &impl AsRef<Path>) -> String {
-    path.as_ref()
-        .file_name()
-        .map(OsStr::to_string_lossy)
-        .map(String::from)
-        .expect("failed to infer basename for path.")
-}
+use anyhow::{bail, Context};
+use graph::itertools::Itertools;
+use graph::prelude::serde_json::{json, Value};
+use graph::prelude::{reqwest, serde_json};
 
 /// Parses stdout bytes into a prefixed String
 pub fn pretty_output(blob: &[u8], prefix: &str) -> String {
@@ -32,85 +17,56 @@ pub fn pretty_output(blob: &[u8], prefix: &str) -> String {
         .join("\n")
 }
 
-/// Finds and returns a free port. Ports are never *guaranteed* to be free because of
-/// [TOCTOU](https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use) race
-/// conditions.
-///
-/// This function guards against conflicts coming from other callers, so you
-/// will only get port conflicts from external resources.
-fn get_free_port() -> u16 {
-    // We start cycling through ports at 10000, which is high enough in the port
-    // space to to cause few conflicts.
-    const RANGE_START: u16 = 10_000;
-    static COUNTER: AtomicU16 = AtomicU16::new(RANGE_START);
-
-    loop {
-        let ordering = std::sync::atomic::Ordering::SeqCst;
-        let port = COUNTER.fetch_add(1, ordering);
-        if port < RANGE_START {
-            // We've wrapped around, start over.
-            COUNTER.store(RANGE_START, ordering);
-            continue;
-        }
-
-        let bind = TcpListener::bind(("127.0.0.1", port));
-        if bind.is_ok() {
-            return port;
-        }
-    }
+/// A file in the `tests` crate root
+#[derive(Debug, Clone)]
+pub struct TestFile {
+    pub relative: String,
+    pub path: PathBuf,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct GraphNodePorts {
-    pub http: u16,
-    pub index: u16,
-    pub ws: u16,
-    pub admin: u16,
-    pub metrics: u16,
-}
-
-impl GraphNodePorts {
-    /// Populates all values with random free ports.
-    pub fn random_free() -> GraphNodePorts {
+impl TestFile {
+    /// Create a new file where `path` is taken relative to the `tests` crate root
+    pub fn new(relative: &str) -> Self {
+        let cwd = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let path = cwd.join(relative);
         Self {
-            http: get_free_port(),
-            index: get_free_port(),
-            ws: get_free_port(),
-            admin: get_free_port(),
-            metrics: get_free_port(),
+            relative: relative.to_string(),
+            path,
+        }
+    }
+
+    pub fn create(&self) -> File {
+        std::fs::File::create(&self.path).unwrap()
+    }
+
+    pub fn read(&self) -> anyhow::Result<File> {
+        std::fs::File::open(&self.path)
+            .with_context(|| format!("Failed to open file {}", self.path.to_str().unwrap()))
+    }
+
+    pub fn reader(&self) -> anyhow::Result<BufReader<File>> {
+        Ok(BufReader::new(self.read()?))
+    }
+
+    pub fn newer(&self, other: &TestFile) -> bool {
+        self.path.metadata().unwrap().modified().unwrap()
+            > other.path.metadata().unwrap().modified().unwrap()
+    }
+
+    pub fn append(&self, name: &str) -> Self {
+        let mut path = self.path.clone();
+        path.push(name);
+        Self {
+            relative: format!("{}/{}", self.relative, name),
+            path,
         }
     }
 }
 
-// Build a postgres connection string
-pub fn make_postgres_uri(db_name: &str, postgres_ports: &MappedPorts) -> String {
-    let port = postgres_ports
-        .get(&POSTGRESQL_DEFAULT_PORT)
-        .expect("failed to fetch Postgres port from mapped ports");
-    format!(
-        "postgresql://{user}:{password}@{host}:{port}/{database_name}",
-        user = "postgres",
-        password = "password",
-        host = "localhost",
-        port = port,
-        database_name = db_name,
-    )
-}
-
-pub fn make_ipfs_uri(ipfs_ports: &MappedPorts) -> String {
-    let port = ipfs_ports
-        .get(&IPFS_DEFAULT_PORT)
-        .expect("failed to fetch IPFS port from mapped ports");
-    format!("http://{host}:{port}", host = "localhost", port = port)
-}
-
-// Build a Ganache connection string. Returns the port number and the URI.
-pub fn make_ganache_uri(ganache_ports: &MappedPorts) -> (u16, String) {
-    let port = ganache_ports
-        .get(&GANACHE_DEFAULT_PORT)
-        .expect("failed to fetch Ganache port from mapped ports");
-    let uri = format!("test:http://{host}:{port}", host = "localhost", port = port);
-    (*port, uri)
+impl std::fmt::Display for TestFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.relative)
+    }
 }
 
 pub fn contains_subslice<T: PartialEq>(data: &[T], needle: &[T]) -> bool {
@@ -134,4 +90,60 @@ pub fn run_cmd(command: &mut Command) -> String {
     );
 
     String::from_utf8(output.stdout).unwrap()
+}
+
+/// Run a command, check that it succeeded and return its stdout and stderr
+/// in a friendly error format for display
+pub async fn run_checked(cmd: &mut tokio::process::Command) -> anyhow::Result<()> {
+    let std_cmd = cmd.as_std();
+    let cmdline = format!(
+        "{} {}",
+        std_cmd.get_program().to_str().unwrap(),
+        std_cmd
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .join(" ")
+    );
+    let output = cmd
+        .output()
+        .await
+        .with_context(|| format!("Command failed: {cmdline}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "Command failed: {}\ncmdline: {cmdline}\nstdout: {stdout}\nstderr: {stderr}",
+            output.status,
+        )
+    }
+}
+
+pub async fn graphql_query(endpoint: &str, query: &str) -> anyhow::Result<Value> {
+    graphql_query_with_vars(endpoint, query, Value::Null).await
+}
+
+pub async fn graphql_query_with_vars(
+    endpoint: &str,
+    query: &str,
+    vars: Value,
+) -> anyhow::Result<Value> {
+    let query = if vars == Value::Null {
+        json!({ "query": query }).to_string()
+    } else {
+        json!({ "query": query, "variables": vars }).to_string()
+    };
+    let client = reqwest::Client::new();
+    let res = client
+        .post(endpoint)
+        .header("Content-Type", "application/json")
+        .body(query)
+        .send()
+        .await?;
+    let text = res.text().await?;
+    let body: Value = serde_json::from_str(&text)?;
+
+    Ok(body)
 }
