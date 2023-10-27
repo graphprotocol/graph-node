@@ -6,10 +6,11 @@ configuration file, it is not possible to use the options `--postgres-url`,
 `--postgres-secondary-hosts`, and `--postgres-host-weights`.
 
 The TOML file consists of four sections:
-* `[chains]` sets the endpoints to blockchain clients.
-* `[store]` describes the available databases.
-* `[ingestor]` sets the name of the node responsible for block ingestion.
-* `[deployment]` describes how to place newly deployed subgraphs.
+
+- `[chains]` sets the endpoints to blockchain clients.
+- `[store]` describes the available databases.
+- `[ingestor]` sets the name of the node responsible for block ingestion.
+- `[deployment]` describes how to place newly deployed subgraphs.
 
 Some of these sections support environment variable expansion out of the box,
 most notably Postgres connection strings. The official `graph-node` Docker image
@@ -109,14 +110,14 @@ stored. The section consists of the name of the node doing block ingestion
 `shard` where chain data is stored and a list of providers for that
 chain. For each provider, the following information must be given:
 
-* `label`: a label that is used when logging information about that
+- `label`: a label that is used when logging information about that
   provider (not implemented yet)
-* `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
-* `url`: the URL for the provider
-* `features`: an array of features that the provider supports, either empty
+- `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
+- `url`: the URL for the provider
+- `features`: an array of features that the provider supports, either empty
   or any combination of `traces` and `archive`
-* `headers`: HTTP headers to be added on every request. Defaults to none.
-* `limit`: the maximum number of subgraphs that can use this provider.
+- `headers`: HTTP headers to be added on every request. Defaults to none.
+- `limit`: the maximum number of subgraphs that can use this provider.
   Defaults to unlimited. At least one provider should be unlimited,
   otherwise `graph-node` might not be able to handle all subgraphs. The
   tracking for this is approximate, and a small amount of deviation from
@@ -151,13 +152,13 @@ approximate and can differ from the true number by a small amount
 (generally less than 10)
 
 The limit is set through rules that match on the node name. If a node's
-name does not match any rule, the corresponding provider will be disabled 
-for that node. 
+name does not match any rule, the corresponding provider will be disabled
+for that node.
 
 If the match property is omitted then the provider will be unlimited on every
-node. 
+node.
 
-It is recommended that at least one provider is generally unlimited. 
+It is recommended that at least one provider is generally unlimited.
 The limit is set in the following way:
 
 ```toml
@@ -174,7 +175,7 @@ provider = [
 Nodes named `some_node_.*` will use `mainnet-1` for at most 10 subgraphs,
 and `mainnet-0` for everything else, nodes named `other_node_.*` will never
 use `mainnet-1` and always `mainnet-0`. Any node whose name does not match
-one of these patterns will not be able to use and `mainnet-1`. 
+one of these patterns will not be able to use and `mainnet-1`.
 
 ## Controlling Deployment
 
@@ -237,6 +238,7 @@ indexers = [
 
 Nodes can be configured to explicitly be query nodes by including the
 following in the configuration file:
+
 ```toml
 [general]
 query = "<regular expression>"
@@ -250,6 +252,7 @@ try to connect to any of the configured Ethereum providers.
 
 The following file is equivalent to using the `--postgres-url` command line
 option:
+
 ```toml
 [store]
 [store.primary]
@@ -261,21 +264,26 @@ indexers = [ "<.. list of all indexing nodes ..>" ]
 
 ## Validating configuration files
 
-A configuration file can be checked for validity by passing the `--check-config`
-flag to `graph-node`. The command
+A configuration file can be checked for validity with the `config check`
+command. Running
+
 ```shell
-graph-node --config $CONFIG_FILE --check-config
+graph-node --config $CONFIG_FILE config check
 ```
-will read the configuration file and print information about syntax errors or, for
-valid files, a JSON representation of the configuration.
+
+will read the configuration file and print information about syntax errors
+and some internal inconsistencies, for example, when a shard that is not
+declared as a store is used in a deployment rule.
 
 ## Simulating deployment placement
 
 Given a configuration file, placement of newly deployed subgraphs can be
 simulated with
+
 ```shell
 graphman --config $CONFIG_FILE config place some/subgraph mainnet
 ```
+
 The command will not make any changes, but simply print where that subgraph
 would be placed. The output will indicate the database shard that will hold
 the subgraph's data, and a list of indexing nodes that could be used for
