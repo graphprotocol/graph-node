@@ -288,7 +288,7 @@ Stop, unassign and delete all indexed data from a specific deployment by its dep
 
 Stop, unassign and delete all indexed data from a specific deployment by its subgraph name
 
-    graphman --config config.toml drop autor/subgraph-name
+    graphman --config config.toml drop author/subgraph-name
 
 <a id="check-blocks"></a>
 # ⌘ Check Blocks
