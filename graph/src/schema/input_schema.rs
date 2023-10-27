@@ -26,6 +26,8 @@ use super::{ApiSchema, AsEntityTypeName, EntityType, Schema};
 pub(crate) const POI_OBJECT: &str = "Poi$";
 /// The name of the digest attribute of POI entities
 const POI_DIGEST: &str = "digest";
+/// The name of the PoI attribute for storing the block time
+const POI_BLOCK_TIME: &str = "blockTime";
 
 mod kw {
     pub const ENTITY: &str = "entity";
@@ -982,6 +984,13 @@ impl InputSchema {
             .collect()
     }
 
+    pub fn has_aggregations(&self) -> bool {
+        self.inner
+            .type_infos
+            .iter()
+            .any(|ti| matches!(ti, TypeInfo::Aggregation(_)))
+    }
+
     pub fn entity_fulltext_definitions(
         &self,
         entity: &str,
@@ -1061,6 +1070,10 @@ impl InputSchema {
         Word::from(POI_DIGEST)
     }
 
+    pub fn poi_block_time(&self) -> Word {
+        Word::from(POI_BLOCK_TIME)
+    }
+
     // A helper for the `EntityType` constructor
     pub(in crate::schema) fn pool(&self) -> &Arc<AtomPool> {
         &self.inner.pool
@@ -1105,8 +1118,10 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     let mut pool = AtomPool::new();
 
     pool.intern(&*ID);
-    pool.intern(POI_OBJECT); // Name of PoI entity type
-    pool.intern(POI_DIGEST); // Attribute of PoI object
+    // Name and attributes of PoI entity type
+    pool.intern(POI_OBJECT);
+    pool.intern(POI_DIGEST);
+    pool.intern(POI_BLOCK_TIME);
 
     for definition in &document.definitions {
         match definition {

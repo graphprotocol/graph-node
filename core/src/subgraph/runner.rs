@@ -475,6 +475,7 @@ where
             let proof_of_indexing = Arc::try_unwrap(proof_of_indexing).unwrap().into_inner();
             update_proof_of_indexing(
                 proof_of_indexing,
+                block.timestamp(),
                 &self.metrics.host.stopwatch,
                 &mut block_state.entity_cache,
             )
@@ -1429,6 +1430,7 @@ where
 /// inserted when as_modifications is called.
 async fn update_proof_of_indexing(
     proof_of_indexing: ProofOfIndexing,
+    block_time: BlockTime,
     stopwatch: &StopwatchMetrics,
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
@@ -1437,15 +1439,20 @@ async fn update_proof_of_indexing(
         entity_cache: &mut EntityCache,
         key: EntityKey,
         digest: Bytes,
+        block_time: BlockTime,
     ) -> Result<(), Error> {
         let digest_name = entity_cache.schema.poi_digest();
-        let data = vec![
+        let mut data = vec![
             (
                 graph::data::store::ID.clone(),
                 Value::from(key.entity_id.to_string()),
             ),
             (digest_name, Value::from(digest)),
         ];
+        if entity_cache.schema.has_aggregations() {
+            let block_time = Value::Int8(block_time.as_secs_since_epoch() as i64);
+            data.push((entity_cache.schema.poi_block_time(), block_time));
+        }
         let poi = entity_cache.make_entity(data)?;
         entity_cache.set(key, poi)
     }
@@ -1482,7 +1489,12 @@ async fn update_proof_of_indexing(
 
         // Put this onto an entity with the same digest attribute
         // that was expected before when reading.
-        store_poi_entity(entity_cache, entity_key, updated_proof_of_indexing)?;
+        store_poi_entity(
+            entity_cache,
+            entity_key,
+            updated_proof_of_indexing,
+            block_time,
+        )?;
     }
 
     Ok(())

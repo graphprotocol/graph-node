@@ -221,6 +221,7 @@ impl Layout {
         // since we handle that specially
         let entity_tables = schema.entity_types();
         let ts_tables = schema.ts_entity_types();
+        let has_ts_tables = !ts_tables.is_empty();
 
         let mut tables = entity_tables
             .iter()
@@ -242,7 +243,12 @@ impl Layout {
         // Construct tables for timeseries
 
         if catalog.use_poi {
-            tables.push(Self::make_poi_table(&schema, &catalog, tables.len()))
+            tables.push(Self::make_poi_table(
+                &schema,
+                &catalog,
+                has_ts_tables,
+                tables.len(),
+            ))
         }
 
         let tables: Vec<_> = tables.into_iter().map(Arc::new).collect();
@@ -283,39 +289,62 @@ impl Layout {
         })
     }
 
-    fn make_poi_table(schema: &InputSchema, catalog: &Catalog, position: usize) -> Table {
+    fn make_poi_table(
+        schema: &InputSchema,
+        catalog: &Catalog,
+        has_ts_tables: bool,
+        position: usize,
+    ) -> Table {
         let poi_type = schema.poi_type();
         let poi_digest = schema.poi_digest();
+        let poi_block_time = schema.poi_block_time();
+
+        let mut columns = vec![
+            Column {
+                name: SqlName::from(poi_digest.as_str()),
+                field: poi_digest,
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
+                    BYTES_SCALAR.to_owned(),
+                ))),
+                column_type: ColumnType::Bytes,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            },
+            Column {
+                name: SqlName::from(PRIMARY_KEY_COLUMN),
+                field: Word::from(PRIMARY_KEY_COLUMN),
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType("String".to_owned()))),
+                column_type: ColumnType::String,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            },
+        ];
+
+        // If the subgraph uses timeseries, store the block time in the PoI
+        // table
+        if has_ts_tables {
+            // FIXME: Use `Timestamp` as the field type when that's
+            // available
+            let ts_column = Column {
+                name: SqlName::from(poi_block_time.as_str()),
+                field: poi_block_time,
+                field_type: q::Type::NonNullType(Box::new(q::Type::NamedType("Int8".to_owned()))),
+                column_type: ColumnType::Int8,
+                fulltext_fields: None,
+                is_reference: false,
+                use_prefix_comparison: false,
+            };
+            columns.push(ts_column);
+        }
 
         let table_name = SqlName::verbatim(POI_TABLE.to_owned());
         Table {
             object: poi_type.to_owned(),
             qualified_name: SqlName::qualified_name(&catalog.site.namespace, &table_name),
             name: table_name,
-            columns: vec![
-                Column {
-                    name: SqlName::from(poi_digest.as_str()),
-                    field: poi_digest,
-                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                        BYTES_SCALAR.to_owned(),
-                    ))),
-                    column_type: ColumnType::Bytes,
-                    fulltext_fields: None,
-                    is_reference: false,
-                    use_prefix_comparison: false,
-                },
-                Column {
-                    name: SqlName::from(PRIMARY_KEY_COLUMN),
-                    field: Word::from(PRIMARY_KEY_COLUMN),
-                    field_type: q::Type::NonNullType(Box::new(q::Type::NamedType(
-                        "String".to_owned(),
-                    ))),
-                    column_type: ColumnType::String,
-                    fulltext_fields: None,
-                    is_reference: false,
-                    use_prefix_comparison: false,
-                },
-            ],
+            columns,
             /// The position of this table in all the tables for this layout; this
             /// is really only needed for the tests to make the names of indexes
             /// predictable

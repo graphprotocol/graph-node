@@ -344,6 +344,10 @@ impl BlockTime {
     pub fn for_test(ptr: &BlockPtr) -> Self {
         Self::since_epoch(ptr.number as i64 * 10, 0)
     }
+
+    pub fn as_secs_since_epoch(&self) -> i64 {
+        self.0.timestamp()
+    }
 }
 
 impl TryFrom<&Value> for BlockTime {
