@@ -364,7 +364,6 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                 info!(
                     &logger,
                     "Received session init";
-                    "trace_id" => session_init.trace_id.clone(),
                     "session" => format!("{:?}", session_init),
                 );
                 *logger = logger.new(o!("trace_id" => session_init.trace_id));
