@@ -42,7 +42,7 @@ slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_tr
 # stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 # stable-hash = { version = "0.4.2" }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main"}
-stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
+stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash", doc = false }
 strum = "0.21.0"
 strum_macros = "0.25.3"
 slog-async = "2.5.0"
