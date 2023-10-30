@@ -68,6 +68,72 @@ impl WritableSubgraphStore {
     }
 }
 
+pub enum LastRollup {
+    /// We do not need to track the block time since the subgraph doesn't
+    /// use timeseries
+    NotNeeded,
+    /// We do not know the block time yet
+    Unknown,
+    /// The block time
+    Some(BlockTime),
+}
+
+impl LastRollup {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let kind = match (has_aggregations, block) {
+            (false, _) => LastRollup::NotNeeded,
+            (true, None) => LastRollup::Unknown,
+            (true, Some(block)) => {
+                let block_time = store.block_time(site, block)?;
+                block_time
+                    .map(|b| LastRollup::Some(b))
+                    .unwrap_or(LastRollup::Unknown)
+            }
+        };
+        Ok(kind)
+    }
+}
+
+pub struct LastRollupTracker(Mutex<LastRollup>);
+
+impl LastRollupTracker {
+    fn new(
+        store: Arc<DeploymentStore>,
+        site: Arc<Site>,
+        has_aggregations: bool,
+        block: Option<BlockNumber>,
+    ) -> Result<Self, StoreError> {
+        let rollup = LastRollup::new(
+            store.cheap_clone(),
+            site.cheap_clone(),
+            has_aggregations,
+            block,
+        )
+        .map(|kind| Mutex::new(kind))?;
+        Ok(Self(rollup))
+    }
+
+    fn set(&self, block_time: Option<BlockTime>) -> Result<(), StoreError> {
+        let mut last = self.0.lock().unwrap();
+        match (&*last, block_time) {
+            (LastRollup::NotNeeded, _) => { /* nothing to do */ }
+            (LastRollup::Some(_) | LastRollup::Unknown, Some(block_time)) => {
+                *last = LastRollup::Some(block_time);
+            }
+            (LastRollup::Some(_) | LastRollup::Unknown, None) => {
+                constraint_violation!("block time cannot be unset");
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Write synchronously to the actual store, i.e., once a method returns,
 /// the changes have been committed to the store and are visible to anybody
 /// else connecting to that database
@@ -78,18 +144,27 @@ struct SyncStore {
     site: Arc<Site>,
     input_schema: InputSchema,
     manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+    last_rollup: LastRollupTracker,
 }
 
 impl SyncStore {
-    fn new(
+    async fn new(
         subgraph_store: SubgraphStore,
         logger: Logger,
         site: Arc<Site>,
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
+        block: Option<BlockNumber>,
     ) -> Result<Self, StoreError> {
         let store = WritableSubgraphStore(subgraph_store.clone());
         let writable = subgraph_store.for_site(site.as_ref())?.clone();
         let input_schema = subgraph_store.input_schema(&site.deployment)?;
+        let last_rollup = LastRollupTracker::new(
+            writable.cheap_clone(),
+            site.cheap_clone(),
+            input_schema.has_aggregations(),
+            block,
+        )?;
+
         Ok(Self {
             logger,
             store,
@@ -97,6 +172,7 @@ impl SyncStore {
             site,
             input_schema,
             manifest_idx_and_name,
+            last_rollup,
         })
     }
 
@@ -158,6 +234,11 @@ impl SyncStore {
                 block_ptr_to.clone(),
                 firehose_cursor,
             )?;
+
+            let block_time = self
+                .writable
+                .block_time(self.site.cheap_clone(), block_ptr_to.number)?;
+            self.last_rollup.set(block_time)?;
 
             self.try_send_store_event(event)
         })
@@ -225,6 +306,7 @@ impl SyncStore {
                 stopwatch,
                 &self.manifest_idx_and_name,
             )?;
+            self.last_rollup.set(Some(batch.block_time))?;
 
             let _section = stopwatch.start_section("send_store_event");
             self.try_send_store_event(event)?;
@@ -1387,13 +1469,21 @@ impl WritableStore {
         manifest_idx_and_name: Arc<Vec<(u32, String)>>,
         registry: Arc<MetricsRegistry>,
     ) -> Result<Self, StoreError> {
-        let store = Arc::new(SyncStore::new(
-            subgraph_store,
-            logger.clone(),
-            site,
-            manifest_idx_and_name,
-        )?);
-        let block_ptr = Mutex::new(store.block_ptr().await?);
+        let block_ptr = subgraph_store
+            .for_site(&site)?
+            .block_ptr(site.cheap_clone())
+            .await?;
+        let store = Arc::new(
+            SyncStore::new(
+                subgraph_store,
+                logger.clone(),
+                site,
+                manifest_idx_and_name,
+                block_ptr.as_ref().map(|ptr| ptr.number),
+            )
+            .await?,
+        );
+        let block_ptr = Mutex::new(block_ptr);
         let block_cursor = Mutex::new(store.block_cursor().await?);
         let writer = Writer::new(
             logger,

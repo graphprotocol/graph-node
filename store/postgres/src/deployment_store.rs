@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
+use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
     Batch, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
@@ -908,6 +909,18 @@ impl DeploymentStore {
                 .map_err(Into::into)
         })
         .await
+    }
+
+    pub(crate) fn block_time(
+        &self,
+        site: Arc<Site>,
+        block: BlockNumber,
+    ) -> Result<Option<BlockTime>, StoreError> {
+        let store = self.cheap_clone();
+
+        let conn = self.get_conn()?;
+        let layout = store.layout(&conn, site.cheap_clone())?;
+        layout.block_time(&conn, block)
     }
 
     pub(crate) async fn supports_proof_of_indexing<'a>(

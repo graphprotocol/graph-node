@@ -23,8 +23,10 @@ use diesel::sql_types::Text;
 use diesel::types::{FromSql, ToSql};
 use diesel::{connection::SimpleConnection, Connection};
 use diesel::{debug_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
+use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::RowGroup;
+use graph::components::subgraph::PoICausalityRegion;
 use graph::constraint_violation;
 use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
@@ -914,6 +916,32 @@ impl Layout {
         layout.site = site;
         layout.history_blocks = history_blocks;
         Ok(Arc::new(layout))
+    }
+
+    pub(crate) fn block_time(
+        &self,
+        conn: &PgConnection,
+        block: BlockNumber,
+    ) -> Result<Option<BlockTime>, StoreError> {
+        let block_time_name = self.input_schema.poi_block_time();
+        let poi_type = self.input_schema.poi_type();
+        let id = Id::String(Word::from(PoICausalityRegion::from_network(
+            &self.site.network,
+        )));
+        let key = poi_type.key(id);
+
+        let block_time = self
+            .find(conn, &key, block)?
+            .and_then(|entity| {
+                entity.get(&block_time_name).map(|value| {
+                    value
+                        .as_int8()
+                        .ok_or_else(|| constraint_violation!("block_time must have type Int8"))
+                })
+            })
+            .transpose()?
+            .map(|value| BlockTime::since_epoch(value, 0));
+        Ok(block_time)
     }
 }
 

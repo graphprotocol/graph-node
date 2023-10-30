@@ -434,6 +434,14 @@ impl Value {
         }
     }
 
+    pub fn as_int8(&self) -> Option<i64> {
+        if let Value::Int8(i) = self {
+            Some(*i)
+        } else {
+            None
+        }
+    }
+
     pub fn as_big_decimal(self) -> Option<scalar::BigDecimal> {
         if let Value::BigDecimal(d) = self {
             Some(d)
