@@ -16,6 +16,7 @@ mod query_tests;
 
 pub(crate) mod index;
 mod prune;
+mod rollup;
 
 use diesel::pg::Pg;
 use diesel::serialize::Output;
@@ -68,6 +69,8 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::connection_pool::ForeignServer;
 use crate::{catalog, deployment};
+
+use self::rollup::Rollup;
 
 const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 
@@ -189,6 +192,14 @@ impl ToSql<Text, Pg> for SqlName {
     }
 }
 
+impl std::ops::Deref for SqlName {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Layout {
     /// Details of where the subgraph is stored
@@ -203,6 +214,9 @@ pub struct Layout {
     pub history_blocks: BlockNumber,
 
     pub input_schema: InputSchema,
+
+    /// The rollups for aggregations in this layout
+    rollups: Vec<Rollup>,
 }
 
 impl Layout {
@@ -253,8 +267,6 @@ impl Layout {
             ))
         }
 
-        let tables: Vec<_> = tables.into_iter().map(Arc::new).collect();
-
         let count_query = tables
             .iter()
             .map(|table| {
@@ -277,9 +289,11 @@ impl Layout {
         let tables: HashMap<_, _> = tables
             .into_iter()
             .fold(HashMap::new(), |mut tables, table| {
-                tables.insert(table.object.clone(), table);
+                tables.insert(table.object.clone(), Arc::new(table));
                 tables
             });
+
+        let rollups = Self::rollups(&tables, &schema)?;
 
         Ok(Layout {
             site,
@@ -288,6 +302,7 @@ impl Layout {
             count_query,
             history_blocks: i32::MAX,
             input_schema: schema.cheap_clone(),
+            rollups,
         })
     }
 
@@ -942,6 +957,90 @@ impl Layout {
             .transpose()?
             .map(|value| BlockTime::since_epoch(value, 0));
         Ok(block_time)
+    }
+
+    /// Construct `Rolllup` for each of the aggregation mappings
+    /// `schema.agg_mappings()` and return them in the same order as the
+    /// aggregation mappings
+    fn rollups(
+        tables: &HashMap<EntityType, Arc<Table>>,
+        schema: &InputSchema,
+    ) -> Result<Vec<Rollup>, StoreError> {
+        let mut rollups = Vec::new();
+        for mapping in schema.agg_mappings() {
+            let source_type = mapping.source_type(schema);
+            let source_table = tables
+                .get(&source_type)
+                .ok_or_else(|| constraint_violation!("Table for {source_type} is missing"))?;
+            let agg_type = mapping.agg_type(schema);
+            let agg_table = tables
+                .get(&agg_type)
+                .ok_or_else(|| constraint_violation!("Table for {agg_type} is missing"))?;
+            let aggregation = mapping.aggregation(schema);
+            let rollup = Rollup::new(
+                mapping.interval,
+                aggregation,
+                source_table,
+                agg_table.cheap_clone(),
+            )?;
+            rollups.push(rollup);
+        }
+        Ok(rollups)
+    }
+
+    /// Roll up all timeseries for each entry in `block_times`. The overall
+    /// effect is that all buckets that end after `last_rollup` and before
+    /// the last entry in `block_times` are filled. This will fill all
+    /// buckets whose end time `end` is in `last_rollup < end <=
+    /// block_time`. The rollups happen stepwise, for each entry in
+    /// `block_times` so that the buckets are associated with the block
+    /// number for those block times.
+    ///
+    /// We roll up all pending aggregations and mark them as belonging to
+    /// the block where the timestamp first fell into a new time period. We
+    /// only know about blocks where the subgraph actually performs a write.
+    /// That means that the block is not necessarily the block at the end of
+    /// the time period but might be a block after that time period if the
+    /// subgraph skips blocks. This can be a problem for time-travel queries
+    /// by block as it might not find a rollup that had occurred but is
+    /// marked with a later block; this is not an issue when writes happen
+    /// at every block. Queries for aggregations should therefore not do
+    /// time-travel by block number but rather by timestamp.
+    ///
+    /// It can also lead to unnecessarily reverting a rollup, but in that
+    /// case the results will be correct, we just do work that might not
+    /// have been necessary had we marked the rollup with the precise
+    /// smaller block number instead of the one we are using here.
+    ///
+    /// Changing this would require that we have a complete list of block
+    /// numbers and block times which we do not have anywhere in graph-node.
+    pub(crate) fn rollup(
+        &self,
+        conn: &PgConnection,
+        last_rollup: Option<BlockTime>,
+        block_times: &[(BlockNumber, BlockTime)],
+    ) -> Result<(), StoreError> {
+        // The for loop could be eliminated if the rollup queries could deal
+        // with the full `block_times` vector, but the SQL for that will be
+        // very complicated and is left for a future improvement.
+        let mut last_rollup = last_rollup.unwrap_or(BlockTime::NONE);
+        for (block, block_time) in block_times {
+            for rollup in &self.rollups {
+                let buckets = rollup.interval.buckets(last_rollup, *block_time);
+                if buckets.is_empty() {
+                    // The rollups are in increasing order of interval size, so
+                    // if a smaller interval doesn't have a bucket between
+                    // last_rollup and block_time, a larger one can't either and
+                    // we are done with this rollup.
+                    break;
+                }
+                for bucket in buckets {
+                    rollup.insert(conn, &bucket, *block)?;
+                }
+            }
+            last_rollup = *block_time;
+        }
+        Ok(())
     }
 }
 

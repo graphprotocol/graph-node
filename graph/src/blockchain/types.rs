@@ -1,10 +1,15 @@
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use diesel::pg::Pg;
+use diesel::serialize::Output;
+use diesel::sql_types::Timestamptz;
 use diesel::sql_types::{Bytea, Nullable, Text};
 use diesel::types::FromSql;
+use diesel::types::ToSql;
 use diesel_derives::{AsExpression, FromSqlRow};
 use std::convert::TryFrom;
+use std::io::Write;
+use std::time::Duration;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};
 
@@ -348,6 +353,23 @@ impl BlockTime {
     pub fn as_secs_since_epoch(&self) -> i64 {
         self.0.timestamp()
     }
+
+    /// Return the number of the last bucket that starts before `self`
+    /// assuming buckets have the given `length`
+    pub(crate) fn bucket(&self, length: Duration) -> usize {
+        // Treat any time before the epoch as zero, i.e., the epoch; in
+        // practice, we will only deal with block times that are pretty far
+        // after the epoch
+        let ts = self.0.timestamp_millis().max(0);
+        let nr = ts as u128 / length.as_millis();
+        usize::try_from(nr).unwrap()
+    }
+}
+
+impl From<Duration> for BlockTime {
+    fn from(d: Duration) -> Self {
+        Self::since_epoch(i64::try_from(d.as_secs()).unwrap(), d.subsec_nanos())
+    }
 }
 
 impl From<BlockTime> for Value {
@@ -364,5 +386,11 @@ impl TryFrom<&Value> for BlockTime {
             Value::Int8(ts) => Ok(BlockTime::since_epoch(*ts, 0)),
             _ => Err(anyhow!("invalid block time: {:?}", value)),
         }
+    }
+}
+
+impl ToSql<Timestamptz, Pg> for BlockTime {
+    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        <DateTime<Utc> as ToSql<Timestamptz, Pg>>::to_sql(&self.0, out)
     }
 }

@@ -68,6 +68,7 @@ impl WritableSubgraphStore {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum LastRollup {
     /// We do not need to track the block time since the subgraph doesn't
     /// use timeseries
@@ -131,6 +132,14 @@ impl LastRollupTracker {
         }
 
         Ok(())
+    }
+
+    fn get(&self) -> Option<BlockTime> {
+        let last = self.0.lock().unwrap();
+        match &*last {
+            LastRollup::NotNeeded | LastRollup::Unknown => None,
+            LastRollup::Some(block_time) => Some(*block_time),
+        }
     }
 }
 
@@ -303,10 +312,13 @@ impl SyncStore {
                 &self.logger,
                 self.site.clone(),
                 batch,
+                self.last_rollup.get(),
                 stopwatch,
                 &self.manifest_idx_and_name,
             )?;
-            self.last_rollup.set(Some(batch.block_time))?;
+            // unwrap: batch.block_times is never empty
+            let last_block_time = batch.block_times.last().unwrap().1;
+            self.last_rollup.set(Some(last_block_time))?;
 
             let _section = stopwatch.start_section("send_store_event");
             self.try_send_store_event(event)?;

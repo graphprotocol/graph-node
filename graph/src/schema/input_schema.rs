@@ -1,11 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Error};
 use store::Entity;
 
 use crate::bail;
+use crate::blockchain::BlockTime;
 use crate::cheap_clone::CheapClone;
 use crate::components::store::LoadRelatedRequest;
 use crate::data::graphql::ext::DirectiveFinder;
@@ -471,7 +474,7 @@ impl AggregateFn {
 /// The supported intervals for timeseries in order of decreasing
 /// granularity. The intervals must all be divisible by the smallest
 /// interval
-#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord, Hash)]
 pub enum AggregationInterval {
     Hour,
     Day,
@@ -484,6 +487,58 @@ impl AggregationInterval {
             AggregationInterval::Day => "day",
         }
     }
+
+    pub fn as_duration(&self) -> Duration {
+        use AggregationInterval::*;
+        match self {
+            Hour => Duration::from_secs(3600),
+            Day => Duration::from_secs(3600 * 24),
+        }
+    }
+
+    /// Return time ranges for all buckets that intersect `from..to` except
+    /// the last one. In other words, return time ranges for all buckets
+    /// that overlap `from..to` and end before `to`. The ranges are in
+    /// increasing order of the start time
+    pub fn buckets(&self, from: BlockTime, to: BlockTime) -> Vec<Range<BlockTime>> {
+        let first = from.bucket(self.as_duration());
+        let last = to.bucket(self.as_duration());
+        (first..last)
+            .map(|nr| self.as_duration() * nr as u32)
+            .map(|start| {
+                let lower = BlockTime::from(start);
+                let upper = BlockTime::from(start + self.as_duration());
+                lower..upper
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn buckets() {
+    // 2006-07-16 07:40Z
+    const START: i64 = 1153035600;
+    // 2006-07-16 08:00Z, the start of the next hourly bucket after `START`
+    const EIGHT_AM: i64 = 1153036800;
+
+    let start = BlockTime::since_epoch(START, 0);
+    let seven_am = BlockTime::since_epoch(START - 40 * 60, 0);
+    let eight_am = BlockTime::since_epoch(EIGHT_AM, 0);
+    let nine_am = BlockTime::since_epoch(EIGHT_AM + 3600, 0);
+
+    // One hour and two hours after `START`
+    let one_hour = BlockTime::since_epoch(START + 3600, 0);
+    let two_hour = BlockTime::since_epoch(START + 2 * 3600, 0);
+
+    use AggregationInterval::*;
+    assert_eq!(vec![seven_am..eight_am], Hour.buckets(start, eight_am));
+    assert_eq!(vec![seven_am..eight_am], Hour.buckets(start, one_hour),);
+    assert_eq!(
+        vec![seven_am..eight_am, eight_am..nine_am],
+        Hour.buckets(start, two_hour),
+    );
+    assert_eq!(vec![eight_am..nine_am], Hour.buckets(one_hour, two_hour));
+    assert_eq!(Vec::<Range<BlockTime>>::new(), Day.buckets(start, two_hour));
 }
 
 impl FromStr for AggregationInterval {
@@ -495,6 +550,35 @@ impl FromStr for AggregationInterval {
             "day" => Ok(AggregationInterval::Day),
             _ => Err(anyhow!("invalid aggregation interval `{}`", s)),
         }
+    }
+}
+
+/// The connection between the object type that stores the data points for
+/// an aggregation and the type that stores the finalised aggregations.
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AggregationMapping {
+    pub interval: AggregationInterval,
+    // Index of aggregation type in `type_infos`
+    aggregation: usize,
+    // Index of the object type for the interval in the aggregation's `obj_types`
+    agg_type: usize,
+}
+
+impl AggregationMapping {
+    pub fn source_type(&self, schema: &InputSchema) -> EntityType {
+        let source = self.aggregation(schema).source;
+        EntityType::new(schema.cheap_clone(), source)
+    }
+
+    pub fn aggregation<'a>(&self, schema: &'a InputSchema) -> &'a Aggregation {
+        schema.inner.type_infos[self.aggregation]
+            .aggregation()
+            .expect("the aggregation source is an object types")
+    }
+
+    pub fn agg_type(&self, schema: &InputSchema) -> EntityType {
+        let agg_type = self.aggregation(schema).obj_types[self.agg_type].name;
+        EntityType::new(schema.cheap_clone(), agg_type)
     }
 }
 
@@ -519,7 +603,7 @@ impl Arg {
 pub struct Aggregate {
     pub name: Word,
     pub func: AggregateFn,
-    pub arg: Arg,
+    pub arg: Option<Arg>,
     pub field_type: s::Type,
     pub value_type: ValueType,
 }
@@ -539,8 +623,10 @@ impl Aggregate {
             .unwrap()
             .parse()
             .unwrap();
-        let arg = dir.argument("arg").unwrap().as_str().unwrap();
-        let arg = Arg::new(Word::from(arg), src_type);
+        let arg = dir
+            .argument("arg")
+            .map(|arg| Word::from(arg.as_str().unwrap()))
+            .map(|arg| Arg::new(arg, src_type));
         Aggregate {
             name: Word::from(name),
             func,
@@ -655,6 +741,12 @@ impl Aggregation {
     fn has_object_type(&self, atom: Atom) -> bool {
         self.obj_types.iter().any(|obj_type| obj_type.name == atom)
     }
+
+    pub fn dimensions(&self) -> impl Iterator<Item = &Field> {
+        self.fields
+            .into_iter()
+            .filter(|field| &field.name != &*ID && field.name != kw::TIMESTAMP)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -666,6 +758,8 @@ pub struct Inner {
     type_infos: Box<[TypeInfo]>,
     enum_map: EnumMap,
     pool: Arc<AtomPool>,
+    /// A list of all timeseries types by interval
+    agg_mappings: Box<[AggregationMapping]>,
 }
 
 impl CheapClone for InputSchema {
@@ -681,6 +775,28 @@ impl InputSchema {
     /// representation of the subgraph's GraphQL schema `raw` and its
     /// deployment hash `id`. The returned schema is fully validated.
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
+        fn agg_mappings(ts_types: &[TypeInfo]) -> Box<[AggregationMapping]> {
+            let mut mappings: Vec<_> = ts_types
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, ti)| ti.aggregation().map(|agg_type| (idx, agg_type)))
+                .map(|(aggregation, agg_type)| {
+                    agg_type
+                        .intervals
+                        .iter()
+                        .enumerate()
+                        .map(move |(agg_type, interval)| AggregationMapping {
+                            interval: *interval,
+                            aggregation,
+                            agg_type,
+                        })
+                })
+                .flatten()
+                .collect();
+            mappings.sort();
+            mappings.into_boxed_slice()
+        }
+
         let schema = Schema::parse(raw, id.clone())?;
         validations::validate(&schema).map_err(|errors| {
             anyhow!(
@@ -730,12 +846,15 @@ impl InputSchema {
 
         let enum_map = EnumMap::new(&schema);
 
+        let agg_mappings = agg_mappings(&type_infos);
+
         Ok(Self {
             inner: Arc::new(Inner {
                 schema,
                 type_infos,
                 enum_map,
                 pool,
+                agg_mappings,
             }),
         })
     }
@@ -817,6 +936,11 @@ impl InputSchema {
         Ok((entity_type, field))
     }
 
+    /// Return the `TypeInfo` for the type with name `atom`. For object and
+    /// interface types, `atom` must be the name of the type. For
+    /// aggregations, `atom` must be the name of one of the object types
+    /// that are part of the aggregation. If `atom` is the name of the
+    /// aggregation itself, this returns an `Err`
     fn type_info(&self, atom: Atom) -> Result<&TypeInfo, Error> {
         for ti in self.inner.type_infos.iter() {
             match ti {
@@ -984,6 +1108,12 @@ impl InputSchema {
             .collect()
     }
 
+    /// Return a list of all the aggregation mappings for this schema. The
+    /// `interval` of the aggregations are non-decreasing
+    pub fn agg_mappings(&self) -> impl Iterator<Item = &AggregationMapping> {
+        self.inner.agg_mappings.iter()
+    }
+
     pub fn has_aggregations(&self) -> bool {
         self.inner
             .type_infos
@@ -1085,19 +1215,19 @@ impl InputSchema {
     /// like a `ObjectType`, it is safe to unwrap the result
     pub fn entity_type<N: AsEntityTypeName>(&self, named: N) -> Result<EntityType, Error> {
         let name = named.name();
-        self.inner
-            .pool
-            .lookup(name)
-            .and_then(|atom| self.type_info(atom).ok())
-            .map(|ti| EntityType::new(self.cheap_clone(), ti.name()))
-            .ok_or_else(|| {
-                anyhow!(
-                    "internal error: entity type `{}` does not exist in {}",
-                    name,
-                    self.inner.schema.id
-                )
-            })
+        let atom = self.inner.pool.lookup(name).ok_or_else(|| {
+            anyhow!("internal error: unknown name {name} when looking up entity type")
+        })?;
+
+        // This is a little subtle: we use `type_info` to check that `atom`
+        // is a known type, but use `atom` and not the name of the
+        // `TypeInfo` in the returned entity type so that passing the name
+        // of the object type from an aggregation, say `Stats_hour`
+        // references that object type, and not the aggregation.
+        self.type_info(atom)
+            .map(|_| EntityType::new(self.cheap_clone(), atom))
     }
+
     pub fn has_field_with_name(&self, entity_type: &EntityType, field: &str) -> bool {
         let field = self.inner.pool.lookup(field);
 

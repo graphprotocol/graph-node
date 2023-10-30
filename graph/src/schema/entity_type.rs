@@ -207,6 +207,12 @@ impl AsEntityTypeName for &String {
     }
 }
 
+impl AsEntityTypeName for &Word {
+    fn name(&self) -> &str {
+        self.as_str()
+    }
+}
+
 impl AsEntityTypeName for &s::ObjectType {
     fn name(&self) -> &str {
         &self.name

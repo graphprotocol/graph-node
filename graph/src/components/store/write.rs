@@ -613,8 +613,11 @@ pub enum EntityOp<'a> {
 pub struct Batch {
     /// The last block for which this batch contains changes
     pub block_ptr: BlockPtr,
-    /// The timestamp for the block
-    pub block_time: BlockTime,
+    /// The timestamp for each block number we've seen as batches have been
+    /// appended to this one. This will have one entry for each block where
+    /// the subgraph performed a write. Entries are in ascending order of
+    /// block number
+    pub block_times: Vec<(BlockNumber, BlockTime)>,
     /// The first block for which this batch contains changes
     pub first_block: BlockNumber,
     /// The firehose cursor corresponding to `block_ptr`
@@ -660,10 +663,11 @@ impl Batch {
         let data_sources = DataSources::new(block_ptr.cheap_clone(), data_sources);
         let offchain_to_remove = DataSources::new(block_ptr.cheap_clone(), offchain_to_remove);
         let first_block = block_ptr.number;
+        let block_times = vec![(block, block_time)];
         Ok(Self {
             block_ptr,
             first_block,
-            block_time,
+            block_times,
             firehose_cursor,
             mods,
             data_sources,
@@ -680,6 +684,7 @@ impl Batch {
         }
 
         self.block_ptr = batch.block_ptr;
+        self.block_times.append(&mut batch.block_times);
         self.firehose_cursor = batch.firehose_cursor;
         self.mods.append(batch.mods)?;
         self.data_sources.append(batch.data_sources);
