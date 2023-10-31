@@ -859,6 +859,7 @@ impl Queue {
             store.site.deployment.clone(),
             "writer",
             registry,
+            store.shard().to_string(),
         );
 
         let batch_ready_notify = Arc::new(Notify::new());

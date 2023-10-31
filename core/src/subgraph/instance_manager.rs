@@ -343,6 +343,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             deployment.hash.clone(),
             "process",
             self.metrics_registry.clone(),
+            store.shard().to_string(),
         );
 
         let gas_metrics = GasMetrics::new(deployment.hash.clone(), self.metrics_registry.clone());

@@ -279,6 +279,7 @@ pub async fn transact_errors(
         deployment.hash.clone(),
         "transact",
         metrics_registry.clone(),
+        store.subgraph_store().shard(deployment)?.to_string(),
     );
     store
         .subgraph_store()
@@ -361,6 +362,7 @@ pub async fn transact_entities_and_dynamic_data_sources(
         deployment.hash.clone(),
         "transact",
         metrics_registry.clone(),
+        store.shard().to_string(),
     );
     store
         .transact_block_operations(
