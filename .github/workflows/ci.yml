@@ -84,6 +84,14 @@ jobs:
         run: sudo ethtool -K eth0 tx off rx off
       - name: Checkout sources
         uses: actions/checkout@v2
+
+      - name: Install Node 18
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+          cache: yarn
+          cache-dependency-path: "tests/runner-tests/yarn.lock"
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Install lld
@@ -112,10 +120,10 @@ jobs:
         uses: actions/checkout@v2
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Node 16
+      - name: Install Node 18
         uses: actions/setup-node@v3
         with:
-          node-version: "16"
+          node-version: "18"
           cache: yarn
           cache-dependency-path: "tests/integration-tests/yarn.lock"
 

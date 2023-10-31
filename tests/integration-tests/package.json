@@ -1,15 +1,6 @@
 {
   "private": true,
   "workspaces": [
-    "ganache-reverts",
-    "host-exports",
-    "non-fatal-errors",
-    "overloaded-contract-functions",
-    "poi-for-failed-subgraph",
-    "remove-then-update",
-    "value-roundtrip",
-    "int8",
-    "derived-loaders",
-    "block-handlers"
+    "*"
   ]
 }
