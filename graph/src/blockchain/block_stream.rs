@@ -442,7 +442,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                         } else if mlen == 1 {
                             format!(" ({})", stage.modules[0])
                         } else {
-                            format!(" ({} + {})", stage.modules[mlen - 1], mlen - 1)
+                            format!(" ({} +{})", stage.modules[mlen - 1], mlen - 1)
                         };
                         if !stages_str.is_empty() {
                             stages_str.push_str(", ");
