@@ -336,6 +336,11 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
     ) -> Result<BlockPtr, Error>;
 }
 
+pub struct SubstreamsLogData {
+    pub last_progress: Instant,
+    pub last_seen_block : u64,
+}
+
 #[async_trait]
 pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
     fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
@@ -357,7 +362,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         &self,
         logger: &mut Logger,
         message: Option<Message>,
-        last_progress: &mut Instant,
+        log_data: &mut SubstreamsLogData,
     ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
         match message {
             Some(SubstreamsMessage::Session(session_init)) => {
@@ -378,6 +383,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     hash: valid_block.id.trim_start_matches("0x").try_into()?,
                     number: valid_block.number as i32,
                 };
+                log_data.last_seen_block = valid_block.number;
                 return Ok(Some(BlockStreamEvent::Revert(
                     valid_ptr,
                     FirehoseCursor::from(undo.last_valid_cursor.clone()),
@@ -410,6 +416,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                 };
 
                 let block = self.decode_triggers(&logger, &clock, &map_output).await?;
+                log_data.last_seen_block = block.block.number() as u64;
 
                 Ok(Some(BlockStreamEvent::ProcessBlock(
                     block,
@@ -418,13 +425,68 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
             }
 
             Some(SubstreamsMessage::Progress(progress)) => {
-                if last_progress.elapsed() > Duration::from_secs(30) {
-                    info!(
+                if log_data.last_progress.elapsed() > Duration::from_secs(30) {
+                    let len =  progress.stages.len();
+                    let mut stages_str = "".to_string();
+                    for i in (0..len).rev() {
+                        let stage = &progress.stages[i];
+                        let range = if stage.completed_ranges.len() > 0 {
+                            let b = stage.completed_ranges.iter().map(|x| x.end_block).min();
+                            format!(" up to {}", b.unwrap_or(0))
+                        } else {
+                            "".to_string()
+                        };
+                        let mlen = stage.modules.len();
+                        let module = if mlen == 0 {
+                            "".to_string()
+                        } else if mlen == 1 {
+                            format!(" ({})", stage.modules[0])
+                        } else {
+                            format!(" ({} + {})", stage.modules[mlen - 1], mlen - 1)
+                        };
+                        if !stages_str.is_empty() {
+                            stages_str.push_str(", ");
+                        }
+                        stages_str.push_str(&format!("#{}{}{}", i, range, module));
+                    }
+                    let stage_str = if len > 0 { 
+                        format!(" Stages: [{}]", stages_str )
+                    } else { 
+                        "".to_string()
+                    };
+                    let mut jobs_str = "".to_string();
+                    let jlen = progress.running_jobs.len();
+                    for i in 0..jlen {
+                        let job = &progress.running_jobs[i];
+                        if !jobs_str.is_empty() {
+                            jobs_str.push_str(", ");
+                        }
+                        let duration_str = format!("{}ms", job.duration_ms); // TODO: human readable from Duration::from_millis(job.duration_ms)
+                        jobs_str.push_str(&format!("#{} on Stage {} @ {} | +{}|{} elapsed {}", 
+                                                    i, 
+                                                    job.stage, 
+                                                    job.start_block, 
+                                                    job.processed_blocks, 
+                                                    job.stop_block - job.start_block,
+                                                    duration_str));
+                    }
+                    let job_str = if jlen > 0 {
+                        format!(", Jobs: [{}]", jobs_str)
+                    } else {
+                        "".to_string()
+                    };
+                    debug!(&logger, "Substreams backend graph_out last block is {},\
+                                     {}{}", 
+                        log_data.last_seen_block,
+                        stage_str,
+                        job_str,
+                    );
+                    trace!(
                         &logger,
                         "Received progress update";
                         "progress" => format!("{:?}", progress),
                     );
-                    *last_progress = Instant::now();
+                    log_data.last_progress = Instant::now();
                 }
                 Ok(None)
             }

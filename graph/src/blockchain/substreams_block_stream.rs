@@ -1,4 +1,4 @@
-use super::block_stream::{SubstreamsMapper, SUBSTREAMS_BUFFER_STREAM_SIZE};
+use super::block_stream::{SubstreamsMapper, SUBSTREAMS_BUFFER_STREAM_SIZE, SubstreamsLogData};
 use super::client::ChainClient;
 use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
@@ -161,8 +161,6 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
 ) -> impl Stream<Item = Result<BlockStreamEvent<C>, Error>> {
     let mut latest_cursor = cursor.unwrap_or_default();
 
-    let mut last_progress = Instant::now();
-
     let start_block_num = subgraph_current_block
         .as_ref()
         .map(|ptr| {
@@ -179,6 +177,8 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
     // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
     #[allow(unused_assignments)]
     let mut skip_backoff = false;
+
+    let mut log_data = SubstreamsLogData { last_progress:Instant::now(), last_seen_block: 0 };
 
     try_stream! {
             let endpoint = client.firehose_endpoint()?;
@@ -227,7 +227,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                             response,
                             mapper.as_ref(),
                             &mut logger,
-                            &mut last_progress,
+                            &mut log_data,
                         ).await {
                             Ok(block_response) => {
                                 match block_response {
@@ -292,7 +292,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     result: Result<Response, Status>,
     mapper: &F,
     logger: &mut Logger,
-    last_progress: &mut Instant,
+    log_data: &mut SubstreamsLogData,
 ) -> Result<Option<BlockResponse<C>>, Error> {
     let response = match result {
         Ok(v) => v,
@@ -300,7 +300,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     };
 
     match mapper
-        .to_block_stream_event(logger, response.message, last_progress)
+        .to_block_stream_event(logger, response.message, log_data)
         .await
         .context("Mapping message to BlockStreamEvent failed")?
     {
