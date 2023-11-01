@@ -4,7 +4,7 @@
   "scripts": {
     "codegen": "graph codegen --skip-migrations",
     "deploy:test": "graph deploy test/data-source-revert --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI",
-    "deploy:test-grafted": "graph deploy test/data-source-revert-grafted grafted.yaml --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
+    "deploy:test-grafted": "node updateAndDeploy.js"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "0.60.0",
