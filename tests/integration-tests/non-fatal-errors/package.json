@@ -14,12 +14,12 @@
     "solc": "^0.8.2"
   },
   "dependencies": {
-    "@truffle/contract": "^4.3",
-    "@truffle/hdwallet-provider": "^1.2",
+    "@truffle/contract": "^4.6.31",
+    "@truffle/hdwallet-provider": "^2.1.15",
     "apollo-fetch": "^0.7.0",
     "babel-polyfill": "^6.26.0",
     "babel-register": "^6.26.0",
     "gluegun": "^4.6.1",
-    "truffle": "^5.2"
+    "truffle": "^5.11.5"
   }
 }
