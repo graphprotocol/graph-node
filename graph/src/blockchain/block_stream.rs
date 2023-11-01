@@ -4,6 +4,7 @@ use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
+use humantime::format_duration;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -461,7 +462,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                         if !jobs_str.is_empty() {
                             jobs_str.push_str(", ");
                         }
-                        let duration_str = format!("{}ms", job.duration_ms); // TODO: human readable from Duration::from_millis(job.duration_ms)
+                        let duration_str = format_duration(Duration::from_millis(job.duration_ms));
                         jobs_str.push_str(&format!("#{} on Stage {} @ {} | +{}|{} elapsed {}", 
                                                     i, 
                                                     job.stage, 
