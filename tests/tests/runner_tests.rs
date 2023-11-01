@@ -16,7 +16,7 @@ use graph::ipfs_client::IpfsClient;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
+    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_log,
@@ -809,11 +809,8 @@ async fn template_static_filters_false_positives() {
     // POI table. If this fails it's likely that either the bug was re-introduced or there is
     // a change in the POI infrastructure. Or the subgraph id changed.
     assert_eq!(
-        poi.unwrap(),
-        [
-            253, 249, 50, 171, 127, 117, 77, 13, 79, 132, 88, 246, 223, 214, 225, 39, 112, 19, 73,
-            97, 193, 132, 103, 19, 191, 5, 28, 14, 232, 137, 76, 9
-        ],
+        hex::encode(poi.unwrap()),
+        "c72af01a19a4e35a35778821a354b7a781062a9320ac8796ea65b115cb9844bf"
     );
 }
 
