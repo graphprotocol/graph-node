@@ -129,9 +129,12 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash =
-        build_subgraph_with_yarn_cmd("./runner-tests/data-source-revert", "deploy:test-grafted")
-            .await;
+    let hash = build_subgraph_with_yarn_cmd_and_arg(
+        "./runner-tests/data-source-revert",
+        "deploy:test-grafted",
+        Some(&hash),
+    )
+    .await;
     let graft_block = Some(test_ptr(3));
     let ctx = fixture::setup(
         subgraph_name.clone(),
@@ -1076,6 +1079,14 @@ async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
 }
 
 async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd_and_arg(dir, yarn_cmd, None).await
+}
+
+async fn build_subgraph_with_yarn_cmd_and_arg(
+    dir: &str,
+    yarn_cmd: &str,
+    arg: Option<&str>,
+) -> DeploymentHash {
     // Test that IPFS is up.
     IpfsClient::localhost()
         .test()
@@ -1095,11 +1106,14 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
     // Run codegen.
     run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
 
+    let mut args = vec![yarn_cmd];
+    args.extend(arg);
+
     // Run `deploy` for the side effect of uploading to IPFS, the graph node url
     // is fake and the actual deploy call is meant to fail.
     let deploy_output = run_cmd(
         Command::new("yarn")
-            .arg(yarn_cmd)
+            .args(&args)
             .env("IPFS_URI", "http://127.0.0.1:5001")
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
             .current_dir(dir),
@@ -1107,10 +1121,9 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
 
     // Hack to extract deployment id from `graph deploy` output.
     const ID_PREFIX: &str = "Build completed: ";
-    let mut line = deploy_output
-        .lines()
-        .find(|line| line.contains(ID_PREFIX))
-        .expect("found no matching line");
+    let Some(mut line) = deploy_output.lines().find(|line| line.contains(ID_PREFIX)) else {
+        panic!("No deployment id found, graph deploy probably had an error")
+    };
     if !line.starts_with(ID_PREFIX) {
         line = &line[5..line.len() - 5]; // workaround for colored output
     }
