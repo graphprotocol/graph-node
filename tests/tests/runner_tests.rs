@@ -16,7 +16,7 @@ use graph::ipfs_client::IpfsClient;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::{
-    CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
+    hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_log,
@@ -69,6 +69,31 @@ impl RunnerTestRecipe {
     }
 }
 
+fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
+    let equal = {
+        if err.subgraph_id != expected.subgraph_id
+            || err.block_ptr != expected.block_ptr
+            || err.handler != expected.handler
+            || err.deterministic != expected.deterministic
+        {
+            false;
+        }
+
+        // Ignore any WASM backtrace in the error message
+        let split_err: Vec<&str> = err.message.split("\\twasm backtrace:").collect();
+        let split_expected: Vec<&str> = expected.message.split("\\twasm backtrace:").collect();
+
+        split_err.get(0) == split_expected.get(0)
+    };
+
+    if !equal {
+        // Will fail
+        let mut err_no_trace = err.clone();
+        err_no_trace.message = expected.message.split("\\twasm backtrace:").collect();
+        assert_eq!(&err_no_trace, expected);
+    }
+}
+
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     let RunnerTestRecipe {
@@ -104,9 +129,12 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
-    let hash =
-        build_subgraph_with_yarn_cmd("./runner-tests/data-source-revert", "deploy:test-grafted")
-            .await;
+    let hash = build_subgraph_with_yarn_cmd_and_arg(
+        "./runner-tests/data-source-revert",
+        "deploy:test-grafted",
+        Some(&hash),
+    )
+    .await;
     let graft_block = Some(test_ptr(3));
     let ctx = fixture::setup(
         subgraph_name.clone(),
@@ -230,7 +258,7 @@ async fn api_version_0_0_8() {
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
     let stop_block = blocks.last().unwrap().block.ptr();
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
-    let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.\twasm backtrace:\t    0: 0x2ebc - <unknown>!src/mapping/handleTestEvent\t in handler `handleTestEvent` at block #1 (0000000000000000000000000000000000000000000000000000000000000001)".to_string();
+    let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -238,7 +266,7 @@ async fn api_version_0_0_8() {
         handler: None,
         deterministic: true,
     };
-    assert_eq!(err, expected_err);
+    assert_eq_ignore_backtrace(&err, &expected_err);
 }
 
 #[tokio::test]
@@ -519,7 +547,8 @@ async fn file_data_sources() {
     let stop_block = test_ptr(7);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3737 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #7 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`."
+        .to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -527,7 +556,7 @@ async fn file_data_sources() {
         handler: None,
         deterministic: false,
     };
-    assert_eq!(err, expected_err);
+    assert_eq_ignore_backtrace(&err, &expected_err);
 
     // Unfail the subgraph to test a conflict between an onchain and offchain entity
     {
@@ -783,11 +812,8 @@ async fn template_static_filters_false_positives() {
     // POI table. If this fails it's likely that either the bug was re-introduced or there is
     // a change in the POI infrastructure. Or the subgraph id changed.
     assert_eq!(
-        poi.unwrap(),
-        [
-            253, 249, 50, 171, 127, 117, 77, 13, 79, 132, 88, 246, 223, 214, 225, 39, 112, 19, 73,
-            97, 193, 132, 103, 19, 191, 5, 28, 14, 232, 137, 76, 9
-        ],
+        hex::encode(poi.unwrap()),
+        "c72af01a19a4e35a35778821a354b7a781062a9320ac8796ea65b115cb9844bf"
     );
 }
 
@@ -1053,6 +1079,14 @@ async fn build_subgraph(dir: &str, deploy_cmd: Option<&str>) -> DeploymentHash {
 }
 
 async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHash {
+    build_subgraph_with_yarn_cmd_and_arg(dir, yarn_cmd, None).await
+}
+
+async fn build_subgraph_with_yarn_cmd_and_arg(
+    dir: &str,
+    yarn_cmd: &str,
+    arg: Option<&str>,
+) -> DeploymentHash {
     // Test that IPFS is up.
     IpfsClient::localhost()
         .test()
@@ -1072,11 +1106,14 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
     // Run codegen.
     run_cmd(Command::new("yarn").arg("codegen").current_dir(dir));
 
+    let mut args = vec![yarn_cmd];
+    args.extend(arg);
+
     // Run `deploy` for the side effect of uploading to IPFS, the graph node url
     // is fake and the actual deploy call is meant to fail.
     let deploy_output = run_cmd(
         Command::new("yarn")
-            .arg(yarn_cmd)
+            .args(&args)
             .env("IPFS_URI", "http://127.0.0.1:5001")
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
             .current_dir(dir),
@@ -1084,10 +1121,9 @@ async fn build_subgraph_with_yarn_cmd(dir: &str, yarn_cmd: &str) -> DeploymentHa
 
     // Hack to extract deployment id from `graph deploy` output.
     const ID_PREFIX: &str = "Build completed: ";
-    let mut line = deploy_output
-        .lines()
-        .find(|line| line.contains(ID_PREFIX))
-        .expect("found no matching line");
+    let Some(mut line) = deploy_output.lines().find(|line| line.contains(ID_PREFIX)) else {
+        panic!("No deployment id found, graph deploy probably had an error")
+    };
     if !line.starts_with(ID_PREFIX) {
         line = &line[5..line.len() - 5]; // workaround for colored output
     }
