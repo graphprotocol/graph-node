@@ -429,10 +429,16 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                 if log_data.last_progress.elapsed() > Duration::from_secs(30) {
                     let len =  progress.stages.len();
                     let mut stages_str = "".to_string();
+                    let mut up_to = None;
                     for i in (0..len).rev() {
                         let stage = &progress.stages[i];
                         let range = if stage.completed_ranges.len() > 0 {
                             let b = stage.completed_ranges.iter().map(|x| x.end_block).min();
+                            up_to = match (up_to, b) {
+                                (a, None) => a,
+                                (None, b) => b,
+                                (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
+                            };
                             format!(" up to {}", b.unwrap_or(0))
                         } else {
                             "".to_string()
@@ -476,8 +482,10 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     } else {
                         "".to_string()
                     };
-                    debug!(&logger, "Substreams backend graph_out last block is {},\
-                                     {}{}", 
+                    info!(&logger, "Substreams backend graph_out last block is {}, \
+                                    {} stages up to {}, {} jobs",
+                                    log_data.last_seen_block, len, up_to.unwrap_or(0), jlen);
+                    debug!(&logger, "Substreams backend graph_out last block is {},{}{}", 
                         log_data.last_seen_block,
                         stage_str,
                         job_str,
