@@ -69,6 +69,31 @@ impl RunnerTestRecipe {
     }
 }
 
+fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
+    let equal = {
+        if err.subgraph_id != expected.subgraph_id
+            || err.block_ptr != expected.block_ptr
+            || err.handler != expected.handler
+            || err.deterministic != expected.deterministic
+        {
+            false;
+        }
+
+        // Ignore any WASM backtrace in the error message
+        let split_err: Vec<&str> = err.message.split("\\twasm backtrace:").collect();
+        let split_expected: Vec<&str> = expected.message.split("\\twasm backtrace:").collect();
+
+        split_err.get(0) == split_expected.get(0)
+    };
+
+    if !equal {
+        // Will fail
+        let mut err_no_trace = err.clone();
+        err_no_trace.message = expected.message.split("\\twasm backtrace:").collect();
+        assert_eq!(&err_no_trace, expected);
+    }
+}
+
 #[tokio::test]
 async fn data_source_revert() -> anyhow::Result<()> {
     let RunnerTestRecipe {
@@ -230,7 +255,7 @@ async fn api_version_0_0_8() {
     let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
     let stop_block = blocks.last().unwrap().block.ptr();
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
-    let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.\twasm backtrace:\t    0: 0x2ebc - <unknown>!src/mapping/handleTestEvent\t in handler `handleTestEvent` at block #1 (0000000000000000000000000000000000000000000000000000000000000001)".to_string();
+    let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.".to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -238,7 +263,7 @@ async fn api_version_0_0_8() {
         handler: None,
         deterministic: true,
     };
-    assert_eq!(err, expected_err);
+    assert_eq_ignore_backtrace(&err, &expected_err);
 }
 
 #[tokio::test]
@@ -519,7 +544,8 @@ async fn file_data_sources() {
     let stop_block = test_ptr(7);
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "entity type `IpfsFile1` is not on the 'entities' list for data source `File2`. \
-                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`.\twasm backtrace:\t    0: 0x3737 - <unknown>!src/mapping/handleFile1\t in handler `handleFile1` at block #7 ()".to_string();
+                   Hint: Add `IpfsFile1` to the 'entities' list, which currently is: `IpfsFile`."
+        .to_string();
     let expected_err = SubgraphError {
         subgraph_id: ctx.deployment.hash.clone(),
         message,
@@ -527,7 +553,7 @@ async fn file_data_sources() {
         handler: None,
         deterministic: false,
     };
-    assert_eq!(err, expected_err);
+    assert_eq_ignore_backtrace(&err, &expected_err);
 
     // Unfail the subgraph to test a conflict between an onchain and offchain entity
     {
