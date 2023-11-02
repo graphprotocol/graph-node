@@ -1,6 +1,6 @@
 use crate::substreams::Clock;
 use crate::substreams_rpc::response::Message as SubstreamsMessage;
-use crate::substreams_rpc::BlockScopedData;
+use crate::substreams_rpc::{BlockScopedData, ModulesProgress};
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
@@ -342,6 +342,70 @@ pub struct SubstreamsLogData {
     pub last_seen_block : u64,
 }
 
+impl SubstreamsLogData {
+    pub fn info_string(&self, progress : &ModulesProgress) -> String {
+        format!("Substreams backend graph_out last block is {}, {} stages, {} jobs",
+            self.last_seen_block, progress.stages.len(), progress.running_jobs.len()
+        )
+    }
+    pub fn debug_string(&self, progress : &ModulesProgress) -> String {
+        let len =  progress.stages.len();
+        let mut stages_str = "".to_string();
+        for i in (0..len).rev() {
+            let stage = &progress.stages[i];
+            let range = if stage.completed_ranges.len() > 0 {
+                let b = stage.completed_ranges.iter().map(|x| x.end_block).min();
+                format!(" up to {}", b.unwrap_or(0))
+            } else {
+                "".to_string()
+            };
+            let mlen = stage.modules.len();
+            let module = if mlen == 0 {
+                "".to_string()
+            } else if mlen == 1 {
+                format!(" ({})", stage.modules[0])
+            } else {
+                format!(" ({} +{})", stage.modules[mlen - 1], mlen - 1)
+            };
+            if !stages_str.is_empty() {
+                stages_str.push_str(", ");
+            }
+            stages_str.push_str(&format!("#{}{}{}", i, range, module));
+        }
+        let stage_str = if len > 0 { 
+            format!(" Stages: [{}]", stages_str )
+        } else { 
+            "".to_string()
+        };
+        let mut jobs_str = "".to_string();
+        let jlen = progress.running_jobs.len();
+        for i in 0..jlen {
+            let job = &progress.running_jobs[i];
+            if !jobs_str.is_empty() {
+                jobs_str.push_str(", ");
+            }
+            let duration_str = format_duration(Duration::from_millis(job.duration_ms));
+            jobs_str.push_str(&format!("#{} on Stage {} @ {} | +{}|{} elapsed {}", 
+                                        i, 
+                                        job.stage, 
+                                        job.start_block, 
+                                        job.processed_blocks, 
+                                        job.stop_block - job.start_block,
+                                        duration_str));
+        }
+        let job_str = if jlen > 0 {
+            format!(", Jobs: [{}]", jobs_str)
+        } else {
+            "".to_string()
+        };
+        format!("Substreams backend graph_out last block is {},{}{}", 
+            self.last_seen_block,
+            stage_str,
+            job_str,
+        )
+    }
+}
+
 #[async_trait]
 pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
     fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
@@ -427,69 +491,8 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
 
             Some(SubstreamsMessage::Progress(progress)) => {
                 if log_data.last_progress.elapsed() > Duration::from_secs(30) {
-                    let len =  progress.stages.len();
-                    let mut stages_str = "".to_string();
-                    let mut up_to = None;
-                    for i in (0..len).rev() {
-                        let stage = &progress.stages[i];
-                        let range = if stage.completed_ranges.len() > 0 {
-                            let b = stage.completed_ranges.iter().map(|x| x.end_block).min();
-                            up_to = match (up_to, b) {
-                                (a, None) => a,
-                                (None, b) => b,
-                                (Some(a), Some(b)) => Some(std::cmp::min(a, b)),
-                            };
-                            format!(" up to {}", b.unwrap_or(0))
-                        } else {
-                            "".to_string()
-                        };
-                        let mlen = stage.modules.len();
-                        let module = if mlen == 0 {
-                            "".to_string()
-                        } else if mlen == 1 {
-                            format!(" ({})", stage.modules[0])
-                        } else {
-                            format!(" ({} +{})", stage.modules[mlen - 1], mlen - 1)
-                        };
-                        if !stages_str.is_empty() {
-                            stages_str.push_str(", ");
-                        }
-                        stages_str.push_str(&format!("#{}{}{}", i, range, module));
-                    }
-                    let stage_str = if len > 0 { 
-                        format!(" Stages: [{}]", stages_str )
-                    } else { 
-                        "".to_string()
-                    };
-                    let mut jobs_str = "".to_string();
-                    let jlen = progress.running_jobs.len();
-                    for i in 0..jlen {
-                        let job = &progress.running_jobs[i];
-                        if !jobs_str.is_empty() {
-                            jobs_str.push_str(", ");
-                        }
-                        let duration_str = format_duration(Duration::from_millis(job.duration_ms));
-                        jobs_str.push_str(&format!("#{} on Stage {} @ {} | +{}|{} elapsed {}", 
-                                                    i, 
-                                                    job.stage, 
-                                                    job.start_block, 
-                                                    job.processed_blocks, 
-                                                    job.stop_block - job.start_block,
-                                                    duration_str));
-                    }
-                    let job_str = if jlen > 0 {
-                        format!(", Jobs: [{}]", jobs_str)
-                    } else {
-                        "".to_string()
-                    };
-                    info!(&logger, "Substreams backend graph_out last block is {}, \
-                                    {} stages up to {}, {} jobs",
-                                    log_data.last_seen_block, len, up_to.unwrap_or(0), jlen);
-                    debug!(&logger, "Substreams backend graph_out last block is {},{}{}", 
-                        log_data.last_seen_block,
-                        stage_str,
-                        job_str,
-                    );
+                    info!(&logger, "{}", log_data.info_string(&progress));
+                    debug!(&logger, "{}", log_data.debug_string(&progress));
                     trace!(
                         &logger,
                         "Received progress update";
