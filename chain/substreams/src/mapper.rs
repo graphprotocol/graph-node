@@ -78,7 +78,7 @@ impl SubstreamsMapper<Chain> for Mapper {
         block: &prost_types::Any,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
         let block_number: BlockNumber = clock.number.try_into()?;
-        let block_hash = clock.id.as_bytes().to_vec().try_into()?;
+        let block_hash: BlockHash = clock.id.as_str().try_into()?;
 
         let block = self
             .decode_block(Some(block))?
