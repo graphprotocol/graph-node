@@ -385,33 +385,31 @@ impl Resolver for StoreResolver {
                 let mut data = result.take_data();
 
                 // Only keep the _meta, __schema and __type fields from the data
-                let meta_fields = data
-                    .as_mut()
-                    .and_then(|d| {
-                        let meta_field = d.remove("_meta");
-                        let schema_field = d.remove("__schema");
-                        let type_field = d.remove("__type");
+                let meta_fields = data.as_mut().and_then(|d| {
+                    let meta_field = d.remove("_meta");
+                    let schema_field = d.remove("__schema");
+                    let type_field = d.remove("__type");
 
-                        // combine the fields into a vector
-                        let mut meta_fields = Vec::new();
+                    // combine the fields into a vector
+                    let mut meta_fields = Vec::new();
 
-                        if let Some(meta_field) = meta_field {
-                            meta_fields.push((Word::from("_meta"), meta_field));
-                        }
-                        if let Some(schema_field) = schema_field {
-                            meta_fields.push((Word::from("__schema"), schema_field));
-                        }
-                        if let Some(type_field) = type_field {
-                            meta_fields.push((Word::from("__type"), type_field));
-                        }
+                    if let Some(meta_field) = meta_field {
+                        meta_fields.push((Word::from("_meta"), meta_field));
+                    }
+                    if let Some(schema_field) = schema_field {
+                        meta_fields.push((Word::from("__schema"), schema_field));
+                    }
+                    if let Some(type_field) = type_field {
+                        meta_fields.push((Word::from("__type"), type_field));
+                    }
 
-                        // return the object if it is not empty
-                        if meta_fields.is_empty() {
-                            None
-                        } else {
-                            Some(Object::from_iter(meta_fields))
-                        }
-                    });
+                    // return the object if it is not empty
+                    if meta_fields.is_empty() {
+                        None
+                    } else {
+                        Some(Object::from_iter(meta_fields))
+                    }
+                });
 
                 result.set_data(meta_fields);
             }
