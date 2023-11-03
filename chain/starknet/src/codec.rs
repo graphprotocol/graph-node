@@ -13,7 +13,9 @@ impl BlockchainBlock for Block {
 
     fn ptr(&self) -> BlockPtr {
         BlockPtr {
-            hash: BlockHash(self.hash.clone().into_boxed_slice()),
+            hash: BlockHash {
+                value: String::from_utf8(self.hash.clone()).unwrap(),
+            },
             number: self.height as i32,
         }
     }
@@ -23,7 +25,9 @@ impl BlockchainBlock for Block {
             None
         } else {
             Some(BlockPtr {
-                hash: BlockHash(self.prev_hash.clone().into_boxed_slice()),
+                hash: BlockHash {
+                    value: String::from_utf8(self.prev_hash.clone()).unwrap(),
+                },
                 number: (self.height - 1) as i32,
             })
         }
