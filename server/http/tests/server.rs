@@ -79,10 +79,9 @@ impl GraphQlRunner for TestGraphQlRunner {
 
 #[cfg(test)]
 mod test {
-    use http::header::CONTENT_TYPE;
-    use graphql_utils::test_utils;
-
     use super::*;
+    use graphql_utils::test_utils;
+    use http::header::CONTENT_TYPE;
 
     lazy_static! {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();
