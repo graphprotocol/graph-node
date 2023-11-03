@@ -3,7 +3,6 @@
 use anyhow::{anyhow, bail, Error};
 use hex;
 use juniper::GraphQLObject;
-use lazy_static::lazy_static;
 use rand::rngs::OsRng;
 use rand::Rng;
 use std::collections::BTreeSet;

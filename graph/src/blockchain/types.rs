@@ -1,8 +1,5 @@
 use anyhow::anyhow;
-use juniper::{
-    graphql_value, DefaultScalarValue, FieldError, GraphQLObject, GraphQLScalarValue, GraphQLValue,
-    InputValue, ScalarValue,
-};
+use juniper::GraphQLObject;
 use std::convert::TryFrom;
 use std::{fmt, str::FromStr};
 use web3::types::{Block, H256};

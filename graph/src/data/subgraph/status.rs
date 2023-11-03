@@ -1,6 +1,6 @@
 //! Support for the indexing status API
 
-use juniper::{GraphQLObject, GraphQLScalarValue};
+use juniper::GraphQLObject;
 
 use super::schema::{SubgraphError, SubgraphHealth};
 use crate::blockchain::BlockHash;

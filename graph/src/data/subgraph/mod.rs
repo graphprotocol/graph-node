@@ -14,7 +14,7 @@ use crate::object;
 use anyhow::{anyhow, Context, Error};
 use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
 use itertools::Itertools;
-use juniper::{GraphQLObject, GraphQLScalarValue};
+use juniper::GraphQLScalarValue;
 use semver::Version;
 use serde::{de, ser};
 use serde_yaml;
