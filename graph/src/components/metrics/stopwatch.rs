@@ -132,7 +132,7 @@ impl StopwatchInner {
             // Register the current timer.
             let elapsed = self.timer.elapsed().as_secs_f64();
             self.counter
-                .get_metric_with_label_values(&[section, &self.stage, &&self.shard])
+                .get_metric_with_label_values(&[section, &self.stage, &self.shard])
                 .map(|counter| counter.inc_by(elapsed))
                 .unwrap_or_else(|e| {
                     error!(self.logger, "failed to find counter for section";
