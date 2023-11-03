@@ -92,6 +92,7 @@ async fn test_valid_module_and_store_with_timeout(
         deployment_id.clone(),
         "test",
         metrics_registry.clone(),
+        "test_shard".to_string(),
     );
 
     let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
@@ -1254,6 +1255,7 @@ impl Host {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
         let gas_metrics = GasMetrics::new(deployment.hash.clone(), metrics_registry);
 
