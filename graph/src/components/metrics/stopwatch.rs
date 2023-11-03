@@ -46,7 +46,7 @@ impl StopwatchMetrics {
         subgraph_id: DeploymentHash,
         stage: &str,
         registry: Arc<MetricsRegistry>,
-        shard: String
+        shard: String,
     ) -> Self {
         let stage = stage.to_owned();
         let mut inner = StopwatchInner {
