@@ -180,19 +180,16 @@ pub fn activate(
     Ok(deployment)
 }
 
-pub fn list(
-    pools: HashMap<Shard, ConnectionPool>,
-) -> Result<
-    Vec<(
-        i32,
-        i32,
-        Option<DateTime<Utc>>,
-        DateTime<Utc>,
-        String,
-        Shard,
-    )>,
-    Error,
-> {
+type List = Vec<(
+    i32,
+    i32,
+    Option<DateTime<Utc>>,
+    DateTime<Utc>,
+    String,
+    Shard,
+)>;
+
+pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<List, Error> {
     use catalog::active_copies as ac;
     use catalog::deployment_schemas as ds;
 
@@ -210,50 +207,6 @@ pub fn list(
             ds::shard,
         ))
         .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&conn)?;
-
-    // LOG
-    // if copies.is_empty() {
-    //     println!("no active copies");
-    // } else {
-    //     fn status(name: &str, at: UtcDateTime) {
-    //         println!(
-    //             "{:20} | {}",
-    //             name,
-    //             at.to_rfc3339_opts(SecondsFormat::Secs, false)
-    //         );
-    //     }
-
-    //     for (src, dst, cancelled_at, queued_at, deployment_hash, shard) in copies {
-    //         println!("{:-<78}", "");
-
-    //         println!("{:20} | {}", "deployment", deployment_hash);
-    //         println!("{:20} | sgd{} -> sgd{} ({})", "action", src, dst, shard);
-    //         match CopyState::find(&pools, &shard, dst)? {
-    //             Some((state, tables, _)) => match cancelled_at {
-    //                 Some(cancel_requested) => match state.cancelled_at {
-    //                     Some(cancelled_at) => status("cancelled", cancelled_at),
-    //                     None => status("cancel requested", cancel_requested),
-    //                 },
-    //                 None => match state.finished_at {
-    //                     Some(finished_at) => status("finished", finished_at),
-    //                     None => {
-    //                         let target: i64 = tables.iter().map(|table| table.target_vid).sum();
-    //                         let next: i64 = tables.iter().map(|table| table.next_vid).sum();
-    //                         let done = next as f64 / target as f64 * 100.0;
-    //                         status("started", state.started_at);
-    //                         if log {
-    //                             println!(
-    //                                 "{:20} | {:.2}% done, {}/{}",
-    //                                 "progress", done, next, target
-    //                             )
-    //                         }
-    //                     }
-    //                 },
-    //             },
-    //             None => status("queued", queued_at),
-    //         };
-    //     }
-    // }
 
     Ok(copies)
 }

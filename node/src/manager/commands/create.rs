@@ -6,7 +6,7 @@ use graph_store_postgres::SubgraphStore;
 use graph_core::graphman::core;
 
 pub fn run(store: Arc<SubgraphStore>, name: String) -> Result<(), Error> {
-    let name = core::create::run(store, name, true)?;
+    let name = core::create::run(store, name, &mut std::io::stdout().lock())?;
 
     println!("created subgraph {}", name);
 

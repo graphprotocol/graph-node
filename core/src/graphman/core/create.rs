@@ -6,14 +6,12 @@ use graph_store_postgres::SubgraphStore;
 pub fn run(
     store: Arc<SubgraphStore>,
     name: String,
-    enable_logging: bool,
+    out: &mut dyn std::io::Write,
 ) -> Result<SubgraphName, Error> {
     let name = SubgraphName::new(name.clone())
         .map_err(|()| anyhow!("illegal subgraph name `{}`", name))?;
 
-    if enable_logging {
-        println!("creating subgraph {}", name);
-    }
+    writeln!("creating subgraph {}", name);
 
     store.create_subgraph(name.clone())?;
 
