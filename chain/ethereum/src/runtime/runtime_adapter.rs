@@ -151,7 +151,8 @@ fn eth_call(
                      of the subgraph manifest",
                 unresolved_call.contract_name
             )
-        })?
+        })
+        .map_err(HostExportError::Deterministic)?
         .contract
         .clone();
 
@@ -166,7 +167,8 @@ fn eth_call(
                     "Unknown function \"{}::{}\" called from WASM runtime",
                     unresolved_call.contract_name, unresolved_call.function_name
                 )
-            })?,
+            })
+            .map_err(HostExportError::Deterministic)?,
 
         // Behavior for apiVersion >= 0.0.04: look up function by signature of
         // the form `functionName(uint256,string) returns (bytes32,string)`; this
@@ -178,7 +180,8 @@ fn eth_call(
                     "Unknown function \"{}::{}\" called from WASM runtime",
                     unresolved_call.contract_name, unresolved_call.function_name
                 )
-            })?
+            })
+            .map_err(HostExportError::Deterministic)?
             .iter()
             .find(|f| function_signature == &f.signature())
             .with_context(|| {
@@ -189,7 +192,8 @@ fn eth_call(
                     unresolved_call.function_name,
                     function_signature,
                 )
-            })?,
+            })
+            .map_err(HostExportError::Deterministic)?,
     };
 
     let call = EthereumContractCall {
