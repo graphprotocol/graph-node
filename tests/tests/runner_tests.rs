@@ -438,6 +438,9 @@ async fn end_block() -> anyhow::Result<()> {
         subgraph_name,
         hash,
     } = RunnerTestRecipe::new("end-block").await;
+    // This test is to test the end_block feature which enables datasources to stop indexing
+    // At a user specified block, this test tests whether the subgraph stops indexing at that
+    // block, rebuild the filters accurately when a revert occurs etc
 
     // test if the TriggerFilter includes the given contract address
     async fn test_filter(
@@ -484,11 +487,13 @@ async fn end_block() -> anyhow::Result<()> {
 
     let addr = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
 
+    // Test if the filter includes the contract address before the stop block.
     test_filter(&ctx, test_ptr(5), &addr, true).await;
 
+    // Test if the filter excludes the contract address after the stop block.
     test_filter(&ctx, stop_block, &addr, false).await;
 
-    // query the last Block entity to check if its 8th block
+    // Query the subgraph to ensure the last indexed block is number 8, indicating the end block feature works.
     let query_res = ctx
         .query(r#"{ blocks(first: 1, orderBy: number, orderDirection: desc) { number hash } }"#)
         .await
@@ -501,12 +506,13 @@ async fn end_block() -> anyhow::Result<()> {
         )
     );
 
-    // Unfail the subgraph to test a conflict between an onchain and offchain entity
+    // Simulate a chain reorg and ensure the filter rebuilds accurately post-reorg.
     {
         ctx.rewind(test_ptr(6));
 
         let mut blocks = blocks[0..8].to_vec().clone();
 
+        // Create new blocks to represent a fork from block 7 onwards, including a reorged block 8.
         let block_8_1_ptr = test_ptr_reorged(8, 1);
         let block_8_1 = empty_block(test_ptr(7), block_8_1_ptr.clone());
         blocks.push(block_8_1);
@@ -516,10 +522,11 @@ async fn end_block() -> anyhow::Result<()> {
 
         chain.set_block_stream(blocks.clone());
 
+        // Test the filter behavior in the presence of the reorganized chain.
         test_filter(&ctx, test_ptr(7), &addr, true).await;
         test_filter(&ctx, stop_block, &addr, false).await;
 
-        // query the last Block entity to check if its 8th block
+        // Verify that after the reorg, the last Block entity still reflects block number 8, but with a different hash.
         let query_res = ctx
             .query(
                 r#"{ 
