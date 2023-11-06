@@ -48,6 +48,7 @@ pub struct UnresolvedDataSource {
 #[serde(rename_all = "camelCase")]
 pub struct Source {
     pub start_block: BlockNumber,
+    pub end_block: Option<BlockNumber>,
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<FieldElement>,
 }
@@ -96,6 +97,10 @@ impl blockchain::DataSource<Chain> for DataSource {
 
     fn start_block(&self) -> BlockNumber {
         self.source.start_block
+    }
+
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
     }
 
     fn handler_kinds(&self) -> HashSet<&str> {

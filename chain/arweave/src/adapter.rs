@@ -239,7 +239,11 @@ mod test {
             kind: "".into(),
             network: None,
             name: "".into(),
-            source: Source { owner, start_block },
+            source: Source {
+                owner,
+                start_block,
+                end_block: None,
+            },
             mapping: Mapping {
                 api_version: Version::new(1, 2, 3),
                 language: "".into(),

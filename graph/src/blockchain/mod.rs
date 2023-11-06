@@ -255,15 +255,18 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
 
     fn address(&self) -> Option<&[u8]>;
     fn start_block(&self) -> BlockNumber;
+    fn end_block(&self) -> Option<BlockNumber>;
     fn name(&self) -> &str;
     fn kind(&self) -> &str;
     fn network(&self) -> Option<&str>;
     fn context(&self) -> Arc<Option<DataSourceContext>>;
     fn creation_block(&self) -> Option<BlockNumber>;
     fn api_version(&self) -> semver::Version;
+
     fn min_spec_version(&self) -> semver::Version {
         MIN_SPEC_VERSION
     }
+
     fn runtime(&self) -> Option<Arc<Vec<u8>>>;
 
     fn handler_kinds(&self) -> HashSet<&str>;
@@ -292,6 +295,11 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
 
     /// Used as part of manifest validation. If there are no errors, return an empty vector.
     fn validate(&self) -> Vec<Error>;
+
+    fn has_expired(&self, block: BlockNumber) -> bool {
+        self.end_block()
+            .map_or(false, |end_block| block > end_block)
+    }
 }
 
 #[async_trait]

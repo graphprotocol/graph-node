@@ -24,6 +24,7 @@ lcov.info
 /tests/**/generated
 /tests/**/node_modules
 /tests/**/yarn-error.log
+/tests/**/pnpm-lock.yaml
 
 # Built solidity contracts.
 /tests/**/bin

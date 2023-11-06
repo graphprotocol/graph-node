@@ -8,7 +8,9 @@ use graph::blockchain::DataSource;
 use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
-use graph::data::subgraph::{SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8};
+use graph::data::subgraph::{
+    SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
+};
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
 use graph::entity;
@@ -545,6 +547,43 @@ specVersion: 0.0.8
     );
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
+}
+
+#[tokio::test]
+async fn parse_data_source_with_end_block() {
+    const YAML: &str = "
+dataSources:
+  - kind: ethereum/contract
+    name: Factory
+    network: mainnet
+    source:
+      abi: Factory
+      startBlock: 9562480
+      endBlock: 9562481
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.4
+      language: wasm/assemblyscript
+      entities:
+        - TestEntity
+      file:
+        /: /ipfs/Qmmapping
+      abis:
+        - name: Factory
+          file:
+            /: /ipfs/Qmabi
+schema:
+  file:
+    /: /ipfs/Qmschema
+specVersion: 0.0.9
+";
+
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_9).await;
+    // Check if end block is parsed correctly
+    let data_source = manifest.data_sources.first().unwrap();
+    let end_block = data_source.as_onchain().unwrap().end_block;
+
+    assert_eq!(Some(9562481), end_block);
 }
 
 #[tokio::test]

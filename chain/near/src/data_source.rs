@@ -92,6 +92,10 @@ impl blockchain::DataSource<Chain> for DataSource {
         kinds
     }
 
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
@@ -493,10 +497,12 @@ impl PartialAccounts {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Source {
     // A data source that does not have an account or accounts can only have block handlers.
     pub(crate) account: Option<String>,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub(crate) start_block: BlockNumber,
+    pub(crate) end_block: Option<BlockNumber>,
     pub(crate) accounts: Option<PartialAccounts>,
 }

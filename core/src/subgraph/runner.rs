@@ -106,6 +106,58 @@ where
         self.run_inner(break_on_restart).await
     }
 
+    fn build_filter(&self) -> C::TriggerFilter {
+        let current_ptr = self.inputs.store.block_ptr();
+        let static_filters = self.inputs.static_filters
+            || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
+
+        // Filter out data sources that have reached their end block
+        let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
+            // We filter out datasources for which the current block is at or past their end block.
+            Some(block) => ds.end_block().map_or(true, |end| block.number < end),
+            // If there is no current block, we keep all datasources.
+            None => true,
+        };
+
+        // if static_filters is not enabled we just stick to the filter based on all the data sources.
+        if !static_filters {
+            return C::TriggerFilter::from_data_sources(
+                self.ctx
+                    .instance()
+                    .hosts()
+                    .iter()
+                    .filter_map(|h| h.data_source().as_onchain())
+                    // Filter out data sources that have reached their end block if the block is final.
+                    .filter(end_block_filter),
+            );
+        }
+
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+
+        if !self.inputs.static_filters {
+            info!(self.logger, "forcing subgraph to use static filters.")
+        }
+
+        let data_sources = self.ctx.instance().data_sources.clone();
+
+        let mut filter = C::TriggerFilter::from_data_sources(
+            data_sources
+                .iter()
+                .filter_map(|ds| ds.as_onchain())
+                // Filter out data sources that have reached their end block if the block is final.
+                .filter(end_block_filter),
+        );
+
+        let templates = self.ctx.instance().templates.clone();
+
+        filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
+
+        filter
+    }
+
     pub async fn run(self) -> Result<(), Error> {
         self.run_inner(false).await.map(|_| ())
     }
@@ -144,12 +196,17 @@ where
 
             let block_stream_canceler = CancelGuard::new();
             let block_stream_cancel_handle = block_stream_canceler.handle();
+            // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
+            self.ctx.filter = Some(self.build_filter());
 
-            let mut block_stream =
-                new_block_stream(&self.inputs, &self.ctx.filter, &self.metrics.subgraph)
-                    .await?
-                    .map_err(CancelableError::Error)
-                    .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
+            let mut block_stream = new_block_stream(
+                &self.inputs,
+                self.ctx.filter.as_ref().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
+                &self.metrics.subgraph,
+            )
+            .await?
+            .map_err(CancelableError::Error)
+            .cancelable(&block_stream_canceler, || Err(CancelableError::Cancel));
 
             // Keep the stream's cancel guard around to be able to shut it down when the subgraph
             // deployment is unassigned
@@ -275,10 +332,18 @@ where
             }
         };
 
+        // Check if there are any datasources that have expired in this block. ie: the end_block
+        // of that data source is equal to the block number of the current block.
+        let has_expired_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
+
         // If new onchain data sources have been created, and static filters are not in use, it is necessary
         // to restart the block stream with the new filters.
-        let needs_restart =
-            block_state.has_created_on_chain_data_sources() && !self.inputs.static_filters;
+        let created_data_sources_needs_restart =
+            !self.inputs.static_filters && block_state.has_created_on_chain_data_sources();
+
+        // Determine if the block stream needs to be restarted due to newly created on-chain data sources
+        // or data sources that have reached their end block.
+        let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
         {
             let _section = self
@@ -437,9 +502,9 @@ where
         // Check for offchain events and process them, including their entity modifications in the
         // set to be transacted.
         let offchain_events = self.ctx.offchain_monitor.ready_offchain_events()?;
-        let (offchain_mods, processed_data_sources, persisted_off_chain_data_sources) = self
-            .handle_offchain_triggers(offchain_events, &block)
-            .await?;
+        let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
+            self.handle_offchain_triggers(offchain_events, &block)
+                .await?;
         mods.extend(offchain_mods);
 
         // Put the cache back in the state, asserting that the placeholder cache was not used.
@@ -495,7 +560,7 @@ where
                 &self.metrics.host.stopwatch,
                 persisted_data_sources,
                 deterministic_errors,
-                processed_data_sources,
+                processed_offchain_data_sources,
                 is_non_fatal_errors_active,
             )
             .await
@@ -657,11 +722,6 @@ where
             );
             block_state.persist_data_source(data_source.as_stored_dynamic_data_source());
         }
-
-        // Merge filters from data sources into the block stream builder
-        self.ctx
-            .filter
-            .extend(data_sources.iter().filter_map(|ds| ds.as_onchain()));
     }
 }
 
@@ -811,6 +871,7 @@ trait StreamEventHandler<C: Blockchain> {
         err: CancelableError<Error>,
         cancel_handle: &CancelHandle,
     ) -> Result<Action, Error>;
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool;
 }
 
 #[async_trait]
@@ -1001,6 +1062,17 @@ where
         }
     }
 
+    /// Determines if the subgraph needs to be restarted.
+    /// Currently returns true when there are data sources that have reached their end block
+    /// in the range between `revert_to_ptr` and `subgraph_ptr`.
+    fn needs_restart(&self, revert_to_ptr: BlockPtr, subgraph_ptr: BlockPtr) -> bool {
+        self.inputs
+            .end_blocks
+            .range(revert_to_ptr.number..=subgraph_ptr.number)
+            .next()
+            .is_some()
+    }
+
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
@@ -1021,7 +1093,7 @@ where
         if let Err(e) = self
             .inputs
             .store
-            .revert_block_operations(revert_to_ptr, cursor)
+            .revert_block_operations(revert_to_ptr.clone(), cursor)
             .await
         {
             error!(&self.logger, "Could not revert block. Retrying"; "error" => %e);
@@ -1041,7 +1113,15 @@ where
 
         self.revert_state(subgraph_ptr.number)?;
 
-        Ok(Action::Continue)
+        let needs_restart: bool = self.needs_restart(revert_to_ptr, subgraph_ptr);
+
+        let action = if needs_restart {
+            Action::Restart
+        } else {
+            Action::Continue
+        };
+
+        Ok(action)
     }
 
     async fn handle_err(
