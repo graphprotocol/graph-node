@@ -119,33 +119,9 @@ where
             None => true,
         };
 
-        // if static_filters is enabled, build a minimal filter with the static data sources and
-        // add the necessary filters based on templates.
-        // if not enabled we just stick to the filter based on all the data sources.
-        // This specifically removes dynamic data sources based filters because these can be derived
-        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
-        let filter = if static_filters {
-            if !self.inputs.static_filters {
-                info!(self.logger, "forcing subgraph to use static filters.")
-            }
-
-            let data_sources = self.ctx.instance().data_sources.clone();
-
-            let mut filter = C::TriggerFilter::from_data_sources(
-                data_sources
-                    .iter()
-                    .filter_map(|ds| ds.as_onchain())
-                    // Filter out data sources that have reached their end block if the block is final.
-                    .filter(end_block_filter),
-            );
-
-            let templates = self.ctx.instance().templates.clone();
-
-            filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
-
-            filter
-        } else {
-            C::TriggerFilter::from_data_sources(
+        // if static_filters is not enabled we just stick to the filter based on all the data sources.
+        if !static_filters {
+            return C::TriggerFilter::from_data_sources(
                 self.ctx
                     .instance()
                     .hosts()
@@ -153,8 +129,31 @@ where
                     .filter_map(|h| h.data_source().as_onchain())
                     // Filter out data sources that have reached their end block if the block is final.
                     .filter(end_block_filter),
-            )
-        };
+            );
+        }
+
+        // if static_filters is enabled, build a minimal filter with the static data sources and
+        // add the necessary filters based on templates.
+        // This specifically removes dynamic data sources based filters because these can be derived
+        // from templates AND this reduces the cost of egress traffic by making the payloads smaller.
+
+        if !self.inputs.static_filters {
+            info!(self.logger, "forcing subgraph to use static filters.")
+        }
+
+        let data_sources = self.ctx.instance().data_sources.clone();
+
+        let mut filter = C::TriggerFilter::from_data_sources(
+            data_sources
+                .iter()
+                .filter_map(|ds| ds.as_onchain())
+                // Filter out data sources that have reached their end block if the block is final.
+                .filter(end_block_filter),
+        );
+
+        let templates = self.ctx.instance().templates.clone();
+
+        filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
         filter
     }
