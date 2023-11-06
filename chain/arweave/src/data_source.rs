@@ -63,6 +63,10 @@ impl blockchain::DataSource<Chain> for DataSource {
         kinds
     }
 
+    fn end_block(&self) -> Option<BlockNumber> {
+        self.source.end_block
+    }
+
     fn match_and_decode(
         &self,
         trigger: &<Chain as Blockchain>::TriggerData,
@@ -392,9 +396,11 @@ pub struct TransactionHandler {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Source {
     // A data source that does not have an owner can only have block handlers.
     pub(crate) owner: Option<String>,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub(crate) start_block: BlockNumber,
+    pub(crate) end_block: Option<BlockNumber>,
 }

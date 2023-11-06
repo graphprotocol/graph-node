@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::process::Command;
+use std::str::FromStr;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::time::Duration;
@@ -15,6 +16,7 @@ use graph::env::EnvVars;
 use graph::ipfs_client::IpfsClient;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::web3::types::Address;
 use graph::prelude::{
     hex, CheapClone, DeploymentHash, SubgraphAssignmentProvider, SubgraphName, SubgraphStore,
 };
@@ -24,6 +26,7 @@ use graph_tests::fixture::ethereum::{
 };
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
+    TestContext,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
@@ -426,6 +429,130 @@ async fn derived_loaders() {
             }
         })
     );
+}
+
+#[tokio::test]
+async fn end_block() -> anyhow::Result<()> {
+    let RunnerTestRecipe {
+        stores,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("end-block").await;
+    // This test is to test the end_block feature which enables datasources to stop indexing
+    // At a user specified block, this test tests whether the subgraph stops indexing at that
+    // block, rebuild the filters accurately when a revert occurs etc
+
+    // test if the TriggerFilter includes the given contract address
+    async fn test_filter(
+        ctx: &TestContext,
+        block_ptr: BlockPtr,
+        addr: &Address,
+        should_contain_addr: bool,
+    ) {
+        dbg!(block_ptr.number, should_contain_addr);
+        let runner = ctx.runner(block_ptr.clone()).await;
+        let runner = runner.run_for_test(false).await.unwrap();
+        let filter = runner.context().filter.as_ref().unwrap();
+        let addresses = filter.log().contract_addresses().collect::<Vec<_>>();
+
+        if should_contain_addr {
+            assert!(addresses.contains(&addr));
+        } else {
+            assert!(!addresses.contains(&addr));
+        };
+    }
+
+    let blocks = {
+        let block_0 = genesis();
+        let block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        let block_4 = empty_block(block_3.ptr(), test_ptr(4));
+        let block_5 = empty_block(block_4.ptr(), test_ptr(5));
+        let block_6 = empty_block(block_5.ptr(), test_ptr(6));
+        let block_7 = empty_block(block_6.ptr(), test_ptr(7));
+        let block_8 = empty_block(block_7.ptr(), test_ptr(8));
+        let block_9 = empty_block(block_8.ptr(), test_ptr(9));
+        let block_10 = empty_block(block_9.ptr(), test_ptr(10));
+        vec![
+            block_0, block_1, block_2, block_3, block_4, block_5, block_6, block_7, block_8,
+            block_9, block_10,
+        ]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+
+    let chain = chain(blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+
+    let addr = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
+
+    // Test if the filter includes the contract address before the stop block.
+    test_filter(&ctx, test_ptr(5), &addr, true).await;
+
+    // Test if the filter excludes the contract address after the stop block.
+    test_filter(&ctx, stop_block, &addr, false).await;
+
+    // Query the subgraph to ensure the last indexed block is number 8, indicating the end block feature works.
+    let query_res = ctx
+        .query(r#"{ blocks(first: 1, orderBy: number, orderDirection: desc) { number hash } }"#)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(
+            object! { blocks: vec![object!{ number: "8", hash:"0x0000000000000000000000000000000000000000000000000000000000000008"  }] }
+        )
+    );
+
+    // Simulate a chain reorg and ensure the filter rebuilds accurately post-reorg.
+    {
+        ctx.rewind(test_ptr(6));
+
+        let mut blocks = blocks[0..8].to_vec().clone();
+
+        // Create new blocks to represent a fork from block 7 onwards, including a reorged block 8.
+        let block_8_1_ptr = test_ptr_reorged(8, 1);
+        let block_8_1 = empty_block(test_ptr(7), block_8_1_ptr.clone());
+        blocks.push(block_8_1);
+        blocks.push(empty_block(block_8_1_ptr, test_ptr(9)));
+
+        let stop_block = blocks.last().unwrap().block.ptr();
+
+        chain.set_block_stream(blocks.clone());
+
+        // Test the filter behavior in the presence of the reorganized chain.
+        test_filter(&ctx, test_ptr(7), &addr, true).await;
+        test_filter(&ctx, stop_block, &addr, false).await;
+
+        // Verify that after the reorg, the last Block entity still reflects block number 8, but with a different hash.
+        let query_res = ctx
+            .query(
+                r#"{ 
+                blocks(first: 1, orderBy: number, orderDirection: desc) { 
+                    number 
+                    hash 
+                }
+            }"#,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            query_res,
+            Some(object! {
+                blocks: vec![
+                    object!{
+                        number: "8",
+                        hash: "0x0000000100000000000000000000000000000000000000000000000000000008"
+                    }
+                ],
+            })
+        );
+    }
+
+    Ok(())
 }
 
 #[tokio::test]

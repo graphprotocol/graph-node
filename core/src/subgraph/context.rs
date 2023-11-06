@@ -66,8 +66,8 @@ where
 {
     instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
-    pub filter: C::TriggerFilter,
     pub offchain_monitor: OffchainMonitor,
+    pub filter: Option<C::TriggerFilter>,
     trigger_processor: Box<dyn TriggerProcessor<C, T>>,
 }
 
@@ -75,15 +75,14 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     pub fn new(
         instance: SubgraphInstance<C, T>,
         instances: SubgraphKeepAlive,
-        filter: C::TriggerFilter,
         offchain_monitor: OffchainMonitor,
         trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     ) -> Self {
         Self {
             instance,
             instances,
-            filter,
             offchain_monitor,
+            filter: None,
             trigger_processor,
         }
     }
@@ -182,7 +181,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         self.instance.causality_region_next_value()
     }
 
-    #[cfg(debug_assertions)]
     pub fn instance(&self) -> &SubgraphInstance<C, T> {
         &self.instance
     }
