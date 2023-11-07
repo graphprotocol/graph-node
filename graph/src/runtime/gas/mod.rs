@@ -77,16 +77,18 @@ impl Display for Gas {
 }
 
 #[derive(Clone)]
-pub struct GasCounter(Arc<AtomicU64>, GasMetrics);
+pub struct GasCounter {
+    counter: Arc<AtomicU64>,
+    metrics: GasMetrics,
+}
 
 impl CheapClone for GasCounter {}
 
 impl GasCounter {
-    /// Alias of [`Default::default`].
-    pub fn new(gas_metrics: GasMetrics) -> Self {
+    pub fn new(metrics: GasMetrics) -> Self {
         Self {
-            0: Arc::new(AtomicU64::new(0)),
-            1: gas_metrics,
+            counter: Arc::new(AtomicU64::new(0)),
+            metrics,
         }
     }
 
@@ -98,13 +100,16 @@ impl GasCounter {
     ) -> Result<(), DeterministicHostError> {
         amount += costs::HOST_EXPORT_GAS;
 
-        if let Some(method) = method {
-            self.1.track_gas(method, amount.0);
-            self.1.track_operations(method, 1);
+        // If gas metrics are enabled, track the gas used
+        if ENV_VARS.enable_gas_metrics {
+            if let Some(method) = method {
+                self.metrics.track_gas(method, amount.0);
+                self.metrics.track_operations(method, 1);
+            }
         }
 
         let old = self
-            .0
+            .counter
             .fetch_update(SeqCst, SeqCst, |v| Some(v.saturating_add(amount.0)))
             .unwrap();
         let new = old.saturating_add(amount.0);
@@ -131,6 +136,6 @@ impl GasCounter {
     }
 
     pub fn get(&self) -> Gas {
-        Gas(self.0.load(SeqCst))
+        Gas(self.counter.load(SeqCst))
     }
 }

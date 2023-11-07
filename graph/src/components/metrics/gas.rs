@@ -18,10 +18,10 @@ impl GasMetrics {
                 subgraph_id.as_str(),
                 &["method"],
             )
-            .unwrap_or_else(|_| {
+            .unwrap_or_else(|err| {
                 panic!(
-                    "Failed to register deployment_gas prometheus counter for {}",
-                    subgraph_id
+                    "Failed to register deployment_gas prometheus counter for {}: {}",
+                    subgraph_id, err
                 )
             });
 
@@ -32,10 +32,10 @@ impl GasMetrics {
                 subgraph_id.as_str(),
                 &["method"],
             )
-            .unwrap_or_else(|_| {
+            .unwrap_or_else(|err| {
                 panic!(
-                    "Failed to register deployment_op_count prometheus counter for {}",
-                    subgraph_id
+                    "Failed to register deployment_op_count prometheus counter for {}: {}",
+                    subgraph_id, err
                 )
             });
 
