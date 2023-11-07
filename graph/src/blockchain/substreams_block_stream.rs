@@ -335,6 +335,7 @@ impl<C: Blockchain> BlockStream<C> for SubstreamsBlockStream<C> {
 pub struct SubstreamsLogData {
     pub last_progress: Instant,
     pub last_seen_block: u64,
+    pub trace_id: String,
 }
 
 impl SubstreamsLogData {
@@ -342,6 +343,7 @@ impl SubstreamsLogData {
         SubstreamsLogData {
             last_progress: Instant::now(),
             last_seen_block: 0,
+            trace_id: "".to_string(),
         }
     }
     pub fn info_string(&self, progress: &ModulesProgress) -> String {

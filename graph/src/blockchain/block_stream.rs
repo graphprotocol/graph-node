@@ -367,11 +367,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     "Received session init";
                     "session" => format!("{:?}", session_init),
                 );
-                if format!("{:?}", logger.list()).contains("trace_id") {
-                    info!(&logger, "New session trace_id: {}", session_init.trace_id);
-                } else {
-                    *logger = logger.new(o!("trace_id" => session_init.trace_id));
-                }
+                log_data.trace_id = session_init.trace_id;
                 return Ok(None);
             }
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
@@ -426,12 +422,13 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
 
             Some(SubstreamsMessage::Progress(progress)) => {
                 if log_data.last_progress.elapsed() > Duration::from_secs(30) {
-                    info!(&logger, "{}", log_data.info_string(&progress));
-                    debug!(&logger, "{}", log_data.debug_string(&progress));
+                    info!(&logger, "{}", log_data.info_string(&progress); "trace_id" => &log_data.trace_id);
+                    debug!(&logger, "{}", log_data.debug_string(&progress); "trace_id" => &log_data.trace_id);
                     trace!(
                         &logger,
                         "Received progress update";
                         "progress" => format!("{:?}", progress),
+                        "trace_id" => &log_data.trace_id,
                     );
                     log_data.last_progress = Instant::now();
                 }
