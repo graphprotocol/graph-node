@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
 use graph::blockchain::block_stream::BlockStreamMetrics;
-use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities,TriggerFilter};
+use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
