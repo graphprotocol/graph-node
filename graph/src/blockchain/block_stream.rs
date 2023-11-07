@@ -367,7 +367,11 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     "Received session init";
                     "session" => format!("{:?}", session_init),
                 );
-                *logger = logger.new(o!("trace_id" => session_init.trace_id));
+                if format!("{:?}", logger.list()).contains("trace_id") {
+                    info!(&logger, "New session trace_id: {}", session_init.trace_id);
+                } else {
+                    *logger = logger.new(o!("trace_id" => session_init.trace_id));
+                }
                 return Ok(None);
             }
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
