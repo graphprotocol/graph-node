@@ -540,7 +540,7 @@ fn subgraph_error() {
     test_store::run_test_sequentially(|store| async move {
         let subgraph_id = DeploymentHash::new("testSubgraph").unwrap();
         let deployment =
-            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
+            test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
         let count = || -> usize {
             let store = store.subgraph_store();
@@ -599,7 +599,7 @@ fn subgraph_non_fatal_error() {
         let subgraph_store = store.subgraph_store();
         let subgraph_id = DeploymentHash::new("subgraph_non_fatal_error").unwrap();
         let deployment =
-            test_store::create_test_subgraph(&subgraph_id, "type Foo { id: ID! }").await;
+            test_store::create_test_subgraph(&subgraph_id, "type Foo @entity { id: ID! }").await;
 
         let count = || -> usize {
             let store = store.subgraph_store();

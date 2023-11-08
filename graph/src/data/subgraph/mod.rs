@@ -419,6 +419,7 @@ impl UnresolvedSchema {
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Source {
     /// The contract address for the data source. We allow data sources
     /// without an address for 'wildcard' triggers that catch all possible
@@ -426,8 +427,9 @@ pub struct Source {
     #[serde(default, deserialize_with = "deserialize_address")]
     pub address: Option<Address>,
     pub abi: String,
-    #[serde(rename = "startBlock", default)]
+    #[serde(default)]
     pub start_block: BlockNumber,
+    pub end_block: Option<BlockNumber>,
 }
 
 pub fn calls_host_fn(runtime: &[u8], host_fn: &str) -> anyhow::Result<bool> {
@@ -612,17 +614,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             1 => (),
             _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
         }
-
-        self.0
-            .schema
-            .validate()
-            .err()
-            .into_iter()
-            .for_each(|schema_errors| {
-                errors.push(SubgraphManifestValidationError::SchemaValidationError(
-                    schema_errors,
-                ));
-            });
 
         if let Some(graft) = &self.0.graft {
             if validate_graft_base {
@@ -855,6 +846,15 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             bail!(
                 "Offchain data sources not supported prior to {}",
                 SPEC_VERSION_0_0_7
+            );
+        }
+
+        if spec_version < SPEC_VERSION_0_0_9
+            && data_sources.iter().any(|ds| ds.end_block().is_some())
+        {
+            bail!(
+                "Defining `endBlock` in the manifest is not supported prior to {}",
+                SPEC_VERSION_0_0_9
             );
         }
 

@@ -5,15 +5,15 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            BlockPtrForNumber, BlockStore as BlockStoreTrait, QueryStoreManager, StatusStore,
-            Store as StoreTrait,
+            BlockPtrForNumber, BlockStore as BlockStoreTrait, QueryPermit, QueryStoreManager,
+            StatusStore, Store as StoreTrait,
         },
     },
     constraint_violation,
     data::subgraph::status,
     prelude::{
-        tokio, web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
-        PartialBlockPtr, QueryExecutionError, StoreError,
+        web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash, PartialBlockPtr,
+        QueryExecutionError, StoreError,
     },
 };
 
@@ -168,7 +168,7 @@ impl StatusStore for Store {
             .await
     }
 
-    async fn query_permit(&self) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
+    async fn query_permit(&self) -> Result<QueryPermit, StoreError> {
         // Status queries go to the primary shard.
         Ok(self.block_store.query_permit_primary().await)
     }

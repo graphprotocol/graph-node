@@ -28,13 +28,12 @@ use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphCountMetric,
-    SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
-    TriggerProcessor,
+    async_trait, lazy_static, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
+    GraphQlRunner as _, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
-use graph::slog::crit;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -46,7 +45,7 @@ use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use serde::Deserialize;
-use slog::{info, o, Discard, Logger};
+use slog::{crit, info, o, Discard, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -275,7 +274,11 @@ graph::prelude::lazy_static! {
     pub static ref STORE_MUTEX: Mutex<()> = Mutex::new(());
 }
 
-pub async fn stores(store_config_path: &str) -> Stores {
+fn test_logger(test_name: &str) -> Logger {
+    graph::log::logger(true).new(o!("test" => test_name.to_string()))
+}
+
+pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
     let config = {
@@ -292,7 +295,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
         Config::from_str(&config, "default").expect("failed to create configuration")
     };
 
-    let logger = graph::log::logger(true);
+    let logger = test_logger(test_name);
     let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
@@ -324,6 +327,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
 }
 
 pub async fn setup<C: Blockchain>(
+    test_name: &str,
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     stores: &Stores,
@@ -336,7 +340,7 @@ pub async fn setup<C: Blockchain>(
         None => EnvVars::from_env().unwrap(),
     });
 
-    let logger = graph::log::logger(true);
+    let logger = test_logger(test_name);
     let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();
@@ -483,6 +487,15 @@ pub async fn wait_for_sync(
     deployment: &DeploymentLocator,
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
+    // We wait one second between checks for the subgraph to sync. That
+    // means we wait up to a minute here by default
+    lazy_static! {
+        static ref MAX_ERR_COUNT: usize = std::env::var("RUNNER_TESTS_WAIT_FOR_SYNC_SECS")
+            .map(|val| val.parse().unwrap())
+            .unwrap_or(60);
+    }
+    const WAIT_TIME: Duration = Duration::from_secs(1);
+
     /// We flush here to speed up how long the write queue waits before it
     /// considers a batch complete and writable. Without flushing, we would
     /// have to wait for `GRAPH_STORE_WRITE_BATCH_DURATION` before all
@@ -502,8 +515,8 @@ pub async fn wait_for_sync(
 
     flush(logger, &store, deployment).await;
 
-    while err_count < 10 {
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+    while err_count < *MAX_ERR_COUNT {
+        tokio::time::sleep(WAIT_TIME).await;
         flush(logger, &store, deployment).await;
 
         let block_ptr = match store.least_block_ptr(&deployment.hash).await {
@@ -525,11 +538,14 @@ pub async fn wait_for_sync(
 
         if block_ptr == stop_block {
             info!(logger, "TEST: reached stop block");
-            break;
+            return Ok(());
         }
     }
 
-    Ok(())
+    // We only get here if we timed out waiting for the subgraph to reach
+    // the stop block
+    crit!(logger, "TEST: sync never completed (err_count={err_count})");
+    panic!("Sync did not complete within {err_count}s");
 }
 
 struct StaticBlockRefetcher<C: Blockchain> {

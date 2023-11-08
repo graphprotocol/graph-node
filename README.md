@@ -111,16 +111,16 @@ OPTIONS:
 
         --elasticsearch-user <USER>                   User to use for Elasticsearch logging [env: ELASTICSEARCH_USER=]
         --ethereum-ipc <NETWORK_NAME:[CAPABILITIES]:FILE>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg full,archive), and an Ethereum IPC pipe, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg full,archive), and an Ethereum IPC pipe, separated by a ':'
 
         --ethereum-polling-interval <MILLISECONDS>
             How often to poll the Ethereum node for new blocks [env: ETHEREUM_POLLING_INTERVAL=]  [default: 500]
 
         --ethereum-rpc <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'
 
         --ethereum-ws <NETWORK_NAME:[CAPABILITIES]:URL>
-            Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
+            Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg `full,archive), and an Ethereum WebSocket URL, separated by a ':'
 
         --node-id <NODE_ID>
             A unique identifier for this node instance. Should have the same value between consecutive node restarts [default: default]

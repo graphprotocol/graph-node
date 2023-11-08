@@ -177,6 +177,9 @@ pub struct EnvVars {
     pub subgraph_settings: Option<String>,
     /// Whether to prefer substreams blocks streams over firehose when available.
     pub prefer_substreams_block_streams: bool,
+    /// Set by the flag `GRAPH_ENABLE_GAS_METRICS`. Whether to enable
+    /// gas metrics. Off by default.
+    pub enable_gas_metrics: bool,
 }
 
 impl EnvVars {
@@ -236,6 +239,7 @@ impl EnvVars {
             reorg_threshold: inner.reorg_threshold,
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
+            enable_gas_metrics: inner.enable_gas_metrics.0,
         })
     }
 
@@ -288,7 +292,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.8")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "0.0.9")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,
@@ -361,6 +365,9 @@ struct Inner {
         default = "false"
     )]
     prefer_substreams_block_streams: bool,
+
+    #[envconfig(from = "GRAPH_ENABLE_GAS_METRICS", default = "false")]
+    enable_gas_metrics: EnvVarBoolean,
 }
 
 #[derive(Clone, Debug)]

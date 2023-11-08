@@ -45,7 +45,7 @@ pub struct Request {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Response {
-    #[prost(oneof = "response::Message", tags = "1, 2, 3, 4, 10, 11")]
+    #[prost(oneof = "response::Message", tags = "1, 2, 3, 4, 5, 10, 11")]
     pub message: ::core::option::Option<response::Message>,
 }
 /// Nested message and enum types in `Response`.
@@ -63,6 +63,8 @@ pub mod response {
         BlockScopedData(super::BlockScopedData),
         #[prost(message, tag = "4")]
         BlockUndoSignal(super::BlockUndoSignal),
+        #[prost(message, tag = "5")]
+        FatalError(super::Error),
         /// Available only in developer mode, and only if `debug_initial_store_snapshot_for_modules` is set.
         #[prost(message, tag = "10")]
         DebugSnapshotData(super::InitialSnapshotData),
@@ -104,6 +106,12 @@ pub struct BlockScopedData {
 pub struct SessionInit {
     #[prost(string, tag = "1")]
     pub trace_id: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub resolved_start_block: u64,
+    #[prost(uint64, tag = "3")]
+    pub linear_handoff_block: u64,
+    #[prost(uint64, tag = "4")]
+    pub max_parallel_workers: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -160,80 +168,118 @@ pub struct OutputDebugInfo {
     #[prost(bool, tag = "3")]
     pub cached: bool,
 }
+/// ModulesProgress is a message that is sent every 500ms
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ModulesProgress {
-    #[prost(message, repeated, tag = "1")]
-    pub modules: ::prost::alloc::vec::Vec<ModuleProgress>,
+    /// List of jobs running on tier2 servers
+    #[prost(message, repeated, tag = "2")]
+    pub running_jobs: ::prost::alloc::vec::Vec<Job>,
+    /// Execution statistics for each module
+    #[prost(message, repeated, tag = "3")]
+    pub modules_stats: ::prost::alloc::vec::Vec<ModuleStats>,
+    /// Stages definition and completed block ranges
+    #[prost(message, repeated, tag = "4")]
+    pub stages: ::prost::alloc::vec::Vec<Stage>,
+    #[prost(message, optional, tag = "5")]
+    pub processed_bytes: ::core::option::Option<ProcessedBytes>,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct ModuleProgress {
+pub struct ProcessedBytes {
+    #[prost(uint64, tag = "1")]
+    pub total_bytes_read: u64,
+    #[prost(uint64, tag = "2")]
+    pub total_bytes_written: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Error {
     #[prost(string, tag = "1")]
-    pub name: ::prost::alloc::string::String,
-    #[prost(oneof = "module_progress::Type", tags = "2, 3, 4, 5")]
-    pub r#type: ::core::option::Option<module_progress::Type>,
-}
-/// Nested message and enum types in `ModuleProgress`.
-pub mod module_progress {
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct ProcessedRanges {
-        #[prost(message, repeated, tag = "1")]
-        pub processed_ranges: ::prost::alloc::vec::Vec<super::BlockRange>,
-    }
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct InitialState {
-        #[prost(uint64, tag = "2")]
-        pub available_up_to_block: u64,
-    }
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct ProcessedBytes {
-        #[prost(uint64, tag = "1")]
-        pub total_bytes_read: u64,
-        #[prost(uint64, tag = "2")]
-        pub total_bytes_written: u64,
-        #[prost(uint64, tag = "3")]
-        pub bytes_read_delta: u64,
-        #[prost(uint64, tag = "4")]
-        pub bytes_written_delta: u64,
-        #[prost(uint64, tag = "5")]
-        pub nano_seconds_delta: u64,
-    }
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Message)]
-    pub struct Failed {
-        #[prost(string, tag = "1")]
-        pub reason: ::prost::alloc::string::String,
-        #[prost(string, repeated, tag = "2")]
-        pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
-        /// FailureLogsTruncated is a flag that tells you if you received all the logs or if they
-        /// were truncated because you logged too much (fixed limit currently is set to 128 KiB).
-        #[prost(bool, tag = "3")]
-        pub logs_truncated: bool,
-    }
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Type {
-        #[prost(message, tag = "2")]
-        ProcessedRanges(ProcessedRanges),
-        #[prost(message, tag = "3")]
-        InitialState(InitialState),
-        #[prost(message, tag = "4")]
-        ProcessedBytes(ProcessedBytes),
-        #[prost(message, tag = "5")]
-        Failed(Failed),
-    }
+    pub module: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub reason: ::prost::alloc::string::String,
+    #[prost(string, repeated, tag = "3")]
+    pub logs: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// FailureLogsTruncated is a flag that tells you if you received all the logs or if they
+    /// were truncated because you logged too much (fixed limit currently is set to 128 KiB).
+    #[prost(bool, tag = "4")]
+    pub logs_truncated: bool,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BlockRange {
+pub struct Job {
+    #[prost(uint32, tag = "1")]
+    pub stage: u32,
     #[prost(uint64, tag = "2")]
     pub start_block: u64,
     #[prost(uint64, tag = "3")]
-    pub end_block: u64,
+    pub stop_block: u64,
+    #[prost(uint64, tag = "4")]
+    pub processed_blocks: u64,
+    #[prost(uint64, tag = "5")]
+    pub duration_ms: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Stage {
+    #[prost(string, repeated, tag = "1")]
+    pub modules: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(message, repeated, tag = "2")]
+    pub completed_ranges: ::prost::alloc::vec::Vec<BlockRange>,
+}
+/// ModuleStats gathers metrics and statistics from each module, running on tier1 or tier2
+/// All the 'count' and 'time_ms' values may include duplicate for each stage going over that module
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ModuleStats {
+    /// name of the module
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// total_processed_blocks is the sum of blocks sent to that module code
+    #[prost(uint64, tag = "2")]
+    pub total_processed_block_count: u64,
+    /// total_processing_time_ms is the sum of all time spent running that module code
+    #[prost(uint64, tag = "3")]
+    pub total_processing_time_ms: u64,
+    /// // external_calls are chain-specific intrinsics, like "Ethereum RPC calls".
+    #[prost(message, repeated, tag = "4")]
+    pub external_call_metrics: ::prost::alloc::vec::Vec<ExternalCallMetric>,
+    /// total_store_operation_time_ms is the sum of all time spent running that module code waiting for a store operation (ex: read, write, delete...)
+    #[prost(uint64, tag = "5")]
+    pub total_store_operation_time_ms: u64,
+    /// total_store_read_count is the sum of all the store Read operations called from that module code
+    #[prost(uint64, tag = "6")]
+    pub total_store_read_count: u64,
+    /// total_store_write_count is the sum of all store Write operations called from that module code (store-only)
+    #[prost(uint64, tag = "10")]
+    pub total_store_write_count: u64,
+    /// total_store_deleteprefix_count is the sum of all store DeletePrefix operations called from that module code (store-only)
+    /// note that DeletePrefix can be a costly operation on large stores
+    #[prost(uint64, tag = "11")]
+    pub total_store_deleteprefix_count: u64,
+    /// store_size_bytes is the uncompressed size of the full KV store for that module, from the last 'merge' operation (store-only)
+    #[prost(uint64, tag = "12")]
+    pub store_size_bytes: u64,
+    /// total_store_merging_time_ms is the time spent merging partial stores into a full KV store for that module (store-only)
+    #[prost(uint64, tag = "13")]
+    pub total_store_merging_time_ms: u64,
+    /// store_currently_merging is true if there is a merging operation (partial store to full KV store) on the way.
+    #[prost(bool, tag = "14")]
+    pub store_currently_merging: bool,
+    /// highest_contiguous_block is the highest block in the highest merged full KV store of that module (store-only)
+    #[prost(uint64, tag = "15")]
+    pub highest_contiguous_block: u64,
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ExternalCallMetric {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(uint64, tag = "2")]
+    pub count: u64,
+    #[prost(uint64, tag = "3")]
+    pub time_ms: u64,
 }
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -293,6 +339,14 @@ pub mod store_delta {
             }
         }
     }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BlockRange {
+    #[prost(uint64, tag = "2")]
+    pub start_block: u64,
+    #[prost(uint64, tag = "3")]
+    pub end_block: u64,
 }
 /// Generated client implementations.
 pub mod stream_client {

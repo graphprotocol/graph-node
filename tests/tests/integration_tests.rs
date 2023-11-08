@@ -9,105 +9,158 @@
 //! tasks are really worth parallelizing, and applying this trick
 //! indiscriminately will only result in messy code and diminishing returns.
 
-use anyhow::Context;
-use futures::{StreamExt, TryStreamExt};
-use graph_tests::docker_utils::{pull_service_images, ServiceContainer, ServiceContainerKind};
-use graph_tests::helpers::{
-    basename, make_ganache_uri, make_ipfs_uri, make_postgres_uri, pretty_output, GraphNodePorts,
-    MappedPorts,
-};
-use std::fs;
-use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::io::AsyncReadExt;
+use std::future::Future;
+use std::pin::Pin;
+use std::time::{Duration, Instant};
+
+use anyhow::{anyhow, bail, Context};
+use futures::StreamExt;
+use graph::prelude::serde_json::{json, Value};
+use graph_tests::contract::Contract;
+use graph_tests::helpers::{run_checked, TestFile};
+use graph_tests::subgraph::Subgraph;
+use graph_tests::{error, status, CONFIG};
 use tokio::process::{Child, Command};
+use tokio::task::JoinError;
+use tokio::time::sleep;
 
-/// All directories containing integration tests to run.
-///
-/// Hardcoding these paths seems "wrong", and we very well could obtain this
-/// list with some directory listing magic. That would, however, also
-/// require us to filter out `node_modules`, support files, etc.. Hardly worth
-/// it.
-pub const INTEGRATION_TEST_DIRS: &[&str] = &[
-    // "api-version-v0-0-4",
-    "ganache-reverts",
-    "host-exports",
-    "non-fatal-errors",
-    "overloaded-contract-functions",
-    "poi-for-failed-subgraph",
-    "remove-then-update",
-    "value-roundtrip",
-    "int8",
-    "block-handlers",
-];
+type TestFn = Box<
+    dyn FnOnce(Subgraph) -> Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send>> + Sync + Send,
+>;
 
-#[derive(Debug, Clone)]
-struct IntegrationTestSettings {
-    n_parallel_tests: u64,
-    ganache_hard_wait: Duration,
-    ipfs_hard_wait: Duration,
-    postgres_hard_wait: Duration,
+enum TestStatus {
+    Ok,
+    Err(anyhow::Error),
+    Panic(JoinError),
 }
 
-impl IntegrationTestSettings {
-    /// Automatically fills in missing env. vars. with defaults.
-    ///
-    /// # Panics
-    ///
-    /// Panics if any of the env. vars. is set incorrectly.
-    pub fn from_env() -> Self {
-        Self {
-            n_parallel_tests: parse_numeric_environment_variable("N_CONCURRENT_TESTS").unwrap_or(
-                // Lots of I/O going on in these tests, so we spawn twice as
-                // many jobs as suggested.
-                2 * std::thread::available_parallelism()
-                    .map(NonZeroUsize::get)
-                    .unwrap_or(2) as u64,
-            ),
-            ganache_hard_wait: Duration::from_secs(
-                parse_numeric_environment_variable("TESTS_GANACHE_HARD_WAIT_SECONDS").unwrap_or(0),
-            ),
-            ipfs_hard_wait: Duration::from_secs(
-                parse_numeric_environment_variable("TESTS_IPFS_HARD_WAIT_SECONDS").unwrap_or(0),
-            ),
-            postgres_hard_wait: Duration::from_secs(
-                parse_numeric_environment_variable("TESTS_POSTGRES_HARD_WAIT_SECONDS").unwrap_or(0),
-            ),
+struct TestResult {
+    name: String,
+    subgraph: Option<Subgraph>,
+    status: TestStatus,
+}
+
+impl TestResult {
+    fn success(&self) -> bool {
+        match self.status {
+            TestStatus::Ok => true,
+            _ => false,
+        }
+    }
+
+    fn print_subgraph(&self) {
+        if let Some(subgraph) = &self.subgraph {
+            println!("    Subgraph: {}", subgraph.deployment);
+        }
+    }
+
+    fn print(&self) {
+        // ANSI escape sequences; see the comment in macros.rs about better colorization
+        const GREEN: &str = "\x1b[1;32m";
+        const RED: &str = "\x1b[1;31m";
+        const NC: &str = "\x1b[0m";
+
+        match &self.status {
+            TestStatus::Ok => {
+                println!("* {GREEN}Test {} succeeded{NC}", self.name);
+                self.print_subgraph();
+            }
+            TestStatus::Err(e) => {
+                println!("* {RED}Test {} failed{NC}", self.name);
+                self.print_subgraph();
+                println!("    {:?}", e);
+            }
+            TestStatus::Panic(e) => {
+                if e.is_cancelled() {
+                    println!("* {RED}Test {} was cancelled{NC}", self.name)
+                } else if e.is_panic() {
+                    println!("* {RED}Test {} failed{NC}", self.name);
+                } else {
+                    println!("* {RED}Test {} exploded mysteriously{NC}", self.name)
+                }
+                self.print_subgraph();
+            }
         }
     }
 }
 
-/// An aggregator of all configuration and settings required to run a single
-/// integration test.
-#[derive(Debug)]
-struct IntegrationTestRecipe {
-    postgres_uri: String,
-    ipfs_uri: String,
-    ganache_port: u16,
-    ganache_uri: String,
-    graph_node_ports: GraphNodePorts,
-    graph_node_bin: Arc<PathBuf>,
-    test_directory: PathBuf,
+struct TestCase {
+    name: String,
+    test: TestFn,
 }
 
-impl IntegrationTestRecipe {
-    fn test_name(&self) -> String {
-        basename(&self.test_directory)
+impl TestCase {
+    fn new<T>(name: &str, test: fn(Subgraph) -> T) -> Self
+    where
+        T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+    {
+        fn force_boxed<T>(f: fn(Subgraph) -> T) -> TestFn
+        where
+            T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+        {
+            Box::new(move |sg| Box::pin(f(sg)))
+        }
+
+        Self {
+            name: name.to_string(),
+            test: force_boxed(test),
+        }
     }
 
-    fn graph_node_admin_uri(&self) -> String {
-        format!("http://localhost:{}/", self.graph_node_ports.admin)
-    }
-}
+    async fn run(self, contracts: &[Contract]) -> TestResult {
+        status!(&self.name, "Deploying subgraph");
+        let subgraph_name = match Subgraph::deploy(&self.name, contracts).await {
+            Ok(name) => name,
+            Err(e) => {
+                error!(&self.name, "Deploy failed");
+                return TestResult {
+                    name: self.name.clone(),
+                    subgraph: None,
+                    status: TestStatus::Err(e.context("Deploy failed")),
+                };
+            }
+        };
+        status!(&self.name, "Waiting for subgraph to become ready");
+        let subgraph = match Subgraph::wait_ready(&subgraph_name).await {
+            Ok(subgraph) => subgraph,
+            Err(e) => {
+                error!(&self.name, "Subgraph never synced or failed");
+                return TestResult {
+                    name: self.name.clone(),
+                    subgraph: None,
+                    status: TestStatus::Err(e.context("Subgraph never synced or failed")),
+                };
+            }
+        };
+        if subgraph.healthy {
+            status!(&self.name, "Subgraph ({}) is synced", subgraph.deployment);
+        } else {
+            status!(&self.name, "Subgraph ({}) has failed", subgraph.deployment);
+        }
 
-/// Info about a finished test command
-#[derive(Debug)]
-struct IntegrationTestResult {
-    success: bool,
-    _exit_status_code: Option<i32>,
-    output: Output,
+        status!(&self.name, "Starting test");
+        let subgraph2 = subgraph.clone();
+        let res = tokio::spawn(async move { (self.test)(subgraph).await }).await;
+        let status = match res {
+            Ok(Ok(())) => {
+                status!(&self.name, "Test succeeded");
+                TestStatus::Ok
+            }
+            Ok(Err(e)) => {
+                error!(&self.name, "Test failed");
+                TestStatus::Err(e)
+            }
+            Err(e) => {
+                error!(&self.name, "Test panicked");
+                TestStatus::Panic(e)
+            }
+        };
+        TestResult {
+            name: self.name.clone(),
+            subgraph: Some(subgraph2),
+            status,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -128,376 +181,524 @@ impl std::fmt::Display for Output {
     }
 }
 
-// The results of a finished integration test
-#[derive(Debug)]
-struct IntegrationTestSummary {
-    test_recipe: IntegrationTestRecipe,
-    test_command_result: IntegrationTestResult,
-    graph_node_output: Output,
+/// Run the given `query` against the `subgraph` and check that the result
+/// has no errors and that the `data` portion of the response matches the
+/// `exp` value.
+pub async fn query_succeeds(
+    title: &str,
+    subgraph: &Subgraph,
+    query: &str,
+    exp: Value,
+) -> anyhow::Result<()> {
+    let resp = subgraph.query(query).await?;
+    match resp.get("errors") {
+        None => { /* nothing to do */ }
+        Some(errors) => {
+            bail!(
+                "query for `{}` returned GraphQL errors: {:?}",
+                title,
+                errors
+            );
+        }
+    }
+    match resp.get("data") {
+        None => {
+            bail!("query for `{}` returned no data", title);
+        }
+        Some(data) => {
+            if &exp != data {
+                bail!(
+                    "query for `{title}` returned unexpected data:  \nexpected: {exp:?}\n  returned: {data:?}",
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
-impl IntegrationTestSummary {
-    fn print_outcome(&self) {
-        let status = match self.test_command_result.success {
-            true => "SUCCESS",
-            false => "FAILURE",
-        };
-        println!("- Test: {}: {}", status, self.test_recipe.test_name())
+/*
+* Actual tests. For a new test, add a new function here and add an entry to
+* the `cases` variable in `integration_tests`.
+*/
+
+async fn test_int8(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let resp = subgraph
+        .query(
+            "{
+        foos_0: foos(orderBy: id, block: { number: 0 }) { id }
+        foos(orderBy: id) { id value }
+      }",
+        )
+        .await?;
+
+    let exp = json!({
+        "foos_0": [],
+        "foos": [
+          {
+            "id": "0",
+            "value": "9223372036854775807",
+          },
+        ],
+    });
+    assert_eq!(None, resp.get("errors"));
+    assert_eq!(exp, resp["data"]);
+
+    Ok(())
+}
+
+async fn test_block_handlers(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    // test non-filtered blockHandler
+    let exp = json!({
+        "blocks": [
+        { "id": "1", "number": "1" },
+        { "id": "2", "number": "2" },
+        { "id": "3", "number": "3" },
+        { "id": "4", "number": "4" },
+        { "id": "5", "number": "5" },
+        { "id": "6", "number": "6" },
+        { "id": "7", "number": "7" },
+        { "id": "8", "number": "8" },
+        { "id": "9", "number": "9" },
+        { "id": "10", "number": "10" },
+      ]
+    });
+    query_succeeds(
+        "test non-filtered blockHandler",
+        &subgraph,
+        "{ blocks(orderBy: number, first: 10) { id number } }",
+        exp,
+    )
+    .await?;
+
+    // test query
+    let mut values = Vec::new();
+    for i in 0..=10 {
+        values.push(json!({ "id": i.to_string(), "value": i.to_string() }));
+    }
+    let exp = json!({ "foos": Value::Array(values) });
+    query_succeeds(
+        "test query",
+        &subgraph,
+        "{ foos(orderBy: value, skip: 1) { id value } }",
+        exp,
+    )
+    .await?;
+
+    // should call intialization handler first
+    let exp = json!({
+      "foo": { "id": "initialize", "value": "-1" },
+    });
+    query_succeeds(
+        "should call intialization handler first",
+        &subgraph,
+        "{ foo( id: \"initialize\" ) { id value } }",
+        exp,
+    )
+    .await?;
+
+    // test blockHandler with polling filter
+    let exp = json!({
+        "blockFromPollingHandlers": [
+        { "id": "1", "number": "1" },
+        { "id": "4", "number": "4" },
+        { "id": "7", "number": "7" },
+      ]
+    });
+    query_succeeds(
+        "test blockHandler with polling filter",
+        &subgraph,
+        "{ blockFromPollingHandlers(orderBy: number, first: 3) { id number } }",
+        exp,
+    )
+    .await?;
+
+    // test other blockHandler with polling filter
+    let exp = json!({
+        "blockFromOtherPollingHandlers": [
+        { "id": "2", "number": "2" },
+        { "id": "4", "number": "4" },
+        { "id": "6", "number": "6" },
+      ]
+    });
+    query_succeeds(
+        "test other blockHandler with polling filter",
+        &subgraph,
+        "{ blockFromOtherPollingHandlers(orderBy: number, first: 3) { id number } }",
+        exp,
+    )
+    .await?;
+
+    // test initialization handler
+    let exp = json!({
+        "initializes": [
+        { "id": "1", "block": "1" },
+      ]
+    });
+    query_succeeds(
+        "test initialization handler",
+        &subgraph,
+        "{ initializes(orderBy: block, first: 10) { id block } }",
+        exp,
+    )
+    .await?;
+
+    // test subgraphFeatures endpoint returns handlers correctly
+    let subgraph_features = subgraph
+        .index_with_vars(
+            "query GetSubgraphFeatures($deployment: String!) {
+          subgraphFeatures(subgraphId: $deployment) {
+            specVersion
+            apiVersion
+            features
+            dataSources
+            network
+            handlers
+          }
+        }",
+            json!({ "deployment": subgraph.deployment }),
+        )
+        .await?;
+    let handlers = &subgraph_features["data"]["subgraphFeatures"]["handlers"];
+    assert!(
+        handlers.is_array(),
+        "subgraphFeatures.handlers must be an array"
+    );
+    let handlers = handlers.as_array().unwrap();
+    for handler in [
+        "block_filter_polling",
+        "block_filter_once",
+        "block",
+        "event",
+    ] {
+        assert!(
+            handlers.contains(&Value::String(handler.to_string())),
+            "handlers {:?} must contain {}",
+            handlers,
+            handler
+        );
     }
 
-    fn print_failure(&self) {
-        if self.test_command_result.success {
-            return;
+    Ok(())
+}
+
+async fn test_ganache_reverts(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let exp = json!({
+        "calls": [
+            {
+                "id": "100",
+                "reverted": true,
+                "returnValue": Value::Null,
+            },
+            {
+                "id": "9",
+                "reverted": false,
+                "returnValue": "10",
+            },
+        ],
+    });
+    query_succeeds(
+        "all overloads of the contract function are called",
+        &subgraph,
+        "{ calls(orderBy: id) { id reverted returnValue } }",
+        exp,
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn test_host_exports(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+    Ok(())
+}
+
+async fn test_non_fatal_errors(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(!subgraph.healthy);
+
+    let query = "query GetSubgraphFeatures($deployment: String!) {
+        subgraphFeatures(subgraphId: $deployment) {
+          specVersion
+          apiVersion
+          features
+          dataSources
+          network
+          handlers
         }
-        let test_name = self.test_recipe.test_name();
-        println!("=============");
-        println!("\nFailed test: {}", test_name);
-        println!("-------------");
-        println!("{:#?}", self.test_recipe);
-        println!("-------------");
-        println!("\nFailed test command output:");
-        println!("---------------------------");
-        println!("{}", self.test_command_result.output);
-        println!("--------------------------");
-        println!("graph-node command output:");
-        println!("--------------------------");
-        println!("{}", self.graph_node_output);
+      }";
+
+    let resp = subgraph
+        .index_with_vars(query, json!({ "deployment" : subgraph.deployment }))
+        .await?;
+    let subgraph_features = &resp["data"]["subgraphFeatures"];
+    let exp = json!({
+      "specVersion": "0.0.4",
+      "apiVersion": "0.0.6",
+      "features": ["nonFatalErrors"],
+      "dataSources": ["ethereum/contract"],
+      "handlers": ["block"],
+      "network": "test",
+    });
+    assert_eq!(&exp, subgraph_features);
+
+    let resp = subgraph
+        .query("{ foos(orderBy: id, subgraphError: allow) { id } }")
+        .await?;
+    let exp = json!([ { "message": "indexing_error" }]);
+    assert_eq!(&exp, &resp["errors"]);
+
+    // Importantly, "1" and "11" are not present because their handlers erroed.
+    let exp = json!({
+                "foos": [
+                    { "id": "0" },
+                    { "id": "00" }]});
+    assert_eq!(&exp, &resp["data"]);
+
+    Ok(())
+}
+
+async fn test_overloaded_functions(subgraph: Subgraph) -> anyhow::Result<()> {
+    // all overloads of the contract function are called
+    assert!(subgraph.healthy);
+
+    let exp = json!({
+        "calls": [
+            {
+                "id": "bytes32 -> uint256",
+                "value": "256",
+            },
+            {
+                "id": "string -> string",
+                "value": "string -> string",
+            },
+            {
+                "id": "uint256 -> string",
+                "value": "uint256 -> string",
+            },
+        ],
+    });
+    query_succeeds(
+        "all overloads of the contract function are called",
+        &subgraph,
+        "{ calls(orderBy: id) { id value } }",
+        exp,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn test_value_roundtrip(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let exp = json!({
+        "foos": [{ "id": "0", "value": "bla" }],
+        "foos_0": []
+    });
+
+    let query = "{
+        foos_0: foos(orderBy: id, block: { number: 0 }) { id }
+        foos(orderBy: id) { id value }
+      }";
+
+    query_succeeds("test query", &subgraph, query, exp).await?;
+
+    Ok(())
+}
+
+async fn test_remove_then_update(subgraph: Subgraph) -> anyhow::Result<()> {
+    assert!(subgraph.healthy);
+
+    let exp = json!({
+        "foos": [{ "id": "0", "removed": true, "value": null}]
+    });
+    let query = "{ foos(orderBy: id) { id value removed } }";
+    query_succeeds(
+        "all overloads of the contract function are called",
+        &subgraph,
+        query,
+        exp,
+    )
+    .await?;
+
+    Ok(())
+}
+
+async fn test_poi_for_failed_subgraph(subgraph: Subgraph) -> anyhow::Result<()> {
+    const INDEXING_STATUS: &str = r#"
+    query statuses($subgraphName: String!) {
+        statuses: indexingStatusesForSubgraphName(subgraphName: $subgraphName) {
+          subgraph
+          health
+          entityCount
+          chains {
+            network
+            latestBlock { number hash }
+          } } }"#;
+
+    const FETCH_POI: &str = r#"
+    query proofOfIndexing($subgraph: String!, $blockNumber: Int!, $blockHash: String!) {
+        proofOfIndexing(
+          subgraph: $subgraph,
+          blockNumber: $blockNumber,
+          blockHash: $blockHash
+        ) } "#;
+
+    // Wait up to 5 minutes for the subgraph to write the failure
+    const STATUS_WAIT: Duration = Duration::from_secs(300);
+
+    assert!(!subgraph.healthy);
+
+    struct Status {
+        health: String,
+        entity_count: String,
+        latest_block: Value,
     }
+
+    async fn fetch_status(subgraph: &Subgraph) -> anyhow::Result<Status> {
+        let resp = subgraph
+            .index_with_vars(INDEXING_STATUS, json!({ "subgraphName": subgraph.name }))
+            .await?;
+        assert_eq!(None, resp.get("errors"));
+        let statuses = &resp["data"]["statuses"];
+        assert_eq!(1, statuses.as_array().unwrap().len());
+        let status = &statuses[0];
+        let health = status["health"].as_str().unwrap();
+        let entity_count = status["entityCount"].as_str().unwrap();
+        let latest_block = &status["chains"][0]["latestBlock"];
+        Ok(Status {
+            health: health.to_string(),
+            entity_count: entity_count.to_string(),
+            latest_block: latest_block.clone(),
+        })
+    }
+
+    let start = Instant::now();
+    let status = {
+        let mut status = fetch_status(&subgraph).await?;
+        while status.latest_block.is_null() && start.elapsed() < STATUS_WAIT {
+            sleep(Duration::from_secs(1)).await;
+            status = fetch_status(&subgraph).await?;
+        }
+        status
+    };
+    if status.latest_block.is_null() {
+        bail!("Subgraph never wrote the failed block");
+    }
+
+    assert_eq!("1", status.entity_count);
+    assert_eq!("failed", status.health);
+
+    let calls = subgraph
+        .query("{ calls(subgraphError: allow)  { id value } }")
+        .await?;
+    // We have indexing errors
+    assert!(calls.get("errors").is_some());
+
+    let calls = &calls["data"]["calls"];
+    assert_eq!(0, calls.as_array().unwrap().len());
+
+    let block_number: u64 = status.latest_block["number"].as_str().unwrap().parse()?;
+    let vars = json!({
+        "subgraph": subgraph.deployment,
+        "blockNumber": block_number,
+        "blockHash": status.latest_block["hash"],
+    });
+    let resp = subgraph.index_with_vars(FETCH_POI, vars).await?;
+    assert_eq!(None, resp.get("errors"));
+    assert!(resp["data"]["proofOfIndexing"].is_string());
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn test_missing(_sg: Subgraph) -> anyhow::Result<()> {
+    Err(anyhow!("This test is missing"))
 }
 
 /// The main test entrypoint.
 #[tokio::test]
-async fn parallel_integration_tests() -> anyhow::Result<()> {
-    let test_settings = IntegrationTestSettings::from_env();
+async fn integration_tests() -> anyhow::Result<()> {
+    // Test "api-version-v0-0-4" was commented out in the original; what's
+    // up with that?
+    let cases = vec![
+        TestCase::new("ganache-reverts", test_ganache_reverts),
+        TestCase::new("host-exports", test_host_exports),
+        TestCase::new("non-fatal-errors", test_non_fatal_errors),
+        TestCase::new("overloaded-functions", test_overloaded_functions),
+        TestCase::new("poi-for-failed-subgraph", test_poi_for_failed_subgraph),
+        TestCase::new("remove-then-update", test_remove_then_update),
+        TestCase::new("value-roundtrip", test_value_roundtrip),
+        TestCase::new("int8", test_int8),
+        TestCase::new("block-handlers", test_block_handlers),
+    ];
 
-    let current_working_dir =
-        std::env::current_dir().context("failed to identify working directory")?;
-    let yarn_workspace_dir = current_working_dir.join("integration-tests");
-    let test_dirs = INTEGRATION_TEST_DIRS
-        .iter()
-        .map(|p| yarn_workspace_dir.join(PathBuf::from(p)))
-        .collect::<Vec<PathBuf>>();
+    let contracts = Contract::deploy_all().await?;
 
-    // Show discovered tests.
-    println!("Found {} integration test(s):", test_dirs.len());
-    for dir in &test_dirs {
-        println!("  - {}", basename(dir));
-    }
+    status!("setup", "Resetting database");
+    CONFIG.reset_database();
 
-    tokio::join!(
-        // Pull the required Docker images.
-        pull_service_images(),
-        // Run `yarn` command to build workspace.
-        run_yarn_command(&yarn_workspace_dir),
+    status!("setup", "Initializing yarn workspace");
+    yarn_workspace().await?;
+
+    // Spawn graph-node.
+    status!("graph-node", "Starting graph-node");
+    let mut graph_node_child_command = CONFIG.spawn_graph_node().await?;
+
+    let stream = tokio_stream::iter(cases)
+        .map(|case| case.run(&contracts))
+        .buffered(CONFIG.num_parallel_tests);
+
+    let mut results: Vec<TestResult> = stream.collect::<Vec<_>>().await;
+    results.sort_by_key(|result| result.name.clone());
+
+    // Stop graph-node and read its output.
+    let graph_node_res = stop_graph_node(&mut graph_node_child_command).await;
+
+    status!(
+        "graph-node",
+        "graph-node logs are in {}",
+        CONFIG.graph_node.log_file.path.display()
     );
 
-    println!("Starting PostgreSQL and IPFS containers...");
-
-    // Not only do we start the containers, but we also need to wait for
-    // them to be up and running and ready to accept connections.
-    let (postgres, ipfs) = tokio::try_join!(
-        ServiceDependency::start(
-            ServiceContainerKind::Postgres,
-            "database system is ready to accept connections",
-            test_settings.postgres_hard_wait
-        ),
-        ServiceDependency::start(
-            ServiceContainerKind::Ipfs,
-            "Daemon is ready",
-            test_settings.ipfs_hard_wait
-        ),
-    )?;
-
-    println!(
-        "Containers are ready! Running tests with N_CONCURRENT_TESTS={} ...",
-        test_settings.n_parallel_tests
-    );
-
-    let graph_node = Arc::new(
-        fs::canonicalize("../target/debug/graph-node")
-            .context("failed to infer `graph-node` program location. (Was it built already?)")?,
-    );
-
-    let stream = tokio_stream::iter(test_dirs)
-        .map(|dir| {
-            run_integration_test(
-                dir,
-                postgres.clone(),
-                ipfs.clone(),
-                graph_node.clone(),
-                test_settings.ganache_hard_wait,
-            )
-        })
-        .buffered(test_settings.n_parallel_tests as usize);
-
-    let test_results: Vec<IntegrationTestSummary> = stream.try_collect().await?;
-    let failed = test_results.iter().any(|r| !r.test_command_result.success);
-
-    // All tests have finished; we don't need the containers anymore.
-    tokio::try_join!(
-        async {
-            postgres
-                .container
-                .stop()
-                .await
-                .context("failed to stop container with Postgres")
-        },
-        async {
-            ipfs.container
-                .stop()
-                .await
-                .context("failed to stop container with IPFS")
-        },
-    )?;
-
-    // print failures
-    for failed_test in test_results
-        .iter()
-        .filter(|t| !t.test_command_result.success)
-    {
-        failed_test.print_failure()
+    match graph_node_res {
+        Ok(_) => {
+            status!("graph-node", "Stopped graph-node");
+        }
+        Err(e) => {
+            error!("graph-node", "Failed to stop graph-node: {}", e);
+        }
     }
 
-    // print test result summary
-    println!("\nTest results:");
-    for test_result in &test_results {
-        test_result.print_outcome()
+    println!("\n\n{:=<60}", "");
+    println!("Test results:");
+    println!("{:-<60}", "");
+    for result in &results {
+        result.print();
     }
+    println!("\n");
 
-    if failed {
-        Err(anyhow::anyhow!("Some tests have failed"))
+    if results.iter().any(|result| !result.success()) {
+        Err(anyhow!("Some tests failed"))
     } else {
         Ok(())
     }
 }
 
-#[derive(Clone)]
-struct ServiceDependency {
-    container: Arc<ServiceContainer>,
-    ports: Arc<MappedPorts>,
-}
-
-impl ServiceDependency {
-    async fn start(
-        service: ServiceContainerKind,
-        wait_msg: &str,
-        hard_wait: Duration,
-    ) -> anyhow::Result<Self> {
-        let service = ServiceContainer::start(service).await.context(format!(
-            "Failed to start container service `{}`",
-            service.name()
-        ))?;
-
-        service
-            .wait_for_message(wait_msg.as_bytes(), hard_wait)
-            .await
-            .context(format!(
-                "failed to wait for {} container to be ready to accept connections",
-                service.container_name()
-            ))?;
-
-        let ports = service.exposed_ports().await.context(format!(
-            "failed to obtain exposed ports for the `{}` container",
-            service.container_name()
-        ))?;
-
-        Ok(Self {
-            container: Arc::new(service),
-            ports: Arc::new(ports),
-        })
-    }
-}
-
-/// Prepare and run the integration test
-async fn run_integration_test(
-    test_directory: PathBuf,
-    postgres: ServiceDependency,
-    ipfs: ServiceDependency,
-    graph_node_bin: Arc<PathBuf>,
-    ganache_hard_wait: Duration,
-) -> anyhow::Result<IntegrationTestSummary> {
-    let db_name =
-        format!("{}-{}", basename(&test_directory), uuid::Uuid::new_v4()).replace('-', "_");
-
-    let (ganache, _) = tokio::try_join!(
-        // Start a dedicated Ganache container for this test.
-        async {
-            ServiceDependency::start(
-                ServiceContainerKind::Ganache,
-                "Listening on ",
-                ganache_hard_wait,
-            )
-            .await
-            .context("failed to start Ganache container")
-        },
-        // PostgreSQL is up and running, but we still need to create the database.
-        async {
-            ServiceContainer::create_postgres_database(&postgres.container, &db_name)
-                .await
-                .context("failed to create the test database.")
-        }
-    )?;
-
-    // Build URIs.
-    let postgres_uri = { make_postgres_uri(&db_name, &postgres.ports) };
-    let ipfs_uri = make_ipfs_uri(&ipfs.ports);
-    let (ganache_port, ganache_uri) = make_ganache_uri(&ganache.ports);
-
-    let test_recipe = IntegrationTestRecipe {
-        postgres_uri,
-        ipfs_uri,
-        ganache_uri,
-        ganache_port,
-        graph_node_bin,
-        graph_node_ports: GraphNodePorts::random_free(),
-        test_directory,
-    };
-
-    // Spawn graph-node.
-    let mut graph_node_child_command = run_graph_node(&test_recipe)?;
-
-    println!("Test started: {}", basename(&test_recipe.test_directory));
-    let result = run_test_command(&test_recipe).await?;
-
-    let (graph_node_output, _) = tokio::try_join!(
-        async {
-            // Stop graph-node and read its output.
-            stop_graph_node(&mut graph_node_child_command)
-                .await
-                .context("failed to stop graph-node")
-        },
-        async {
-            // Stop Ganache.
-            ganache
-                .container
-                .stop()
-                .await
-                .context("failed to stop container service for Ganache")
-        }
-    )?;
-
-    Ok(IntegrationTestSummary {
-        test_recipe,
-        test_command_result: result,
-        graph_node_output,
-    })
-}
-
-/// Runs a command for a integration test
-async fn run_test_command(
-    test_recipe: &IntegrationTestRecipe,
-) -> anyhow::Result<IntegrationTestResult> {
-    let output = Command::new("yarn")
-        .arg("test")
-        .env("GANACHE_TEST_PORT", test_recipe.ganache_port.to_string())
-        .env("GRAPH_NODE_ADMIN_URI", test_recipe.graph_node_admin_uri())
-        .env(
-            "GRAPH_NODE_HTTP_PORT",
-            test_recipe.graph_node_ports.http.to_string(),
-        )
-        .env(
-            "GRAPH_NODE_INDEX_PORT",
-            test_recipe.graph_node_ports.index.to_string(),
-        )
-        .env("IPFS_URI", &test_recipe.ipfs_uri)
-        .current_dir(&test_recipe.test_directory)
-        .output()
-        .await
-        .context("failed to run test command")?;
-
-    let test_name = test_recipe.test_name();
-    let stdout_tag = format!("[{}:stdout] ", test_name);
-    let stderr_tag = format!("[{}:stderr] ", test_name);
-
-    Ok(IntegrationTestResult {
-        _exit_status_code: output.status.code(),
-        success: output.status.success(),
-        output: Output {
-            stdout: Some(pretty_output(&output.stdout, &stdout_tag)),
-            stderr: Some(pretty_output(&output.stderr, &stderr_tag)),
-        },
-    })
-}
-
-fn run_graph_node(recipe: &IntegrationTestRecipe) -> anyhow::Result<Child> {
-    use std::process::Stdio;
-
-    let mut command = Command::new(recipe.graph_node_bin.as_os_str());
-    command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .arg("--postgres-url")
-        .arg(&recipe.postgres_uri)
-        .arg("--ethereum-rpc")
-        .arg(&recipe.ganache_uri)
-        .arg("--ipfs")
-        .arg(&recipe.ipfs_uri)
-        .arg("--http-port")
-        .arg(recipe.graph_node_ports.http.to_string())
-        .arg("--index-node-port")
-        .arg(recipe.graph_node_ports.index.to_string())
-        .arg("--ws-port")
-        .arg(recipe.graph_node_ports.ws.to_string())
-        .arg("--admin-port")
-        .arg(recipe.graph_node_ports.admin.to_string())
-        .arg("--metrics-port")
-        .arg(recipe.graph_node_ports.metrics.to_string());
-
-    command
-        .spawn()
-        .context("failed to start graph-node command.")
-}
-
-async fn stop_graph_node(child: &mut Child) -> anyhow::Result<Output> {
+async fn stop_graph_node(child: &mut Child) -> anyhow::Result<()> {
     child.kill().await.context("Failed to kill graph-node")?;
 
-    // capture stdio
-    let stdout = match child.stdout.take() {
-        Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stdout] ").await?),
-        None => None,
-    };
-    let stderr = match child.stderr.take() {
-        Some(mut data) => Some(process_stdio(&mut data, "[graph-node:stderr] ").await?),
-        None => None,
-    };
-
-    Ok(Output { stdout, stderr })
+    Ok(())
 }
 
-async fn process_stdio<T: AsyncReadExt + Unpin>(
-    stdio: &mut T,
-    prefix: &str,
-) -> anyhow::Result<String> {
-    let mut buffer: Vec<u8> = Vec::new();
-    stdio
-        .read_to_end(&mut buffer)
-        .await
-        .context("failed to read stdio")?;
-    Ok(pretty_output(&buffer, prefix))
-}
-
-/// run yarn to build everything
-async fn run_yarn_command(base_directory: &impl AsRef<Path>) {
-    let timer = std::time::Instant::now();
-    println!("Running `yarn` command in integration tests root directory.");
-    let output = Command::new("yarn")
-        .current_dir(base_directory)
-        .output()
-        .await
-        .expect("failed to run yarn command");
-
-    if output.status.success() {
-        println!("`yarn` command finished in {}s", timer.elapsed().as_secs());
-        return;
-    }
-    println!("Yarn command failed.");
-    println!("{}", pretty_output(&output.stdout, "[yarn:stdout]"));
-    println!("{}", pretty_output(&output.stderr, "[yarn:stderr]"));
-    panic!("Yarn command failed.")
-}
-
-fn parse_numeric_environment_variable(environment_variable_name: &str) -> Option<u64> {
-    std::env::var(environment_variable_name)
-        .ok()
-        .and_then(|x| x.parse().ok())
+async fn yarn_workspace() -> anyhow::Result<()> {
+    // We shouldn't really have to do this since we use the bundled version
+    // of graph-cli, but that gets very unhappy if the workspace isn't
+    // initialized
+    let wsp = TestFile::new("integration-tests");
+    run_checked(Command::new("yarn").arg("install").current_dir(&wsp.path)).await?;
+    Ok(())
 }

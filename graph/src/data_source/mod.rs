@@ -8,7 +8,7 @@ mod tests;
 
 use crate::{
     blockchain::{
-        BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
+        Block, BlockPtr, Blockchain, DataSource as _, DataSourceTemplate as _, MappingTriggerTrait,
         TriggerData as _, UnresolvedDataSource as _, UnresolvedDataSourceTemplate as _,
     },
     components::{
@@ -126,6 +126,13 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn end_block(&self) -> Option<BlockNumber> {
+        match self {
+            Self::Onchain(ds) => ds.end_block(),
+            Self::Offchain(_) => None,
+        }
+    }
+
     pub fn creation_block(&self) -> Option<BlockNumber> {
         match self {
             Self::Onchain(ds) => ds.creation_block(),
@@ -177,6 +184,7 @@ impl<C: Blockchain> DataSource<C> {
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
         match (self, trigger) {
+            (Self::Onchain(ds), _) if ds.has_expired(block.number()) => Ok(None),
             (Self::Onchain(ds), TriggerData::Onchain(trigger)) => ds
                 .match_and_decode(trigger, block, logger)
                 .map(|t| t.map(|t| t.map(MappingTrigger::Onchain))),

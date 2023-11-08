@@ -144,15 +144,18 @@ impl BlockIngestor for SubstreamsBlockIngestor {
                 mapper.cheap_clone(),
                 package.modules.clone(),
                 "map_blocks".to_string(),
-                vec![],
+                vec![-1],
                 vec![],
                 self.logger.cheap_clone(),
                 self.metrics.cheap_clone(),
             );
 
             // Consume the stream of blocks until an error is hit
-            latest_cursor = self.process_blocks(latest_cursor, stream).await;
-
+            let cursor = self.process_blocks(latest_cursor.clone(), stream).await;
+            if cursor != latest_cursor {
+                backoff.reset();
+                latest_cursor = cursor;
+            }
             // If we reach this point, we must wait a bit before retrying
             backoff.sleep_async().await;
         }

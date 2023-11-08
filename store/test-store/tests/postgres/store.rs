@@ -1117,6 +1117,7 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
         network: Some(String::from("mainnet")),
         address: Some(Address::from_str("0123123123012312312301231231230123123123").unwrap()),
         start_block: 0,
+        end_block: None,
         mapping: Mapping {
             kind: String::from("ethereum/events"),
             api_version: Version::parse("0.1.0").unwrap(),
@@ -1522,6 +1523,7 @@ fn handle_large_string_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;
@@ -1623,6 +1625,7 @@ fn handle_large_bytea_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;

@@ -8,7 +8,7 @@ use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
     Batch, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest, PruningStrategy,
-    StoredDynamicDataSource, VersionStats,
+    QueryPermit, StoredDynamicDataSource, VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::query::Trace;
@@ -17,7 +17,7 @@ use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::prelude::futures03::FutureExt;
 use graph::prelude::{
-    tokio, ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
+    ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
     SubgraphDeploymentEntity,
 };
 use graph::semver::Version;
@@ -427,10 +427,7 @@ impl DeploymentStore {
         Ok(conn)
     }
 
-    pub(crate) async fn query_permit(
-        &self,
-        replica: ReplicaId,
-    ) -> Result<tokio::sync::OwnedSemaphorePermit, StoreError> {
+    pub(crate) async fn query_permit(&self, replica: ReplicaId) -> Result<QueryPermit, StoreError> {
         let pool = match replica {
             ReplicaId::Main => &self.pool,
             ReplicaId::ReadOnly(idx) => &self.read_only_pools[idx],
@@ -1854,7 +1851,10 @@ impl DeploymentStore {
 /// search using the latter if the search for the former fails.
 fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table, StoreError> {
     layout
-        .table_for_entity(&layout.input_schema.entity_type(name)?)
+        .input_schema
+        .entity_type(name)
+        .map_err(StoreError::from)
+        .and_then(|et| layout.table_for_entity(&et))
         .map(Deref::deref)
         .or_else(|_error| {
             let sql_name = SqlName::from(name);

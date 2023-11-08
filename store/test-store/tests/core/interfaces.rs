@@ -1303,7 +1303,7 @@ async fn derived_interface_bytes() {
     }
 
     let subgraph_id = "DerivedInterfaceBytes";
-    let document = r#" type Pool {
+    let document = r#" type Pool @entity {
         id: Bytes!,
         trades: [Trade!]! @derivedFrom(field: "pool")
       }

@@ -38,6 +38,9 @@ pub const SPEC_VERSION_0_0_7: Version = Version::new(0, 0, 7);
 /// Enables polling block handlers and initialisation handlers.
 pub const SPEC_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 
+// Enables `endBlock` feature.
+pub const SPEC_VERSION_0_0_9: Version = Version::new(0, 0, 9);
+
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
 #[derive(Clone, PartialEq, Debug)]

@@ -7,7 +7,6 @@ edition.workspace = true
 anyhow = "1.0"
 assert-json-diff = "2.0.2"
 async-stream = "0.3.5"
-bollard = "0.15"
 futures = { version = "0.3", features = ["compat"] }
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
@@ -23,12 +22,12 @@ serde = "1.0"
 serde_yaml = "0.9.21"
 slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
 tokio = { version = "1.32.0", features = ["rt", "macros", "process"] }
-uuid = { version = "1.4.1", features = ["v4"] }
+# Once graph upgrades to web3 0.19, we don't need this anymore. The version
+# here needs to be kept in sync with the web3 version that the graph crate
+# uses until then
+secp256k1 = { version = "0.21", features = ["recovery"] }
+termcolor = "1.4.0"
 
 [dev-dependencies]
 anyhow = "1.0.75"
-bollard = "0.15"
-lazy_static = "1.4.0"
 tokio-stream = "0.1"
-cid = "0.10.1"
-graph-chain-near = { path = "../chain/near" }

@@ -6,9 +6,11 @@ use async_stream::stream;
 use futures03::Stream;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+use super::substreams_block_stream::SubstreamsLogData;
 use super::{Block, BlockPtr, Blockchain};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator};
@@ -356,10 +358,16 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         &self,
         logger: &mut Logger,
         message: Option<Message>,
+        log_data: &mut SubstreamsLogData,
     ) -> Result<Option<BlockStreamEvent<C>>, SubstreamsError> {
         match message {
             Some(SubstreamsMessage::Session(session_init)) => {
-                *logger = logger.new(o!("trace_id" => session_init.trace_id));
+                info!(
+                    &logger,
+                    "Received session init";
+                    "session" => format!("{:?}", session_init),
+                );
+                log_data.trace_id = session_init.trace_id;
                 return Ok(None);
             }
             Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
@@ -371,6 +379,7 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     hash: valid_block.id.trim_start_matches("0x").try_into()?,
                     number: valid_block.number as i32,
                 };
+                log_data.last_seen_block = valid_block.number;
                 return Ok(Some(BlockStreamEvent::Revert(
                     valid_ptr,
                     FirehoseCursor::from(undo.last_valid_cursor.clone()),
@@ -403,11 +412,27 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                 };
 
                 let block = self.decode_triggers(&logger, &clock, &map_output).await?;
+                log_data.last_seen_block = block.block.number() as u64;
 
                 Ok(Some(BlockStreamEvent::ProcessBlock(
                     block,
                     FirehoseCursor::from(cursor.clone()),
                 )))
+            }
+
+            Some(SubstreamsMessage::Progress(progress)) => {
+                if log_data.last_progress.elapsed() > Duration::from_secs(30) {
+                    info!(&logger, "{}", log_data.info_string(&progress); "trace_id" => &log_data.trace_id);
+                    debug!(&logger, "{}", log_data.debug_string(&progress); "trace_id" => &log_data.trace_id);
+                    trace!(
+                        &logger,
+                        "Received progress update";
+                        "progress" => format!("{:?}", progress),
+                        "trace_id" => &log_data.trace_id,
+                    );
+                    log_data.last_progress = Instant::now();
+                }
+                Ok(None)
             }
 
             // ignoring Progress messages and SessionInit
