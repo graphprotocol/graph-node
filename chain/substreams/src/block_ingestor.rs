@@ -151,8 +151,11 @@ impl BlockIngestor for SubstreamsBlockIngestor {
             );
 
             // Consume the stream of blocks until an error is hit
-            latest_cursor = self.process_blocks(latest_cursor, stream).await;
-
+            let cursor = self.process_blocks(latest_cursor.clone(), stream).await;
+            if cursor != latest_cursor {
+                backoff.reset();
+                latest_cursor = cursor;
+            }
             // If we reach this point, we must wait a bit before retrying
             backoff.sleep_async().await;
         }
