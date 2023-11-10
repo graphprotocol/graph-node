@@ -30,7 +30,7 @@ use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
     Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
 #[serde(from = "bigdecimal::BigDecimal")]
-#[sql_type = "diesel::sql_types::Numeric"]
+#[diesel(sql_type = diesel::sql_types::Numeric)]
 pub struct BigDecimal(bigdecimal::BigDecimal);
 
 impl From<bigdecimal::BigDecimal> for BigDecimal {

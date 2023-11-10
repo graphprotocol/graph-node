@@ -38,9 +38,9 @@ impl Table {
     ) -> Result<(i64, i64), StoreError> {
         #[derive(QueryableByName)]
         struct VidRange {
-            #[sql_type = "BigInt"]
+            #[diesel(sql_type = Binary)]
             min_vid: i64,
-            #[sql_type = "BigInt"]
+            #[diesel(sql_type = Binary)]
             max_vid: i64,
         }
 

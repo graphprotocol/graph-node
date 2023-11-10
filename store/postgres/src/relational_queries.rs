@@ -417,11 +417,11 @@ impl FromColumnValue for graph::prelude::Value {
 /// ID. Unlike [`EntityData`], we don't really care about attributes here.
 #[derive(QueryableByName)]
 pub struct EntityDeletion {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     entity: String,
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     id: String,
-    #[sql_type = "Integer"]
+    #[diesel(sql_type = Integer)]
     causality_region: CausalityRegion,
 }
 
@@ -464,9 +464,9 @@ pub fn parse_id(id_type: IdType, json: serde_json::Value) -> Result<Id, StoreErr
 /// `to_jsonb` function.
 #[derive(QueryableByName, Debug)]
 pub struct EntityData {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     entity: String,
-    #[sql_type = "Jsonb"]
+    #[diesel(sql_type = Jsonb)]
     data: serde_json::Value,
 }
 
@@ -2016,7 +2016,7 @@ impl<'a> QueryId for ConflictingEntityQuery<'a> {
 
 #[derive(QueryableByName)]
 pub struct ConflictingEntityData {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub entity: String,
 }
 
@@ -4231,7 +4231,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
 struct ReturnedEntityData {
-    #[sql_type = "Text"]
+    #[diesel(sql_type = Text)]
     pub id: String,
 }
 
@@ -4551,7 +4551,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for CopyEntityBatchQuery<'a> {}
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
 pub struct CopyVid {
-    #[sql_type = "BigInt"]
+    #[diesel(sql_type = BigInt)]
     pub vid: i64,
 }
 
