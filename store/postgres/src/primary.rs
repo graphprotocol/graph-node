@@ -229,7 +229,7 @@ pub struct UnusedDeployment {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
-#[sql_type = "diesel::sql_types::Text"]
+#[diesel(sql_type = Text)]
 /// A namespace (schema) in the database
 pub struct Namespace(String);
 
@@ -290,7 +290,7 @@ impl Borrow<str> for Namespace {
 /// A marker that an `i32` references a deployment. Values of this type hold
 /// the primary key from the `deployment_schemas` table
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, AsExpression, FromSqlRow)]
-#[sql_type = "diesel::sql_types::Integer"]
+#[diesel(sql_type = Integer)]
 pub struct DeploymentId(i32);
 
 impl fmt::Display for DeploymentId {

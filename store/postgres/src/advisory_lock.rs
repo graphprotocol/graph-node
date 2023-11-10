@@ -34,7 +34,7 @@ impl Scope {
     fn try_lock(&self, conn: &PgConnection, id: DeploymentId) -> Result<bool, StoreError> {
         #[derive(QueryableByName)]
         struct Locked {
-            #[sql_type = "Bool"]
+            #[diesel(sql_type = Bool)]
             locked: bool,
         }
 
