@@ -1,5 +1,5 @@
 use graph::{
-    prelude::Entity,
+    prelude::{BlockPtr, Entity},
     schema::EntityKey,
     util::{backoff::ExponentialBackoff, lfu_cache::LfuCache},
 };
@@ -19,4 +19,5 @@ pub struct IndexingState {
     /// - Or the subgraph has triggers for the block
     pub skip_ptr_updates_timer: Instant,
     pub entity_lfu_cache: LfuCache<EntityKey, Option<Entity>>,
+    pub cached_head_ptr: Option<BlockPtr>,
 }

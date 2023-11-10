@@ -71,6 +71,7 @@ where
                     env_vars.subgraph_error_retry_jitter,
                 ),
                 entity_lfu_cache: LfuCache::new(),
+                cached_head_ptr: None,
             },
             logger,
             metrics,
@@ -901,12 +902,14 @@ where
                 .observe(block.trigger_count() as f64);
         }
 
+        let ptr_updates_section = self.metrics.stream.stopwatch.start_section("ptr_updates");
+
         if block.trigger_count() == 0
             && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
             && !self.state.synced
             && !close_to_chain_head(
                 &block_ptr,
-                self.inputs.chain.chain_store().cached_head_ptr().await?,
+                self.state.cached_head_ptr.clone(),
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,
@@ -915,7 +918,16 @@ where
             return Ok(Action::Continue);
         } else {
             self.state.skip_ptr_updates_timer = Instant::now();
+            let _section = self
+                .metrics
+                .stream
+                .stopwatch
+                .start_section("get_cached_head_ptr");
+
+            self.state.cached_head_ptr = self.inputs.chain.chain_store().cached_head_ptr().await?;
         }
+
+        ptr_updates_section.end();
 
         let start = Instant::now();
 
@@ -933,7 +945,7 @@ where
                 if !self.state.synced
                     && close_to_chain_head(
                         &block_ptr,
-                        self.inputs.chain.chain_store().cached_head_ptr().await?,
+                        self.state.cached_head_ptr.clone(),
                         // We consider a subgraph synced when it's at most 1 block behind the
                         // chain head.
                         1,
@@ -954,6 +966,11 @@ where
                 // Keep trying to unfail subgraph for everytime it advances block(s) until it's
                 // health is not Failed anymore.
                 if self.state.should_try_unfail_non_deterministic {
+                    let _section = self
+                        .metrics
+                        .stream
+                        .stopwatch
+                        .start_section("unfail_non_deterministic_error");
                     // If the deployment head advanced, we can unfail
                     // the non-deterministic error (if there's any).
                     let outcome = self
@@ -994,7 +1011,11 @@ where
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
                 self.metrics.stream.deployment_failed.set(1.0);
-                self.revert_state(block_ptr.block_number())?;
+
+                {
+                    let _section = self.metrics.stream.stopwatch.start_section("revert_state");
+                    self.revert_state(block_ptr.block_number())?;
+                }
 
                 let message = format!("{:#}", e).replace('\n', "\t");
                 let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
@@ -1010,6 +1031,11 @@ where
 
                 match deterministic {
                     true => {
+                        let _section = self
+                            .metrics
+                            .stream
+                            .stopwatch
+                            .start_section("fail_subgraph_deterministic");
                         // Fail subgraph:
                         // - Change status/health.
                         // - Save the error to the database.
@@ -1031,6 +1057,11 @@ where
                             self.inputs.store.health().await? != SubgraphHealth::Failed;
 
                         if should_fail_subgraph {
+                            let _section = self
+                                .metrics
+                                .stream
+                                .stopwatch
+                                .start_section("fail_subgraph_non_deterministic");
                             // Fail subgraph:
                             // - Change status/health.
                             // - Save the error to the database.
