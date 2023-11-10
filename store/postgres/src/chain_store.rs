@@ -143,13 +143,13 @@ mod data {
     // Helper for literal SQL queries that look up a block hash
     #[derive(QueryableByName)]
     struct BlockHashText {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         hash: String,
     }
 
     #[derive(QueryableByName)]
     struct BlockHashBytea {
-        #[sql_type = "Bytea"]
+        #[diesel(sql_type = Bytea)]
         hash: Vec<u8>,
     }
 
@@ -301,7 +301,7 @@ mod data {
     }
 
     #[derive(Clone, Debug, AsExpression, FromSqlRow)]
-    #[sql_type = "diesel::sql_types::Text"]
+    #[diesel(sql_type = Text)]
     /// Storage for a chain. The underlying namespace (database schema) is either
     /// `public` or of the form `chain[0-9]+`.
     pub enum Storage {
@@ -1935,7 +1935,7 @@ impl ChainStoreTrait for ChainStore {
 
         #[derive(QueryableByName)]
         struct MinBlock {
-            #[sql_type = "Integer"]
+            #[diesel(sql_type = Integer)]
             block: i32,
         }
 
