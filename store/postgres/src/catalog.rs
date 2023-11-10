@@ -282,9 +282,9 @@ fn get_text_columns(
 
     #[derive(Debug, QueryableByName)]
     struct Column {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub table_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub column_name: String,
     }
 
@@ -308,7 +308,7 @@ pub fn table_exists(
 ) -> Result<bool, StoreError> {
     #[derive(Debug, QueryableByName)]
     struct Table {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         #[allow(dead_code)]
         pub table_name: String,
     }
@@ -334,7 +334,7 @@ pub fn supports_proof_of_indexing(
 pub fn current_servers(conn: &PgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         srvname: String,
     }
     Ok(sql_query("select srvname from pg_foreign_server")
@@ -352,7 +352,7 @@ pub fn server_options(
 ) -> Result<HashMap<String, Option<String>>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
-        #[sql_type = "Array<Text>"]
+        #[diesel(sql_type = Array<Text>)]
         srvoptions: Vec<String>,
     }
     let entries = sql_query("select srvoptions from pg_foreign_server where srvname = $1")
@@ -517,15 +517,15 @@ pub(crate) mod table_schema {
 
     #[derive(QueryableByName)]
     struct ColumnInfo {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         column_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         data_type: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_name: String,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         udt_schema: String,
-        #[sql_type = "Nullable<Text>"]
+        #[diesel(sql_type = Nullable<Text>)]
         elem_type: Option<String>,
     }
 
@@ -630,7 +630,7 @@ pub(crate) fn check_index_is_valid(
 ) -> Result<bool, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct ManualIndexCheck {
-        #[sql_type = "Bool"]
+        #[diesel(sql_type = Bool)]
         is_valid: bool,
     }
 
@@ -661,7 +661,7 @@ pub(crate) fn indexes_for_table(
 ) -> Result<Vec<String>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct IndexName {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         #[column_name = "indexdef"]
         def: String,
     }
@@ -700,16 +700,16 @@ pub(crate) fn drop_index(
 pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, StoreError> {
     #[derive(Queryable, QueryableByName)]
     pub struct DbStats {
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         pub entities: i32,
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         pub versions: i32,
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         pub tablename: String,
         /// The ratio `entities / versions`
-        #[sql_type = "Double"]
+        #[diesel(sql_type = Double)]
         pub ratio: f64,
-        #[sql_type = "Nullable<Integer>"]
+        #[diesel(sql_type = Nullable<Integer>)]
         pub last_pruned_block: Option<i32>,
     }
 
@@ -767,7 +767,7 @@ pub fn stats(conn: &PgConnection, site: &Site) -> Result<Vec<VersionStats>, Stor
 pub(crate) fn replication_lag(conn: &PgConnection) -> Result<Duration, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Lag {
-        #[sql_type = "Nullable<Integer>"]
+        #[diesel(sql_type = Nullable<Integer>)]
         ms: Option<i32>,
     }
 
@@ -803,7 +803,7 @@ pub(crate) fn cancel_vacuum(conn: &PgConnection, namespace: &Namespace) -> Resul
 pub(crate) fn default_stats_target(conn: &PgConnection) -> Result<i32, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Target {
-        #[sql_type = "Integer"]
+        #[diesel(sql_type = Integer)]
         setting: i32,
     }
 
@@ -875,7 +875,7 @@ pub(crate) fn needs_autoanalyze(
 
     #[derive(Queryable, QueryableByName)]
     struct TableName {
-        #[sql_type = "Text"]
+        #[diesel(sql_type = Text)]
         name: SqlName,
     }
 
@@ -898,7 +898,7 @@ fn has_minmax_multi_ops(conn: &PgConnection) -> Result<bool, StoreError> {
 
     #[derive(Queryable, QueryableByName)]
     struct Ops {
-        #[sql_type = "Bool"]
+        #[diesel(sql_type = Bool)]
         has_ops: bool,
     }
 
