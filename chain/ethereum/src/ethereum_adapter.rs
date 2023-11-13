@@ -490,6 +490,7 @@ impl EthereumAdapter {
                         "stack limit reached 1024",
                         // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
                         "out of gas",
+                        "stack underflow",
                     ];
 
                     let env_geth_call_errors = ENV_VARS.geth_eth_call_errors.iter();
