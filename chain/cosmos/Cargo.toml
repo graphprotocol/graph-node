@@ -1,7 +1,7 @@
 [package]
 name = "graph-chain-cosmos"
 version.workspace = true
-edition = "2018"
+edition.workspace = true
 
 [build-dependencies]
 tonic-build = { workspace = true }
@@ -15,5 +15,4 @@ serde = "1.0"
 anyhow = "1.0"
 semver = "1.0.21"
 
-graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }

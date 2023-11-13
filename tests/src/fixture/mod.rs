@@ -33,20 +33,20 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     async_trait, lazy_static, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
-    GraphQlRunner as _, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
-    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
-    SubgraphVersionSwitchingMode, TriggerProcessor,
+    GraphQlRunner as _, IpfsResolver, LoggerFactory, NodeId, QueryError,
+    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
+    SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
 };
+use graph::runtime::wasm::RuntimeHostBuilder;
 use graph::schema::InputSchema;
 use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
-    LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
-    SubgraphInstanceManager, SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
+    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
+    SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
 };
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
-use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use serde::Deserialize;
@@ -453,7 +453,7 @@ pub async fn setup<C: Blockchain>(
     let static_filters = env_vars.experimental_static_filters;
 
     let ipfs = IpfsClient::localhost();
-    let link_resolver = Arc::new(LinkResolver::new(
+    let link_resolver = Arc::new(IpfsResolver::new(
         vec![ipfs.cheap_clone()],
         Default::default(),
     ));

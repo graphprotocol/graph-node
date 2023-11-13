@@ -43,17 +43,18 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
         #item_struct
 
         #[automatically_derived]
-        pub struct #asc_name_array(pub  graph_runtime_wasm::asc_abi::class::Array<graph::runtime::AscPtr<#asc_name>>);
+        pub struct #asc_name_array(pub  graph::runtime::asc_abi::class::Array<graph::runtime::AscPtr<#asc_name>>);
 
         impl graph::runtime::ToAscObj<#asc_name_array> for Vec<#name> {
             fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
                 &self,
+                mut store: &mut graph::wasmtime::StoreContextMut<graph::runtime::WasmInstanceContext>,
                 heap: &mut H,
                 gas: &graph::runtime::gas::GasCounter,
             ) -> Result<#asc_name_array, graph::runtime::HostExportError> {
-                let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(heap, x, gas)).collect();
+                let content: Result<Vec<_>, _> = self.iter().map(|x| graph::runtime::asc_new(&mut store, heap, x, gas)).collect();
 
-                Ok(#asc_name_array(graph_runtime_wasm::asc_abi::class::Array::new(&content?, heap, gas)?))
+                Ok(#asc_name_array(graph::runtime::asc_abi::class::Array::new(&mut store, &content?, heap, gas)?))
             }
         }
 
@@ -66,7 +67,7 @@ pub fn generate_array_type(metadata: TokenStream, input: TokenStream) -> TokenSt
                 asc_obj: &[u8],
                 api_version: &graph::semver::Version,
             ) -> Result<Self, graph::runtime::DeterministicHostError> {
-                Ok(Self(graph_runtime_wasm::asc_abi::class::Array::from_asc_bytes(asc_obj, api_version)?))
+                Ok(Self(graph::runtime::asc_abi::class::Array::from_asc_bytes(asc_obj, api_version)?))
             }
         }
 

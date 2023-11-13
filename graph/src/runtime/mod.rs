@@ -12,12 +12,15 @@ pub use asc_heap::{
     asc_get, asc_new, asc_new_or_missing, asc_new_or_null, AscHeap, FromAscObj, ToAscObj,
 };
 pub use asc_ptr::AscPtr;
+use wasmtime::{StoreContext, StoreContextMut};
 
 use anyhow::Error;
 use semver::Version;
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
+pub mod wasm;
+pub use wasm::*;
 
 use self::gas::GasCounter;
 
@@ -59,6 +62,7 @@ pub trait AscType: Sized {
     /// Size of the corresponding Asc instance in bytes.
     /// Only used for version <= 0.0.3.
     fn asc_size<H: AscHeap + ?Sized>(
+        _store: &StoreContext<WasmInstanceContext>,
         _ptr: AscPtr<Self>,
         _heap: &H,
         _gas: &GasCounter,
@@ -397,6 +401,7 @@ pub enum IndexForAscTypeId {
 impl ToAscObj<u32> for IndexForAscTypeId {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<u32, HostExportError> {

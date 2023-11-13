@@ -78,7 +78,7 @@ fn field_type_map(tp: String) -> String {
         tp
     } else {
         match tp.as_ref() {
-            "String" => "graph_runtime_wasm::asc_abi::class::AscString".into(),
+            "String" => "graph::runtime::asc_abi::class::AscString".into(),
             _ => tp.clone(),
         }
     }
@@ -96,9 +96,9 @@ fn field_type(fld: &syn::Field) -> String {
                             let nm = path_to_string(&p.path);
 
                             match nm.as_ref(){
-                                    "u8" => "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::Uint8Array>".to_owned(),
+                                    "u8" => "graph::runtime::AscPtr<graph::runtime::asc_abi::class::Uint8Array>".to_owned(),
                                     "Vec<u8>" => "graph::runtime::AscPtr<crate::protobuf::AscBytesArray>".to_owned(),
-                                    "String" => "graph::runtime::AscPtr<crate::protobuf::Array<graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>>>".to_owned(),
+                                    "String" => "graph::runtime::AscPtr<crate::protobuf::Array<graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>>>".to_owned(),
                                     _ => format!("graph::runtime::AscPtr<crate::protobuf::Asc{}Array>", path_to_string(&p.path))
                                 }
                         } else {
@@ -132,8 +132,7 @@ fn field_type(fld: &syn::Field) -> String {
                 },
                 "String" => {
                     //format!("graph::runtime::AscPtr<Asc{}>", name)
-                    "graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>"
-                        .to_owned()
+                    "graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>".to_owned()
                 }
 
                 _ => {

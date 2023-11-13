@@ -21,7 +21,6 @@ semver = "1.0.21"
 
 itertools = "0.12.0"
 
-graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]

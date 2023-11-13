@@ -1,7 +1,7 @@
+use anyhow::Error;
 use never::Never;
-use wasmtime::Trap;
 
-use graph::runtime::AscPtr;
+use crate::runtime::AscPtr;
 
 /// Helper trait for the `link!` macro.
 pub trait IntoWasmRet {
@@ -66,12 +66,12 @@ impl<C> IntoWasmRet for AscPtr<C> {
     }
 }
 
-impl<T> IntoWasmRet for Result<T, Trap>
+impl<T> IntoWasmRet for Result<T, Error>
 where
     T: IntoWasmRet,
     T::Ret: wasmtime::WasmTy,
 {
-    type Ret = Result<T::Ret, Trap>;
+    type Ret = Result<T::Ret, Error>;
     fn into_wasm_ret(self) -> Self::Ret {
         self.map(|x| x.into_wasm_ret())
     }

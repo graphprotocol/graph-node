@@ -20,17 +20,15 @@ use crate::{
     components::{
         store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
         subgraph::HostMetrics,
+        subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
-    data_source,
+    data_source::{self, DataSourceTemplateInfo},
     prelude::DataSourceContext,
-    runtime::{gas::GasCounter, AscHeap, HostExportError},
+    runtime::{gas::GasCounter, HostExportError, WasmInstanceContext},
 };
 use crate::{
-    components::{
-        store::{BlockNumber, ChainStore},
-        subgraph::DataSourceTemplateInfo,
-    },
+    components::store::{BlockNumber, ChainStore},
     prelude::{thiserror::Error, LinkResolver},
 };
 use anyhow::{anyhow, Context, Error};
@@ -45,6 +43,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+use wasmtime::StoreContextMut;
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
@@ -251,7 +250,10 @@ pub trait TriggerFilter<C: Blockchain>: Default + Clone + Send + Sync {
 }
 
 pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
-    fn from_template_info(info: DataSourceTemplateInfo<C>) -> Result<Self, Error>;
+    fn from_template_info(
+        info: InstanceDSTemplateInfo,
+        template: &data_source::DataSourceTemplate<C>,
+    ) -> Result<Self, Error>;
 
     fn from_stored_dynamic_data_source(
         template: &C::DataSourceTemplate,
@@ -325,6 +327,15 @@ pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn name(&self) -> &str;
     fn manifest_idx(&self) -> u32;
     fn kind(&self) -> &str;
+    fn info(&self) -> DataSourceTemplateInfo {
+        DataSourceTemplateInfo {
+            api_version: self.api_version(),
+            runtime: self.runtime(),
+            name: self.name().to_string(),
+            manifest_idx: Some(self.manifest_idx()),
+            kind: self.kind().to_string(),
+        }
+    }
 }
 
 #[async_trait]
@@ -359,10 +370,9 @@ pub trait MappingTriggerTrait {
     fn error_context(&self) -> String;
 }
 
-pub struct HostFnCtx<'a> {
+pub struct HostFnCtx {
     pub logger: Logger,
     pub block_ptr: BlockPtr,
-    pub heap: &'a mut dyn AscHeap,
     pub gas: GasCounter,
     pub metrics: Arc<HostMetrics>,
 }
@@ -372,7 +382,15 @@ pub struct HostFnCtx<'a> {
 #[derive(Clone)]
 pub struct HostFn {
     pub name: &'static str,
-    pub func: Arc<dyn Send + Sync + Fn(HostFnCtx, u32) -> Result<u32, HostExportError>>,
+    pub func: Arc<
+        dyn Send
+            + Sync
+            + Fn(
+                HostFnCtx,
+                &mut StoreContextMut<WasmInstanceContext>,
+                u32,
+            ) -> Result<u32, HostExportError>,
+    >,
 }
 
 impl CheapClone for HostFn {

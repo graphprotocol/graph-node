@@ -2201,7 +2201,10 @@ type Gravatar @entity {
 
         let musicians = query_field(&schema, "musicians");
         let s::TypeDefinition::Object(musicians) =
-            schema.get_type_definition_from_field(musicians).unwrap() else { panic!("Can not find type for 'musicians' field")};
+            schema.get_type_definition_from_field(musicians).unwrap()
+        else {
+            panic!("Can not find type for 'musicians' field")
+        };
         let bands = musicians.field("bands").unwrap();
         let filter = bands.argument("where").unwrap();
         assert_eq!("Band_filter", filter.value_type.get_base_type());
@@ -2239,9 +2242,11 @@ type Gravatar @entity {
             assert_eq!(&filter_type, filter.value_type.get_base_type());
 
             let s::TypeDefinition::InputObject(filter) = schema
-            .get_type_definition_from_type(&filter.value_type)
-            .unwrap()
-            else { panic!("Can not find type for 'where' filter")};
+                .get_type_definition_from_type(&filter.value_type)
+                .unwrap()
+            else {
+                panic!("Can not find type for 'where' filter")
+            };
 
             let mut fields = filter
                 .fields
@@ -2271,7 +2276,10 @@ type Gravatar @entity {
             );
 
             let s::TypeDefinition::Object(field_type) =
-            schema.get_type_definition_from_field(field).unwrap() else { panic!("Can not find type for 'stats' field")};
+                schema.get_type_definition_from_field(field).unwrap()
+            else {
+                panic!("Can not find type for 'stats' field")
+            };
             assert_eq!("Stats", &field_type.name);
         }
 
@@ -2285,7 +2293,10 @@ type Gravatar @entity {
         // particular a `where` filter
         let s::TypeDefinition::Object(stuff) = schema
             .get_type_definition_from_type(&s::Type::NamedType("Stuff".to_string()))
-            .unwrap() else { panic!("Stuff type is missing") };
+            .unwrap()
+        else {
+            panic!("Stuff type is missing")
+        };
         let stats = stuff.field("stats").unwrap();
         assert_aggregation_field(&schema, stats, "Stats");
     }
@@ -2336,8 +2347,12 @@ type Gravatar @entity {
         for protos in ["dexProtocols", "protocols"] {
             let groups = query_field(&schema, protos);
             let filter = groups.argument("where").unwrap();
-            let s::TypeDefinition::InputObject(filter) =
-                schema.get_type_definition_from_type(&filter.value_type).unwrap() else { panic!("Can not find type for 'groups' filter") };
+            let s::TypeDefinition::InputObject(filter) = schema
+                .get_type_definition_from_type(&filter.value_type)
+                .unwrap()
+            else {
+                panic!("Can not find type for 'groups' filter")
+            };
             let metrics_fields: Vec<_> = filter
                 .fields
                 .iter()

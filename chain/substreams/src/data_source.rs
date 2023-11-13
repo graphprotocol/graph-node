@@ -5,7 +5,8 @@ use graph::{
     blockchain,
     cheap_clone::CheapClone,
     components::link_resolver::LinkResolver,
-    prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Link},
+    data_source::DataSourceTemplateInfo,
+    prelude::{async_trait, BlockNumber, InstanceDSTemplateInfo, Link},
     slog::Logger,
 };
 
@@ -35,7 +36,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _template_info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("Substreams does not support templates"))
     }
 
@@ -130,7 +134,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _template: &<Chain as blockchain::Blockchain>::DataSourceTemplate,
+        _template: &NoopDataSourceTemplate,
         _stored: graph::components::store::StoredDynamicDataSource,
     ) -> Result<Self, Error> {
         Err(anyhow!(DYNAMIC_DATA_SOURCE_ERROR))
@@ -281,6 +285,12 @@ pub struct UnresolvedPackage {
 /// This is necessary for the Blockchain trait associated types, substreams do not support
 /// data source templates so this is a noop and is not expected to be called.
 pub struct NoopDataSourceTemplate {}
+
+impl Into<DataSourceTemplateInfo> for NoopDataSourceTemplate {
+    fn into(self) -> DataSourceTemplateInfo {
+        unimplemented!()
+    }
+}
 
 impl blockchain::DataSourceTemplate<Chain> for NoopDataSourceTemplate {
     fn name(&self) -> &str {

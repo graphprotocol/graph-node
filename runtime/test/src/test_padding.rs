@@ -1,5 +1,6 @@
 use crate::protobuf;
 use graph::prelude::tokio;
+use wasmtime::AsContextMut;
 
 use self::data::BadFixed;
 
@@ -75,7 +76,7 @@ pub mod data {
     #[repr(C)]
     pub struct AscBad {
         pub nonce: u64,
-        pub str_suff: graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>,
+        pub str_suff: graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>,
         pub tail: u64,
     }
 
@@ -109,21 +110,23 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
-    use graph::runtime::HostExportError;
     pub use graph::runtime::{
         asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
         DeterministicHostError, IndexForAscTypeId, ToAscObj,
     };
+    use graph::runtime::{HostExportError, WasmInstanceContext};
+    use wasmtime::StoreContextMut;
 
     impl ToAscObj<AscBad> for Bad {
         fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
+            mut store: &mut StoreContextMut<WasmInstanceContext>,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBad, HostExportError> {
             Ok(AscBad {
                 nonce: self.nonce,
-                str_suff: asc_new(heap, &self.str_suff, gas)?,
+                str_suff: asc_new(&mut store, heap, &self.str_suff, gas)?,
                 tail: self.tail,
             })
         }
@@ -137,7 +140,7 @@ pub mod data {
     #[repr(C)]
     pub struct AscBadFixed {
         pub nonce: u64,
-        pub str_suff: graph::runtime::AscPtr<graph_runtime_wasm::asc_abi::class::AscString>,
+        pub str_suff: graph::runtime::AscPtr<graph::runtime::asc_abi::class::AscString>,
         pub _padding: u32,
         pub tail: u64,
     }
@@ -177,12 +180,13 @@ pub mod data {
     impl ToAscObj<AscBadFixed> for BadFixed {
         fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
+            mut store: &mut StoreContextMut<'_, WasmInstanceContext>,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBadFixed, HostExportError> {
             Ok(AscBadFixed {
                 nonce: self.nonce,
-                str_suff: asc_new(heap, &self.str_suff, gas)?,
+                str_suff: asc_new(&mut store, heap, &self.str_suff, gas)?,
                 _padding: 0,
                 tail: self.tail,
             })
@@ -251,7 +255,7 @@ async fn test_v4_u32_padding_ok() {
 }
 
 async fn manual_padding_should_fail(api_version: semver::Version) {
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -267,15 +271,15 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
         tail: i64::MAX as u64,
     };
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module
+    let func = instance
         .get_func("test_padding_manual")
-        .typed()
+        .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(
         res.is_err(),
@@ -290,7 +294,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
         tail: i64::MAX as u64,
     };
 
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -300,21 +304,21 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
     )
     .await;
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module
+    let func = instance
         .get_func("test_padding_manual")
-        .typed()
+        .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
 
 async fn bool_padding_ok(api_version: semver::Version) {
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -332,21 +336,21 @@ async fn bool_padding_ok(api_version: semver::Version) {
         tail: true,
     };
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module
+    let func = instance
         .get_func("test_padding_bool")
-        .typed()
+        .typed(&mut instance.store.as_context_mut())
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
 
 async fn i8_padding_ok(api_version: semver::Version) {
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -364,17 +368,21 @@ async fn i8_padding_ok(api_version: semver::Version) {
         tail: true,
     };
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i8").typed().unwrap().clone();
+    let func = instance
+        .get_func("test_padding_i8")
+        .typed(&mut instance.store.as_context_mut())
+        .unwrap()
+        .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
 
 async fn u16_padding_ok(api_version: semver::Version) {
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -392,17 +400,21 @@ async fn u16_padding_ok(api_version: semver::Version) {
         tail: true,
     };
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i16").typed().unwrap().clone();
+    let func = instance
+        .get_func("test_padding_i16")
+        .typed(&mut instance.store.as_context_mut())
+        .unwrap()
+        .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }
 
 async fn u32_padding_ok(api_version: semver::Version) {
-    let mut module = super::test::test_module(
+    let mut instance = super::test::test_module(
         &rnd_sub_graph_name(12),
         super::common::mock_data_source(
             &super::test::wasm_file_path(WASM_FILE_NAME, api_version.clone()),
@@ -420,11 +432,15 @@ async fn u32_padding_ok(api_version: semver::Version) {
         tail: true,
     };
 
-    let new_obj = module.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).unwrap();
 
-    let func = module.get_func("test_padding_i32").typed().unwrap().clone();
+    let func = instance
+        .get_func("test_padding_i32")
+        .typed(&mut instance.store.as_context_mut())
+        .unwrap()
+        .clone();
 
-    let res: Result<(), _> = func.call(new_obj.wasm_ptr());
+    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
 
     assert!(res.is_ok(), "{:?}", res.err());
 }

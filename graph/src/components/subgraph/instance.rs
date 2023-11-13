@@ -1,32 +1,70 @@
 use crate::{
-    blockchain::Blockchain,
+    blockchain::{Blockchain, DataSourceTemplate as _},
     components::store::{ReadStore, StoredDynamicDataSource},
     data::subgraph::schema::SubgraphError,
-    data_source::DataSourceTemplate,
+    data_source::{DataSourceTemplate, DataSourceTemplateInfo},
     prelude::*,
     schema::EntityKey,
     util::lfu_cache::LfuCache,
 };
 
+#[derive(Debug, Clone)]
+pub enum InstanceDSTemplate {
+    Onchain(DataSourceTemplateInfo),
+    Offchain(crate::data_source::offchain::DataSourceTemplate),
+}
+
+impl<C: Blockchain> From<&DataSourceTemplate<C>> for InstanceDSTemplate {
+    fn from(value: &crate::data_source::DataSourceTemplate<C>) -> Self {
+        match value {
+            DataSourceTemplate::Onchain(ds) => Self::Onchain(ds.info()),
+            DataSourceTemplate::Offchain(ds) => Self::Offchain(ds.clone()),
+        }
+    }
+}
+
+impl InstanceDSTemplate {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Onchain(ds) => &ds.name,
+            Self::Offchain(ds) => &ds.name,
+        }
+    }
+
+    pub fn is_onchain(&self) -> bool {
+        match self {
+            Self::Onchain(_) => true,
+            Self::Offchain(_) => false,
+        }
+    }
+
+    pub fn manifest_idx(&self) -> Option<u32> {
+        match self {
+            InstanceDSTemplate::Onchain(info) => info.manifest_idx,
+            InstanceDSTemplate::Offchain(info) => Some(info.manifest_idx),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct DataSourceTemplateInfo<C: Blockchain> {
-    pub template: DataSourceTemplate<C>,
+pub struct InstanceDSTemplateInfo {
+    pub template: InstanceDSTemplate,
     pub params: Vec<String>,
     pub context: Option<DataSourceContext>,
     pub creation_block: BlockNumber,
 }
 
 #[derive(Debug)]
-pub struct BlockState<C: Blockchain> {
+pub struct BlockState {
     pub entity_cache: EntityCache,
     pub deterministic_errors: Vec<SubgraphError>,
-    created_data_sources: Vec<DataSourceTemplateInfo<C>>,
+    created_data_sources: Vec<InstanceDSTemplateInfo>,
 
     // Data sources to be transacted into the store.
     pub persisted_data_sources: Vec<StoredDynamicDataSource>,
 
     // Data sources created in the current handler.
-    handler_created_data_sources: Vec<DataSourceTemplateInfo<C>>,
+    handler_created_data_sources: Vec<InstanceDSTemplateInfo>,
 
     // data source that have been processed.
     pub processed_data_sources: Vec<StoredDynamicDataSource>,
@@ -35,7 +73,7 @@ pub struct BlockState<C: Blockchain> {
     in_handler: bool,
 }
 
-impl<C: Blockchain> BlockState<C> {
+impl BlockState {
     pub fn new(store: impl ReadStore, lfu_cache: LfuCache<EntityKey, Option<Entity>>) -> Self {
         BlockState {
             entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache),
@@ -47,8 +85,10 @@ impl<C: Blockchain> BlockState<C> {
             in_handler: false,
         }
     }
+}
 
-    pub fn extend(&mut self, other: BlockState<C>) {
+impl BlockState {
+    pub fn extend(&mut self, other: BlockState) {
         assert!(!other.in_handler);
 
         let BlockState {
@@ -85,12 +125,12 @@ impl<C: Blockchain> BlockState<C> {
         self.created_data_sources
             .iter()
             .any(|ds| match ds.template {
-                DataSourceTemplate::Onchain(_) => true,
+                InstanceDSTemplate::Onchain(_) => true,
                 _ => false,
             })
     }
 
-    pub fn drain_created_data_sources(&mut self) -> Vec<DataSourceTemplateInfo<C>> {
+    pub fn drain_created_data_sources(&mut self) -> Vec<InstanceDSTemplateInfo> {
         assert!(!self.in_handler);
         std::mem::take(&mut self.created_data_sources)
     }
@@ -117,7 +157,7 @@ impl<C: Blockchain> BlockState<C> {
         self.deterministic_errors.push(e);
     }
 
-    pub fn push_created_data_source(&mut self, ds: DataSourceTemplateInfo<C>) {
+    pub fn push_created_data_source(&mut self, ds: InstanceDSTemplateInfo) {
         assert!(self.in_handler);
         self.handler_created_data_sources.push(ds);
     }

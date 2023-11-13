@@ -25,13 +25,13 @@ where
         hosts: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
-        mut state: BlockState<C>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
         let mut host_mapping: Vec<(&T::Host, TriggerWithHandler<MappingTrigger<C>>)> = vec![];

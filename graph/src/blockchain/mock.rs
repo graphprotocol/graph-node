@@ -2,9 +2,10 @@ use crate::{
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, DeploymentCursorTracker, DeploymentLocator},
+        subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::UnifiedMappingApiVersion,
-    prelude::DataSourceTemplateInfo,
+    data_source::DataSourceTemplateInfo,
 };
 use anyhow::Error;
 use async_trait::async_trait;
@@ -53,16 +54,19 @@ pub struct MockDataSource {
     pub network: Option<String>,
 }
 
-impl<C: Blockchain> TryFrom<DataSourceTemplateInfo<C>> for MockDataSource {
+impl TryFrom<DataSourceTemplateInfo> for MockDataSource {
     type Error = Error;
 
-    fn try_from(_value: DataSourceTemplateInfo<C>) -> Result<Self, Self::Error> {
+    fn try_from(_value: DataSourceTemplateInfo) -> Result<Self, Self::Error> {
         todo!()
     }
 }
 
 impl<C: Blockchain> DataSource<C> for MockDataSource {
-    fn from_template_info(_template_info: DataSourceTemplateInfo<C>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &crate::data_source::DataSourceTemplate<C>,
+    ) -> Result<Self, Error> {
         todo!()
     }
 
@@ -130,7 +134,7 @@ impl<C: Blockchain> DataSource<C> for MockDataSource {
     }
 
     fn from_stored_dynamic_data_source(
-        _template: &C::DataSourceTemplate,
+        _template: &<C as Blockchain>::DataSourceTemplate,
         _stored: crate::components::store::StoredDynamicDataSource,
     ) -> Result<Self, anyhow::Error> {
         todo!()
@@ -159,7 +163,13 @@ impl<C: Blockchain> UnresolvedDataSource<C> for MockUnresolvedDataSource {
 #[derive(Debug, Clone)]
 pub struct MockDataSourceTemplate;
 
-impl<C: Blockchain> DataSourceTemplate<C> for MockDataSourceTemplate {
+impl Into<DataSourceTemplateInfo> for MockDataSourceTemplate {
+    fn into(self) -> DataSourceTemplateInfo {
+        todo!()
+    }
+}
+
+impl DataSourceTemplate<MockBlockchain> for MockDataSourceTemplate {
     fn api_version(&self) -> semver::Version {
         todo!()
     }
@@ -177,6 +187,10 @@ impl<C: Blockchain> DataSourceTemplate<C> for MockDataSourceTemplate {
     }
 
     fn kind(&self) -> &str {
+        todo!()
+    }
+
+    fn info(&self) -> DataSourceTemplateInfo {
         todo!()
     }
 }

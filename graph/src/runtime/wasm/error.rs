@@ -1,8 +1,6 @@
-use wasmtime::Trap;
+use crate::runtime::DeterministicHostError;
 
-use graph::runtime::DeterministicHostError;
-
-use crate::module::IntoTrap;
+use crate::runtime::module::IntoTrap;
 
 pub enum DeterminismLevel {
     /// This error is known to be deterministic. For example, divide by zero.
@@ -26,8 +24,5 @@ pub enum DeterminismLevel {
 impl IntoTrap for DeterministicHostError {
     fn determinism_level(&self) -> DeterminismLevel {
         DeterminismLevel::Deterministic
-    }
-    fn into_trap(self) -> Trap {
-        Trap::from(self.inner())
     }
 }

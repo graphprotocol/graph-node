@@ -629,7 +629,7 @@ mod queries {
             .into_iter()
             .map(|(subgraph, node, paused)| (subgraph, (node, paused)))
             .collect();
-        for mut info in infos {
+        for info in infos {
             info.node = nodes.get(&info.subgraph).map(|(node, _)| node.clone());
             info.paused = nodes.get(&info.subgraph).map(|(_, paused)| *paused);
         }

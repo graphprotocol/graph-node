@@ -279,6 +279,15 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DataSourceTemplateInfo {
+    pub api_version: semver::Version,
+    pub runtime: Option<Arc<Vec<u8>>>,
+    pub name: String,
+    pub manifest_idx: Option<u32>,
+    pub kind: String,
+}
+
 #[derive(Debug)]
 pub enum DataSourceTemplate<C: Blockchain> {
     Onchain(C::DataSourceTemplate),
@@ -286,6 +295,13 @@ pub enum DataSourceTemplate<C: Blockchain> {
 }
 
 impl<C: Blockchain> DataSourceTemplate<C> {
+    pub fn info(&self) -> DataSourceTemplateInfo {
+        match self {
+            DataSourceTemplate::Onchain(template) => template.info(),
+            DataSourceTemplate::Offchain(template) => template.clone().into(),
+        }
+    }
+
     pub fn as_onchain(&self) -> Option<&C::DataSourceTemplate> {
         match self {
             Self::Onchain(ds) => Some(ds),
@@ -309,7 +325,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
 
     pub fn name(&self) -> &str {
         match self {
-            Self::Onchain(ds) => ds.name(),
+            Self::Onchain(ds) => &ds.name(),
             Self::Offchain(ds) => &ds.name,
         }
     }
@@ -367,7 +383,7 @@ impl<C: Blockchain> UnresolvedDataSourceTemplate<C> {
             Self::Onchain(ds) => ds
                 .resolve(resolver, logger, manifest_idx)
                 .await
-                .map(DataSourceTemplate::Onchain),
+                .map(|ti| DataSourceTemplate::Onchain(ti)),
             Self::Offchain(ds) => ds
                 .resolve(resolver, logger, manifest_idx, schema)
                 .await

@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, bail, Error};
 use anyhow::{ensure, Context};
-use graph::blockchain::TriggerWithHandler;
+use graph::blockchain::{DataSourceTemplate as _, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
-use graph::data_source::CausalityRegion;
+use graph::data_source::{CausalityRegion, DataSourceTemplateInfo};
 use graph::prelude::ethabi::ethereum_types::H160;
 use graph::prelude::ethabi::StateMutability;
 use graph::prelude::futures03::future::try_join;
@@ -22,7 +22,7 @@ use graph::{
         ethabi::{Address, Contract, Event, Function, LogParam, ParamType, RawLog},
         serde_json, warn,
         web3::types::{Log, Transaction, H256},
-        BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, EthereumCall,
+        BlockNumber, CheapClone, Deserialize, EthereumCall, InstanceDSTemplateInfo,
         LightEthereumBlock, LightEthereumBlockExt, LinkResolver, Logger, TryStreamExt,
     },
 };
@@ -59,16 +59,22 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
-        let DataSourceTemplateInfo {
+    fn from_template_info(
+        info: InstanceDSTemplateInfo,
+        ds_template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
+        let InstanceDSTemplateInfo {
             template,
             params,
             context,
             creation_block,
         } = info;
-        let template = template.into_onchain().ok_or(anyhow!(
-            "Cannot create onchain data source from offchain template"
-        ))?;
+
+        if !template.is_onchain() || ds_template.as_onchain().is_none() {
+            bail!("Cannot create onchain data source from offchain template");
+        }
+        // unwrap: We just checked for none so this is safe.
+        let template = ds_template.as_onchain().unwrap();
 
         // Obtain the address from the parameters
         let string = params
@@ -76,7 +82,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             .with_context(|| {
                 format!(
                     "Failed to create data source from template `{}`: address parameter is missing",
-                    template.name
+                    template.name()
                 )
             })?
             .trim_start_matches("0x");
@@ -84,7 +90,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         let address = Address::from_str(string).with_context(|| {
             format!(
                 "Failed to create data source from template `{}`, invalid address provided",
-                template.name
+                template.name()
             )
         })?;
 
@@ -94,14 +100,14 @@ impl blockchain::DataSource<Chain> for DataSource {
             .with_context(|| format!("template `{}`", template.name))?;
 
         Ok(DataSource {
-            kind: template.kind,
-            network: template.network,
-            name: template.name,
+            kind: template.kind.clone(),
+            network: template.network.clone(),
+            name: template.name.clone(),
             manifest_idx: template.manifest_idx,
             address: Some(address),
             start_block: creation_block,
             end_block: None,
-            mapping: template.mapping,
+            mapping: template.mapping.clone(),
             context: Arc::new(context),
             creation_block: Some(creation_block),
             contract_abi,
@@ -928,6 +934,18 @@ pub struct DataSourceTemplate {
     pub manifest_idx: u32,
     pub source: TemplateSource,
     pub mapping: Mapping,
+}
+
+impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
+    fn into(self) -> DataSourceTemplateInfo {
+        DataSourceTemplateInfo {
+            api_version: self.api_version(),
+            runtime: self.runtime(),
+            name: self.name().to_string(),
+            manifest_idx: None,
+            kind: self.kind().to_string(),
+        }
+    }
 }
 
 #[async_trait]

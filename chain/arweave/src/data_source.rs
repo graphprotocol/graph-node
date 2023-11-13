@@ -1,15 +1,13 @@
 use graph::anyhow::Context;
-use graph::blockchain::{Block, TriggerWithHandler};
+use graph::blockchain::{Block, DataSourceTemplate as _, TriggerWithHandler};
 use graph::components::store::StoredDynamicDataSource;
 use graph::data::subgraph::DataSourceContext;
-use graph::prelude::SubgraphManifestValidationError;
+use graph::data_source::DataSourceTemplateInfo;
+use graph::prelude::{InstanceDSTemplateInfo, SubgraphManifestValidationError};
 use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Blockchain},
-    prelude::{
-        async_trait, BlockNumber, CheapClone, DataSourceTemplateInfo, Deserialize, Link,
-        LinkResolver, Logger,
-    },
+    prelude::{async_trait, BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger},
     semver,
 };
 use std::collections::HashSet;
@@ -34,7 +32,10 @@ pub struct DataSource {
 }
 
 impl blockchain::DataSource<Chain> for DataSource {
-    fn from_template_info(_info: DataSourceTemplateInfo<Chain>) -> Result<Self, Error> {
+    fn from_template_info(
+        _info: InstanceDSTemplateInfo,
+        _template: &graph::data_source::DataSourceTemplate<Chain>,
+    ) -> Result<Self, Error> {
         Err(anyhow!("Arweave subgraphs do not support templates"))
     }
 
@@ -325,6 +326,18 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
 
     fn kind(&self) -> &str {
         &self.kind
+    }
+}
+
+impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
+    fn into(self) -> DataSourceTemplateInfo {
+        DataSourceTemplateInfo {
+            api_version: self.api_version(),
+            runtime: self.runtime(),
+            name: self.name().to_string(),
+            manifest_idx: None,
+            kind: self.kind().to_string(),
+        }
     }
 }
 

@@ -1,8 +1,11 @@
+use graph::runtime::wasm::module::ToAscPtr;
+use graph::runtime::WasmInstanceContext;
+use graph::wasmtime::StoreContextMut;
 use graph::{
     blockchain::{MappingTriggerTrait, TriggerData},
     runtime::{asc_new, gas::GasCounter, AscPtr, HostExportError},
 };
-use graph_runtime_wasm::module::ToAscPtr;
+use starknet_ff::FieldElement;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -83,12 +86,13 @@ impl TriggerData for StarknetTrigger {
 impl ToAscPtr for StarknetTrigger {
     fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
-            StarknetTrigger::Block(block) => asc_new(heap, &block, gas)?.erase(),
-            StarknetTrigger::Event(event) => asc_new(heap, &event, gas)?.erase(),
+            StarknetTrigger::Block(block) => asc_new(store, heap, &block, gas)?.erase(),
+            StarknetTrigger::Event(event) => asc_new(store, heap, &event, gas)?.erase(),
         })
     }
 }

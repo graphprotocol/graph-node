@@ -107,13 +107,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         self.process_trigger_in_hosts(
             logger,
             self.instance.hosts_for_trigger(trigger),
@@ -136,13 +136,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         block_time: BlockTime,
         block_data: Box<[u8]>,
         handler: String,
-        mut state: BlockState<C>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let error_count = state.deterministic_errors.len();
 
         if let Some(proof_of_indexing) = proof_of_indexing {
@@ -195,13 +195,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         hosts: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         self.trigger_processor
             .process_trigger(
                 logger,

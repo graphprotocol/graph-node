@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use anyhow::Error;
+use graph::runtime::wasm::module::ToAscPtr;
+use graph::runtime::WasmInstanceContext;
+use graph::wasmtime::StoreContextMut;
 use graph::{
     blockchain::{
         self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
@@ -16,7 +19,6 @@ use graph::{
     slog::Logger,
     substreams::Modules,
 };
-use graph_runtime_wasm::module::ToAscPtr;
 use lazy_static::__Deref;
 
 use crate::{Block, Chain, NoopDataSourceTemplate, ParsedChanges};
@@ -45,6 +47,7 @@ impl ToAscPtr for TriggerData {
     // substreams doesn't rely on wasm on the graph-node so this is not needed.
     fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
+        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,
     ) -> Result<graph::runtime::AscPtr<()>, graph::runtime::HostExportError> {
@@ -194,19 +197,19 @@ impl<T> graph::prelude::TriggerProcessor<Chain, T> for TriggerProcessor
 where
     T: RuntimeHostBuilder<Chain>,
 {
-    async fn process_trigger(
-        &self,
+    async fn process_trigger<'a>(
+        &'a self,
         logger: &Logger,
-        _: Box<dyn Iterator<Item = &T::Host> + Send + '_>,
+        _hosts: Box<dyn Iterator<Item = &T::Host> + Send + 'a>,
         block: &Arc<Block>,
         _trigger: &data_source::TriggerData<Chain>,
-        mut state: BlockState<Chain>,
+        mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
         _debug_fork: &Option<Arc<dyn SubgraphFork>>,
         _subgraph_metrics: &Arc<graph::prelude::SubgraphInstanceMetrics>,
         _instrument: bool,
-    ) -> Result<BlockState<Chain>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         for parsed_change in block.parsed_changes.clone().into_iter() {
             match parsed_change {
                 ParsedChanges::Unset => {

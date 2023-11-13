@@ -4,7 +4,7 @@ use crate::{
     components::{
         link_resolver::LinkResolver,
         store::{BlockNumber, StoredDynamicDataSource},
-        subgraph::DataSourceTemplateInfo,
+        subgraph::{InstanceDSTemplate, InstanceDSTemplateInfo},
     },
     data::{store::scalar::Bytes, subgraph::SPEC_VERSION_0_0_7, value::Word},
     data_source,
@@ -24,7 +24,7 @@ use std::{
     sync::{atomic::AtomicI32, Arc},
 };
 
-use super::{CausalityRegion, DataSourceCreationError, TriggerWithHandler};
+use super::{CausalityRegion, DataSourceCreationError, DataSourceTemplateInfo, TriggerWithHandler};
 
 lazy_static! {
     pub static ref OFFCHAIN_KINDS: HashMap<&'static str, OffchainDataSourceKind> = [
@@ -169,12 +169,12 @@ impl DataSource {
 
 impl DataSource {
     pub fn from_template_info(
-        info: DataSourceTemplateInfo<impl Blockchain>,
+        info: InstanceDSTemplateInfo,
         causality_region: CausalityRegion,
     ) -> Result<Self, DataSourceCreationError> {
         let template = match info.template {
-            data_source::DataSourceTemplate::Offchain(template) => template,
-            data_source::DataSourceTemplate::Onchain(_) => {
+            InstanceDSTemplate::Offchain(template) => template,
+            InstanceDSTemplate::Onchain(_) => {
                 bail!("Cannot create offchain data source from onchain template")
             }
         };
@@ -454,6 +454,26 @@ pub struct DataSourceTemplate {
     pub name: String,
     pub manifest_idx: u32,
     pub mapping: Mapping,
+}
+
+impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
+    fn into(self) -> DataSourceTemplateInfo {
+        let DataSourceTemplate {
+            kind,
+            network: _,
+            name,
+            manifest_idx,
+            mapping,
+        } = self;
+
+        DataSourceTemplateInfo {
+            api_version: mapping.api_version.clone(),
+            runtime: Some(mapping.runtime),
+            name,
+            manifest_idx: Some(manifest_idx),
+            kind: kind.to_string(),
+        }
+    }
 }
 
 impl UnresolvedDataSourceTemplate {

@@ -1,6 +1,6 @@
 use std::{convert::TryInto, num::NonZeroU32};
 
-use graph::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
+use crate::runtime::gas::CONST_MAX_GAS_PER_HANDLER;
 use parity_wasm::elements::Instruction;
 use wasm_instrument::gas_metering::{MemoryGrowCost, Rules};
 

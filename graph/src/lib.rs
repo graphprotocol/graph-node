@@ -57,6 +57,7 @@ pub use tokio;
 pub use tokio_retry;
 pub use tokio_stream;
 pub use url;
+pub use wasmtime;
 
 /// A prelude that makes all system component traits and data types available.
 ///
@@ -118,7 +119,9 @@ pub mod prelude {
         LightEthereumBlockExt,
     };
     pub use crate::components::graphql::{GraphQLMetrics, GraphQlRunner, SubscriptionResultFuture};
-    pub use crate::components::link_resolver::{JsonStreamValue, JsonValueStream, LinkResolver};
+    pub use crate::components::link_resolver::{
+        IpfsResolver, JsonStreamValue, JsonValueStream, LinkResolver,
+    };
     pub use crate::components::metrics::{
         stopwatch::StopwatchMetrics, subgraph::*, Collector, Counter, CounterVec, Gauge, GaugeVec,
         Histogram, HistogramOpts, HistogramVec, MetricsRegistry, Opts, PrometheusError, Registry,
@@ -136,7 +139,7 @@ pub mod prelude {
         SubgraphStore, UnfailOutcome, WindowAttribute, BLOCK_NUMBER_MAX,
     };
     pub use crate::components::subgraph::{
-        BlockState, DataSourceTemplateInfo, HostMetrics, RuntimeHost, RuntimeHostBuilder,
+        BlockState, HostMetrics, InstanceDSTemplateInfo, RuntimeHost, RuntimeHostBuilder,
         SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
         SubgraphVersionSwitchingMode,
     };
