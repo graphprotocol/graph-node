@@ -100,11 +100,9 @@ jobs:
       - name: Run runner tests
         id: runner-tests-1
         uses: actions-rs/cargo@v1
-        env:
-          TESTS_GANACHE_HARD_WAIT_SECONDS: "60"
         with:
           command: test
-          args: --verbose --package graph-tests --test runner_tests
+          args: --package graph-tests --test runner_tests
 
   integration-tests:
     name: Run integration tests
