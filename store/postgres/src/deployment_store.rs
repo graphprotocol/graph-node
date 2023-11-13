@@ -1851,7 +1851,10 @@ impl DeploymentStore {
 /// search using the latter if the search for the former fails.
 fn resolve_table_name<'a>(layout: &'a Layout, name: &'_ str) -> Result<&'a Table, StoreError> {
     layout
-        .table_for_entity(&layout.input_schema.entity_type(name)?)
+        .input_schema
+        .entity_type(name)
+        .map_err(StoreError::from)
+        .and_then(|et| layout.table_for_entity(&et))
         .map(Deref::deref)
         .or_else(|_error| {
             let sql_name = SqlName::from(name);
