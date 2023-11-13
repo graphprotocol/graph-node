@@ -354,7 +354,7 @@ pub fn retry_strategy(
     max_delay: Duration,
 ) -> Box<dyn Iterator<Item = Duration> + Send> {
     // Exponential backoff, but with a maximum
-    let backoff = ExponentialBackoff::from_millis(2)
+    let backoff = ExponentialBackoff::from_millis(10)
         .max_delay(Duration::from_millis(
             // This should be fine, if the value is too high it will crash during
             // testing.
