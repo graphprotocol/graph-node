@@ -31,9 +31,12 @@ pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, Fullte
 pub use input_schema::InputSchema;
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
+pub const INTROSPECTION_SCHEMA_FIELD_NAME: &str = "__schema";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
+
+pub const INTROSPECTION_TYPE_FIELD_NAME: &str = "__type";
 
 pub const BLOCK_FIELD_TYPE: &str = "_Block_";
 
