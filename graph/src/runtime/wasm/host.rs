@@ -5,20 +5,22 @@ use async_trait::async_trait;
 use futures::sync::mpsc::Sender;
 use futures03::channel::oneshot::channel;
 
-use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
-use graph::components::store::{EnsLookup, SubgraphFork};
-use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
-use graph::data_source::{
+use crate::blockchain::{Blockchain, HostFn, RuntimeAdapter};
+use crate::components::store::{EnsLookup, SubgraphFork};
+use crate::components::subgraph::{MappingError, SharedProofOfIndexing};
+use crate::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
-use graph::prelude::{
+use crate::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
-use crate::mapping::{MappingContext, WasmRequest};
-use crate::module::ToAscPtr;
-use crate::{host_exports::HostExports, module::ExperimentalFeatures};
-use graph::runtime::gas::Gas;
+use crate::runtime::gas::Gas;
+use crate::runtime::mapping::{MappingContext, WasmRequest};
+use crate::runtime::module::ToAscPtr;
+use crate::runtime::{host_exports::HostExports, module::ExperimentalFeatures};
+
+use super::host_exports::DataSourceDetails;
 
 pub struct RuntimeHostBuilder<C: Blockchain> {
     runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
@@ -66,7 +68,7 @@ where
         let experimental_features = ExperimentalFeatures {
             allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
         };
-        crate::mapping::spawn_module(
+        crate::runtime::mapping::spawn_module(
             raw_module,
             logger,
             subgraph_id,
@@ -104,7 +106,7 @@ pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
     data_source: DataSource<C>,
     mapping_request_sender: Sender<WasmRequest<C>>,
-    host_exports: Arc<HostExports<C>>,
+    host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
 }
 
@@ -123,13 +125,17 @@ where
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
+        let ds_details = DataSourceDetails::from_data_source(
+            &data_source,
+            Arc::new(templates.iter().map(|t| t.into()).collect()),
+        );
+
         // Create new instance of externally hosted functions invoker. The `Arc` is simply to avoid
         // implementing `Clone` for `HostExports`.
         let host_exports = Arc::new(HostExports::new(
             subgraph_id,
-            &data_source,
             network_name,
-            templates,
+            ds_details,
             link_resolver,
             ens_lookup,
         ));
@@ -154,13 +160,13 @@ where
     async fn send_mapping_request(
         &self,
         logger: &Logger,
-        state: BlockState<C>,
+        state: BlockState,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
         block_ptr: BlockPtr,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let handler = trigger.handler_name().to_string();
 
         let extras = trigger.logging_extras();
@@ -221,14 +227,14 @@ where
     async fn send_wasm_block_request(
         &self,
         logger: &Logger,
-        state: BlockState<C>,
+        state: BlockState,
         block_ptr: BlockPtr,
         block_data: Box<[u8]>,
         handler: String,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         trace!(
             logger, "Start processing wasm block";
             "block_ptr" => &block_ptr,
@@ -306,11 +312,11 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         block_ptr: BlockPtr,
         block_data: Box<[u8]>,
         handler: String,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         self.send_wasm_block_request(
             logger,
             state,
@@ -329,11 +335,11 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         logger: &Logger,
         block_ptr: BlockPtr,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
-        state: BlockState<C>,
+        state: BlockState,
         proof_of_indexing: SharedProofOfIndexing,
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         self.send_mapping_request(
             logger,
             state,

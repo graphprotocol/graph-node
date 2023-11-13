@@ -7,6 +7,7 @@ use atomic_refcell::AtomicRefCell;
 use graph::blockchain::block_stream::{BlockStreamEvent, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::{Block, Blockchain, DataSource as _, TriggerFilter as _};
 use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
+use graph::components::subgraph::InstanceDSTemplate;
 use graph::components::{
     store::ModificationsAndCache,
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
@@ -17,7 +18,7 @@ use graph::data::subgraph::{
     SubgraphFeature,
 };
 use graph::data_source::{
-    offchain, CausalityRegion, DataSource, DataSourceCreationError, DataSourceTemplate, TriggerData,
+    offchain, CausalityRegion, DataSource, DataSourceCreationError, TriggerData,
 };
 use graph::env::EnvVars;
 use graph::prelude::*;
@@ -609,7 +610,7 @@ where
         block: &Arc<C::Block>,
         triggers: impl Iterator<Item = TriggerData<C>>,
         causality_region: &str,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let mut block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
@@ -647,7 +648,7 @@ where
         block_data: Box<[u8]>,
         handler: String,
         causality_region: &str,
-    ) -> Result<BlockState<C>, MappingError> {
+    ) -> Result<BlockState, MappingError> {
         let block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
@@ -671,20 +672,34 @@ where
 
     fn create_dynamic_data_sources(
         &mut self,
-        created_data_sources: Vec<DataSourceTemplateInfo<C>>,
+        created_data_sources: Vec<InstanceDSTemplateInfo>,
     ) -> Result<(Vec<DataSource<C>>, Vec<Arc<T::Host>>), Error> {
         let mut data_sources = vec![];
         let mut runtime_hosts = vec![];
 
         for info in created_data_sources {
-            // Try to instantiate a data source from the template
+            let manifest_idx = info
+                .template
+                .manifest_idx()
+                .ok_or_else(|| anyhow!("Expected template to have an idx"))?;
+            let created_ds_template = self
+                .inputs
+                .templates
+                .iter()
+                .find(|t| t.manifest_idx() == manifest_idx)
+                .ok_or_else(|| {
+                    anyhow!("Expected to find a template for this dynamic data source")
+                })?;
 
+            // Try to instantiate a data source from the template
             let data_source = {
                 let res = match info.template {
-                    DataSourceTemplate::Onchain(_) => C::DataSource::from_template_info(info)
-                        .map(DataSource::Onchain)
-                        .map_err(DataSourceCreationError::from),
-                    DataSourceTemplate::Offchain(_) => offchain::DataSource::from_template_info(
+                    InstanceDSTemplate::Onchain(_) => {
+                        C::DataSource::from_template_info(info, created_ds_template)
+                            .map(DataSource::Onchain)
+                            .map_err(DataSourceCreationError::from)
+                    }
+                    InstanceDSTemplate::Offchain(_) => offchain::DataSource::from_template_info(
                         info,
                         self.ctx.causality_region_next_value(),
                     )
@@ -868,7 +883,7 @@ where
 
     fn persist_dynamic_data_sources(
         &mut self,
-        block_state: &mut BlockState<C>,
+        block_state: &mut BlockState,
         data_sources: Vec<DataSource<C>>,
     ) {
         if !data_sources.is_empty() {
@@ -961,7 +976,7 @@ where
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
             // get causality region isolation.
             let schema = ReadStore::input_schema(&self.inputs.store);
-            let mut block_state = BlockState::<C>::new(EmptyStore::new(schema), LfuCache::new());
+            let mut block_state = BlockState::new(EmptyStore::new(schema), LfuCache::new());
 
             // PoI ignores offchain events.
             // See also: poi-ignores-offchain

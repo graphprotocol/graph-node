@@ -22,7 +22,7 @@ services:
       ethereum: 'mainnet:http://host.docker.internal:8545'
       GRAPH_LOG: info
   ipfs:
-    image: ipfs/kubo:v0.14.0
+    image: ipfs/kubo:v0.17.0
     ports:
       - '5001:5001'
     volumes:

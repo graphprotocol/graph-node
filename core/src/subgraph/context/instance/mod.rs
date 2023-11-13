@@ -139,7 +139,9 @@ where
         }
 
         let is_onchain = data_source.is_onchain();
-        let Some(host) = self.new_host(logger.clone(), data_source)? else { return Ok(None) };
+        let Some(host) = self.new_host(logger.clone(), data_source)? else {
+            return Ok(None);
+        };
 
         // Check for duplicates and add the host.
         if is_onchain {

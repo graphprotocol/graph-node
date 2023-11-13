@@ -2,8 +2,9 @@ use anyhow::anyhow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
+use wasmtime::{AsContext, StoreContext, StoreContextMut};
 
-use graph::{
+use crate::{
     data::value::Word,
     runtime::{
         asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
@@ -11,7 +12,9 @@ use graph::{
     },
 };
 
-use crate::asc_abi::class::*;
+use crate::runtime::asc_abi::class::*;
+
+use super::WasmInstanceContext;
 
 ///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.
@@ -20,32 +23,35 @@ mod external;
 impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<TypedArray<T>, HostExportError> {
-        TypedArray::new(self, heap, gas)
+        TypedArray::new(store, self, heap, gas)
     }
 }
 
 impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: TypedArray<T>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        typed_array.to_vec(heap, gas)
+        typed_array.to_vec(store, heap, gas)
     }
 }
 
 impl<T: AscValue + Send + Sync, const LEN: usize> FromAscObj<TypedArray<T>> for [T; LEN] {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: TypedArray<T>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         _depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let v = typed_array.to_vec(heap, gas)?;
+        let v = typed_array.to_vec(store, heap, gas)?;
         let array = <[T; LEN]>::try_from(v)
             .map_err(|v| anyhow!("expected array of length {}, found length {}", LEN, v.len()))?;
         Ok(array)
@@ -55,12 +61,13 @@ impl<T: AscValue + Send + Sync, const LEN: usize> FromAscObj<TypedArray<T>> for 
 impl ToAscObj<AscString> for str {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
         Ok(AscString::new(
             &self.encode_utf16().collect::<Vec<_>>(),
-            heap.api_version(),
+            heap.api_version(&store.as_context()),
         )?)
     }
 }
@@ -68,12 +75,13 @@ impl ToAscObj<AscString> for str {
 impl ToAscObj<AscString> for &str {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
         Ok(AscString::new(
             &self.encode_utf16().collect::<Vec<_>>(),
-            heap.api_version(),
+            heap.api_version(&store.as_context()),
         )?)
     }
 }
@@ -81,26 +89,29 @@ impl ToAscObj<AscString> for &str {
 impl ToAscObj<AscString> for String {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
-        self.as_str().to_asc_obj(heap, gas)
+        self.as_str().to_asc_obj(store, heap, gas)
     }
 }
 
 impl ToAscObj<AscString> for Word {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscString, HostExportError> {
-        self.as_str().to_asc_obj(heap, gas)
+        self.as_str().to_asc_obj(store, heap, gas)
     }
 }
 
 impl FromAscObj<AscString> for String {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_string: AscString,
+        _store: &StoreContext<WasmInstanceContext>,
         _: &H,
         _gas: &GasCounter,
         _depth: usize,
@@ -119,11 +130,12 @@ impl FromAscObj<AscString> for String {
 impl FromAscObj<AscString> for Word {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_string: AscString,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let string = String::from_asc_obj(asc_string, heap, gas, depth)?;
+        let string = String::from_asc_obj(asc_string, store, heap, gas, depth)?;
 
         Ok(Word::from(string))
     }
@@ -132,26 +144,29 @@ impl FromAscObj<AscString> for Word {
 impl<C: AscType + AscIndexId, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Array<AscPtr<C>>, HostExportError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> =
+            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
         let content = content?;
-        Array::new(&content, heap, gas)
+        Array::new(store, &content, heap, gas)
     }
 }
 
 impl<C: AscType + AscIndexId, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         array: Array<AscPtr<C>>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         array
-            .to_vec(heap, gas)?
+            .to_vec(store, heap, gas)?
             .into_iter()
-            .map(|x| asc_get(heap, x, gas, depth))
+            .map(|x| asc_get(store, heap, x, gas, depth))
             .collect()
     }
 }
@@ -161,13 +176,14 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: FromAscObj<K>, U: From
 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_entry: AscTypedMapEntry<K, V>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         Ok((
-            asc_get(heap, asc_entry.key, gas, depth)?,
-            asc_get(heap, asc_entry.value, gas, depth)?,
+            asc_get(store, heap, asc_entry.key, gas, depth)?,
+            asc_get(store, heap, asc_entry.value, gas, depth)?,
         ))
     }
 }
@@ -177,12 +193,13 @@ impl<K: AscType + AscIndexId, V: AscType + AscIndexId, T: ToAscObj<K>, U: ToAscO
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscTypedMapEntry<K, V>, HostExportError> {
         Ok(AscTypedMapEntry {
-            key: asc_new(heap, &self.0, gas)?,
-            value: asc_new(heap, &self.1, gas)?,
+            key: asc_new(store, heap, &self.0, gas)?,
+            value: asc_new(store, heap, &self.1, gas)?,
         })
     }
 }
@@ -199,11 +216,12 @@ where
 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_map: AscTypedMap<K, V>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let entries: Vec<(T, U)> = asc_get(heap, asc_map.entries, gas, depth)?;
+        let entries: Vec<(T, U)> = asc_get(store, heap, asc_map.entries, gas, depth)?;
         Ok(HashMap::from_iter(entries.into_iter()))
     }
 }

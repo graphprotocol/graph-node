@@ -5,13 +5,12 @@ edition.workspace = true
 
 [dependencies]
 anyhow = "1.0"
-async-trait = "0.1.50"
+async-trait = "0.1.74"
 async-stream = "0.3"
 atomic_refcell = "0.1.13"
 bigdecimal = { version = "0.1.0", features = ["serde"] }
 bytes = "1.0.1"
 cid = "0.11.0"
-defer = "0.1"
 diesel = { version = "1.4.8", features = ["postgres", "serde_json", "numeric", "r2d2", "chrono"] }
 diesel_derives = "1.4"
 chrono = "0.4.31"
@@ -22,7 +21,8 @@ reqwest = { version = "0.11.18", features = ["json", "stream", "multipart"] }
 ethabi = "17.2"
 hex = "0.4.3"
 http = "0.2.3"
-futures = "0.1.21"
+futures = { package = "futures", version = "0.1.31" }
+lru_time_cache = "0.11"
 graphql-parser = "0.4.0"
 humantime = "2.1.0"
 lazy_static = "1.4.0"
@@ -62,10 +62,22 @@ prost = { workspace = true }
 prost-types = { workspace = true }
 
 futures03 = { version = "0.3.1", package = "futures", features = ["compat"] }
-wasmparser = "0.78.2"
+wasmparser = "0.118.1"
 thiserror = "1.0.25"
 parking_lot = "0.12.1"
 itertools = "0.12.0"
+
+# Wasm runtime deps
+wasmtime.workspace = true
+graph-runtime-derive.path = "../runtime/derive" 
+wasm-instrument = { version = "0.2.0", features = ["std", "sign_ext"] }
+uuid = { version = "1.4.1", features = ["v4"] }
+never = "0.1"
+bs58 = "0.4.0"
+defer = "0.1"
+
+# AssemblyScript uses sign extensions
+parity-wasm = { version = "0.45", features = ["std", "sign_ext"] }
 
 # Our fork contains patches to make some fields optional for Celo and Fantom compatibility.
 # Without the "arbitrary_precision" feature, we get the error `data did not match any variant of untagged enum Response`.

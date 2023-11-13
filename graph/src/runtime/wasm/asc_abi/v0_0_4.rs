@@ -1,15 +1,20 @@
-use graph::runtime::gas::GasCounter;
+use crate::runtime::gas::GasCounter;
 use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
 use anyhow::anyhow;
 use semver::Version;
+use wasmtime::{AsContext, StoreContext, StoreContextMut};
 
-use graph::runtime::{AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError};
+use crate::runtime::{
+    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError,
+    WasmInstanceContext,
+};
 use graph_runtime_derive::AscType;
 
-use crate::asc_abi::class;
+use crate as graph;
+use crate::runtime::asc_abi::class;
 
 /// Module related to AssemblyScript version v0.6.
 
@@ -123,11 +128,12 @@ impl AscType for ArrayBuffer {
     }
 
     fn asc_size<H: AscHeap + ?Sized>(
+        store: &StoreContext<WasmInstanceContext>,
         ptr: AscPtr<Self>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        let byte_length = ptr.read_u32(heap, gas)?;
+        let byte_length = ptr.read_u32(&store, heap, gas)?;
         let byte_length_size = size_of::<u32>() as u32;
         let padding_size = size_of::<u32>() as u32;
         Ok(byte_length_size + padding_size + byte_length)
@@ -150,17 +156,18 @@ pub struct TypedArray<T> {
 
 impl<T: AscValue> TypedArray<T> {
     pub(crate) fn new<H: AscHeap + ?Sized>(
+        store: &mut StoreContextMut<WasmInstanceContext>,
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
-        let buffer = class::ArrayBuffer::new(content, heap.api_version())?;
+        let buffer = class::ArrayBuffer::new(content, heap.api_version(&store.as_context()))?;
         let buffer_byte_length = if let class::ArrayBuffer::ApiVersion0_0_4(ref a) = buffer {
             a.byte_length
         } else {
             unreachable!("Only the correct ArrayBuffer will be constructed")
         };
-        let ptr = AscPtr::alloc_obj(buffer, heap, gas)?;
+        let ptr = AscPtr::alloc_obj(store, buffer, heap, gas)?;
         Ok(TypedArray {
             byte_length: buffer_byte_length,
             buffer: AscPtr::new(ptr.wasm_ptr()),
@@ -171,13 +178,14 @@ impl<T: AscValue> TypedArray<T> {
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
-        self.buffer.read_ptr(heap, gas)?.get(
+        self.buffer.read_ptr(&store, heap, gas)?.get(
             self.byte_offset,
             self.byte_length / size_of::<T>() as u32,
-            heap.api_version(),
+            heap.api_version(&store),
         )
     }
 }
@@ -277,11 +285,12 @@ impl AscType for AscString {
     }
 
     fn asc_size<H: AscHeap + ?Sized>(
+        store: &StoreContext<WasmInstanceContext>,
         ptr: AscPtr<Self>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
-        let length = ptr.read_u32(heap, gas)?;
+        let length = ptr.read_u32(&store, heap, gas)?;
         let length_size = size_of::<u32>() as u32;
         let code_point_size = size_of::<u16>() as u32;
         let data_size = code_point_size.checked_mul(length);
@@ -304,12 +313,13 @@ pub struct Array<T> {
 
 impl<T: AscValue> Array<T> {
     pub fn new<H: AscHeap + ?Sized>(
+        store: &mut StoreContextMut<WasmInstanceContext>,
         content: &[T],
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Self, HostExportError> {
-        let arr_buffer = class::ArrayBuffer::new(content, heap.api_version())?;
-        let arr_buffer_ptr = AscPtr::alloc_obj(arr_buffer, heap, gas)?;
+        let arr_buffer = class::ArrayBuffer::new(content, heap.api_version(&store.as_context()))?;
+        let arr_buffer_ptr = AscPtr::alloc_obj(store, arr_buffer, heap, gas)?;
         Ok(Array {
             buffer: AscPtr::new(arr_buffer_ptr.wasm_ptr()),
             // If this cast would overflow, the above line has already panicked.
@@ -320,11 +330,12 @@ impl<T: AscValue> Array<T> {
 
     pub(crate) fn to_vec<H: AscHeap + ?Sized>(
         &self,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<Vec<T>, DeterministicHostError> {
         self.buffer
-            .read_ptr(heap, gas)?
-            .get(0, self.length, heap.api_version())
+            .read_ptr(&store, heap, gas)?
+            .get(0, self.length, heap.api_version(&store))
     }
 }

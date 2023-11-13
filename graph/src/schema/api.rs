@@ -1120,7 +1120,7 @@ fn add_field_arguments(
                     // Get corresponding object type and field in the output schema
                     let object_type = ast::get_object_type_mut(schema, &input_object_type.name)
                         .expect("object type from input schema is missing in API schema");
-                    let mut field = object_type
+                    let field = object_type
                         .fields
                         .iter_mut()
                         .find(|field| field.name == input_field.name)
@@ -1152,7 +1152,7 @@ fn add_field_arguments(
                     let interface_type =
                         ast::get_interface_type_mut(schema, &input_interface_type.name)
                             .expect("interface type from input schema is missing in API schema");
-                    let mut field = interface_type
+                    let field = interface_type
                         .fields
                         .iter_mut()
                         .find(|field| field.name == input_field.name)

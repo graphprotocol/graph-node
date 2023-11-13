@@ -14,7 +14,6 @@ prost-types = { workspace = true }
 serde = "1.0"
 anyhow = "1"
 
-graph-runtime-wasm = { path = "../../runtime/wasm" }
 graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]

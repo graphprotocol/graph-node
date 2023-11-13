@@ -65,7 +65,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
             let fld_name = f.ident.as_ref().unwrap();
             let self_ref =
                 if is_byte_array(f){
-                    quote! { graph_runtime_wasm::asc_abi::class::Bytes(&self.#fld_name) }
+                    quote! { graph::runtime::asc_abi::class::Bytes(&self.#fld_name) }
                 }else{
                     quote!{ self.#fld_name }
                 };
@@ -79,11 +79,11 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                         let fld_nm = format!("\"{}\"", fld_name).parse::<proc_macro2::TokenStream>().unwrap();
 
                         quote! {
-                            #fld_name: graph::runtime::asc_new_or_missing(heap, &#self_ref, gas, #type_nm, #fld_nm)?,
+                            #fld_name: graph::runtime::asc_new_or_missing(&mut store, heap, &#self_ref, gas, #type_nm, #fld_nm)?,
                         }
                     }else{
                         quote! {
-                            #fld_name: graph::runtime::asc_new_or_null(heap, &#self_ref, gas)?,
+                            #fld_name: graph::runtime::asc_new_or_null(&mut store, heap, &#self_ref, gas)?,
                         }
                     }
                 } else if is_scalar(&field_type(f)){
@@ -92,7 +92,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                     }
                 }else{
                     quote! {
-                        #fld_name: graph::runtime::asc_new(heap, &#self_ref, gas)?,
+                        #fld_name: graph::runtime::asc_new(&mut store, heap, &#self_ref, gas)?,
                     }
                 };
             setter
@@ -121,11 +121,11 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
 
             if is_byte_array(f){
                     quote! {
-                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, &graph_runtime_wasm::asc_abi::class::Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
+                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(&mut store, heap, &graph::runtime::asc_abi::class::Bytes(v), gas)? } else {graph::runtime::AscPtr::null()},
                     }
                 }else{
                     quote! {
-                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(heap, v, gas)? } else {graph::runtime::AscPtr::null()},
+                        #fld_nm: if let #varian_type_name(v) = #var_nm {graph::runtime::asc_new(&mut store, heap, v, gas)? } else {graph::runtime::AscPtr::null()},
                     }
                 }
         })
@@ -146,6 +146,7 @@ pub fn generate_from_rust_type(metadata: TokenStream, input: TokenStream) -> Tok
                 #[allow(unused_variables)]
                 fn to_asc_obj<H: graph::runtime::AscHeap + ?Sized>(
                     &self,
+                    mut store: &mut graph::wasmtime::StoreContextMut<graph::runtime::WasmInstanceContext>,
                     heap: &mut H,
                     gas: &graph::runtime::gas::GasCounter,
                 ) -> Result<#asc_name, graph::runtime::HostExportError> {

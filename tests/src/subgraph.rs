@@ -52,6 +52,14 @@ impl Subgraph {
 
         Self::patch(&dir, contracts).await?;
 
+        // graph codegen subgraph.yaml
+        let mut prog = Command::new(&CONFIG.graph_cli);
+        let cmd = prog
+            .arg("codegen")
+            .arg("subgraph.yaml.patched")
+            .current_dir(&dir.path);
+        run_checked(cmd).await?;
+
         // graph create --node <node> <name>
         let mut prog = Command::new(&CONFIG.graph_cli);
         let cmd = prog
@@ -60,15 +68,15 @@ impl Subgraph {
             .arg(CONFIG.graph_node.admin_uri())
             .arg(&name)
             .current_dir(&dir.path);
-        run_checked(cmd).await?;
 
-        // graph codegen subgraph.yaml
-        let mut prog = Command::new(&CONFIG.graph_cli);
-        let cmd = prog
-            .arg("codegen")
-            .arg("subgraph.yaml.patched")
-            .current_dir(&dir.path);
-        run_checked(cmd).await?;
+        for _ in 0..10 {
+            match run_checked(cmd).await {
+                Ok(_) => break,
+                Err(_) => {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
+        }
 
         // graph deploy --node <node> --version-label v0.0.1 --ipfs <ipfs> <name> subgraph.yaml
         let mut prog = Command::new(&CONFIG.graph_cli);

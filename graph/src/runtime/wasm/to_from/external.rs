@@ -1,35 +1,39 @@
 use ethabi;
+use wasmtime::{StoreContext, StoreContextMut};
 
-use graph::data::value::Word;
-use graph::prelude::{BigDecimal, BigInt};
-use graph::runtime::gas::GasCounter;
-use graph::runtime::{
+use crate::data::value::Word;
+use crate::prelude::{BigDecimal, BigInt};
+use crate::runtime::gas::GasCounter;
+use crate::runtime::{
     asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
+    WasmInstanceContext,
 };
-use graph::{data::store, runtime::DeterministicHostError};
-use graph::{prelude::serde_json, runtime::FromAscObj};
-use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use crate::{data::store, runtime::DeterministicHostError};
+use crate::{prelude::serde_json, runtime::FromAscObj};
+use crate::{prelude::web3::types as web3, runtime::AscHeap};
 
-use crate::asc_abi::class::*;
+use crate::runtime::asc_abi::class::*;
 
 impl ToAscObj<Uint8Array> for web3::H160 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
+        self.0.to_asc_obj(store, heap, gas)
     }
 }
 
 impl FromAscObj<Uint8Array> for web3::H160 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas, depth)?;
+        let data = <[u8; 20]>::from_asc_obj(typed_array, store, heap, gas, depth)?;
         Ok(Self(data))
     }
 }
@@ -37,11 +41,12 @@ impl FromAscObj<Uint8Array> for web3::H160 {
 impl FromAscObj<Uint8Array> for web3::H256 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
+        let data = <[u8; 32]>::from_asc_obj(typed_array, store, heap, gas, depth)?;
         Ok(Self(data))
     }
 }
@@ -49,44 +54,48 @@ impl FromAscObj<Uint8Array> for web3::H256 {
 impl ToAscObj<Uint8Array> for web3::H256 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas)
+        self.0.to_asc_obj(store, heap, gas)
     }
 }
 
 impl ToAscObj<AscBigInt> for web3::U128 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBigInt, HostExportError> {
         let mut bytes: [u8; 16] = [0; 16];
         self.to_little_endian(&mut bytes);
-        bytes.to_asc_obj(heap, gas)
+        bytes.to_asc_obj(store, heap, gas)
     }
 }
 
 impl ToAscObj<AscBigInt> for BigInt {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBigInt, HostExportError> {
         let bytes = self.to_signed_bytes_le();
-        bytes.to_asc_obj(heap, gas)
+        bytes.to_asc_obj(store, heap, gas)
     }
 }
 
 impl FromAscObj<AscBigInt> for BigInt {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         array_buffer: AscBigInt,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let bytes = <Vec<u8>>::from_asc_obj(array_buffer, heap, gas, depth)?;
+        let bytes = <Vec<u8>>::from_asc_obj(array_buffer, store, heap, gas, depth)?;
         Ok(BigInt::from_signed_bytes_le(&bytes)?)
     }
 }
@@ -94,6 +103,7 @@ impl FromAscObj<AscBigInt> for BigInt {
 impl ToAscObj<AscBigDecimal> for BigDecimal {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscBigDecimal, HostExportError> {
@@ -101,8 +111,8 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
         // so "exponent" is the opposite of what you'd expect.
         let (digits, negative_exp) = self.as_bigint_and_exponent();
         Ok(AscBigDecimal {
-            exp: asc_new(heap, &BigInt::from(-negative_exp), gas)?,
-            digits: asc_new(heap, &BigInt::new(digits)?, gas)?,
+            exp: asc_new(store, heap, &BigInt::from(-negative_exp), gas)?,
+            digits: asc_new(store, heap, &BigInt::new(digits)?, gas)?,
         })
     }
 }
@@ -110,12 +120,13 @@ impl ToAscObj<AscBigDecimal> for BigDecimal {
 impl FromAscObj<AscBigDecimal> for BigDecimal {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         big_decimal: AscBigDecimal,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        let digits: BigInt = asc_get(heap, big_decimal.digits, gas, depth)?;
-        let exp: BigInt = asc_get(heap, big_decimal.exp, gas, depth)?;
+        let digits: BigInt = asc_get(&store, heap, big_decimal.digits, gas, depth)?;
+        let exp: BigInt = asc_get(&store, heap, big_decimal.exp, gas, depth)?;
 
         let bytes = exp.to_signed_bytes_le();
         let mut byte_array = if exp >= 0.into() { [0; 8] } else { [255; 8] };
@@ -142,18 +153,21 @@ impl FromAscObj<AscBigDecimal> for BigDecimal {
 impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Array<AscPtr<AscString>>, HostExportError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, x, gas)).collect();
+        let content: Result<Vec<_>, _> =
+            self.iter().map(|x| asc_new(store, heap, x, gas)).collect();
         let content = content?;
-        Array::new(&content, heap, gas)
+        Array::new(store, &content, heap, gas)
     }
 }
 
 impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEnum<EthereumValueKind>, HostExportError> {
@@ -161,22 +175,26 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
 
         let kind = EthereumValueKind::get_kind(self);
         let payload = match self {
-            Address(address) => asc_new::<AscAddress, _, _>(heap, address, gas)?.to_payload(),
+            Address(address) => {
+                asc_new::<AscAddress, _, _>(store, heap, address, gas)?.to_payload()
+            }
             FixedBytes(bytes) | Bytes(bytes) => {
-                asc_new::<Uint8Array, _, _>(heap, &**bytes, gas)?.to_payload()
+                asc_new::<Uint8Array, _, _>(store, heap, &**bytes, gas)?.to_payload()
             }
             Int(uint) => {
                 let n = BigInt::from_signed_u256(uint);
-                asc_new(heap, &n, gas)?.to_payload()
+                asc_new(store, heap, &n, gas)?.to_payload()
             }
             Uint(uint) => {
                 let n = BigInt::from_unsigned_u256(uint);
-                asc_new(heap, &n, gas)?.to_payload()
+                asc_new(store, heap, &n, gas)?.to_payload()
             }
             Bool(b) => *b as u64,
-            String(string) => asc_new(heap, &**string, gas)?.to_payload(),
-            FixedArray(tokens) | Array(tokens) => asc_new(heap, &**tokens, gas)?.to_payload(),
-            Tuple(tokens) => asc_new(heap, &**tokens, gas)?.to_payload(),
+            String(string) => asc_new(store, heap, &**string, gas)?.to_payload(),
+            FixedArray(tokens) | Array(tokens) => {
+                asc_new(store, heap, &**tokens, gas)?.to_payload()
+            }
+            Tuple(tokens) => asc_new(store, heap, &**tokens, gas)?.to_payload(),
         };
 
         Ok(AscEnum {
@@ -190,6 +208,7 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
 impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_enum: AscEnum<EthereumValueKind>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
@@ -201,41 +220,41 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             EthereumValueKind::Bool => Token::Bool(bool::from(payload)),
             EthereumValueKind::Address => {
                 let ptr: AscPtr<AscAddress> = AscPtr::from(payload);
-                Token::Address(asc_get(heap, ptr, gas, depth)?)
+                Token::Address(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::FixedBytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::FixedBytes(asc_get(heap, ptr, gas, depth)?)
+                Token::FixedBytes(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Bytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::Bytes(asc_get(heap, ptr, gas, depth)?)
+                Token::Bytes(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = asc_get(heap, ptr, gas, depth)?;
+                let n: BigInt = asc_get(&store, heap, ptr, gas, depth)?;
                 Token::Int(n.to_signed_u256())
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let n: BigInt = asc_get(heap, ptr, gas, depth)?;
+                let n: BigInt = asc_get(&store, heap, ptr, gas, depth)?;
                 Token::Uint(n.to_unsigned_u256())
             }
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Token::String(asc_get(heap, ptr, gas, depth)?)
+                Token::String(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::FixedArray => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::FixedArray(asc_get(heap, ptr, gas, depth)?)
+                Token::FixedArray(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Array => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Array(asc_get(heap, ptr, gas, depth)?)
+                Token::Array(asc_get(&store, heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Tuple => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Tuple(asc_get(heap, ptr, gas, depth)?)
+                Token::Tuple(asc_get(&store, heap, ptr, gas, depth)?)
             }
         })
     }
@@ -244,6 +263,7 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
 impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_enum: AscEnum<StoreValueKind>,
+        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
@@ -254,28 +274,28 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
         Ok(match asc_enum.kind {
             StoreValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Value::String(asc_get(heap, ptr, gas, depth)?)
+                Value::String(asc_get(&store, heap, ptr, gas, depth)?)
             }
             StoreValueKind::Int => Value::Int(i32::from(payload)),
             StoreValueKind::Int8 => Value::Int8(i64::from(payload)),
             StoreValueKind::BigDecimal => {
                 let ptr: AscPtr<AscBigDecimal> = AscPtr::from(payload);
-                Value::BigDecimal(asc_get(heap, ptr, gas, depth)?)
+                Value::BigDecimal(asc_get(&store, heap, ptr, gas, depth)?)
             }
             StoreValueKind::Bool => Value::Bool(bool::from(payload)),
             StoreValueKind::Array => {
                 let ptr: AscEnumArray<StoreValueKind> = AscPtr::from(payload);
-                Value::List(asc_get(heap, ptr, gas, depth)?)
+                Value::List(asc_get(&store, heap, ptr, gas, depth)?)
             }
             StoreValueKind::Null => Value::Null,
             StoreValueKind::Bytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                let array: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
+                let array: Vec<u8> = asc_get(&store, heap, ptr, gas, depth)?;
                 Value::Bytes(array.as_slice().into())
             }
             StoreValueKind::BigInt => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
-                let array: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
+                let array: Vec<u8> = asc_get(&store, heap, ptr, gas, depth)?;
                 Value::BigInt(store::scalar::BigInt::from_signed_bytes_le(&array)?)
             }
         })
@@ -285,26 +305,27 @@ impl FromAscObj<AscEnum<StoreValueKind>> for store::Value {
 impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEnum<StoreValueKind>, HostExportError> {
         use self::store::Value;
 
         let payload = match self {
-            Value::String(string) => asc_new(heap, string.as_str(), gas)?.into(),
+            Value::String(string) => asc_new(store, heap, string.as_str(), gas)?.into(),
             Value::Int(n) => EnumPayload::from(*n),
             Value::Int8(n) => EnumPayload::from(*n),
-            Value::BigDecimal(n) => asc_new(heap, n, gas)?.into(),
+            Value::BigDecimal(n) => asc_new(store, heap, n, gas)?.into(),
             Value::Bool(b) => EnumPayload::from(*b),
-            Value::List(array) => asc_new(heap, array.as_slice(), gas)?.into(),
+            Value::List(array) => asc_new(store, heap, array.as_slice(), gas)?.into(),
             Value::Null => EnumPayload(0),
             Value::Bytes(bytes) => {
-                let bytes_obj: AscPtr<Uint8Array> = asc_new(heap, bytes.as_slice(), gas)?;
+                let bytes_obj: AscPtr<Uint8Array> = asc_new(store, heap, bytes.as_slice(), gas)?;
                 bytes_obj.into()
             }
             Value::BigInt(big_int) => {
                 let bytes_obj: AscPtr<Uint8Array> =
-                    asc_new(heap, &*big_int.to_signed_bytes_le(), gas)?;
+                    asc_new(store, heap, &*big_int.to_signed_bytes_le(), gas)?;
                 bytes_obj.into()
             }
         };
@@ -320,11 +341,12 @@ impl ToAscObj<AscEnum<StoreValueKind>> for store::Value {
 impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscJson, HostExportError> {
         Ok(AscTypedMap {
-            entries: asc_new(heap, &*self.iter().collect::<Vec<_>>(), gas)?,
+            entries: asc_new(store, heap, &*self.iter().collect::<Vec<_>>(), gas)?,
         })
     }
 }
@@ -333,11 +355,12 @@ impl ToAscObj<AscJson> for serde_json::Map<String, serde_json::Value> {
 impl ToAscObj<AscEntity> for Vec<(Word, store::Value)> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEntity, HostExportError> {
         Ok(AscTypedMap {
-            entries: asc_new(heap, self.as_slice(), gas)?,
+            entries: asc_new(store, heap, self.as_slice(), gas)?,
         })
     }
 }
@@ -345,11 +368,12 @@ impl ToAscObj<AscEntity> for Vec<(Word, store::Value)> {
 impl ToAscObj<AscEntity> for Vec<(&str, &store::Value)> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEntity, HostExportError> {
         Ok(AscTypedMap {
-            entries: asc_new(heap, self.as_slice(), gas)?,
+            entries: asc_new(store, heap, self.as_slice(), gas)?,
         })
     }
 }
@@ -357,18 +381,21 @@ impl ToAscObj<AscEntity> for Vec<(&str, &store::Value)> {
 impl ToAscObj<Array<AscPtr<AscEntity>>> for Vec<Vec<(Word, store::Value)>> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<Array<AscPtr<AscEntity>>, HostExportError> {
-        let content: Result<Vec<_>, _> = self.iter().map(|x| asc_new(heap, &x, gas)).collect();
+        let content: Result<Vec<_>, _> =
+            self.iter().map(|x| asc_new(store, heap, &x, gas)).collect();
         let content = content?;
-        Array::new(&content, heap, gas)
+        Array::new(store, &content, heap, gas)
     }
 }
 
 impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEnum<JsonValueKind>, HostExportError> {
@@ -377,10 +404,10 @@ impl ToAscObj<AscEnum<JsonValueKind>> for serde_json::Value {
         let payload = match self {
             Value::Null => EnumPayload(0),
             Value::Bool(b) => EnumPayload::from(*b),
-            Value::Number(number) => asc_new(heap, &*number.to_string(), gas)?.into(),
-            Value::String(string) => asc_new(heap, string.as_str(), gas)?.into(),
-            Value::Array(array) => asc_new(heap, array.as_slice(), gas)?.into(),
-            Value::Object(object) => asc_new(heap, object, gas)?.into(),
+            Value::Number(number) => asc_new(store, heap, &*number.to_string(), gas)?.into(),
+            Value::String(string) => asc_new(store, heap, string.as_str(), gas)?.into(),
+            Value::Array(array) => asc_new(store, heap, array.as_slice(), gas)?.into(),
+            Value::Object(object) => asc_new(store, heap, object, gas)?.into(),
         };
 
         Ok(AscEnum {
@@ -407,6 +434,7 @@ impl From<u32> for LogLevel {
 impl<T: AscValue> ToAscObj<AscWrapped<T>> for AscWrapped<T> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<AscWrapped<T>, HostExportError> {
@@ -422,15 +450,16 @@ where
 {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscResult<AscPtr<VAsc>, bool>, HostExportError> {
         Ok(match self {
             Ok(value) => AscResult {
                 value: {
-                    let inner = asc_new(heap, value, gas)?;
+                    let inner = asc_new(store, heap, value, gas)?;
                     let wrapped = AscWrapped { inner };
-                    asc_new(heap, &wrapped, gas)?
+                    asc_new(store, heap, &wrapped, gas)?
                 },
                 error: AscPtr::null(),
             },
@@ -438,7 +467,7 @@ where
                 value: AscPtr::null(),
                 error: {
                     let wrapped = AscWrapped { inner: true };
-                    asc_new(heap, &wrapped, gas)?
+                    asc_new(store, heap, &wrapped, gas)?
                 },
             },
         })

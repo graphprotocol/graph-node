@@ -3,9 +3,10 @@ use std::{cmp::Ordering, sync::Arc};
 use graph::blockchain::{Block, BlockHash, MappingTriggerTrait, TriggerData};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::{BlockNumber, Error};
-use graph::runtime::HostExportError;
+use graph::runtime::wasm::module::ToAscPtr;
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
-use graph_runtime_wasm::module::ToAscPtr;
+use graph::runtime::{HostExportError, WasmInstanceContext};
+use graph::wasmtime::StoreContextMut;
 
 use crate::codec;
 use crate::data_source::EventOrigin;
@@ -41,19 +42,20 @@ impl std::fmt::Debug for CosmosTrigger {
 impl ToAscPtr for CosmosTrigger {
     fn to_asc_ptr<H: AscHeap>(
         self,
+        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         Ok(match self {
-            CosmosTrigger::Block(block) => asc_new(heap, block.as_ref(), gas)?.erase(),
+            CosmosTrigger::Block(block) => asc_new(store, heap, block.as_ref(), gas)?.erase(),
             CosmosTrigger::Event { event_data, .. } => {
-                asc_new(heap, event_data.as_ref(), gas)?.erase()
+                asc_new(store, heap, event_data.as_ref(), gas)?.erase()
             }
             CosmosTrigger::Transaction(transaction_data) => {
-                asc_new(heap, transaction_data.as_ref(), gas)?.erase()
+                asc_new(store, heap, transaction_data.as_ref(), gas)?.erase()
             }
             CosmosTrigger::Message(message_data) => {
-                asc_new(heap, message_data.as_ref(), gas)?.erase()
+                asc_new(store, heap, message_data.as_ref(), gas)?.erase()
             }
         })
     }
