@@ -8,7 +8,10 @@ use graph::data::graphql::{object, ObjectOrInterface};
 use graph::data::query::{CacheStatus, Trace};
 use graph::data::value::{Object, Word};
 use graph::prelude::*;
-use graph::schema::{ast as sast, ApiSchema, META_FIELD_TYPE, META_FIELD_NAME, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME};
+use graph::schema::{
+    ast as sast, ApiSchema, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME,
+    META_FIELD_NAME, META_FIELD_TYPE,
+};
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
 use crate::execution::{ast as a, Query};
@@ -397,7 +400,8 @@ impl Resolver for StoreResolver {
                         meta_fields.push((Word::from(META_FIELD_NAME), meta_field));
                     }
                     if let Some(schema_field) = schema_field {
-                        meta_fields.push((Word::from(INTROSPECTION_SCHEMA_FIELD_NAME), schema_field));
+                        meta_fields
+                            .push((Word::from(INTROSPECTION_SCHEMA_FIELD_NAME), schema_field));
                     }
                     if let Some(type_field) = type_field {
                         meta_fields.push((Word::from(INTROSPECTION_TYPE_FIELD_NAME), type_field));
