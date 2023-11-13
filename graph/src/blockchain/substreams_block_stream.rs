@@ -4,10 +4,11 @@ use crate::blockchain::block_stream::{BlockStream, BlockStreamEvent};
 use crate::blockchain::Blockchain;
 use crate::prelude::*;
 use crate::substreams::Modules;
-use crate::substreams_rpc::{Request, Response};
+use crate::substreams_rpc::{ModulesProgress, Request, Response};
 use crate::util::backoff::ExponentialBackoff;
 use async_stream::try_stream;
 use futures03::{Stream, StreamExt};
+use humantime::format_duration;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -178,6 +179,8 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
     #[allow(unused_assignments)]
     let mut skip_backoff = false;
 
+    let mut log_data = SubstreamsLogData::new();
+
     try_stream! {
             let endpoint = client.firehose_endpoint()?;
             let mut logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
@@ -225,6 +228,7 @@ fn stream_blocks<C: Blockchain, F: SubstreamsMapper<C>>(
                             response,
                             mapper.as_ref(),
                             &mut logger,
+                            &mut log_data,
                         ).await {
                             Ok(block_response) => {
                                 match block_response {
@@ -289,6 +293,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     result: Result<Response, Status>,
     mapper: &F,
     logger: &mut Logger,
+    log_data: &mut SubstreamsLogData,
 ) -> Result<Option<BlockResponse<C>>, Error> {
     let response = match result {
         Ok(v) => v,
@@ -296,7 +301,7 @@ async fn process_substreams_response<C: Blockchain, F: SubstreamsMapper<C>>(
     };
 
     match mapper
-        .to_block_stream_event(logger, response.message)
+        .to_block_stream_event(logger, response.message, log_data)
         .await
         .context("Mapping message to BlockStreamEvent failed")?
     {
@@ -324,5 +329,86 @@ impl<C: Blockchain> Stream for SubstreamsBlockStream<C> {
 impl<C: Blockchain> BlockStream<C> for SubstreamsBlockStream<C> {
     fn buffer_size_hint(&self) -> usize {
         SUBSTREAMS_BUFFER_STREAM_SIZE
+    }
+}
+
+pub struct SubstreamsLogData {
+    pub last_progress: Instant,
+    pub last_seen_block: u64,
+    pub trace_id: String,
+}
+
+impl SubstreamsLogData {
+    fn new() -> SubstreamsLogData {
+        SubstreamsLogData {
+            last_progress: Instant::now(),
+            last_seen_block: 0,
+            trace_id: "".to_string(),
+        }
+    }
+    pub fn info_string(&self, progress: &ModulesProgress) -> String {
+        format!(
+            "Substreams backend graph_out last block is {}, {} stages, {} jobs",
+            self.last_seen_block,
+            progress.stages.len(),
+            progress.running_jobs.len()
+        )
+    }
+    pub fn debug_string(&self, progress: &ModulesProgress) -> String {
+        let len = progress.stages.len();
+        let mut stages_str = "".to_string();
+        for i in (0..len).rev() {
+            let stage = &progress.stages[i];
+            let range = if stage.completed_ranges.len() > 0 {
+                let b = stage.completed_ranges.iter().map(|x| x.end_block).min();
+                format!(" up to {}", b.unwrap_or(0))
+            } else {
+                "".to_string()
+            };
+            let mlen = stage.modules.len();
+            let module = if mlen == 0 {
+                "".to_string()
+            } else if mlen == 1 {
+                format!(" ({})", stage.modules[0])
+            } else {
+                format!(" ({} +{})", stage.modules[mlen - 1], mlen - 1)
+            };
+            if !stages_str.is_empty() {
+                stages_str.push_str(", ");
+            }
+            stages_str.push_str(&format!("#{}{}{}", i, range, module));
+        }
+        let stage_str = if len > 0 {
+            format!(" Stages: [{}]", stages_str)
+        } else {
+            "".to_string()
+        };
+        let mut jobs_str = "".to_string();
+        let jlen = progress.running_jobs.len();
+        for i in 0..jlen {
+            let job = &progress.running_jobs[i];
+            if !jobs_str.is_empty() {
+                jobs_str.push_str(", ");
+            }
+            let duration_str = format_duration(Duration::from_millis(job.duration_ms));
+            jobs_str.push_str(&format!(
+                "#{} on Stage {} @ {} | +{}|{} elapsed {}",
+                i,
+                job.stage,
+                job.start_block,
+                job.processed_blocks,
+                job.stop_block - job.start_block,
+                duration_str
+            ));
+        }
+        let job_str = if jlen > 0 {
+            format!(", Jobs: [{}]", jobs_str)
+        } else {
+            "".to_string()
+        };
+        format!(
+            "Substreams backend graph_out last block is {},{}{}",
+            self.last_seen_block, stage_str, job_str,
+        )
     }
 }
