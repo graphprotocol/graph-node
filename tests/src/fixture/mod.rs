@@ -275,7 +275,11 @@ graph::prelude::lazy_static! {
     pub static ref STORE_MUTEX: Mutex<()> = Mutex::new(());
 }
 
-pub async fn stores(store_config_path: &str) -> Stores {
+fn test_logger(test_name: &str) -> Logger {
+    graph::log::logger(true).new(o!("test" => test_name.to_string()))
+}
+
+pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
     let config = {
@@ -292,7 +296,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
         Config::from_str(&config, "default").expect("failed to create configuration")
     };
 
-    let logger = graph::log::logger(true);
+    let logger = test_logger(test_name);
     let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
     let store_builder =
@@ -324,6 +328,7 @@ pub async fn stores(store_config_path: &str) -> Stores {
 }
 
 pub async fn setup<C: Blockchain>(
+    test_name: &str,
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     stores: &Stores,
@@ -336,7 +341,7 @@ pub async fn setup<C: Blockchain>(
         None => EnvVars::from_env().unwrap(),
     });
 
-    let logger = graph::log::logger(true);
+    let logger = test_logger(test_name);
     let mock_registry: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();

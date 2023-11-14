@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_ptr, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
+    test_logger, test_ptr, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
     StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain, NODE_ID,
 };
 use graph::blockchain::client::ChainClient;
@@ -24,6 +24,7 @@ use graph_chain_ethereum::{
 };
 
 pub async fn chain(
+    test_name: &str,
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &Stores,
     triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
@@ -32,7 +33,7 @@ pub async fn chain(
         triggers_in_block_sleep: Duration::ZERO,
         x: PhantomData,
     }));
-    let logger = graph::log::logger(true);
+    let logger = test_logger(test_name);
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
     let node_id = NodeId::new(NODE_ID).unwrap();

@@ -33,40 +33,43 @@ use slog::{o, Discard, Logger};
 
 struct RunnerTestRecipe {
     pub stores: Stores,
+    test_name: String,
     subgraph_name: SubgraphName,
     hash: DeploymentHash,
 }
 
 impl RunnerTestRecipe {
-    async fn new(subgraph_name: &str) -> Self {
+    async fn new(test_name: &str, subgraph_name: &str) -> Self {
         let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
         let test_dir = format!("./runner-tests/{}", subgraph_name);
 
         let (stores, hash) = tokio::join!(
-            stores("./runner-tests/config.simple.toml"),
+            stores(test_name, "./runner-tests/config.simple.toml"),
             build_subgraph(&test_dir, None)
         );
 
         Self {
             stores,
+            test_name: test_name.to_string(),
             subgraph_name,
             hash,
         }
     }
 
     /// Builds a new test subgraph with a custom deploy command.
-    async fn new_with_custom_cmd(subgraph_name: &str, deploy_cmd: &str) -> Self {
+    async fn new_with_custom_cmd(name: &str, subgraph_name: &str, deploy_cmd: &str) -> Self {
         let subgraph_name = SubgraphName::new(subgraph_name).unwrap();
         let test_dir = format!("./runner-tests/{}", subgraph_name);
 
         let (stores, hash) = tokio::join!(
-            stores("./runner-tests/config.simple.toml"),
+            stores(name, "./runner-tests/config.simple.toml"),
             build_subgraph(&test_dir, Some(deploy_cmd))
         );
 
         Self {
             stores,
             subgraph_name,
+            test_name: name.to_string(),
             hash,
         }
     }
@@ -101,9 +104,10 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
 async fn data_source_revert() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("data-source-revert").await;
+    } = RunnerTestRecipe::new("data_source_revert", "data-source-revert").await;
 
     let blocks = {
         let block0 = genesis();
@@ -119,8 +123,17 @@ async fn data_source_revert() -> anyhow::Result<()> {
         vec![block0, block1, block1_reorged, block2, block3, block4]
     };
 
-    let chain = chain(blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     let stop_block = test_ptr(2);
     ctx.start_and_sync_to(stop_block).await;
@@ -140,6 +153,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
     .await;
     let graft_block = Some(test_ptr(3));
     let ctx = fixture::setup(
+        &test_name,
         subgraph_name.clone(),
         &hash,
         &stores,
@@ -171,9 +185,10 @@ async fn data_source_revert() -> anyhow::Result<()> {
 async fn typename() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("typename").await;
+    } = RunnerTestRecipe::new("typename", "typename").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -190,8 +205,17 @@ async fn typename() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks, &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -202,9 +226,15 @@ async fn typename() -> anyhow::Result<()> {
 async fn api_version_0_0_7() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new_with_custom_cmd("api-version", "deploy:test-0-0-7").await;
+    } = RunnerTestRecipe::new_with_custom_cmd(
+        "api_version_0_0_7",
+        "api-version",
+        "deploy:test-0-0-7",
+    )
+    .await;
 
     // Before apiVersion 0.0.8 we allowed setting fields not defined in the schema.
     // This test tests that it is still possible for lower apiVersion subgraphs
@@ -219,8 +249,17 @@ async fn api_version_0_0_7() {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks, &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -243,9 +282,15 @@ async fn api_version_0_0_7() {
 async fn api_version_0_0_8() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new_with_custom_cmd("api-version", "deploy:test-0-0-8").await;
+    } = RunnerTestRecipe::new_with_custom_cmd(
+        "api_version_0_0_8",
+        "api-version",
+        "deploy:test-0-0-8",
+    )
+    .await;
 
     // From apiVersion 0.0.8 we disallow setting fields not defined in the schema.
     // This test tests that it is not possible to set fields not defined in the schema.
@@ -257,8 +302,17 @@ async fn api_version_0_0_8() {
         vec![block_0, block_1]
     };
 
-    let chain = chain(blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
     let stop_block = blocks.last().unwrap().block.ptr();
     let err = ctx.start_and_sync_to_error(stop_block.clone()).await;
     let message = "transaction 0000000000000000000000000000000000000000000000000000000000000000: Attempted to set undefined fields [invalid_field] for the entity type `TestResult`. Make sure those fields are defined in the schema.".to_string();
@@ -276,9 +330,10 @@ async fn api_version_0_0_8() {
 async fn derived_loaders() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("derived-loaders").await;
+    } = RunnerTestRecipe::new("derived_loaders", "derived-loaders").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -292,8 +347,17 @@ async fn derived_loaders() {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks, &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to(stop_block).await;
 
@@ -435,9 +499,10 @@ async fn derived_loaders() {
 async fn end_block() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("end-block").await;
+    } = RunnerTestRecipe::new("end_block", "end-block").await;
     // This test is to test the end_block feature which enables datasources to stop indexing
     // At a user specified block, this test tests whether the subgraph stops indexing at that
     // block, rebuild the filters accurately when a revert occurs etc
@@ -482,8 +547,17 @@ async fn end_block() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     let addr = Address::from_str("0x0000000000000000000000000000000000000000").unwrap();
 
@@ -559,9 +633,10 @@ async fn end_block() -> anyhow::Result<()> {
 async fn file_data_sources() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("file-data-sources").await;
+    } = RunnerTestRecipe::new("file_data_sources", "file-data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -588,8 +663,23 @@ async fn file_data_sources() {
         x: PhantomData,
         triggers_in_block_sleep: Duration::from_millis(150),
     };
-    let chain = chain(blocks.clone(), &stores, Some(Arc::new(adapter_selector))).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(
+        &test_name,
+        blocks.clone(),
+        &stores,
+        Some(Arc::new(adapter_selector)),
+    )
+    .await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
     ctx.start_and_sync_to(test_ptr(1)).await;
 
     // CID of `file-data-sources/abis/Contract.abi` after being processed by graph-cli.
@@ -765,9 +855,10 @@ async fn file_data_sources() {
 async fn block_handlers() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("block-handlers").await;
+    } = RunnerTestRecipe::new("block_handlers", "block-handlers").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -819,12 +910,13 @@ async fn block_handlers() {
             .collect()
     };
 
-    let chain = chain(blocks, &stores, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
 
     let ctx = fixture::setup(
+        &test_name,
         subgraph_name.clone(),
         &hash,
         &stores,
@@ -900,9 +992,14 @@ async fn block_handlers() {
 async fn template_static_filters_false_positives() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("dynamic-data-source").await;
+    } = RunnerTestRecipe::new(
+        "template_static_filters_false_positives",
+        "dynamic-data-source",
+    )
+    .await;
 
     let blocks = {
         let block_0 = genesis();
@@ -911,12 +1008,13 @@ async fn template_static_filters_false_positives() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = test_ptr(1);
-    let chain = chain(blocks, &stores, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.experimental_static_filters = true;
 
     let ctx = fixture::setup(
+        &test_name,
         subgraph_name.clone(),
         &hash,
         &stores,
@@ -948,9 +1046,10 @@ async fn template_static_filters_false_positives() {
 async fn parse_data_source_context() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("data-sources").await;
+    } = RunnerTestRecipe::new("parse_data_source_context", "data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -959,9 +1058,18 @@ async fn parse_data_source_context() {
         vec![block_0, block_1, block_2]
     };
     let stop_block = blocks.last().unwrap().block.ptr();
-    let chain = chain(blocks, &stores, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
 
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
     ctx.start_and_sync_to(stop_block).await;
 
     let query_res = ctx
@@ -979,9 +1087,10 @@ async fn parse_data_source_context() {
 async fn retry_create_ds() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("data-source-revert2").await;
+    } = RunnerTestRecipe::new("retry_create_ds", "data-source-revert2").await;
 
     let blocks = {
         let block0 = genesis();
@@ -1013,12 +1122,13 @@ async fn retry_create_ds() {
         triggers_in_block_sleep: Duration::ZERO,
         triggers_in_block,
     });
-    let chain = chain(blocks, &stores, Some(triggers_adapter)).await;
+    let chain = chain(&test_name, blocks, &stores, Some(triggers_adapter)).await;
 
     let mut env_vars = EnvVars::default();
     env_vars.subgraph_error_retry_ceil = Duration::from_secs(1);
 
     let ctx = fixture::setup(
+        &test_name,
         subgraph_name.clone(),
         &hash,
         &stores,
@@ -1041,9 +1151,10 @@ async fn retry_create_ds() {
 async fn fatal_error() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("fatal-error").await;
+    } = RunnerTestRecipe::new("fatal_error", "fatal-error").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1055,8 +1166,17 @@ async fn fatal_error() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks, &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to_error(stop_block).await;
 
@@ -1081,9 +1201,10 @@ async fn fatal_error() -> anyhow::Result<()> {
 async fn arweave_file_data_sources() {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("arweave-file-data-sources").await;
+    } = RunnerTestRecipe::new("arweave_file_data_sources", "arweave-file-data-sources").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1104,8 +1225,23 @@ async fn arweave_file_data_sources() {
         x: PhantomData,
         triggers_in_block_sleep: Duration::from_millis(1500),
     };
-    let chain = chain(blocks.clone(), &stores, Some(Arc::new(adapter_selector))).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(
+        &test_name,
+        blocks.clone(),
+        &stores,
+        Some(Arc::new(adapter_selector)),
+    )
+    .await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
     ctx.start_and_sync_to(test_ptr(2)).await;
 
     let store = ctx.store.cheap_clone();
@@ -1140,9 +1276,10 @@ async fn arweave_file_data_sources() {
 async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
+        test_name,
         subgraph_name,
         hash,
-    } = RunnerTestRecipe::new("fatal-error").await;
+    } = RunnerTestRecipe::new("poi_for_deterministically_failed_sg", "fatal-error").await;
 
     let blocks = {
         let block_0 = genesis();
@@ -1155,8 +1292,17 @@ async fn poi_for_deterministically_failed_sg() -> anyhow::Result<()> {
 
     let stop_block = blocks.last().unwrap().block.ptr();
 
-    let chain = chain(blocks.clone(), &stores, None).await;
-    let ctx = fixture::setup(subgraph_name.clone(), &hash, &stores, &chain, None, None).await;
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
 
     ctx.start_and_sync_to_error(stop_block).await;
 
