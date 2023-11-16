@@ -195,7 +195,7 @@ allow_tables_to_appear_in_same_query!(
 /// Information about the database schema that stores the entities for a
 /// subgraph.
 #[derive(Clone, Queryable, QueryableByName, Debug)]
-#[table_name = "deployment_schemas"]
+#[diesel(table_name = deployment_schemas)]
 struct Schema {
     id: DeploymentId,
     #[allow(dead_code)]
@@ -209,7 +209,7 @@ struct Schema {
 }
 
 #[derive(Clone, Queryable, QueryableByName, Debug)]
-#[table_name = "unused_deployments"]
+#[diesel(table_name = unused_deployments)]
 pub struct UnusedDeployment {
     pub id: DeploymentId,
     pub deployment: String,
