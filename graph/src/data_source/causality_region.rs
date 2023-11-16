@@ -36,7 +36,7 @@ impl FromSql<Integer, Pg> for CausalityRegion {
 
 impl ToSql<Integer, Pg> for CausalityRegion {
     fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
-        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
+        <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 

@@ -73,7 +73,7 @@ impl<'de> serde::Deserialize<'de> for Word {
 
 impl ToSql<Text, Pg> for Word {
     fn to_sql(&self, out: &mut Output<Pg>) -> serialize::Result {
-        <str as ToSql<Text, Pg>>::to_sql(&self.0, out)
+        <str as ToSql<Text, Pg>>::to_sql(&self.0, &mut out.reborrow())
     }
 }
 
