@@ -28,10 +28,10 @@ use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    async_trait, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider, SubgraphCountMetric,
-    SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
-    TriggerProcessor,
+    async_trait, lazy_static, r, ApiVersion, BigInt, BlockNumber, DeploymentHash,
+    GraphQlRunner as _, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
+    SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
@@ -488,8 +488,12 @@ pub async fn wait_for_sync(
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
     // We wait one second between checks for the subgraph to sync. That
-    // means we wait up to a minute here
-    const MAX_ERR_COUNT: usize = 60;
+    // means we wait up to a minute here by default
+    lazy_static! {
+        static ref MAX_ERR_COUNT: usize = std::env::var("RUNNER_TESTS_WAIT_FOR_SYNC_SECS")
+            .map(|val| val.parse().unwrap())
+            .unwrap_or(60);
+    }
     const WAIT_TIME: Duration = Duration::from_secs(1);
 
     /// We flush here to speed up how long the write queue waits before it
@@ -511,7 +515,7 @@ pub async fn wait_for_sync(
 
     flush(logger, &store, deployment).await;
 
-    while err_count < MAX_ERR_COUNT {
+    while err_count < *MAX_ERR_COUNT {
         tokio::time::sleep(WAIT_TIME).await;
         flush(logger, &store, deployment).await;
 
@@ -541,7 +545,7 @@ pub async fn wait_for_sync(
     // We only get here if we timed out waiting for the subgraph to reach
     // the stop block
     crit!(logger, "TEST: sync never completed (err_count={err_count})");
-    panic!("Sync never completed");
+    panic!("Sync did not complete within {err_count}s");
 }
 
 struct StaticBlockRefetcher<C: Blockchain> {

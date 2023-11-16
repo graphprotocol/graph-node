@@ -78,6 +78,7 @@ jobs:
           - 5432:5432
     env:
       RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
+      RUNNER_TESTS_WAIT_FOR_SYNC_SECS: "600"
     steps:
       - name: Tune GitHub hosted runner to reduce flakiness
         # https://github.com/smorimoto/tune-github-hosted-runner-network/blob/main/action.yml
