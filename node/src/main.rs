@@ -722,7 +722,7 @@ async fn main() {
             debug!(contention_logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
-            if timeout < Duration::from_secs(10) {
+            if timeout < ENV_VARS.kill_if_unresponsive_timeout {
                 timeout *= 10;
             } else if ENV_VARS.kill_if_unresponsive {
                 // The node is unresponsive, kill it in hopes it will be restarted.

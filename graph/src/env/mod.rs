@@ -119,6 +119,10 @@ pub struct EnvVars {
     pub subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     /// Set by the flag `GRAPH_KILL_IF_UNRESPONSIVE`. Off by default.
     pub kill_if_unresponsive: bool,
+    /// Max timeout in seconds before killing the node.
+    /// Set by the environment variable `GRAPH_KILL_IF_UNRESPONSIVE_TIMEOUT_SECS`
+    /// (expressed in seconds). The default value is 10s.
+    pub kill_if_unresponsive_timeout: Duration,
     /// Guards public access to POIs in the `index-node`.
     ///
     /// Set by the environment variable `GRAPH_POI_ACCESS_TOKEN`. No default
@@ -223,6 +227,9 @@ impl EnvVars {
             experimental_static_filters: inner.experimental_static_filters.0,
             subgraph_version_switching_mode: inner.subgraph_version_switching_mode,
             kill_if_unresponsive: inner.kill_if_unresponsive.0,
+            kill_if_unresponsive_timeout: Duration::from_secs(
+                inner.kill_if_unresponsive_timeout_secs,
+            ),
             poi_access_token: inner.poi_access_token,
             subgraph_max_data_sources: inner.subgraph_max_data_sources.0,
             disable_fail_fast: inner.disable_fail_fast.0,
@@ -329,6 +336,8 @@ struct Inner {
     subgraph_version_switching_mode: SubgraphVersionSwitchingMode,
     #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE", default = "false")]
     kill_if_unresponsive: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_KILL_IF_UNRESPONSIVE_TIMEOUT_SECS", default = "10")]
+    kill_if_unresponsive_timeout_secs: u64,
     #[envconfig(from = "GRAPH_POI_ACCESS_TOKEN")]
     poi_access_token: Option<String>,
     #[envconfig(from = "GRAPH_SUBGRAPH_MAX_DATA_SOURCES", default = "1_000_000_000")]
