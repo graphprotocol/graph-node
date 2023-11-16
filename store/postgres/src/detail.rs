@@ -39,7 +39,7 @@ const CARGO_PKG_VERSION_PATCH: &str = env!("CARGO_PKG_VERSION_PATCH");
 type Bytes = Vec<u8>;
 
 #[derive(Queryable, QueryableByName)]
-#[table_name = "subgraph_deployment"]
+#[diesel(table_name = subgraph_deployment)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
@@ -69,7 +69,7 @@ pub struct DeploymentDetail {
 }
 
 #[derive(Queryable, QueryableByName)]
-#[table_name = "subgraph_error"]
+#[diesel(table_name = subgraph_error)]
 // We map all fields to make loading `Detail` with diesel easier, but we
 // don't need all the fields
 #[allow(dead_code)]
@@ -343,8 +343,8 @@ pub(crate) fn deployment_statuses(
 }
 
 #[derive(Queryable, QueryableByName, Identifiable, Associations)]
-#[table_name = "subgraph_manifest"]
-#[belongs_to(GraphNodeVersion)]
+#[diesel(table_name = subgraph_manifest)]
+#[diesel(belongs_to(GraphNodeVersion))]
 // We never read the id field but map it to make the interaction with Diesel
 // simpler
 #[allow(dead_code)]
@@ -470,7 +470,7 @@ pub fn deployment_entity(
 }
 
 #[derive(Queryable, Identifiable, Insertable)]
-#[table_name = "graph_node_versions"]
+#[diesel(table_name = graph_node_versions)]
 pub struct GraphNodeVersion {
     pub id: i32,
     pub git_commit_hash: String,

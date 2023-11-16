@@ -25,7 +25,7 @@ use crate::manager::display::List;
 type UtcDateTime = DateTime<Utc>;
 
 #[derive(Queryable, QueryableByName, Debug)]
-#[table_name = "copy_state"]
+#[diesel(table_name = copy_state)]
 struct CopyState {
     src: i32,
     dst: i32,
@@ -38,7 +38,7 @@ struct CopyState {
 }
 
 #[derive(Queryable, QueryableByName, Debug)]
-#[table_name = "copy_table_state"]
+#[diesel(table_name = copy_table_state)]
 struct CopyTableState {
     #[allow(dead_code)]
     id: i32,
