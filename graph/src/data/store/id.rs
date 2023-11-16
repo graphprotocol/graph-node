@@ -1,6 +1,6 @@
 //! Types and helpers to deal with entity IDs which support a subset of the
 //! types that more general values support
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use stable_hash::{StableHash, StableHasher};
 use std::convert::TryFrom;
 use std::fmt;
@@ -36,8 +36,16 @@ impl IdType {
     pub fn parse(&self, s: Word) -> Result<Id, Error> {
         match self {
             IdType::String => Ok(Id::String(s)),
-            IdType::Bytes => Ok(Id::Bytes(s.parse()?)),
-            IdType::Int8 => Ok(Id::Int8(s.parse()?)),
+            IdType::Bytes => {
+                Ok(Id::Bytes(s.parse().with_context(|| {
+                    format!("can not convert `{s}` to Id::Bytes")
+                })?))
+            }
+            IdType::Int8 => {
+                Ok(Id::Int8(s.parse().with_context(|| {
+                    format!("can not convert `{s}` to Id::Int8")
+                })?))
+            }
         }
     }
 

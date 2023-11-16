@@ -227,7 +227,7 @@ fn bad_id() {
         let res = find(conn, layout, "bad");
         assert!(res.is_err());
         assert_eq!(
-            "store error: Odd number of digits",
+            "store error: can not convert `bad` to Id::Bytes: Odd number of digits",
             res.err().unwrap().to_string()
         );
 
@@ -235,7 +235,7 @@ fn bad_id() {
         let res = find(conn, layout, "\\xbadd");
         assert!(res.is_err());
         assert_eq!(
-            "store error: Invalid character \'\\\\\' at position 0",
+            "store error: can not convert `\\xbadd` to Id::Bytes: Invalid character '\\\\' at position 0",
             res.err().unwrap().to_string()
         );
 
@@ -247,7 +247,7 @@ fn bad_id() {
         let res = find(conn, layout, "nope");
         assert!(res.is_err());
         assert_eq!(
-            "store error: Invalid character \'n\' at position 0",
+            "store error: can not convert `nope` to Id::Bytes: Invalid character 'n' at position 0",
             res.err().unwrap().to_string()
         );
     });
