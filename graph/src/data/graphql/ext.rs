@@ -12,7 +12,6 @@ use std::collections::{BTreeMap, HashMap};
 pub trait ObjectTypeExt {
     fn field(&self, name: &str) -> Option<&Field>;
     fn is_meta(&self) -> bool;
-    fn is_immutable(&self) -> bool;
 }
 
 impl ObjectTypeExt for ObjectType {
@@ -23,20 +22,6 @@ impl ObjectTypeExt for ObjectType {
     fn is_meta(&self) -> bool {
         self.name == META_FIELD_TYPE
     }
-
-    fn is_immutable(&self) -> bool {
-        let dir = match self.find_directive("entity") {
-            Some(dir) => dir,
-            None => return false,
-        };
-        match (dir.argument("immutable"), dir.argument("timeseries")) {
-            (Some(Value::Boolean(im)), Some(Value::Boolean(ts))) => *im && *ts,
-            (None, Some(Value::Boolean(ts))) => *ts,
-            (Some(Value::Boolean(im)), None) => *im,
-            (None, None) => false,
-            (_, _) => unreachable!("validations ensure we don't get here"),
-        }
-    }
 }
 
 impl ObjectTypeExt for InterfaceType {
@@ -45,10 +30,6 @@ impl ObjectTypeExt for InterfaceType {
     }
 
     fn is_meta(&self) -> bool {
-        false
-    }
-
-    fn is_immutable(&self) -> bool {
         false
     }
 }

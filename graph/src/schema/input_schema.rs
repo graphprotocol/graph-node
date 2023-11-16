@@ -260,6 +260,7 @@ pub struct ObjectType {
     /// The name of the aggregation to which this object type belongs if it
     /// is part of an aggregation
     aggregation: Option<Atom>,
+    timeseries: bool,
     interfaces: Box<[Word]>,
     shared_interfaces: Box<[Atom]>,
 }
@@ -288,13 +289,24 @@ impl ObjectType {
         let name = pool
             .lookup(&object_type.name)
             .expect("object type names have been interned");
-        let immutable = object_type.is_immutable();
+        let dir = object_type.find_directive("entity").unwrap();
+        let timeseries = match dir.argument("timeseries") {
+            Some(Value::Boolean(ts)) => *ts,
+            None => false,
+            _ => unreachable!("validations ensure we don't get here"),
+        };
+        let immutable = match dir.argument("immutable") {
+            Some(Value::Boolean(im)) => *im,
+            None => timeseries,
+            _ => unreachable!("validations ensure we don't get here"),
+        };
         Self {
             name,
             fields,
             id_type,
             immutable,
             aggregation: None,
+            timeseries,
             interfaces,
             shared_interfaces,
         }
@@ -325,6 +337,7 @@ impl ObjectType {
             id_type: IdType::String,
             immutable: false,
             aggregation: None,
+            timeseries: false,
             fields,
             shared_interfaces: Box::new([]),
         }
@@ -605,6 +618,7 @@ impl Aggregation {
                         .collect(),
                     immutable: true,
                     aggregation: Some(name),
+                    timeseries: false,
                     interfaces: Box::new([]),
                     shared_interfaces: Box::new([]),
                 }
