@@ -1523,6 +1523,7 @@ fn handle_large_string_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;
@@ -1624,6 +1625,7 @@ fn handle_large_bytea_with_index() {
             deployment.hash.clone(),
             "test",
             metrics_registry.clone(),
+            "test_shard".to_string(),
         );
 
         let block = TEST_BLOCK_3_PTR.number;

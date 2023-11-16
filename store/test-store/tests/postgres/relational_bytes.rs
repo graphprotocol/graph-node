@@ -65,6 +65,7 @@ lazy_static! {
         THINGS_SUBGRAPH_ID.clone(),
         "test",
         Arc::new(MetricsRegistry::mock()),
+        "test_shard".to_string()
     );
 }
 
