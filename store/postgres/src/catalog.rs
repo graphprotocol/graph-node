@@ -662,7 +662,7 @@ pub(crate) fn indexes_for_table(
     #[derive(Queryable, QueryableByName)]
     struct IndexName {
         #[diesel(sql_type = Text)]
-        #[column_name = "indexdef"]
+        #[diesel(column_name = indexdef)]
         def: String,
     }
 
