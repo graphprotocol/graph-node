@@ -1829,8 +1829,8 @@ impl ChainStoreTrait for ChainStore {
 
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
-            let conn = self.get_conn()?;
-            self.storage.blocks(&conn, &self.chain, &hashes)
+            let mut conn = self.get_conn()?;
+            self.storage.blocks(&mut conn, &self.chain, &hashes)
         } else {
             let cached = self.recent_blocks_cache.get_blocks_by_hash(hashes);
             let stored = if cached.len() < hashes.len() {
