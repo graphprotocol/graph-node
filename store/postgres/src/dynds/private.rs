@@ -84,7 +84,7 @@ impl DataSourcesTable {
     // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     pub(super) fn load(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         type Tuple = (
@@ -143,7 +143,7 @@ impl DataSourcesTable {
 
     pub(crate) fn insert(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &write::DataSources,
     ) -> Result<usize, StoreError> {
         let mut inserted_total = 0;
@@ -192,7 +192,7 @@ impl DataSourcesTable {
 
     pub(crate) fn revert_to(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         // Use `@>` to leverage the gist index.
@@ -209,7 +209,7 @@ impl DataSourcesTable {
     /// were created up to and including `target_block` will be copied.
     pub(crate) fn copy_to(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         dst: &DataSourcesTable,
         target_block: BlockNumber,
         src_manifest_idx_and_name: &[(i32, String)],
@@ -298,7 +298,7 @@ impl DataSourcesTable {
     // identifies an offchain data source.
     pub(super) fn update_offchain_status(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         data_sources: &write::DataSources,
     ) -> Result<(), StoreError> {
         for (_, dss) in &data_sources.entries {
@@ -330,7 +330,7 @@ impl DataSourcesTable {
     /// value existing in the table.
     pub(super) fn causality_region_curr_val(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
     ) -> Result<Option<CausalityRegion>, StoreError> {
         // Get the maximum `causality_region` leveraging the btree index.
         Ok(self

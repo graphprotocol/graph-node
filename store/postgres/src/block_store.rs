@@ -87,11 +87,11 @@ pub mod primary {
         }
     }
 
-    pub fn load_chains(conn: &PgConnection) -> Result<Vec<Chain>, StoreError> {
+    pub fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
         Ok(chains::table.load(conn)?)
     }
 
-    pub fn find_chain(conn: &PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
+    pub fn find_chain(conn: &mut PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
         Ok(chains::table
             .filter(chains::name.eq(name))
             .first(conn)
@@ -104,7 +104,7 @@ pub mod primary {
         ident: &ChainIdentifier,
         shard: &Shard,
     ) -> Result<Chain, StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
         // For tests, we want to have a chain that still uses the
         // shared `ethereum_blocks` table
@@ -119,7 +119,7 @@ pub mod primary {
                     chains::shard.eq(shard.as_str()),
                 ))
                 .returning(chains::namespace)
-                .get_result::<Storage>(&conn)
+                .get_result::<Storage>(&mut conn)
                 .map_err(StoreError::from)?;
             return Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?);
         }
@@ -132,7 +132,7 @@ pub mod primary {
                 chains::shard.eq(shard.as_str()),
             ))
             .returning(chains::namespace)
-            .get_result::<Storage>(&conn)
+            .get_result::<Storage>(&mut conn)
             .map_err(StoreError::from)?;
         Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?)
     }
@@ -489,13 +489,13 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let connection = primary_pool.get()?;
+        let mut connection = primary_pool.get()?;
         let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
         if version < 3 {
             self.truncate_block_caches()?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
-                .execute(&connection)?;
+                .execute(&mut connection)?;
         };
         Ok(())
     }

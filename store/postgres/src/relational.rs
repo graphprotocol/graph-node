@@ -327,7 +327,7 @@ impl Layout {
     }
 
     pub fn create_relational_schema(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
@@ -361,7 +361,7 @@ impl Layout {
     /// Import the database schema for this layout from its own database
     /// shard (in `self.site.shard`) into the database represented by `conn`
     /// if the schema for this layout does not exist yet
-    pub fn import_schema(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    pub fn import_schema(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let make_query = || -> Result<String, fmt::Error> {
             let nsp = self.site.namespace.as_str();
             let srvname = ForeignServer::name(&self.site.shard);
@@ -410,7 +410,7 @@ impl Layout {
 
     pub fn find(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
@@ -425,7 +425,7 @@ impl Layout {
     // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
     pub fn find_many(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -461,7 +461,7 @@ impl Layout {
 
     pub fn find_derived(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: &Vec<EntityKey>,
@@ -484,7 +484,7 @@ impl Layout {
 
     pub fn find_changes(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut tables = Vec::new();
@@ -534,7 +534,7 @@ impl Layout {
 
     pub fn insert<'a>(
         &'a self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
@@ -555,7 +555,7 @@ impl Layout {
 
     pub fn conflicting_entity(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         entity_id: &Id,
         entities: Vec<EntityType>,
     ) -> Result<Option<String>, StoreError> {
@@ -569,7 +569,7 @@ impl Layout {
     pub fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         fn log_query_timing(
@@ -680,7 +680,7 @@ impl Layout {
 
     pub fn update<'a>(
         &'a self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -725,7 +725,7 @@ impl Layout {
 
     pub fn delete(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
@@ -758,7 +758,7 @@ impl Layout {
         Ok(count)
     }
 
-    pub fn truncate_tables(&self, conn: &PgConnection) -> Result<StoreEvent, StoreError> {
+    pub fn truncate_tables(&self, conn: &mut PgConnection) -> Result<StoreEvent, StoreError> {
         for table in self.tables.values() {
             conn.execute(&format!("TRUNCATE TABLE {}", table.qualified_name))?;
         }
@@ -771,7 +771,7 @@ impl Layout {
     /// remain
     pub fn revert_block(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         block: BlockNumber,
     ) -> Result<(StoreEvent, i32), StoreError> {
         let mut changes: Vec<EntityChange> = Vec::new();
@@ -828,7 +828,7 @@ impl Layout {
     /// For metadata, reversion always means deletion since the metadata that
     /// is subject to reversion is only ever created but never updated
     pub fn revert_metadata(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
@@ -855,7 +855,7 @@ impl Layout {
     /// `Layout` in case changes were made
     fn refresh(
         self: Arc<Self>,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
@@ -1308,7 +1308,7 @@ impl Table {
             .expect("every table has a primary key")
     }
 
-    pub(crate) fn analyze(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    pub(crate) fn analyze(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let table_name = &self.qualified_name;
         let sql = format!("analyze {table_name}");
         conn.execute(&sql)?;
@@ -1351,7 +1351,7 @@ impl LayoutCache {
         }
     }
 
-    fn load(conn: &PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+    fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
@@ -1387,7 +1387,7 @@ impl LayoutCache {
     pub fn get(
         &self,
         logger: &Logger,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         let now = Instant::now();

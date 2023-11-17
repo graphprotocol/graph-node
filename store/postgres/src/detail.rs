@@ -88,7 +88,7 @@ impl ErrorDetail {
     /// Fetches the fatal error, if present, associated with the given
     /// [`DeploymentHash`].
     pub fn fatal(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         deployment_id: &DeploymentHash,
     ) -> Result<Option<Self>, StoreError> {
         use subgraph_deployment as d;
@@ -254,7 +254,7 @@ pub(crate) fn info_from_details(
 
 /// Return the details for `deployments`
 pub(crate) fn deployment_details(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     deployments: Vec<String>,
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
     use subgraph_deployment as d;
@@ -271,7 +271,7 @@ pub(crate) fn deployment_details(
 }
 
 pub(crate) fn deployment_statuses(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
     use subgraph_deployment as d;
@@ -451,7 +451,7 @@ impl StoredDeploymentEntity {
 }
 
 pub fn deployment_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     site: &Site,
     schema: &InputSchema,
 ) -> Result<SubgraphDeploymentEntity, StoreError> {
@@ -482,7 +482,7 @@ pub struct GraphNodeVersion {
 }
 
 impl GraphNodeVersion {
-    pub(crate) fn create_or_get(conn: &PgConnection) -> anyhow::Result<i32> {
+    pub(crate) fn create_or_get(conn: &mut PgConnection) -> anyhow::Result<i32> {
         let git_commit_hash = version_commit_hash!();
         let git_repository_dirty = !&TESTAMENT.modifications.is_empty();
         let crate_version = CARGO_PKG_VERSION;
