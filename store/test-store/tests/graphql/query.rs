@@ -2579,6 +2579,45 @@ fn non_fatal_errors() {
         });
         assert_eq!(expected, serde_json::to_value(&result).unwrap());
 
+        // Introspection queries are not affected.
+        let query =
+            "query { __schema { queryType { name } } __type(name: \"Musician\") { name }  }";
+        let result = execute_query(&deployment, query).await;
+        let expected = json!({
+            "data": {
+                "__schema": {
+                    "queryType": {
+                        "name": "Query"
+                    }
+                },
+                "__type": {
+                    "name": "Musician"
+                }
+            },
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        let query = "query { __type(name: \"Musician\") { name } }";
+        let result = execute_query(&deployment, query).await;
+        let expected = json!({
+            "data": {
+                "__type": {
+                    "name": "Musician"
+                }
+            },
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
         // With `allow`, the error remains but the data is included.
         let query = "query { musician(id: \"m1\", subgraphError: allow) { id } }";
         let result = execute_query(&deployment, query).await;
@@ -2655,6 +2694,25 @@ fn deterministic_error() {
         let query = "query { musician(id: \"m1\") { id } }";
         let result = execute_query(&deployment, query).await;
         let expected = json!({
+            "errors": [
+                {
+                    "message": "indexing_error"
+                }
+            ]
+        });
+        assert_eq!(expected, serde_json::to_value(&result).unwrap());
+
+        // Introspection queries are not affected.
+        let query = "query { __schema { queryType { name } } }";
+        let result = execute_query(&deployment, query).await;
+        let expected = json!({
+            "data": {
+                "__schema": {
+                    "queryType": {
+                        "name": "Query"
+                    }
+                }
+            },
             "errors": [
                 {
                     "message": "indexing_error"
