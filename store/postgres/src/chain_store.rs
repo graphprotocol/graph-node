@@ -1816,8 +1816,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
-        let conn = self.get_conn()?;
-        self.storage.blocks(&conn, &self.chain, hashes)
+        let mut conn = self.get_conn()?;
+        self.storage.blocks(&mut conn, &self.chain, hashes)
     }
 
     async fn ancestor_block(
