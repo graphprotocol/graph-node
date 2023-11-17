@@ -1873,10 +1873,10 @@ impl ChainStoreTrait for ChainStore {
 
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
-            let conn = self.get_conn()?;
+            let mut conn = self.get_conn()?;
             let values = self
                 .storage
-                .blocks(&conn, &self.chain, &hashes)?
+                .blocks(&mut conn, &self.chain, &hashes)?
                 .into_iter()
                 .filter_map(|block| block.data)
                 .collect();
