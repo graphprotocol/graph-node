@@ -13,21 +13,21 @@
 //! `graph-node` was restarted while the copy was running.
 use std::{
     convert::TryFrom,
-    io::Write,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use diesel::{
+    deserialize::FromSql,
     dsl::sql,
     insert_into,
     pg::Pg,
     r2d2::{ConnectionManager, PooledConnection},
     select,
     serialize::Output,
+    serialize::ToSql,
     sql_query,
     sql_types::{BigInt, Integer},
-    types::{FromSql, ToSql},
     update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
     RunQueryDsl,
 };
@@ -330,7 +330,7 @@ impl AdaptiveBatchSize {
 }
 
 impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
         <i64 as ToSql<BigInt, Pg>>::to_sql(&self.size, out)
     }
 }
