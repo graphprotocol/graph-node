@@ -5,7 +5,6 @@ use diesel::result::QueryResult;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
 use graph::env::ENV_VARS;
-use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
 use graph::prelude::{lazy_static, BlockNumber, BlockPtr, BLOCK_NUMBER_MAX};
@@ -89,7 +88,7 @@ impl From<std::ops::Range<BlockNumber>> for BlockRange {
 }
 
 impl ToSql<Range<Integer>, Pg> for BlockRange {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
         let pair = (self.0, self.1);
         ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
     }
