@@ -413,7 +413,7 @@ impl NotificationSender {
     /// metrics gathering and does not affect how the notification is sent
     pub fn notify(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         channel: &str,
         network: Option<&str>,
         data: &serde_json::Value,

@@ -126,7 +126,7 @@ impl ForeignServer {
 
     /// Create a new foreign server and user mapping on `conn` for this foreign
     /// server
-    fn create(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn create(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let query = format!(
             "\
         create server \"{name}\"
@@ -146,7 +146,7 @@ impl ForeignServer {
     }
 
     /// Update an existing user mapping with possibly new details
-    fn update(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn update(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let options = catalog::server_options(conn, &self.name)?;
         let set_or_add = |option: &str| -> &'static str {
             if options.contains_key(option) {
@@ -176,7 +176,7 @@ impl ForeignServer {
 
     /// Map key tables from the primary into our local schema. If we are the
     /// primary, set them up as views.
-    fn map_primary(conn: &PgConnection, shard: &Shard) -> Result<(), StoreError> {
+    fn map_primary(conn: &mut PgConnection, shard: &Shard) -> Result<(), StoreError> {
         catalog::recreate_schema(conn, Self::PRIMARY_PUBLIC)?;
 
         let mut query = String::new();
@@ -204,7 +204,7 @@ impl ForeignServer {
 
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
-    fn map_metadata(&self, conn: &PgConnection) -> Result<(), StoreError> {
+    fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let nsp = Self::metadata_schema(&self.shard);
         catalog::recreate_schema(conn, &nsp)?;
         let mut query = String::new();
@@ -1129,7 +1129,7 @@ impl MigrationCount {
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &PgConnection) -> Result<MigrationCount, StoreError> {
+fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationCount, StoreError> {
     // Collect migration logging output
     let mut output = vec![];
 

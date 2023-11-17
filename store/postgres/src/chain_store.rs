@@ -334,7 +334,7 @@ mod data {
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
         /// table
-        pub(super) fn create(&self, conn: &PgConnection) -> Result<(), Error> {
+        pub(super) fn create(&self, conn: &mut PgConnection) -> Result<(), Error> {
             fn make_ddl(nsp: &str) -> String {
                 format!(
                     "
@@ -384,7 +384,7 @@ mod data {
 
         pub(super) fn drop_storage(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             name: &str,
         ) -> Result<(), StoreError> {
             match &self {
@@ -400,7 +400,10 @@ mod data {
             }
         }
 
-        pub(super) fn truncate_block_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        pub(super) fn truncate_block_cache(
+            &self,
+            conn: &mut PgConnection,
+        ) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
@@ -409,7 +412,7 @@ mod data {
             Ok(())
         }
 
-        fn truncate_call_cache(&self, conn: &PgConnection) -> Result<(), StoreError> {
+        fn truncate_call_cache(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
                 Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
@@ -420,7 +423,7 @@ mod data {
 
         pub(super) fn cleanup_shallow_blocks(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             lowest_block: i32,
         ) -> Result<(), StoreError> {
             let table_name = match &self {
@@ -436,7 +439,7 @@ mod data {
 
         pub(super) fn remove_cursor(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
         ) -> Result<Option<BlockNumber>, StoreError> {
             use diesel::dsl::not;
@@ -470,7 +473,7 @@ mod data {
         /// possibly existing entry. If it is `false`, keep the old entry.
         pub(super) fn upsert_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block: &dyn Block,
             overwrite: bool,
@@ -545,7 +548,7 @@ mod data {
 
         pub(super) fn blocks(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             hashes: &[BlockHash],
         ) -> Result<Vec<json::Value>, Error> {
@@ -585,7 +588,7 @@ mod data {
 
         pub(super) fn block_hashes_by_block_number(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             number: BlockNumber,
         ) -> Result<Vec<BlockHash>, Error> {
@@ -616,7 +619,7 @@ mod data {
 
         pub(super) fn confirm_block_hash(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             number: BlockNumber,
             hash: &BlockHash,
@@ -653,7 +656,7 @@ mod data {
         /// ethereum this is a U256 but on different chains it will most likely be different.
         pub(super) fn block_number(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             hash: &BlockHash,
         ) -> Result<Option<(BlockNumber, Option<u64>)>, StoreError> {
             const TIMESTAMP_QUERY: &str =
@@ -692,7 +695,7 @@ mod data {
         /// `first_block`.
         pub(super) fn missing_parent(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             first_block: i64,
             hash: H256,
@@ -803,7 +806,7 @@ mod data {
         /// hash for the chain
         pub(super) fn chain_head_candidate(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
         ) -> Result<Option<BlockPtr>, Error> {
             use public::ethereum_networks as n;
@@ -841,7 +844,7 @@ mod data {
 
         pub(super) fn ancestor_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
         ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
@@ -940,7 +943,7 @@ mod data {
 
         pub(super) fn delete_blocks_before(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block: i64,
         ) -> Result<usize, Error> {
@@ -970,7 +973,7 @@ mod data {
 
         pub(super) fn delete_blocks_by_hash(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain: &str,
             block_hashes: &[&H256],
         ) -> Result<usize, Error> {
@@ -1010,7 +1013,7 @@ mod data {
 
         pub(super) fn get_call_and_access(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             id: &[u8],
         ) -> Result<Option<(Vec<u8>, bool)>, Error> {
             match self {
@@ -1057,7 +1060,7 @@ mod data {
 
         pub(super) fn get_calls_in_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_ptr: BlockPtr,
         ) -> Result<Vec<CachedEthereumCall>, Error> {
             let block_num = block_ptr.block_number();
@@ -1097,7 +1100,7 @@ mod data {
 
         pub(super) fn clear_call_cache(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             head: BlockNumber,
             from: BlockNumber,
             to: BlockNumber,
@@ -1140,7 +1143,7 @@ mod data {
 
         pub(super) fn update_accessed_at(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             contract_address: &[u8],
         ) -> Result<(), Error> {
             let result = match self {
@@ -1166,7 +1169,7 @@ mod data {
 
         pub(super) fn set_call(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             id: &[u8],
             contract_address: &[u8],
             block_number: i32,
@@ -1268,7 +1271,7 @@ mod data {
         // used by `super::set_chain` for test support
         pub(super) fn set_chain(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             chain_name: &str,
             genesis_hash: &str,
             chain: Vec<&dyn Block>,
@@ -1321,7 +1324,7 @@ mod data {
         /// Queries the database for all the transaction receipts in a given block.
         pub(crate) fn find_transaction_receipts_in_block(
             &self,
-            conn: &PgConnection,
+            conn: &mut PgConnection,
             block_hash: H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
             let query = sql_query(format!(
@@ -1541,7 +1544,7 @@ impl ChainStore {
     }
 
     pub fn chain_head_pointers(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
     ) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
 
