@@ -1,14 +1,14 @@
 use diesel::{
+    deserialize::FromSql,
     pg::Pg,
-    serialize::Output,
+    serialize::{Output, ToSql},
     sql_types::Text,
-    types::{FromSql, ToSql},
 };
+use std::fmt;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::{atomic::AtomicU8, Arc, Mutex},
 };
-use std::{fmt, io::Write};
 use std::{iter::FromIterator, time::Duration};
 
 use graph::{
@@ -107,7 +107,7 @@ impl FromSql<Text, Pg> for Shard {
 }
 
 impl ToSql<Text, Pg> for Shard {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
