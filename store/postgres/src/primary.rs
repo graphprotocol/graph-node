@@ -4,11 +4,11 @@
 use diesel::{
     connection::SimpleConnection,
     data_types::PgTimestamp,
+    deserialize::FromSql,
     dsl::{any, exists, not, select},
     pg::Pg,
-    serialize::Output,
+    serialize::{Output, ToSql},
     sql_types::{Array, Integer, Text},
-    types::{FromSql, ToSql},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -17,7 +17,7 @@ use diesel::{
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use diesel::{
     prelude::{
-        BoolExpressionMethods, ExpressionMethods, GroupByDsl, JoinOnDsl, NullableExpressionMethods,
+        BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
         OptionalExtension, QueryDsl, RunQueryDsl,
     },
     Connection as _,
@@ -44,7 +44,6 @@ use std::{
     convert::TryFrom,
     convert::TryInto,
     fmt,
-    io::Write,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -276,7 +275,7 @@ impl FromSql<Text, Pg> for Namespace {
 }
 
 impl ToSql<Text, Pg> for Namespace {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
@@ -325,7 +324,7 @@ impl FromSql<Integer, Pg> for DeploymentId {
 }
 
 impl ToSql<Integer, Pg> for DeploymentId {
-    fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
         <i32 as ToSql<Integer, Pg>>::to_sql(&self.0, out)
     }
 }

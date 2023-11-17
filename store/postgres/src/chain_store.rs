@@ -52,13 +52,13 @@ mod data {
     use diesel::sql_types::{Array, Binary};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
-    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
+        deserialize::FromSql,
         pg::Pg,
-        serialize::Output,
+        serialize::{Output, ToSql},
         sql_types::Text,
-        types::{FromSql, ToSql},
     };
+    use diesel::{dsl::sql, pg::PgConnection};
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
@@ -71,10 +71,10 @@ mod data {
     use graph::prelude::{
         serde_json as json, BlockNumber, BlockPtr, CachedEthereumCall, Error, StoreError,
     };
+    use std::convert::TryFrom;
     use std::fmt;
     use std::iter::FromIterator;
     use std::str::FromStr;
-    use std::{convert::TryFrom, io::Write};
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
@@ -304,7 +304,7 @@ mod data {
     }
 
     impl ToSql<Text, Pg> for Storage {
-        fn to_sql<W: Write>(&self, out: &mut Output<W, Pg>) -> diesel::serialize::Result {
+        fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
             <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
         }
     }
