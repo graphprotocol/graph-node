@@ -32,7 +32,7 @@ impl Table {
     /// (exclusive)
     fn vid_range(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         first_block: BlockNumber,
         last_block: BlockNumber,
     ) -> Result<(i64, i64), StoreError> {
@@ -80,7 +80,7 @@ impl TablePair {
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
     fn create(
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
@@ -110,7 +110,7 @@ impl TablePair {
     /// concurrently to this copy
     fn copy_final_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         earliest_block: BlockNumber,
         final_block: BlockNumber,
@@ -175,7 +175,7 @@ impl TablePair {
     /// other write activity to the source table is blocked while we copy
     fn copy_nonfinal_entities(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         final_block: BlockNumber,
     ) -> Result<(), StoreError> {
@@ -231,7 +231,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, logger: &Logger, conn: &PgConnection) -> Result<(), StoreError> {
+    fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -275,7 +275,7 @@ impl Layout {
     /// this `Layout`
     fn analyze_tables(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         mut tables: Vec<&Arc<Table>>,
         cancel: &CancelHandle,
@@ -302,7 +302,7 @@ impl Layout {
     /// consider needing analysis.
     fn version_stats(
         &self,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         analyze_all: bool,
         cancel: &CancelHandle,
@@ -386,7 +386,7 @@ impl Layout {
         &self,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
-        conn: &PgConnection,
+        conn: &mut PgConnection,
         req: &PruneRequest,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {

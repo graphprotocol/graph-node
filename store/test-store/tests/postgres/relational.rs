@@ -227,14 +227,14 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_schema(conn: &PgConnection) {
+fn remove_schema(conn: &mut PgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
         .expect("Failed to drop test schema");
 }
 
 fn insert_entity_at(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     mut entities: Vec<Entity>,
@@ -264,7 +264,7 @@ fn insert_entity_at(
 }
 
 fn insert_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     entities: Vec<Entity>,
@@ -273,7 +273,7 @@ fn insert_entity(
 }
 
 fn update_entity_at(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     mut entities: Vec<Entity>,
@@ -301,7 +301,7 @@ fn update_entity_at(
 }
 
 fn insert_user_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &EntityType,
@@ -365,7 +365,7 @@ fn make_user(
     user
 }
 
-fn insert_users(conn: &PgConnection, layout: &Layout) {
+fn insert_users(conn: &mut PgConnection, layout: &Layout) {
     insert_user_entity(
         conn,
         layout,
@@ -414,7 +414,7 @@ fn insert_users(conn: &PgConnection, layout: &Layout) {
 }
 
 fn update_user_entity(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &EntityType,
@@ -444,7 +444,7 @@ fn update_user_entity(
 }
 
 fn insert_pet(
-    conn: &PgConnection,
+    conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     id: &str,
@@ -458,12 +458,12 @@ fn insert_pet(
     insert_entity_at(conn, layout, entity_type, vec![pet], block);
 }
 
-fn insert_pets(conn: &PgConnection, layout: &Layout) {
+fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
     insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0);
     insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0);
 }
 
-fn create_schema(conn: &PgConnection) -> Layout {
+fn create_schema(conn: &mut PgConnection) -> Layout {
     let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -704,7 +704,7 @@ fn update_many() {
 /// Test that we properly handle BigDecimal values with a negative scale.
 #[test]
 fn serialize_bigdecimal() {
-    run_test(|conn, layout| {
+    run_test(|mut conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -735,7 +735,7 @@ fn serialize_bigdecimal() {
     });
 }
 
-fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
+fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
@@ -753,7 +753,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
 
 #[test]
 fn delete() {
-    run_test(|conn, layout| {
+    run_test(|mut conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -818,7 +818,7 @@ async fn layout_cache() {
     // from a sync context, so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        run_test_with_conn(|conn| {
+        run_test_with_conn(|mut conn| {
             let _runtime_guard = runtime.enter();
 
             let id = DeploymentHash::new("primaryLayoutCache").unwrap();
@@ -866,7 +866,14 @@ async fn layout_cache() {
 fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
-    fn check(conn: &PgConnection, layout: &Layout, id: Value, cat: &str, dog: &str, ferret: &str) {
+    fn check(
+        conn: &mut PgConnection,
+        layout: &Layout,
+        id: Value,
+        cat: &str,
+        dog: &str,
+        ferret: &str,
+    ) {
         let conflicting = |types: Vec<&EntityType>| {
             let types = types.into_iter().cloned().collect();
             let id = Id::try_from(id.clone()).unwrap();
@@ -889,18 +896,18 @@ fn conflicting_entity() {
         assert_eq!(None, conflict);
     }
 
-    run_test(|conn, layout| {
+    run_test(|mut conn, layout| {
         let id = Value::String("fred".to_string());
-        check(conn, layout, id, "Cat", "Dog", "Ferret");
+        check(&mut conn, layout, id, "Cat", "Dog", "Ferret");
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
-        check(conn, layout, id, "ByteCat", "ByteDog", "ByteFerret");
+        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret");
     })
 }
 
 #[test]
 fn revert_block() {
-    fn check_fred(conn: &PgConnection, layout: &Layout) {
+    fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
         let set_fred = |name, block| {
@@ -939,7 +946,7 @@ fn revert_block() {
         assert_fred("one");
     }
 
-    fn check_marty(conn: &PgConnection, layout: &Layout) {
+    fn check_marty(conn: &mut PgConnection, layout: &Layout) {
         let set_marties = |from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
@@ -995,9 +1002,9 @@ fn revert_block() {
         assert_all_marties(1);
     }
 
-    run_test(|conn, layout| {
-        check_fred(conn, layout);
-        check_marty(conn, layout);
+    run_test(|&mut conn, layout| {
+        check_fred(&mut conn, layout);
+        check_marty(&mut conn, layout);
     });
 }
 
@@ -1007,7 +1014,7 @@ struct QueryChecker<'a> {
 }
 
 impl<'a> QueryChecker<'a> {
-    fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
+    fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
         insert_users(conn, layout);
         update_user_entity(
             conn,
@@ -1035,7 +1042,7 @@ impl<'a> QueryChecker<'a> {
         query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
-            .query::<Entity>(&LOGGER, self.conn, query)
+            .query::<Entity>(&LOGGER, &mut self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1105,8 +1112,8 @@ impl EasyOrder for EntityQuery {
     expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
 )]
 fn check_fulltext_search_syntax_error() {
-    run_test(move |conn, layout| {
-        QueryChecker::new(conn, layout).check(
+    run_test(move |mut conn, layout| {
+        QueryChecker::new(&mut conn, layout).check(
             vec!["1"],
             user_query().filter(EntityFilter::Equal("userSearch".into(), "Jono 'a".into())),
         );
@@ -1115,11 +1122,11 @@ fn check_fulltext_search_syntax_error() {
 
 #[test]
 fn check_block_finds() {
-    run_test(move |conn, layout| {
-        let checker = QueryChecker::new(conn, layout);
+    run_test(move |mut conn, layout| {
+        let checker = QueryChecker::new(&mut conn, layout);
 
         update_user_entity(
-            conn,
+            &mut conn,
             layout,
             "1",
             &*USER_TYPE,
@@ -1155,10 +1162,10 @@ fn check_block_finds() {
 
 #[test]
 fn check_find() {
-    run_test(move |conn, layout| {
+    run_test(move |mut conn, layout| {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
-        let checker = QueryChecker::new(conn, layout)
+        let checker = QueryChecker::new(&mut conn, layout)
             .check(vec!["garfield", "pluto"], query(&types))
             .check(vec!["pluto", "garfield"], query(&types).desc("name"))
             .check(
