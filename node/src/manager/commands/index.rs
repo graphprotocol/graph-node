@@ -53,7 +53,10 @@ pub async fn create(
         )
         .await
     {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            println!("Index creation completed.",);
+            Ok(())
+        }
         Err(StoreError::Canceled) => {
             eprintln!("Index creation attempt failed. Please retry.");
             ::std::process::exit(1);
