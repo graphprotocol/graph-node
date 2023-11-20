@@ -5,7 +5,7 @@ use diesel::{
     connection::SimpleConnection,
     data_types::PgTimestamp,
     deserialize::FromSql,
-    dsl::{any, exists, not, select},
+    dsl::{exists, not, select},
     pg::Pg,
     serialize::{Output, ToSql},
     sql_types::{Array, Integer, Text},
@@ -625,7 +625,7 @@ mod queries {
         let ids: Vec<_> = infos.iter().map(|info| &info.subgraph).collect();
         let nodes: HashMap<_, _> = a::table
             .inner_join(ds::table.on(ds::id.eq(a::id)))
-            .filter(ds::subgraph.eq(any(ids)))
+            .filter(ds::subgraph.eq_any(ids))
             .select((ds::subgraph, a::node_id, a::paused_at.is_not_null()))
             .load::<(String, String, bool)>(conn)?
             .into_iter()
@@ -1444,7 +1444,7 @@ impl<'a> Connection<'a> {
         let nodes: Vec<_> = nodes.iter().map(|n| n.as_str()).collect();
 
         let assigned = a::table
-            .filter(a::node_id.eq(any(&nodes)))
+            .filter(a::node_id.eq_any(&nodes))
             .select((a::node_id, sql("count(*)")))
             .group_by(a::node_id)
             .order_by(sql::<i64>("count(*)"))
@@ -1482,7 +1482,7 @@ impl<'a> Connection<'a> {
 
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
-            .filter(ds::shard.eq(any(shards)))
+            .filter(ds::shard.eq_any(shards))
             .select((ds::shard, sql("count(*)")))
             .group_by(ds::shard)
             .order_by(sql::<i64>("count(*)"))
