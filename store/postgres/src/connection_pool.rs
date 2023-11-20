@@ -441,7 +441,7 @@ impl ConnectionPool {
         f: impl 'static
             + Send
             + FnOnce(
-                &PooledConnection<ConnectionManager<PgConnection>>,
+                &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
@@ -866,7 +866,7 @@ impl PoolInner {
         f: impl 'static
             + Send
             + FnOnce(
-                &PooledConnection<ConnectionManager<PgConnection>>,
+                &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
@@ -883,7 +883,7 @@ impl PoolInner {
 
             // A failure to establish a connection is propagated as though the
             // closure failed.
-            let conn = pool
+            let mut conn = pool
                 .get()
                 .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
 
@@ -891,7 +891,7 @@ impl PoolInner {
             // Time to check for cancel.
             cancel_handle.check_cancel()?;
 
-            f(&conn, &cancel_handle)
+            f(&mut conn, &cancel_handle)
         })
         .await
         .unwrap(); // Propagate panics, though there shouldn't be any.
@@ -972,7 +972,7 @@ impl PoolInner {
         self.pool
             .get()
             .ok()
-            .map(|conn| sql_query("select 1").execute(&conn).is_ok())
+            .map(|mut conn| sql_query("select 1").execute(&mut conn).is_ok())
             .unwrap_or(false)
     }
 
@@ -993,11 +993,11 @@ impl PoolInner {
         }
 
         let pool = self.clone();
-        let conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+        let mut conn = self.get().map_err(|_| StoreError::DatabaseUnavailable)?;
 
         let start = Instant::now();
 
-        advisory_lock::lock_migration(&conn)
+        advisory_lock::lock_migration(&mut conn)
             .unwrap_or_else(|err| die(&pool.logger, "failed to get migration lock", &err));
         // This code can cause a race in database setup: if pool A has had
         // schema changes and pool B then tries to map tables from pool A,
@@ -1014,17 +1014,17 @@ impl PoolInner {
         // in the database instead of just in memory
         let result = pool
             .configure_fdw(coord.servers.as_ref())
-            .and_then(|()| migrate_schema(&pool.logger, &conn))
+            .and_then(|()| migrate_schema(&pool.logger, &mut conn))
             .and_then(|count| coord.propagate(&pool, count));
         debug!(&pool.logger, "Release migration lock");
-        advisory_lock::unlock_migration(&conn).unwrap_or_else(|err| {
+        advisory_lock::unlock_migration(&mut conn).unwrap_or_else(|err| {
             die(&pool.logger, "failed to release migration lock", &err);
         });
         result.unwrap_or_else(|err| die(&pool.logger, "migrations failed", &err));
 
         // Locale check
-        if let Err(msg) = catalog::Locale::load(&conn)?.suitable() {
-            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&conn)? {
+        if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
+            if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
                 die(
                     &pool.logger,
                     "Database does not use C locale. \
@@ -1052,15 +1052,15 @@ impl PoolInner {
 
     fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let conn = self.get()?;
+        let mut conn = self.get()?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
-        conn.transaction(|| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(&conn)?;
+        conn.transaction(|conn| {
+            let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
             for server in servers.iter().filter(|server| server.shard != self.shard) {
                 if current_servers.contains(&server.name) {
-                    server.update(&conn)?;
+                    server.update(conn)?;
                 } else {
-                    server.create(&conn)?;
+                    server.create(conn)?;
                 }
             }
             Ok(())
@@ -1074,7 +1074,7 @@ impl PoolInner {
             return Ok(());
         }
         self.with_conn(|conn, handle| {
-            conn.transaction(|| {
+            conn.transaction(|conn| {
                 primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
             })
         })
@@ -1087,8 +1087,8 @@ impl PoolInner {
     pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let conn = self.get()?;
-            conn.transaction(|| ForeignServer::map_primary(&conn, &self.shard))?;
+            let mut conn = self.get()?;
+            conn.transaction(|conn| ForeignServer::map_primary(&mut conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -1096,8 +1096,8 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let conn = self.get()?;
-            conn.transaction(|| server.map_metadata(&conn))?;
+            let mut conn = self.get()?;
+            conn.transaction(|conn| server.map_metadata(&mut conn))?;
         }
         Ok(())
     }
