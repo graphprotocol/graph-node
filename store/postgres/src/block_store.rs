@@ -121,7 +121,9 @@ pub mod primary {
                 .returning(chains::namespace)
                 .get_result::<Storage>(&mut conn)
                 .map_err(StoreError::from)?;
-            return Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?);
+            return Ok(chains::table
+                .filter(chains::name.eq(name))
+                .first(&mut conn)?);
         }
 
         insert_into(chains::table)
@@ -134,13 +136,15 @@ pub mod primary {
             .returning(chains::namespace)
             .get_result::<Storage>(&mut conn)
             .map_err(StoreError::from)?;
-        Ok(chains::table.filter(chains::name.eq(name)).first(&conn)?)
+        Ok(chains::table
+            .filter(chains::name.eq(name))
+            .first(&mut conn)?)
     }
 
     pub(super) fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let conn = pool.get()?;
+        let mut conn = pool.get()?;
 
-        delete(chains::table.filter(chains::name.eq(name))).execute(&conn)?;
+        delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())
     }
 }
@@ -365,12 +369,12 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let conn = match pool.get() {
+                    let mut conn = match pool.get() {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
                     };
-                    let heads = Arc::new(ChainStore::chain_head_pointers(&conn)?);
+                    let heads = Arc::new(ChainStore::chain_head_pointers(&mut conn)?);
                     self.chain_head_cache.set(shard.to_string(), heads.clone());
                     heads
                 }
@@ -489,13 +493,13 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut connection = primary_pool.get()?;
-        let version: i64 = dbv::table.select(dbv::version).get_result(&connection)?;
+        let mut conn = primary_pool.get()?;
+        let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
             self.truncate_block_caches()?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
-                .execute(&mut connection)?;
+                .execute(&mut conn)?;
         };
         Ok(())
     }
