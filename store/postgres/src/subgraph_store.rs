@@ -577,8 +577,8 @@ impl SubgraphStoreInner {
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -662,8 +662,8 @@ impl SubgraphStoreInner {
             on_sync,
         )?;
 
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -702,7 +702,7 @@ impl SubgraphStoreInner {
     }
 
     pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        let conn = self.primary_conn()?;
+        let mut conn = self.primary_conn()?;
         conn.send_store_event(&self.sender, event)
     }
 
@@ -719,12 +719,14 @@ impl SubgraphStoreInner {
 
     pub(crate) async fn with_primary_conn<T: Send + 'static>(
         &self,
-        f: impl 'static + Send + FnOnce(primary::Connection) -> Result<T, CancelableError<StoreError>>,
+        f: impl 'static
+            + Send
+            + FnOnce(&mut primary::Connection) -> Result<T, CancelableError<StoreError>>,
     ) -> Result<T, StoreError> {
         let pool = self.mirror.primary();
         pool.with_conn(move |pg_conn, _| {
-            let conn = primary::Connection::new(pg_conn);
-            f(conn)
+            let mut conn = primary::Connection::new(pg_conn);
+            f(&mut conn)
         })
         .await
     }
@@ -1286,18 +1288,18 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph(&name))
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| pconn.create_subgraph(&name))
     }
 
     fn create_subgraph_features(&self, features: DeploymentFeatures) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| pconn.create_subgraph_features(features))
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| pconn.create_subgraph_features(features))
     }
 
     fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1309,8 +1311,8 @@ impl SubgraphStoreTrait for SubgraphStore {
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
-        let pconn = self.primary_conn()?;
-        pconn.transaction(|| -> Result<_, StoreError> {
+        let mut pconn = self.primary_conn()?;
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1355,7 +1357,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         let deployment = deployment.to_string();
         self.with_primary_conn(|conn| {
-            conn.transaction(|| conn.get_subgraph_features(deployment).map_err(|e| e.into()))
+            conn.transaction(|conn| conn.get_subgraph_features(deployment).map_err(|e| e.into()))
         })
         .await
     }
