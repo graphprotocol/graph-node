@@ -552,8 +552,6 @@ mod data {
             chain: &str,
             hashes: &[BlockHash],
         ) -> Result<Vec<json::Value>, Error> {
-            use diesel::dsl::any;
-
             // We need to deal with chain stores where some entries have a
             // toplevel 'block' field and others directly contain what would
             // be in the 'block' field. Make sure we return the contents of
@@ -568,9 +566,10 @@ mod data {
                     b::table
                         .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(Vec::from_iter(
-                            hashes.iter().map(|h| format!("{:x}", h)),
-                        ))))
+                        .filter(
+                            b::hash
+                                .eq_any(Vec::from_iter(hashes.iter().map(|h| format!("{:x}", h)))),
+                        )
                         .load::<json::Value>(conn)
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
@@ -579,7 +578,7 @@ mod data {
                     .filter(
                         blocks
                             .hash()
-                            .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_slice())))),
+                            .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
                     )
                     .load::<json::Value>(conn),
             }
@@ -989,7 +988,7 @@ mod data {
 
                     diesel::delete(b::table)
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(hashes)))
+                        .filter(b::hash.eq_any(hashes))
                         .filter(b::number.gt(0)) // keep genesis
                         .execute(conn)
                         .map_err(Error::from)
