@@ -1,7 +1,7 @@
 use graph::data::value::Object;
 use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
-use graph_server_http::test_utils;
+use graphql_utils::test_utils;
 
 #[test]
 fn generates_200_for_query_results() {

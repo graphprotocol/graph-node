@@ -4,6 +4,7 @@ use git_testament::{git_testament, render_testament};
 use graph::bail;
 use graph::endpoint::EndpointMetrics;
 use graph::log::logger_with_levels;
+use graph::prelude::web3::contract::deploy;
 use graph::prelude::{MetricsRegistry, BLOCK_NUMBER_MAX};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
@@ -14,16 +15,15 @@ use graph::{
     url::Url,
 };
 use graph_chain_ethereum::{EthereumAdapter, EthereumNetworks};
-use graph_graphql::prelude::GraphQlRunner;
-use graph_node::config::{self, Config as Cfg};
-use graph_node::manager::color::Terminal;
-use graph_node::manager::commands;
-use graph_node::{
-    chain::create_all_ethereum_networks,
-    manager::{deployment::DeploymentSearch, PanicSubscriptionManager},
-    store_builder::StoreBuilder,
-    MetricsContext,
+use graph_core::graphman::config::{self, Config as Cfg};
+use graph_core::graphman::context::GraphmanContext as Context;
+use graph_core::graphman::{
+    chain::create_all_ethereum_networks, store_builder::StoreBuilder, MetricsContext,
 };
+use graph_core::graphman::{deployment::DeploymentSearch, utils::PanicSubscriptionManager};
+use graph_graphql::prelude::GraphQlRunner;
+use graph_node::manager::commands;
+use graph_node::manager::commands::utils::color::Terminal;
 use graph_store_postgres::connection_pool::PoolCoordinator;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::{
@@ -32,8 +32,8 @@ use graph_store_postgres::{
 };
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
+use std::str::FromStr;
 use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
-const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
 
@@ -1149,7 +1149,7 @@ async fn main() -> anyhow::Result<()> {
         Create { name } => commands::create::run(ctx.subgraph_store(), name),
         Unassign { deployment } => {
             let sender = ctx.notification_sender();
-            commands::assign::unassign(ctx.primary_pool(), &sender, &deployment).await
+            commands::assign::unassign(ctx.primary_pool(), &sender, &deployment)
         }
         Reassign { deployment, node } => {
             let sender = ctx.notification_sender();

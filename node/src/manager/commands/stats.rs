@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::manager::deployment::DeploymentSearch;
 use diesel::r2d2::ConnectionManager;
 use diesel::r2d2::PooledConnection;
 use diesel::PgConnection;
 use graph::components::store::DeploymentLocator;
 use graph::components::store::VersionStats;
 use graph::prelude::anyhow;
+use graph_core::graphman::deployment::DeploymentSearch;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
 use graph_store_postgres::connection_pool::ConnectionPool;

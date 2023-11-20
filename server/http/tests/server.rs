@@ -8,7 +8,6 @@ use graph::data::{
 };
 use graph::prelude::*;
 
-use graph_server_http::test_utils;
 use graph_server_http::GraphQLServer as HyperGraphQLServer;
 
 use tokio::time::sleep;
@@ -80,9 +79,9 @@ impl GraphQlRunner for TestGraphQlRunner {
 
 #[cfg(test)]
 mod test {
-    use http::header::CONTENT_TYPE;
-
     use super::*;
+    use graphql_utils::test_utils;
+    use http::header::CONTENT_TYPE;
 
     lazy_static! {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();

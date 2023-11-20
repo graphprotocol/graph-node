@@ -9,7 +9,7 @@ use graph::prelude::{anyhow, BlockNumber, BlockPtr, NodeId, SubgraphStore};
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::{connection_pool::ConnectionPool, Store};
 
-use crate::manager::deployment::{Deployment, DeploymentSearch};
+use graph_core::graphman::deployment::{Deployment, DeploymentSearch};
 
 async fn block_ptr(
     store: Arc<BlockStore>,

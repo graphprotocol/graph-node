@@ -18,3 +18,4 @@ pub mod run;
 pub mod stats;
 pub mod txn_speed;
 pub mod unused_deployments;
+pub mod utils;
