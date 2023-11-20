@@ -653,17 +653,11 @@ impl DeploymentStore {
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
 
-        conn.transaction(|| {
+        conn.transaction(|conn| {
             for table in tables {
                 let (columns, _) = resolve_column_names_and_index_exprs(table, &columns)?;
 
-                catalog::set_stats_target(
-                    &mut conn,
-                    &site.namespace,
-                    &table.name,
-                    &columns,
-                    target,
-                )?;
+                catalog::set_stats_target(conn, &site.namespace, &table.name, &columns, target)?;
             }
             Ok(())
         })
@@ -855,8 +849,8 @@ impl DeploymentStore {
                 return Ok(reporter);
             }
 
-            conn.transaction(|| {
-                deployment::set_earliest_block(&mut conn, site.as_ref(), req.earliest_block)
+            conn.transaction(|conn| {
+                deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block)
             })?;
 
             cancel.check_cancel()?;
@@ -1266,7 +1260,7 @@ impl DeploymentStore {
         truncate: bool,
     ) -> Result<StoreEvent, StoreError> {
         let event = deployment::with_lock(conn, &site, || {
-            conn.transaction(|| -> Result<_, StoreError> {
+            conn.transaction(|conn| -> Result<_, StoreError> {
                 // Don't revert past a graft point
                 let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
                 if let Some(graft_block) = info.graft_block {
