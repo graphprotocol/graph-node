@@ -274,8 +274,8 @@ impl SyncStore {
 
     fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || {
-            let pconn = self.store.primary_conn()?;
-            pconn.transaction(|| -> Result<_, StoreError> {
+            let mut pconn = self.store.primary_conn()?;
+            pconn.transaction(|pconn| -> Result<_, StoreError> {
                 let changes = pconn.unassign_subgraph(site)?;
                 self.store.send_store_event(&StoreEvent::new(changes))
             })
@@ -324,8 +324,8 @@ impl SyncStore {
                 // Make sure we drop `pconn` before we call into the deployment
                 // store so that we do not hold two database connections which
                 // might come from the same pool and could therefore deadlock
-                let pconn = self.store.primary_conn()?;
-                pconn.transaction(|| -> Result<_, Error> {
+                let mut pconn = self.store.primary_conn()?;
+                pconn.transaction(|pconn| -> Result<_, Error> {
                     let changes = pconn.promote_deployment(&self.site.deployment)?;
                     Ok(StoreEvent::new(changes))
                 })?
