@@ -417,7 +417,7 @@ pub fn make_dummy_site(deployment: DeploymentHash, namespace: Namespace, network
 /// read-only
 mod queries {
     use diesel::data_types::PgTimestamp;
-    use diesel::dsl::{any, exists, sql};
+    use diesel::dsl::{exists, sql};
     use diesel::pg::PgConnection;
     use diesel::prelude::{
         BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
