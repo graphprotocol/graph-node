@@ -977,7 +977,6 @@ mod data {
             chain: &str,
             block_hashes: &[&H256],
         ) -> Result<usize, Error> {
-            use diesel::dsl::any;
             match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
