@@ -1520,8 +1520,8 @@ impl ChainStore {
     pub(crate) fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
-        let conn = self.get_conn()?;
-        conn.transaction(|| {
+        let mut conn = self.get_conn()?;
+        conn.transaction(|conn| {
             insert_into(ethereum_networks)
                 .values((
                     name.eq(&self.chain),
@@ -1533,8 +1533,8 @@ impl ChainStore {
                 ))
                 .on_conflict(name)
                 .do_nothing()
-                .execute(&conn)?;
-            self.storage.create(&conn)
+                .execute(conn)?;
+            self.storage.create(conn)
         })?;
 
         Ok(())
@@ -1544,9 +1544,9 @@ impl ChainStore {
         use diesel::dsl::delete;
         use public::ethereum_networks as n;
 
-        let conn = self.get_conn()?;
-        conn.transaction(|| {
-            self.storage.drop_storage(&conn, &self.chain)?;
+        let mut conn = self.get_conn()?;
+        conn.transaction(|conn| {
+            self.storage.drop_storage(conn, &self.chain)?;
 
             delete(n::table.filter(n::name.eq(&self.chain))).execute(&conn)?;
             Ok(())
@@ -1600,33 +1600,34 @@ impl ChainStore {
     /// `null`
     #[cfg(debug_assertions)]
     pub fn set_chain(&self, genesis_hash: &str, chain: Vec<&dyn Block>) {
-        let conn = self.pool.get().expect("can get a database connection");
+        let mut conn = self.pool.get().expect("can get a database connection");
 
         self.storage
-            .set_chain(&conn, &self.chain, genesis_hash, chain);
+            .set_chain(&mut conn, &self.chain, genesis_hash, chain);
     }
 
     pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
-            .delete_blocks_by_hash(&conn, &self.chain, block_hashes)
+            .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
     }
 
     pub fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        self.storage.cleanup_shallow_blocks(&conn, lowest_block)?;
+        let mut conn = self.get_conn()?;
+        self.storage
+            .cleanup_shallow_blocks(&mut conn, lowest_block)?;
         Ok(())
     }
 
     // remove_cursor delete the chain_store cursor and return true if it was present
     pub fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
-        let conn = self.get_conn()?;
-        self.storage.remove_cursor(&conn, chain)
+        let mut conn = self.get_conn()?;
+        self.storage.remove_cursor(&mut conn, chain)
     }
 
     pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        self.storage.truncate_block_cache(&conn)?;
+        let mut conn = self.get_conn()?;
+        self.storage.truncate_block_cache(&mut conn)?;
         Ok(())
     }
 }
@@ -1648,7 +1649,7 @@ impl ChainStoreTrait for ChainStore {
         let network = self.chain.clone();
         let storage = self.storage.clone();
         pool.with_conn(move |conn, _| {
-            conn.transaction(|| {
+            conn.transaction(|conn| {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)
@@ -1659,10 +1660,10 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
-        let conn = self.pool.get()?;
+        let mut conn = self.pool.get()?;
         for block in blocks {
             self.storage
-                .upsert_block(&conn, &self.chain, *block, false)?;
+                .upsert_block(&mut conn, &self.chain, *block, false)?;
         }
         Ok(())
     }
@@ -1775,7 +1776,7 @@ impl ChainStoreTrait for ChainStore {
         ethereum_networks
             .select(head_block_cursor)
             .filter(name.eq(&self.chain))
-            .load::<Option<String>>(&*self.get_conn()?)
+            .load::<Option<String>>(&mut self.get_conn()?)
             .map(|rows| {
                 rows.first()
                     .map(|cursor_opt| cursor_opt.as_ref().cloned())
@@ -1802,8 +1803,8 @@ impl ChainStoreTrait for ChainStore {
         //this will send an update via postgres, channel: chain_head_updates
         self.chain_head_update_sender.send(&hash, number)?;
 
-        pool.with_conn(move |conn, _| {
-            conn.transaction(|| -> Result<(), StoreError> {
+        pool.with_conn(move |mut conn, _| {
+            conn.transaction(|conn| -> Result<(), StoreError> {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
                     .map_err(CancelableError::from)?;
@@ -1950,15 +1951,15 @@ impl ChainStoreTrait for ChainStore {
     }
 
     fn block_hashes_by_block_number(&self, number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
-            .block_hashes_by_block_number(&conn, &self.chain, number)
+            .block_hashes_by_block_number(&mut conn, &self.chain, number)
     }
 
     fn confirm_block_hash(&self, number: BlockNumber, hash: &BlockHash) -> Result<usize, Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         self.storage
-            .confirm_block_hash(&conn, &self.chain, number, hash)
+            .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
 
     async fn block_number(
@@ -1979,9 +1980,9 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error> {
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         if let Some(head) = self.chain_head_block(&self.chain)? {
-            self.storage.clear_call_cache(&conn, head, from, to)?;
+            self.storage.clear_call_cache(&mut conn, head, from, to)?;
         }
         Ok(())
     }
@@ -2249,8 +2250,8 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
-        if let Some(call_output) = conn.transaction::<_, Error, _>(|| {
+        let mut conn = &*self.get_conn()?;
+        if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
             {
@@ -2282,8 +2283,8 @@ impl EthereumCallCache for ChainStore {
         return_value: &[u8],
     ) -> Result<(), Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let conn = &*self.get_conn()?;
-        conn.transaction(|| {
+        let mut conn = &*self.get_conn()?;
+        conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
                 id.as_ref(),

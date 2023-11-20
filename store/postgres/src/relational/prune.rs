@@ -126,7 +126,7 @@ impl TablePair {
         let mut next_vid = min_vid;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all rows in `src` in batches of `batch_size`
                 // and copy the ones that are visible to queries at block
                 // heights between `earliest_block` and `final_block`, but
@@ -191,7 +191,7 @@ impl TablePair {
         let mut next_vid = min_vid;
         while next_vid <= max_vid {
             let start = Instant::now();
-            let rows = conn.transaction(|| {
+            let rows = conn.transaction(|conn| {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`.
@@ -257,7 +257,7 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|| conn.batch_execute(&query))?;
+        conn.transaction(|conn| conn.batch_execute(&query))?;
 
         Ok(())
     }
@@ -443,7 +443,7 @@ impl Layout {
                         pair.copy_nonfinal_entities(conn, reporter, req.final_block)?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        conn.transaction(|| pair.switch(logger, conn))?;
+                        conn.transaction(|conn| pair.switch(logger, conn))?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
                         Ok(())
