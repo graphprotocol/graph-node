@@ -14,7 +14,7 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
         use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 
         let rows = d::table
-            .filter(d::datname.eq(any(vec!["explorer", "graph"])))
+            .filter(d::datname.eq_any(vec!["explorer", "graph"]))
             .select((
                 d::datname,
                 sql::<BigInt>("(xact_commit + xact_rollback)::bigint"),
