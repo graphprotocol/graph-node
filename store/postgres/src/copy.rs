@@ -740,13 +740,13 @@ impl Connection {
     where
         F: FnOnce(&PgConnection) -> Result<T, StoreError>,
     {
-        self.conn.transaction(|| f(&self.conn))
+        self.conn.transaction(|conn| f(conn))
     }
 
-    fn copy_private_data_sources(&self, state: &CopyState) -> Result<(), StoreError> {
+    fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
         if state.src.site.schema_version.private_data_sources() {
             DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                &self.conn,
+                &mut self.conn,
                 &DataSourcesTable::new(state.dst.site.namespace.clone()),
                 state.target_block.number,
                 &self.src_manifest_idx_and_name,
@@ -756,10 +756,10 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_data_internal(&self) -> Result<Status, StoreError> {
-        let mut state = self.transaction(|conn| {
+    pub fn copy_data_internal(&mut self) -> Result<Status, StoreError> {
+        let mut state = self.transaction(|mut conn| {
             CopyState::new(
-                conn,
+                &mut conn,
                 self.src.clone(),
                 self.dst.clone(),
                 self.target_block.clone(),
@@ -774,13 +774,13 @@ impl Connection {
                 // It is important that this check happens outside the write
                 // transaction so that we do not hold on to locks acquired
                 // by the check
-                if table.is_cancelled(&self.conn)? {
+                if table.is_cancelled(&mut self.conn)? {
                     return Ok(Status::Cancelled);
                 }
 
                 // Pause copying if replication is lagging behind to avoid
                 // overloading replicas
-                let mut lag = catalog::replication_lag(&self.conn)?;
+                let mut lag = catalog::replication_lag(&mut self.conn)?;
                 if lag > MAX_REPLICATION_LAG {
                     loop {
                         info!(&self.logger,
@@ -788,14 +788,14 @@ impl Connection {
                              REPLICATION_SLEEP.as_secs();
                              "lag_s" => lag.as_secs());
                         std::thread::sleep(REPLICATION_SLEEP);
-                        lag = catalog::replication_lag(&self.conn)?;
+                        lag = catalog::replication_lag(&mut self.conn)?;
                         if lag <= ACCEPTABLE_REPLICATION_LAG {
                             break;
                         }
                     }
                 }
 
-                let status = self.transaction(|conn| table.copy_batch(conn))?;
+                let status = self.transaction(|mut conn| table.copy_batch(&mut conn))?;
                 if status == Status::Cancelled {
                     return Ok(status);
                 }
@@ -806,7 +806,7 @@ impl Connection {
 
         self.copy_private_data_sources(&state)?;
 
-        self.transaction(|conn| state.finished(conn))?;
+        self.transaction(|mut conn| state.finished(&mut conn))?;
         progress.finished();
 
         Ok(Status::Finished)
@@ -839,9 +839,9 @@ impl Connection {
             &self.logger,
             "Obtaining copy lock (this might take a long time if another process is still copying)"
         );
-        advisory_lock::lock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::lock_copying(&mut self.conn, self.dst.site.as_ref())?;
         let res = self.copy_data_internal();
-        advisory_lock::unlock_copying(&self.conn, self.dst.site.as_ref())?;
+        advisory_lock::unlock_copying(&mut self.conn, self.dst.site.as_ref())?;
         if matches!(res, Ok(Status::Cancelled)) {
             warn!(&self.logger, "Copying was cancelled and is incomplete");
         }
