@@ -614,7 +614,7 @@ mod data {
                     .filter(
                         blocks
                             .hash()
-                            .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_slice())))),
+                            .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
                     )
                     .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
             }?;
@@ -1028,7 +1028,7 @@ mod data {
 
                     diesel::delete(b::table)
                         .filter(b::network_name.eq(chain))
-                        .filter(b::hash.eq(any(hashes)))
+                        .filter(b::hash.eq_any(hashes))
                         .filter(b::number.gt(0)) // keep genesis
                         .execute(conn)
                         .map_err(Error::from)
