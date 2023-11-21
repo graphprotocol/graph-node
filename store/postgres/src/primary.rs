@@ -8,7 +8,7 @@ use diesel::{
     dsl::{exists, not, select},
     pg::Pg,
     serialize::{Output, ToSql},
-    sql_types::{Array, Integer, Text},
+    sql_types::{Array, BigInt, Integer, Text},
 };
 use diesel::{
     dsl::{delete, insert_into, sql, update},
@@ -1452,9 +1452,9 @@ impl<'a> Connection<'a> {
 
         let assigned = a::table
             .filter(a::node_id.eq_any(&nodes))
-            .select((a::node_id, sql("count(*)")))
+            .select((a::node_id, sql::<BigInt>("count(*)")))
             .group_by(a::node_id)
-            .order_by(sql::<i64>("count(*)"))
+            .order_by(sql::<BigInt>("count(*)")) // TODO: check proper type (Integer?)
             .load::<(String, i64)>(self.conn.as_mut())?;
 
         // Any nodes without assignments will be missing from `assigned`
@@ -1490,9 +1490,9 @@ impl<'a> Connection<'a> {
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(ds::shard.eq_any(shards))
-            .select((ds::shard, sql("count(*)")))
+            .select((ds::shard, sql::<BigInt>("count(*)")))
             .group_by(ds::shard)
-            .order_by(sql::<i64>("count(*)"))
+            .order_by(sql::<BigInt>("count(*)"))
             .load::<(String, i64)>(self.conn.as_mut())?;
 
         // Any shards that have no deployments in them will not be in
@@ -1669,7 +1669,7 @@ impl<'a> Connection<'a> {
 
         let conn = self.conn.as_mut();
         match filter {
-            All => Ok(u::table.order_by(u::unused_at.desc()).load()?),
+            All => Ok(u::table.order_by(u::unused_at.desc()).load(conn)?),
             New => Ok(u::table
                 .filter(u::removed_at.is_null())
                 .order_by(u::entity_count)
