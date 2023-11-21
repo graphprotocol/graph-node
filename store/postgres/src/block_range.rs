@@ -167,8 +167,11 @@ impl<'a> BlockRangeColumn<'a> {
 }
 
 impl<'a> BlockRangeColumn<'a> {
-    /// Output SQL that matches only rows whose block range contains `block`
-    pub fn contains(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    /// Output SQL that matches only rows whose block range contains `block`.
+    ///
+    /// `filters_by_id` has no impact on correctness. It is a heuristic to determine
+    /// whether the brin index should be used. If `true`, the brin index is not used.
+    pub fn contains(&self, out: &mut AstPass<Pg>, filters_by_id: bool) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         match self {
@@ -176,11 +179,14 @@ impl<'a> BlockRangeColumn<'a> {
                 self.name(out);
                 out.push_sql(" @> ");
                 out.push_bind_param::<Integer, _>(block)?;
-                if table.is_account_like && *block < BLOCK_NUMBER_MAX {
+                if table.is_account_like && *block < BLOCK_NUMBER_MAX && !filters_by_id {
                     // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
                     // don't worry about adding the equivalent in that case since
                     // we generally only see BLOCK_NUMBER_MAX here for metadata
-                    // queries where block ranges don't matter anyway
+                    // queries where block ranges don't matter anyway.
+                    //
+                    // We also don't need to add these if the query already filters by ID,
+                    // because the ideal index is the GiST index on id and block_range.
                     out.push_sql(" and coalesce(upper(");
                     out.push_identifier(BLOCK_RANGE_COLUMN)?;
                     out.push_sql("), 2147483647) > ");

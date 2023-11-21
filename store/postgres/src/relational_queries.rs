@@ -1009,6 +1009,8 @@ impl<'a> QueryFilter<'a> {
 
         out.push_sql(" where ");
 
+        let mut is_type_c_or_d = false;
+
         // Join tables
         if derived {
             // If the parent is derived,
@@ -1044,6 +1046,7 @@ impl<'a> QueryFilter<'a> {
                 .column_for_field(attribute)
                 .expect("Column for an attribute not found");
             let child_column = child_table.primary_key();
+            is_type_c_or_d = true;
 
             if parent_column.is_list() {
                 // Type C: i.id = any(c.child_ids)
@@ -1066,7 +1069,8 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(" and ");
 
         // Match by block
-        BlockRangeColumn::new(child_table, child_prefix, self.block).contains(&mut out)?;
+        BlockRangeColumn::new(child_table, child_prefix, self.block)
+            .contains(&mut out, is_type_c_or_d)?;
 
         out.push_sql(" and ");
 
@@ -1486,7 +1490,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
             out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, true)
     }
 }
 
@@ -1645,7 +1649,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_bind_param::<Integer, _>(cr)?;
                 out.push_sql(" and ");
             }
-            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out)?;
+            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out, true)?;
         }
         Ok(())
     }
@@ -1718,7 +1722,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             out.push_bind_param::<Integer, _>(causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, false)
     }
 }
 
@@ -2198,7 +2202,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -2234,7 +2238,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -2277,7 +2281,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2307,7 +2311,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2362,7 +2366,7 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
-            BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+            BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
             limit.filter(out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out.reborrow())?;
@@ -2404,7 +2408,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out)?;
+        BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
         limit.filter(out);
 
         // Include a constraint on the child IDs as a set if the size of the set
@@ -3847,7 +3851,13 @@ impl<'a> FilterQuery<'a> {
         self.sort_key.add_child(self.block, &mut out)?;
 
         out.push_sql("\n where ");
-        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out)?;
+
+        let filters_by_id = {
+            let entity_filter = table_filter.as_ref().map(|f| f.filter);
+            matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
+        };
+
+        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out, filters_by_id)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
