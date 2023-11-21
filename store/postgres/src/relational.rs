@@ -22,7 +22,7 @@ use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{connection::SimpleConnection, Connection};
-use diesel::{debug_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
+use diesel::{debug_query, sql_query, OptionalExtension, PgConnection, QueryResult, RunQueryDsl};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::RowGroup;
 use graph::constraint_violation;
@@ -760,7 +760,7 @@ impl Layout {
 
     pub fn truncate_tables(&self, conn: &mut PgConnection) -> Result<StoreEvent, StoreError> {
         for table in self.tables.values() {
-            conn.execute(&format!("TRUNCATE TABLE {}", table.qualified_name))?;
+            sql_query(&format!("TRUNCATE TABLE {}", table.qualified_name)).execute(conn)?;
         }
         Ok(StoreEvent::new(vec![]))
     }
@@ -1311,7 +1311,7 @@ impl Table {
     pub(crate) fn analyze(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let table_name = &self.qualified_name;
         let sql = format!("analyze {table_name}");
-        conn.execute(&sql)?;
+        sql_query(&sql).execute(conn)?;
         Ok(())
     }
 
