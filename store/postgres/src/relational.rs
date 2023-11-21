@@ -179,7 +179,7 @@ impl Borrow<str> for &SqlName {
 }
 
 impl FromSql<Text, Pg> for SqlName {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         <String as FromSql<Text, Pg>>::from_sql(bytes).map(|s| SqlName::verbatim(s))
     }
 }
