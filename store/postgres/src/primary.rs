@@ -1370,9 +1370,7 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|| {
-            let conn = self.conn.as_mut();
-
+        self.transaction(|conn| {
             delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
 
             // If there is no site for this deployment any more, we can get
@@ -1814,7 +1812,7 @@ impl Mirror {
             + FnMut(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
     ) -> Result<T, StoreError> {
         for pool in &self.pools {
-            let conn = match pool.get() {
+            let mut conn = match pool.get() {
                 Ok(conn) => conn,
                 Err(StoreError::DatabaseUnavailable) => continue,
                 Err(e) => return Err(e),
