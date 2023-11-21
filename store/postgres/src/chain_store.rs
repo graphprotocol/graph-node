@@ -49,7 +49,7 @@ pub use data::Storage;
 
 /// Encapuslate access to the blocks table for a chain.
 mod data {
-    use diesel::sql_types::{Array, Binary};
+    use diesel::sql_types::{Array, Binary, Bool};
     use diesel::{connection::SimpleConnection, insert_into};
     use diesel::{delete, prelude::*, sql_query};
     use diesel::{
@@ -1192,7 +1192,7 @@ mod data {
                     // raciness of this check is ok
                     let update_meta = meta::table
                         .filter(meta::contract_address.eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
+                        .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
                         .optional()?
                         .unwrap_or(true);
@@ -1240,7 +1240,7 @@ mod data {
                     let update_meta = call_meta
                         .table()
                         .filter(call_meta.contract_address().eq(contract_address))
-                        .select(sql("accessed_at < current_date"))
+                        .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
                         .optional()?
                         .unwrap_or(true);
