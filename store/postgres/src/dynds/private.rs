@@ -1,7 +1,7 @@
 use std::ops::Bound;
 
 use diesel::{
-    pg::types::sql_types,
+    pg::sql_types,
     prelude::*,
     sql_query,
     sql_types::{Binary, Integer, Jsonb, Nullable},
