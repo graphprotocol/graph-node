@@ -2,7 +2,7 @@ use diesel::{
     deserialize::FromSql,
     pg::Pg,
     serialize::{Output, ToSql},
-    sql_types::Text,
+    sql_types::{self, Text},
 };
 use std::fmt;
 use std::{
@@ -53,6 +53,7 @@ use crate::{fork, relational::index::CreateIndex, relational::SqlName};
 
 /// The name of a database shard; valid names must match `[a-z0-9_]+`
 #[derive(Clone, Debug, Eq, PartialEq, Hash, AsExpression, FromSqlRow)]
+#[diesel(sql_type = sql_types::Text)]
 pub struct Shard(String);
 
 lazy_static! {
@@ -100,7 +101,7 @@ impl fmt::Display for Shard {
 }
 
 impl FromSql<Text, Pg> for Shard {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         Shard::new(s).map_err(Into::into)
     }
