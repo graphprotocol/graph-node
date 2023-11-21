@@ -46,7 +46,10 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::relational_queries::{FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery};
+use crate::relational_queries::{
+    ConflictingEntityData, FindChangesQuery, FindDerivedQuery, FindPossibleDeletionsQuery,
+    ReturnedEntityData,
+};
 use crate::{
     primary::{Namespace, Site},
     relational_queries::{
@@ -562,7 +565,7 @@ impl Layout {
         Ok(ConflictingEntityQuery::new(self, entities, entity_id)?
             .load(conn)?
             .pop()
-            .map(|data| data.entity))
+            .map(|data: ConflictingEntityData| data.entity))
     }
 
     /// order is a tuple (attribute, value_type, direction)
@@ -783,6 +786,7 @@ impl Layout {
             let removed = RevertRemoveQuery::new(table, block)
                 .get_results(conn)?
                 .into_iter()
+                .map(|data: ReturnedEntityData| data.id)
                 .collect::<HashSet<_>>();
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
@@ -793,6 +797,7 @@ impl Layout {
                 RevertClampQuery::new(table, block - 1)?
                     .get_results(conn)?
                     .into_iter()
+                    .map(|data: ReturnedEntityData| data.id)
                     .collect::<HashSet<_>>()
             };
             // Adjust the entity count; we can tell which operation was
