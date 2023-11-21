@@ -754,7 +754,7 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn transaction<T, E, F>(&mut self, f: F) -> Result<T, E>
     where
-        F: FnOnce() -> Result<T, E>,
+        F: FnOnce(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, E>,
         E: From<diesel::result::Error>,
     {
         self.conn.as_mut().transaction(f)
