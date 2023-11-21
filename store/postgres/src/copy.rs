@@ -336,7 +336,7 @@ impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
 }
 
 impl FromSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let size = <i64 as FromSql<BigInt, Pg>>::from_sql(bytes)?;
         Ok(AdaptiveBatchSize { size })
     }
