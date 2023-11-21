@@ -268,7 +268,7 @@ impl fmt::Display for Namespace {
 }
 
 impl FromSql<Text, Pg> for Namespace {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
         Namespace::new(s).map_err(Into::into)
     }
@@ -317,7 +317,7 @@ impl From<DeploymentLocator> for DeploymentId {
 }
 
 impl FromSql<Integer, Pg> for DeploymentId {
-    fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
         let id = <i32 as FromSql<Integer, Pg>>::from_sql(bytes)?;
         Ok(DeploymentId(id))
     }

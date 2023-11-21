@@ -298,7 +298,7 @@ mod data {
     }
 
     impl FromSql<Text, Pg> for Storage {
-        fn from_sql(bytes: Option<&[u8]>) -> diesel::deserialize::Result<Self> {
+        fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
             let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
             Self::new(s).map_err(Into::into)
         }
