@@ -694,7 +694,7 @@ mod queries {
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
         Ok(v::table
-            .select((v::deployment, sql("created_at::text")))
+            .select((v::deployment, sql::<Text>("created_at::text")))
             .filter(v::id.eq(version))
             .first::<(String, String)>(conn)
             .optional()?)
