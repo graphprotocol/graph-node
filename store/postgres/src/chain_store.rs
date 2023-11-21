@@ -1566,7 +1566,7 @@ impl ChainStore {
         conn.transaction(|conn| {
             self.storage.drop_storage(conn, &self.chain)?;
 
-            delete(n::table.filter(n::name.eq(&self.chain))).execute(&conn)?;
+            delete(n::table.filter(n::name.eq(&self.chain))).execute(conn)?;
             Ok(())
         })
     }
@@ -1597,7 +1597,7 @@ impl ChainStore {
         let number: Option<i64> = n::table
             .filter(n::name.eq(chain))
             .select(n::head_block_number)
-            .first::<Option<i64>>(&self.get_conn()?)
+            .first::<Option<i64>>(&mut self.get_conn()?)
             .optional()?
             .flatten();
 
@@ -1745,7 +1745,7 @@ impl ChainStoreTrait for ChainStore {
                     let number = ptr.number as i64;
 
                     conn.transaction(
-                        || -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+                        |conn| -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
                             update(n::table.filter(n::name.eq(&chain_store.chain)))
                                 .set((
                                     n::head_block_hash.eq(&hash),
@@ -1961,7 +1961,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let conn = self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -1980,7 +1980,7 @@ impl ChainStoreTrait for ChainStore {
         diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.chain)
-            .load::<MinBlock>(&conn)?
+            .load::<MinBlock>(&mut conn)?
             .first()
             .map(|MinBlock { block }| {
                 // If we could not determine a minimum block, the query
@@ -1988,7 +1988,7 @@ impl ChainStoreTrait for ChainStore {
                 // against removing the genesis block
                 if *block > 0 {
                     self.storage
-                        .delete_blocks_before(&conn, &self.chain, *block as i64)
+                        .delete_blocks_before(&mut conn, &self.chain, *block as i64)
                         .map(|rows| Some((*block, rows)))
                 } else {
                     Ok(None)
