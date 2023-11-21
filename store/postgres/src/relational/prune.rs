@@ -3,7 +3,7 @@ use std::{fmt::Write, sync::Arc, time::Instant};
 use diesel::{
     connection::SimpleConnection,
     sql_query,
-    sql_types::{BigInt, Integer},
+    sql_types::{BigInt, Binary, Integer},
     Connection, PgConnection, RunQueryDsl,
 };
 use graph::{
