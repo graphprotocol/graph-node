@@ -6,6 +6,7 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
+use diesel_migrations::EmbeddedMigrations;
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::constraint_violation;
@@ -1103,7 +1104,7 @@ impl PoolInner {
     }
 }
 
-embed_migrations!("./migrations");
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./migrations");
 
 struct MigrationCount {
     old: usize,
