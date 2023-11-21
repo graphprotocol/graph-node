@@ -1,8 +1,8 @@
 use detail::DeploymentDetail;
 use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
-use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
+use diesel::{prelude::*, sql_query};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::write::RowGroup;
@@ -727,7 +727,7 @@ impl DeploymentStore {
             }
 
             // This might take a long time.
-            conn.execute(&sql)?;
+            sql_query(sql).execute(conn)?;
             // check if the index creation was successfull
             let index_is_valid =
                 catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
@@ -737,7 +737,7 @@ impl DeploymentStore {
                 // Index creation falied. We should drop the index before returning.
                 let drop_index_sql =
                     format!("drop index concurrently if exists {schema_name}.{index_name}");
-                conn.execute(&drop_index_sql)?;
+                sql_query(drop_index_sql).execute(conn)?;
                 Err(StoreError::Canceled)
             }
             .map_err(Into::into)
