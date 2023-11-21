@@ -4,7 +4,7 @@ use diesel::{
     pg::sql_types,
     prelude::*,
     sql_query,
-    sql_types::{Binary, Integer, Jsonb, Nullable},
+    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
     PgConnection, QueryDsl, RunQueryDsl,
 };
 
@@ -98,7 +98,7 @@ impl DataSourcesTable {
         let tuples = self
             .table
             .clone()
-            .filter(diesel::dsl::sql("block_range @> ").bind::<Integer, _>(block))
+            .filter(diesel::dsl::sql::<Bool>("block_range @> ").bind::<Integer, _>(block))
             .select((
                 &self.block_range,
                 &self.manifest_idx,
@@ -233,7 +233,9 @@ impl DataSourcesTable {
         let src_tuples = self
             .table
             .clone()
-            .filter(diesel::dsl::sql("lower(block_range) <= ").bind::<Integer, _>(target_block))
+            .filter(
+                diesel::dsl::sql::<Bool>("lower(block_range) <= ").bind::<Integer, _>(target_block),
+            )
             .select((
                 &self.block_range,
                 &self.manifest_idx,
