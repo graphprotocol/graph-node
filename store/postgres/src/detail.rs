@@ -298,7 +298,8 @@ pub(crate) fn deployment_statuses(
     };
 
     let mut non_fatal_errors = {
-        let join = e::table.on(e::id.eq_any(d::non_fatal_errors));
+        // TODO: check if it's correct (used to be non_fatal_error)
+        let join = e::table.on(e::id.nullable().eq(d::fatal_error));
 
         if sites.is_empty() {
             d::table

@@ -5,7 +5,7 @@ use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, select, sql, update},
-    sql_types::Integer,
+    sql_types::{Bool, Integer},
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
 use diesel::{
@@ -822,7 +822,7 @@ pub(crate) fn has_deterministic_errors(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(e::deterministic)
-            .filter(sql("block_range @> ").bind::<Integer, _>(block)),
+            .filter(sql::<Bool>("block_range @> ").bind::<Integer, _>(block)),
     ))
     .get_result(conn)
     .map_err(|e| e.into())
@@ -954,7 +954,7 @@ pub(crate) fn revert_subgraph_errors(
     delete(
         e::table
             .filter(e::subgraph_id.eq(id.as_str()))
-            .filter(sql(&lower_geq).bind::<Integer, _>(reverted_block)),
+            .filter(sql::<Bool>(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
     .execute(conn)?;
 
