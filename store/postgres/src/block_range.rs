@@ -4,6 +4,7 @@ use diesel::result::QueryResult;
 ///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
+use graph::env::ENV_VARS;
 use std::io::Write;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
@@ -179,7 +180,9 @@ impl<'a> BlockRangeColumn<'a> {
                 self.name(out);
                 out.push_sql(" @> ");
                 out.push_bind_param::<Integer, _>(block)?;
-                if table.is_account_like && *block < BLOCK_NUMBER_MAX && !filters_by_id {
+
+                let should_use_brin = !filters_by_id || ENV_VARS.store.use_brin_for_all_query_types;
+                if table.is_account_like && *block < BLOCK_NUMBER_MAX && should_use_brin {
                     // When block is BLOCK_NUMBER_MAX, these checks would be wrong; we
                     // don't worry about adding the equivalent in that case since
                     // we generally only see BLOCK_NUMBER_MAX here for metadata
