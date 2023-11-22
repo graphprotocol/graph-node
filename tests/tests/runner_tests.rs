@@ -502,7 +502,7 @@ async fn derived_loaders() {
 // A bug was introduced in the PR which resulted in filters for substreams not being included
 // This test tests that the TriggerFilter is built correctly for substreams
 #[tokio::test]
-async fn substreams_filter_regression() -> anyhow::Result<()> {
+async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
     let RunnerTestRecipe {
         stores,
         test_name,

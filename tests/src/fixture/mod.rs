@@ -26,7 +26,7 @@ use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
-use graph::firehose::{FirehoseEndpoints, SubgraphLimit, FirehoseEndpoint};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
@@ -111,12 +111,12 @@ impl CommonChainConfig {
     }
 }
 
-pub struct TestChainEthereum {
-    pub chain: Arc<Chain>,
-    pub block_stream_builder: Arc<MutexBlockStreamBuilder<Chain>>,
+pub struct TestChain<C: Blockchain> {
+    pub chain: Arc<C>,
+    pub block_stream_builder: Arc<MutexBlockStreamBuilder<C>>,
 }
 
-impl TestChainTrait<Chain> for TestChainEthereum {
+impl TestChainTrait<Chain> for TestChain<Chain> {
     fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<Chain>>) {
         let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
         *self.block_stream_builder.0.lock().unwrap() = static_block_stream;

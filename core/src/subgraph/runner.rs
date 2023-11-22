@@ -124,10 +124,7 @@ where
             return C::TriggerFilter::from_data_sources(
                 self.ctx
                     .instance()
-                    .hosts()
-                    .iter()
-                    .filter_map(|h| h.data_source().as_onchain())
-                    // Filter out data sources that have reached their end block if the block is final.
+                    .onchain_data_sources()
                     .filter(end_block_filter),
             );
         }

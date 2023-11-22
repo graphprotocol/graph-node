@@ -35,6 +35,25 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
+    /// All onchain data sources that are part of this subgraph. This includes data sources
+    /// that are included in the subgraph manifest and dynamic data sources.
+    pub fn onchain_data_sources(&self) -> impl Iterator<Item = &C::DataSource> + Clone {
+        let host_data_sources = self
+            .hosts()
+            .iter()
+            .filter_map(|h| h.data_source().as_onchain());
+
+        // Datasources that are defined in the subgraph manifest but does not correspond to any host
+        // in the subgraph. Currently these are only substreams data sources.
+        let substreams_data_sources = self
+            .data_sources
+            .iter()
+            .filter(|ds| ds.runtime().is_none())
+            .filter_map(|ds| ds.as_onchain());
+
+        host_data_sources.chain(substreams_data_sources)
+    }
+
     /// Create a new subgraph instance from the given manifest and data sources.
     /// `data_sources` must contain all data sources declared in the manifest + all dynamic data sources.
     pub fn from_manifest(

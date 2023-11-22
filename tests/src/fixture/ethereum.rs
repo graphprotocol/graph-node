@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use super::{
     test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
-    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChainEthereum,
+    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
@@ -24,7 +24,7 @@ pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &Stores,
     triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
-) -> TestChainEthereum {
+) -> TestChain<Chain> {
     let triggers_adapter = triggers_adapter.unwrap_or(Arc::new(NoopAdapterSelector {
         triggers_in_block_sleep: Duration::ZERO,
         x: PhantomData,
@@ -62,7 +62,7 @@ pub async fn chain(
         true,
     );
 
-    TestChainEthereum {
+    TestChain {
         chain: Arc::new(chain),
         block_stream_builder,
     }
