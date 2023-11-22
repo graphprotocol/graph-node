@@ -24,9 +24,11 @@ use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_log,
     push_test_polling_trigger,
 };
+
+use graph_tests::fixture::substreams::chain as substreams_chain;
 use graph_tests::fixture::{
     self, stores, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, Stores,
-    TestContext,
+    TestChainTrait, TestContext,
 };
 use graph_tests::helpers::run_cmd;
 use slog::{o, Discard, Logger};
@@ -493,6 +495,42 @@ async fn derived_loaders() {
             }
         })
     );
+}
+
+// This PR https://github.com/graphprotocol/graph-node/pull/4787
+// changed the way TriggerFilters were built
+// A bug was introduced in the PR which resulted in filters for substreams not being included
+// This test tests that the TriggerFilter is built correctly for substreams
+#[tokio::test]
+async fn substreams_filter_regression() -> anyhow::Result<()> {
+    let RunnerTestRecipe {
+        stores,
+        test_name,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("substreams", "substreams").await;
+
+    let chain = substreams_chain(&test_name, &stores).await;
+
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
+
+    let runner = ctx.runner_substreams(test_ptr(0)).await;
+    let filter = runner.build_filter_for_test();
+
+    assert_eq!(filter.module_name(), "graph_out");
+    assert_eq!(filter.modules().as_ref().unwrap().modules.len(), 2);
+    assert_eq!(filter.start_block().unwrap(), 0);
+    assert_eq!(filter.data_sources_len(), 1);
+    Ok(())
 }
 
 #[tokio::test]

@@ -3,19 +3,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_logger, test_ptr, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
-    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain, NODE_ID,
+    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapter,
+    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChainEthereum,
 };
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
-use graph::endpoint::EndpointMetrics;
-use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
-use graph::prelude::{
-    ethabi, tiny_keccak, LightEthereumBlock, LoggerFactory, MetricsRegistry, NodeId, ENV_VARS,
-};
+use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
 use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::{
@@ -28,30 +24,19 @@ pub async fn chain(
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &Stores,
     triggers_adapter: Option<Arc<dyn TriggersAdapterSelector<Chain>>>,
-) -> TestChain<Chain> {
+) -> TestChainEthereum {
     let triggers_adapter = triggers_adapter.unwrap_or(Arc::new(NoopAdapterSelector {
         triggers_in_block_sleep: Duration::ZERO,
         x: PhantomData,
     }));
-    let logger = test_logger(test_name);
-    let mock_registry = Arc::new(MetricsRegistry::mock());
-    let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
-    let node_id = NodeId::new(NODE_ID).unwrap();
 
-    let chain_store = stores.chain_store.cheap_clone();
-
-    // This is needed because the stream builder only works for firehose and this will only be called if there
-    // are > 1 firehose endpoints. The endpoint itself is never used because it's mocked.
-    let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
-        "",
-        "https://example.com",
-        None,
-        true,
-        false,
-        SubgraphLimit::Unlimited,
-        Arc::new(EndpointMetrics::mock()),
-    ))]
-    .into();
+    let CommonChainConfig {
+        logger_factory,
+        mock_registry,
+        chain_store,
+        firehose_endpoints,
+        node_id,
+    } = CommonChainConfig::new(test_name, stores).await;
 
     let client = Arc::new(ChainClient::<Chain>::new_firehose(firehose_endpoints));
 
@@ -77,7 +62,7 @@ pub async fn chain(
         true,
     );
 
-    TestChain {
+    TestChainEthereum {
         chain: Arc::new(chain),
         block_stream_builder,
     }

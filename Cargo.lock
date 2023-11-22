@@ -2001,6 +2001,7 @@ dependencies = [
  "futures 0.3.16",
  "graph",
  "graph-chain-ethereum",
+ "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
  "graph-node",

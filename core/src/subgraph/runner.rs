@@ -158,6 +158,11 @@ where
         filter
     }
 
+    #[cfg(debug_assertions)]
+    pub fn build_filter_for_test(&self) -> C::TriggerFilter {
+        self.build_filter()
+    }
+
     pub async fn run(self) -> Result<(), Error> {
         self.run_inner(false).await.map(|_| ())
     }
