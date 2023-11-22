@@ -1,3 +1,4 @@
+use graph::blockchain::BlockTime;
 use graph::components::metrics::gas::GasMetrics;
 use graph::data::store::{scalar, Id, IdType};
 use graph::data::subgraph::*;
@@ -1608,7 +1609,7 @@ async fn test_store_ts() {
         timestamp: Int8!
         amount: BigDecimal!
     }
-    
+
     type Stats @aggregation(intervals: ["hour"], source: "Data") {
         id: Bytes!
         timestamp: Int8!
@@ -1617,14 +1618,26 @@ async fn test_store_ts() {
 
     let mut host = Host::new(schema, "hostStoreTs", "boolean.wasm", None).await;
 
+    let block_time = host.ctx.timestamp;
+    let other_time = BlockTime::since_epoch(7000, 0);
+    // If this fails, something is wrong with the test setup
+    assert_ne!(block_time, other_time);
+
     let b20 = Value::BigDecimal(20.into());
 
     host.store_setv(
         DATA,
         DID,
-        vec![("timestamp", Value::Int8(23)), ("amount", b20.clone())],
+        vec![
+            ("timestamp", Value::from(other_time)),
+            ("amount", b20.clone()),
+        ],
     )
     .expect("Setting 'Data' is allowed");
+
+    // Set overrides the user-supplied timestamp for timeseries
+    let data = host.store_get(DATA, DID).unwrap().unwrap();
+    assert_eq!(Some(&Value::from(block_time)), data.get("timestamp"));
 
     let err = host
         .store_setv(STATS, SID, vec![("amount", b20)])

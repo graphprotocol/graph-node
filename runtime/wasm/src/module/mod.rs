@@ -1154,6 +1154,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
             &mut self.ctx.state,
             self.ctx.block_ptr.number,
             &self.ctx.proof_of_indexing,
+            self.ctx.timestamp,
             entity,
             id,
             data,

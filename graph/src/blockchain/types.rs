@@ -350,6 +350,12 @@ impl BlockTime {
     }
 }
 
+impl From<BlockTime> for Value {
+    fn from(block_time: BlockTime) -> Self {
+        Value::Int8(block_time.as_secs_since_epoch())
+    }
+}
+
 impl TryFrom<&Value> for BlockTime {
     type Error = anyhow::Error;
 

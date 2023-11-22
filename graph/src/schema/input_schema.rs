@@ -262,7 +262,7 @@ pub struct ObjectType {
     /// The name of the aggregation to which this object type belongs if it
     /// is part of an aggregation
     aggregation: Option<Atom>,
-    timeseries: bool,
+    pub timeseries: bool,
     interfaces: Box<[Word]>,
     shared_interfaces: Box<[Atom]>,
 }

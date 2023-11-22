@@ -13,7 +13,7 @@ use semver::Version;
 use wasmtime::Trap;
 use web3::types::H160;
 
-use graph::blockchain::Blockchain;
+use graph::blockchain::{BlockTime, Blockchain};
 use graph::components::store::{EnsLookup, GetScope, LoadRelatedRequest};
 use graph::components::subgraph::{
     PoICausalityRegion, ProofOfIndexingEvent, SharedProofOfIndexing,
@@ -218,6 +218,7 @@ impl<C: Blockchain> HostExports<C> {
         state: &mut BlockState<C>,
         block: BlockNumber,
         proof_of_indexing: &SharedProofOfIndexing,
+        block_time: BlockTime,
         entity_type: String,
         entity_id: String,
         mut data: HashMap<Word, Value>,
@@ -250,6 +251,10 @@ impl<C: Blockchain> HostExports<C> {
             gas::STORE_SET.with_args(complexity::Linear, (&key, &data)),
             "store_set",
         )?;
+
+        if entity_type.object_type()?.timeseries {
+            data.insert(Word::from("timestamp"), block_time.into());
+        }
 
         // Set the id if there isn't one yet, and make sure that a
         // previously set id agrees with the one in the `key`
@@ -1095,7 +1100,7 @@ pub mod test_support {
     use std::{borrow::Cow, collections::HashMap, sync::Arc};
 
     use graph::{
-        blockchain::Blockchain,
+        blockchain::{BlockTime, Blockchain},
         components::{
             store::{BlockNumber, GetScope},
             subgraph::SharedProofOfIndexing,
@@ -1108,11 +1113,17 @@ pub mod test_support {
 
     use crate::MappingContext;
 
-    pub struct HostExports<C: Blockchain>(Arc<super::HostExports<C>>);
+    pub struct HostExports<C: Blockchain> {
+        host_exports: Arc<super::HostExports<C>>,
+        block_time: BlockTime,
+    }
 
     impl<C: Blockchain> HostExports<C> {
         pub fn new(ctx: &MappingContext<C>) -> Self {
-            HostExports(ctx.host_exports.clone())
+            HostExports {
+                host_exports: ctx.host_exports.clone(),
+                block_time: ctx.timestamp,
+            }
         }
 
         pub fn store_set(
@@ -1127,11 +1138,12 @@ pub mod test_support {
             stopwatch: &StopwatchMetrics,
             gas: &GasCounter,
         ) -> Result<(), HostExportError> {
-            self.0.store_set(
+            self.host_exports.store_set(
                 logger,
                 state,
                 block,
                 proof_of_indexing,
+                self.block_time,
                 entity_type,
                 entity_id,
                 data,
@@ -1147,7 +1159,7 @@ pub mod test_support {
             entity_id: String,
             gas: &GasCounter,
         ) -> Result<Option<Cow<'a, Entity>>, anyhow::Error> {
-            self.0
+            self.host_exports
                 .store_get(state, entity_type, entity_id, gas, GetScope::Store)
         }
     }
