@@ -112,6 +112,8 @@ pub struct EnvVarsStore {
     /// Whether to create GIN indexes for array attributes. Set by
     /// `GRAPH_STORE_CREATE_GIN_INDEXES`. The default is `false`
     pub create_gin_indexes: bool,
+    /// Temporary env var in case we need to quickly rollback PR #5010
+    pub use_brin_for_all_query_types: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -154,6 +156,7 @@ impl From<InnerStore> for EnvVarsStore {
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
             create_gin_indexes: x.create_gin_indexes,
+            use_brin_for_all_query_types: x.use_brin_for_all_query_types,
         }
     }
 }
@@ -209,6 +212,8 @@ pub struct InnerStore {
     write_batch_size: usize,
     #[envconfig(from = "GRAPH_STORE_CREATE_GIN_INDEXES", default = "false")]
     create_gin_indexes: bool,
+    #[envconfig(from = "GRAPH_STORE_USE_BRIN_FOR_ALL_QUERY_TYPES", default = "false")]
+    use_brin_for_all_query_types: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
