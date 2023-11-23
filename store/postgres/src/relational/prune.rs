@@ -3,7 +3,7 @@ use std::{fmt::Write, sync::Arc, time::Instant};
 use diesel::{
     connection::SimpleConnection,
     sql_query,
-    sql_types::{BigInt, Binary, Integer},
+    sql_types::{BigInt, Integer},
     Connection, PgConnection, RunQueryDsl,
 };
 use graph::{
@@ -38,9 +38,10 @@ impl Table {
     ) -> Result<(i64, i64), StoreError> {
         #[derive(QueryableByName)]
         struct VidRange {
-            #[diesel(sql_type = Binary)]
+            // TODO: check diesel types here (they were Binary)
+            #[diesel(sql_type = BigInt)]
             min_vid: i64,
-            #[diesel(sql_type = Binary)]
+            #[diesel(sql_type = BigInt)]
             max_vid: i64,
         }
 
