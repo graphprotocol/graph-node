@@ -38,7 +38,6 @@ impl Table {
     ) -> Result<(i64, i64), StoreError> {
         #[derive(QueryableByName)]
         struct VidRange {
-            // TODO: check diesel types here (they were Binary)
             #[diesel(sql_type = BigInt)]
             min_vid: i64,
             #[diesel(sql_type = BigInt)]
