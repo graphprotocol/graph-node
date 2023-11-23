@@ -13,6 +13,7 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::{Address, Log, Transaction, H160};
 use graph::prelude::{ethabi, tiny_keccak, LightEthereumBlock, ENV_VARS};
 use graph::{blockchain::block_stream::BlockWithTriggers, prelude::ethabi::ethereum_types::U64};
+use graph_chain_ethereum::trigger::LogRef;
 use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::{
     chain::BlockFinality,
@@ -126,22 +127,22 @@ pub fn empty_block(
 }
 
 pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<String>) {
-    block.trigger_data.push(EthereumTrigger::Log(
-        Arc::new(Log {
-            address: Address::zero(),
-            topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
-            data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
-            block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
-            block_number: Some(block.ptr().number.into()),
-            transaction_hash: Some(H256::from_low_u64_be(0)),
-            transaction_index: Some(0.into()),
-            log_index: Some(0.into()),
-            transaction_log_index: Some(0.into()),
-            log_type: None,
-            removed: None,
-        }),
-        None,
-    ))
+    let log = Arc::new(Log {
+        address: Address::zero(),
+        topics: vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+        data: ethabi::encode(&[ethabi::Token::String(payload.into())]).into(),
+        block_hash: Some(H256::from_slice(block.ptr().hash.as_slice())),
+        block_number: Some(block.ptr().number.into()),
+        transaction_hash: Some(H256::from_low_u64_be(0)),
+        transaction_index: Some(0.into()),
+        log_index: Some(0.into()),
+        transaction_log_index: Some(0.into()),
+        log_type: None,
+        removed: None,
+    });
+    block
+        .trigger_data
+        .push(EthereumTrigger::Log(LogRef::FullLog(log, None)))
 }
 
 pub fn push_test_polling_trigger(block: &mut BlockWithTriggers<Chain>) {

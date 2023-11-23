@@ -45,6 +45,7 @@ use std::time::Instant;
 
 use crate::adapter::ProviderStatus;
 use crate::chain::BlockFinality;
+use crate::trigger::LogRef;
 use crate::Chain;
 use crate::NodeCapabilities;
 use crate::{
@@ -1631,13 +1632,9 @@ pub(crate) fn parse_log_triggers(
         .transaction_receipts
         .iter()
         .flat_map(move |receipt| {
-            receipt
-                .logs
-                .iter()
-                .filter(move |log| log_filter.matches(log))
-                .map(move |log| {
-                    EthereumTrigger::Log(Arc::new(log.clone()), Some(receipt.cheap_clone()))
-                })
+            receipt.logs.iter().enumerate().map(move |(index, _)| {
+                EthereumTrigger::Log(LogRef::LogPosition(index, receipt.cheap_clone()))
+            })
         })
         .collect()
 }
@@ -2092,7 +2089,7 @@ async fn get_logs_and_transactions(
         let optional_receipt = log
             .transaction_hash
             .and_then(|txn| transaction_receipts_by_hash.get(&txn).cloned());
-        let value = EthereumTrigger::Log(Arc::new(log), optional_receipt);
+        let value = EthereumTrigger::Log(LogRef::FullLog(Arc::new(log), optional_receipt));
         log_triggers.push(value);
     }
 
