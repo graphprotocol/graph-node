@@ -236,29 +236,10 @@ pub enum LogRef {
 }
 
 impl LogRef {
-    pub fn log_index(&self) -> U256 {
+    pub fn log(&self) -> &Log {
         match self {
-            LogRef::FullLog(log, _) => log.log_index.unwrap_or(U256::zero()),
-            LogRef::LogPosition(index, receipt) => receipt
-                .logs
-                .get(*index)
-                .unwrap()
-                .log_index
-                .unwrap_or(U256::zero()),
-        }
-    }
-
-    pub fn transaction_index(&self) -> Option<U64> {
-        match self {
-            LogRef::FullLog(log, _) => log.transaction_index,
-            LogRef::LogPosition(_, receipt) => Some(receipt.transaction_index),
-        }
-    }
-
-    fn transaction_hash(&self) -> Option<H256> {
-        match self {
-            LogRef::FullLog(log, _) => log.transaction_hash,
-            LogRef::LogPosition(_, receipt) => Some(receipt.transaction_hash),
+            LogRef::FullLog(log, _) => log.as_ref(),
+            LogRef::LogPosition(index, receipt) => receipt.logs.get(*index).unwrap(),
         }
     }
 
@@ -269,27 +250,28 @@ impl LogRef {
         }
     }
 
-    pub fn log(&self) -> Arc<Log> {
-        match self {
-            LogRef::FullLog(log, _) => log.clone(),
-            LogRef::LogPosition(index, receipt) => {
-                Arc::new(receipt.logs.get(*index).unwrap().clone())
-            }
-        }
+    pub fn log_index(&self) -> Option<U256> {
+        self.log().log_index
     }
-}
 
-impl PartialEq for LogRef {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (LogRef::FullLog(a_log, a_receipt), LogRef::FullLog(b_log, b_receipt)) => {
-                a_log == b_log && a_receipt == b_receipt
-            }
-            (LogRef::LogPosition(a_index, a_receipt), LogRef::LogPosition(b_index, b_receipt)) => {
-                a_index == b_index && a_receipt == b_receipt
-            }
-            _ => false,
-        }
+    pub fn transaction_index(&self) -> Option<U64> {
+        self.log().transaction_index
+    }
+
+    fn transaction_hash(&self) -> Option<H256> {
+        self.log().transaction_hash
+    }
+
+    pub fn block_hash(&self) -> Option<H256> {
+        self.log().block_hash
+    }
+
+    pub fn block_number(&self) -> Option<U64> {
+        self.log().block_number
+    }
+
+    pub fn address(&self) -> H160 {
+        self.log().address
     }
 }
 
@@ -309,7 +291,11 @@ impl PartialEq for EthereumTrigger {
 
             (Self::Call(a), Self::Call(b)) => a == b,
 
-            (Self::Log(a), Self::Log(b)) => a == b,
+            (Self::Log(a), Self::Log(b)) => {
+                a.transaction_hash() == b.transaction_hash()
+                    && a.log_index() == b.log_index()
+                    && a.receipt() == b.receipt()
+            }
             _ => false,
         }
     }

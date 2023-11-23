@@ -646,7 +646,7 @@ impl DataSource {
                 )))
             }
             EthereumTrigger::Log(log_ref) => {
-                let log = log_ref.log();
+                let log = Arc::new(log_ref.log().clone());
                 let receipt = log_ref.receipt();
                 let potential_handlers = self.handlers_for_log(&log)?;
 
