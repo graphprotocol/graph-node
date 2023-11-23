@@ -645,8 +645,10 @@ impl DataSource {
                     block.block_ptr(),
                 )))
             }
-            EthereumTrigger::Log(log, receipt) => {
-                let potential_handlers = self.handlers_for_log(log)?;
+            EthereumTrigger::Log(log_ref) => {
+                let log = log_ref.log();
+                let receipt = log_ref.receipt();
+                let potential_handlers = self.handlers_for_log(&log)?;
 
                 // Map event handlers to (event handler, event ABI) pairs; fail if there are
                 // handlers that don't exist in the contract ABI
@@ -721,7 +723,7 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 let transaction = if log.transaction_hash != block.hash {
                     block
-                        .transaction_for_log(log)
+                        .transaction_for_log(&log)
                         .context("Found no transaction for event")?
                 } else {
                     // Infer some fields from the log and fill the rest with zeros.
@@ -744,9 +746,9 @@ impl DataSource {
                     MappingTrigger::Log {
                         block: block.cheap_clone(),
                         transaction: Arc::new(transaction),
-                        log: log.cheap_clone(),
+                        log: log,
                         params,
-                        receipt: receipt.clone(),
+                        receipt: receipt.map(|r| r.cheap_clone()),
                     },
                     event_handler.handler,
                     block.block_ptr(),
