@@ -6,7 +6,7 @@ use diesel::{
 };
 use diesel::{sql_query, RunQueryDsl};
 
-use diesel_migrations::EmbeddedMigrations;
+use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::constraint_violation;
@@ -1131,38 +1131,48 @@ impl MigrationCount {
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
 fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationCount, StoreError> {
+    use diesel_migrations::MigrationHarness;
+
     // Collect migration logging output
     let mut output = vec![];
 
     let old_count = catalog::migration_count(conn)?;
+    let mut harness = HarnessWithOutput::new(conn, &mut output);
 
     info!(logger, "Running migrations");
-    let result = embedded_migrations::run_with_output(conn, &mut output);
+    // let result = conn.run_pending_migrations(MIGRATIONS);
+    let result = harness.run_pending_migrations(MIGRATIONS);
     info!(logger, "Migrations finished");
 
-    let new_count = catalog::migration_count(conn)?;
-
-    // If there was any migration output, log it now
-    let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
-    let msg = msg.trim();
-    if !msg.is_empty() {
-        let msg = msg.replace('\n', " ");
-        if let Err(e) = result {
-            error!(logger, "Postgres migration error"; "output" => msg);
-            return Err(StoreError::Unknown(e.into()));
-        } else {
-            debug!(logger, "Postgres migration output"; "output" => msg);
+    if let Err(e) = result {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        let mut msg = msg.trim().to_string();
+        if !msg.is_empty() {
+            msg = msg.replace('\n', " ");
         }
-    }
-    let count = MigrationCount::new(old_count, new_count);
 
-    if count.had_migrations() {
+        error!(logger, "Postgres migration error"; "output" => msg);
+        return Err(StoreError::Unknown(anyhow!(e.to_string())));
+    } else {
+        let msg = String::from_utf8(output).unwrap_or_else(|_| String::from("<unreadable>"));
+        let mut msg = msg.trim().to_string();
+        if !msg.is_empty() {
+            msg = msg.replace('\n', " ");
+        }
+        debug!(logger, "Postgres migration output"; "output" => msg);
+    }
+
+    let migrations = catalog::migration_count(conn)?;
+    if migrations != old_count {
         // Reset the query statistics since a schema change makes them not
         // all that useful. An error here is not serious and can be ignored.
         conn.batch_execute("select pg_stat_statements_reset()").ok();
     }
 
-    Ok(count)
+    Ok(MigrationCount {
+        new: migrations,
+        old: old_count,
+    })
 }
 
 /// Helper to coordinate propagating schema changes from the database that
