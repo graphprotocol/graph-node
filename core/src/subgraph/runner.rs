@@ -902,21 +902,23 @@ where
                 .observe(block.trigger_count() as f64);
         }
 
-        let ptr_updates_section = self.metrics.stream.stopwatch.start_section("ptr_updates");
-
-        if block.trigger_count() == 0
-            && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+        if self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
             && !self.state.synced
-            && !close_to_chain_head(
-                &block_ptr,
-                self.state.cached_head_ptr.clone(),
-                // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
-                // behind the chain head.
-                1000,
-            )
         {
-            return Ok(Action::Continue);
-        } else {
+            let _ptr_updates_section = self.metrics.stream.stopwatch.start_section("ptr_updates");
+
+            if block.trigger_count() == 0
+                && !close_to_chain_head(
+                    &block_ptr,
+                    self.state.cached_head_ptr.clone(),
+                    // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
+                    // behind the chain head.
+                    1000,
+                )
+            {
+                return Ok(Action::Continue);
+            }
+
             self.state.skip_ptr_updates_timer = Instant::now();
             let _section = self
                 .metrics
@@ -925,9 +927,9 @@ where
                 .start_section("get_cached_head_ptr");
 
             self.state.cached_head_ptr = self.inputs.chain.chain_store().cached_head_ptr().await?;
+        } else {
+            self.state.skip_ptr_updates_timer = Instant::now();
         }
-
-        ptr_updates_section.end();
 
         let start = Instant::now();
 
