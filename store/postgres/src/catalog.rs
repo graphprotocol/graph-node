@@ -322,13 +322,13 @@ pub fn table_exists(
 }
 
 pub fn supports_proof_of_indexing(
-    mut conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     lazy_static! {
         static ref POI_TABLE_NAME: SqlName = SqlName::verbatim(POI_TABLE.to_owned());
     }
-    table_exists(&mut conn, namespace.as_str(), &POI_TABLE_NAME)
+    table_exists(conn, namespace.as_str(), &POI_TABLE_NAME)
 }
 
 pub fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, StoreError> {

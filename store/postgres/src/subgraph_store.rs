@@ -438,7 +438,7 @@ impl SubgraphStoreInner {
             }
             1 => Ok(nodes.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since nodes is not empty
                 let node = conn.least_assigned_node(&nodes)?.unwrap();
@@ -452,7 +452,7 @@ impl SubgraphStoreInner {
             0 => Ok(PRIMARY_SHARD.clone()),
             1 => Ok(shards.pop().unwrap()),
             _ => {
-                let conn = self.primary_conn()?;
+                let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since shards is not empty
                 let shard = conn.least_used_shard(&shards)?.unwrap();
@@ -755,7 +755,7 @@ impl SubgraphStoreInner {
     /// it very hard to export items just for testing
     #[cfg(debug_assertions)]
     pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
-        let pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn()?;
         let schemas = pconn.sites()?;
 
         // Delete all subgraph schemas
