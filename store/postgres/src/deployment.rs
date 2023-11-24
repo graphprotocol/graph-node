@@ -1044,7 +1044,7 @@ pub(crate) fn copy_errors(
 /// will wait at most 2s to aquire all necessary locks, and fail if that is
 /// not possible.
 pub fn drop_schema(
-    conn: &diesel::pg::PgConnection,
+    conn: &mut PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
     let query = format!(
