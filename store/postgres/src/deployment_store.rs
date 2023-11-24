@@ -527,19 +527,17 @@ impl DeploymentStore {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let mut conn = self.get_conn()?;
-        conn.transaction(|_| -> Result<_, StoreError> {
-            detail::deployment_details(&mut conn, ids)
-        })
+        let conn = &mut *self.get_conn()?;
+        conn.transaction(|conn| -> Result<_, StoreError> { detail::deployment_details(conn, ids) })
     }
 
     pub(crate) fn deployment_statuses(
         &self,
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
-        let mut conn = self.get_conn()?;
-        conn.transaction(|_| -> Result<Vec<status::Info>, StoreError> {
-            detail::deployment_statuses(&mut conn, sites)
+        let conn = &mut *self.get_conn()?;
+        conn.transaction(|conn| -> Result<Vec<status::Info>, StoreError> {
+            detail::deployment_statuses(conn, sites)
         })
     }
 
@@ -575,8 +573,8 @@ impl DeploymentStore {
         &self,
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
-        let conn = self.get_conn()?;
-        deployment::drop_schema(&conn, namespace)
+        let conn = &mut *self.get_conn()?;
+        deployment::drop_schema(conn, namespace)
     }
 
     // Only used for tests
@@ -828,7 +826,7 @@ impl DeploymentStore {
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         fn do_prune(
             store: Arc<DeploymentStore>,
-            mut conn: &PooledConnection<ConnectionManager<PgConnection>>,
+            mut conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
             site: Arc<Site>,
             cancel: &CancelHandle,
             req: PruneRequest,
@@ -1105,7 +1103,7 @@ impl DeploymentStore {
         let event: StoreEvent = batch.store_event(&site.deployment);
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, || {
-            conn.transaction(|mut conn| -> Result<_, StoreError> {
+            conn.transaction(|conn| -> Result<_, StoreError> {
                 // Make the changes
                 let layout = self.layout(conn, site.clone())?;
 
@@ -1512,7 +1510,7 @@ impl DeploymentStore {
             // as adding new tables in `self`; we only need to check that tables
             // that actually need to be copied from the source are compatible
             // with the corresponding tables in `self`
-            let copy_conn = crate::copy::Connection::new(
+            let mut copy_conn = crate::copy::Connection::new(
                 logger,
                 self.pool.clone(),
                 src.clone(),
@@ -1612,12 +1610,12 @@ impl DeploymentStore {
     // - There's no fatal error for the subgraph
     // - The error is NOT deterministic
     pub(crate) fn unfail_deterministic_error(
-        &self,
+        &mut self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let conn = &mut self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1709,11 +1707,11 @@ impl DeploymentStore {
     // - There's no fatal error for the subgraph
     // - The error IS deterministic
     pub(crate) fn unfail_non_deterministic_error(
-        &self,
+        &mut self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = &self.get_conn()?;
+        let conn = &mut self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {

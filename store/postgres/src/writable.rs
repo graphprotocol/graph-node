@@ -341,7 +341,7 @@ impl SyncStore {
                     if src.deployment == self.site.deployment {
                         let on_sync = self.writable.on_sync(&self.site)?;
                         if on_sync.activate() {
-                            let pconn = self.store.primary_conn()?;
+                            let mut pconn = self.store.primary_conn()?;
                             pconn.activate(&self.site.as_ref().into())?;
                         }
                         if on_sync.replace() {
