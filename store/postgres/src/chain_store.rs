@@ -1803,7 +1803,7 @@ impl ChainStoreTrait for ChainStore {
         //this will send an update via postgres, channel: chain_head_updates
         self.chain_head_update_sender.send(&hash, number)?;
 
-        pool.with_conn(move |mut conn, _| {
+        pool.with_conn(move |conn, _| {
             conn.transaction(|conn| -> Result<(), StoreError> {
                 storage
                     .upsert_block(conn, &network, block.as_ref(), true)
@@ -2250,7 +2250,7 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<Vec<u8>>, Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let mut conn = &*self.get_conn()?;
+        let conn = &mut *self.get_conn()?;
         if let Some(call_output) = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
@@ -2271,7 +2271,7 @@ impl EthereumCallCache for ChainStore {
     }
 
     fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
-        let mut conn = &*self.get_conn()?;
+        let conn = &mut *self.get_conn()?;
         conn.transaction::<_, Error, _>(|conn| self.storage.get_calls_in_block(conn, block))
     }
 
@@ -2283,7 +2283,7 @@ impl EthereumCallCache for ChainStore {
         return_value: &[u8],
     ) -> Result<(), Error> {
         let id = contract_call_id(&contract_address, encoded_call, &block);
-        let mut conn = &*self.get_conn()?;
+        let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| {
             self.storage.set_call(
                 conn,
