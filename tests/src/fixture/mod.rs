@@ -1,4 +1,5 @@
 pub mod ethereum;
+pub mod substreams;
 
 use std::marker::PhantomData;
 use std::sync::Mutex;
@@ -23,7 +24,9 @@ use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::ipfs_client::IpfsClient;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
@@ -34,6 +37,7 @@ use graph::prelude::{
     SubgraphVersionSwitchingMode, TriggerProcessor,
 };
 use graph::schema::InputSchema;
+use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_core::{
     LinkResolver, SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider,
@@ -70,19 +74,76 @@ pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
 
 type GraphQlRunner = graph_graphql::prelude::GraphQlRunner<Store, PanicSubscriptionManager>;
 
+struct CommonChainConfig {
+    logger_factory: LoggerFactory,
+    mock_registry: Arc<MetricsRegistry>,
+    chain_store: Arc<ChainStore>,
+    firehose_endpoints: FirehoseEndpoints,
+    node_id: NodeId,
+}
+
+impl CommonChainConfig {
+    async fn new(test_name: &str, stores: &Stores) -> Self {
+        let logger = test_logger(test_name);
+        let mock_registry = Arc::new(MetricsRegistry::mock());
+        let logger_factory = LoggerFactory::new(logger.cheap_clone(), None, mock_registry.clone());
+        let chain_store = stores.chain_store.cheap_clone();
+        let node_id = NodeId::new(NODE_ID).unwrap();
+
+        let firehose_endpoints: FirehoseEndpoints = vec![Arc::new(FirehoseEndpoint::new(
+            "",
+            "https://example.com",
+            None,
+            true,
+            false,
+            SubgraphLimit::Unlimited,
+            Arc::new(EndpointMetrics::mock()),
+        ))]
+        .into();
+
+        Self {
+            logger_factory,
+            mock_registry,
+            chain_store,
+            firehose_endpoints,
+            node_id,
+        }
+    }
+}
+
 pub struct TestChain<C: Blockchain> {
     pub chain: Arc<C>,
     pub block_stream_builder: Arc<MutexBlockStreamBuilder<C>>,
 }
 
-impl<C: Blockchain> TestChain<C> {
-    pub fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>)
-    where
-        C::TriggerData: Clone,
-    {
+impl TestChainTrait<Chain> for TestChain<Chain> {
+    fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<Chain>>) {
         let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
         *self.block_stream_builder.0.lock().unwrap() = static_block_stream;
     }
+
+    fn chain(&self) -> Arc<Chain> {
+        self.chain.clone()
+    }
+}
+
+pub struct TestChainSubstreams {
+    pub chain: Arc<graph_chain_substreams::Chain>,
+    pub block_stream_builder: Arc<graph_chain_substreams::BlockStreamBuilder>,
+}
+
+impl TestChainTrait<graph_chain_substreams::Chain> for TestChainSubstreams {
+    fn set_block_stream(&self, _blocks: Vec<BlockWithTriggers<graph_chain_substreams::Chain>>) {}
+
+    fn chain(&self) -> Arc<graph_chain_substreams::Chain> {
+        self.chain.clone()
+    }
+}
+
+pub trait TestChainTrait<C: Blockchain> {
+    fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>);
+
+    fn chain(&self) -> Arc<C>;
 }
 
 pub struct TestContext {
@@ -137,17 +198,7 @@ impl TestContext {
         graph_chain_ethereum::Chain,
         RuntimeHostBuilder<graph_chain_ethereum::Chain>,
     > {
-        let logger = self.logger.cheap_clone();
-        let deployment = self.deployment.cheap_clone();
-
-        // Stolen from the IPFS provider, there's prolly a nicer way to re-use it
-        let file_bytes = self
-            .link_resolver
-            .cat(&logger, &deployment.hash.to_ipfs_link())
-            .await
-            .unwrap();
-
-        let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes).unwrap();
+        let (logger, deployment, raw) = self.get_runner_context().await;
         let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
 
         self.instance_manager
@@ -161,6 +212,45 @@ impl TestContext {
             )
             .await
             .unwrap()
+    }
+
+    pub async fn runner_substreams(
+        &self,
+        stop_block: BlockPtr,
+    ) -> graph_core::SubgraphRunner<
+        graph_chain_substreams::Chain,
+        RuntimeHostBuilder<graph_chain_substreams::Chain>,
+    > {
+        let (logger, deployment, raw) = self.get_runner_context().await;
+        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+
+        self.instance_manager
+            .build_subgraph_runner(
+                logger,
+                self.env_vars.cheap_clone(),
+                deployment,
+                raw,
+                Some(stop_block.block_number()),
+                tp,
+            )
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_runner_context(&self) -> (Logger, DeploymentLocator, serde_yaml::Mapping) {
+        let logger = self.logger.cheap_clone();
+        let deployment = self.deployment.cheap_clone();
+
+        // Stolen from the IPFS provider, there's prolly a nicer way to re-use it
+        let file_bytes = self
+            .link_resolver
+            .cat(&logger, &deployment.hash.to_ipfs_link())
+            .await
+            .unwrap();
+
+        let raw: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes).unwrap();
+
+        (logger, deployment, raw)
     }
 
     pub async fn start_and_sync_to(&self, stop_block: BlockPtr) {
@@ -331,7 +421,7 @@ pub async fn setup<C: Blockchain>(
     subgraph_name: SubgraphName,
     hash: &DeploymentHash,
     stores: &Stores,
-    chain: &TestChain<C>,
+    chain: &impl TestChainTrait<C>,
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
@@ -350,7 +440,7 @@ pub async fn setup<C: Blockchain>(
     cleanup(&subgraph_store, &subgraph_name, hash).unwrap();
 
     let mut blockchain_map = BlockchainMap::new();
-    blockchain_map.insert(stores.network_name.clone(), chain.chain.clone());
+    blockchain_map.insert(stores.network_name.clone(), chain.chain());
 
     let static_filters = env_vars.experimental_static_filters;
 

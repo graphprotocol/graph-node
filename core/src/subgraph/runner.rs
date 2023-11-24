@@ -124,10 +124,7 @@ where
             return C::TriggerFilter::from_data_sources(
                 self.ctx
                     .instance()
-                    .hosts()
-                    .iter()
-                    .filter_map(|h| h.data_source().as_onchain())
-                    // Filter out data sources that have reached their end block if the block is final.
+                    .onchain_data_sources()
                     .filter(end_block_filter),
             );
         }
@@ -156,6 +153,11 @@ where
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
         filter
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn build_filter_for_test(&self) -> C::TriggerFilter {
+        self.build_filter()
     }
 
     pub async fn run(self) -> Result<(), Error> {

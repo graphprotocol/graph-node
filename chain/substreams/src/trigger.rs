@@ -60,6 +60,25 @@ pub struct TriggerFilter {
     pub(crate) data_sources_len: u8,
 }
 
+#[cfg(debug_assertions)]
+impl TriggerFilter {
+    pub fn modules(&self) -> &Option<Modules> {
+        &self.modules
+    }
+
+    pub fn module_name(&self) -> &str {
+        &self.module_name
+    }
+
+    pub fn start_block(&self) -> &Option<BlockNumber> {
+        &self.start_block
+    }
+
+    pub fn data_sources_len(&self) -> u8 {
+        self.data_sources_len
+    }
+}
+
 // TriggerFilter should bypass all triggers and just rely on block since all the data received
 // should already have been processed.
 impl blockchain::TriggerFilter<Chain> for TriggerFilter {
