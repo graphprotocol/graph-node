@@ -1089,7 +1089,7 @@ impl PoolInner {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get()?;
-            conn.transaction(|conn| ForeignServer::map_primary(&mut conn, &self.shard))?;
+            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -1098,7 +1098,7 @@ impl PoolInner {
                 server.shard.as_str()
             );
             let mut conn = self.get()?;
-            conn.transaction(|conn| server.map_metadata(&mut conn))?;
+            conn.transaction(|conn| server.map_metadata(conn))?;
         }
         Ok(())
     }

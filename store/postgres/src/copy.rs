@@ -736,9 +736,9 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&self, f: F) -> Result<T, StoreError>
+    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
     where
-        F: FnOnce(&PgConnection) -> Result<T, StoreError>,
+        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
     {
         self.conn.transaction(|conn| f(conn))
     }
@@ -826,7 +826,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub fn copy_data(&self) -> Result<Status, StoreError> {
+    pub fn copy_data(&mut self) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
