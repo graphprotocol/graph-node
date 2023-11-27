@@ -114,7 +114,11 @@ impl HostMetrics {
                 "deployment_eth_call_execution_time",
                 "Measures the execution time for eth_call",
                 subgraph,
-                vec![String::from("method"), String::from("contract")],
+                vec![
+                    String::from("contract_name"),
+                    String::from("address"),
+                    String::from("method"),
+                ],
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `deployment_eth_call_execution_time` histogram");
@@ -149,9 +153,15 @@ impl HostMetrics {
             .observe(duration);
     }
 
-    pub fn observe_eth_call_execution_time(&self, duration: f64, contract: &str, method: &str) {
+    pub fn observe_eth_call_execution_time(
+        &self,
+        duration: f64,
+        contract_name: &str,
+        address: &str,
+        method: &str,
+    ) {
         self.eth_call_execution_time
-            .with_label_values(&[method, contract][..])
+            .with_label_values(&[contract_name, address, method][..])
             .observe(duration);
     }
 
