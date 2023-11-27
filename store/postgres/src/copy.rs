@@ -330,7 +330,7 @@ impl AdaptiveBatchSize {
 }
 
 impl ToSql<BigInt, Pg> for AdaptiveBatchSize {
-    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <i64 as ToSql<BigInt, Pg>>::to_sql(&self.size, out)
     }
 }
