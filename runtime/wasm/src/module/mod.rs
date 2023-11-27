@@ -527,12 +527,14 @@ impl<C: Blockchain> WasmInstance<C> {
                     let stopwatch = &instance.host_metrics.stopwatch;
                     let _section =
                         stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
+                    let metrics = instance.host_metrics.cheap_clone();
 
                     let ctx = HostFnCtx {
                         logger: instance.ctx.logger.cheap_clone(),
                         block_ptr: instance.ctx.block_ptr.cheap_clone(),
                         heap: instance,
                         gas: gas.cheap_clone(),
+                        metrics,
                     };
                     let ret = (host_fn.func)(ctx, call_ptr).map_err(|e| match e {
                         HostExportError::Deterministic(e) => {
