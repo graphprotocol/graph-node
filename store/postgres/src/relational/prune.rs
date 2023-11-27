@@ -439,7 +439,7 @@ impl Layout {
                     // the smaller `dst` table
                     // see also: deployment-lock-for-update
                     reporter.start_switch();
-                    deployment::with_lock(conn, &self.site, || -> Result<_, StoreError> {
+                    deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
                         pair.copy_nonfinal_entities(conn, reporter, req.final_block)?;
                         cancel.check_cancel().map_err(CancelableError::from)?;
 
