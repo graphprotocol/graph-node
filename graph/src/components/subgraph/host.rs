@@ -88,6 +88,7 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
 pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
+    eth_call_execution_time: Box<HistogramVec>,
     pub gas_metrics: GasMetrics,
     pub stopwatch: StopwatchMetrics,
 }
@@ -108,6 +109,16 @@ impl HostMetrics {
                 vec![0.1, 0.5, 1.0, 10.0, 100.0],
             )
             .expect("failed to create `deployment_handler_execution_time` histogram");
+        let eth_call_execution_time = registry
+            .new_deployment_histogram_vec(
+                "deployment_eth_call_execution_time",
+                "Measures the execution time for eth_call",
+                subgraph,
+                vec![String::from("method"), String::from("contract")],
+                vec![0.1, 0.5, 1.0, 10.0, 100.0],
+            )
+            .expect("failed to create `deployment_eth_call_execution_time` histogram");
+
         let host_fn_execution_time = registry
             .new_deployment_histogram_vec(
                 "deployment_host_fn_execution_time",
@@ -122,6 +133,7 @@ impl HostMetrics {
             host_fn_execution_time,
             stopwatch,
             gas_metrics,
+            eth_call_execution_time,
         }
     }
 
@@ -134,6 +146,12 @@ impl HostMetrics {
     pub fn observe_host_fn_execution_time(&self, duration: f64, fn_name: &str) {
         self.host_fn_execution_time
             .with_label_values(&[fn_name][..])
+            .observe(duration);
+    }
+
+    pub fn observe_eth_call_execution_time(&self, duration: f64, contract: &str, method: &str) {
+        self.eth_call_execution_time
+            .with_label_values(&[method, contract][..])
             .observe(duration);
     }
 

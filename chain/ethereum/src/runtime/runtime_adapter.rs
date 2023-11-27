@@ -9,6 +9,7 @@ use crate::{
 use anyhow::{Context, Error};
 use blockchain::HostFn;
 use graph::blockchain::ChainIdentifier;
+use graph::components::subgraph::HostMetrics;
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
 use graph::{
@@ -123,6 +124,7 @@ fn ethereum_call(
         call,
         abis,
         eth_call_gas,
+        ctx.metrics.cheap_clone(),
     )?;
     match result {
         Some(tokens) => Ok(asc_new(ctx.heap, tokens.as_slice(), &ctx.gas)?),
@@ -139,6 +141,7 @@ fn eth_call(
     unresolved_call: UnresolvedContractCall,
     abis: &[Arc<MappingABI>],
     eth_call_gas: Option<u32>,
+    metrics: Arc<HostMetrics>,
 ) -> Result<Option<Vec<Token>>, HostExportError> {
     let start_time = Instant::now();
 
@@ -238,12 +241,20 @@ fn eth_call(
             ))),
         };
 
+    let elapsed = start_time.elapsed();
+
+    metrics.observe_eth_call_execution_time(
+        elapsed.as_secs_f64(),
+        &unresolved_call.contract_name,
+        &unresolved_call.function_name,
+    );
+
     trace!(logger, "Contract call finished";
               "address" => &unresolved_call.contract_address.to_string(),
               "contract" => &unresolved_call.contract_name,
               "function" => &unresolved_call.function_name,
               "function_signature" => &unresolved_call.function_signature,
-              "time" => format!("{}ms", start_time.elapsed().as_millis()));
+              "time" => format!("{}ms", elapsed.as_millis()));
 
     result
 }

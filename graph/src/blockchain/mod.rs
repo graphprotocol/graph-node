@@ -17,7 +17,10 @@ mod types;
 // Try to reexport most of the necessary types
 use crate::{
     cheap_clone::CheapClone,
-    components::store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
+    components::{
+        store::{DeploymentCursorTracker, DeploymentLocator, StoredDynamicDataSource},
+        subgraph::HostMetrics,
+    },
     data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
     data_source,
     prelude::DataSourceContext,
@@ -359,6 +362,7 @@ pub struct HostFnCtx<'a> {
     pub block_ptr: BlockPtr,
     pub heap: &'a mut dyn AscHeap,
     pub gas: GasCounter,
+    pub metrics: Arc<HostMetrics>,
 }
 
 /// Host fn that receives one u32 argument and returns an u32.
