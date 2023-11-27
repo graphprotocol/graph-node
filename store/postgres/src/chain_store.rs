@@ -304,8 +304,9 @@ mod data {
     }
 
     impl ToSql<Text, Pg> for Storage {
-        fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
-            <String as ToSql<Text, Pg>>::to_sql(&self.to_string(), out)
+        fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
+            let s = self.to_string();
+            <String as ToSql<Text, Pg>>::to_sql(&s, &mut out.reborrow())
         }
     }
 
