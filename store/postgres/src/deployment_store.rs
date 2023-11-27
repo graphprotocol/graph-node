@@ -1102,7 +1102,7 @@ impl DeploymentStore {
         // for longer than we have to
         let event: StoreEvent = batch.store_event(&site.deployment);
 
-        let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, || {
+        let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // Make the changes
                 let layout = self.layout(conn, site.clone())?;
@@ -1257,7 +1257,7 @@ impl DeploymentStore {
         firehose_cursor: &FirehoseCursor,
         truncate: bool,
     ) -> Result<StoreEvent, StoreError> {
-        let event = deployment::with_lock(conn, &site, || {
+        let event = deployment::with_lock(conn, &site, |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // Don't revert past a graft point
                 let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
