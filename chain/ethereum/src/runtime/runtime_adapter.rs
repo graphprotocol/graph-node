@@ -246,6 +246,7 @@ fn eth_call(
     metrics.observe_eth_call_execution_time(
         elapsed.as_secs_f64(),
         &unresolved_call.contract_name,
+        &unresolved_call.contract_address.to_string(),
         &unresolved_call.function_name,
     );
 
