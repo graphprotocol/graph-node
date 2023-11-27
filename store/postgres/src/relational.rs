@@ -185,7 +185,7 @@ impl FromSql<Text, Pg> for SqlName {
 }
 
 impl ToSql<Text, Pg> for SqlName {
-    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         <String as ToSql<Text, Pg>>::to_sql(&self.0, out)
     }
 }
