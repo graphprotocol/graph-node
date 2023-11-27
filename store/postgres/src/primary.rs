@@ -919,8 +919,6 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use SubgraphVersionSwitchingMode::*;
 
-        let conn = self.conn.as_mut();
-
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -981,19 +979,19 @@ impl<'a> Connection<'a> {
                 v::created_at.eq(sql(&format!("{}", created_at))),
                 v::block_range.eq(UNVERSIONED_RANGE),
             ))
-            .execute(conn)?;
+            .execute(self.conn.as_mut())?;
 
         // Create a subgraph assignment if there isn't one already
         let new_assignment = a::table
             .filter(a::id.eq(site.id))
             .select(a::id)
-            .first::<i32>(conn)
+            .first::<i32>(self.conn.as_mut())
             .optional()?
             .is_none();
         if new_assignment {
             insert_into(a::table)
                 .values((a::id.eq(site.id), a::node_id.eq(node_id.as_str())))
-                .execute(conn)?;
+                .execute(self.conn.as_mut())?;
         }
 
         // See if we should make this the current or pending version
@@ -1008,12 +1006,12 @@ impl<'a> Connection<'a> {
                         s::current_version.eq(&version_id),
                         s::pending_version.eq::<Option<&str>>(None),
                     ))
-                    .execute(conn)?;
+                    .execute(self.conn.as_mut())?;
             }
             (Synced, true, false) => {
                 subgraph_row
                     .set(s::pending_version.eq(&version_id))
-                    .execute(conn)?;
+                    .execute(self.conn.as_mut())?;
             }
         }
 
