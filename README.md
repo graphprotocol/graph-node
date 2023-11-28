@@ -27,6 +27,11 @@ For Ethereum network data, you can either run your own Ethereum node or use an E
 
 - To build graph-node with `cargo`, 8GB RAM are required.
 
+### Docker
+
+The easiest way to run a Graph Node is to use the official Docker compose setup. This will start a Postgres database, IPFS node, and Graph Node.
+[Follow the instructions here](./docker/README.md).
+
 ### Running a Local Graph Node
 
 This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
@@ -58,7 +63,7 @@ the connection string, check the [Postgres
 documentation](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING).
 `graph-node` uses a few Postgres extensions. If the Postgres user with which
 you run `graph-node` is a superuser, `graph-node` will enable these
-extensions when it initializes the database. If the Postgres user is not a
+reextensions when it initializes the database. If the Postgres user is not a
 superuser, you will need to create the extensions manually since only
 superusers are allowed to do that. To create them you need to connect as a
 superuser, which in many installations is the `postgres` user:
