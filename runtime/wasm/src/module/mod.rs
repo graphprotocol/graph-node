@@ -1118,6 +1118,7 @@ impl<C: Blockchain> WasmInstanceContext<C> {
         self.ctx.host_exports.store_set(
             &self.ctx.logger,
             &mut self.ctx.state,
+            self.ctx.block_ptr.number,
             &self.ctx.proof_of_indexing,
             entity,
             id,

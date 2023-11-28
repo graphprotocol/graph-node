@@ -204,6 +204,7 @@ impl<C: Blockchain> HostExports<C> {
         &self,
         logger: &Logger,
         state: &mut BlockState<C>,
+        _block: BlockNumber,
         proof_of_indexing: &SharedProofOfIndexing,
         entity_type: String,
         entity_id: String,
@@ -1061,7 +1062,10 @@ pub mod test_support {
 
     use graph::{
         blockchain::Blockchain,
-        components::{store::GetScope, subgraph::SharedProofOfIndexing},
+        components::{
+            store::{BlockNumber, GetScope},
+            subgraph::SharedProofOfIndexing,
+        },
         data::value::Word,
         prelude::{BlockState, Entity, StopwatchMetrics, Value},
         runtime::{gas::GasCounter, HostExportError},
@@ -1081,6 +1085,7 @@ pub mod test_support {
             &self,
             logger: &Logger,
             state: &mut BlockState<C>,
+            block: BlockNumber,
             proof_of_indexing: &SharedProofOfIndexing,
             entity_type: String,
             entity_id: String,
@@ -1091,6 +1096,7 @@ pub mod test_support {
             self.0.store_set(
                 logger,
                 state,
+                block,
                 proof_of_indexing,
                 entity_type,
                 entity_id,

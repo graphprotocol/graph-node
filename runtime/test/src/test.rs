@@ -1290,6 +1290,7 @@ impl Host {
         self.host_exports.store_set(
             &self.ctx.logger,
             &mut self.ctx.state,
+            12, // Arbitrary block number
             &self.ctx.proof_of_indexing,
             entity_type.to_string(),
             id,
