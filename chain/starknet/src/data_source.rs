@@ -30,7 +30,7 @@ pub struct DataSource {
 
 #[derive(Clone)]
 pub struct Mapping {
-    pub block_handlers: Vec<MappingBlockHandler>,
+    pub block_handler: Option<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
     pub runtime: Arc<Vec<u8>>,
 }
@@ -57,7 +57,7 @@ pub struct Source {
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {
     #[serde(default)]
-    pub block_handlers: Vec<MappingBlockHandler>,
+    pub block_handler: Option<MappingBlockHandler>,
     #[serde(default)]
     pub event_handlers: Vec<UnresolvedMappingEventHandler>,
     pub file: Link,
@@ -107,12 +107,12 @@ impl blockchain::DataSource<Chain> for DataSource {
         let mut kinds = HashSet::new();
 
         let Mapping {
-            block_handlers,
+            block_handler,
             event_handlers,
             ..
         } = &self.mapping;
 
-        if !block_handlers.is_empty() {
+        if block_handler.is_some() {
             kinds.insert(BLOCK_HANDLER_KIND);
         }
         if !event_handlers.is_empty() {
@@ -133,7 +133,7 @@ impl blockchain::DataSource<Chain> for DataSource {
         }
 
         let handler = match trigger {
-            StarknetTrigger::Block(_) => match self.mapping.block_handlers.first() {
+            StarknetTrigger::Block(_) => match &self.mapping.block_handler {
                 Some(handler) => handler.handler.clone(),
                 None => return Ok(None),
             },
@@ -184,7 +184,7 @@ impl blockchain::DataSource<Chain> for DataSource {
             && name == &other.name
             && source == &other.source
             && mapping.event_handlers == other.mapping.event_handlers
-            && mapping.block_handlers == other.mapping.block_handlers
+            && mapping.block_handler == other.mapping.block_handler
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
@@ -259,7 +259,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             name: self.name,
             source: self.source,
             mapping: Mapping {
-                block_handlers: self.mapping.block_handlers,
+                block_handler: self.mapping.block_handler,
                 event_handlers: self
                     .mapping
                     .event_handlers
