@@ -1610,12 +1610,12 @@ impl DeploymentStore {
     // - There's no fatal error for the subgraph
     // - The error is NOT deterministic
     pub(crate) fn unfail_deterministic_error(
-        &mut self,
+        &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let conn = &mut self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1707,11 +1707,11 @@ impl DeploymentStore {
     // - There's no fatal error for the subgraph
     // - The error IS deterministic
     pub(crate) fn unfail_non_deterministic_error(
-        &mut self,
+        &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let conn = &mut self.get_conn()?;
+        let mut conn = self.get_conn()?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {

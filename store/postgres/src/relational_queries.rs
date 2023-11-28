@@ -31,6 +31,7 @@ use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
+use std::string::ToString;
 
 use crate::block_range::BlockRange;
 use crate::relational::{
@@ -117,7 +118,7 @@ trait ForeignKeyClauses {
 
     /// Generate a clause `{name()} = $id` using the right types to bind `$id`
     /// into `out`
-    fn eq(&self, id: &Id, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn eq<'b>(&self, id: &'b Id, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql(self.name());
         out.push_sql(" = ");
         id.push_bind_param(out)
@@ -126,7 +127,7 @@ trait ForeignKeyClauses {
     /// Generate a clause
     ///    `exists (select 1 from unnest($ids) as p(g$id) where id = p.g$id)`
     /// using the right types to bind `$ids` into `out`
-    fn is_in(&self, ids: &IdList, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn is_in<'b>(&self, ids: &'b IdList, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.push_sql("exists (select 1 from unnest(");
         ids.push_bind_param(out)?;
         out.push_sql(") as p(g$id) where id = p.g$id)");
@@ -140,20 +141,23 @@ trait ForeignKeyClauses {
 /// we have to switch between `Text` and `Binary` and therefore use this
 /// trait to make passing `Id` values to the database convenient
 trait PushBindParam {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()>;
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()>;
 }
 
 impl PushBindParam for Id {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             Id::String(s) => out.push_bind_param::<Text, _>(s),
-            Id::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Id::Bytes(b) => {
+                let slice = b.as_slice();
+                out.push_bind_param::<Binary, _>(slice)
+            }
         }
     }
 }
 
 impl PushBindParam for IdList {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             IdList::String(ids) => out.push_bind_param::<Array<Text>, _>(ids),
             IdList::Bytes(ids) => out.push_bind_param::<Array<Binary>, _>(ids),
@@ -162,7 +166,7 @@ impl PushBindParam for IdList {
 }
 
 impl<'a> PushBindParam for IdRef<'a> {
-    fn push_bind_param(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             IdRef::String(s) => out.push_bind_param::<Text, _>(s),
             IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(b),
@@ -544,7 +548,7 @@ impl EntityData {
 struct QueryValue<'a>(&'a Value, &'a ColumnType);
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
         let column_type = self.1;
 
@@ -600,7 +604,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(values),
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
-                    ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(&values),
+                    ColumnType::Int8 => out.push_bind_param::<Array<Int8>, _>(values),
                     ColumnType::String => out.push_bind_param::<Array<Text>, _>(values),
                     ColumnType::Enum(enum_type) => {
                         out.push_bind_param::<Array<Text>, _>(values)?;
@@ -635,9 +639,17 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                 out.push_sql("null");
                 Ok(())
             }
-            Value::Bytes(b) => out.push_bind_param::<Binary, _>(&b.as_slice()),
+            Value::Bytes(b) => {
+                let slice = b.as_slice();
+                out.push_bind_param::<Binary, _>(slice)
+            }
             Value::BigInt(i) => {
-                out.push_bind_param::<Text, _>(&i.to_string())?;
+                let big_int = i.to_string();
+                let mut out = out.reborrow();
+                let bind = &big_int;
+                out.reborrow().push_bind_param::<Text, _>(bind)?;
+                let mut out = out.reborrow();
+                //let mut out = out.reborrow();
                 out.push_sql("::numeric");
                 Ok(())
             }
@@ -1081,7 +1093,7 @@ impl<'a> QueryFilter<'a> {
 
         // Match by block
         BlockRangeColumn::new(child_table, child_prefix, self.block)
-            .contains(&mut out, is_type_c_or_d)?;
+            .contains(out, is_type_c_or_d)?;
 
         out.push_sql(" and ");
 
@@ -1501,7 +1513,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
             out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, true)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(out, true)
     }
 }
 
@@ -1654,7 +1666,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_bind_param::<Integer, _>(cr)?;
                 out.push_sql(" and ");
             }
-            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out, true)?;
+            BlockRangeColumn::new(table, "e.", self.block).contains(out, true)?;
         }
         Ok(())
     }
@@ -1725,7 +1737,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             out.push_bind_param::<Integer, _>(causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, false)
+        BlockRangeColumn::new(self.table, "e.", self.block).contains(out, false)
     }
 }
 
@@ -2073,18 +2085,18 @@ enum ParentLimit<'a> {
 }
 
 impl<'a> ParentLimit<'a> {
-    fn filter(&self, out: &mut AstPass<Pg>) {
+    fn filter(&self, mut out: AstPass<'_, 'a, Pg>) {
         match self {
             ParentLimit::Outer => out.push_sql(" and q.id = p.id"),
             ParentLimit::Ranked(_, _) => (),
         }
     }
 
-    fn restrict(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn restrict(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
-            sort_key.order_by(out, false)?;
-            range.walk_ast(out.reborrow())?;
+            sort_key.order_by(&mut out, false)?;
+            range.walk_ast(out)?;
         }
         Ok(())
     }
@@ -2166,10 +2178,10 @@ impl<'a> FilterWindow<'a> {
         }
     }
 
-    fn and_filter(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn and_filter(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
         if let Some(filter) = &self.query_filter {
             out.push_sql("\n   and ");
-            filter.walk_ast(out)?
+            filter.walk_ast(out.reborrow())?
         }
         Ok(())
     }
@@ -2201,13 +2213,13 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), false)?;
+        limit.filter(out.reborrow());
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(")");
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
+        self.and_filter(out)?;
+        limit.restrict(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2237,8 +2249,8 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), false)?;
+        limit.filter(out.reborrow());
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
@@ -2248,7 +2260,7 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" && ");
             self.ids.push_bind_param(out)?;
         }
-        self.and_filter(out.reborrow())?;
+        self.and_filter(out)?;
         limit.single_limit(self.ids.len(), out);
         Ok(())
     }
@@ -2280,12 +2292,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), false)?;
+        limit.filter(out.reborrow());
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
-        self.and_filter(out.reborrow())?;
-        limit.restrict(out)?;
+        self.and_filter(out)?;
+        limit.restrict(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2310,21 +2322,21 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out);
+        BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), false)?;
+        limit.filter(out.reborrow());
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
-        self.and_filter(out.reborrow())?;
+        self.and_filter(out)?;
         limit.single_limit(self.ids.len(), out);
         Ok(())
     }
 
-    fn children_type_c(
+    fn children_type_c<'b>(
         &self,
         child_ids: &[IdList],
         limit: ParentLimit<'_>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n/* children_type_c */ ");
 
@@ -2354,22 +2366,22 @@ impl<'a> FilterWindow<'a> {
                 } else {
                     out.push_sql("(");
                 }
-                parent_id.push_bind_param(out)?;
+                parent_id.push_bind_param(&mut out)?;
                 out.push_sql(",");
-                child_ids.push_bind_param(out)?;
+                child_ids.push_bind_param(&mut out)?;
                 out.push_sql(")");
             }
             out.push_sql(") as p(id, child_ids)");
             out.push_sql(" cross join lateral (select ");
-            write_column_names(&self.column_names, self.table, None, out)?;
+            write_column_names(&self.column_names, self.table, None, &mut out)?;
             out.push_sql(" from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
-            BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
-            limit.filter(out);
+            BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), true)?;
+            limit.filter(out.reborrow());
             out.push_sql(" and c.id = any(p.child_ids)");
-            self.and_filter(out.reborrow())?;
-            limit.restrict(out)?;
+            self.and_filter(&mut out)?;
+            limit.restrict(out.reborrow())?;
             out.push_sql(") c");
         } else {
             // Generate
@@ -2379,7 +2391,7 @@ impl<'a> FilterWindow<'a> {
             //             where false) c
 
             out.push_sql("from unnest(array[]::text[]) as p(id) cross join (select ");
-            write_column_names(&self.column_names, self.table, None, out)?;
+            write_column_names(&self.column_names, self.table, None, &mut out)?;
             out.push_sql("  from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where false) c");
@@ -2392,7 +2404,7 @@ impl<'a> FilterWindow<'a> {
         child_ids: &IdList,
         limit: ParentLimit<'_>,
         block: BlockNumber,
-        out: &mut AstPass<Pg>,
+        mut out: AstPass<Pg>,
     ) -> QueryResult<()> {
         // Generate
         //      from rows from (unnest({parent_ids}), unnest({child_ids})) as p(id, child_id),
@@ -2401,14 +2413,14 @@ impl<'a> FilterWindow<'a> {
         //       and .. other conditions on c ..
 
         out.push_sql("\n/* child_type_d */ from rows from (unnest(");
-        self.ids.push_bind_param(out)?;
+        self.ids.push_bind_param(&mut out)?;
         out.push_sql("), unnest(");
-        child_ids.push_bind_param(out)?;
+        child_ids.push_bind_param(&mut out)?;
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
-        limit.filter(out);
+        BlockRangeColumn::new(self.table, "c.", block).contains(out.reborrow(), true)?;
+        limit.filter(out.reborrow());
 
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
@@ -2418,14 +2430,14 @@ impl<'a> FilterWindow<'a> {
 
             if child_set.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
-                child_set.push_bind_param(out)?;
+                child_set.push_bind_param(&mut out)?;
                 out.push_sql(")");
             }
         }
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
-        self.and_filter(out.reborrow())?;
-        limit.single_limit(self.ids.len(), out);
+        self.and_filter(&mut out)?;
+        limit.single_limit(self.ids.len(), &mut out);
         Ok(())
     }
 
@@ -2451,10 +2463,10 @@ impl<'a> FilterWindow<'a> {
                 }
             }
             TableLink::Parent(_, ParentIds::List(child_ids)) => {
-                self.children_type_c(child_ids, limit, block, &mut out)
+                self.children_type_c(child_ids, limit, block, out)
             }
             TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
-                self.child_type_d(child_ids, limit, block, &mut out)
+                self.child_type_d(child_ids, limit, block, out)
             }
         }
     }
@@ -3856,7 +3868,7 @@ impl<'a> FilterQuery<'a> {
             matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
         };
 
-        BlockRangeColumn::new(table, "c.", self.block).contains(&mut out, filters_by_id)?;
+        BlockRangeColumn::new(table, "c.", self.block).contains(out, filters_by_id)?;
         if let Some(filter) = table_filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
@@ -3928,10 +3940,10 @@ impl<'a> FilterQuery<'a> {
     }
 
     /// No windowing, but multiple entity types
-    fn query_no_window(
+    fn query_no_window<'b>(
         &self,
         entities: &[(&Table, Option<QueryFilter>, AttributeNames)],
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
         // the entity_types come from implementing the same interface. We
@@ -3977,7 +3989,7 @@ impl<'a> FilterQuery<'a> {
         }
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out, true)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.range.walk_ast(out)?;
 
         out.push_sql(")\n");
 
