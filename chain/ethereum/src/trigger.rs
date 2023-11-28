@@ -25,7 +25,6 @@ use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
 use graph_runtime_wasm::module::ToAscPtr;
-use std::convert::TryFrom;
 use std::ops::Deref;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -270,8 +269,8 @@ impl LogRef {
         self.log().block_number
     }
 
-    pub fn address(&self) -> H160 {
-        self.log().address
+    pub fn address(&self) -> &H160 {
+        &self.log().address
     }
 }
 
@@ -313,14 +312,9 @@ impl EthereumTrigger {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
             EthereumTrigger::Call(call) => call.block_number,
-            EthereumTrigger::Log(log_ref) => match log_ref {
-                LogRef::FullLog(log, _) => {
-                    i32::try_from(log.block_number.unwrap().as_u64()).unwrap()
-                }
-                LogRef::LogPosition(_, receipt) => {
-                    i32::try_from(receipt.block_number.unwrap().as_u64()).unwrap()
-                }
-            },
+            EthereumTrigger::Log(log_ref) => {
+                i32::try_from(log_ref.block_number().unwrap().as_u64()).unwrap()
+            }
         }
     }
 
@@ -328,10 +322,7 @@ impl EthereumTrigger {
         match self {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
             EthereumTrigger::Call(call) => call.block_hash,
-            EthereumTrigger::Log(log_ref) => match log_ref {
-                LogRef::FullLog(log, _) => log.block_hash.unwrap(),
-                LogRef::LogPosition(_, receipt) => receipt.block_hash.unwrap(),
-            },
+            EthereumTrigger::Log(log_ref) => log_ref.block_hash().unwrap(),
         }
     }
 
@@ -342,12 +333,7 @@ impl EthereumTrigger {
                 Some(address)
             }
             EthereumTrigger::Call(call) => Some(&call.to),
-            EthereumTrigger::Log(log_ref) => match log_ref {
-                LogRef::FullLog(log, _) => Some(&log.address),
-                LogRef::LogPosition(index, receipt) => {
-                    Some(&receipt.logs.get(*index).unwrap().address)
-                }
-            },
+            EthereumTrigger::Log(log_ref) => Some(&log_ref.address()),
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::End) => None,
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Start) => None,
