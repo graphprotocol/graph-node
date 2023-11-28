@@ -292,9 +292,7 @@ impl PartialEq for EthereumTrigger {
             (Self::Call(a), Self::Call(b)) => a == b,
 
             (Self::Log(a), Self::Log(b)) => {
-                a.transaction_hash() == b.transaction_hash()
-                    && a.log_index() == b.log_index()
-                    && a.receipt() == b.receipt()
+                a.transaction_hash() == b.transaction_hash() && a.log_index() == b.log_index()
             }
             _ => false,
         }
