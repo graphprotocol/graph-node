@@ -7,12 +7,12 @@ use graph::{
     semver,
 };
 use sha3::{Digest, Keccak256};
-use starknet_ff::FieldElement;
 use std::{collections::HashSet, sync::Arc};
 
 use crate::{
     chain::Chain,
     codec,
+    felt::Felt,
     trigger::{StarknetEventTrigger, StarknetTrigger},
 };
 
@@ -49,8 +49,8 @@ pub struct UnresolvedDataSource {
 pub struct Source {
     pub start_block: BlockNumber,
     pub end_block: Option<BlockNumber>,
-    #[serde(default, deserialize_with = "deserialize_address")]
-    pub address: Option<FieldElement>,
+    #[serde(default)]
+    pub address: Option<Felt>,
 }
 
 #[derive(Deserialize)]
@@ -71,7 +71,7 @@ pub struct MappingBlockHandler {
 #[derive(Clone, PartialEq, Eq, Deserialize)]
 pub struct MappingEventHandler {
     pub handler: String,
-    pub event_selector: FieldElement,
+    pub event_selector: Felt,
 }
 
 #[derive(Clone, Deserialize)]
@@ -92,7 +92,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn address(&self) -> Option<&[u8]> {
-        None
+        self.source.address.as_ref().map(|addr| addr.as_ref())
     }
 
     fn start_block(&self) -> BlockNumber {
@@ -218,11 +218,11 @@ impl DataSource {
     /// if event.fromAddr matches the source address. Note this only supports the default
     /// Starknet behavior of one key per event.
     fn handler_for_event(&self, event: &StarknetEventTrigger) -> Option<MappingEventHandler> {
-        let event_key = FieldElement::from_byte_slice_be(event.event.keys.first()?).ok()?;
+        let event_key: Felt = Self::pad_to_32_bytes(event.event.keys.first()?)?.into();
 
-        // Always deocding first here seems fine as we expect most sources to define an address
+        // Always padding first here seems fine as we expect most sources to define an address
         // filter anyways. Alternatively we can use lazy init here, which seems unnecessary.
-        let event_from_addr = FieldElement::from_byte_slice_be(&event.event.from_addr).ok()?;
+        let event_from_addr: Felt = Self::pad_to_32_bytes(&event.event.from_addr)?.into();
 
         return self
             .mapping
@@ -240,6 +240,18 @@ impl DataSource {
                 }
             })
             .cloned();
+    }
+
+    /// We need to pad incoming event selectors and addresses to 32 bytes as our data source uses
+    /// padded 32 bytes.
+    fn pad_to_32_bytes(slice: &[u8]) -> Option<[u8; 32]> {
+        if slice.len() > 32 {
+            None
+        } else {
+            let mut buffer = [0u8; 32];
+            buffer[(32 - slice.len())..].copy_from_slice(slice);
+            Some(buffer)
+        }
     }
 }
 
@@ -314,16 +326,16 @@ impl blockchain::UnresolvedDataSourceTemplate<Chain> for UnresolvedDataSourceTem
 
 // Adapted from:
 //   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L110-L121
-fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<FieldElement> {
+fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<Felt> {
     const DEFAULT_ENTRY_POINT_NAME: &str = "__default__";
     const DEFAULT_L1_ENTRY_POINT_NAME: &str = "__l1_default__";
 
     if func_name == DEFAULT_ENTRY_POINT_NAME || func_name == DEFAULT_L1_ENTRY_POINT_NAME {
-        Ok(FieldElement::ZERO)
+        Ok([0u8; 32].into())
     } else {
         let name_bytes = func_name.as_bytes();
         if name_bytes.is_ascii() {
-            Ok(starknet_keccak(name_bytes))
+            Ok(starknet_keccak(name_bytes).into())
         } else {
             Err(anyhow!("the provided name contains non-ASCII characters"))
         }
@@ -332,7 +344,7 @@ fn get_selector_from_name(func_name: &str) -> graph::anyhow::Result<FieldElement
 
 // Adapted from:
 //   https://github.com/xJonathanLEI/starknet-rs/blob/f16271877c9dbf08bc7bf61e4fc72decc13ff73d/starknet-core/src/utils.rs#L98-L108
-fn starknet_keccak(data: &[u8]) -> FieldElement {
+fn starknet_keccak(data: &[u8]) -> [u8; 32] {
     let mut hasher = Keccak256::new();
     hasher.update(data);
     let mut hash = hasher.finalize();
@@ -341,12 +353,5 @@ fn starknet_keccak(data: &[u8]) -> FieldElement {
     hash[0] &= 0b00000011;
 
     // Because we know hash is always 32 bytes
-    FieldElement::from_bytes_be(unsafe { &*(hash[..].as_ptr() as *const [u8; 32]) }).unwrap()
-}
-
-fn deserialize_address<'de, D>(deserializer: D) -> Result<Option<FieldElement>, D::Error>
-where
-    D: serde::de::Deserializer<'de>,
-{
-    Ok(Some(serde::Deserialize::deserialize(deserializer)?))
+    *unsafe { &*(hash[..].as_ptr() as *const [u8; 32]) }
 }
