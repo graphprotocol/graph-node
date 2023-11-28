@@ -88,9 +88,9 @@ impl From<std::ops::Range<BlockNumber>> for BlockRange {
 }
 
 impl ToSql<Range<Integer>, Pg> for BlockRange {
-    fn to_sql(&self, out: &mut Output<Pg>) -> diesel::serialize::Result {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
         let pair = (self.0, self.1);
-        ToSql::<Range<Integer>, Pg>::to_sql(&pair, out)
+        ToSql::<Range<Integer>, Pg>::to_sql(&pair, &mut out.reborrow())
     }
 }
 
@@ -101,7 +101,7 @@ pub struct BlockRangeLowerBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("lower(");
@@ -120,7 +120,7 @@ pub struct BlockRangeUpperBoundClause<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for BlockRangeUpperBoundClause<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         out.push_sql("coalesce(upper(");
@@ -171,12 +171,16 @@ impl<'a> BlockRangeColumn<'a> {
     ///
     /// `filters_by_id` has no impact on correctness. It is a heuristic to determine
     /// whether the brin index should be used. If `true`, the brin index is not used.
-    pub fn contains(&self, out: &mut AstPass<Pg>, filters_by_id: bool) -> QueryResult<()> {
+    pub fn contains<'b>(
+        &'b self,
+        mut out: AstPass<'b, 'b, Pg>,
+        filters_by_id: bool,
+    ) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         match self {
             BlockRangeColumn::Mutable { table, block, .. } => {
-                self.name(out);
+                self.name(&mut out);
                 out.push_sql(" @> ");
                 out.push_bind_param::<Integer, _>(block)?;
 
@@ -207,7 +211,7 @@ impl<'a> BlockRangeColumn<'a> {
                     out.push_sql("true");
                     Ok(())
                 } else {
-                    self.name(out);
+                    self.name(&mut out);
                     out.push_sql(" <= ");
                     out.push_bind_param::<Integer, _>(block)
                 }
@@ -251,7 +255,7 @@ impl<'a> BlockRangeColumn<'a> {
     /// # Panics
     ///
     /// If the underlying table is immutable, this method will panic
-    pub fn clamp(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub fn clamp<'b>(&'b self, out: &mut AstPass<'b, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 self.name(out);
@@ -278,7 +282,7 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output an expression that matches all rows that have been changed
     /// after `block` (inclusive)
-    pub(crate) fn changed_since(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'b, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 out.push_sql("lower(");
