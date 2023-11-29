@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
-use crate::data::store::{EntityValidationError, IntoEntityIterator};
+use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
 use crate::prelude::ENV_VARS;
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
@@ -68,6 +68,9 @@ impl EntityOp {
 ///   (1) no entity appears in more than one operation
 ///   (2) only entities that will actually be changed from what they
 ///       are in the store are changed
+///
+/// It is important for correctness that this struct is newly instantiated
+/// at every block using `with_current` to seed the cache.
 pub struct EntityCache {
     /// The state of entities in the store. An entry of `None`
     /// means that the entity is not present in the store
@@ -86,6 +89,13 @@ pub struct EntityCache {
     pub store: Arc<dyn s::ReadStore>,
 
     pub schema: InputSchema,
+
+    /// A sequence number for generating entity IDs. We use one number for
+    /// all id's as the id's are scoped by block and a u32 has plenty of
+    /// room for all changes in one block. To ensure reproducability of
+    /// generated IDs, the `EntityCache` needs to be newly instantiated for
+    /// each block
+    seq: u32,
 }
 
 impl Debug for EntityCache {
@@ -112,6 +122,7 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
+            seq: 0,
         }
     }
 
@@ -134,6 +145,7 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
+            seq: 0,
         }
     }
 
@@ -382,6 +394,13 @@ impl EntityCache {
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
+    }
+
+    /// Generate an id.
+    pub fn generate_id(&mut self, id_type: IdType, block: BlockNumber) -> anyhow::Result<Id> {
+        let id = id_type.generate_id(block, self.seq)?;
+        self.seq += 1;
+        Ok(id)
     }
 
     /// Return the changes that have been made via `set` and `remove` as

@@ -6,6 +6,8 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use crate::{
+    anyhow, bail,
+    components::store::BlockNumber,
     data::graphql::{ObjectTypeExt, TypeExt},
     prelude::s,
 };
@@ -44,6 +46,31 @@ impl IdType {
             IdType::String => "String",
             IdType::Bytes => "Bytes",
             IdType::Int8 => "Int8",
+        }
+    }
+
+    /// Generate an entity id from the block number and a sequence number.
+    ///
+    /// * Bytes: `[block:4, seq:4]`
+    /// * Int8: `[block:4, seq:4]`
+    /// * String: Always an error; users should use `Bytes` or `Int8`
+    ///   instead
+    pub fn generate_id(&self, block: BlockNumber, seq: u32) -> anyhow::Result<Id> {
+        match self {
+            IdType::String => bail!("String does not support generating ids"),
+            IdType::Bytes => {
+                let mut bytes = [0u8; 8];
+                bytes[0..4].copy_from_slice(&block.to_be_bytes());
+                bytes[4..8].copy_from_slice(&seq.to_be_bytes());
+                let bytes = scalar::Bytes::from(bytes);
+                Ok(Id::Bytes(bytes))
+            }
+            IdType::Int8 => {
+                let mut bytes = [0u8; 8];
+                bytes[0..4].copy_from_slice(&seq.to_le_bytes());
+                bytes[4..8].copy_from_slice(&block.to_le_bytes());
+                Ok(Id::Int8(i64::from_le_bytes(bytes)))
+            }
         }
     }
 }
@@ -488,5 +515,36 @@ impl IdList {
             IdList::Bytes(ids) => ids.into_iter().map(Id::Bytes).collect(),
             IdList::Int8(ids) => ids.into_iter().map(Id::Int8).collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::data::store::{Id, IdType};
+
+    #[test]
+    fn generate_id() {
+        let id = IdType::Bytes.generate_id(1, 2).unwrap();
+        let exp = IdType::Bytes.parse("0x0000000100000002".into()).unwrap();
+        assert_eq!(exp, id);
+
+        let id = IdType::Bytes.generate_id(3, 2).unwrap();
+        let exp = IdType::Bytes.parse("0x0000000300000002".into()).unwrap();
+        assert_eq!(exp, id);
+
+        let id = IdType::Int8.generate_id(3, 2).unwrap();
+        let exp = Id::Int8(0x0000_0003__0000_0002);
+        assert_eq!(exp, id);
+
+        // Should be id + 1
+        let id2 = IdType::Int8.generate_id(3, 3).unwrap();
+        let d = id2.to_string().parse::<i64>().unwrap() - id.to_string().parse::<i64>().unwrap();
+        assert_eq!(1, d);
+        // Should be id + 2^32
+        let id3 = IdType::Int8.generate_id(4, 2).unwrap();
+        let d = id3.to_string().parse::<i64>().unwrap() - id.to_string().parse::<i64>().unwrap();
+        assert_eq!(1 << 32, d);
+
+        IdType::String.generate_id(3, 2).unwrap_err();
     }
 }
