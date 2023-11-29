@@ -173,14 +173,14 @@ impl<'a> BlockRangeColumn<'a> {
     /// whether the brin index should be used. If `true`, the brin index is not used.
     pub fn contains<'b>(
         &'b self,
-        mut out: AstPass<'b, 'b, Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
         filters_by_id: bool,
     ) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         match self {
             BlockRangeColumn::Mutable { table, block, .. } => {
-                self.name(&mut out);
+                self.name(out);
                 out.push_sql(" @> ");
                 out.push_bind_param::<Integer, _>(block)?;
 
@@ -211,7 +211,7 @@ impl<'a> BlockRangeColumn<'a> {
                     out.push_sql("true");
                     Ok(())
                 } else {
-                    self.name(&mut out);
+                    self.name(out);
                     out.push_sql(" <= ");
                     out.push_bind_param::<Integer, _>(block)
                 }
@@ -255,7 +255,7 @@ impl<'a> BlockRangeColumn<'a> {
     /// # Panics
     ///
     /// If the underlying table is immutable, this method will panic
-    pub fn clamp<'b>(&'b self, out: &mut AstPass<'b, 'b, Pg>) -> QueryResult<()> {
+    pub fn clamp<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 self.name(out);
@@ -282,7 +282,7 @@ impl<'a> BlockRangeColumn<'a> {
 
     /// Output an expression that matches all rows that have been changed
     /// after `block` (inclusive)
-    pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'b, 'b, Pg>) -> QueryResult<()> {
+    pub(crate) fn changed_since<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             BlockRangeColumn::Mutable { block, .. } => {
                 out.push_sql("lower(");

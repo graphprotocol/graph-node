@@ -345,7 +345,7 @@ impl IdList {
         }
     }
 
-    pub fn index(&self, index: usize) -> IdRef<'_> {
+    pub fn index<'b>(&'b self, index: usize) -> IdRef<'b> {
         match self {
             IdList::String(ids) => IdRef::String(&ids[index]),
             IdList::Bytes(ids) => IdRef::Bytes(ids[index].as_slice()),
