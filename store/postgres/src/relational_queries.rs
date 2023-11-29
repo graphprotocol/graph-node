@@ -4238,7 +4238,7 @@ impl<'a, Conn> RunQueryDsl<Conn> for ClampRangeQuery<'a> {}
 /// Helper struct for returning the id's touched by the RevertRemove and
 /// RevertExtend queries
 #[derive(QueryableByName, PartialEq, Eq, Hash)]
-struct ReturnedEntityData {
+pub struct ReturnedEntityData {
     #[diesel(sql_type = Text)]
     pub id: String,
 }
