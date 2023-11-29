@@ -935,6 +935,22 @@ impl From<IdType> for ColumnType {
     }
 }
 
+impl std::fmt::Display for ColumnType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ColumnType::Boolean => write!(f, "Boolean"),
+            ColumnType::BigDecimal => write!(f, "BigDecimal"),
+            ColumnType::BigInt => write!(f, "BigInt"),
+            ColumnType::Bytes => write!(f, "Bytes"),
+            ColumnType::Int => write!(f, "Int"),
+            ColumnType::Int8 => write!(f, "Int8"),
+            ColumnType::String => write!(f, "String"),
+            ColumnType::TSVector(_) => write!(f, "TSVector"),
+            ColumnType::Enum(enum_type) => write!(f, "Enum({})", enum_type.name),
+        }
+    }
+}
+
 impl ColumnType {
     fn from_field_type(
         schema: &InputSchema,
