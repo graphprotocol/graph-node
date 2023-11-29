@@ -546,27 +546,120 @@ impl EntityData {
     }
 }
 
+/// The equivalent of `graph::data::store::Value` but in a form that does
+/// not require further transformation during `walk_ast`. This form takes
+/// the idiosyncrasies of how we serialize values into account (e.g., that
+/// `BigDecimal` gets serialized as a string)
+enum SqlValue<'a> {
+    String(String),
+    Text(&'a String),
+    Int(i32),
+    Int8(i64),
+    Numeric(String),
+    Numerics(Vec<String>),
+    Bool(bool),
+    List(&'a Vec<Value>),
+    Null,
+    Bytes(&'a scalar::Bytes),
+    Binary(scalar::Bytes),
+}
+
+impl<'a> SqlValue<'a> {
+    fn new(value: &'a Value, column_type: &'a ColumnType) -> QueryResult<Self> {
+        use SqlValue as S;
+        use Value::*;
+
+        let value = match value {
+            String(s) => match column_type {
+                ColumnType::String|ColumnType::Enum(_)|ColumnType::TSVector(_) => S::Text(s),
+                ColumnType::Int8 => S::Int8(s.parse::<i64>().map_err(|e| {
+                    constraint_violation!("failed to convert `{}` to an Int8: {}", s, e.to_string())
+                })?),
+                ColumnType::Bytes => {
+                    let bytes = scalar::Bytes::from_str(s)
+                        .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
+                    S::Binary(bytes)
+                }
+                _ => unreachable!(
+                    "only string, enum and tsvector columns have values of type string but not {column_type}"
+                ),
+            },
+            Int(i) => S::Int(*i),
+                       Value::Int8(i) => S::Int8(*i),
+            BigDecimal(d) => {
+                S::Numeric(d.to_string())
+            }
+            Bool(b) => S::Bool(*b),
+            List(values) => {
+                match column_type {
+                    ColumnType::BigDecimal | ColumnType::BigInt => {
+                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
+                        S::Numerics(text_values)
+                    },
+                    ColumnType::Boolean|ColumnType::Bytes|
+                    ColumnType::Int|
+                    ColumnType::Int8|
+                    ColumnType::String|
+                    ColumnType::Enum(_)|
+                    ColumnType::TSVector(_) => {
+                        S::List(values)
+                    }
+                }
+            }
+            Null => {
+                S::Null
+            }
+            Bytes(b) => S::Bytes(b),
+            BigInt(i) => {
+                S::Numeric(i.to_string())
+            }
+        };
+        Ok(value)
+    }
+}
+
+impl std::fmt::Display for SqlValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use SqlValue as S;
+        match self {
+            S::String(s) => write!(f, "{}", s),
+            S::Text(s) => write!(f, "{}", s),
+            S::Int(i) => write!(f, "{}", i),
+            S::Int8(i) => write!(f, "{}", i),
+            S::Numeric(s) => write!(f, "{}", s),
+            S::Numerics(values) => write!(f, "{:?}", values),
+            S::Bool(b) => write!(f, "{}", b),
+            S::List(values) => write!(f, "{:?}", values),
+            S::Null => write!(f, "null"),
+            S::Bytes(b) => write!(f, "{}", b),
+            S::Binary(b) => write!(f, "{}", b),
+        }
+    }
+}
+
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
 /// using the metadata from Column
-struct QueryValue<'a>(&'a Value, &'a ColumnType);
+struct QueryValue<'a> {
+    value: SqlValue<'a>,
+    column_type: &'a ColumnType,
+}
+
+impl<'a> QueryValue<'a> {
+    fn new(value: &'a Value, column_type: &'a ColumnType) -> QueryResult<Self> {
+        let value = SqlValue::new(value, column_type)?;
+        Ok(Self { value, column_type })
+    }
+}
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-        let column_type = self.1;
-
-        match self.0 {
-            Value::String(s) => match &column_type {
+        fn push_string<'c>(
+            s: &'c String,
+            column_type: &ColumnType,
+            out: &mut AstPass<'_, 'c, Pg>,
+        ) -> QueryResult<()> {
+            match column_type {
                 ColumnType::String => out.push_bind_param::<Text, _>(s),
-                ColumnType::Int8 => {
-                    out.push_bind_param::<BigInt, _>(&s.parse::<i64>().map_err(|e| {
-                        constraint_violation!(
-                            "failed to convert `{}` to an Int8: {}",
-                            s,
-                            e.to_string()
-                        )
-                    })?)
-                }
                 ColumnType::Enum(enum_type) => {
                     out.push_bind_param::<Text, _>(s)?;
                     out.push_sql("::");
@@ -579,31 +672,29 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                     out.push_sql(")");
                     Ok(())
                 }
-                ColumnType::Bytes => {
-                    let bytes = scalar::Bytes::from_str(s)
-                        .map_err(|e| DieselError::SerializationError(Box::new(e)))?;
-                    out.push_bind_param::<Binary, _>(&bytes.as_slice())
-                }
                 _ => unreachable!(
-                    "only string, enum and tsvector columns have values of type string"
+                    "only string, enum and tsvector columns have values of type string but not {column_type}"
                 ),
-            },
-            Value::Int(i) => out.push_bind_param::<Integer, _>(i),
-            Value::Int8(i) => out.push_bind_param::<Int8, _>(i),
-            Value::BigDecimal(d) => {
-                out.push_bind_param::<Text, _>(&d.to_string())?;
+            }
+        }
+
+        out.unsafe_to_cache_prepared();
+        let column_type = self.column_type;
+
+        use SqlValue as S;
+        match &self.value {
+            S::Text(s) => push_string(s, column_type, &mut out),
+            S::String(ref s) => push_string(s, column_type, &mut out),
+            S::Int(i) => out.push_bind_param::<Integer, _>(i),
+            S::Int8(i) => out.push_bind_param::<Int8, _>(i),
+            S::Numeric(s) => {
+                out.push_bind_param::<Text, _>(s)?;
                 out.push_sql("::numeric");
                 Ok(())
             }
-            Value::Bool(b) => out.push_bind_param::<Bool, _>(b),
-            Value::List(values) => {
+            S::Bool(b) => out.push_bind_param::<Bool, _>(b),
+            S::List(values) => {
                 match &column_type {
-                    ColumnType::BigDecimal | ColumnType::BigInt => {
-                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
-                        out.push_bind_param::<Array<Text>, _>(&text_values)?;
-                        out.push_sql("::numeric[]");
-                        Ok(())
-                    }
                     ColumnType::Boolean => out.push_bind_param::<Array<Bool>, _>(values),
                     ColumnType::Bytes => out.push_bind_param::<Array<Binary>, _>(values),
                     ColumnType::Int => out.push_bind_param::<Array<Integer>, _>(values),
@@ -629,29 +720,31 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
                                 out.push_sql("to_tsvector(");
                                 out.push_sql(config.language.as_sql());
                                 out.push_sql(", ");
-                                out.push_bind_param::<Text, _>(&value)?;
+                                out.push_bind_param::<Text, _>(value)?;
                             }
                             out.push_sql("))");
                         }
 
                         Ok(())
                     }
+                    ColumnType::BigDecimal | ColumnType::BigInt => {
+                        unreachable!(
+                            "BigDecimal and BigInt use SqlValue::Numerics instead of List"
+                        );
+                    }
                 }
             }
-            Value::Null => {
+            S::Numerics(values) => {
+                out.push_bind_param::<Array<Text>, _>(values)?;
+                out.push_sql("::numeric[]");
+                Ok(())
+            }
+            S::Null => {
                 out.push_sql("null");
                 Ok(())
             }
-            Value::Bytes(b) => {
-                let slice = b.as_slice();
-                out.push_bind_param::<Binary, _>(slice)
-            }
-            Value::BigInt(i) => {
-                out.reborrow().push_bind_param::<Text, _>(&i.to_string())?;
-                //let mut out = out.reborrow();
-                out.push_sql("::numeric");
-                Ok(())
-            }
+            S::Bytes(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
+            S::Binary(b) => out.push_bind_param::<Binary, _>(b.as_slice()),
         }
     }
 }
@@ -723,11 +816,13 @@ impl<'a> PrefixType<'a> {
         Ok(())
     }
 
-    fn is_large(&self, value: &Value) -> Result<bool, ()> {
-        match (self, value) {
-            (PrefixType::String(_), Value::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), Value::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), Value::String(s)) => {
+    fn is_large(&self, qv: &QueryValue<'a>) -> Result<bool, ()> {
+        use SqlValue as S;
+
+        match (self, &qv.value) {
+            (PrefixType::String(_), S::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::Bytes(_), S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes(_), S::String(s)) => {
                 let len = if s.starts_with("0x") {
                     (s.len() - 2) / 2
                 } else {
@@ -750,32 +845,33 @@ struct PrefixComparison<'a> {
     op: Comparison,
     kind: PrefixType<'a>,
     column: &'a Column,
-    text: &'a Value,
+    value: QueryValue<'a>,
 }
 
 impl<'a> PrefixComparison<'a> {
     fn new(op: Comparison, column: &'a Column, text: &'a Value) -> QueryResult<Self> {
         let kind = PrefixType::new(column)?;
+        let value = QueryValue::new(text, &column.column_type)?;
         Ok(Self {
             op,
             kind,
             column,
-            text,
+            value,
         })
     }
 
-    fn push_value_prefix(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_value_prefix<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.kind {
-            PrefixType::String(column) => {
+            PrefixType::String(_) => {
                 out.push_sql("left(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(column) => {
+            PrefixType::Bytes(_) => {
                 out.push_sql("substring(");
-                QueryValue(self.text, &column.column_type).walk_ast(out.reborrow())?;
+                self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
                 out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
                 out.push_sql(")");
@@ -784,21 +880,29 @@ impl<'a> PrefixComparison<'a> {
         Ok(())
     }
 
-    fn push_prefix_cmp(&self, op: Comparison, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn push_prefix_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         self.kind.push_column_prefix(&mut out)?;
         out.push_sql(op.as_str());
-        self.push_value_prefix(out.reborrow())
+        self.push_value_prefix(&mut out)
     }
 
-    fn push_full_cmp(&self, op: Comparison, mut out: AstPass<'a, '_, Pg>) -> QueryResult<()> {
+    fn push_full_cmp<'b>(
+        &'b self,
+        op: Comparison,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         out.push_identifier(self.column.name.as_str())?;
         out.push_sql(op.as_str());
-        QueryValue(self.text, &self.column.column_type).walk_ast(out)
+        self.value.walk_ast(out)
     }
 }
 
 impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         use Comparison::*;
 
         // For the various comparison operators, we want to write the condition
@@ -836,12 +940,12 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         //
         // For `op` either `<=` or `>=`, we can write (using '<=' as an example)
         //   uv <= st <=> u < s || u = s && uv <= st
-        let large = self.kind.is_large(self.text).map_err(|()| {
+        let large = self.kind.is_large(&self.value).map_err(|()| {
             constraint_violation!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
                 self.column.name(),
                 self.column.column_type().sql_type(),
-                self.text,
+                self.value.value,
                 self.op.as_str()
             )
         })?;
@@ -1170,7 +1274,7 @@ impl<'a> QueryFilter<'a> {
             }
             Value::Bytes(b) => {
                 out.push_sql("position(");
-                out.push_bind_param::<Binary, _>(&b.as_slice())?;
+                out.push_bind_param::<Binary, _>(b)?;
                 out.push_sql(" in ");
                 out.push_sql(self.table_prefix);
                 out.push_identifier(column.name.as_str())?;
@@ -1191,7 +1295,7 @@ impl<'a> QueryFilter<'a> {
                     out.push_identifier(column.name.as_str())?;
                     out.push_sql(" @> ");
                 }
-                QueryValue(value, &column.column_type).walk_ast(out)?;
+                QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
             }
             Value::Null
             | Value::BigDecimal(_)
@@ -1237,12 +1341,12 @@ impl<'a> QueryFilter<'a> {
             out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(Comparison::Match.as_str());
-            QueryValue(value, &column.column_type).walk_ast(out)?;
+            QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
         } else {
             out.push_sql(self.table_prefix);
             out.push_identifier(column.name.as_str())?;
             out.push_sql(op.as_str());
-            QueryValue(value, &column.column_type).walk_ast(out)?;
+            QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
         }
         Ok(())
     }
@@ -1268,7 +1372,7 @@ impl<'a> QueryFilter<'a> {
                 | Value::BigDecimal(_)
                 | Value::Int(_)
                 | Value::Int8(_)
-                | Value::String(_) => QueryValue(value, &column.column_type).walk_ast(out)?,
+                | Value::String(_) => QueryValue::new(value, &column.column_type)?.walk_ast(out)?,
                 Value::Bool(_) | Value::List(_) | Value::Null => {
                     return Err(UnsupportedFilter {
                         filter: op.as_str().to_owned(),
@@ -1361,7 +1465,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+                QueryValue::new(value, &column.column_type)?.walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         }
@@ -1931,7 +2035,7 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 } else {
                     row.entity.get(&column.field).unwrap_or(&NULL)
                 };
-                QueryValue(value, &column.column_type).walk_ast(out.reborrow())?;
+                QueryValue::new(value, &column.column_type)?.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
             Self::literal_range_current(&self.table, row.block, row.end, out)?;
