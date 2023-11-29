@@ -783,11 +783,10 @@ impl Layout {
         for table in self.tables.values() {
             // Remove all versions whose entire block range lies beyond
             // `block`
-            let removed = RevertRemoveQuery::new(table, block)
-                .get_results(conn)?
+            let removed: HashSet<_> = RevertRemoveQuery::new(table, block)
+                .get_results::<ReturnedEntityData>(conn)?
                 .into_iter()
-                .map(|data: ReturnedEntityData| data.id)
-                .collect::<HashSet<_>>();
+                .collect();
             // Make the versions current that existed at `block - 1` but that
             // are not current yet. Those are the ones that were updated or
             // deleted at `block`
@@ -797,7 +796,6 @@ impl Layout {
                 RevertClampQuery::new(table, block - 1)?
                     .get_results(conn)?
                     .into_iter()
-                    .map(|data: ReturnedEntityData| data.id)
                     .collect::<HashSet<_>>()
             };
             // Adjust the entity count; we can tell which operation was
