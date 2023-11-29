@@ -552,7 +552,6 @@ struct QueryValue<'a>(&'a Value, &'a ColumnType);
 
 impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        let out = &mut out;
         out.unsafe_to_cache_prepared();
         let column_type = self.1;
 
@@ -1120,12 +1119,12 @@ impl<'a> QueryFilter<'a> {
             .expect("the constructor already checked that all attribute names are valid")
     }
 
-    fn binary_op(
-        &self,
-        filters: &[EntityFilter],
+    fn binary_op<'b>(
+        &'b self,
+        filters: &'b [EntityFilter],
         op: &str,
         on_empty: &str,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if !filters.is_empty() {
             out.push_sql("(");
@@ -1142,13 +1141,13 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn contains(
-        &self,
+    fn contains<'b>(
+        &'b self,
         attribute: &Attribute,
-        value: &Value,
+        value: &'b Value,
         negated: bool,
         strict: bool,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
         let operation = match (strict, negated) {
@@ -1214,12 +1213,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn equals(
-        &self,
+    fn equals<'b>(
+        &'b self,
         attribute: &Attribute,
         value: &Value,
         op: Comparison,
-        mut out: AstPass<Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let column = self.column(attribute);
 
@@ -1495,14 +1494,14 @@ pub struct FindQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         // Generate
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where id = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1549,7 +1548,7 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
@@ -1589,7 +1588,7 @@ pub struct FindPossibleDeletionsQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
@@ -1598,7 +1597,7 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, ");
             if table.has_causality_region {
                 out.push_sql("causality_region, ");
@@ -1654,7 +1653,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity, to_jsonb(e.*) as data\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
@@ -1711,7 +1710,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         //    select '..' as entity, to_jsonb(e.*) as data
         //      from schema.table e where field = $1
         out.push_sql("select ");
-        out.push_bind_param::<Text, _>(&self.table.object.as_str())?;
+        out.push_bind_param::<Text, _>(self.table.object.as_str())?;
         out.push_sql(" as entity, to_jsonb(e.*) as data\n");
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
@@ -1891,7 +1890,7 @@ impl<'a> InsertQuery<'a> {
 }
 
 impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         let out = &mut out;
         out.unsafe_to_cache_prepared();
 
@@ -1999,7 +1998,7 @@ impl<'a> QueryFragment<Pg> for ConflictingEntityQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select ");
-            out.push_bind_param::<Text, _>(&table.object.as_str())?;
+            out.push_bind_param::<Text, _>(table.object.as_str())?;
             out.push_sql(" as entity from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" where id = ");
@@ -2088,17 +2087,17 @@ enum ParentLimit<'a> {
 }
 
 impl<'a> ParentLimit<'a> {
-    fn filter(&self, mut out: AstPass<'_, 'a, Pg>) {
+    fn filter(&self, out: &mut AstPass<'_, 'a, Pg>) {
         match self {
             ParentLimit::Outer => out.push_sql(" and q.id = p.id"),
             ParentLimit::Ranked(_, _) => (),
         }
     }
 
-    fn restrict<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+    fn restrict(&'a self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
         if let ParentLimit::Ranked(sort_key, range) = self {
             out.push_sql(" ");
-            sort_key.order_by(&mut out, false)?;
+            sort_key.order_by(out, false)?;
             range.walk_ast(out.reborrow())?;
         }
         Ok(())
@@ -2192,7 +2191,7 @@ impl<'a> FilterWindow<'a> {
     fn children_type_a<'b>(
         &'b self,
         column: &Column,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2217,12 +2216,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out.reborrow());
+        limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(")");
         self.and_filter(out)?;
-        limit.restrict(out.reborrow())?;
+        limit.restrict(out)?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2230,7 +2229,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_a<'b>(
         &'b self,
         column: &Column,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2253,7 +2252,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out.reborrow());
+        limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
@@ -2271,7 +2270,7 @@ impl<'a> FilterWindow<'a> {
     fn children_type_b<'b>(
         &'b self,
         column: &Column,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2296,11 +2295,11 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out.reborrow());
+        limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
         self.and_filter(out)?;
-        limit.restrict(out.reborrow())?;
+        limit.restrict(out)?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2308,7 +2307,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_b<'b>(
         &'b self,
         column: &Column,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2326,7 +2325,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
-        limit.filter(out.reborrow());
+        limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
         self.and_filter(out)?;
@@ -2337,7 +2336,7 @@ impl<'a> FilterWindow<'a> {
     fn children_type_c<'b>(
         &'b self,
         child_ids: &'b [IdList],
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2381,10 +2380,10 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
             BlockRangeColumn::new(self.table, "c.", block).contains(out, true);
-            limit.filter(out.reborrow());
+            limit.filter(out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out)?;
-            limit.restrict(out.reborrow())?;
+            limit.restrict(out)?;
             out.push_sql(") c");
         } else {
             // Generate
@@ -2405,7 +2404,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_d<'b>(
         &'b self,
         child_ids: &'b IdList,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2423,7 +2422,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
-        limit.filter(out.reborrow());
+        limit.filter(out);
 
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
@@ -2446,7 +2445,7 @@ impl<'a> FilterWindow<'a> {
 
     fn children<'b>(
         &'b self,
-        limit: ParentLimit<'b>,
+        limit: &'b ParentLimit<'_>,
         block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2488,7 +2487,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
         out.push_sql(&*PARENT_ID);
         sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
-        self.children(ParentLimit::Outer, block, &mut out)
+        self.children(&ParentLimit::Outer, block, &mut out)
     }
 
     /// Collect all the parent id's from all windows
@@ -3661,14 +3660,18 @@ impl<'a> SortKey<'a> {
         Ok(())
     }
 
-    fn add_child(&self, block: BlockNumber, out: &mut AstPass<Pg>) -> QueryResult<()> {
-        fn add(
-            block: BlockNumber,
+    fn add_child<'b>(
+        &self,
+        block: &'b BlockNumber,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        fn add<'b>(
+            block: &'b BlockNumber,
             child_table: &Table,
             child_column: &Column,
             parent_column: &Column,
             prefix: &str,
-            out: &mut AstPass<Pg>,
+            out: &mut AstPass<'_, 'b, Pg>,
         ) -> QueryResult<()> {
             out.push_sql(" left join ");
             out.push_sql(child_table.qualified_name.as_str());
@@ -3708,7 +3711,7 @@ impl<'a> SortKey<'a> {
             out.push_sql(".");
             out.push_identifier(BLOCK_RANGE_COLUMN)?;
             out.push_sql(" @> ");
-            out.push_bind_param::<Integer, _>(&block)?;
+            out.push_bind_param::<Integer, _>(block)?;
             out.push_sql(") ");
 
             Ok(())
@@ -3870,7 +3873,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(table.qualified_name.as_str());
         out.push_sql(" c");
 
-        self.sort_key.add_child(self.block, out)?;
+        self.sort_key.add_child(&self.block, out)?;
 
         out.push_sql("\n where ");
 
@@ -3941,7 +3944,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
         window.children(
-            ParentLimit::Ranked(&self.sort_key, &self.range),
+            &ParentLimit::Ranked(&self.sort_key, &self.range),
             self.block,
             &mut out,
         )?;
