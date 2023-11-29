@@ -2,7 +2,7 @@ use graph::{
     anyhow::{anyhow, Error},
     blockchain::{self, Block as BlockchainBlock, TriggerWithHandler},
     components::{link_resolver::LinkResolver, store::StoredDynamicDataSource},
-    data::subgraph::DataSourceContext,
+    data::subgraph::{DataSourceContext, SubgraphManifestValidationError},
     prelude::{async_trait, BlockNumber, DataSourceTemplateInfo, Deserialize, Link, Logger},
     semver,
 };
@@ -16,10 +16,11 @@ use crate::{
     trigger::{StarknetEventTrigger, StarknetTrigger},
 };
 
+pub const STARKNET_KIND: &str = "starknet";
 const BLOCK_HANDLER_KIND: &str = "block";
 const EVENT_HANDLER_KIND: &str = "event";
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DataSource {
     pub kind: String,
     pub network: String,
@@ -28,7 +29,7 @@ pub struct DataSource {
     pub mapping: Mapping,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Mapping {
     pub block_handler: Option<MappingBlockHandler>,
     pub event_handlers: Vec<MappingEventHandler>,
@@ -44,7 +45,7 @@ pub struct UnresolvedDataSource {
     pub mapping: UnresolvedMapping,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Source {
     pub start_block: BlockNumber,
@@ -63,12 +64,12 @@ pub struct UnresolvedMapping {
     pub file: Link,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MappingBlockHandler {
     pub handler: String,
 }
 
-#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct MappingEventHandler {
     pub handler: String,
     pub event_selector: Felt,
@@ -201,7 +202,34 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn validate(&self) -> Vec<Error> {
-        Default::default()
+        let mut errors = Vec::new();
+
+        if self.kind != STARKNET_KIND {
+            errors.push(anyhow!(
+                "data source has invalid `kind`, expected {} but found {}",
+                STARKNET_KIND,
+                self.kind
+            ))
+        }
+
+        // Validate that there's at least one handler of any kind
+        if self.mapping.block_handler.is_none() && self.mapping.event_handlers.is_empty() {
+            errors.push(anyhow!("data source does not define any handler"));
+        }
+
+        // Validate that `source` address must not be present if there's no event handler
+        if self.mapping.event_handlers.is_empty() && self.address().is_some() {
+            errors.push(anyhow!(
+                "data source cannot have source address without event handlers"
+            ));
+        }
+
+        // Validate that `source` address must be present when there's at least 1 event handler
+        if !self.mapping.event_handlers.is_empty() && self.address().is_none() {
+            errors.push(SubgraphManifestValidationError::SourceAddressRequired.into());
+        }
+
+        errors
     }
 
     fn api_version(&self) -> semver::Version {
