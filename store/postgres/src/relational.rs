@@ -498,8 +498,7 @@ impl Layout {
         }
 
         let inserts_or_updates =
-            FindChangesQuery::new(&self.catalog.site.namespace, &tables[..], block)
-                .load::<EntityData>(conn)?;
+            FindChangesQuery::new(&tables[..], block).load::<EntityData>(conn)?;
         let deletions =
             FindPossibleDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
                 .load::<EntityDeletion>(conn)?;
