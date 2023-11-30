@@ -10,6 +10,7 @@ use graph::data::store::Value;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
     SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8, SPEC_VERSION_0_0_9,
+    SPEC_VERSION_0_1_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::DataSourceTemplate;
@@ -197,12 +198,12 @@ schema:
 graft:
   base: Qmbase
   block: 12345
-specVersion: 0.0.2
+specVersion: 0.1.0
 indexerHints:
   historyBlocks: 100
 ";
 
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
+    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_1_0).await;
 
     assert_eq!(manifest.history_blocks().unwrap(), 100);
 }
