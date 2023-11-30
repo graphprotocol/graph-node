@@ -179,6 +179,7 @@ async fn setup(
             graft: None,
             templates: vec![],
             chain: PhantomData,
+            indexer_hints: None,
         };
 
         insert_test_entities(store.subgraph_store().as_ref(), manifest, id_type).await

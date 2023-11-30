@@ -146,6 +146,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     // Create SubgraphDeploymentEntity

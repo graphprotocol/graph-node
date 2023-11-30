@@ -169,6 +169,7 @@ pub async fn create_subgraph(
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     create_subgraph_with_manifest(subgraph_id, schema, manifest, base).await
@@ -236,6 +237,7 @@ pub async fn create_test_subgraph_with_features(
         graft: None,
         templates: vec![],
         chain: PhantomData,
+        indexer_hints: None,
     };
 
     let deployment_features = manifest.deployment_features();
