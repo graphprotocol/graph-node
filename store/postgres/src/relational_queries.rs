@@ -2637,13 +2637,43 @@ impl<'a> FilterWindow<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct WholeTable<'a> {
+    table: &'a Table,
+    filter: Option<QueryFilter<'a>>,
+    column_names: AttributeNames,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> WholeTable<'a> {
+    fn new(
+        layout: &'a Layout,
+        entity_type: &EntityType,
+        entity_filter: Option<&'a EntityFilter>,
+        column_names: AttributeNames,
+        block: BlockNumber,
+    ) -> Result<Self, QueryExecutionError> {
+        let table = layout.table_for_entity(entity_type).map(|rc| rc.as_ref())?;
+        let filter = entity_filter
+            .map(|filter| QueryFilter::new(filter, table, layout, block))
+            .transpose()?;
+        let br_column = BlockRangeColumn::new(table, "c.", block);
+        Ok(WholeTable {
+            table,
+            filter,
+            column_names,
+            br_column,
+        })
+    }
+}
+
 /// This is a parallel to `EntityCollection`, but with entity type names
 /// and filters translated in a form ready for SQL generation
 #[derive(Debug, Clone)]
 pub enum FilterCollection<'a> {
     /// Collection made from all entities in a table; each entry is the table
     /// and the filter to apply to it, checked and bound to that table
-    All(Vec<(&'a Table, Option<QueryFilter<'a>>, AttributeNames)>),
+    All(Vec<WholeTable<'a>>),
     /// Collection made from windows of the same or different entity types
     SingleWindow(FilterWindow<'a>),
     MultiWindow(Vec<FilterWindow<'a>>, IdList),
@@ -2710,8 +2740,8 @@ impl<'a> fmt::Display for FilterCollection<'a> {
 
         match self {
             FilterCollection::All(tables) => {
-                for (table, filter, attrs) in tables {
-                    fmt_table(f, table, attrs, filter)?;
+                for wh in tables {
+                    fmt_table(f, wh.table, &wh.column_names, &wh.filter)?;
                 }
             }
             FilterCollection::SingleWindow(w) => {
@@ -2748,15 +2778,7 @@ impl<'a> FilterCollection<'a> {
                 let entities = entities
                     .iter()
                     .map(|(entity, column_names)| {
-                        layout
-                            .table_for_entity(entity)
-                            .map(|rc| rc.as_ref())
-                            .and_then(|table| {
-                                filter
-                                    .map(|filter| QueryFilter::new(filter, table, layout, block))
-                                    .transpose()
-                                    .map(|filter| (table, filter, column_names.clone()))
-                            })
+                        WholeTable::new(layout, entity, filter, column_names.clone(), block)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(FilterCollection::All(entities))
@@ -2782,7 +2804,7 @@ impl<'a> FilterCollection<'a> {
 
     fn first_table(&self) -> Option<&Table> {
         match self {
-            FilterCollection::All(entities) => entities.first().map(|pair| pair.0),
+            FilterCollection::All(entities) => entities.first().map(|wh| wh.table),
             FilterCollection::SingleWindow(window) => Some(window.table),
             FilterCollection::MultiWindow(windows, _) => windows.first().map(|window| window.table),
         }
@@ -2798,7 +2820,7 @@ impl<'a> FilterCollection<'a> {
 
     fn all_mutable(&self) -> bool {
         match self {
-            FilterCollection::All(entities) => entities.iter().all(|(table, ..)| !table.immutable),
+            FilterCollection::All(entities) => entities.iter().all(|wh| !wh.table.immutable),
             FilterCollection::SingleWindow(window) => !window.table.immutable,
             FilterCollection::MultiWindow(windows, _) => {
                 windows.iter().all(|window| !window.table.immutable)
@@ -4004,12 +4026,11 @@ impl<'a> FilterQuery<'a> {
     /// when we do not need to window
     fn filtered_rows<'b>(
         &'b self,
-        table: &'b Table,
-        table_filter: &'b Option<QueryFilter<'a>>,
+        wh: &'b WholeTable<'a>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n  from ");
-        out.push_sql(table.qualified_name.as_str());
+        out.push_sql(wh.table.qualified_name.as_str());
         out.push_sql(" c");
 
         self.sort_key.add_child(&self.block, out)?;
@@ -4017,12 +4038,12 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("\n where ");
 
         let filters_by_id = {
-            let entity_filter = table_filter.as_ref().map(|f| f.filter);
+            let entity_filter = wh.filter.as_ref().map(|f| f.filter);
             matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
         };
 
-        BlockRangeColumn::new(table, "c.", self.block).contains(out, filters_by_id)?;
-        if let Some(filter) = table_filter {
+        wh.br_column.contains(out, filters_by_id)?;
+        if let Some(filter) = wh.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
         }
@@ -4050,15 +4071,13 @@ impl<'a> FilterQuery<'a> {
     ///         order by .. limit .. skip ..) c
     fn query_no_window_one_entity<'b>(
         &'b self,
-        table: &'b Table,
-        filter: &'b Option<QueryFilter>,
+        wh: &'b WholeTable<'a>,
         out: &mut AstPass<'_, 'b, Pg>,
-        column_names: &AttributeNames,
     ) -> QueryResult<()> {
-        Self::select_entity_and_data(table, out);
+        Self::select_entity_and_data(wh.table, out);
         out.push_sql(" from (select ");
-        write_column_names(column_names, table, Some("c."), out)?;
-        self.filtered_rows(table, filter, out)?;
+        write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+        self.filtered_rows(wh, out)?;
         out.push_sql("\n ");
         self.sort_key.order_by(out, false)?;
         self.range.walk_ast(out.reborrow())?;
@@ -4095,7 +4114,7 @@ impl<'a> FilterQuery<'a> {
     /// No windowing, but multiple entity types
     fn query_no_window<'b>(
         &'b self,
-        entities: &'b [(&Table, Option<QueryFilter>, AttributeNames)],
+        entities: &'b [WholeTable<'a>],
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // We have multiple tables which might have different schemas since
@@ -4125,7 +4144,7 @@ impl<'a> FilterQuery<'a> {
 
         // Step 1: build matches CTE
         out.push_sql("with matches as (");
-        for (i, (table, filter, _column_names)) in entities.iter().enumerate() {
+        for (i, wh) in entities.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
@@ -4134,11 +4153,11 @@ impl<'a> FilterQuery<'a> {
             //        c.vid,
             //        c.${sort_key}
             out.push_sql("select '");
-            out.push_sql(table.object.as_str());
+            out.push_sql(wh.table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
             self.sort_key
                 .select(out, SelectStatementLevel::InnerStatement)?; // here
-            self.filtered_rows(table, filter, out)?;
+            self.filtered_rows(wh, out)?;
         }
         out.push_sql("\n ");
         self.sort_key.order_by(out, true)?;
@@ -4147,21 +4166,21 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(")\n");
 
         // Step 2: convert to JSONB
-        for (i, (table, _, column_names)) in entities.iter().enumerate() {
+        for (i, wh) in entities.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.entity, ");
-            jsonb_build_object(column_names, "c", table, out)?;
+            jsonb_build_object(&wh.column_names, "c", wh.table, out)?;
             out.push_sql(" as data, c.id");
             self.sort_key
                 .select(out, SelectStatementLevel::OuterStatement)?;
             out.push_sql("\n  from ");
-            out.push_sql(table.qualified_name.as_str());
+            out.push_sql(wh.table.qualified_name.as_str());
             out.push_sql(" c,");
             out.push_sql(" matches m");
             out.push_sql("\n where c.vid = m.vid and m.entity = ");
-            out.push_bind_param::<Text, _>(table.object.as_str())?;
+            out.push_bind_param::<Text, _>(wh.table.object.as_str())?;
         }
         out.push_sql("\n ");
         self.sort_key.order_by(out, true)?;
@@ -4285,10 +4304,10 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
         match &self.collection {
             FilterCollection::All(entities) => {
                 if entities.len() == 1 {
-                    let (table, filter, column_names) = entities
+                    let wh = entities
                         .first()
                         .expect("a query always uses at least one table");
-                    self.query_no_window_one_entity(table, filter, &mut out, column_names)
+                    self.query_no_window_one_entity(wh, &mut out)
                 } else {
                     self.query_no_window(entities, &mut out)
                 }
