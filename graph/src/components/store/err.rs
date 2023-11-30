@@ -69,6 +69,8 @@ pub enum StoreError {
     UnsupportedDeploymentSchemaVersion(i32),
     #[error("pruning failed: {0}")]
     PruneFailure(String),
+    #[error("unsupported filter `{0}` for value `{1}`")]
+    UnsupportedFilter(String, String),
 }
 
 // Convenience to report a constraint violation
@@ -121,6 +123,9 @@ impl Clone for StoreError {
                 Self::UnsupportedDeploymentSchemaVersion(arg0.clone())
             }
             Self::PruneFailure(arg0) => Self::PruneFailure(arg0.clone()),
+            Self::UnsupportedFilter(arg0, arg1) => {
+                Self::UnsupportedFilter(arg0.clone(), arg1.clone())
+            }
         }
     }
 }

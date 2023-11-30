@@ -12,15 +12,15 @@ use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range, Text, Untyped};
 
 use graph::components::store::write::WriteChunk;
-use graph::components::store::DerivedEntityQuery;
+use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    anyhow, r, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
-    EntityFilter, EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange,
-    EntityWindow, ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
+    anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
+    EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
+    ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
 use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
@@ -70,7 +70,7 @@ enum SelectStatementLevel {
 #[derive(Debug)]
 pub(crate) struct UnsupportedFilter {
     pub filter: String,
-    pub value: Value,
+    pub value: String,
 }
 
 impl Display for UnsupportedFilter {
@@ -550,6 +550,7 @@ impl EntityData {
 /// not require further transformation during `walk_ast`. This form takes
 /// the idiosyncrasies of how we serialize values into account (e.g., that
 /// `BigDecimal` gets serialized as a string)
+#[derive(Debug, Clone)]
 enum SqlValue<'a> {
     String(String),
     Text(&'a String),
@@ -639,6 +640,7 @@ impl std::fmt::Display for SqlValue<'_> {
 
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
 /// using the metadata from Column
+#[derive(Debug)]
 struct QueryValue<'a> {
     value: SqlValue<'a>,
     column_type: &'a ColumnType,
@@ -648,6 +650,26 @@ impl<'a> QueryValue<'a> {
     fn new(value: &'a Value, column_type: &'a ColumnType) -> QueryResult<Self> {
         let value = SqlValue::new(value, column_type)?;
         Ok(Self { value, column_type })
+    }
+
+    fn many(values: &'a Vec<Value>, column_type: &'a ColumnType) -> QueryResult<Vec<Self>> {
+        values
+            .iter()
+            .map(|value| Self::new(value, column_type))
+            .collect()
+    }
+
+    fn is_null(&self) -> bool {
+        match &self.value {
+            SqlValue::Null => true,
+            _ => false,
+        }
+    }
+}
+
+impl<'a> std::fmt::Display for QueryValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.value.fmt(f)
     }
 }
 
@@ -749,7 +771,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum Comparison {
     Less,
     LessOrEqual,
@@ -773,41 +795,125 @@ impl Comparison {
             Match => " @@ ",
         }
     }
+
+    fn suitable(&self, value: &Value) -> Result<(), StoreError> {
+        // Anything can be compared for equality; for less than etc., the
+        // type needs to be ordered. For fulltext match, only strings can be
+        // used
+        match (self, value) {
+            (Comparison::Equal | Comparison::NotEqual, _) => Ok(()),
+            (
+                Comparison::Less
+                | Comparison::LessOrEqual
+                | Comparison::GreaterOrEqual
+                | Comparison::Greater,
+                Value::String(_)
+                | Value::Int(_)
+                | Value::Int8(_)
+                | Value::BigDecimal(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_),
+            ) => Ok(()),
+            (Comparison::Match, Value::String(_)) => Ok(()),
+            (
+                Comparison::Less
+                | Comparison::LessOrEqual
+                | Comparison::GreaterOrEqual
+                | Comparison::Greater,
+                Value::Bool(_) | Value::List(_) | Value::Null,
+            )
+            | (Comparison::Match, _) => {
+                return Err(StoreError::UnsupportedFilter(
+                    self.to_string(),
+                    value.to_string(),
+                ));
+            }
+        }
+    }
 }
 
-enum PrefixType<'a> {
-    String(&'a Column),
-    Bytes(&'a Column),
+impl std::fmt::Display for Comparison {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Comparison::*;
+        let s = match self {
+            Less => "<",
+            LessOrEqual => "<=",
+            Equal => "=",
+            NotEqual => "!=",
+            GreaterOrEqual => ">=",
+            Greater => ">",
+            Match => "@@",
+        };
+        write!(f, "{s}")
+    }
 }
 
-impl<'a> PrefixType<'a> {
-    fn new(column: &'a Column) -> QueryResult<Self> {
-        match column.column_type {
-            ColumnType::String => Ok(PrefixType::String(column)),
-            ColumnType::Bytes => Ok(PrefixType::Bytes(column)),
+/// The operators for 'contains' comparisons for strings and byte arrays
+#[derive(Clone, Copy, Debug)]
+enum ContainsOp {
+    Like,
+    NotLike,
+    ILike,
+    NotILike,
+}
+impl ContainsOp {
+    fn negated(&self) -> bool {
+        use ContainsOp::*;
+        match self {
+            Like | ILike => false,
+            NotLike | NotILike => true,
+        }
+    }
+}
+
+impl QueryFragment<Pg> for ContainsOp {
+    fn walk_ast<'a>(&self, mut out: AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        use ContainsOp::*;
+        match self {
+            Like => out.push_sql(" like "),
+            NotLike => out.push_sql(" not like "),
+            ILike => out.push_sql(" ilike "),
+            NotILike => out.push_sql(" not ilike "),
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+enum PrefixType {
+    String,
+    Bytes,
+}
+
+impl PrefixType {
+    fn new(column: &QualColumn<'_>) -> QueryResult<Self> {
+        match column.column_type() {
+            ColumnType::String => Ok(PrefixType::String),
+            ColumnType::Bytes => Ok(PrefixType::Bytes),
             _ => Err(constraint_violation!(
                 "cannot setup prefix comparison for column {} of type {}",
-                column.name(),
+                column,
                 column.column_type().sql_type()
             )),
         }
     }
 
-    /// Push the SQL expression for a prefix of values in our column. That
-    /// should be the same expression that we used when creating an index
-    /// for the column
-    fn push_column_prefix(&self, out: &mut AstPass<Pg>) -> QueryResult<()> {
+    fn push_prefix<'b>(
+        &'b self,
+        column: &'b dyn QueryFragment<Pg>,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
         match self {
-            PrefixType::String(column) => {
+            PrefixType::String => {
                 out.push_sql("left(");
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(column) => {
+            PrefixType::Bytes => {
                 out.push_sql("substring(");
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
                 out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
                 out.push_sql(")");
@@ -816,13 +922,41 @@ impl<'a> PrefixType<'a> {
         Ok(())
     }
 
-    fn is_large(&self, qv: &QueryValue<'a>) -> Result<bool, ()> {
+    /// Push the SQL expression for a prefix of values in our column. That
+    /// should be the same expression that we used when creating an index
+    /// for the column
+    fn push_column_prefix<'b>(
+        &'b self,
+        column: &'b QualColumn<'_>,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        self.push_prefix(column, out)?;
+        match self {
+            PrefixType::String => {
+                out.push_sql("left(");
+                column.walk_ast(out.reborrow())?;
+                out.push_sql(", ");
+                out.push_sql(&STRING_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+            PrefixType::Bytes => {
+                out.push_sql("substring(");
+                column.walk_ast(out.reborrow())?;
+                out.push_sql(", 1, ");
+                out.push_sql(&BYTE_ARRAY_PREFIX_SIZE.to_string());
+                out.push_sql(")");
+            }
+        }
+        Ok(())
+    }
+
+    fn is_large(&self, qv: &QueryValue<'_>) -> Result<bool, ()> {
         use SqlValue as S;
 
         match (self, &qv.value) {
-            (PrefixType::String(_), S::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
-            (PrefixType::Bytes(_), S::String(s)) => {
+            (PrefixType::String, S::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::String(s)) => {
                 let len = if s.starts_with("0x") {
                     (s.len() - 2) / 2
                 } else {
@@ -841,17 +975,23 @@ impl<'a> PrefixType<'a> {
 /// instead of going straight to a sequential scan of the underlying table.
 /// We do this by writing the comparison `column op text` in a way that
 /// involves `left(column, STRING_PREFIX_SIZE)`
+#[derive(Debug)]
 struct PrefixComparison<'a> {
     op: Comparison,
-    kind: PrefixType<'a>,
-    column: &'a Column,
+    kind: PrefixType,
+    column: QualColumn<'a>,
     value: QueryValue<'a>,
 }
 
 impl<'a> PrefixComparison<'a> {
-    fn new(op: Comparison, column: &'a Column, text: &'a Value) -> QueryResult<Self> {
-        let kind = PrefixType::new(column)?;
-        let value = QueryValue::new(text, &column.column_type)?;
+    fn new(
+        op: Comparison,
+        column: QualColumn<'a>,
+        column_type: &'a ColumnType,
+        text: &'a Value,
+    ) -> Result<Self, StoreError> {
+        let kind = PrefixType::new(&column)?;
+        let value = QueryValue::new(text, column_type)?;
         Ok(Self {
             op,
             kind,
@@ -862,14 +1002,14 @@ impl<'a> PrefixComparison<'a> {
 
     fn push_value_prefix<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self.kind {
-            PrefixType::String(_) => {
+            PrefixType::String => {
                 out.push_sql("left(");
                 self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
                 out.push_sql(&STRING_PREFIX_SIZE.to_string());
                 out.push_sql(")");
             }
-            PrefixType::Bytes(_) => {
+            PrefixType::Bytes => {
                 out.push_sql("substring(");
                 self.value.walk_ast(out.reborrow())?;
                 out.push_sql(", 1, ");
@@ -885,7 +1025,7 @@ impl<'a> PrefixComparison<'a> {
         op: Comparison,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        self.kind.push_column_prefix(&mut out)?;
+        self.kind.push_column_prefix(&self.column, &mut out)?;
         out.push_sql(op.as_str());
         self.push_value_prefix(&mut out)
     }
@@ -895,7 +1035,7 @@ impl<'a> PrefixComparison<'a> {
         op: Comparison,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        out.push_identifier(self.column.name.as_str())?;
+        self.column.walk_ast(out.reborrow())?;
         out.push_sql(op.as_str());
         self.value.walk_ast(out)
     }
@@ -943,7 +1083,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
         let large = self.kind.is_large(&self.value).map_err(|()| {
             constraint_violation!(
                 "column {} has type {} and can't be compared with the value `{}` using {}",
-                self.column.name(),
+                self.column,
                 self.column.column_type().sql_type(),
                 self.value.value,
                 self.op.as_str()
@@ -995,137 +1135,83 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
     }
 }
 
-/// A `QueryFilter` adds the conditions represented by the `filter` to
-/// the `where` clause of a SQL query. The attributes mentioned in
-/// the `filter` must all come from the given `table`, which is used to
-/// map GraphQL names to column names, and to determine the type of the
-/// column an attribute refers to
-#[derive(Debug, Clone)]
-pub struct QueryFilter<'a> {
-    filter: &'a EntityFilter,
-    layout: &'a Layout,
-    table: &'a Table,
-    table_prefix: &'a str,
-    block: BlockNumber,
+/// A child filter on `parent_table`. The join between the tables happens
+/// along `parent_column = child_column` and the `child_table` must be
+/// filtered with `child_filter``
+#[derive(Debug)]
+struct QueryChild<'a> {
+    parent_table: &'a Table,
+    parent_column: &'a Column,
+    child_table: &'a Table,
+    child_column: &'a Column,
+    child_filter: Filter<'a>,
+    derived: bool,
+    br_column: BlockRangeColumn<'a>,
 }
 
-/// String representation that is useful for debugging when `walk_ast` fails
-impl<'a> fmt::Display for QueryFilter<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.filter)
-    }
-}
-
-impl<'a> QueryFilter<'a> {
-    pub fn new(
-        filter: &'a EntityFilter,
-        table: &'a Table,
+impl<'a> QueryChild<'a> {
+    fn new(
         layout: &'a Layout,
+        parent_table: &'a Table,
+        child: &'a StoreChild,
         block: BlockNumber,
     ) -> Result<Self, StoreError> {
-        Self::valid_attributes(filter, table, layout, false)?;
+        const CHILD_PREFIX: &str = "i.";
 
-        Ok(QueryFilter {
+        let StoreChild {
+            attr,
+            entity_type,
             filter,
-            table,
-            layout,
-            block,
-            table_prefix: "c.",
+            derived,
+        } = child;
+        let derived = *derived;
+        let child_table = layout.table_for_entity(entity_type)?;
+        let (parent_column, child_column) = if derived {
+            // If the parent is derived, the child column is picked based on
+            // the provided attribute and the parent column is the primary
+            // key of the parent table
+            (
+                parent_table.primary_key(),
+                child_table.column_for_field(attr)?,
+            )
+        } else {
+            // If the parent is not derived, we do the opposite. The parent
+            // column is picked based on the provided attribute and the
+            // child column is the primary key of the child table
+            (
+                parent_table.column_for_field(attr)?,
+                child_table.primary_key(),
+            )
+        };
+        let br_column = BlockRangeColumn::new(child_table, CHILD_PREFIX, block);
+        let child_filter = Filter::new(layout, child_table, filter, block, ColumnQual::Child)?;
+
+        Ok(Self {
+            parent_table,
+            parent_column,
+            child_table,
+            child_column,
+            child_filter,
+            derived,
+            br_column,
         })
     }
+}
 
-    fn valid_attributes(
-        filter: &'a EntityFilter,
-        table: &'a Table,
-        layout: &'a Layout,
-        child_filter_ancestor: bool,
-    ) -> Result<(), StoreError> {
-        use EntityFilter::*;
-        match filter {
-            And(filters) | Or(filters) => {
-                for filter in filters {
-                    Self::valid_attributes(filter, table, layout, child_filter_ancestor)?;
-                }
-            }
-            Child(child) => {
-                if child_filter_ancestor {
-                    return Err(StoreError::ChildFilterNestingNotSupportedError(
-                        child.attr.to_string(),
-                        filter.to_string(),
-                    ));
-                }
+impl<'a> QueryFragment<Pg> for QueryChild<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
 
-                if child.derived {
-                    let derived_table = layout.table_for_entity(&child.entity_type)?;
-                    // Make sure that the attribute name is valid for the given table
-                    derived_table.column_for_field(child.attr.as_str())?;
-
-                    Self::valid_attributes(&child.filter, derived_table, layout, true)?;
-                } else {
-                    // Make sure that the attribute name is valid for the given table
-                    table.column_for_field(child.attr.as_str())?;
-
-                    Self::valid_attributes(
-                        &child.filter,
-                        layout.table_for_entity(&child.entity_type)?,
-                        layout,
-                        true,
-                    )?;
-                }
-            }
-            // This is a special case since we want to allow passing "block" column filter, but we dont
-            // want to fail/error when this is passed here, since this column is not really an entity column.
-            ChangeBlockGte(..) => {}
-            Contains(attr, _)
-            | ContainsNoCase(attr, _)
-            | NotContains(attr, _)
-            | NotContainsNoCase(attr, _)
-            | Equal(attr, _)
-            | Fulltext(attr, _)
-            | Not(attr, _)
-            | GreaterThan(attr, _)
-            | LessThan(attr, _)
-            | GreaterOrEqual(attr, _)
-            | LessOrEqual(attr, _)
-            | In(attr, _)
-            | NotIn(attr, _)
-            | StartsWith(attr, _)
-            | StartsWithNoCase(attr, _)
-            | NotStartsWith(attr, _)
-            | NotStartsWithNoCase(attr, _)
-            | EndsWith(attr, _)
-            | EndsWithNoCase(attr, _)
-            | NotEndsWith(attr, _)
-            | NotEndsWithNoCase(attr, _) => {
-                table.column_for_field(attr)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn with(&self, filter: &'a EntityFilter) -> Self {
-        QueryFilter {
-            filter,
-            table: self.table,
-            layout: self.layout,
-            block: self.block,
-            table_prefix: self.table_prefix,
-        }
-    }
-
-    fn child<'b>(
-        &self,
-        attribute: &Attribute,
-        entity_type: &'a EntityType,
-        filter: &'a EntityFilter,
-        derived: bool,
-        mut out: AstPass<'_, 'b, Pg>,
-    ) -> QueryResult<()> {
-        let out = &mut out;
-        let child_table = self
-            .layout
-            .table_for_entity(entity_type)
-            .expect("Table for child entity not found");
+        let QueryChild {
+            parent_table: _,
+            parent_column,
+            child_table,
+            child_column,
+            child_filter,
+            derived,
+            br_column,
+        } = self;
+        let derived = *derived;
 
         let child_prefix = "i.";
         let parent_prefix = "c.";
@@ -1140,14 +1226,6 @@ impl<'a> QueryFilter<'a> {
 
         // Join tables
         if derived {
-            // If the parent is derived,
-            // the child column is picked based on the provided attribute
-            // and the parent column is the primary key of the parent table
-            let child_column = child_table
-                .column_for_field(attribute)
-                .expect("Column for an attribute not found");
-            let parent_column = self.table.primary_key();
-
             if child_column.is_list() {
                 // Type A: c.id = any(i.{parent_field})
                 out.push_sql(parent_prefix);
@@ -1165,14 +1243,6 @@ impl<'a> QueryFilter<'a> {
                 out.push_identifier(child_column.name.as_str())?;
             }
         } else {
-            // If the parent is not derived, we do the opposite.
-            // The parent column is picked based on the provided attribute
-            // and the child column is the primary key of the child table
-            let parent_column = self
-                .table
-                .column_for_field(attribute)
-                .expect("Column for an attribute not found");
-            let child_column = child_table.primary_key();
             is_type_c_or_d = true;
 
             if parent_column.is_list() {
@@ -1196,38 +1266,366 @@ impl<'a> QueryFilter<'a> {
         out.push_sql(" and ");
 
         // Match by block
-        BlockRangeColumn::new(child_table, child_prefix, self.block)
-            .contains(out, is_type_c_or_d)?;
+        br_column.contains(&mut out, is_type_c_or_d)?;
 
         out.push_sql(" and ");
 
-        // Child filters
-        let query_filter = QueryFilter {
-            filter,
-            table: child_table,
-            layout: self.layout,
-            block: self.block,
-            table_prefix: child_prefix,
-        };
-
-        query_filter.walk_ast(out.reborrow())?;
+        child_filter.walk_ast(out.reborrow())?;
 
         out.push_sql(")");
 
         Ok(())
     }
+}
 
-    fn column(&self, attribute: &Attribute) -> &'a Column {
-        self.table
-            .column_for_field(attribute)
-            .expect("the constructor already checked that all attribute names are valid")
+/// The qualifier for a column to indicate whether we use the main table or
+/// a child table
+#[derive(Copy, Clone, Debug)]
+enum ColumnQual {
+    Main,
+    Child,
+}
+
+impl ColumnQual {
+    fn with<'a>(&self, column: &'a Column) -> QualColumn<'a> {
+        match self {
+            ColumnQual::Main => QualColumn::Main(column),
+            ColumnQual::Child => QualColumn::Child(column),
+        }
+    }
+
+    /// Return `true` if we allow a nested child filter. That's allowed as
+    /// long as we are filtering the main table
+    fn allow_child(&self) -> bool {
+        match self {
+            ColumnQual::Main => true,
+            ColumnQual::Child => false,
+        }
+    }
+
+    fn prefix(&self) -> &'static str {
+        match self {
+            ColumnQual::Main => "c.",
+            ColumnQual::Child => "i.",
+        }
+    }
+}
+
+/// A qualified column name. This is either `c.{column}` or `i.{column}`
+#[derive(Debug)]
+enum QualColumn<'a> {
+    Main(&'a Column),
+    Child(&'a Column),
+}
+impl QualColumn<'_> {
+    fn is_fulltext(&self) -> bool {
+        self.column().is_fulltext()
+    }
+
+    fn column_type(&self) -> &ColumnType {
+        &self.column().column_type
+    }
+
+    fn prefix(&self) -> &str {
+        match self {
+            QualColumn::Main(_) => "c.",
+            QualColumn::Child(_) => "i.",
+        }
+    }
+
+    fn column(&self) -> &Column {
+        match self {
+            QualColumn::Main(column) => column,
+            QualColumn::Child(column) => column,
+        }
+    }
+}
+
+impl std::fmt::Display for QualColumn<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            QualColumn::Main(column) => write!(f, "{}", column.name),
+            QualColumn::Child(column) => write!(f, "{}", column.name),
+        }
+    }
+}
+
+impl QueryFragment<Pg> for QualColumn<'_> {
+    fn walk_ast<'a>(&self, mut out: AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        out.push_sql(self.prefix());
+        out.push_identifier(self.column().name.as_str())
+    }
+}
+
+/// The equivalent of `EntityFilter` with columns resolved and various
+/// properties checked so that we can generate SQL and be reasonably sure
+/// the SQL does not have a syntax error.
+///
+/// A `Filter` will usually be used in the `where` clause of a SQL query.
+#[derive(Debug)]
+pub enum Filter<'a> {
+    And(Vec<Filter<'a>>),
+    Or(Vec<Filter<'a>>),
+    PrefixCmp(PrefixComparison<'a>),
+    Cmp(QualColumn<'a>, Comparison, QueryValue<'a>),
+    GreaterThan(QualColumn<'a>, QueryValue<'a>),
+    LessThan(QualColumn<'a>, QueryValue<'a>),
+    GreaterOrEqual(QualColumn<'a>, QueryValue<'a>),
+    LessOrEqual(QualColumn<'a>, QueryValue<'a>),
+    In(QualColumn<'a>, Vec<QueryValue<'a>>),
+    NotIn(QualColumn<'a>, Vec<QueryValue<'a>>),
+    Contains {
+        column: QualColumn<'a>,
+        op: ContainsOp,
+        pattern: QueryValue<'a>,
+    },
+    StartsOrEndsWith {
+        column: QualColumn<'a>,
+        op: &'static str,
+        pattern: String,
+    },
+    ChangeBlockGte(BlockRangeColumn<'a>),
+    Child(Box<QueryChild<'a>>),
+    /// The value is never null for fulltext queries
+    Fulltext(QualColumn<'a>, QueryValue<'a>),
+}
+
+impl<'a> Filter<'a> {
+    pub fn main(
+        layout: &'a Layout,
+        table: &'a Table,
+        filter: &'a EntityFilter,
+        block: BlockNumber,
+    ) -> Result<Self, StoreError> {
+        Self::new(layout, table, filter, block, ColumnQual::Main)
+    }
+
+    fn new(
+        layout: &'a Layout,
+        table: &'a Table,
+        filter: &'a EntityFilter,
+        block: BlockNumber,
+        qual: ColumnQual,
+    ) -> Result<Self, StoreError> {
+        fn column_and_value<'v>(
+            prefix: ColumnQual,
+            table: &'v Table,
+            attr: &String,
+            value: &'v Value,
+        ) -> Result<(QualColumn<'v>, QueryValue<'v>), StoreError> {
+            let column = table.column_for_field(attr)?;
+            let value = QueryValue::new(value, &column.column_type)?;
+            let column = prefix.with(table.column_for_field(attr)?);
+            Ok((column, value))
+        }
+
+        fn starts_or_ends_with<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            value: &Value,
+            op: &'static str,
+            starts_with: bool,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = qual.with(table.column_for_field(attr)?);
+
+            match value {
+                Value::String(s) => {
+                    let pattern = if starts_with {
+                        format!("{}%", s)
+                    } else {
+                        format!("%{}", s)
+                    };
+                    Ok(Filter::StartsOrEndsWith {
+                        column,
+                        op,
+                        pattern,
+                    })
+                }
+                Value::Bool(_)
+                | Value::BigInt(_)
+                | Value::Bytes(_)
+                | Value::BigDecimal(_)
+                | Value::Int(_)
+                | Value::Int8(_)
+                | Value::List(_)
+                | Value::Null => {
+                    return Err(StoreError::UnsupportedFilter(
+                        op.to_owned(),
+                        value.to_string(),
+                    ));
+                }
+            }
+        }
+
+        fn cmp<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            op: Comparison,
+            value: &'s Value,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = table.column_for_field(attr)?;
+
+            op.suitable(value)?;
+
+            if column.use_prefix_comparison {
+                let column_type = &column.column_type;
+                let column = qual.with(column);
+                PrefixComparison::new(op, column, column_type, value)
+                    .map(|pc| Filter::PrefixCmp(pc))
+            } else {
+                let value = QueryValue::new(value, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(Filter::Cmp(column, op, value))
+            }
+        }
+
+        fn contains<'s>(
+            qual: ColumnQual,
+            table: &'s Table,
+            attr: &String,
+            op: ContainsOp,
+            value: &'s Value,
+        ) -> Result<Filter<'s>, StoreError> {
+            let column = table.column_for_field(attr)?;
+            let pattern = QueryValue::new(value, &column.column_type)?;
+            let pattern = match &pattern.value {
+                SqlValue::String(s) => {
+                    if s.starts_with('%') || s.ends_with('%') {
+                        pattern
+                    } else {
+                        let s = format!("%{}%", s);
+                        QueryValue {
+                            value: SqlValue::String(s),
+                            column_type: pattern.column_type,
+                        }
+                    }
+                }
+                SqlValue::Text(s) => {
+                    if s.starts_with('%') || s.ends_with('%') {
+                        pattern
+                    } else {
+                        let s = format!("%{}%", s);
+                        QueryValue {
+                            value: SqlValue::String(s),
+                            column_type: pattern.column_type,
+                        }
+                    }
+                }
+                SqlValue::Int(_)
+                | SqlValue::Int8(_)
+                | SqlValue::Numeric(_)
+                | SqlValue::Numerics(_)
+                | SqlValue::Bool(_)
+                | SqlValue::List(_)
+                | SqlValue::Null
+                | SqlValue::Bytes(_)
+                | SqlValue::Binary(_) => pattern,
+            };
+            let column = qual.with(column);
+            Ok(Filter::Contains {
+                column,
+                op,
+                pattern,
+            })
+        }
+
+        use Comparison as C;
+        use ContainsOp as K;
+        use EntityFilter::*;
+        use Filter as F;
+        match filter {
+            And(filters) => Ok(F::And(
+                filters
+                    .iter()
+                    .map(|f| F::new(layout, table, f, block, qual))
+                    .collect::<Result<_, _>>()?,
+            )),
+            Or(filters) => Ok(F::Or(
+                filters
+                    .iter()
+                    .map(|f| F::new(layout, table, f, block, qual))
+                    .collect::<Result<_, _>>()?,
+            )),
+            Equal(attr, value) => cmp(qual, table, attr, C::Equal, value),
+            Not(attr, value) => cmp(qual, table, attr, C::NotEqual, value),
+            GreaterThan(attr, value) => cmp(qual, table, attr, C::Greater, value),
+            LessThan(attr, value) => cmp(qual, table, attr, C::Less, value),
+            GreaterOrEqual(attr, value) => cmp(qual, table, attr, C::GreaterOrEqual, value),
+            LessOrEqual(attr, value) => cmp(qual, table, attr, C::LessOrEqual, value),
+            In(attr, values) => {
+                let column = table.column_for_field(attr.as_str())?;
+                let values = QueryValue::many(values, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(F::In(column, values))
+            }
+            NotIn(attr, values) => {
+                let column = table.column_for_field(attr.as_str())?;
+                let values = QueryValue::many(values, &column.column_type)?;
+                let column = qual.with(column);
+                Ok(F::NotIn(column, values))
+            }
+            Contains(attr, value) => contains(qual, table, attr, K::Like, value),
+            ContainsNoCase(attr, value) => contains(qual, table, attr, K::ILike, value),
+            NotContains(attr, value) => contains(qual, table, attr, K::NotLike, value),
+            NotContainsNoCase(attr, value) => contains(qual, table, attr, K::NotILike, value),
+
+            StartsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " like ", true)
+            }
+            StartsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " ilike ", true)
+            }
+            NotStartsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not like ", true)
+            }
+            NotStartsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not ilike ", true)
+            }
+            EndsWith(attr, value) => starts_or_ends_with(qual, table, attr, value, " like ", false),
+            EndsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " ilike ", false)
+            }
+            NotEndsWith(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not like ", false)
+            }
+            NotEndsWithNoCase(attr, value) => {
+                starts_or_ends_with(qual, table, attr, value, " not ilike ", false)
+            }
+
+            ChangeBlockGte(num) => Ok(F::ChangeBlockGte(BlockRangeColumn::new(
+                table,
+                qual.prefix(),
+                *num,
+            ))),
+            Child(child) => {
+                if !qual.allow_child() {
+                    return Err(StoreError::ChildFilterNestingNotSupportedError(
+                        child.attr.to_string(),
+                        filter.to_string(),
+                    ));
+                }
+                let child = QueryChild::new(layout, table, child, block)?;
+                Ok(F::Child(Box::new(child)))
+            }
+            Fulltext(attr, value) => {
+                let (column, value) = column_and_value(qual, table, attr, value)?;
+                if value.is_null() {
+                    return Err(StoreError::UnsupportedFilter(
+                        "fulltext".to_owned(),
+                        value.to_string(),
+                    ));
+                }
+                Ok(F::Fulltext(column, value))
+            }
+        }
     }
 
     fn binary_op<'b>(
-        &'b self,
-        filters: &'b [EntityFilter],
-        op: &str,
-        on_empty: &str,
+        filters: &'b [Filter],
+        op: &'static str,
+        on_empty: &'static str,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         if !filters.is_empty() {
@@ -1236,7 +1634,7 @@ impl<'a> QueryFilter<'a> {
                 if i > 0 {
                     out.push_sql(op);
                 }
-                self.with(filter).walk_ast(out.reborrow())?;
+                filter.walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         } else {
@@ -1245,71 +1643,98 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn contains<'b>(
-        &'b self,
-        attribute: &Attribute,
-        value: &'b Value,
-        negated: bool,
-        strict: bool,
+    fn cmp<'b>(
+        column: &'b QualColumn<'b>,
+        qv: &'b QueryValue<'b>,
+        op: Comparison,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute);
-        let operation = match (strict, negated) {
-            (true, true) => " not like ",
-            (true, false) => " like ",
-            (false, true) => " not ilike ",
-            (false, false) => " ilike ",
-        };
-        match value {
-            Value::String(s) => {
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
-                out.push_sql(operation);
-                if s.starts_with('%') || s.ends_with('%') {
-                    out.push_bind_param::<Text, _>(s)?;
-                } else {
-                    let s = format!("%{}%", s);
-                    out.push_bind_param::<Text, _>(&s)?;
-                }
+        if qv.is_null() {
+            // Deal with nulls first since they always need special
+            // treatment
+            column.walk_ast(out.reborrow())?;
+            match op {
+                Comparison::Equal => out.push_sql(" is null"),
+                Comparison::NotEqual => out.push_sql(" is not null"),
+                _ => unreachable!("we check that nulls are only compard with '=' or '!='"),
             }
-            Value::Bytes(b) => {
+        } else {
+            column.walk_ast(out.reborrow())?;
+            out.push_sql(op.as_str());
+            qv.walk_ast(out)?;
+        }
+        Ok(())
+    }
+
+    fn fulltext<'b>(
+        column: &'b QualColumn,
+        qv: &'b QueryValue,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        assert!(!qv.is_null());
+        column.walk_ast(out.reborrow())?;
+        out.push_sql(Comparison::Match.as_str());
+        qv.walk_ast(out)
+    }
+
+    fn contains<'b>(
+        column: &'b QualColumn,
+        op: &'b ContainsOp,
+        qv: &'b QueryValue,
+        mut out: AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        match &qv.value {
+            SqlValue::String(_) | SqlValue::Text(_) => {
+                column.walk_ast(out.reborrow())?;
+                op.walk_ast(out.reborrow())?;
+                qv.walk_ast(out.reborrow())?;
+            }
+            SqlValue::Bytes(b) => {
                 out.push_sql("position(");
                 out.push_bind_param::<Binary, _>(b)?;
                 out.push_sql(" in ");
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
-                if negated {
+                column.walk_ast(out.reborrow())?;
+                if op.negated() {
                     out.push_sql(") = 0")
                 } else {
                     out.push_sql(") > 0");
                 }
             }
-            Value::List(_) => {
-                if negated {
+            SqlValue::Binary(b) => {
+                out.push_sql("position(");
+                out.push_bind_param::<Binary, _>(b)?;
+                out.push_sql(" in ");
+                column.walk_ast(out.reborrow())?;
+                if op.negated() {
+                    out.push_sql(") = 0")
+                } else {
+                    out.push_sql(") > 0");
+                }
+            }
+            SqlValue::List(_) => {
+                if op.negated() {
                     out.push_sql(" not ");
-                    out.push_sql(self.table_prefix);
-                    out.push_identifier(column.name.as_str())?;
+                    column.walk_ast(out.reborrow())?;
                     out.push_sql(" && ");
                 } else {
-                    out.push_sql(self.table_prefix);
-                    out.push_identifier(column.name.as_str())?;
+                    column.walk_ast(out.reborrow())?;
                     out.push_sql(" @> ");
                 }
-                QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
+                qv.walk_ast(out)?;
             }
-            Value::Null
-            | Value::BigDecimal(_)
-            | Value::Int(_)
-            | Value::Int8(_)
-            | Value::Bool(_)
-            | Value::BigInt(_) => {
-                let filter = match negated {
+            SqlValue::Null
+            | SqlValue::Bool(_)
+            | SqlValue::Numeric(_)
+            | SqlValue::Numerics(_)
+            | SqlValue::Int(_)
+            | SqlValue::Int8(_) => {
+                let filter = match op.negated() {
                     false => "contains",
                     true => "not_contains",
                 };
                 return Err(UnsupportedFilter {
                     filter: filter.to_owned(),
-                    value: value.clone(),
+                    value: qv.value.to_string(),
                 }
                 .into());
             }
@@ -1317,83 +1742,12 @@ impl<'a> QueryFilter<'a> {
         Ok(())
     }
 
-    fn equals<'b>(
-        &'b self,
-        attribute: &Attribute,
-        value: &Value,
-        op: Comparison,
+    fn in_array<'b>(
+        column: &'b QualColumn,
+        values: &'b [QueryValue],
+        negated: bool,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        if matches!(value, Value::Null) {
-            // Deal with nulls first since they always need special
-            // treatment
-            out.push_identifier(column.name.as_str())?;
-            match op {
-                Comparison::Equal => out.push_sql(" is null"),
-                Comparison::NotEqual => out.push_sql(" is not null"),
-                _ => unreachable!("we only call equals with '=' or '!='"),
-            }
-        } else if column.use_prefix_comparison {
-            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
-        } else if column.is_fulltext() {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(Comparison::Match.as_str());
-            QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
-        } else {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(op.as_str());
-            QueryValue::new(value, &column.column_type)?.walk_ast(out)?;
-        }
-        Ok(())
-    }
-
-    fn compare(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        op: Comparison,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        if column.use_prefix_comparison {
-            PrefixComparison::new(op, column, value)?.walk_ast(out.reborrow())?;
-        } else {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
-            out.push_sql(op.as_str());
-            match value {
-                Value::BigInt(_)
-                | Value::Bytes(_)
-                | Value::BigDecimal(_)
-                | Value::Int(_)
-                | Value::Int8(_)
-                | Value::String(_) => QueryValue::new(value, &column.column_type)?.walk_ast(out)?,
-                Value::Bool(_) | Value::List(_) | Value::Null => {
-                    return Err(UnsupportedFilter {
-                        filter: op.as_str().to_owned(),
-                        value: value.clone(),
-                    }
-                    .into());
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn in_array(
-        &self,
-        attribute: &Attribute,
-        values: &[Value],
-        negated: bool,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
         if values.is_empty() {
             out.push_sql("false");
             return Ok(());
@@ -1412,16 +1766,15 @@ impl<'a> QueryFilter<'a> {
         // is a syntax error
         //
         // Because we checked above, one of these two will be true
-        let have_nulls = values.iter().any(|value| value == &Value::Null);
-        let have_non_nulls = values.iter().any(|value| value != &Value::Null);
+        let have_nulls = values.iter().any(|qv| qv.is_null());
+        let have_non_nulls = values.iter().any(|qv| !qv.is_null());
 
         if have_nulls && have_non_nulls {
             out.push_sql("(");
         }
 
         if have_nulls {
-            out.push_sql(self.table_prefix);
-            out.push_identifier(column.name.as_str())?;
+            column.walk_ast(out.reborrow());
             if negated {
                 out.push_sql(" is not null");
             } else {
@@ -1434,38 +1787,35 @@ impl<'a> QueryFilter<'a> {
         }
 
         if have_non_nulls {
-            if column.use_prefix_comparison
-                && values.iter().all(|v| match v {
-                    Value::String(s) => s.len() < STRING_PREFIX_SIZE,
-                    Value::Bytes(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
-                    _ => false,
-                })
-            {
+            if
+            /* column.use_prefix_comparison
+            && */
+            values.iter().all(|v| match &v.value {
+                SqlValue::String(s) => s.len() < STRING_PREFIX_SIZE,
+                SqlValue::Bytes(b) => b.len() < BYTE_ARRAY_PREFIX_SIZE,
+                _ => false,
+            }) {
                 // If all values are shorter than the prefix size only check
                 // the prefix of the column; that's a fairly common case and
                 // we present it in the best possible way for Postgres'
                 // query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixType::new(column)?.push_column_prefix(&mut out)?;
+                todo!()
+                // PrefixType::new(column)?.push_column_prefix(&mut out)?;
             } else {
-                out.push_sql(self.table_prefix);
-                out.push_identifier(column.name.as_str())?;
+                column.walk_ast(out.reborrow())?;
             }
             if negated {
                 out.push_sql(" not in (");
             } else {
                 out.push_sql(" in (");
             }
-            for (i, value) in values
-                .iter()
-                .filter(|value| value != &&Value::Null)
-                .enumerate()
-            {
+            for (i, qv) in values.iter().filter(|qv| !qv.is_null()).enumerate() {
                 if i > 0 {
                     out.push_sql(", ");
                 }
-                QueryValue::new(value, &column.column_type)?.walk_ast(out.reborrow())?;
+                qv.walk_ast(out.reborrow())?;
             }
             out.push_sql(")");
         }
@@ -1475,114 +1825,109 @@ impl<'a> QueryFilter<'a> {
         }
         Ok(())
     }
+}
 
-    fn filter_block_gte(
-        &self,
-        block_number_gte: &BlockNumber,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        BlockRangeColumn::new(self.table, "c.", *block_number_gte).changed_since(&mut out)
-    }
+// A somewhat concise string representation of a filter that is useful for
+// debugging when `walk_ast` fails
+impl<'a> fmt::Display for Filter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Filter::*;
 
-    fn starts_or_ends_with(
-        &self,
-        attribute: &Attribute,
-        value: &Value,
-        op: &str,
-        starts_with: bool,
-        mut out: AstPass<Pg>,
-    ) -> QueryResult<()> {
-        let column = self.column(attribute);
-
-        out.push_sql(self.table_prefix);
-        out.push_identifier(column.name.as_str())?;
-        out.push_sql(op);
-        match value {
-            Value::String(s) => {
-                let s = if starts_with {
-                    format!("{}%", s)
-                } else {
-                    format!("%{}", s)
+        match self {
+            And(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" and "))
+            }
+            Or(fs) => {
+                write!(f, "{}", fs.iter().map(|f| f.to_string()).join(" or "))
+            }
+            Fulltext(a, v) => write!(f, "{a} = {v}"),
+            PrefixCmp(PrefixComparison {
+                op,
+                kind: _,
+                column,
+                value,
+            }) => write!(f, "{column} {op} {value}"),
+            Cmp(a, op, v) => write!(f, "{a} {op} {v}"),
+            GreaterThan(a, v) => write!(f, "{a} > {v}"),
+            LessThan(a, v) => write!(f, "{a} < {v}"),
+            GreaterOrEqual(a, v) => write!(f, "{a} >= {v}"),
+            LessOrEqual(a, v) => write!(f, "{a} <= {v}"),
+            In(a, vs) => write!(f, "{a} in ({})", vs.iter().map(|v| v.to_string()).join(",")),
+            NotIn(a, vs) => write!(
+                f,
+                "{a} not in ({})",
+                vs.iter().map(|v| v.to_string()).join(",")
+            ),
+            Contains {
+                column,
+                op,
+                pattern,
+            } => {
+                let (neg, case) = match op {
+                    ContainsOp::Like => ("", ""),
+                    ContainsOp::ILike => ("", "i"),
+                    ContainsOp::NotLike => ("!", ""),
+                    ContainsOp::NotILike => ("!", "i"),
                 };
-                out.push_bind_param::<Text, _>(&s)?
+                write!(f, "{column} {neg}~ *{pattern}*{case}")
             }
-            Value::Bool(_)
-            | Value::BigInt(_)
-            | Value::Bytes(_)
-            | Value::BigDecimal(_)
-            | Value::Int(_)
-            | Value::Int8(_)
-            | Value::List(_)
-            | Value::Null => {
-                return Err(UnsupportedFilter {
-                    filter: op.to_owned(),
-                    value: value.clone(),
-                }
-                .into());
+            StartsOrEndsWith {
+                column,
+                op,
+                pattern,
+            } => {
+                write!(f, "{column} {op} '{pattern}'")
             }
+            ChangeBlockGte(b) => write!(f, "block >= {}", b.block()),
+            Child(child /* a, et, cf, _ */) => write!(
+                f,
+                "join on {} with {}({})",
+                child.child_column.name(),
+                child.child_table.name,
+                child.child_filter
+            ),
         }
-        Ok(())
     }
 }
 
-impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
-    fn walk_ast(&self, mut out: AstPass<Pg>) -> QueryResult<()> {
+impl<'a> QueryFragment<Pg> for Filter<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
         use Comparison as c;
-        use EntityFilter::*;
-        match &self.filter {
-            And(filters) => self.binary_op(filters, " and ", " true ", out)?,
-            Or(filters) => self.binary_op(filters, " or ", " false ", out)?,
+        use Filter::*;
+        match self {
+            And(filters) => Self::binary_op(filters, " and ", " true ", out)?,
+            Or(filters) => Self::binary_op(filters, " or ", " false ", out)?,
 
-            Contains(attr, value) => self.contains(attr, value, false, true, out)?,
-            ContainsNoCase(attr, value) => self.contains(attr, value, false, false, out)?,
-            NotContains(attr, value) => self.contains(attr, value, true, true, out)?,
-            NotContainsNoCase(attr, value) => self.contains(attr, value, true, false, out)?,
+            Contains {
+                column,
+                op,
+                pattern,
+            } => Self::contains(column, op, pattern, out)?,
 
-            Equal(attr, value) | Fulltext(attr, value) => {
-                self.equals(attr, value, c::Equal, out)?
-            }
-            Not(attr, value) => self.equals(attr, value, c::NotEqual, out)?,
+            PrefixCmp(pc) => pc.walk_ast(out)?,
+            Cmp(column, op, value) => Self::cmp(column, value, *op, out)?,
+            Fulltext(column, value) => Self::fulltext(column, value, out)?,
+            GreaterThan(attr, value) => Self::cmp(attr, value, c::Greater, out)?,
+            LessThan(attr, value) => Self::cmp(attr, value, c::Less, out)?,
+            GreaterOrEqual(attr, value) => Self::cmp(attr, value, c::GreaterOrEqual, out)?,
+            LessOrEqual(attr, value) => Self::cmp(attr, value, c::LessOrEqual, out)?,
 
-            GreaterThan(attr, value) => self.compare(attr, value, c::Greater, out)?,
-            LessThan(attr, value) => self.compare(attr, value, c::Less, out)?,
-            GreaterOrEqual(attr, value) => self.compare(attr, value, c::GreaterOrEqual, out)?,
-            LessOrEqual(attr, value) => self.compare(attr, value, c::LessOrEqual, out)?,
+            In(attr, values) => Self::in_array(attr, values, false, out)?,
+            NotIn(attr, values) => Self::in_array(attr, values, true, out)?,
 
-            In(attr, values) => self.in_array(attr, values, false, out)?,
-            NotIn(attr, values) => self.in_array(attr, values, true, out)?,
-
-            StartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " like ", true, out)?
+            StartsOrEndsWith {
+                column,
+                op,
+                pattern,
+            } => {
+                column.walk_ast(out.reborrow())?;
+                out.push_sql(op);
+                out.push_bind_param::<Text, _>(pattern)?;
             }
-            StartsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " ilike ", true, out)?
-            }
-            NotStartsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", true, out)?
-            }
-            NotStartsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not ilike ", true, out)?
-            }
-            EndsWith(attr, value) => self.starts_or_ends_with(attr, value, " like ", false, out)?,
-            EndsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " ilike ", false, out)?
-            }
-            NotEndsWith(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not like ", false, out)?
-            }
-            NotEndsWithNoCase(attr, value) => {
-                self.starts_or_ends_with(attr, value, " not ilike ", false, out)?
-            }
-            ChangeBlockGte(block_number) => self.filter_block_gte(block_number, out)?,
-            Child(child) => self.child(
-                &child.attr,
-                &child.entity_type,
-                &child.filter,
-                child.derived,
-                out,
-            )?,
+            ChangeBlockGte(br_column) => br_column.changed_since(&mut out)?,
+            Child(child) => child.walk_ast(out)?,
         }
         Ok(())
     }
@@ -2260,12 +2605,12 @@ impl<'a> ParentLimit<'a> {
 
 /// This is the parallel to `EntityWindow`, with names translated to
 /// the relational layout, and checked against it
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FilterWindow<'a> {
     /// The table from which we take entities
     table: &'a Table,
     /// The overall filter for the entire query
-    query_filter: Option<QueryFilter<'a>>,
+    query_filter: Option<Filter<'a>>,
     /// The parent ids we are interested in. The type in the database
     /// for these is determined by the `IdType` of the parent table. Since
     /// we always compare these ids with a column in `table`, and that
@@ -2301,7 +2646,7 @@ impl<'a> FilterWindow<'a> {
         }
 
         let query_filter = entity_filter
-            .map(|filter| QueryFilter::new(filter, table, layout, block))
+            .map(|filter| Filter::main(layout, table, filter, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
         let br_column = BlockRangeColumn::new(table, "c.", block);
@@ -2632,10 +2977,10 @@ impl<'a> FilterWindow<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WholeTable<'a> {
     table: &'a Table,
-    filter: Option<QueryFilter<'a>>,
+    filter: Option<Filter<'a>>,
     column_names: AttributeNames,
     br_column: BlockRangeColumn<'a>,
 }
@@ -2650,7 +2995,7 @@ impl<'a> WholeTable<'a> {
     ) -> Result<Self, QueryExecutionError> {
         let table = layout.table_for_entity(entity_type).map(|rc| rc.as_ref())?;
         let filter = entity_filter
-            .map(|filter| QueryFilter::new(filter, table, layout, block))
+            .map(|filter| Filter::main(layout, table, filter, block))
             .transpose()?;
         let br_column = BlockRangeColumn::new(table, "c.", block);
         Ok(WholeTable {
@@ -2664,7 +3009,7 @@ impl<'a> WholeTable<'a> {
 
 /// This is a parallel to `EntityCollection`, but with entity type names
 /// and filters translated in a form ready for SQL generation
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum FilterCollection<'a> {
     /// Collection made from all entities in a table; each entry is the table
     /// and the filter to apply to it, checked and bound to that table
@@ -2681,7 +3026,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
             f: &mut fmt::Formatter,
             table: &Table,
             attrs: &AttributeNames,
-            filter: &Option<QueryFilter>,
+            filter: &Option<Filter>,
         ) -> Result<(), std::fmt::Error> {
             write!(f, "{}[", table.qualified_name.as_str().replace("\\\"", ""))?;
             match attrs {
@@ -4034,8 +4379,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql("\n where ");
 
         let filters_by_id = {
-            let entity_filter = wh.filter.as_ref().map(|f| f.filter);
-            matches!(entity_filter, Some(EntityFilter::Equal(attr, _)) if attr == "id")
+            matches!(wh.filter.as_ref(), Some(Filter::Cmp(column, Comparison::Equal, _)) if column.column().is_primary_key())
         };
 
         wh.br_column.contains(out, filters_by_id)?;
