@@ -548,12 +548,6 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexerHints {
-    pub prune: Option<PruneConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PruneConfig {
     pub history_blocks: Option<BlockNumber>,
 }
 
@@ -690,8 +684,7 @@ impl<C: Blockchain> SubgraphManifest<C> {
     pub fn history_blocks(&self) -> Option<BlockNumber> {
         self.indexer_hints
             .as_ref()
-            .and_then(|h| h.prune.as_ref())
-            .and_then(|p| p.history_blocks)
+            .and_then(|hints| hints.history_blocks)
     }
 
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
