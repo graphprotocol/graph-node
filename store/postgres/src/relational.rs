@@ -500,8 +500,7 @@ impl Layout {
         let inserts_or_updates =
             FindChangesQuery::new(&tables[..], block).load::<EntityData>(conn)?;
         let deletions =
-            FindPossibleDeletionsQuery::new(&self.catalog.site.namespace, &tables[..], block)
-                .load::<EntityDeletion>(conn)?;
+            FindPossibleDeletionsQuery::new(&tables[..], block).load::<EntityDeletion>(conn)?;
 
         let mut processed_entities = HashSet::new();
         let mut changes = Vec::new();

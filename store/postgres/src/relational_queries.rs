@@ -43,7 +43,7 @@ use crate::{
         BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
         BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
     },
-    primary::{Namespace, Site},
+    primary::Site,
 };
 
 /// Those are columns that we always want to fetch from the database.
@@ -1708,11 +1708,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 /// query is intented to be used together with [`FindChangesQuery`]; by
 /// combining the results it's possible to see which entities were *actually*
 /// deleted and which ones were just updated.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindPossibleDeletionsQuery<'a> {
-    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
     pub(crate) block: BlockNumber,
+    br_clause: BlockRangeUpperBoundClause<'a>,
+}
+
+impl<'a> FindPossibleDeletionsQuery<'a> {
+    pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
+        let br_clause = BlockRangeUpperBoundClause::new("e.", block);
+        Self {
+            tables,
+            block,
+            br_clause,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
@@ -1736,7 +1747,7 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            BlockRangeUpperBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+            self.br_clause.walk_ast(out.reborrow())?;
         }
 
         Ok(())

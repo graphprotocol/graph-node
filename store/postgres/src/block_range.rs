@@ -113,7 +113,7 @@ impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
     }
 }
 
-#[derive(Constructor)]
+#[derive(Debug, Constructor)]
 pub struct BlockRangeUpperBoundClause<'a> {
     _table_prefix: &'a str,
     block: BlockNumber,
