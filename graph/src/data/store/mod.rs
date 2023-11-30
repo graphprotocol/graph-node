@@ -518,7 +518,7 @@ impl From<Value> for r::Value {
         match value {
             Value::String(s) => r::Value::String(s),
             Value::Int(i) => r::Value::Int(i as i64),
-            Value::Int8(i) => r::Value::String(i.to_string()),
+            Value::Int8(i) => r::Value::Int(i),
             Value::BigDecimal(d) => r::Value::String(d.to_string()),
             Value::Bool(b) => r::Value::Boolean(b),
             Value::Null => r::Value::Null,

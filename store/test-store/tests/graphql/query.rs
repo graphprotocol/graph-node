@@ -722,10 +722,10 @@ fn can_query_one_to_one_relationship() {
         let s = id_type.songs();
         let exp = object! {
             musicians: vec![
-                object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: "10" },
-                object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: "100" },
-                object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: "5" },
-                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: "20" }
+                object! { name: "John", mainBand: object! { name: "The Musicians" }, favoriteCount: 10 },
+                object! { name: "Lisa", mainBand: object! { name: "The Musicians" }, favoriteCount: 100 },
+                object! { name: "Tom",  mainBand: object! { name: "The Amateurs" }, favoriteCount: 5 },
+                object! { name: "Valerie", mainBand: r::Value::Null, favoriteCount: 20 }
             ],
             songStats: vec![
                 object! {
