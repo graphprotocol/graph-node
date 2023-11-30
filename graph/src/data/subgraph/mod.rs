@@ -872,6 +872,13 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
+        if spec_version < SPEC_VERSION_0_1_0 && indexer_hints.is_some() {
+            bail!(
+                "`indexerHints` are not supported prior to {}",
+                SPEC_VERSION_0_1_0
+            );
+        }
+
         // Check the min_spec_version of each data source against the spec version of the subgraph
         let min_spec_version_mismatch = data_sources
             .iter()
