@@ -1113,13 +1113,13 @@ impl<'a> QueryFilter<'a> {
         }
     }
 
-    fn child(
+    fn child<'b>(
         &self,
         attribute: &Attribute,
         entity_type: &'a EntityType,
         filter: &'a EntityFilter,
         derived: bool,
-        mut out: AstPass<'a, '_, Pg>,
+        mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         let out = &mut out;
         let child_table = self
@@ -1590,11 +1590,24 @@ impl<'a> QueryFragment<Pg> for QueryFilter<'a> {
 
 /// A query that finds an entity by key. Used during indexing.
 /// See also `FindManyQuery`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone)]
 pub struct FindQuery<'a> {
     table: &'a Table,
     key: &'a EntityKey,
     block: BlockNumber,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> FindQuery<'a> {
+    pub fn new(table: &'a Table, key: &'a EntityKey, block: BlockNumber) -> Self {
+        let br_column = BlockRangeColumn::new(table, "e.", block);
+        Self {
+            table,
+            key,
+            block,
+            br_column,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindQuery<'a> {
@@ -1617,7 +1630,7 @@ impl<'a> QueryFragment<Pg> for FindQuery<'a> {
             out.push_bind_param::<Integer, _>(&self.key.causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, true)
+        self.br_column.contains(&mut out, true)
     }
 }
 
@@ -1636,11 +1649,22 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
 /// block range's lower bound is equal to said block number.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindChangesQuery<'a> {
-    pub(crate) _namespace: &'a Namespace,
     pub(crate) tables: &'a [&'a Table],
     pub(crate) block: BlockNumber,
+    br_clause: BlockRangeLowerBoundClause<'a>,
+}
+
+impl<'a> FindChangesQuery<'a> {
+    pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
+        let br_clause = BlockRangeLowerBoundClause::new("e.", block);
+        Self {
+            tables,
+            block,
+            br_clause,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
@@ -1657,7 +1681,7 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            BlockRangeLowerBoundClause::new("e.", self.block).walk_ast(out.reborrow())?;
+            self.br_clause.walk_ast(out.reborrow())?;
         }
 
         Ok(())
