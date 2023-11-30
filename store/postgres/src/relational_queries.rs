@@ -2272,6 +2272,7 @@ pub struct FilterWindow<'a> {
     /// How to filter by a set of parents
     link: TableLink<'a>,
     column_names: AttributeNames,
+    br_column: BlockRangeColumn<'a>,
 }
 
 impl<'a> FilterWindow<'a> {
@@ -2287,7 +2288,7 @@ impl<'a> FilterWindow<'a> {
             link,
             column_names,
         } = window;
-        let table = layout.table_for_entity(&child_type).map(|rc| rc.as_ref())?;
+        let table = layout.table_for_entity(&child_type)?.as_ref();
 
         // Confidence check: ensure that all selected column names exist in the table
         if let AttributeNames::Select(ref selected_field_names) = column_names {
@@ -2300,12 +2301,14 @@ impl<'a> FilterWindow<'a> {
             .map(|filter| QueryFilter::new(filter, table, layout, block))
             .transpose()?;
         let link = TableLink::new(layout, table, link)?;
+        let br_column = BlockRangeColumn::new(table, "c.", block);
         Ok(FilterWindow {
             table,
             query_filter,
             ids,
             link,
             column_names,
+            br_column,
         })
     }
 
@@ -2328,7 +2331,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         column: &Column,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
@@ -2351,7 +2353,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
+        self.br_column.contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
@@ -2366,7 +2368,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         column: &Column,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(column.is_list());
@@ -2387,7 +2388,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
+        self.br_column.contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
@@ -2407,7 +2408,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         column: &Column,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
@@ -2430,7 +2430,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
+        self.br_column.contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2444,7 +2444,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         column: &Column,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         assert!(!column.is_list());
@@ -2460,7 +2459,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(") as p(id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, false)?;
+        self.br_column.contains(out, false)?;
         limit.filter(out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
@@ -2473,7 +2472,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         child_ids: &'b [IdList],
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("\n/* children_type_c */ ");
@@ -2515,7 +2513,7 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
-            BlockRangeColumn::new(self.table, "c.", block).contains(out, true);
+            self.br_column.contains(out, true);
             limit.filter(out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out)?;
@@ -2541,7 +2539,6 @@ impl<'a> FilterWindow<'a> {
         &'b self,
         child_ids: &'b IdList,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         // Generate
@@ -2557,7 +2554,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(")) as p(id, child_id), ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
-        BlockRangeColumn::new(self.table, "c.", block).contains(out, true)?;
+        self.br_column.contains(out, true)?;
         limit.filter(out);
 
         // Include a constraint on the child IDs as a set if the size of the set
@@ -2582,7 +2579,6 @@ impl<'a> FilterWindow<'a> {
     fn children<'b>(
         &'b self,
         limit: &'b ParentLimit<'_>,
-        block: BlockNumber,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         match &self.link {
@@ -2590,21 +2586,21 @@ impl<'a> FilterWindow<'a> {
                 use ChildMultiplicity::*;
                 if column.is_list() {
                     match multiplicity {
-                        Many => self.children_type_a(column, limit, block, out),
-                        Single => self.child_type_a(column, limit, block, out),
+                        Many => self.children_type_a(column, limit, out),
+                        Single => self.child_type_a(column, limit, out),
                     }
                 } else {
                     match multiplicity {
-                        Many => self.children_type_b(column, limit, block, out),
-                        Single => self.child_type_b(column, limit, block, out),
+                        Many => self.children_type_b(column, limit, out),
+                        Single => self.child_type_b(column, limit, out),
                     }
                 }
             }
             TableLink::Parent(_, ParentIds::List(child_ids)) => {
-                self.children_type_c(child_ids, limit, block, out)
+                self.children_type_c(child_ids, limit, out)
             }
             TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
-                self.child_type_d(child_ids, limit, block, out)
+                self.child_type_d(child_ids, limit, out)
             }
         }
     }
@@ -2623,7 +2619,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
         out.push_sql(&*PARENT_ID);
         sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
-        self.children(&ParentLimit::Outer, block, &mut out)
+        self.children(&ParentLimit::Outer, &mut out)
     }
 
     /// Collect all the parent id's from all windows
@@ -2704,6 +2700,7 @@ impl<'a> fmt::Display for FilterCollection<'a> {
                 ids,
                 link,
                 column_names,
+                br_column: _,
             } = w;
             fmt_table(f, table, column_names, query_filter)?;
             if !ids.is_empty() {
@@ -4098,11 +4095,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(
-            &ParentLimit::Ranked(&self.sort_key, &self.range),
-            self.block,
-            &mut out,
-        )?;
+        window.children(&ParentLimit::Ranked(&self.sort_key, &self.range), &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
         self.sort_key.order_by_parent(&mut out, false)
