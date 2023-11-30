@@ -542,6 +542,19 @@ pub struct BaseSubgraphManifest<C, S, D, T> {
     pub templates: Vec<T>,
     #[serde(skip_serializing, default)]
     pub chain: PhantomData<C>,
+    pub indexer_hints: Option<IndexerHints>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexerHints {
+    pub prune: Option<PruneConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PruneConfig {
+    pub history_blocks: Option<BlockNumber>,
 }
 
 /// SubgraphManifest with IPFS links unresolved
@@ -674,6 +687,13 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .collect()
     }
 
+    pub fn history_blocks(&self) -> Option<BlockNumber> {
+        self.indexer_hints
+            .as_ref()
+            .and_then(|h| h.prune.as_ref())
+            .and_then(|p| p.history_blocks)
+    }
+
     pub fn api_versions(&self) -> impl Iterator<Item = semver::Version> + '_ {
         self.templates
             .iter()
@@ -788,6 +808,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            indexer_hints,
         } = self;
 
         if !(MIN_SPEC_VERSION..=max_spec_version.clone()).contains(&spec_version) {
@@ -884,6 +905,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             graft,
             templates,
             chain,
+            indexer_hints,
         })
     }
 }
