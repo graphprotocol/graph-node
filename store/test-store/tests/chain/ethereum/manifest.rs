@@ -199,44 +199,12 @@ graft:
   block: 12345
 specVersion: 0.0.2
 indexerHints:
-  prune:
-    historyBlocks: 100
+  historyBlocks: 100
 ";
 
     let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
 
-    assert_eq!("Qmmanifest", manifest.id.as_str());
-    assert_eq!(
-        manifest
-            .indexer_hints
-            .unwrap()
-            .prune
-            .unwrap()
-            .history_blocks
-            .unwrap(),
-        100
-    );
-}
-
-#[tokio::test]
-async fn parse_indexer_hints_prune() {
-    const YAML: &str = "
-dataSources: []
-schema:
-  file:
-    /: /ipfs/Qmschema
-graft:
-  base: Qmbase
-  block: 12345
-specVersion: 0.0.2
-indexerHints:
-  prune:
-";
-
-    let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
-
-    assert_eq!("Qmmanifest", manifest.id.as_str());
-    assert!(manifest.indexer_hints.unwrap().prune.is_some());
+    assert_eq!(manifest.history_blocks().unwrap(), 100);
 }
 
 #[test]
