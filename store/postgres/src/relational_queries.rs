@@ -2614,7 +2614,6 @@ impl<'a> FilterWindow<'a> {
     fn children_uniform<'b>(
         &'b self,
         sort_key: &SortKey,
-        block: BlockNumber,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("select '");
@@ -4040,7 +4039,7 @@ impl<'a> FilterQuery<'a> {
         };
 
         wh.br_column.contains(out, filters_by_id)?;
-        if let Some(filter) = wh.filter {
+        if let Some(filter) = &wh.filter {
             out.push_sql(" and ");
             filter.walk_ast(out.reborrow())?;
         }
@@ -4223,7 +4222,7 @@ impl<'a> FilterQuery<'a> {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
-            window.children_uniform(&self.sort_key, self.block, out.reborrow())?;
+            window.children_uniform(&self.sort_key, out.reborrow())?;
         }
         out.push_sql("\n");
         self.sort_key.order_by(out, true)?;
