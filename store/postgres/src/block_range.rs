@@ -164,6 +164,13 @@ impl<'a> BlockRangeColumn<'a> {
             }
         }
     }
+
+    pub fn block(&self) -> BlockNumber {
+        match self {
+            BlockRangeColumn::Mutable { block, .. } => *block,
+            BlockRangeColumn::Immutable { block, .. } => *block,
+        }
+    }
 }
 
 impl<'a> BlockRangeColumn<'a> {
