@@ -94,7 +94,7 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
     }
 }
 
-#[derive(Constructor)]
+#[derive(Debug, Constructor)]
 pub struct BlockRangeLowerBoundClause<'a> {
     _table_prefix: &'a str,
     block: BlockNumber,
