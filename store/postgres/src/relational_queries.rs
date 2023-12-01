@@ -2597,27 +2597,28 @@ impl<'a> TableLink<'a> {
 /// parent `q.id` that an outer query has already set up. In all other
 /// cases, we restrict the children to the top n by ordering by a specific
 /// sort key and limiting
-#[derive(Copy, Clone)]
-enum ParentLimit<'a> {
+#[derive(Debug, Clone)]
+struct ParentLimit<'a> {
     /// Limit children to a specific parent
-    Outer,
+    is_outer: bool,
     /// Limit children by sorting and picking top n
-    Ranked(&'a SortKey<'a>, &'a FilterRange),
+    // TODO: comments
+    sort_key: SortKey<'a>,
+    range: FilterRange,
 }
 
 impl<'a> ParentLimit<'a> {
     fn filter(&self, out: &mut AstPass<'_, 'a, Pg>) {
-        match self {
-            ParentLimit::Outer => out.push_sql(" and q.id = p.id"),
-            ParentLimit::Ranked(_, _) => (),
+        if self.is_outer {
+            out.push_sql(" and q.id = p.id")
         }
     }
 
     fn restrict(&'a self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
-        if let ParentLimit::Ranked(sort_key, range) = self {
+        if !self.is_outer {
             out.push_sql(" ");
-            sort_key.order_by(out, false)?;
-            range.walk_ast(out.reborrow())?;
+            self.sort_key.order_by(out, false)?;
+            self.range.walk_ast(out.reborrow())?;
         }
         Ok(())
     }
@@ -2625,16 +2626,12 @@ impl<'a> ParentLimit<'a> {
     /// Include a 'limit {num_parents}+1' clause for single-object queries
     /// if that is needed
     fn single_limit(&self, num_parents: usize, out: &mut AstPass<Pg>) {
-        match self {
-            ParentLimit::Ranked(_, _) => {
-                out.push_sql(" limit ");
-                out.push_sql(&(num_parents + 1).to_string());
-            }
-            ParentLimit::Outer => {
-                // limiting is taken care of in a wrapper around
-                // the query we are currently building
-            }
+        if !self.is_outer {
+            out.push_sql(" limit ");
+            out.push_sql(&(num_parents + 1).to_string());
         }
+        // limiting is taken care of in a wrapper around
+        // the query we are currently building
     }
 }
 
@@ -4349,8 +4346,7 @@ impl QueryFragment<Pg> for FilterRange {
 #[derive(Debug, Clone)]
 pub struct FilterQuery<'a> {
     collection: &'a FilterCollection<'a>,
-    sort_key: SortKey<'a>,
-    range: FilterRange,
+    limit: ParentLimit<'a>,
     block: BlockNumber,
     query_id: Option<String>,
     site: &'a Site,
@@ -4362,7 +4358,7 @@ impl<'a> fmt::Display for FilterQuery<'a> {
         write!(
             f,
             "from {} order {} {} at {}",
-            &self.collection, &self.sort_key, &self.range, self.block
+            &self.collection, &self.limit.sort_key, &self.limit.range, self.block
         )?;
         if let Some(query_id) = &self.query_id {
             write!(f, " query_id {}", query_id)?;
@@ -4383,11 +4379,11 @@ impl<'a> FilterQuery<'a> {
         site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, block, layout)?;
+        let limit = ParentLimit::Ranked(sort_key, FilterRange(range));
 
         Ok(FilterQuery {
             collection,
-            sort_key,
-            range: FilterRange(range),
+            limit,
             block,
             query_id,
             site,
@@ -4409,7 +4405,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(wh.table.qualified_name.as_str());
         out.push_sql(" c");
 
-        self.sort_key.add_child(&self.block, out)?;
+        self.limit.sort_key.add_child(&self.block, out)?;
 
         out.push_sql("\n where ");
 
@@ -4454,8 +4450,8 @@ impl<'a> FilterQuery<'a> {
         write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
         self.filtered_rows(wh, out)?;
         out.push_sql("\n ");
-        self.sort_key.order_by(out, false)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, false)?;
+        self.limit.range.walk_ast(out.reborrow())?;
         out.push_sql(") c");
         Ok(())
     }
@@ -4470,16 +4466,17 @@ impl<'a> FilterQuery<'a> {
     fn query_window_one_entity<'b>(
         &'b self,
         window: &'b FilterWindow,
+        limit: &'b ParentLimit<'_>,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(&ParentLimit::Ranked(&self.sort_key, &self.range), &mut out)?;
+        window.children(&limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(&mut out, false)
+        self.limit.sort_key.order_by_parent(&mut out, false)
     }
 
     /// No windowing, but multiple entity types
@@ -4526,13 +4523,14 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("select '");
             out.push_sql(wh.table.object.as_str());
             out.push_sql("' as entity, c.id, c.vid");
-            self.sort_key
+            self.limit
+                .sort_key
                 .select(out, SelectStatementLevel::InnerStatement)?; // here
             self.filtered_rows(wh, out)?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(out, true)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, true)?;
+        self.limit.range.walk_ast(out.reborrow())?;
 
         out.push_sql(")\n");
 
@@ -4544,7 +4542,8 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("select m.entity, ");
             jsonb_build_object(&wh.column_names, "c", wh.table, out)?;
             out.push_sql(" as data, c.id");
-            self.sort_key
+            self.limit
+                .sort_key
                 .select(out, SelectStatementLevel::OuterStatement)?;
             out.push_sql("\n  from ");
             out.push_sql(wh.table.qualified_name.as_str());
@@ -4554,7 +4553,7 @@ impl<'a> FilterQuery<'a> {
             out.push_bind_param::<Text, _>(wh.table.object.as_str())?;
         }
         out.push_sql("\n ");
-        self.sort_key.order_by(out, true)?;
+        self.limit.sort_key.order_by(out, true)?;
         Ok(())
     }
 
@@ -4601,11 +4600,11 @@ impl<'a> FilterQuery<'a> {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
-            window.children_uniform(&self.sort_key, out.reborrow())?;
+            window.children_uniform(&self.limit.sort_key, out.reborrow())?;
         }
         out.push_sql("\n");
-        self.sort_key.order_by(out, true)?;
-        self.range.walk_ast(out.reborrow())?;
+        self.limit.sort_key.order_by(out, true)?;
+        self.limit.range.walk_ast(out.reborrow())?;
         out.push_sql(") c)\n");
 
         // Step 2: convert to JSONB
@@ -4641,7 +4640,7 @@ impl<'a> FilterQuery<'a> {
             out.push_sql("'");
         }
         out.push_sql("\n ");
-        self.sort_key.order_by_parent(out, true)
+        self.limit.sort_key.order_by_parent(out, true)
     }
 }
 
@@ -4683,7 +4682,9 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                     self.query_no_window(entities, &mut out)
                 }
             }
-            FilterCollection::SingleWindow(window) => self.query_window_one_entity(window, out),
+            FilterCollection::SingleWindow(window) => {
+                self.query_window_one_entity(window, self.limit, out)
+            }
             FilterCollection::MultiWindow(windows, parent_ids) => {
                 self.query_window(windows, parent_ids, &mut out)
             }
