@@ -2111,13 +2111,34 @@ impl<'a> Query for FindPossibleDeletionsQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindPossibleDeletionsQuery<'a> {}
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindManyQuery<'a> {
-    pub(crate) tables: Vec<(&'a Table, CausalityRegion)>,
+    pub(crate) tables: Vec<(&'a Table, CausalityRegion, BlockRangeColumn<'a>)>,
 
     // Maps object name to ids.
     pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
     pub(crate) block: BlockNumber,
+}
+
+impl<'a> FindManyQuery<'a> {
+    pub fn new(
+        tables: Vec<(&'a Table, CausalityRegion)>,
+        ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
+        block: BlockNumber,
+    ) -> Self {
+        let tables = tables
+            .into_iter()
+            .map(|(table, cr)| {
+                let br_column = BlockRangeColumn::new(table, "e.", block);
+                (table, cr, br_column)
+            })
+            .collect();
+        Self {
+            tables,
+            ids_for_type,
+            block,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
@@ -2132,7 +2153,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
         //      from schema.<table1> e where {id.is_in($ids1))
         //    union all
         //    ...
-        for (i, (table, cr)) in self.tables.iter().enumerate() {
+        for (i, (table, cr, br_column)) in self.tables.iter().enumerate() {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
@@ -2151,7 +2172,7 @@ impl<'a> QueryFragment<Pg> for FindManyQuery<'a> {
                 out.push_bind_param::<Integer, _>(cr)?;
                 out.push_sql(" and ");
             }
-            BlockRangeColumn::new(table, "e.", self.block).contains(&mut out, true)?;
+            br_column.contains(&mut out, true)?;
         }
         Ok(())
     }
@@ -2171,12 +2192,31 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
 /// A query that finds an entity by key. Used during indexing.
 /// See also `FindManyQuery`.
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug)]
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
     block: BlockNumber,
     excluded_keys: &'a Vec<EntityKey>,
+    br_column: BlockRangeColumn<'a>,
+}
+
+impl<'a> FindDerivedQuery<'a> {
+    pub fn new(
+        table: &'a Table,
+        derived_query: &'a DerivedEntityQuery,
+        block: BlockNumber,
+        excluded_keys: &'a Vec<EntityKey>,
+    ) -> Self {
+        let br_column = BlockRangeColumn::new(table, "e.", block);
+        Self {
+            table,
+            derived_query,
+            block,
+            excluded_keys,
+            br_column,
+        }
+    }
 }
 
 impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
@@ -2222,7 +2262,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             out.push_bind_param::<Integer, _>(causality_region)?;
             out.push_sql(" and ");
         }
-        BlockRangeColumn::new(self.table, "e.", self.block).contains(&mut out, false)
+        self.br_column.contains(&mut out, false)
     }
 }
 
