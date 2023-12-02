@@ -1,6 +1,12 @@
 //! Types and helpers to deal with entity IDs which support a subset of the
 //! types that more general values support
 use anyhow::{anyhow, Error};
+use diesel::{
+    pg::Pg,
+    query_builder::AstPass,
+    sql_types::{Binary, Text},
+    QueryResult,
+};
 use stable_hash::{StableHash, StableHasher};
 use std::convert::TryFrom;
 use std::fmt;
@@ -236,6 +242,13 @@ impl<'a> IdRef<'a> {
         match self {
             IdRef::String(s) => Id::String(Word::from(s.to_owned())),
             IdRef::Bytes(b) => Id::Bytes(scalar::Bytes::from(b)),
+        }
+    }
+
+    pub fn push_bind_param(&self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        match self {
+            IdRef::String(s) => out.push_bind_param::<Text, _>(*s),
+            IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(*b),
         }
     }
 }
