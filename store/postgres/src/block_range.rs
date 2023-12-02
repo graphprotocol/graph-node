@@ -306,6 +306,39 @@ impl<'a> BlockRangeColumn<'a> {
     }
 }
 
+/// The value for the block/block_range column, mostly as a tool for
+/// inserting data
+#[derive(Debug)]
+pub enum BlockRangeValue {
+    Immutable(BlockNumber),
+    Mutable(BlockRange),
+}
+
+impl BlockRangeValue {
+    pub fn new(table: &Table, block: BlockNumber, end: Option<BlockNumber>) -> Self {
+        if table.immutable {
+            BlockRangeValue::Immutable(block)
+        } else {
+            let end = end.unwrap_or_else(|| block + 1);
+            BlockRangeValue::Mutable((block..end).into())
+        }
+    }
+}
+
+impl QueryFragment<Pg> for BlockRangeValue {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        match self {
+            BlockRangeValue::Immutable(block) => {
+                out.push_bind_param::<Integer, _>(block)?;
+            }
+            BlockRangeValue::Mutable(range) => {
+                out.push_bind_param::<Range<Integer>, _>(range)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[test]
 fn block_number_max_is_i32_max() {
     // The code in this file embeds i32::MAX aka BLOCK_NUMBER_MAX in strings

@@ -9,9 +9,9 @@ use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Range, Text, Untyped};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Untyped};
 
-use graph::components::store::write::WriteChunk;
+use graph::components::store::write::{EntityWrite, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 use graph::data::store::{Id, IdType, NULL};
 use graph::data::store::{IdList, IdRef, QueryObject};
@@ -26,22 +26,21 @@ use graph::schema::{EntityKey, EntityType, FulltextAlgorithm, InputSchema};
 use graph::{components::store::AttributeNames, data::store::scalar};
 use inflector::Inflector;
 use itertools::Itertools;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 use std::iter::FromIterator;
 use std::str::FromStr;
 use std::string::ToString;
 
-use crate::block_range::BlockRange;
 use crate::relational::{
     Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
     STRING_PREFIX_SIZE,
 };
 use crate::{
     block_range::{
-        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BLOCK_COLUMN,
-        BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
+        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BlockRangeValue,
+        BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
     },
     primary::Site,
 };
@@ -2278,49 +2277,73 @@ impl<'a> Query for FindDerivedQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindDerivedQuery<'a> {}
 
+/// One value for inserting into a column of a table
 #[derive(Debug)]
-struct FulltextValues<'a>(HashMap<&'a Id, Vec<(&'a str, Value)>>);
+enum InsertValue<'a> {
+    Value(QueryValue<'a>),
+    Fulltext(Vec<&'a String>),
+}
 
-impl<'a> FulltextValues<'a> {
-    fn new(table: &'a Table, rows: &'a WriteChunk<'a>) -> Self {
-        let mut map: HashMap<&Id, Vec<(&str, Value)>> = HashMap::new();
-        for column in table.columns.iter().filter(|column| column.is_fulltext()) {
-            for row in rows {
-                if let Some(fields) = column.fulltext_fields.as_ref() {
-                    let fulltext_field_values = fields
-                        .iter()
-                        .filter_map(|field| row.entity.get(field))
-                        .cloned()
-                        .collect::<Vec<Value>>();
-                    if !fulltext_field_values.is_empty() {
-                        map.entry(row.id)
-                            .or_default()
-                            .push((column.field.as_str(), Value::List(fulltext_field_values)));
-                    }
-                }
-            }
+impl<'a> QueryFragment<Pg> for InsertValue<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        match self {
+            InsertValue::Value(qv) => qv.walk_ast(out),
+            InsertValue::Fulltext(qvs) => out.push_bind_param::<Array<Text>, _>(qvs),
         }
-        Self(map)
     }
+}
 
-    fn get(&self, entity_id: &Id, field: &str) -> &Value {
-        self.0
-            .get(entity_id)
-            .and_then(|values| {
-                values
+/// One row for inserting into a table; values are in the same order as in
+/// `InsertQuery.unique_columns``
+#[derive(Debug)]
+struct InsertRow<'a> {
+    values: Vec<InsertValue<'a>>,
+    br_value: BlockRangeValue,
+    causality_region: CausalityRegion,
+}
+
+impl<'a> InsertRow<'a> {
+    fn new(
+        columns: &[&'a Column],
+        row: EntityWrite<'a>,
+        table: &'a Table,
+    ) -> Result<Self, StoreError> {
+        let mut values = Vec::with_capacity(columns.len());
+        for column in columns {
+            let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
+                let fulltext_field_values: Vec<_> = fields
                     .iter()
-                    .find(|(key, _)| field == *key)
-                    .map(|(_, value)| value)
-            })
-            .unwrap_or(&NULL)
+                    .filter_map(|field| row.entity.get(field))
+                    .map(|value| match value {
+                        Value::String(s) => Ok(s),
+                        _ => Err(constraint_violation!(
+                            "fulltext fields must be strings but got {:?}",
+                            value
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                InsertValue::Fulltext(fulltext_field_values)
+            } else {
+                let value = row.entity.get(&column.field).unwrap_or(&NULL);
+                let qv = QueryValue::new(value, &column.column_type)?;
+                InsertValue::Value(qv)
+            };
+            values.push(iv);
+        }
+        let br_value = BlockRangeValue::new(table, row.block, row.end);
+        let causality_region = row.causality_region;
+        Ok(Self {
+            values,
+            br_value,
+            causality_region,
+        })
     }
 }
 
 #[derive(Debug)]
 pub struct InsertQuery<'a> {
     table: &'a Table,
-    rows: &'a WriteChunk<'a>,
-    fulltext_values: FulltextValues<'a>,
+    rows: Vec<InsertRow<'a>>,
     unique_columns: Vec<&'a Column>,
 }
 
@@ -2339,30 +2362,29 @@ impl<'a> InsertQuery<'a> {
             }
         }
 
-        let fulltext_values = FulltextValues::new(table, rows);
-        let unique_columns = InsertQuery::unique_columns(table, rows, &fulltext_values);
+        let unique_columns = InsertQuery::unique_columns(table, rows);
+
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|row| InsertRow::new(&unique_columns, row, table))
+            .collect::<Result<_, _>>()?;
 
         Ok(InsertQuery {
             table,
             rows,
-            fulltext_values,
             unique_columns,
         })
     }
 
     /// Build the column name list using the subset of all keys among present entities.
-    fn unique_columns(
-        table: &'a Table,
-        rows: &'a WriteChunk<'a>,
-        fulltext_values: &FulltextValues<'a>,
-    ) -> Vec<&'a Column> {
+    fn unique_columns(table: &'a Table, rows: &'a WriteChunk<'a>) -> Vec<&'a Column> {
         table
             .columns
             .iter()
             .filter(|column| {
                 rows.iter().any(|row| {
-                    if column.is_fulltext() {
-                        !fulltext_values.get(row.id, &column.field).is_null()
+                    if let Some(fields) = column.fulltext_fields.as_ref() {
+                        fields.iter().any(|field| row.entity.contains_key(field))
                     } else {
                         row.entity.get(&column.field).is_some()
                     }
@@ -2391,25 +2413,6 @@ impl<'a> InsertQuery<'a> {
             }
         }
         POSTGRES_MAX_PARAMETERS / count
-    }
-
-    /// Output the literal value of the block range `[block,..)`, mostly for
-    /// generating an insert statement containing the block range column
-    pub fn literal_range_current<'b>(
-        table: &Table,
-        block: BlockNumber,
-        end: Option<BlockNumber>,
-        out: &mut AstPass<'_, 'b, Pg>,
-    ) -> QueryResult<()> {
-        if table.immutable {
-            out.push_bind_param::<Integer, _>(&block)
-        } else {
-            let block_range: BlockRange = match end {
-                Some(end) => (block..end).into(),
-                None => (block..).into(),
-            };
-            out.push_bind_param::<Range<Integer>, _>(&block_range)
-        }
     }
 }
 
@@ -2445,30 +2448,22 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
 
         out.push_sql(") values\n");
 
-        // Use a `Peekable` iterator to help us decide how to finalize each line.
-        let mut iter = self.rows.iter().peekable();
-        while let Some(row) = iter.next() {
+        for (i, row) in self.rows.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(",\n");
+            }
+
             out.push_sql("(");
-            for column in &self.unique_columns {
-                let value = if column.is_fulltext() {
-                    self.fulltext_values.get(row.id, &column.field)
-                } else {
-                    row.entity.get(&column.field).unwrap_or(&NULL)
-                };
-                QueryValue::new(value, &column.column_type)?.walk_ast(out.reborrow())?;
+            for iv in &row.values {
+                iv.walk_ast(out.reborrow())?;
                 out.push_sql(", ");
             }
-            Self::literal_range_current(&self.table, row.block, row.end, out)?;
+            row.br_value.walk_ast(out.reborrow())?;
             if self.table.has_causality_region {
                 out.push_sql(", ");
                 out.push_bind_param::<Integer, _>(&row.causality_region)?;
             };
             out.push_sql(")");
-
-            // finalize line according to remaining entities to insert
-            if iter.peek().is_some() {
-                out.push_sql(",\n");
-            }
         }
 
         Ok(())
