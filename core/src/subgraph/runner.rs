@@ -111,7 +111,7 @@ where
     fn build_filter(&self) -> C::TriggerFilter {
         let current_ptr = self.inputs.store.block_ptr();
         let static_filters = self.inputs.static_filters
-            || self.ctx.instance().hosts().len() > ENV_VARS.static_filters_threshold;
+            || self.ctx.instance().hosts_len() > ENV_VARS.static_filters_threshold;
 
         // Filter out data sources that have reached their end block
         let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
