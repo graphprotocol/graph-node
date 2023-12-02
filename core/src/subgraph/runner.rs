@@ -140,7 +140,7 @@ where
             info!(self.logger, "forcing subgraph to use static filters.")
         }
 
-        let data_sources = self.ctx.instance().data_sources.clone();
+        let data_sources = self.ctx.instance().static_data_sources.clone();
 
         let mut filter = C::TriggerFilter::from_data_sources(
             data_sources

@@ -17,10 +17,11 @@ pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     host_builder: T,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     /// The data sources declared in the subgraph manifest. This does not include dynamic data sources.
-    pub data_sources: Arc<Vec<DataSource<C>>>,
+    pub static_data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
     /// The hosts represent the data sources in the subgraph. There is one host per data source.
+    /// Data sources with no mappings (e.g. direct substreams) have no host.
     hosts: Hosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
@@ -46,7 +47,7 @@ where
         // Datasources that are defined in the subgraph manifest but does not correspond to any host
         // in the subgraph. Currently these are only substreams data sources.
         let substreams_data_sources = self
-            .data_sources
+            .static_data_sources
             .iter()
             .filter(|ds| ds.runtime().is_none())
             .filter_map(|ds| ds.as_onchain());
@@ -73,7 +74,7 @@ where
             host_builder,
             subgraph_id,
             network,
-            data_sources: Arc::new(manifest.data_sources),
+            static_data_sources: Arc::new(manifest.data_sources),
             hosts: Hosts::new(),
             module_cache: HashMap::new(),
             templates,
@@ -89,12 +90,6 @@ where
             // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
             // `IndexingContext`.
 
-            let runtime = ds.runtime();
-            let module_bytes = match runtime {
-                None => continue,
-                Some(ref module_bytes) => module_bytes,
-            };
-
             if let DataSource::Offchain(ds) = &ds {
                 // monitor data source only if it's not processed.
                 if !ds.is_processed() {
@@ -102,21 +97,24 @@ where
                 }
             }
 
-            let host = this.new_host(logger.cheap_clone(), ds, module_bytes)?;
-            this.hosts.push(Arc::new(host));
+            let Some(host) = this.new_host(logger.cheap_clone(), ds)? else { continue };
+            this.hosts.push(host);
         }
 
         Ok(this)
     }
 
-    // module_bytes is the same as data_source.runtime().unwrap(), this is to ensure that this
-    // function is only called for data_sources for which data_source.runtime().is_some() is true.
+    // If `data_source.runtime()` is `None`, returns `Ok(None)`.
     fn new_host(
         &mut self,
         logger: Logger,
         data_source: DataSource<C>,
-        module_bytes: &Arc<Vec<u8>>,
-    ) -> Result<T::Host, Error> {
+    ) -> Result<Option<Arc<T::Host>>, Error> {
+        let module_bytes = match &data_source.runtime() {
+            None => return Ok(None),
+            Some(ref module_bytes) => module_bytes.cheap_clone(),
+        };
+
         let mapping_request_sender = {
             let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
             if let Some(sender) = self.module_cache.get(&module_hash) {
@@ -133,14 +131,15 @@ where
             }
         };
 
-        self.host_builder.build(
+        let host = self.host_builder.build(
             self.network.clone(),
             self.subgraph_id.clone(),
             data_source,
             self.templates.cheap_clone(),
             mapping_request_sender,
             self.host_metrics.cheap_clone(),
-        )
+        )?;
+        Ok(Some(Arc::new(host)))
     }
 
     pub(super) fn add_dynamic_data_source(
@@ -163,17 +162,12 @@ where
                 <= data_source.creation_block()
         );
 
-        let module_bytes = match &data_source.runtime() {
-            None => return Ok(None),
-            Some(ref module_bytes) => module_bytes.cheap_clone(),
-        };
-
-        let host = Arc::new(self.new_host(logger.clone(), data_source, &module_bytes)?);
+        let Some(host) = self.new_host(logger.clone(), data_source)? else { return Ok(None) };
 
         Ok(if self.hosts.hosts().contains(&host) {
             None
         } else {
-            self.hosts.push(host.clone());
+            self.hosts.push(host.cheap_clone());
             Some(host)
         })
     }
