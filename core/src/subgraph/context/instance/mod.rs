@@ -12,19 +12,20 @@ use graph::{
 use hosts::Hosts;
 use std::collections::HashMap;
 
-use super::OffchainMonitor;
-
-pub struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub(super) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
     network: String,
     host_builder: T,
     pub templates: Arc<Vec<DataSourceTemplate<C>>>,
     /// The data sources declared in the subgraph manifest. This does not include dynamic data sources.
-    pub static_data_sources: Arc<Vec<DataSource<C>>>,
+    pub(super) static_data_sources: Arc<Vec<DataSource<C>>>,
     host_metrics: Arc<HostMetrics>,
 
     /// The hosts represent the data sources in the subgraph. There is one host per data source.
     /// Data sources with no mappings (e.g. direct substreams) have no host.
+    ///
+    /// The runtime hosts must be created in increasing order of block number.
+    /// `fn hosts_for_trigger` will return the hosts in the same order as their were inserted.
     hosts: Hosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
@@ -59,22 +60,17 @@ where
         host_data_sources.chain(substreams_data_sources)
     }
 
-    /// Create a new subgraph instance from the given manifest and data sources.
-    /// `data_sources` must contain all data sources declared in the manifest + all dynamic data sources.
-    pub fn from_manifest(
-        logger: &Logger,
+    pub fn new(
         manifest: SubgraphManifest<C>,
-        data_sources: Vec<DataSource<C>>,
         host_builder: T,
         host_metrics: Arc<HostMetrics>,
-        offchain_monitor: &mut OffchainMonitor,
         causality_region_seq: CausalityRegionSeq,
-    ) -> Result<Self, Error> {
+    ) -> Self {
         let subgraph_id = manifest.id.clone();
         let network = manifest.network_name();
         let templates = Arc::new(manifest.templates);
 
-        let mut this = SubgraphInstance {
+        SubgraphInstance {
             host_builder,
             subgraph_id,
             network,
@@ -84,28 +80,7 @@ where
             templates,
             host_metrics,
             causality_region_seq,
-        };
-
-        // Create a new runtime host for each data source in the subgraph manifest;
-        // we use the same order here as in the subgraph manifest to make the
-        // event processing behavior predictable
-        for ds in data_sources {
-            // TODO: This is duplicating code from `IndexingContext::add_dynamic_data_source` and
-            // `SubgraphInstance::add_dynamic_data_source`. Ideally this should be refactored into
-            // `IndexingContext`.
-
-            if let DataSource::Offchain(ds) = &ds {
-                // monitor data source only if it's not processed.
-                if !ds.is_processed() {
-                    offchain_monitor.add_source(ds.source.clone())?;
-                }
-            }
-
-            let Some(host) = this.new_host(logger.cheap_clone(), ds)? else { continue };
-            this.hosts.push(host);
         }
-
-        Ok(this)
     }
 
     // If `data_source.runtime()` is `None`, returns `Ok(None)`.
