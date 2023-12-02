@@ -2944,11 +2944,11 @@ impl<'a> FilterWindow<'a> {
         // is below the threshold set by environment variable. Set it to
         // 0 to turn off this optimization.
         if ENV_VARS.store.typed_children_set_size > 0 {
-            let child_set = child_ids.clone().as_unique();
-
-            if child_set.len() <= ENV_VARS.store.typed_children_set_size {
+            // This check can be misleading because child_ids can contain
+            // duplicates if many parents point to the same child
+            if child_ids.len() <= ENV_VARS.store.typed_children_set_size {
                 out.push_sql(" and c.id = any(");
-                child_set.push_bind_param(out)?;
+                child_ids.push_bind_param(out)?;
                 out.push_sql(")");
             }
         }
