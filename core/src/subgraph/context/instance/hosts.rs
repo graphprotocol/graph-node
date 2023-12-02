@@ -6,14 +6,8 @@ use graph::{
     components::subgraph::{RuntimeHost, RuntimeHostBuilder},
 };
 
-/// Runtime hosts, one for each data source mapping.
-///
-/// The runtime hosts are created and added to the vec in the same order the data sources appear in
-/// the subgraph manifest. Incoming block stream events are processed by the mappings in this same
-/// order.
-///
-/// This structure also maintains a partition of the hosts by address, for faster trigger matching.
-/// This partition uses the host's index in the main vec, to maintain the correct ordering.
+/// This structure maintains a partition of the hosts by address, for faster trigger matching. This
+/// partition uses the host's index in the main vec, to maintain the correct ordering.
 pub(super) struct Hosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
     hosts: Vec<Arc<T::Host>>,
 

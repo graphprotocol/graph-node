@@ -83,7 +83,7 @@ where
     /// or failed block processing, it is necessary to remove part of the existing
     /// in-memory state to keep it constent with DB changes.
     /// During block processing new dynamic data sources are added directly to the
-    /// SubgraphInstance of the runner. This means that if, for whatever reason,
+    /// IndexingContext of the runner. This means that if, for whatever reason,
     /// the changes don;t complete then the remnants of that block processing must
     /// be removed. The same thing also applies to the block cache.
     /// This function must be called before continuing to process in order to avoid
@@ -110,8 +110,8 @@ where
 
     fn build_filter(&self) -> C::TriggerFilter {
         let current_ptr = self.inputs.store.block_ptr();
-        let static_filters = self.inputs.static_filters
-            || self.ctx.instance().hosts_len() > ENV_VARS.static_filters_threshold;
+        let static_filters =
+            self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold;
 
         // Filter out data sources that have reached their end block
         let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
@@ -124,10 +124,7 @@ where
         // if static_filters is not enabled we just stick to the filter based on all the data sources.
         if !static_filters {
             return C::TriggerFilter::from_data_sources(
-                self.ctx
-                    .instance()
-                    .onchain_data_sources()
-                    .filter(end_block_filter),
+                self.ctx.onchain_data_sources().filter(end_block_filter),
             );
         }
 
@@ -140,7 +137,7 @@ where
             info!(self.logger, "forcing subgraph to use static filters.")
         }
 
-        let data_sources = self.ctx.instance().static_data_sources.clone();
+        let data_sources = self.ctx.static_data_sources();
 
         let mut filter = C::TriggerFilter::from_data_sources(
             data_sources
@@ -150,7 +147,7 @@ where
                 .filter(end_block_filter),
         );
 
-        let templates = self.ctx.instance().templates.clone();
+        let templates = self.ctx.templates();
 
         filter.extend_with_template(templates.iter().filter_map(|ds| ds.as_onchain()).cloned());
 
