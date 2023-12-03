@@ -381,6 +381,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         block: codec::Block,
         filter: &crate::adapter::TriggerFilter,
     ) -> Result<BlockWithTriggers<Chain>, Error> {
+        let block_height = block.height as BlockNumber;
         let shared_block = Arc::new(block.clone());
 
         let mut triggers: Vec<_> = shared_block
@@ -402,9 +403,20 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             })
             .collect();
 
-        triggers.push(StarknetTrigger::Block(StarknetBlockTrigger {
-            block: shared_block,
-        }));
+        if filter.block.block_ranges.iter().any(|range| {
+            if block_height >= range.start_block {
+                match range.end_block {
+                    Some(end_block) => block_height < end_block,
+                    None => true,
+                }
+            } else {
+                false
+            }
+        }) {
+            triggers.push(StarknetTrigger::Block(StarknetBlockTrigger {
+                block: shared_block,
+            }));
+        }
 
         Ok(BlockWithTriggers::new(block, triggers, logger))
     }
