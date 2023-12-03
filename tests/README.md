@@ -15,10 +15,7 @@ In addition, the tests require the following:
 
 - `graph-node` must have already been built using `cargo build` and must be
   present at `../target/debug/graph-node`
-- `yarn` must be installed and on the `PATH`
-- the `graph` command must be present and on the `PATH`. The latter can be
-  installed using the script
-  [`install.sh`](http://cli.thegraph.com/install.sh)
+- `yarn` (v1) must be installed and on the `PATH`
 
 Once these prerequisites are in place, the tests can be run using:
 
@@ -60,3 +57,11 @@ can copy these addresses into the `CONTRACTS` array.
 When you add a new contract note that contracts must be called the same as
 the file they are stored in: the contract stored in `src/FooContract.sol`
 must be declared as `contract FooContract` in the Solidity source.
+
+### Testing different version of Graph CLI
+
+The integration tests project is built as Yarn (v1) Workspace, so all dependencies are installed at once for all tests.
+
+We can still control the version of the Graph CLI installed for each test, by changing the versions of `@graphprotocol/graph-cli` / `@graphprotocol/graph-ts` in `package.json`.
+
+The integration tests runner will always run the binary/executable under `{TEST_DIR}/node_modules/.bin/graph`.
