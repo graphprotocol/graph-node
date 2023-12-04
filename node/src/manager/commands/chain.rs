@@ -18,8 +18,8 @@ use graph_store_postgres::{
 
 pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
     let mut chains = {
-        let conn = primary.get()?;
-        block_store::load_chains(&conn)?
+        let mut conn = primary.get()?;
+        block_store::load_chains(&mut conn)?
     };
     chains.sort_by_key(|chain| chain.name.clone());
 
@@ -88,10 +88,10 @@ pub async fn info(
         }
     }
 
-    let conn = primary.get()?;
+    let mut conn = primary.get()?;
 
-    let chain =
-        block_store::find_chain(&conn, &name)?.ok_or_else(|| anyhow!("unknown chain: {}", name))?;
+    let chain = block_store::find_chain(&mut conn, &name)?
+        .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
 
     let chain_store = store
         .chain_store(&chain.name)
@@ -123,7 +123,8 @@ pub async fn info(
 
 pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
     let sites = {
-        let conn = graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
+        let mut conn =
+            graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
         conn.find_sites_for_network(&name)?
     };
 
