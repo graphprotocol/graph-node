@@ -3,12 +3,12 @@ use std::{
     str::FromStr,
 };
 
-use graph::anyhow;
+use graph::anyhow::{self, anyhow};
 use serde::{de::Visitor, Deserialize};
 
 /// Represents the primitive `FieldElement` type used in Starknet. Each `FieldElement` is 252-bit
 /// in size.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Hash, Clone, PartialEq, Eq)]
 pub struct Felt([u8; 32]);
 
 struct FeltVisitor;
@@ -22,6 +22,21 @@ impl Debug for Felt {
 impl From<[u8; 32]> for Felt {
     fn from(value: [u8; 32]) -> Self {
         Self(value)
+    }
+}
+
+impl TryFrom<&[u8]> for Felt {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        if value.len() > 32 {
+            Err(anyhow!("slice too long"))
+        } else {
+            let mut buffer = [0u8; 32];
+            buffer[(32 - value.len())..].copy_from_slice(value);
+
+            Ok(buffer.into())
+        }
     }
 }
 
