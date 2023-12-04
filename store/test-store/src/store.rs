@@ -257,7 +257,7 @@ pub fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).unwrap();
     let locs = SUBGRAPH_STORE.locators(id.as_str()).unwrap();
-    let conn = primary_connection();
+    let mut conn = primary_connection();
     for loc in locs {
         let site = conn.locate_site(loc.clone()).unwrap().unwrap();
         conn.unassign_subgraph(&site).unwrap();
@@ -398,12 +398,12 @@ pub fn insert_ens_name(hash: &str, name: &str) {
     use diesel::prelude::*;
     use graph_store_postgres::command_support::catalog::ens_names;
 
-    let conn = PRIMARY_POOL.get().unwrap();
+    let mut conn = PRIMARY_POOL.get().unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
         .on_conflict_do_nothing()
-        .execute(&conn)
+        .execute(&mut conn)
         .unwrap();
 }
 
