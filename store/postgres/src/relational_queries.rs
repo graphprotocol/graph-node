@@ -1362,7 +1362,7 @@ impl QueryFragment<Pg> for QualColumn<'_> {
 ///
 /// A `Filter` will usually be used in the `where` clause of a SQL query.
 #[derive(Debug)]
-pub enum Filter<'a> {
+enum Filter<'a> {
     And(Vec<Filter<'a>>),
     Or(Vec<Filter<'a>>),
     PrefixCmp(PrefixComparison<'a>),
@@ -2600,7 +2600,7 @@ impl<'a> TableLink<'a> {
 #[derive(Debug, Clone)]
 struct ParentLimit<'a> {
     /// Limit children to a specific parent
-    is_outer: bool,
+    //    is_outer: bool,
     /// Limit children by sorting and picking top n
     // TODO: comments
     sort_key: SortKey<'a>,
@@ -2608,14 +2608,14 @@ struct ParentLimit<'a> {
 }
 
 impl<'a> ParentLimit<'a> {
-    fn filter(&self, out: &mut AstPass<'_, 'a, Pg>) {
-        if self.is_outer {
+    fn filter(&self, is_outer: bool, out: &mut AstPass<'_, 'a, Pg>) {
+        if is_outer {
             out.push_sql(" and q.id = p.id")
         }
     }
 
-    fn restrict(&'a self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
-        if !self.is_outer {
+    fn restrict(&'a self, is_outer: bool, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+        if !is_outer {
             out.push_sql(" ");
             self.sort_key.order_by(out, false)?;
             self.range.walk_ast(out.reborrow())?;
@@ -2625,8 +2625,8 @@ impl<'a> ParentLimit<'a> {
 
     /// Include a 'limit {num_parents}+1' clause for single-object queries
     /// if that is needed
-    fn single_limit(&self, num_parents: usize, out: &mut AstPass<Pg>) {
-        if !self.is_outer {
+    fn single_limit(&self, is_outer: bool, num_parents: usize, out: &mut AstPass<Pg>) {
+        if !is_outer {
             out.push_sql(" limit ");
             out.push_sql(&(num_parents + 1).to_string());
         }
@@ -2710,6 +2710,7 @@ impl<'a> FilterWindow<'a> {
     fn children_type_a<'b>(
         &'b self,
         column: &Column,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2734,12 +2735,12 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         self.br_column.contains(out, false)?;
-        limit.filter(out);
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = any(c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(")");
         self.and_filter(out)?;
-        limit.restrict(out)?;
+        limit.restrict(is_outer, out)?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2747,6 +2748,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_a<'b>(
         &'b self,
         column: &Column,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2769,7 +2771,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         self.br_column.contains(out, false)?;
-        limit.filter(out);
+        limit.filter(is_outer, out);
         out.push_sql(" and c.");
         out.push_identifier(column.name.as_str())?;
         out.push_sql(" @> array[p.id]");
@@ -2780,13 +2782,14 @@ impl<'a> FilterWindow<'a> {
             self.ids.push_bind_param(out)?;
         }
         self.and_filter(out)?;
-        limit.single_limit(self.ids.len(), out);
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
     fn children_type_b<'b>(
         &'b self,
         column: &Column,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2811,11 +2814,11 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         self.br_column.contains(out, false)?;
-        limit.filter(out);
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
         self.and_filter(out)?;
-        limit.restrict(out)?;
+        limit.restrict(is_outer, out)?;
         out.push_sql(") c");
         Ok(())
     }
@@ -2823,6 +2826,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_b<'b>(
         &'b self,
         column: &Column,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2840,17 +2844,18 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         self.br_column.contains(out, false)?;
-        limit.filter(out);
+        limit.filter(is_outer, out);
         out.push_sql(" and p.id = c.");
         out.push_identifier(column.name.as_str())?;
         self.and_filter(out)?;
-        limit.single_limit(self.ids.len(), out);
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
     fn children_type_c<'b>(
         &'b self,
         child_ids: &'b [IdList],
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2894,10 +2899,10 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
             self.br_column.contains(out, true);
-            limit.filter(out);
+            limit.filter(is_outer, out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out)?;
-            limit.restrict(out)?;
+            limit.restrict(is_outer, out)?;
             out.push_sql(") c");
         } else {
             // Generate
@@ -2918,6 +2923,7 @@ impl<'a> FilterWindow<'a> {
     fn child_type_d<'b>(
         &'b self,
         child_ids: &'b IdList,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2935,7 +2941,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
         self.br_column.contains(out, true)?;
-        limit.filter(out);
+        limit.filter(is_outer, out);
 
         // Include a constraint on the child IDs as a set if the size of the set
         // is below the threshold set by environment variable. Set it to
@@ -2952,12 +2958,13 @@ impl<'a> FilterWindow<'a> {
         out.push_sql(" and ");
         out.push_sql("c.id = p.child_id");
         self.and_filter(out)?;
-        limit.single_limit(self.ids.len(), out);
+        limit.single_limit(is_outer, self.ids.len(), out);
         Ok(())
     }
 
     fn children<'b>(
         &'b self,
+        is_outer: bool,
         limit: &'b ParentLimit<'_>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
@@ -2966,21 +2973,21 @@ impl<'a> FilterWindow<'a> {
                 use ChildMultiplicity::*;
                 if column.is_list() {
                     match multiplicity {
-                        Many => self.children_type_a(column, limit, out),
-                        Single => self.child_type_a(column, limit, out),
+                        Many => self.children_type_a(column, is_outer, limit, out),
+                        Single => self.child_type_a(column, is_outer, limit, out),
                     }
                 } else {
                     match multiplicity {
-                        Many => self.children_type_b(column, limit, out),
-                        Single => self.child_type_b(column, limit, out),
+                        Many => self.children_type_b(column, is_outer, limit, out),
+                        Single => self.child_type_b(column, is_outer, limit, out),
                     }
                 }
             }
             TableLink::Parent(_, ParentIds::List(child_ids)) => {
-                self.children_type_c(child_ids, limit, out)
+                self.children_type_c(child_ids, is_outer, limit, out)
             }
             TableLink::Parent(_, ParentIds::Scalar(child_ids)) => {
-                self.child_type_d(child_ids, limit, out)
+                self.child_type_d(child_ids, is_outer, limit, out)
             }
         }
     }
@@ -2990,15 +2997,17 @@ impl<'a> FilterWindow<'a> {
     /// different types or entities that link differently to their parents
     fn children_uniform<'b>(
         &'b self,
-        sort_key: &SortKey,
+        limit: &'b ParentLimit<'_>,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         out.push_sql("select '");
         out.push_sql(self.table.object.as_str());
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        sort_key.select(&mut out, SelectStatementLevel::InnerStatement)?;
-        self.children(&ParentLimit::Outer, &mut out)
+        limit
+            .sort_key
+            .select(&mut out, SelectStatementLevel::InnerStatement)?;
+        self.children(true, &limit, &mut out)
     }
 
     /// Collect all the parent id's from all windows
@@ -4379,7 +4388,12 @@ impl<'a> FilterQuery<'a> {
         site: &'a Site,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, block, layout)?;
-        let limit = ParentLimit::Ranked(sort_key, FilterRange(range));
+        let range = FilterRange(range);
+        let limit = ParentLimit {
+            // is_outer: true,
+            sort_key,
+            range,
+        };
 
         Ok(FilterQuery {
             collection,
@@ -4473,7 +4487,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(&limit, &mut out)?;
+        window.children(true, &limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
         self.limit.sort_key.order_by_parent(&mut out, false)
@@ -4600,7 +4614,7 @@ impl<'a> FilterQuery<'a> {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
-            window.children_uniform(&self.limit.sort_key, out.reborrow())?;
+            window.children_uniform(&self.limit, out.reborrow())?;
         }
         out.push_sql("\n");
         self.limit.sort_key.order_by(out, true)?;
@@ -4683,7 +4697,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                 }
             }
             FilterCollection::SingleWindow(window) => {
-                self.query_window_one_entity(window, self.limit, out)
+                self.query_window_one_entity(window, &self.limit, out)
             }
             FilterCollection::MultiWindow(windows, parent_ids) => {
                 self.query_window(windows, parent_ids, &mut out)
