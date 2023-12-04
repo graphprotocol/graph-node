@@ -2599,10 +2599,7 @@ impl<'a> TableLink<'a> {
 /// sort key and limiting
 #[derive(Debug, Clone)]
 struct ParentLimit<'a> {
-    /// Limit children to a specific parent
-    //    is_outer: bool,
     /// Limit children by sorting and picking top n
-    // TODO: comments
     sort_key: SortKey<'a>,
     range: FilterRange,
 }
@@ -4389,11 +4386,7 @@ impl<'a> FilterQuery<'a> {
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, block, layout)?;
         let range = FilterRange(range);
-        let limit = ParentLimit {
-            // is_outer: true,
-            sort_key,
-            range,
-        };
+        let limit = ParentLimit { sort_key, range };
 
         Ok(FilterQuery {
             collection,
@@ -4487,7 +4480,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(true, &limit, &mut out)?;
+        window.children(false, &limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
         self.limit.sort_key.order_by_parent(&mut out, false)
