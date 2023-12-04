@@ -4473,14 +4473,13 @@ impl<'a> FilterQuery<'a> {
     fn query_window_one_entity<'b>(
         &'b self,
         window: &'b FilterWindow,
-        limit: &'b ParentLimit<'_>,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
         out.push_sql(" from (\n");
         out.push_sql("select c.*, p.id::text as ");
         out.push_sql(&*PARENT_ID);
-        window.children(false, &limit, &mut out)?;
+        window.children(false, &self.limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
         self.limit.sort_key.order_by_parent(&mut out, false)
@@ -4689,9 +4688,7 @@ impl<'a> QueryFragment<Pg> for FilterQuery<'a> {
                     self.query_no_window(entities, &mut out)
                 }
             }
-            FilterCollection::SingleWindow(window) => {
-                self.query_window_one_entity(window, &self.limit, out)
-            }
+            FilterCollection::SingleWindow(window) => self.query_window_one_entity(window, out),
             FilterCollection::MultiWindow(windows, parent_ids) => {
                 self.query_window(windows, parent_ids, &mut out)
             }
