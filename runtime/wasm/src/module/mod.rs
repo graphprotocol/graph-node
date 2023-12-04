@@ -244,54 +244,73 @@ impl<C: Blockchain> WasmInstance<C> {
         let func = self
             .instance
             .get_func(handler)
-            .with_context(|| format!("function {} not found", handler))?;
-
-        let func = func
-            .typed()
-            .context("wasm function has incorrect signature")?;
+            .with_context(|| format!("function {} not found", handler));
 
         // Caution: Make sure all exit paths from this function call `exit_handler`.
         self.instance_ctx_mut().ctx.state.enter_handler();
 
-        // This `match` will return early if there was a non-deterministic trap.
-        let deterministic_error: Option<Error> = match func.call(arg.wasm_ptr()) {
-            Ok(()) => {
-                assert!(self.instance_ctx().possible_reorg == false);
-                assert!(self.instance_ctx().deterministic_host_trap == false);
-                None
-            }
-            Err(trap) if self.instance_ctx().possible_reorg => {
-                self.instance_ctx_mut().ctx.state.exit_handler();
-                return Err(MappingError::PossibleReorg(trap.into()));
-            }
+        // `handle_func_call` evaluates the outcome of a WASM function call:
+        // - For non-deterministic traps, it terminates early with a `MappingError`.
+        // - In case of deterministic errors, it returns `Ok(Some(Error))`.
+        // - On successful execution, it returns `Ok(None)`.
+        let handle_func_call = |res: Result<_, Trap>, handler| {
+            match res {
+                Ok(()) => {
+                    assert!(self.instance_ctx().possible_reorg == false);
+                    assert!(self.instance_ctx().deterministic_host_trap == false);
+                    Ok(None)
+                }
+                Err(trap) if self.instance_ctx().possible_reorg => {
+                    self.instance_ctx_mut().ctx.state.exit_handler();
+                    Err(MappingError::PossibleReorg(trap.into()))
+                }
 
-            // Treat timeouts anywhere in the error chain as a special case to have a better error
-            // message. Any `TrapCode::Interrupt` is assumed to be a timeout.
-            Err(trap)
-                if Error::from(trap.clone()).chain().any(|e| {
-                    e.downcast_ref::<Trap>().and_then(|t| t.trap_code())
-                        == Some(TrapCode::Interrupt)
-                }) =>
-            {
-                self.instance_ctx_mut().ctx.state.exit_handler();
-                return Err(MappingError::Unknown(Error::from(trap).context(format!(
-                    "Handler '{}' hit the timeout of '{}' seconds",
-                    handler,
-                    self.instance_ctx().timeout.unwrap().as_secs()
-                ))));
-            }
-            Err(trap) => {
-                let trap_is_deterministic =
-                    is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
-                let e = Error::from(trap);
-                match trap_is_deterministic {
-                    true => Some(e),
-                    false => {
-                        self.instance_ctx_mut().ctx.state.exit_handler();
-                        return Err(MappingError::Unknown(e));
+                // Treat timeouts anywhere in the error chain as a special case to have a better error
+                // message. Any `TrapCode::Interrupt` is assumed to be a timeout.
+                Err(trap)
+                    if Error::from(trap.clone()).chain().any(|e| {
+                        e.downcast_ref::<Trap>().and_then(|t| t.trap_code())
+                            == Some(TrapCode::Interrupt)
+                    }) =>
+                {
+                    self.instance_ctx_mut().ctx.state.exit_handler();
+                    Err(MappingError::Unknown(Error::from(trap).context(format!(
+                        "Handler '{}' hit the timeout of '{}' seconds",
+                        handler,
+                        self.instance_ctx().timeout.unwrap().as_secs()
+                    ))))
+                }
+                Err(trap) => {
+                    let trap_is_deterministic =
+                        is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
+                    let e = Error::from(trap);
+                    match trap_is_deterministic {
+                        true => Ok(Some(e)),
+                        false => {
+                            self.instance_ctx_mut().ctx.state.exit_handler();
+                            Err(MappingError::Unknown(e))
+                        }
                     }
                 }
             }
+        };
+
+        let deterministic_error = match func {
+            Ok(func) => match func
+                .typed()
+                .context("wasm function has incorrect signature")
+            {
+                Ok(typed_func) => {
+                    match handle_func_call(typed_func.call(arg.wasm_ptr()), handler) {
+                        Ok(e) => e,
+                        Err(e) => {
+                            return Err(e);
+                        }
+                    }
+                }
+                Err(e) => Some(e),
+            },
+            Err(e) => Some(e),
         };
 
         if let Some(deterministic_error) = deterministic_error {
