@@ -14,8 +14,8 @@ pub async fn unassign(
 ) -> Result<(), Error> {
     let locator = search.locate_unique(&primary)?;
 
-    let conn = primary.get()?;
-    let conn = catalog::Connection::new(conn);
+    let pconn = primary.get()?;
+    let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
         .locate_site(locator.clone())?
@@ -37,8 +37,8 @@ pub fn reassign(
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
     let locator = search.locate_unique(&primary)?;
 
-    let conn = primary.get()?;
-    let conn = catalog::Connection::new(conn);
+    let pconn = primary.get()?;
+    let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
         .locate_site(locator.clone())?
@@ -80,8 +80,8 @@ pub fn pause_or_resume(
 ) -> Result<(), Error> {
     let locator = search.locate_unique(&primary)?;
 
-    let conn = primary.get()?;
-    let conn = catalog::Connection::new(conn);
+    let pconn = primary.get()?;
+    let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
         .locate_site(locator.clone())?
