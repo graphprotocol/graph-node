@@ -16,7 +16,10 @@ use graph::{
     slog::o,
 };
 
-use crate::{mapper::Mapper, Chain, TriggerFilter};
+use crate::{
+    mapper::{Mapper, WasmBlockMapper},
+    Chain, TriggerFilter,
+};
 
 pub struct BlockStreamBuilder {}
 
@@ -40,29 +43,47 @@ impl BlockStreamBuilderTrait<Chain> for BlockStreamBuilder {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<<Chain as Blockchain>::TriggerFilter>,
     ) -> Result<Box<dyn BlockStream<Chain>>> {
-        let mapper = Arc::new(Mapper {
-            schema: Some(schema),
-            skip_empty_blocks: true,
-        });
-
         let logger = chain
             .logger_factory
             .subgraph_logger(&deployment)
             .new(o!("component" => "SubstreamsBlockStream"));
 
-        Ok(Box::new(SubstreamsBlockStream::new(
-            deployment.hash,
-            chain.chain_client(),
-            subgraph_current_block,
-            block_cursor.as_ref().clone(),
-            mapper,
-            filter.modules.clone(),
-            filter.module_name.clone(),
-            filter.start_block.map(|x| vec![x]).unwrap_or_default(),
-            vec![],
-            logger,
-            chain.metrics_registry.clone(),
-        )))
+        let stream = match &filter.mapping_handler {
+            Some(handler) => SubstreamsBlockStream::new(
+                deployment.hash,
+                chain.chain_client(),
+                subgraph_current_block,
+                block_cursor.as_ref().clone(),
+                Arc::new(WasmBlockMapper {
+                    handler: handler.clone(),
+                }),
+                filter.modules.clone(),
+                filter.module_name.clone(),
+                filter.start_block.map(|x| vec![x]).unwrap_or_default(),
+                vec![],
+                logger,
+                chain.metrics_registry.clone(),
+            ),
+
+            None => SubstreamsBlockStream::new(
+                deployment.hash,
+                chain.chain_client(),
+                subgraph_current_block,
+                block_cursor.as_ref().clone(),
+                Arc::new(Mapper {
+                    schema: Some(schema),
+                    skip_empty_blocks: true,
+                }),
+                filter.modules.clone(),
+                filter.module_name.clone(),
+                filter.start_block.map(|x| vec![x]).unwrap_or_default(),
+                vec![],
+                logger,
+                chain.metrics_registry.clone(),
+            ),
+        };
+
+        Ok(Box::new(stream))
     }
 
     async fn build_firehose(

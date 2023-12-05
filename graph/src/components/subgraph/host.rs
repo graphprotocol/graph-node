@@ -61,6 +61,18 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error>;
 
+    async fn process_block(
+        &self,
+        logger: &Logger,
+        block_ptr: BlockPtr,
+        block_data: Box<[u8]>,
+        handler: String,
+        state: BlockState<C>,
+        proof_of_indexing: SharedProofOfIndexing,
+        debug_fork: &Option<Arc<dyn SubgraphFork>>,
+        instrument: bool,
+    ) -> Result<BlockState<C>, MappingError>;
+
     async fn process_mapping_trigger(
         &self,
         logger: &Logger,

@@ -1,6 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow, Context, Error};
 use graph::{
     blockchain,
     cheap_clone::CheapClone,
@@ -75,9 +75,8 @@ impl blockchain::DataSource<Chain> for DataSource {
         self.mapping.api_version.clone()
     }
 
-    // runtime is not needed for substreams, it will cause the host creation to be skipped.
     fn runtime(&self) -> Option<Arc<Vec<u8>>> {
-        None
+        self.mapping.handler.as_ref().map(|h| h.runtime.clone())
     }
 
     fn handler_kinds(&self) -> HashSet<&str> {
@@ -149,6 +148,13 @@ pub struct Source {
 pub struct Mapping {
     pub api_version: semver::Version,
     pub kind: String,
+    pub handler: Option<MappingHandler>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MappingHandler {
+    pub handler: String,
+    pub runtime: Arc<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -167,6 +173,8 @@ pub struct UnresolvedDataSource {
 pub struct UnresolvedMapping {
     pub api_version: String,
     pub kind: String,
+    pub handler: Option<String>,
+    pub file: Option<Link>,
 }
 
 #[async_trait]
@@ -188,7 +196,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
                 .find(|module| module.name == self.source.package.module_name)
                 .map(|module| {
                     if let Some(params) = self.source.package.params {
-                        graph::substreams::patch_module_params(params.join("\n"), module);
+                        graph::substreams::patch_module_params(params, module);
                     }
                     module
                 }),
@@ -217,6 +225,21 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             .map_or(Ok(None), |x: u64| TryInto::<i32>::try_into(x).map(Some))
             .map_err(anyhow::Error::from)?;
 
+        let handler = match (self.mapping.handler, self.mapping.file) {
+            (Some(handler), Some(file)) => {
+                let module_bytes = resolver
+                    .cat(logger, &file)
+                    .await
+                    .with_context(|| format!("failed to resolve mapping {}", file.link))?;
+
+                Some(MappingHandler {
+                    handler,
+                    runtime: Arc::new(module_bytes),
+                })
+            }
+            _ => None,
+        };
+
         Ok(DataSource {
             kind: SUBSTREAMS_KIND.into(),
             network: self.network,
@@ -228,6 +251,7 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
             mapping: Mapping {
                 api_version: semver::Version::parse(&self.mapping.api_version)?,
                 kind: self.mapping.kind,
+                handler,
             },
             context: Arc::new(None),
             initial_block,
@@ -239,6 +263,8 @@ impl blockchain::UnresolvedDataSource<Chain> for UnresolvedDataSource {
 #[serde(rename_all = "camelCase")]
 /// Source is a part of the manifest and this is needed for parsing.
 pub struct UnresolvedSource {
+    #[serde(rename = "startBlock", default)]
+    start_block: Option<BlockNumber>,
     package: UnresolvedPackage,
 }
 
@@ -248,7 +274,7 @@ pub struct UnresolvedSource {
 pub struct UnresolvedPackage {
     pub module_name: String,
     pub file: Link,
-    pub params: Option<Vec<String>>,
+    pub params: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -325,10 +351,13 @@ mod test {
                     },
                     params: None,
                 },
+                start_block: None,
             },
             mapping: UnresolvedMapping {
                 api_version: "0.0.7".into(),
                 kind: "substreams/graph-entities".into(),
+                handler: None,
+                file: None,
             },
         };
         assert_eq!(ds, expected);
@@ -348,12 +377,15 @@ mod test {
                     file: Link {
                         link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
                     },
-                    params: Some(vec!["x", "y", "123"].into_iter().map(Into::into).collect()),
+                    params: Some("x\ny\n123\n".into()),
                 },
+                start_block: None,
             },
             mapping: UnresolvedMapping {
                 api_version: "0.0.7".into(),
                 kind: "substreams/graph-entities".into(),
+                handler: None,
+                file: None,
             },
         };
         assert_eq!(ds, expected);
@@ -376,6 +408,7 @@ mod test {
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
+                handler: None,
             },
             context: Arc::new(None),
             initial_block: Some(123),
@@ -390,7 +423,7 @@ mod test {
         modules.modules.get_mut(0).map(|module| {
             module.inputs = vec![graph::substreams::module::Input {
                 input: Some(Input::Params(Params {
-                    value: "x\ny\n123".into(),
+                    value: "x\ny\n123\n".into(),
                 })),
             }]
         });
@@ -412,6 +445,7 @@ mod test {
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
+                handler: None,
             },
             context: Arc::new(None),
             initial_block: Some(123),
@@ -439,6 +473,37 @@ mod test {
                 "mapping kind has to be one of [\"substreams/graph-entities\"], found asdasd"
             ]
         );
+    }
+
+    #[test]
+    fn parse_data_source_with_maping() {
+        let ds: UnresolvedDataSource =
+            serde_yaml::from_str(TEMPLATE_DATA_SOURCE_WITH_MAPPING).unwrap();
+
+        let expected = UnresolvedDataSource {
+            kind: SUBSTREAMS_KIND.into(),
+            network: Some("mainnet".into()),
+            name: "Uniswap".into(),
+            source: crate::UnresolvedSource {
+                package: crate::UnresolvedPackage {
+                    module_name: "output".into(),
+                    file: Link {
+                        link: "/ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT".into(),
+                    },
+                    params: Some("x\ny\n123\n".into()),
+                },
+                start_block: None,
+            },
+            mapping: UnresolvedMapping {
+                api_version: "0.0.7".into(),
+                kind: "substreams/graph-entities".into(),
+                handler: Some("bananas".to_string()),
+                file: Some(Link {
+                    link: "./src/mappings.ts".to_string(),
+                }),
+            },
+        };
+        assert_eq!(ds, expected);
     }
 
     fn gen_package() -> Package {
@@ -504,6 +569,7 @@ mod test {
             mapping: Mapping {
                 api_version: semver::Version::from_str("0.0.7").unwrap(),
                 kind: "substreams/graph-entities".into(),
+                handler: None,
             },
             context: Arc::new(None),
             initial_block: None,
@@ -525,6 +591,28 @@ mod test {
           apiVersion: 0.0.7
     "#;
 
+    const TEMPLATE_DATA_SOURCE_WITH_MAPPING: &str = r#"
+        kind: substreams
+        name: Uniswap
+        network: mainnet
+        source:
+          package:
+            moduleName: output
+            file:
+              /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
+              # This IPFs path would be generated from a local path at deploy time
+            params: |
+                x
+                y
+                123
+        mapping:
+          kind: substreams/graph-entities
+          apiVersion: 0.0.7
+          file:
+            /: ./src/mappings.ts
+          handler: bananas
+    "#;
+
     const TEMPLATE_DATA_SOURCE_WITH_PARAMS: &str = r#"
         kind: substreams
         name: Uniswap
@@ -535,10 +623,10 @@ mod test {
             file:
               /: /ipfs/QmbHnhUFZa6qqqRyubUYhXntox1TCBxqryaBM1iNGqVJzT
               # This IPFs path would be generated from a local path at deploy time
-            params: 
-                - x
-                - y
-                - 123
+            params: |
+                x
+                y
+                123
         mapping:
           kind: substreams/graph-entities
           apiVersion: 0.0.7

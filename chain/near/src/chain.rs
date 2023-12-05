@@ -40,11 +40,11 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
 };
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamBuilder, FirehoseCursor, SubstreamsMapper,
+    BlockStream, BlockStreamBuilder, BlockStreamMapper, FirehoseCursor,
 };
 
 const NEAR_FILTER_MODULE_NAME: &str = "near_filter";
-const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 497306] = include_bytes!(
+const SUBSTREAMS_TRIGGER_FILTER_BYTES: &[u8; 510162] = include_bytes!(
     "../../../substreams/substreams-trigger-filter/substreams-trigger-filter-v0.1.0.spkg"
 );
 
@@ -407,13 +407,10 @@ pub struct FirehoseMapper {
 }
 
 #[async_trait]
-impl SubstreamsMapper<Chain> for FirehoseMapper {
-    fn decode_block(
-        &self,
-        output: Option<&prost_types::Any>,
-    ) -> Result<Option<codec::Block>, Error> {
+impl BlockStreamMapper<Chain> for FirehoseMapper {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<codec::Block>, Error> {
         let block = match output {
-            Some(block) => codec::Block::decode(block.value.as_ref())?,
+            Some(block) => codec::Block::decode(block)?,
             None => anyhow::bail!("near mapper is expected to always have a block"),
         };
 
@@ -430,17 +427,18 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
             .await
     }
 
-    async fn decode_triggers(
+    async fn handle_substreams_block(
         &self,
         _logger: &Logger,
-        _clock: &Clock,
-        message: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<Chain>, Error> {
+        _clock: Clock,
+        cursor: FirehoseCursor,
+        message: Vec<u8>,
+    ) -> Result<BlockStreamEvent<Chain>, Error> {
         let BlockAndReceipts {
             block,
             outcome,
             receipt,
-        } = BlockAndReceipts::decode(message.value.as_ref())?;
+        } = BlockAndReceipts::decode(message.as_ref())?;
         let block = block.ok_or_else(|| anyhow!("near block is mandatory on substreams"))?;
         let arc_block = Arc::new(block.clone());
 
@@ -456,10 +454,13 @@ impl SubstreamsMapper<Chain> for FirehoseMapper {
             })
             .collect();
 
-        Ok(BlockWithTriggers {
-            block,
-            trigger_data,
-        })
+        Ok(BlockStreamEvent::ProcessBlock(
+            BlockWithTriggers {
+                block,
+                trigger_data,
+            },
+            cursor,
+        ))
     }
 }
 
@@ -494,7 +495,7 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
         // Check about adding basic information about the block in the bstream::BlockResponseV2 or maybe
         // define a slimmed down stuct that would decode only a few fields and ignore all the rest.
         // unwrap: Input cannot be None so output will be error or block.
-        let block = self.decode_block(Some(&any_block))?.unwrap();
+        let block = self.decode_block(Some(any_block.value.as_ref()))?.unwrap();
 
         use ForkStep::*;
         match step {

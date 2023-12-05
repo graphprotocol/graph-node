@@ -4,6 +4,7 @@ use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
 use futures03::Stream;
+use prost_types::Any;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,7 +23,7 @@ use crate::{prelude::*, prometheus::labels};
 
 pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 pub const FIREHOSE_BUFFER_STREAM_SIZE: usize = 1;
-pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 100;
+pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 1;
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, Error>> + Send>>,
@@ -338,8 +339,8 @@ pub trait FirehoseMapper<C: Blockchain>: Send + Sync {
 }
 
 #[async_trait]
-pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
-    fn decode_block(&self, output: Option<&prost_types::Any>) -> Result<Option<C::Block>, Error>;
+pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
+    fn decode_block(&self, output: Option<&[u8]>) -> Result<Option<C::Block>, Error>;
 
     async fn block_with_triggers(
         &self,
@@ -347,12 +348,13 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
         block: C::Block,
     ) -> Result<BlockWithTriggers<C>, Error>;
 
-    async fn decode_triggers(
+    async fn handle_substreams_block(
         &self,
         logger: &Logger,
-        clock: &Clock,
-        block: &prost_types::Any,
-    ) -> Result<BlockWithTriggers<C>, Error>;
+        clock: Clock,
+        cursor: FirehoseCursor,
+        block: Vec<u8>,
+    ) -> Result<BlockStreamEvent<C>, Error>;
 
     async fn to_block_stream_event(
         &self,
@@ -406,18 +408,19 @@ pub trait SubstreamsMapper<C: Blockchain>: Send + Sync {
                     None => return Err(SubstreamsError::MissingClockError),
                 };
 
-                let map_output = match module_output.map_output {
-                    Some(mo) => mo,
+                let value = match module_output.map_output {
+                    Some(Any { type_url: _, value }) => value,
                     None => return Ok(None),
                 };
 
-                let block = self.decode_triggers(&logger, &clock, &map_output).await?;
-                log_data.last_seen_block = block.block.number() as u64;
+                log_data.last_seen_block = clock.number;
+                let cursor = FirehoseCursor::from(cursor);
 
-                Ok(Some(BlockStreamEvent::ProcessBlock(
-                    block,
-                    FirehoseCursor::from(cursor.clone()),
-                )))
+                let event = self
+                    .handle_substreams_block(&logger, clock, cursor, value)
+                    .await?;
+
+                Ok(Some(event))
             }
 
             Some(SubstreamsMessage::Progress(progress)) => {
@@ -485,6 +488,7 @@ pub enum BlockStreamEvent<C: Blockchain> {
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
+    ProcessWasmBlock(BlockPtr, Box<[u8]>, String, FirehoseCursor),
 }
 
 impl<C: Blockchain> Clone for BlockStreamEvent<C>
@@ -495,6 +499,9 @@ where
         match self {
             Self::Revert(arg0, arg1) => Self::Revert(arg0.clone(), arg1.clone()),
             Self::ProcessBlock(arg0, arg1) => Self::ProcessBlock(arg0.clone(), arg1.clone()),
+            Self::ProcessWasmBlock(arg0, arg1, arg2, arg3) => {
+                Self::ProcessWasmBlock(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+            }
         }
     }
 }

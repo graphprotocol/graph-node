@@ -88,6 +88,9 @@ async fn main() -> Result<(), Error> {
             Some(event) => match event {
                 Err(_) => {}
                 Ok(block_stream_event) => match block_stream_event {
+                    BlockStreamEvent::ProcessWasmBlock(_, _, _, _) => {
+                        unreachable!("Cannot happen with this mapper")
+                    }
                     BlockStreamEvent::Revert(_, _) => {}
                     BlockStreamEvent::ProcessBlock(block_with_trigger, _) => {
                         for change in block_with_trigger.block.changes.entity_changes {

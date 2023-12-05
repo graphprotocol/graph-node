@@ -22,7 +22,7 @@ pub fn spawn_module<C: Blockchain>(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<mpsc::Sender<MappingRequest<C>>, anyhow::Error>
+) -> Result<mpsc::Sender<WasmRequest<C>>, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
@@ -47,21 +47,31 @@ where
         match mapping_request_receiver
             .map_err(|()| unreachable!())
             .for_each(move |request| {
-                let MappingRequest {
+                let WasmRequest {
                     ctx,
-                    trigger,
+                    inner,
                     result_sender,
                 } = request;
+                let logger = ctx.logger.clone();
 
                 let result = panic::catch_unwind(AssertUnwindSafe(|| {
-                    instantiate_module_and_handle_trigger(
+                    instantiate_module(
                         valid_module.cheap_clone(),
                         ctx,
-                        trigger,
                         host_metrics.cheap_clone(),
                         timeout,
                         experimental_features,
                     )
+                    .map_err(Into::into)
+                    .and_then(|module| match inner {
+                        WasmRequestInner::TriggerRequest(trigger) => {
+                            handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
+                        }
+                        WasmRequestInner::BlockRequest(BlockRequest {
+                            block_data,
+                            handler,
+                        }) => module.handle_block(&logger, &handler, block_data),
+                    })
                 }));
 
                 let result = match result {
@@ -97,30 +107,38 @@ where
     Ok(mapping_request_sender)
 }
 
-fn instantiate_module_and_handle_trigger<C: Blockchain>(
+fn instantiate_module<C: Blockchain>(
     valid_module: Arc<ValidModule>,
     ctx: MappingContext<C>,
-    trigger: TriggerWithHandler<MappingTrigger<C>>,
     host_metrics: Arc<HostMetrics>,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<(BlockState<C>, Gas), MappingError>
+) -> Result<WasmInstance<C>, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
-    let logger = ctx.logger.cheap_clone();
-
     // Start the WASM module runtime.
-    let section = host_metrics.stopwatch.start_section("module_init");
-    let module = WasmInstance::from_valid_module_with_ctx(
+    let _section = host_metrics.stopwatch.start_section("module_init");
+    WasmInstance::from_valid_module_with_ctx(
         valid_module,
         ctx,
         host_metrics.cheap_clone(),
         timeout,
         experimental_features,
     )
-    .context("module instantiation failed")?;
-    section.end();
+    .context("module instantiation failed")
+}
+
+fn handle_trigger<C: Blockchain>(
+    logger: &Logger,
+    module: WasmInstance<C>,
+    trigger: TriggerWithHandler<MappingTrigger<C>>,
+    host_metrics: Arc<HostMetrics>,
+) -> Result<(BlockState<C>, Gas), MappingError>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
+    let logger = logger.cheap_clone();
 
     let _section = host_metrics.stopwatch.start_section("run_handler");
     if ENV_VARS.log_trigger_data {
@@ -129,10 +147,50 @@ where
     module.handle_trigger(trigger)
 }
 
-pub struct MappingRequest<C: Blockchain> {
+pub struct WasmRequest<C: Blockchain> {
     pub(crate) ctx: MappingContext<C>,
-    pub(crate) trigger: TriggerWithHandler<MappingTrigger<C>>,
+    pub(crate) inner: WasmRequestInner<C>,
     pub(crate) result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+}
+
+impl<C: Blockchain> WasmRequest<C> {
+    pub(crate) fn new_trigger(
+        ctx: MappingContext<C>,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
+        result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+    ) -> Self {
+        WasmRequest {
+            ctx,
+            inner: WasmRequestInner::TriggerRequest(trigger),
+            result_sender,
+        }
+    }
+
+    pub(crate) fn new_block(
+        ctx: MappingContext<C>,
+        handler: String,
+        block_data: Box<[u8]>,
+        result_sender: Sender<Result<(BlockState<C>, Gas), MappingError>>,
+    ) -> Self {
+        WasmRequest {
+            ctx,
+            inner: WasmRequestInner::BlockRequest(BlockRequest {
+                handler,
+                block_data,
+            }),
+            result_sender,
+        }
+    }
+}
+
+pub enum WasmRequestInner<C: Blockchain> {
+    TriggerRequest(TriggerWithHandler<MappingTrigger<C>>),
+    BlockRequest(BlockRequest),
+}
+
+pub struct BlockRequest {
+    pub(crate) handler: String,
+    pub(crate) block_data: Box<[u8]>,
 }
 
 pub struct MappingContext<C: Blockchain> {
