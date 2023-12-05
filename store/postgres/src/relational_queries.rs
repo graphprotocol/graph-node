@@ -1773,7 +1773,7 @@ impl<'a> Filter<'a> {
         }
 
         if have_nulls {
-            column.walk_ast(out.reborrow());
+            column.walk_ast(out.reborrow())?;
             if negated {
                 out.push_sql(" is not null");
             } else {
@@ -2895,7 +2895,7 @@ impl<'a> FilterWindow<'a> {
             out.push_sql(" from ");
             out.push_sql(self.table.qualified_name.as_str());
             out.push_sql(" c where ");
-            self.br_column.contains(out, true);
+            self.br_column.contains(out, true)?;
             limit.filter(is_outer, out);
             out.push_sql(" and c.id = any(p.child_ids)");
             self.and_filter(out)?;
