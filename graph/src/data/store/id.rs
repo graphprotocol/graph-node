@@ -4,7 +4,7 @@ use anyhow::{anyhow, Error};
 use diesel::{
     pg::Pg,
     query_builder::AstPass,
-    sql_types::{Binary, Text},
+    sql_types::{BigInt, Binary, Text},
     QueryResult,
 };
 use stable_hash::{StableHash, StableHasher};
@@ -299,10 +299,11 @@ impl<'a> IdRef<'a> {
         }
     }
 
-    pub fn push_bind_param(&self, out: &mut AstPass<'_, 'a, Pg>) -> QueryResult<()> {
+    pub fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         match self {
             IdRef::String(s) => out.push_bind_param::<Text, _>(*s),
             IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(*b),
+            IdRef::Int8(i) => out.push_bind_param::<BigInt, _>(i),
         }
     }
 }
