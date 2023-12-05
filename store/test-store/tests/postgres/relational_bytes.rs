@@ -195,14 +195,14 @@ macro_rules! assert_entity_eq {
 
 fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout),
+    F: FnOnce(&mut PgConnection, &Layout),
 {
-    run_test_with_conn(|mut conn| {
+    run_test_with_conn(|conn| {
         // Reset state before starting
-        remove_test_data(&mut conn);
+        remove_test_data(conn);
 
         // Seed database with test data
-        let layout = create_schema(&mut conn);
+        let layout = create_schema(conn);
 
         // Run test
         test(conn, &layout);
@@ -439,7 +439,7 @@ fn query() {
             .collect::<Vec<_>>()
     }
 
-    run_test(|&mut conn, layout| {
+    run_test(|mut conn, layout| {
         // This test exercises the different types of queries we generate;
         // the type of query is based on knowledge of what the test data
         // looks like, not on just an inference from the GraphQL model.
