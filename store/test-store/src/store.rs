@@ -126,7 +126,7 @@ where
 /// Run a test with a connection into the primary database, not a full store
 pub fn run_test_with_conn<F>(test: F)
 where
-    F: FnOnce(&PgConnection),
+    F: FnOnce(&mut PgConnection),
 {
     // Lock regardless of poisoning. This also forces sequential test execution.
     let _lock = match SEQ_LOCK.lock() {
@@ -134,11 +134,11 @@ where
         Err(err) => err.into_inner(),
     };
 
-    let conn = PRIMARY_POOL
+    let mut conn = PRIMARY_POOL
         .get()
         .expect("failed to get connection for primary database");
 
-    test(&conn);
+    test(&mut conn);
 }
 
 pub fn remove_subgraphs() {
