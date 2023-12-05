@@ -117,7 +117,8 @@ impl EntityType {
     }
 
     /// Return a list of all entity types that implement one of the
-    /// interfaces that `self` implements
+    /// interfaces that `self` implements; the result does not include
+    /// `self`
     pub fn share_interfaces(&self) -> Result<Vec<EntityType>, Error> {
         self.schema.share_interfaces(self.atom)
     }
