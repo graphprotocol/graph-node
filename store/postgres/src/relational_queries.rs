@@ -2877,7 +2877,7 @@ impl<'a> FilterWindow<'a> {
 
             out.push_sql("from (values ");
             for i in 0..self.ids.len() {
-                let parent_id = self.ids.index(i);
+                let parent_id: IdRef<'b> = self.ids.index(i);
                 let child_ids = &child_ids[i];
                 if i > 0 {
                     out.push_sql(", (");
