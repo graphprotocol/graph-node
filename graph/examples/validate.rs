@@ -23,9 +23,12 @@
 ///     echo "Dump $db"
 ///     q=$(printf "$query" "$dir/$db.json")
 ///     psql -qXt service=$db -c "$q"
+///     sed -r -i -e 's/\\\\/\\/g' "$dir/$db.json"
 /// done
 ///
 /// ```
+use clap::Parser;
+
 use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::DirectiveExt;
 use graph::data::graphql::DocumentExt;
@@ -77,32 +80,75 @@ struct Entry {
     schema: String,
 }
 
+#[derive(Parser)]
+#[clap(
+    name = "validate",
+    version = env!("CARGO_PKG_VERSION"),
+    author = env!("CARGO_PKG_AUTHORS"),
+    about = "Validate subgraph schemas"
+)]
+struct Opts {
+    /// Validate a batch of schemas in bulk. When this is set, the input
+    /// files must be JSONL files where each line has an `id` and a `schema`
+    #[clap(short, long)]
+    batch: bool,
+    #[clap(long)]
+    api: bool,
+    /// Subgraph schemas to validate
+    #[clap(required = true)]
+    schemas: Vec<String>,
+}
+
+fn parse(raw: &str, name: &str, api: bool) {
+    let schema = ensure(
+        parse_schema(raw).map(|v| v.into_static()),
+        &format!("Failed to parse schema sgd{}", name),
+    );
+    let id = subgraph_id(&schema);
+    let input_schema = match InputSchema::parse(raw, id.clone()) {
+        Ok(schema) => schema,
+        Err(e) => {
+            println!("InputSchema: {}[{}]: {}", name, id, e);
+            return;
+        }
+    };
+    if api {
+        let _api_schema = match input_schema.api_schema() {
+            Ok(schema) => schema,
+            Err(e) => {
+                println!("ApiSchema: {}[{}]: {}", name, id, e);
+                return;
+            }
+        };
+    }
+    println!("Schema {}[{}]: OK", name, id);
+}
+
 pub fn main() {
     // Allow fulltext search in schemas
     std::env::set_var("GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH", "true");
 
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 {
-        usage("please provide a subgraph schema");
-    }
-    for arg in &args[1..] {
-        println!("Validating schemas from {arg}");
-        let file = File::open(arg).expect("file exists");
-        let rdr = BufReader::new(file);
-        for line in rdr.lines() {
-            let line = line.expect("invalid line").replace("\\\\", "\\");
-            let entry = serde_json::from_str::<Entry>(&line).expect("line is valid json");
+    let opt = Opts::parse();
 
-            let raw = &entry.schema;
-            let schema = ensure(
-                parse_schema(raw).map(|v| v.into_static()),
-                &format!("Failed to parse schema sgd{}", entry.id),
-            );
-            let id = subgraph_id(&schema);
-            match InputSchema::parse(raw, id.clone()) {
-                Ok(_) => println!("sgd{}[{}]: OK", entry.id, id),
-                Err(e) => println!("sgd{}[{}]: {}", entry.id, id, e),
+    if opt.batch {
+        for schema in &opt.schemas {
+            println!("Validating schemas from {schema}");
+            let file = File::open(schema).expect("file exists");
+            let rdr = BufReader::new(file);
+            for line in rdr.lines() {
+                let line = line.expect("invalid line").replace("\\\\", "\\");
+                let entry = serde_json::from_str::<Entry>(&line).expect("line is valid json");
+
+                let raw = &entry.schema;
+                let name = format!("sgd{}", entry.id);
+                parse(raw, &name, opt.api);
             }
+        }
+    } else {
+        for schema in &opt.schemas {
+            println!("Validating schema from {schema}");
+            let raw = std::fs::read_to_string(schema).expect("file exists");
+            parse(&raw, schema, opt.api);
         }
     }
 }
