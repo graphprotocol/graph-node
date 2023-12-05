@@ -117,6 +117,7 @@ impl TypeInfo {
                 let mut shared_interfaces: Vec<_> = intfs
                     .iter()
                     .flat_map(|intf| &schema.types_for_interface[&intf.name])
+                    .filter(|other| other.name != obj_type.name)
                     .map(|obj_type| pool.lookup(&obj_type.name).unwrap())
                     .collect();
                 shared_interfaces.sort();
@@ -1724,5 +1725,39 @@ mod tests {
         assert!(poi.object_type().is_some());
 
         assert!(schema.entity_type("NonExistent").is_err());
+    }
+
+    #[test]
+    fn share_interfaces() {
+        const SCHEMA: &str = r#"
+    interface Animal {
+        name: String!
+    }
+
+    type Dog implements Animal @entity {
+        id: ID!
+        name: String!
+    }
+
+    type Cat implements Animal @entity {
+        id: ID!
+        name: String!
+    }
+
+    type Person @entity {
+        id: ID!
+        name: String!
+    }
+        "#;
+
+        let id = DeploymentHash::new("test").unwrap();
+        let schema = InputSchema::parse(SCHEMA, id).unwrap();
+
+        let dog = schema.entity_type("Dog").unwrap();
+        let cat = schema.entity_type("Cat").unwrap();
+        let person = schema.entity_type("Person").unwrap();
+        assert_eq!(vec![cat.clone()], dog.share_interfaces().unwrap());
+        assert_eq!(vec![dog], cat.share_interfaces().unwrap());
+        assert!(person.share_interfaces().unwrap().is_empty());
     }
 }
