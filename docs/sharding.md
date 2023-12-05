@@ -49,7 +49,7 @@ connectivity by running `select count(*) from primary_public.chains;` and
 `select count(*) from shard_<name>_subgraphs.subgraph` --- the result of
 these queries doesn't matter, it only matters that they succeed.
 
-With mutliple shards, `graph-node` will peridoically copy some metadata from
+With mutliple shards, `graph-node` will periodically copy some metadata from
 the primary to all the other shards. The metadata that gets copied is the
 metadata that is needed to repsond to queries as each query needs the
 primary to find the shard that stores the subgraph's data. The copies of the
@@ -88,7 +88,7 @@ have a copy of the same deployment, identified by an IPFS hash, in multiple
 shards, but only one copy can exist in each shard. If a deployment has
 multiple copies, exactly one of them is marked as `active` and is the one
 that is used to respond to queries. The copies are indexed independently
-from each other, according ot how they are assigned to index nodes.
+from each other, according to how they are assigned to index nodes.
 
 By default, `graphman copy create` will copy the data of the source subgraph
 up to the point where the copy was initiated and then start indexing the
