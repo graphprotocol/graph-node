@@ -518,7 +518,7 @@ macro_rules! assert_entity_eq {
 /// Test harness for running database integration tests.
 fn run_test<F>(test: F)
 where
-    F: FnOnce(&PgConnection, &Layout),
+    F: FnOnce(&mut PgConnection, &Layout),
 {
     run_test_with_conn(|conn| {
         // Reset state before starting
@@ -704,7 +704,7 @@ fn update_many() {
 /// Test that we properly handle BigDecimal values with a negative scale.
 #[test]
 fn serialize_bigdecimal() {
-    run_test(|mut conn, layout| {
+    run_test(|conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -753,7 +753,7 @@ fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
 
 #[test]
 fn delete() {
-    run_test(|mut conn, layout| {
+    run_test(|conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -818,7 +818,7 @@ async fn layout_cache() {
     // from a sync context, so we replicate what we do `spawn_module`.
     let runtime = tokio::runtime::Handle::current();
     std::thread::spawn(move || {
-        run_test_with_conn(|mut conn| {
+        run_test_with_conn(|conn| {
             let _runtime_guard = runtime.enter();
 
             let id = DeploymentHash::new("primaryLayoutCache").unwrap();
@@ -874,7 +874,7 @@ fn conflicting_entity() {
         dog: &str,
         ferret: &str,
     ) {
-        let conflicting = |types: Vec<&EntityType>| {
+        let conflicting = |conn: &mut PgConnection, types: Vec<&EntityType>| {
             let types = types.into_iter().cloned().collect();
             let id = Id::try_from(id.clone()).unwrap();
             layout.conflicting_entity(conn, &id, types)
@@ -888,11 +888,11 @@ fn conflicting_entity() {
         insert_entity(conn, layout, &cat_type, vec![fred]);
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
-        let conflict = conflicting(vec![&cat_type, &ferret_type]).unwrap();
+        let conflict = conflicting(conn, vec![&cat_type, &ferret_type]).unwrap();
         assert_eq!(Some(cat.to_string()), conflict);
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
-        let conflict = conflicting(vec![&dog_type, &ferret_type]).unwrap();
+        let conflict = conflicting(conn, vec![&dog_type, &ferret_type]).unwrap();
         assert_eq!(None, conflict);
     }
 
@@ -910,7 +910,7 @@ fn revert_block() {
     fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
-        let set_fred = |name, block| {
+        let set_fred = |conn: &mut PgConnection, name, block| {
             let fred = entity! { layout.input_schema =>
                 id: id,
                 name: name
@@ -922,7 +922,7 @@ fn revert_block() {
             }
         };
 
-        let assert_fred = |name: &str| {
+        let assert_fred = |conn: &mut PgConnection, name: &str| {
             let fred = layout
                 .find(conn, &CAT_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
                 .unwrap()
@@ -930,24 +930,24 @@ fn revert_block() {
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())
         };
 
-        set_fred("zero", 0);
-        set_fred("one", 1);
-        set_fred("two", 2);
-        set_fred("three", 3);
+        set_fred(conn, "zero", 0);
+        set_fred(conn, "one", 1);
+        set_fred(conn, "two", 2);
+        set_fred(conn, "three", 3);
 
         layout.revert_block(conn, 3).unwrap();
-        assert_fred("two");
+        assert_fred(conn, "two");
         layout.revert_block(conn, 2).unwrap();
-        assert_fred("one");
+        assert_fred(conn, "one");
 
-        set_fred("three", 3);
-        assert_fred("three");
+        set_fred(conn, "three", 3);
+        assert_fred(conn, "three");
         layout.revert_block(conn, 3).unwrap();
-        assert_fred("one");
+        assert_fred(conn, "one");
     }
 
     fn check_marty(conn: &mut PgConnection, layout: &Layout) {
-        let set_marties = |from, to| {
+        let set_marties = |conn: &mut PgConnection, from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
                 let marty = entity! { layout.input_schema =>
@@ -958,7 +958,7 @@ fn revert_block() {
             }
         };
 
-        let assert_marties = |max_block, except: Vec<BlockNumber>| {
+        let assert_marties = |conn: &mut PgConnection, max_block, except: Vec<BlockNumber>| {
             let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
             let collection = EntityCollection::All(vec![(MINK_TYPE.clone(), AttributeNames::All)]);
             let filter = EntityFilter::StartsWith("id".to_string(), Value::from("marty"));
@@ -984,32 +984,33 @@ fn revert_block() {
             }
         };
 
-        let assert_all_marties = |max_block| assert_marties(max_block, vec![]);
+        let assert_all_marties =
+            |conn: &mut PgConnection, max_block| assert_marties(conn, max_block, vec![]);
 
-        set_marties(0, 4);
-        assert_all_marties(4);
+        set_marties(conn, 0, 4);
+        assert_all_marties(conn, 4);
 
         layout.revert_block(conn, 3).unwrap();
-        assert_all_marties(2);
+        assert_all_marties(conn, 2);
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(1);
+        assert_all_marties(conn, 1);
 
-        set_marties(4, 4);
+        set_marties(conn, 4, 4);
         // We don't have entries for 2 and 3 anymore
-        assert_marties(4, vec![2, 3]);
+        assert_marties(conn, 4, vec![2, 3]);
 
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(1);
+        assert_all_marties(conn, 1);
     }
 
-    run_test(|&mut conn, layout| {
-        check_fred(&mut conn, layout);
-        check_marty(&mut conn, layout);
+    run_test(|conn, layout| {
+        check_fred(conn, layout);
+        check_marty(conn, layout);
     });
 }
 
 struct QueryChecker<'a> {
-    conn: &'a PgConnection,
+    conn: &'a mut PgConnection,
     layout: &'a Layout,
 }
 
@@ -1042,7 +1043,7 @@ impl<'a> QueryChecker<'a> {
         query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
-            .query::<Entity>(&LOGGER, &mut self.conn, query)
+            .query::<Entity>(&LOGGER, self.conn, query)
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1126,7 +1127,7 @@ fn check_block_finds() {
         let checker = QueryChecker::new(&mut conn, layout);
 
         update_user_entity(
-            &mut conn,
+            checker.conn,
             layout,
             "1",
             &*USER_TYPE,
@@ -1671,12 +1672,12 @@ fn ferrets() -> (String, String, String, String) {
 }
 
 struct FilterChecker<'a> {
-    conn: &'a PgConnection,
+    conn: &'a mut PgConnection,
     layout: &'a Layout,
 }
 
 impl<'a> FilterChecker<'a> {
-    fn new(conn: &'a PgConnection, layout: &'a Layout) -> Self {
+    fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
         insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0);
         insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0);
@@ -1686,7 +1687,7 @@ impl<'a> FilterChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(&self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &Self {
+    fn check(&mut self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &mut Self {
         let expected_entity_ids: Vec<String> =
             expected_entity_ids.into_iter().map(str::to_owned).collect();
 
@@ -1765,7 +1766,7 @@ fn check_filters() {
     }
 
     run_test(move |conn, layout| {
-        let checker = FilterChecker::new(conn, layout);
+        let mut checker = FilterChecker::new(conn, layout);
 
         checker
             .check(vec!["a1"], filter_eq(&a1))
@@ -1820,7 +1821,7 @@ fn check_filters() {
             .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
 
         update_entity_at(
-            conn,
+            checker.conn,
             layout,
             &*FERRET_TYPE,
             vec![entity! { layout.input_schema =>
