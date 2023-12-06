@@ -395,6 +395,7 @@ impl BlockHeader {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         match self.parent_hash.len() {
             0 => None,
+            _ if self.parent_hash.iter().all(|x| *x == 0) => None,
             _ => Some(BlockPtr::from((
                 H256::from_slice(self.parent_hash.as_ref()),
                 self.number - 1,
