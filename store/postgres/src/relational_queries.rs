@@ -640,7 +640,7 @@ impl std::fmt::Display for SqlValue<'_> {
 /// A `QueryValue` makes it possible to bind a `Value` into a SQL query
 /// using the metadata from Column
 #[derive(Debug)]
-struct QueryValue<'a> {
+pub struct QueryValue<'a> {
     value: SqlValue<'a>,
     column_type: &'a ColumnType,
 }
@@ -771,7 +771,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-enum Comparison {
+pub enum Comparison {
     Less,
     LessOrEqual,
     Equal,
@@ -849,7 +849,7 @@ impl std::fmt::Display for Comparison {
 
 /// The operators for 'contains' comparisons for strings and byte arrays
 #[derive(Clone, Copy, Debug)]
-enum ContainsOp {
+pub enum ContainsOp {
     Like,
     NotLike,
     ILike,
@@ -975,7 +975,7 @@ impl PrefixType {
 /// We do this by writing the comparison `column op text` in a way that
 /// involves `left(column, STRING_PREFIX_SIZE)`
 #[derive(Debug)]
-struct PrefixComparison<'a> {
+pub struct PrefixComparison<'a> {
     op: Comparison,
     kind: PrefixType,
     column: QualColumn<'a>,
@@ -1138,7 +1138,7 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 /// along `parent_column = child_column` and the `child_table` must be
 /// filtered with `child_filter``
 #[derive(Debug)]
-struct QueryChild<'a> {
+pub struct QueryChild<'a> {
     parent_table: &'a Table,
     parent_column: &'a Column,
     child_table: &'a Table,
@@ -1312,7 +1312,7 @@ impl ColumnQual {
 
 /// A qualified column name. This is either `c.{column}` or `i.{column}`
 #[derive(Debug)]
-enum QualColumn<'a> {
+pub enum QualColumn<'a> {
     Main(&'a Column),
     Child(&'a Column),
 }
@@ -1362,7 +1362,7 @@ impl QueryFragment<Pg> for QualColumn<'_> {
 ///
 /// A `Filter` will usually be used in the `where` clause of a SQL query.
 #[derive(Debug)]
-enum Filter<'a> {
+pub enum Filter<'a> {
     And(Vec<Filter<'a>>),
     Or(Vec<Filter<'a>>),
     PrefixCmp(PrefixComparison<'a>),
