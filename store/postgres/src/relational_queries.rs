@@ -4737,22 +4737,6 @@ pub struct ReturnedEntityData {
     pub id: String,
 }
 
-impl ReturnedEntityData {
-    /// Convert primary key ids from Postgres' internal form to the format we
-    /// use by stripping `\\x` off the front of bytes strings
-    fn as_ids(table: &Table, data: Vec<ReturnedEntityData>) -> QueryResult<Vec<Id>> {
-        let id_type = table.primary_key().column_type.id_type()?;
-
-        data.into_iter()
-            .map(|s| match id_type {
-                IdType::String | IdType::Int8 => id_type.parse(Word::from(s.id)),
-                IdType::Bytes => id_type.parse(Word::from(s.id.trim_start_matches("\\x"))),
-            })
-            .collect::<Result<_, _>>()
-            .map_err(|e| diesel::result::Error::DeserializationError(e.into()))
-    }
-}
-
 /// A query that removes all versions whose block range lies entirely
 /// beyond `block`.
 #[derive(Debug, Clone)]
