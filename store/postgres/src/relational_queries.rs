@@ -166,16 +166,6 @@ impl PushBindParam for IdList {
     }
 }
 
-impl<'a> PushBindParam for IdRef<'a> {
-    fn push_bind_param<'b>(&'b self, out: &mut AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        match self {
-            IdRef::String(s) => out.push_bind_param::<Text, _>(s),
-            IdRef::Bytes(b) => out.push_bind_param::<Binary, _>(b),
-            IdRef::Int8(i) => out.push_bind_param::<Int8, _>(i),
-        }
-    }
-}
-
 impl ForeignKeyClauses for Column {
     fn column_type(&self) -> &ColumnType {
         &self.column_type
