@@ -1314,10 +1314,6 @@ pub enum QualColumn<'a> {
     Child(&'a Column),
 }
 impl QualColumn<'_> {
-    fn is_fulltext(&self) -> bool {
-        self.column().is_fulltext()
-    }
-
     fn column_type(&self) -> &ColumnType {
         &self.column().column_type
     }
