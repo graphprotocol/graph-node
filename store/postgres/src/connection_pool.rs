@@ -1112,10 +1112,6 @@ struct MigrationCount {
 }
 
 impl MigrationCount {
-    fn new(old: usize, new: usize) -> Self {
-        Self { old, new }
-    }
-
     fn had_migrations(&self) -> bool {
         self.old != self.new
     }
