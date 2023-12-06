@@ -32,7 +32,7 @@ use graph_store_postgres::{
 };
 use lazy_static::lazy_static;
 use std::collections::BTreeMap;
-use std::{collections::HashMap, env, num::ParseIntError, sync::Arc, time::Duration};
+use std::{collections::HashMap, num::ParseIntError, sync::Arc, time::Duration};
 const VERSION_LABEL_KEY: &str = "version";
 
 git_testament!(TESTAMENT);
