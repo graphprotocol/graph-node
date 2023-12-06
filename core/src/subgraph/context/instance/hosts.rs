@@ -1,14 +1,20 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use graph::{
     blockchain::Blockchain,
     cheap_clone::CheapClone,
-    components::subgraph::{RuntimeHost, RuntimeHostBuilder},
+    components::{
+        store::BlockNumber,
+        subgraph::{RuntimeHost, RuntimeHostBuilder},
+    },
 };
 
 /// This structure maintains a partition of the hosts by address, for faster trigger matching. This
 /// partition uses the host's index in the main vec, to maintain the correct ordering.
-pub(super) struct Hosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
+pub(super) struct OnchainHosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
     hosts: Vec<Arc<T::Host>>,
 
     // The `usize` is the index of the host in `hosts`.
@@ -16,7 +22,7 @@ pub(super) struct Hosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
     hosts_without_address: Vec<usize>,
 }
 
-impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
     pub fn new() -> Self {
         Self {
             hosts: Vec::new(),
@@ -42,6 +48,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
     }
 
     pub fn push(&mut self, host: Arc<T::Host>) {
+        assert!(host.data_source().as_onchain().is_some());
+
         self.hosts.push(host.cheap_clone());
         let idx = self.hosts.len() - 1;
         let address = host.data_source().address();
@@ -81,7 +89,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
     /// If no address is provided, returns an iterator over all hosts.
     pub fn iter_by_address(
         &self,
-        address: Option<Vec<u8>>,
+        address: Option<&[u8]>,
     ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
         let Some(address) = address else {
             return Box::new(self.hosts.iter().map(|host| host.as_ref()));
@@ -89,7 +97,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
 
         let mut matching_hosts: Vec<usize> = self
             .hosts_by_address
-            .get(address.as_slice())
+            .get(address)
             .into_iter()
             .flatten() // Flatten non-existing `address` into empty.
             .copied()
@@ -100,6 +108,93 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Hosts<C, T> {
             matching_hosts
                 .into_iter()
                 .map(move |idx| self.hosts[idx].as_ref()),
+        )
+    }
+}
+
+/// Note that unlike `OnchainHosts`, this does not maintain the order of insertion. Ultimately, the
+/// processing order should not matter because as each offchain ds has its own causality region.
+pub(super) struct OffchainHosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
+    // Indexed by creation block
+    by_block: BTreeMap<Option<BlockNumber>, Vec<Arc<T::Host>>>,
+    // Indexed by `offchain::Source::address`
+    by_address: BTreeMap<Vec<u8>, Vec<Arc<T::Host>>>,
+    wildcard_address: Vec<Arc<T::Host>>,
+}
+
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
+    pub fn new() -> Self {
+        Self {
+            by_block: BTreeMap::new(),
+            by_address: BTreeMap::new(),
+            wildcard_address: Vec::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.by_block.values().map(Vec::len).sum()
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = &Arc<T::Host>> + Send + '_ {
+        self.by_block.values().flatten()
+    }
+
+    pub fn contains(&self, other: &Arc<T::Host>) -> bool {
+        self.by_block
+            .get(&other.creation_block_number())
+            .into_iter()
+            .flatten()
+            .any(|host| host == other)
+    }
+
+    pub fn push(&mut self, host: Arc<T::Host>) {
+        assert!(host.data_source().as_offchain().is_some());
+
+        let block = host.creation_block_number();
+        self.by_block
+            .entry(block)
+            .or_default()
+            .push(host.cheap_clone());
+
+        match host.data_source().address() {
+            Some(address) => self.by_address.entry(address).or_default().push(host),
+            None => self.wildcard_address.push(host),
+        }
+    }
+
+    /// Removes all entries with block number >= block.
+    pub fn remove_ge_block(&mut self, block: BlockNumber) {
+        let removed = self.by_block.split_off(&Some(block));
+        for (_, hosts) in removed {
+            for host in hosts {
+                match host.data_source().address() {
+                    Some(address) => {
+                        let hosts = self.by_address.get_mut(&address).unwrap();
+                        hosts.retain(|h| !Arc::ptr_eq(h, &host));
+                    }
+                    None => {
+                        self.wildcard_address.retain(|h| !Arc::ptr_eq(h, &host));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn iter_by_address<'a>(
+        &'a self,
+        address: Option<&[u8]>,
+    ) -> Box<dyn Iterator<Item = &T::Host> + Send + 'a> {
+        let Some(address) = address else {
+            return Box::new(self.by_block.values().flatten().map(|host| host.as_ref()));
+        };
+
+        Box::new(
+            self.by_address
+                .get(address)
+                .into_iter()
+                .flatten() // Flatten non-existing `address` into empty.
+                .map(|host| host.as_ref())
+                .chain(self.wildcard_address.iter().map(|host| host.as_ref())),
         )
     }
 }

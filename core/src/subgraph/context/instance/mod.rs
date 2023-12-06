@@ -2,14 +2,14 @@ mod hosts;
 
 use futures01::sync::mpsc::Sender;
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{Blockchain, TriggerData as _},
     data_source::{
         causality_region::CausalityRegionSeq, offchain, CausalityRegion, DataSource,
         DataSourceTemplate, TriggerData,
     },
     prelude::*,
 };
-use hosts::Hosts;
+use hosts::{OffchainHosts, OnchainHosts};
 use std::collections::HashMap;
 
 pub(super) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
@@ -24,9 +24,11 @@ pub(super) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// The hosts represent the data sources in the subgraph. There is one host per data source.
     /// Data sources with no mappings (e.g. direct substreams) have no host.
     ///
-    /// The runtime hosts must be created in increasing order of block number.
-    /// `fn hosts_for_trigger` will return the hosts in the same order as their were inserted.
-    hosts: Hosts<C, T>,
+    /// Onchain hosts must be created in increasing order of block number. `fn hosts_for_trigger`
+    /// will return the onchain hosts in the same order as their were inserted.
+    onchain_hosts: OnchainHosts<C, T>,
+
+    offchain_hosts: OffchainHosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
     module_cache: HashMap<[u8; 32], Sender<T::Req>>,
@@ -44,10 +46,10 @@ where
     /// that are included in the subgraph manifest and dynamic data sources.
     pub fn onchain_data_sources(&self) -> impl Iterator<Item = &C::DataSource> + Clone {
         let host_data_sources = self
-            .hosts
+            .onchain_hosts
             .hosts()
             .iter()
-            .filter_map(|h| h.data_source().as_onchain());
+            .map(|h| h.data_source().as_onchain().unwrap());
 
         // Datasources that are defined in the subgraph manifest but does not correspond to any host
         // in the subgraph. Currently these are only substreams data sources.
@@ -75,7 +77,8 @@ where
             subgraph_id,
             network,
             static_data_sources: Arc::new(manifest.data_sources),
-            hosts: Hosts::new(),
+            onchain_hosts: OnchainHosts::new(),
+            offchain_hosts: OffchainHosts::new(),
             module_cache: HashMap::new(),
             templates,
             host_metrics,
@@ -127,28 +130,44 @@ where
         data_source: DataSource<C>,
     ) -> Result<Option<Arc<T::Host>>, Error> {
         // Protect against creating more than the allowed maximum number of data sources
-        if self.hosts.len() >= ENV_VARS.subgraph_max_data_sources {
+        if self.hosts_len() >= ENV_VARS.subgraph_max_data_sources {
             anyhow::bail!(
                 "Limit of {} data sources per subgraph exceeded",
                 ENV_VARS.subgraph_max_data_sources,
             );
         }
 
-        // `hosts` will remain ordered by the creation block.
-        // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
-        assert!(
-            self.hosts.last().and_then(|h| h.creation_block_number())
-                <= data_source.creation_block()
-        );
-
+        let is_onchain = data_source.is_onchain();
         let Some(host) = self.new_host(logger.clone(), data_source)? else { return Ok(None) };
 
-        Ok(if self.hosts.contains(&host) {
-            None
-        } else {
-            self.hosts.push(host.cheap_clone());
-            Some(host)
-        })
+        // Check for duplicates and add the host.
+        match is_onchain {
+            true => {
+                // `onchain_hosts` will remain ordered by the creation block.
+                // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+                assert!(
+                    self.onchain_hosts
+                        .last()
+                        .and_then(|h| h.creation_block_number())
+                        <= host.data_source().creation_block()
+                );
+
+                if self.onchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.onchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
+            }
+            false => {
+                if self.offchain_hosts.contains(&host) {
+                    Ok(None)
+                } else {
+                    self.offchain_hosts.push(host.cheap_clone());
+                    Ok(Some(host))
+                }
+            }
+        }
     }
 
     /// Reverts any DataSources that have been added from the block forwards (inclusively)
@@ -159,13 +178,9 @@ where
         &mut self,
         reverted_block: BlockNumber,
     ) -> Vec<offchain::Source> {
-        self.revert_hosts_cheap(reverted_block);
+        self.revert_onchain_hosts(reverted_block);
+        self.offchain_hosts.remove_ge_block(reverted_block);
 
-        // The following code handles resetting offchain datasources so in most
-        // cases this is enough processing.
-        // At some point we prolly need to improve the linear search but for now this
-        // should be fine. *IT'S FINE*
-        //
         // Any File DataSources (Dynamic Data Sources), will have their own causality region
         // which currently is the next number of the sequence but that should be an internal detail.
         // Regardless of the sequence logic, if the current causality region is ONCHAIN then there are
@@ -174,29 +189,27 @@ where
             return vec![];
         }
 
-        self.hosts
-            .hosts()
-            .iter()
+        self.offchain_hosts
+            .all()
             .filter(|host| matches!(host.done_at(), Some(done_at) if done_at >= reverted_block))
             .map(|host| {
                 host.set_done_at(None);
-                // Safe to call unwrap() because only offchain DataSources have done_at = Some
                 host.data_source().as_offchain().unwrap().source.clone()
             })
             .collect()
     }
 
-    /// Because hosts are ordered, removing them based on creation block is cheap and simple.
-    fn revert_hosts_cheap(&mut self, reverted_block: BlockNumber) {
-        // `hosts` is ordered by the creation block.
+    /// Because onchain hosts are ordered, removing them based on creation block is cheap and simple.
+    fn revert_onchain_hosts(&mut self, reverted_block: BlockNumber) {
+        // `onchain_hosts` is ordered by the creation block.
         // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
         while self
-            .hosts
+            .onchain_hosts
             .last()
             .filter(|h| h.creation_block_number() >= Some(reverted_block))
             .is_some()
         {
-            self.hosts.pop();
+            self.onchain_hosts.pop();
         }
     }
 
@@ -206,7 +219,14 @@ where
         &self,
         trigger: &TriggerData<C>,
     ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
-        self.hosts.iter_by_address(trigger.address_match())
+        match trigger {
+            TriggerData::Onchain(trigger) => {
+                self.onchain_hosts.iter_by_address(trigger.address_match())
+            }
+            TriggerData::Offchain(trigger) => self
+                .offchain_hosts
+                .iter_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
+        }
     }
 
     pub(super) fn causality_region_next_value(&mut self) -> CausalityRegion {
@@ -214,6 +234,10 @@ where
     }
 
     pub fn hosts_len(&self) -> usize {
-        self.hosts.len()
+        self.onchain_hosts.len() + self.offchain_hosts.len()
+    }
+
+    pub fn first_host(&self) -> Option<&Arc<T::Host>> {
+        self.onchain_hosts.hosts().first()
     }
 }
