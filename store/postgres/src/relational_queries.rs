@@ -1139,7 +1139,6 @@ impl<'a> QueryFragment<Pg> for PrefixComparison<'a> {
 /// filtered with `child_filter``
 #[derive(Debug)]
 pub struct QueryChild<'a> {
-    parent_table: &'a Table,
     parent_column: &'a Column,
     child_table: &'a Table,
     child_column: &'a Column,
@@ -1186,7 +1185,6 @@ impl<'a> QueryChild<'a> {
         let child_filter = Filter::new(layout, child_table, filter, block, ColumnQual::Child)?;
 
         Ok(Self {
-            parent_table,
             parent_column,
             child_table,
             child_column,
@@ -1202,7 +1200,6 @@ impl<'a> QueryFragment<Pg> for QueryChild<'a> {
         out.unsafe_to_cache_prepared();
 
         let QueryChild {
-            parent_table: _,
             parent_column,
             child_table,
             child_column,
