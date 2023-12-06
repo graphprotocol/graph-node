@@ -36,7 +36,16 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
     }
 
     pub fn contains(&self, other: &Arc<T::Host>) -> bool {
-        self.hosts.contains(other)
+        // Narrow down the host list by address, as an optimization.
+        let hosts = match other.data_source().address() {
+            Some(address) => self.hosts_by_address.get(address.as_slice()),
+            None => Some(&self.hosts_without_address),
+        };
+
+        hosts
+            .into_iter()
+            .flatten()
+            .any(|idx| &self.hosts[*idx] == other)
     }
 
     pub fn last(&self) -> Option<&Arc<T::Host>> {
@@ -87,7 +96,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
     /// Returns an iterator over all hosts that match the given address, in the order they were inserted in `hosts`.
     /// Note that this always includes the hosts without an address, since they match all addresses.
     /// If no address is provided, returns an iterator over all hosts.
-    pub fn iter_by_address(
+    pub fn matches_by_address(
         &self,
         address: Option<&[u8]>,
     ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
@@ -140,11 +149,13 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
     }
 
     pub fn contains(&self, other: &Arc<T::Host>) -> bool {
-        self.by_block
-            .get(&other.creation_block_number())
-            .into_iter()
-            .flatten()
-            .any(|host| host == other)
+        // Narrow down the host list by address, as an optimization.
+        let hosts = match other.data_source().address() {
+            Some(address) => self.by_address.get(address.as_slice()),
+            None => Some(&self.wildcard_address),
+        };
+
+        hosts.into_iter().flatten().any(|host| host == other)
     }
 
     pub fn push(&mut self, host: Arc<T::Host>) {
@@ -180,7 +191,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
         }
     }
 
-    pub fn iter_by_address<'a>(
+    pub fn matches_by_address<'a>(
         &'a self,
         address: Option<&[u8]>,
     ) -> Box<dyn Iterator<Item = &T::Host> + Send + 'a> {

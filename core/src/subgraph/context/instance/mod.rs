@@ -220,12 +220,12 @@ where
         trigger: &TriggerData<C>,
     ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
         match trigger {
-            TriggerData::Onchain(trigger) => {
-                self.onchain_hosts.iter_by_address(trigger.address_match())
-            }
+            TriggerData::Onchain(trigger) => self
+                .onchain_hosts
+                .matches_by_address(trigger.address_match()),
             TriggerData::Offchain(trigger) => self
                 .offchain_hosts
-                .iter_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
+                .matches_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
         }
     }
 
