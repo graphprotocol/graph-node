@@ -9,7 +9,7 @@ use graph::{
     blockchain::Blockchain,
     components::{
         store::{DeploymentId, SubgraphFork},
-        subgraph::{HostMetrics, MappingError, SharedProofOfIndexing},
+        subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
     },
     data::subgraph::SubgraphManifest,
     data_source::{
@@ -20,8 +20,8 @@ use graph::{
     ipfs_client::CidFile,
     prelude::{
         BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
-        MetricsRegistry, RuntimeHost, RuntimeHostBuilder, SubgraphCountMetric,
-        SubgraphInstanceMetrics, TriggerProcessor,
+        MetricsRegistry, RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics,
+        TriggerProcessor,
     },
     slog::Logger,
     tokio::sync::mpsc,
@@ -154,8 +154,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
         // gets executed every block.
         state = self
             .instance
-            .hosts()
-            .first()
+            .first_host()
             .expect("Expected this flow to have exactly one host")
             .process_block(
                 logger,

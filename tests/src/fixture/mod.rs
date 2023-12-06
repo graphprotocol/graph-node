@@ -50,7 +50,7 @@ use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use serde::Deserialize;
-use slog::{crit, info, o, Discard, Logger};
+use slog::{crit, debug, info, o, Discard, Logger};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -262,6 +262,8 @@ impl TestContext {
             .start(self.deployment.clone(), Some(stop_block.number))
             .await
             .expect("unable to start subgraph");
+
+        debug!(self.logger, "TEST: syncing to {}", stop_block.number);
 
         wait_for_sync(
             &self.logger,
