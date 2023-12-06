@@ -1915,7 +1915,6 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
 pub struct FindQuery<'a> {
     table: &'a Table,
     key: &'a EntityKey,
-    block: BlockNumber,
     br_column: BlockRangeColumn<'a>,
 }
 
@@ -1925,7 +1924,6 @@ impl<'a> FindQuery<'a> {
         Self {
             table,
             key,
-            block,
             br_column,
         }
     }
@@ -1973,18 +1971,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindQuery<'a> {}
 #[derive(Debug)]
 pub struct FindChangesQuery<'a> {
     pub(crate) tables: &'a [&'a Table],
-    pub(crate) block: BlockNumber,
     br_clause: BlockRangeLowerBoundClause<'a>,
 }
 
 impl<'a> FindChangesQuery<'a> {
     pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
         let br_clause = BlockRangeLowerBoundClause::new("e.", block);
-        Self {
-            tables,
-            block,
-            br_clause,
-        }
+        Self { tables, br_clause }
     }
 }
 
@@ -2032,18 +2025,13 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindChangesQuery<'a> {}
 #[derive(Debug)]
 pub struct FindPossibleDeletionsQuery<'a> {
     pub(crate) tables: &'a [&'a Table],
-    pub(crate) block: BlockNumber,
     br_clause: BlockRangeUpperBoundClause<'a>,
 }
 
 impl<'a> FindPossibleDeletionsQuery<'a> {
     pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
         let br_clause = BlockRangeUpperBoundClause::new("e.", block);
-        Self {
-            tables,
-            block,
-            br_clause,
-        }
+        Self { tables, br_clause }
     }
 }
 
@@ -2093,7 +2081,6 @@ pub struct FindManyQuery<'a> {
 
     // Maps object name to ids.
     pub(crate) ids_for_type: &'a BTreeMap<(EntityType, CausalityRegion), IdList>,
-    pub(crate) block: BlockNumber,
 }
 
 impl<'a> FindManyQuery<'a> {
@@ -2112,7 +2099,6 @@ impl<'a> FindManyQuery<'a> {
         Self {
             tables,
             ids_for_type,
-            block,
         }
     }
 }
@@ -2172,7 +2158,6 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
-    block: BlockNumber,
     excluded_keys: &'a Vec<EntityKey>,
     br_column: BlockRangeColumn<'a>,
 }
@@ -2188,7 +2173,6 @@ impl<'a> FindDerivedQuery<'a> {
         Self {
             table,
             derived_query,
-            block,
             excluded_keys,
             br_column,
         }
