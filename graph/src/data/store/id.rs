@@ -464,6 +464,18 @@ impl IdList {
         }
     }
 
+    pub fn bind_entry<'b>(
+        &'b self,
+        index: usize,
+        out: &mut AstPass<'_, 'b, Pg>,
+    ) -> QueryResult<()> {
+        match self {
+            IdList::String(ids) => out.push_bind_param::<Text, _>(&ids[index]),
+            IdList::Bytes(ids) => out.push_bind_param::<Binary, _>(ids[index].as_slice()),
+            IdList::Int8(ids) => out.push_bind_param::<BigInt, _>(&ids[index]),
+        }
+    }
+
     pub fn first(&self) -> Option<IdRef<'_>> {
         if self.len() > 0 {
             Some(self.index(0))
