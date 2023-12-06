@@ -1360,10 +1360,6 @@ pub enum Filter<'a> {
     Or(Vec<Filter<'a>>),
     PrefixCmp(PrefixComparison<'a>),
     Cmp(QualColumn<'a>, Comparison, QueryValue<'a>),
-    GreaterThan(QualColumn<'a>, QueryValue<'a>),
-    LessThan(QualColumn<'a>, QueryValue<'a>),
-    GreaterOrEqual(QualColumn<'a>, QueryValue<'a>),
-    LessOrEqual(QualColumn<'a>, QueryValue<'a>),
     In(QualColumn<'a>, Vec<QueryValue<'a>>),
     NotIn(QualColumn<'a>, Vec<QueryValue<'a>>),
     Contains {
@@ -1840,10 +1836,6 @@ impl<'a> fmt::Display for Filter<'a> {
                 value,
             }) => write!(f, "{column} {op} {value}"),
             Cmp(a, op, v) => write!(f, "{a} {op} {v}"),
-            GreaterThan(a, v) => write!(f, "{a} > {v}"),
-            LessThan(a, v) => write!(f, "{a} < {v}"),
-            GreaterOrEqual(a, v) => write!(f, "{a} >= {v}"),
-            LessOrEqual(a, v) => write!(f, "{a} <= {v}"),
             In(a, vs) => write!(f, "{a} in ({})", vs.iter().map(|v| v.to_string()).join(",")),
             NotIn(a, vs) => write!(
                 f,
@@ -1886,7 +1878,6 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
     fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
         out.unsafe_to_cache_prepared();
 
-        use Comparison as c;
         use Filter::*;
         match self {
             And(filters) => Self::binary_op(filters, " and ", " true ", out)?,
@@ -1897,18 +1888,11 @@ impl<'a> QueryFragment<Pg> for Filter<'a> {
                 op,
                 pattern,
             } => Self::contains(column, op, pattern, out)?,
-
             PrefixCmp(pc) => pc.walk_ast(out)?,
             Cmp(column, op, value) => Self::cmp(column, value, *op, out)?,
             Fulltext(column, value) => Self::fulltext(column, value, out)?,
-            GreaterThan(attr, value) => Self::cmp(attr, value, c::Greater, out)?,
-            LessThan(attr, value) => Self::cmp(attr, value, c::Less, out)?,
-            GreaterOrEqual(attr, value) => Self::cmp(attr, value, c::GreaterOrEqual, out)?,
-            LessOrEqual(attr, value) => Self::cmp(attr, value, c::LessOrEqual, out)?,
-
             In(attr, values) => Self::in_array(attr, values, false, out)?,
             NotIn(attr, values) => Self::in_array(attr, values, true, out)?,
-
             StartsOrEndsWith {
                 column,
                 op,
