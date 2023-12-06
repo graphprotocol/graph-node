@@ -46,10 +46,10 @@ use graph_server_metrics::PrometheusMetricsServer;
 use graph_server_websocket::SubscriptionServer as GraphQLSubscriptionServer;
 use graph_store_postgres::{register_jobs as register_store_jobs, ChainHeadUpdateListener, Store};
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::time::Duration;
-use std::{collections::HashMap, env};
 use tokio::sync::mpsc;
 
 git_testament!(TESTAMENT);
