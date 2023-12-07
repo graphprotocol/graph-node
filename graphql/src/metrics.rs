@@ -14,6 +14,7 @@ pub struct GraphQLMetrics {
     query_result_size: Box<Histogram>,
     query_result_size_max: Box<Gauge>,
     query_validation_error_counter: Box<CounterVec>,
+    query_blocks_behind: Box<HistogramVec>,
 }
 
 impl fmt::Debug for GraphQLMetrics {
@@ -73,6 +74,12 @@ impl GraphQLMetricsTrait for GraphQLMetrics {
                 .inc();
         }
     }
+
+    fn observe_query_blocks_behind(&self, blocks_behind: i32, id: &DeploymentHash) {
+        self.query_blocks_behind
+            .with_label_values(&[id.as_str()])
+            .observe(blocks_behind as f64);
+    }
 }
 
 impl GraphQLMetrics {
@@ -128,6 +135,18 @@ impl GraphQLMetrics {
             )
             .unwrap();
 
+        let query_blocks_behind = registry
+            .new_histogram_vec(
+                "query_blocks_behind",
+                "How many blocks the query block is behind the subgraph head",
+                vec![String::from("deployment")],
+                vec![
+                    0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 10000.0,
+                    100000.0, 1000000.0, 10000000.0,
+                ],
+            )
+            .unwrap();
+
         Self {
             query_execution_time,
             query_parsing_time,
@@ -135,6 +154,7 @@ impl GraphQLMetrics {
             query_result_size,
             query_result_size_max,
             query_validation_error_counter,
+            query_blocks_behind,
         }
     }
 
