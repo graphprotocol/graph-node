@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Error};
+use semver::Version;
 use store::Entity;
 
 use crate::bail;
@@ -774,7 +775,7 @@ impl InputSchema {
     /// A convenience function for creating an `InputSchema` from the string
     /// representation of the subgraph's GraphQL schema `raw` and its
     /// deployment hash `id`. The returned schema is fully validated.
-    pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
+    pub fn parse(spec_version: &Version, raw: &str, id: DeploymentHash) -> Result<Self, Error> {
         fn agg_mappings(ts_types: &[TypeInfo]) -> Box<[AggregationMapping]> {
             let mut mappings: Vec<_> = ts_types
                 .iter()
@@ -798,7 +799,7 @@ impl InputSchema {
         }
 
         let schema = Schema::parse(raw, id.clone())?;
-        validations::validate(&schema).map_err(|errors| {
+        validations::validate(spec_version, &schema).map_err(|errors| {
             anyhow!(
                 "Validation errors in subgraph `{}`:\n{}",
                 id,
@@ -859,6 +860,13 @@ impl InputSchema {
         })
     }
 
+    /// Parse with the latest spec version
+    pub fn parse_latest(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
+        use crate::data::subgraph::LATEST_VERSION;
+
+        Self::parse(LATEST_VERSION, raw, id)
+    }
+
     /// Convenience for tests to construct an `InputSchema`
     ///
     /// # Panics
@@ -868,7 +876,7 @@ impl InputSchema {
     #[track_caller]
     pub fn raw(document: &str, hash: &str) -> Self {
         let hash = DeploymentHash::new(hash).unwrap();
-        Self::parse(document, hash).unwrap()
+        Self::parse_latest(document, hash).unwrap()
     }
 
     pub fn schema(&self) -> &Schema {
@@ -1324,6 +1332,7 @@ mod validations {
 
     use inflector::Inflector;
     use itertools::Itertools;
+    use semver::Version;
 
     use crate::{
         data::{
@@ -1343,6 +1352,8 @@ mod validations {
 
     /// Helper struct for validations
     struct Schema<'a> {
+        #[allow(dead_code)]
+        spec_version: &'a Version,
         schema: &'a BaseSchema,
         subgraph_schema_type: Option<&'a s::ObjectType>,
         // All entity types, excluding the subgraph schema type
@@ -1350,8 +1361,11 @@ mod validations {
         aggregations: Vec<&'a s::ObjectType>,
     }
 
-    pub(super) fn validate(schema: &BaseSchema) -> Result<(), Vec<SchemaValidationError>> {
-        let schema = Schema::new(schema);
+    pub(super) fn validate(
+        spec_version: &Version,
+        schema: &BaseSchema,
+    ) -> Result<(), Vec<SchemaValidationError>> {
+        let schema = Schema::new(spec_version, schema);
 
         let mut errors: Vec<SchemaValidationError> = [
             schema.validate_no_extra_types(),
@@ -1380,7 +1394,7 @@ mod validations {
     }
 
     impl<'a> Schema<'a> {
-        fn new(schema: &'a BaseSchema) -> Self {
+        fn new(spec_version: &'a Version, schema: &'a BaseSchema) -> Self {
             let subgraph_schema_type = schema.subgraph_schema_object_type();
             let mut entity_types = schema.document.get_object_type_definitions();
             entity_types.retain(|obj_type| obj_type.find_directive(kw::ENTITY).is_some());
@@ -1388,6 +1402,7 @@ mod validations {
             aggregations.retain(|obj_type| obj_type.find_directive(kw::AGGREGATION).is_some());
 
             Schema {
+                spec_version,
                 schema,
                 subgraph_schema_type,
                 entity_types,
@@ -2276,13 +2291,17 @@ mod validations {
     mod tests {
         use std::ffi::OsString;
 
-        use crate::prelude::DeploymentHash;
+        use crate::{data::subgraph::LATEST_VERSION, prelude::DeploymentHash};
 
         use super::*;
 
         fn parse(schema: &str) -> BaseSchema {
             let hash = DeploymentHash::new("test").unwrap();
             BaseSchema::parse(schema, hash).unwrap()
+        }
+
+        fn validate(schema: &BaseSchema) -> Result<(), Vec<SchemaValidationError>> {
+            super::validate(LATEST_VERSION, schema)
         }
 
         #[test]
@@ -2369,7 +2388,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
                     .expect("Failed to parse raw schema")
                     .into_static();
                 let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-                let schema = Schema::new(&schema);
+                let schema = Schema::new(LATEST_VERSION, &schema);
                 match schema.validate_derived_from() {
                     Err(ref e) => match e {
                         SchemaValidationError::InvalidDerivedFrom(_, _, msg) => {
@@ -2425,7 +2444,7 @@ type _Schema_ { id: ID! }";
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-            let schema = Schema::new(&schema);
+            let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(
                 schema.validate_schema_type_has_no_fields().expect_err(
                     "Expected validation to fail due to fields defined on the reserved type"
@@ -2442,7 +2461,7 @@ type _Schema_ @illegal";
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-            let schema = Schema::new(&schema);
+            let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(
                 schema.validate_directives_on_schema_type().expect_err(
                     "Expected validation to fail due to extra imports defined on the reserved type"
@@ -2467,7 +2486,7 @@ type A @entity {
             let document =
                 graphql_parser::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
-            let schema = Schema::new(&schema);
+            let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(schema.validate_fields().len(), 0);
         }
 
@@ -2575,7 +2594,7 @@ type Gravatar @entity {
 
             let document = graphql_parser::parse_schema(SCHEMA).expect("Failed to parse schema");
             let schema = BaseSchema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
-            let schema = Schema::new(&schema);
+            let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(schema.validate_fulltext_directives(), vec![]);
         }
 
@@ -2706,7 +2725,7 @@ mod tests {
 
     fn make_schema() -> InputSchema {
         let id = DeploymentHash::new("test").unwrap();
-        InputSchema::parse(SCHEMA, id).unwrap()
+        InputSchema::parse_latest(SCHEMA, id).unwrap()
     }
 
     #[test]
@@ -2748,7 +2767,7 @@ mod tests {
         "#;
 
         let id = DeploymentHash::new("test").unwrap();
-        let schema = InputSchema::parse(SCHEMA, id).unwrap();
+        let schema = InputSchema::parse_latest(SCHEMA, id).unwrap();
 
         let dog = schema.entity_type("Dog").unwrap();
         let cat = schema.entity_type("Cat").unwrap();

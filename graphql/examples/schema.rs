@@ -30,7 +30,10 @@ pub fn main() {
     };
     let schema = ensure(fs::read_to_string(schema), "Can not read schema file");
     let id = DeploymentHash::new("unknown").unwrap();
-    let schema = ensure(InputSchema::parse(&schema, id), "Failed to parse schema");
+    let schema = ensure(
+        InputSchema::parse_latest(&schema, id),
+        "Failed to parse schema",
+    );
     let schema = ensure(schema.api_schema(), "Failed to convert to API schema");
 
     println!("{}", schema.schema().document);

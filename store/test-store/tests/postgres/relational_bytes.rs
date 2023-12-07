@@ -40,7 +40,7 @@ const THINGS_GQL: &str = "
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
     static ref THINGS_SCHEMA: InputSchema =
-        InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone())
             .expect("Failed to parse THINGS_GQL");
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
@@ -141,7 +141,7 @@ fn insert_thing(conn: &PgConnection, layout: &Layout, id: &str, name: &str) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).unwrap();

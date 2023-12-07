@@ -65,7 +65,10 @@ impl Resolver for MockResolver {
 
 fn api_schema(raw: &str, id: &str) -> Arc<ApiSchema> {
     let id = DeploymentHash::new(id).unwrap();
-    let schema = InputSchema::parse(raw, id).unwrap().api_schema().unwrap();
+    let schema = InputSchema::parse_latest(raw, id)
+        .unwrap()
+        .api_schema()
+        .unwrap();
     Arc::new(schema)
 }
 

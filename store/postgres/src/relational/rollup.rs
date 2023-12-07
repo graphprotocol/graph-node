@@ -301,7 +301,7 @@ mod tests {
 
         let hash = DeploymentHash::new("rollup").unwrap();
         let nsp = Namespace::new("sgd007".to_string()).unwrap();
-        let schema = InputSchema::parse(SCHEMA, hash.clone()).unwrap();
+        let schema = InputSchema::parse_latest(SCHEMA, hash.clone()).unwrap();
         let site = Arc::new(make_dummy_site(hash, nsp, "rollup".to_string()));
         let catalog = Catalog::for_tests(site.clone(), BTreeSet::new()).unwrap();
         let layout = Layout::new(site, &schema, catalog).unwrap();

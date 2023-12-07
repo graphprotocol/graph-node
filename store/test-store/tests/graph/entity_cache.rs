@@ -30,7 +30,7 @@ lazy_static! {
     static ref SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("entity_cache").unwrap();
     static ref DEPLOYMENT: DeploymentLocator =
         DeploymentLocator::new(DeploymentId::new(-12), SUBGRAPH_ID.clone());
-    static ref SCHEMA: InputSchema = InputSchema::parse(
+    static ref SCHEMA: InputSchema = InputSchema::parse_latest(
         "
             type Band @entity {
                 id: ID!
@@ -338,7 +338,7 @@ lazy_static! {
     static ref LOAD_RELATED_ID: DeploymentHash =
         DeploymentHash::new(LOAD_RELATED_ID_STRING.as_str()).unwrap();
     static ref LOAD_RELATED_SUBGRAPH: InputSchema =
-        InputSchema::parse(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
+        InputSchema::parse_latest(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
         H256::from(hex!(

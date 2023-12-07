@@ -303,7 +303,7 @@ pub fn schema(conn: &PgConnection, site: &Site) -> Result<(InputSchema, bool), S
         .select((sm::schema, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
         .first::<(String, bool)>(conn)?;
-    InputSchema::parse(s.as_str(), site.deployment.clone())
+    InputSchema::parse_latest(s.as_str(), site.deployment.clone())
         .map_err(StoreError::Unknown)
         .map(|schema| (schema, use_bytea_prefix))
 }
@@ -335,7 +335,7 @@ impl ManifestInfo {
             ))
             .filter(sm::id.eq(site.id))
             .first(conn)?;
-        let input_schema = InputSchema::parse(s.as_str(), site.deployment.clone())?;
+        let input_schema = InputSchema::parse_latest(s.as_str(), site.deployment.clone())?;
 
         // Using the features field to store the instrument flag is a bit
         // backhanded, but since this will be used very rarely, should not

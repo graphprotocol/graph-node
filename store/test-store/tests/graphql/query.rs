@@ -374,7 +374,8 @@ fn test_schema(id: DeploymentHash, id_type: IdType) -> InputSchema {
     }
     ";
 
-    InputSchema::parse(&SCHEMA.replace("@ID@", id_type.as_str()), id).expect("Test schema invalid")
+    InputSchema::parse_latest(&SCHEMA.replace("@ID@", id_type.as_str()), id)
+        .expect("Test schema invalid")
 }
 
 async fn insert_test_entities(

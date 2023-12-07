@@ -170,7 +170,8 @@ const THINGS_GQL: &str = r#"
 lazy_static! {
     static ref THINGS_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("things").unwrap();
     static ref THINGS_SCHEMA: InputSchema =
-        InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).expect("failed to parse schema");
+        InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone())
+            .expect("failed to parse schema");
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
@@ -464,7 +465,7 @@ fn insert_pets(conn: &PgConnection, layout: &Layout) {
 }
 
 fn create_schema(conn: &PgConnection) -> Layout {
-    let schema = InputSchema::parse(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
         NAMESPACE.clone(),

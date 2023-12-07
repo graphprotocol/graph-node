@@ -1179,7 +1179,7 @@ fn add_field_arguments(
 
 #[cfg(test)]
 mod tests {
-    use crate::{prelude::DeploymentHash, schema::InputSchema};
+    use crate::{data::subgraph::LATEST_VERSION, prelude::DeploymentHash, schema::InputSchema};
     use graphql_parser::schema::*;
     use lazy_static::lazy_static;
 
@@ -1192,8 +1192,8 @@ mod tests {
 
     #[track_caller]
     fn parse(raw: &str) -> ApiSchema {
-        let input_schema =
-            InputSchema::parse(raw, ID.clone()).expect("Failed to parse input schema");
+        let input_schema = InputSchema::parse(LATEST_VERSION, raw, ID.clone())
+            .expect("Failed to parse input schema");
         input_schema
             .api_schema()
             .expect("Failed to derive API schema")

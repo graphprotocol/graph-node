@@ -979,7 +979,8 @@ mod test {
     "#;
     lazy_static! {
         static ref DEPLOYMENT: DeploymentHash = DeploymentHash::new("batchAppend").unwrap();
-        static ref SCHEMA: InputSchema = InputSchema::parse(GQL, DEPLOYMENT.clone()).unwrap();
+        static ref SCHEMA: InputSchema =
+            InputSchema::parse_latest(GQL, DEPLOYMENT.clone()).unwrap();
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
         static ref ROW_GROUP_TYPE: EntityType = SCHEMA.entity_type("RowGroup").unwrap();
         static ref ENTRY_TYPE: EntityType = SCHEMA.entity_type("Entry").unwrap();

@@ -157,7 +157,7 @@ pub async fn create_subgraph(
     schema: &str,
     base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
 
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
@@ -213,7 +213,7 @@ pub async fn create_test_subgraph_with_features(
     subgraph_id: &DeploymentHash,
     schema: &str,
 ) -> DeploymentLocator {
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
 
     let features = [
         SubgraphFeature::FullTextSearch,

@@ -30,7 +30,7 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(SCHEMA_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref COUNTER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER).unwrap();
 }

@@ -78,7 +78,7 @@ const USER: &str = "User";
 lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash = DeploymentHash::new("testsubgraph").unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref BLOCKS: Vec<BlockPtr> = vec![
         "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",

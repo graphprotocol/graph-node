@@ -409,6 +409,7 @@ pub struct UnresolvedSchema {
 impl UnresolvedSchema {
     pub async fn resolve(
         self,
+        spec_version: &Version,
         id: DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         logger: &Logger,
@@ -417,7 +418,7 @@ impl UnresolvedSchema {
             .cat(logger, &self.file)
             .await
             .with_context(|| format!("failed to resolve schema {}", &self.file.link))?;
-        InputSchema::parse(&String::from_utf8(schema_bytes)?, id)
+        InputSchema::parse(spec_version, &String::from_utf8(schema_bytes)?, id)
     }
 }
 
@@ -901,7 +902,9 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        let schema = schema.resolve(id.clone(), resolver, logger).await?;
+        let schema = schema
+            .resolve(&spec_version, id.clone(), resolver, logger)
+            .await?;
 
         let (data_sources, templates) = try_join(
             data_sources

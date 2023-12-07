@@ -911,7 +911,7 @@ mod tests {
     "#;
 
         let id = DeploymentHash::new("id").unwrap();
-        let input_schema = InputSchema::parse(INPUT_SCHEMA, id.clone()).unwrap();
+        let input_schema = InputSchema::parse_latest(INPUT_SCHEMA, id.clone()).unwrap();
         let api_schema = input_schema.api_schema().unwrap();
 
         SchemaPair {

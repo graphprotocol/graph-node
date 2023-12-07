@@ -44,6 +44,13 @@ pub const SPEC_VERSION_0_0_9: Version = Version::new(0, 0, 9);
 // Enables `indexerHints` feature.
 pub const SPEC_VERSION_1_0_0: Version = Version::new(1, 0, 0);
 
+// Enables @aggregation entities
+// Enables `id: Int8`
+pub const SPEC_VERSION_1_1_0: Version = Version::new(1, 1, 0);
+
+// The latest spec version available
+pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_1_0;
+
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 
 #[derive(Clone, PartialEq, Debug)]

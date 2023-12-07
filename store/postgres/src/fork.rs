@@ -240,7 +240,7 @@ mod tests {
     }
 
     fn test_schema() -> InputSchema {
-        InputSchema::parse(
+        InputSchema::parse_latest(
             r#"type Gravatar @entity {
   id: ID!
   owner: Bytes!

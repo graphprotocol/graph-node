@@ -141,7 +141,7 @@ fn create_subgraph() {
     ) -> (DeploymentLocator, HashSet<EntityChange>) {
         let name = SubgraphName::new(SUBGRAPH_NAME.to_string()).unwrap();
         let id = DeploymentHash::new(id.to_string()).unwrap();
-        let schema = InputSchema::parse(SUBGRAPH_GQL, id.clone()).unwrap();
+        let schema = InputSchema::parse_latest(SUBGRAPH_GQL, id.clone()).unwrap();
 
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id,

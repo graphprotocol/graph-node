@@ -137,7 +137,8 @@ mod tests {
         let id = DeploymentHash::new("Qm123").unwrap();
 
         let data_schema =
-            InputSchema::parse("type User @entity { id: String!, val: Int }", id.clone()).unwrap();
+            InputSchema::parse_latest("type User @entity { id: String!, val: Int }", id.clone())
+                .unwrap();
         let data = data_schema
             .make_entity(hashmap! {
                 "id".into() => Value::String("id".to_owned()),
@@ -146,12 +147,12 @@ mod tests {
             .unwrap();
 
         let empty_schema =
-            InputSchema::parse("type User @entity { id: String! }", id.clone()).unwrap();
+            InputSchema::parse_latest("type User @entity { id: String! }", id.clone()).unwrap();
         let data_empty = empty_schema
             .make_entity(hashmap! { "id".into() => Value::String("id".into())})
             .unwrap();
 
-        let data2_schema = InputSchema::parse(
+        let data2_schema = InputSchema::parse_latest(
             "type User @entity { id: String!, key: String!, null: String }",
             id,
         )

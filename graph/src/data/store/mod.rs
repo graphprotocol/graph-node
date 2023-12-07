@@ -776,10 +776,10 @@ pub enum EntityValidationError {
 /// ```
 ///   use graph::entity;
 ///   use graph::schema::InputSchema;
-///   use graph::data::subgraph::DeploymentHash;
+///   use graph::data::subgraph::{LATEST_VERSION, DeploymentHash};
 ///
 ///   let id = DeploymentHash::new("Qm123").unwrap();
-///   let schema = InputSchema::parse("type User @entity { id: String!, name: String! }", id).unwrap();
+///   let schema = InputSchema::parse(LATEST_VERSION, "type User @entity { id: String!, name: String! }", id).unwrap();
 ///
 ///   let entity = entity! { schema => id: "1", name: "John Doe" };
 /// ```
@@ -1107,8 +1107,8 @@ fn entity_validation() {
 
     lazy_static! {
         static ref SUBGRAPH: DeploymentHash = DeploymentHash::new("doesntmatter").unwrap();
-        static ref SCHEMA: InputSchema =
-            InputSchema::parse(DOCUMENT, SUBGRAPH.clone()).expect("Failed to parse test schema");
+        static ref SCHEMA: InputSchema = InputSchema::parse_latest(DOCUMENT, SUBGRAPH.clone())
+            .expect("Failed to parse test schema");
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
     }
 

@@ -17,7 +17,7 @@ async fn insert_and_query(
 ) -> Result<QueryResult, StoreError> {
     let subgraph_id = DeploymentHash::new(subgraph_id).unwrap();
     let deployment = create_test_subgraph(&subgraph_id, schema).await;
-    let schema = InputSchema::parse(schema, subgraph_id.clone()).unwrap();
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
     let entities = entities
         .into_iter()
         .map(|(entity_type, data)| (schema.entity_type(entity_type).unwrap(), data))

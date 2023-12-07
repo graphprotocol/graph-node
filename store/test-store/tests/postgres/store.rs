@@ -67,7 +67,7 @@ lazy_static! {
     static ref TEST_SUBGRAPH_ID: DeploymentHash =
         DeploymentHash::new(TEST_SUBGRAPH_ID_STRING.as_str()).unwrap();
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
-        InputSchema::parse(USER_GQL, TEST_SUBGRAPH_ID.clone())
+        InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
         H256::from(hex!(
@@ -1250,8 +1250,8 @@ fn revert_block_with_dynamic_data_source_operations() {
 fn entity_changes_are_fired_and_forwarded_to_subscriptions() {
     run_test(|store, _, _| async move {
         let subgraph_id = DeploymentHash::new("EntityChangeTestSubgraph").unwrap();
-        let schema =
-            InputSchema::parse(USER_GQL, subgraph_id.clone()).expect("Failed to parse user schema");
+        let schema = InputSchema::parse_latest(USER_GQL, subgraph_id.clone())
+            .expect("Failed to parse user schema");
         let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
             id: subgraph_id.clone(),
             spec_version: Version::new(1, 0, 0),
