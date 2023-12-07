@@ -9,6 +9,10 @@ use thiserror::Error;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
 
+// Use different limits for test and production code to speed up tests
+#[cfg(debug_assertions)]
+pub const RETRY_DEFAULT_LIMIT: Duration = Duration::from_secs(1);
+#[cfg(not(debug_assertions))]
 pub const RETRY_DEFAULT_LIMIT: Duration = Duration::from_secs(30);
 
 /// Generic helper function for retrying async operations with built-in logging.
