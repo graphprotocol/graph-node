@@ -57,6 +57,9 @@ the **maximum size of a query result** (in CacheWeight)
 the **size of the result of successful GraphQL queries** (in CacheWeight)
 - `query_semaphore_wait_ms`
 Moving **average of time spent on waiting for postgres query semaphore**
+- `query_blocks_behind`
+A histogram for how many blocks behind the subgraph head queries are being made at.
+This helps inform pruning decisions.
 - `query_kill_rate`
 The rate at which the load manager kills queries
 - `registered_metrics`

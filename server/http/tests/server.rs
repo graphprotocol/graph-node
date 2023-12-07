@@ -20,6 +20,7 @@ impl GraphQLMetrics for TestGraphQLMetrics {
     fn observe_query_parsing(&self, _duration: Duration, _results: &QueryResults) {}
     fn observe_query_validation(&self, _duration: Duration, _id: &DeploymentHash) {}
     fn observe_query_validation_error(&self, _error_codes: Vec<&str>, _id: &DeploymentHash) {}
+    fn observe_query_blocks_behind(&self, _blocks_behind: i32, _id: &DeploymentHash) {}
 }
 
 /// A simple stupid query runner for testing.

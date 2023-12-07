@@ -49,4 +49,5 @@ pub trait GraphQLMetrics: Send + Sync + 'static {
     fn observe_query_parsing(&self, duration: Duration, results: &QueryResults);
     fn observe_query_validation(&self, duration: Duration, id: &DeploymentHash);
     fn observe_query_validation_error(&self, error_codes: Vec<&str>, id: &DeploymentHash);
+    fn observe_query_blocks_behind(&self, blocks_behind: i32, id: &DeploymentHash);
 }

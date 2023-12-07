@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::result;
 use std::sync::Arc;
 
+use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::{QueryPermit, SubscriptionManager, UnitStream};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::graphql::{object, ObjectOrInterface};
@@ -104,6 +105,9 @@ impl StoreResolver {
     ) -> Result<Self, QueryExecutionError> {
         let store_clone = store.cheap_clone();
         let block_ptr = Self::locate_block(store_clone.as_ref(), bc, state).await?;
+
+        let blocks_behind = state.latest_block.number - block_ptr.ptr.number;
+        graphql_metrics.observe_query_blocks_behind(blocks_behind, &deployment);
 
         let has_non_fatal_errors = store
             .has_deterministic_errors(block_ptr.ptr.block_number())
