@@ -4,6 +4,7 @@ use crate::prelude::{anyhow, s};
 
 use anyhow::Error;
 use graphql_parser::{self, Pos};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -172,6 +173,10 @@ pub enum SchemaValidationError {
     AggregationNonMatchingArg(String, String, String, String, String),
     #[error("Field {1} in aggregation {0} has arg `{3}` but that is not a numeric field in {2}")]
     AggregationNonNumericArg(String, String, String, String),
+    #[error("Aggregations are not supported with spec version {0}; please migrate the subgraph to the latest version")]
+    AggregationsNotSupported(Version),
+    #[error("Using Int8 as the type for the `id` field is not supported with spec version {0}; please migrate the subgraph to the latest version")]
+    IdTypeInt8NotSupported(Version),
 }
 
 /// A validated and preprocessed GraphQL schema for a subgraph.

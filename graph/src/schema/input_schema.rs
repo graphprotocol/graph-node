@@ -1340,8 +1340,8 @@ mod validations {
                 ext::DirectiveFinder, DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt,
             },
             store::{IdType, ValueType, ID},
+            subgraph::SPEC_VERSION_1_1_0,
         },
-        env::ENV_VARS,
         prelude::s,
         schema::{
             input_schema::{kw, AggregateFn, AggregationInterval},
@@ -1696,11 +1696,19 @@ mod validations {
                         None => errors.push(SchemaValidationError::IdFieldMissing(
                             object_type.name.clone(),
                         )),
-                        Some(_) => {
-                            if let Err(e) = IdType::try_from(*object_type) {
-                                errors.push(SchemaValidationError::IllegalIdType(e.to_string()));
+                        Some(_) => match IdType::try_from(*object_type) {
+                            Ok(IdType::Int8) => {
+                                if self.spec_version < &SPEC_VERSION_1_1_0 {
+                                    errors.push(SchemaValidationError::IdTypeInt8NotSupported(
+                                        self.spec_version.clone(),
+                                    ))
+                                }
                             }
-                        }
+                            Ok(IdType::String | IdType::Bytes) => { /* ok at any spec version */ }
+                            Err(e) => {
+                                errors.push(SchemaValidationError::IllegalIdType(e.to_string()))
+                            }
+                        },
                     }
                     errors
                 })
@@ -1770,16 +1778,10 @@ mod validations {
         }
 
         fn validate_no_extra_types(&self) -> Result<(), SchemaValidationError> {
-            let extra_type = if ENV_VARS.enable_timeseries {
-                |t: &&s::ObjectType| {
-                    t.find_directive(kw::ENTITY).is_none()
-                        && !t.name.eq(SCHEMA_TYPE_NAME)
-                        && t.find_directive(kw::AGGREGATION).is_none()
-                }
-            } else {
-                |t: &&s::ObjectType| {
-                    t.find_directive(kw::ENTITY).is_none() && !t.name.eq(SCHEMA_TYPE_NAME)
-                }
+            let extra_type = |t: &&s::ObjectType| {
+                t.find_directive(kw::ENTITY).is_none()
+                    && t.find_directive(kw::AGGREGATION).is_none()
+                    && !t.name.eq(SCHEMA_TYPE_NAME)
             };
             let types_without_entity_directive = self
                 .schema
@@ -2250,6 +2252,12 @@ mod validations {
                 }
             }
 
+            if !self.aggregations.is_empty() && self.spec_version < &SPEC_VERSION_1_1_0 {
+                return vec![SchemaValidationError::AggregationsNotSupported(
+                    self.spec_version.clone(),
+                )];
+            }
+
             let mut errors = Vec::new();
             for agg_type in &self.aggregations {
                 // FIXME: We could make it so that we silently add the `id` and
@@ -2290,6 +2298,8 @@ mod validations {
     #[cfg(test)]
     mod tests {
         use std::ffi::OsString;
+
+        use regex::Regex;
 
         use crate::{data::subgraph::LATEST_VERSION, prelude::DeploymentHash};
 
@@ -2600,74 +2610,99 @@ type Gravatar @entity {
 
         #[test]
         fn agg() {
+            fn parse_annotation(file_name: &str, line: &str) -> (bool, Version, String) {
+                let bad_annotation = |msg: &str| -> ! {
+                    panic!("test case {file_name} has an invalid annotation `{line}`: {msg}")
+                };
+
+                let header_rx = Regex::new(
+                    r"^#\s*(?P<exp>valid|fail)\s*(@\s*(?P<version>[0-9.]+))?\s*:\s*(?P<rest>.*)$",
+                )
+                .unwrap();
+                let Some(caps) = header_rx.captures(line) else {
+                    bad_annotation("must match the regex `^# (valid|fail) (@ ([0-9.]+))? : .*$`")
+                };
+                let valid = match caps.name("exp").map(|mtch| mtch.as_str()) {
+                    Some("valid") => true,
+                    Some("fail") => false,
+                    Some(other) => {
+                        bad_annotation(&format!("expected 'valid' or 'fail' but got {other}"))
+                    }
+                    None => bad_annotation("missing 'valid' or 'fail'"),
+                };
+                let version = match caps
+                    .name("version")
+                    .map(|mtch| Version::parse(mtch.as_str()))
+                    .transpose()
+                {
+                    Ok(Some(version)) => version,
+                    Ok(None) => LATEST_VERSION.clone(),
+                    Err(err) => bad_annotation(&err.to_string()),
+                };
+                let rest = match caps.name("rest").map(|mtch| mtch.as_str()) {
+                    Some(rest) => rest.to_string(),
+                    None => bad_annotation("missing message"),
+                };
+                (valid, version, rest)
+            }
+
             // The test files for this test are all GraphQL schemas that
             // must all have a comment as the first line. For a test that is
             // expected to succeed, the comment must be `# valid: ..`. For
             // tests that are expected to fail validation, the comment must
             // be `# fail: <err>` where <err> must appear in one of the
             // error messages when they are formatted as debug output.
-            if ENV_VARS.enable_timeseries {
-                let dir = std::path::PathBuf::from_iter([
-                    env!("CARGO_MANIFEST_DIR"),
-                    "src",
-                    "schema",
-                    "test_schemas",
-                ]);
-                let files = {
-                    let mut files = std::fs::read_dir(dir)
-                        .unwrap()
-                        .into_iter()
-                        .filter_map(|entry| entry.ok())
-                        .map(|entry| entry.path())
-                        .filter(|path| {
-                            path.extension() == Some(OsString::from("graphql").as_os_str())
-                        })
-                        .collect::<Vec<_>>();
-                    files.sort();
-                    files
+            let dir = std::path::PathBuf::from_iter([
+                env!("CARGO_MANIFEST_DIR"),
+                "src",
+                "schema",
+                "test_schemas",
+            ]);
+            let files = {
+                let mut files = std::fs::read_dir(dir)
+                    .unwrap()
+                    .into_iter()
+                    .filter_map(|entry| entry.ok())
+                    .map(|entry| entry.path())
+                    .filter(|path| path.extension() == Some(OsString::from("graphql").as_os_str()))
+                    .collect::<Vec<_>>();
+                files.sort();
+                files
+            };
+            for file in files {
+                let schema = std::fs::read_to_string(&file).unwrap();
+                let file_name = file.file_name().unwrap().to_str().unwrap();
+                let first_line = schema.lines().next().unwrap();
+                let (valid, version, msg) = parse_annotation(file_name, first_line);
+                let schema = {
+                    let hash = DeploymentHash::new("test").unwrap();
+                    match BaseSchema::parse(&schema, hash) {
+                        Ok(schema) => schema,
+                        Err(e) => panic!("test case {file_name} failed to parse: {e}"),
+                    }
                 };
-                for file in files {
-                    let schema = std::fs::read_to_string(&file).unwrap();
-                    let file_name = file.file_name().unwrap().to_str().unwrap();
-                    let first_line = schema.lines().next().unwrap();
-                    let (valid, msg) = if first_line.starts_with("# valid:") {
-                        (true, first_line.strip_prefix("# valid:").unwrap())
-                    } else if first_line.starts_with("# fail:") {
-                        (false, first_line.strip_prefix("# fail:").unwrap())
-                    } else {
-                        panic!("test case {file_name} needs a valid/fail annotation");
-                    };
-                    let msg = msg.trim();
-                    let schema = {
-                        let hash = DeploymentHash::new("test").unwrap();
-                        match BaseSchema::parse(&schema, hash) {
-                            Ok(schema) => schema,
-                            Err(e) => panic!("test case {file_name} failed to parse: {e}"),
-                        }
-                    };
-                    let res = validate(&schema);
-                    match (valid, res) {
-                        (true, Err(errs)) => {
-                            panic!("{file_name} should validate: {errs:?}",);
-                        }
-                        (false, Ok(_)) => {
-                            panic!("{file_name} should fail validation");
-                        }
-                        (false, Err(errs)) => {
-                            if errs.iter().any(|err| {
-                                err.to_string().contains(msg) || format!("{err:?}").contains(msg)
-                            }) {
-                                println!("{file_name} failed as expected: {errs:?}",)
-                            } else {
-                                let msgs: Vec<_> = errs.iter().map(|err| err.to_string()).collect();
-                                panic!(
+                let res = super::validate(&version, &schema);
+                match (valid, res) {
+                    (true, Err(errs)) => {
+                        panic!("{file_name} should validate: {errs:?}",);
+                    }
+                    (false, Ok(_)) => {
+                        panic!("{file_name} should fail validation");
+                    }
+                    (false, Err(errs)) => {
+                        if errs.iter().any(|err| {
+                            err.to_string().contains(&msg) || format!("{err:?}").contains(&msg)
+                        }) {
+                            println!("{file_name} failed as expected: {errs:?}",)
+                        } else {
+                            let msgs: Vec<_> = errs.iter().map(|err| err.to_string()).collect();
+                            panic!(
                                     "{file_name} failed but not with the expected error `{msg}`: {errs:?} {msgs:?}",
                                 )
-                            }
                         }
-                        (true, Ok(_)) => {
-                            println!("{file_name} validated as expected")
-                        }
+                    }
+                    (true, Ok(_)) => {
+                        println!("{file_name} validated as expected")
                     }
                 }
             }
