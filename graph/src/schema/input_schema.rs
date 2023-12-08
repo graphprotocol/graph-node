@@ -485,7 +485,7 @@ impl InputSchema {
     /// `InputSchema`
     pub fn api_schema(&self) -> Result<ApiSchema, anyhow::Error> {
         let mut schema = self.inner.schema.clone();
-        schema.document = api_schema(&self.inner.schema.document)?;
+        schema.document = api_schema(&self.inner.schema)?;
         schema.add_subgraph_id_directives(schema.id.clone());
         ApiSchema::from_api_schema(schema)
     }
