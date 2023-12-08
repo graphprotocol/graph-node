@@ -458,7 +458,7 @@ fn version_info() {
     async fn setup() -> DeploymentLocator {
         let id = DeploymentHash::new(NAME).unwrap();
         remove_subgraphs();
-        block_store::set_chain(vec![], NETWORK_NAME);
+        block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph(&id, SUBGRAPH_GQL).await
     }
 
@@ -500,7 +500,7 @@ fn subgraph_features() {
         let id = DeploymentHash::new(NAME).unwrap();
 
         remove_subgraphs();
-        block_store::set_chain(vec![], NETWORK_NAME);
+        block_store::set_chain(vec![], NETWORK_NAME).await;
         create_test_subgraph_with_features(&id, SUBGRAPH_GQL).await;
 
         let DeploymentFeatures {

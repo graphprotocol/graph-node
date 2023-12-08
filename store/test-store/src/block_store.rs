@@ -159,19 +159,20 @@ impl BlockchainBlock for FakeBlock {
     }
 }
 
-pub type FakeBlockList<'a> = Vec<&'static FakeBlock>;
+pub type FakeBlockList = Vec<&'static FakeBlock>;
 
 /// Store the given chain as the blocks for the `network` set the
 /// network's genesis block to `genesis_hash`, and head block to
 /// `null`
-pub fn set_chain(chain: FakeBlockList, network: &str) {
+pub async fn set_chain(chain: FakeBlockList, network: &str) {
     let store = crate::store::STORE
         .block_store()
         .chain_store(network)
         .unwrap();
-    let chain: Vec<&dyn BlockchainBlock> = chain
+    let chain: Vec<Arc<dyn BlockchainBlock>> = chain
         .iter()
-        .map(|block| *block as &dyn BlockchainBlock)
+        .cloned()
+        .map(|block| Arc::new(block.clone()) as Arc<dyn BlockchainBlock>)
         .collect();
-    store.set_chain(&GENESIS_BLOCK.hash, chain);
+    store.set_chain(&GENESIS_BLOCK.hash, chain).await;
 }

@@ -33,7 +33,7 @@ where
 {
     run_test_sequentially(|store| async move {
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
-            block_store::set_chain(chain.clone(), name);
+            block_store::set_chain(chain.clone(), name).await;
 
             let chain_store = store.block_store().chain_store(name).expect("chain store");
 
@@ -51,7 +51,7 @@ where
 {
     run_test_sequentially(|store| async move {
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
-            block_store::set_chain(chain.clone(), name);
+            block_store::set_chain(chain.clone(), name).await;
 
             let chain_store = store.block_store().chain_store(name).expect("chain store");
 

@@ -1267,15 +1267,7 @@ mod data {
 
         #[cfg(debug_assertions)]
         // used by `super::set_chain` for test support
-        pub(super) fn set_chain(
-            &self,
-            conn: &PgConnection,
-            chain_name: &str,
-            genesis_hash: &str,
-            chain: Vec<&dyn Block>,
-        ) {
-            use public::ethereum_networks as n;
-
+        pub(super) fn remove_chain(&self, conn: &PgConnection, chain_name: &str) {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as c;
@@ -1304,19 +1296,6 @@ mod data {
                     }
                 }
             }
-
-            for block in &chain {
-                self.upsert_block(conn, chain_name, *block, true).unwrap();
-            }
-
-            diesel::update(n::table.filter(n::name.eq(chain_name)))
-                .set((
-                    n::genesis_block_hash.eq(genesis_hash),
-                    n::head_block_hash.eq::<Option<&str>>(None),
-                    n::head_block_number.eq::<Option<i64>>(None),
-                ))
-                .execute(conn)
-                .unwrap();
         }
 
         /// Queries the database for all the transaction receipts in a given block.
@@ -1598,11 +1577,24 @@ impl ChainStore {
     /// network's genesis block to `genesis_hash`, and head block to
     /// `null`
     #[cfg(debug_assertions)]
-    pub fn set_chain(&self, genesis_hash: &str, chain: Vec<&dyn Block>) {
+    pub async fn set_chain(&self, genesis_hash: &str, chain: Vec<Arc<dyn Block>>) {
         let conn = self.pool.get().expect("can get a database connection");
 
-        self.storage
-            .set_chain(&conn, &self.chain, genesis_hash, chain);
+        self.storage.remove_chain(&conn, &self.chain);
+
+        for block in chain {
+            self.upsert_block(block).await.expect("can upsert block");
+        }
+
+        use public::ethereum_networks as n;
+        diesel::update(n::table.filter(n::name.eq(&self.chain)))
+            .set((
+                n::genesis_block_hash.eq(genesis_hash),
+                n::head_block_hash.eq::<Option<&str>>(None),
+                n::head_block_number.eq::<Option<i64>>(None),
+            ))
+            .execute(&conn)
+            .unwrap();
     }
 
     pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {

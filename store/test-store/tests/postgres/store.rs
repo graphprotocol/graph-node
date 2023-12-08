@@ -1946,7 +1946,8 @@ fn cleanup_cached_blocks() {
         block_store::set_chain(
             vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO, &*BLOCK_THREE],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -1977,7 +1978,8 @@ fn parse_timestamp() {
                 &*BLOCK_THREE_TIMESTAMP,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -2010,7 +2012,8 @@ fn parse_timestamp_firehose() {
                 &*BLOCK_THREE_TIMESTAMP_FIREHOSE,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)
@@ -2043,7 +2046,8 @@ fn parse_null_timestamp() {
                 &*BLOCK_THREE_NO_TIMESTAMP,
             ],
             NETWORK_NAME,
-        );
+        )
+        .await;
         let chain_store = store
             .block_store()
             .chain_store(NETWORK_NAME)

@@ -177,13 +177,13 @@ async fn setup(
     use test_store::block_store::{self, BLOCK_ONE, BLOCK_TWO, GENESIS_BLOCK};
 
     /// Make sure we get rid of all subgraphs once for the entire test run
-    fn global_init() {
+    async fn global_init() {
         lazy_static! {
             static ref STORE_CLEAN: AtomicBool = AtomicBool::new(false);
         }
         if !STORE_CLEAN.load(Ordering::SeqCst) {
             let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
-            block_store::set_chain(chain, NETWORK_NAME);
+            block_store::set_chain(chain, NETWORK_NAME).await;
             test_store::remove_subgraphs();
             STORE_CLEAN.store(true, Ordering::SeqCst);
         }
@@ -213,7 +213,7 @@ async fn setup(
         insert_test_entities(store.subgraph_store().as_ref(), manifest, id_type).await
     }
 
-    global_init();
+    global_init().await;
     let id = DeploymentHash::new(id).unwrap();
     let loc = store.subgraph_store().active_locator(&id).unwrap();
 
