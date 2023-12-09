@@ -164,7 +164,7 @@ pub type FakeBlockList = Vec<&'static FakeBlock>;
 /// Store the given chain as the blocks for the `network` set the
 /// network's genesis block to `genesis_hash`, and head block to
 /// `null`
-pub async fn set_chain(chain: FakeBlockList, network: &str) {
+pub async fn set_chain(chain: FakeBlockList, network: &str) -> Vec<(BlockPtr, BlockHash)> {
     let store = crate::store::STORE
         .block_store()
         .chain_store(network)
@@ -174,5 +174,5 @@ pub async fn set_chain(chain: FakeBlockList, network: &str) {
         .cloned()
         .map(|block| Arc::new(block.clone()) as Arc<dyn BlockchainBlock>)
         .collect();
-    store.set_chain(&GENESIS_BLOCK.hash, chain).await;
+    store.set_chain(&GENESIS_BLOCK.hash, chain).await
 }

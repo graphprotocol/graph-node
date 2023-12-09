@@ -1577,10 +1577,15 @@ impl ChainStore {
     /// network's genesis block to `genesis_hash`, and head block to
     /// `null`
     #[cfg(debug_assertions)]
-    pub async fn set_chain(&self, genesis_hash: &str, chain: Vec<Arc<dyn Block>>) {
+    pub async fn set_chain(
+        &self,
+        genesis_hash: &str,
+        chain: Vec<Arc<dyn Block>>,
+    ) -> Vec<(BlockPtr, BlockHash)> {
         let conn = self.pool.get().expect("can get a database connection");
 
         self.storage.remove_chain(&conn, &self.chain);
+        self.recent_blocks_cache.clear();
 
         for block in chain {
             self.upsert_block(block).await.expect("can upsert block");
@@ -1595,6 +1600,7 @@ impl ChainStore {
             ))
             .execute(&conn)
             .unwrap();
+        self.recent_blocks_cache.blocks()
     }
 
     pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
@@ -2206,6 +2212,16 @@ mod recent_blocks_cache {
         ) {
             self.inner.write().insert_block(ptr, data, parent_hash);
             self.inner.read().update_write_metrics();
+        }
+
+        #[cfg(debug_assertions)]
+        pub fn blocks(&self) -> Vec<(BlockPtr, BlockHash)> {
+            self.inner
+                .read()
+                .blocks
+                .values()
+                .map(|block| (block.ptr.clone(), block.parent_hash.clone()))
+                .collect()
         }
     }
 }
