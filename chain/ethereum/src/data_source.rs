@@ -399,7 +399,11 @@ impl DataSource {
 
     fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
         // Get signature from the log
-        let topic0 = log.topics.get(0).context("Ethereum event has no topics")?;
+        let topic0 = match log.topics.get(0) {
+            Some(topic0) => topic0,
+            // Events without a topic should just be be ignored
+            None => return Ok(vec![]),
+        };
 
         let handlers = self
             .mapping
