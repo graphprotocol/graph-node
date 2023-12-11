@@ -96,6 +96,8 @@ mod data {
 
     use crate::transaction_receipt::RawTransactionReceipt;
 
+    use super::JsonBlock;
+
     pub(crate) const ETHEREUM_BLOCKS_TABLE_NAME: &str = "public.ethereum_blocks";
 
     pub(crate) const ETHEREUM_CALL_CACHE_TABLE_NAME: &str = "public.eth_call_cache";
@@ -199,6 +201,10 @@ mod data {
 
         fn number(&self) -> DynColumn<BigInt> {
             self.table.column::<BigInt, _>("number")
+        }
+
+        fn parent_hash(&self) -> DynColumn<Bytea> {
+            self.table.column::<Bytea, _>("parent_hash")
         }
 
         fn data(&self) -> DynColumn<Jsonb> {
@@ -566,7 +572,7 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             hashes: &[BlockHash],
-        ) -> Result<Vec<json::Value>, Error> {
+        ) -> Result<Vec<JsonBlock>, Error> {
             use diesel::dsl::any;
 
             // We need to deal with chain stores where some entries have a
@@ -576,29 +582,43 @@ mod data {
             // Json object is what should be in 'block'
             //
             // see also 7736e440-4c6b-11ec-8c4d-b42e99f52061
-            match self {
+            let x = match self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
 
                     b::table
-                        .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
+                        .select((
+                            b::hash,
+                            b::number,
+                            b::parent_hash,
+                            sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                        ))
                         .filter(b::network_name.eq(chain))
                         .filter(b::hash.eq(any(Vec::from_iter(
                             hashes.iter().map(|h| format!("{:x}", h)),
                         ))))
-                        .load::<json::Value>(conn)
+                        .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
                 }
                 Storage::Private(Schema { blocks, .. }) => blocks
                     .table()
-                    .select(sql::<Jsonb>("coalesce(data -> 'block', data)"))
+                    .select((
+                        blocks.hash(),
+                        blocks.number(),
+                        blocks.parent_hash(),
+                        sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                    ))
                     .filter(
                         blocks
                             .hash()
                             .eq(any(Vec::from_iter(hashes.iter().map(|h| h.as_slice())))),
                     )
-                    .load::<json::Value>(conn),
-            }
-            .map_err(Into::into)
+                    .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
+            }?;
+            Ok(x.into_iter()
+                .map(|(hash, nr, parent, data)| {
+                    JsonBlock::new(BlockPtr::new(hash, nr as i32), parent, Some(data))
+                })
+                .collect())
         }
 
         pub(super) fn block_hashes_by_block_number(
@@ -1842,7 +1862,13 @@ impl ChainStoreTrait for ChainStore {
     fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
             let conn = self.get_conn()?;
-            self.storage.blocks(&conn, &self.chain, &hashes)
+            let values = self
+                .storage
+                .blocks(&conn, &self.chain, &hashes)?
+                .into_iter()
+                .filter_map(|block| block.data)
+                .collect();
+            Ok(values)
         } else {
             let cached = self.recent_blocks_cache.get_blocks_by_hash(hashes);
             let stored = if cached.len() < hashes.len() {
@@ -1858,6 +1884,7 @@ impl ChainStoreTrait for ChainStore {
             };
 
             let mut result = cached.into_iter().map(|(_, data)| data).collect::<Vec<_>>();
+            let stored = stored.into_iter().filter_map(|block| block.data);
             result.extend(stored);
             Ok(result)
         }
