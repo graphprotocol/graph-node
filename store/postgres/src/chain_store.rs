@@ -32,6 +32,7 @@ use crate::{
 };
 
 /// Our own internal notion of a block
+#[derive(Clone, Debug)]
 struct JsonBlock {
     ptr: BlockPtr,
     parent_hash: BlockHash,
@@ -1878,7 +1879,11 @@ impl ChainStoreTrait for ChainStore {
                     .cloned()
                     .collect::<Vec<_>>();
                 let conn = self.get_conn()?;
-                self.storage.blocks(&conn, &self.chain, &hashes)?
+                let stored = self.storage.blocks(&conn, &self.chain, &hashes)?;
+                for block in &stored {
+                    self.recent_blocks_cache.insert_block(block.clone());
+                }
+                stored
             } else {
                 Vec::new()
             };
