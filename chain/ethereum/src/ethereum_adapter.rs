@@ -1303,14 +1303,21 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         .map(move |result| {
                             // Don't block handler execution on writing to the cache.
                             let for_cache = result.0.clone();
-                            let _ = graph::spawn_blocking_allow_panic(move || {
-                                cache
-                                    .set_call(call.address, &call_data, call.block_ptr, &for_cache)
-                                    .map_err(|e| {
-                                        error!(logger, "call cache set error";
-                                                   "error" => e.to_string())
-                                    })
-                            });
+                            if !result.0.is_empty() {
+                                let _ = graph::spawn_blocking_allow_panic(move || {
+                                    cache
+                                        .set_call(
+                                            call.address,
+                                            &call_data,
+                                            call.block_ptr,
+                                            &for_cache,
+                                        )
+                                        .map_err(|e| {
+                                            error!(logger, "call cache set error";
+                                                       "error" => e.to_string())
+                                        })
+                                });
+                            }
                             result.0
                         }),
                     )
