@@ -31,6 +31,23 @@ use crate::{
     connection_pool::ConnectionPool,
 };
 
+/// Our own internal notion of a block
+struct JsonBlock {
+    ptr: BlockPtr,
+    parent_hash: BlockHash,
+    data: Option<json::Value>,
+}
+
+impl JsonBlock {
+    fn new(ptr: BlockPtr, parent_hash: BlockHash, data: Option<json::Value>) -> Self {
+        JsonBlock {
+            ptr,
+            parent_hash,
+            data,
+        }
+    }
+}
+
 /// Tables in the 'public' database schema that store chain-specific data
 mod public {
     table! {
@@ -1637,8 +1654,8 @@ impl ChainStoreTrait for ChainStore {
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
         // We should always have the parent block available to us at this point.
         if let Some(parent_hash) = block.parent_hash() {
-            self.recent_blocks_cache
-                .insert_block(block.ptr(), block.data().ok(), parent_hash);
+            let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
+            self.recent_blocks_cache.insert_block(block);
         }
 
         let pool = self.pool.clone();
@@ -2003,12 +2020,6 @@ mod recent_blocks_cache {
     use super::*;
     use std::collections::BTreeMap;
 
-    struct CachedBlock {
-        ptr: BlockPtr,
-        data: Option<json::Value>,
-        parent_hash: BlockHash,
-    }
-
     struct Inner {
         network: String,
         metrics: Arc<ChainStoreMetrics>,
@@ -2018,7 +2029,7 @@ mod recent_blocks_cache {
         // guarantee that there are no block number gaps, as block numbers are
         // not strictly continuous:
         //   #14 (Hash ABC1, Parent XX) -> #17 (Hash EBD2, Parent ABC1)
-        blocks: BTreeMap<BlockNumber, CachedBlock>,
+        blocks: BTreeMap<BlockNumber, JsonBlock>,
         // We only store these many blocks.
         capacity: usize,
     }
@@ -2054,7 +2065,7 @@ mod recent_blocks_cache {
             self.blocks.last_key_value().map(|b| &b.1.ptr)
         }
 
-        fn earliest_block(&self) -> Option<&CachedBlock> {
+        fn earliest_block(&self) -> Option<&JsonBlock> {
             self.blocks.first_key_value().map(|b| b.1)
         }
 
@@ -2084,21 +2095,10 @@ mod recent_blocks_cache {
                 .set(self.chain_head().map(|b| b.number).unwrap_or(0) as f64);
         }
 
-        fn insert_block(
-            &mut self,
-            ptr: BlockPtr,
-            data: Option<json::Value>,
-            parent_hash: BlockHash,
-        ) {
-            fn is_parent_of(parent: &BlockPtr, child: &CachedBlock) -> bool {
+        fn insert_block(&mut self, block: JsonBlock) {
+            fn is_parent_of(parent: &BlockPtr, child: &JsonBlock) -> bool {
                 child.parent_hash == parent.hash
             }
-
-            let block = CachedBlock {
-                ptr,
-                data,
-                parent_hash,
-            };
 
             let Some(chain_head) = self.chain_head() else {
                 // We don't have anything in the cache, so we're free to store
@@ -2204,13 +2204,8 @@ mod recent_blocks_cache {
         /// its associated `data`. Note that for this to work, `child` must be
         /// in the cache already. The first block in the cache should be
         /// inserted via [`RecentBlocksCache::set_chain_head`].
-        pub fn insert_block(
-            &self,
-            ptr: BlockPtr,
-            data: Option<json::Value>,
-            parent_hash: BlockHash,
-        ) {
-            self.inner.write().insert_block(ptr, data, parent_hash);
+        pub(super) fn insert_block(&self, block: JsonBlock) {
+            self.inner.write().insert_block(block);
             self.inner.read().update_write_metrics();
         }
 
