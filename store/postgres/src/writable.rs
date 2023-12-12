@@ -900,7 +900,8 @@ impl Queue {
     /// is a write request. We will only append if several conditions are
     /// true:
     ///
-    ///   1. The subgraph is not synced
+    ///   1. The subgraph is not synced or `GRAPH_STORE_WRITE_BATCH_SYNCED`
+    ///      is `true`
     ///   2. The newest request (back of the queue) is a write
     ///   3. The newest request is not already being processed by the
     ///      writing thread
@@ -919,10 +920,10 @@ impl Queue {
     /// a 'full' write batch, i.e., one that is either big enough or old
     /// enough
     async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
-        let batch = if ENV_VARS.store.write_batch_size == 0
-            || ENV_VARS.store.write_batch_duration.is_zero()
-            || !self.batch_writes()
-        {
+        let do_batch = ENV_VARS.store.write_batch_size > 0
+            && !ENV_VARS.store.write_batch_duration.is_zero()
+            && (ENV_VARS.store.write_batch_synced || self.batch_writes());
+        let batch = if !do_batch {
             Some(batch)
         } else {
             self.queue.map_newest(move |newest| {
