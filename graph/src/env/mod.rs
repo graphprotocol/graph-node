@@ -176,6 +176,10 @@ pub struct EnvVars {
     /// Set by the environment variable `ETHEREUM_REORG_THRESHOLD`. The default
     /// value is 250 blocks.
     pub reorg_threshold: BlockNumber,
+    /// The time to wait between polls when using polling block ingestor.
+    /// The value is set by `ETHERUM_POLLING_INTERVAL` in millis and the
+    /// default is 1000.
+    pub ingestor_polling_interval: Duration,
     /// Set by the env var `GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS` which should point
     /// to a file with subgraph-specific settings
     pub subgraph_settings: Option<String>,
@@ -249,6 +253,7 @@ impl EnvVars {
             external_ws_base_url: inner.external_ws_base_url,
             static_filters_threshold: inner.static_filters_threshold,
             reorg_threshold: inner.reorg_threshold,
+            ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
             prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
             enable_gas_metrics: inner.enable_gas_metrics.0,
@@ -373,6 +378,8 @@ struct Inner {
     // JSON-RPC specific.
     #[envconfig(from = "ETHEREUM_REORG_THRESHOLD", default = "250")]
     reorg_threshold: BlockNumber,
+    #[envconfig(from = "ETHEREUM_POLLING_INTERVAL", default = "1000")]
+    ingestor_polling_interval: u64,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]
     subgraph_settings: Option<String>,
     #[envconfig(
