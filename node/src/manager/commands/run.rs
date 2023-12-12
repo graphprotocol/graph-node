@@ -147,6 +147,7 @@ pub async fn run(
 
     let client = Arc::new(ChainClient::new(firehose_endpoints, eth_adapters));
 
+    let chain_config = config.chains.chains.get(&network_name).unwrap();
     let chain = ethereum::Chain::new(
         logger_factory.clone(),
         network_name.clone(),
@@ -170,7 +171,7 @@ pub async fn run(
             chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
         }),
         graph::env::ENV_VARS.reorg_threshold,
-        graph::env::ENV_VARS.ingestor_polling_interval,
+        chain_config.polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
     );

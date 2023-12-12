@@ -443,6 +443,7 @@ async fn main() {
         let ethereum_chains = ethereum_networks_as_chains(
             &mut blockchain_map,
             &logger,
+            &config,
             node_id.clone(),
             metrics_registry.clone(),
             eth_firehose_only_networks,
@@ -819,6 +820,7 @@ where
 fn ethereum_networks_as_chains(
     blockchain_map: &mut BlockchainMap,
     logger: &Logger,
+    config: &Config,
     node_id: NodeId,
     registry: Arc<MetricsRegistry>,
     firehose_networks: Option<&FirehoseNetworks>,
@@ -871,6 +873,7 @@ fn ethereum_networks_as_chains(
                 chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
             });
 
+            let chain_config = config.chains.chains.get(network_name).unwrap();
             let chain = ethereum::Chain::new(
                 logger_factory.clone(),
                 network_name.clone(),
@@ -885,7 +888,7 @@ fn ethereum_networks_as_chains(
                 Arc::new(adapter_selector),
                 runtime_adapter,
                 ENV_VARS.reorg_threshold,
-                ENV_VARS.ingestor_polling_interval,
+                chain_config.polling_interval,
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))
