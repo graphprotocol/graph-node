@@ -170,7 +170,7 @@ pub async fn run(
             chain_identifier: Arc::new(chain_store.chain_identifier.clone()),
         }),
         graph::env::ENV_VARS.reorg_threshold,
-        ethereum::ENV_VARS.ingestor_polling_interval,
+        graph::env::ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
     );

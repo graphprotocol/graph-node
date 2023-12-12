@@ -885,7 +885,7 @@ fn ethereum_networks_as_chains(
                 Arc::new(adapter_selector),
                 runtime_adapter,
                 ENV_VARS.reorg_threshold,
-                ethereum::ENV_VARS.ingestor_polling_interval,
+                ENV_VARS.ingestor_polling_interval,
                 is_ingestible,
             );
             (network_name.clone(), Arc::new(chain))

@@ -58,7 +58,7 @@ pub async fn chain(
         triggers_adapter,
         Arc::new(NoopRuntimeAdapter { x: PhantomData }),
         ENV_VARS.reorg_threshold,
-        graph_chain_ethereum::ENV_VARS.ingestor_polling_interval,
+        ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
     );
