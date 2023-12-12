@@ -397,23 +397,20 @@ impl DataSource {
         })
     }
 
-    fn handlers_for_log(&self, log: &Log) -> Result<Vec<MappingEventHandler>, Error> {
+    fn handlers_for_log(&self, log: &Log) -> Vec<MappingEventHandler> {
         // Get signature from the log
         let topic0 = match log.topics.get(0) {
             Some(topic0) => topic0,
             // Events without a topic should just be be ignored
-            None => return Ok(vec![]),
+            None => return vec![],
         };
 
-        let handlers = self
-            .mapping
+        self.mapping
             .event_handlers
             .iter()
             .filter(|handler| *topic0 == handler.topic0())
             .cloned()
-            .collect::<Vec<_>>();
-
-        Ok(handlers)
+            .collect::<Vec<_>>()
     }
 
     fn handler_for_call(&self, call: &EthereumCall) -> Result<Option<MappingCallHandler>, Error> {
@@ -652,7 +649,7 @@ impl DataSource {
             EthereumTrigger::Log(log_ref) => {
                 let log = Arc::new(log_ref.log().clone());
                 let receipt = log_ref.receipt();
-                let potential_handlers = self.handlers_for_log(&log)?;
+                let potential_handlers = self.handlers_for_log(&log);
 
                 // Map event handlers to (event handler, event ABI) pairs; fail if there are
                 // handlers that don't exist in the contract ABI
