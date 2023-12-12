@@ -1908,7 +1908,7 @@ impl ChainStoreTrait for ChainStore {
         );
 
         // Check the local cache first.
-        if let Some(data) = self.recent_blocks_cache.get_block(&block_ptr, offset) {
+        if let Some(data) = self.recent_blocks_cache.get_ancestor(&block_ptr, offset) {
             return Ok(data.1);
         }
 
@@ -2074,23 +2074,25 @@ mod recent_blocks_cache {
                 .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
         }
 
-        fn get_block(
+        fn get_ancestor(
             &self,
-            child: &BlockPtr,
+            child_ptr: &BlockPtr,
             offset: BlockNumber,
         ) -> Option<(&BlockPtr, Option<&json::Value>)> {
-            // Before we can go find the ancestor, we need to make sure that
-            // we're looking for the ancestor of the right block, i.e. check if
-            // the hash (and number) of the child matches.
-            let child_is_cached = &self.blocks.get(&child.number)?.ptr == child;
-
-            if child_is_cached {
-                let ancestor_block_number = child.number - offset;
-                let block = self.blocks.get(&ancestor_block_number)?;
-                Some((&block.ptr, block.data.as_ref()))
-            } else {
-                None
+            let child = self.blocks.get(&child_ptr.number)?;
+            if &child.ptr != child_ptr {
+                return None;
             }
+            let ancestor_block_number = child.ptr.number - offset;
+            let mut child = child;
+            for number in (ancestor_block_number..child_ptr.number).rev() {
+                let parent = self.blocks.get(&number)?;
+                if child.parent_hash != parent.ptr.hash {
+                    return None;
+                }
+                child = parent;
+            }
+            Some((&child.ptr, child.data.as_ref()))
         }
 
         fn chain_head(&self) -> Option<&BlockPtr> {
@@ -2196,7 +2198,7 @@ mod recent_blocks_cache {
             self.inner.read().update_write_metrics();
         }
 
-        pub fn get_block(
+        pub fn get_ancestor(
             &self,
             child: &BlockPtr,
             offset: BlockNumber,
@@ -2204,7 +2206,7 @@ mod recent_blocks_cache {
             let block_opt = self
                 .inner
                 .read()
-                .get_block(child, offset)
+                .get_ancestor(child, offset)
                 .map(|b| (b.0.clone(), b.1.cloned()));
 
             let inner = self.inner.read();
