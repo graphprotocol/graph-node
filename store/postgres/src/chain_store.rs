@@ -2055,12 +2055,10 @@ mod recent_blocks_cache {
     struct Inner {
         network: String,
         metrics: Arc<ChainStoreMetrics>,
-        // Note: we only ever store blocks in this cache that have a continuous
-        // line of ancestry between each other. Line of ancestry is verified by
-        // comparing parent hashes. Because of NEAR, however, we cannot
-        // guarantee that there are no block number gaps, as block numbers are
-        // not strictly continuous:
-        //   #14 (Hash ABC1, Parent XX) -> #17 (Hash EBD2, Parent ABC1)
+        // A list of blocks by block number. The list has at most `capacity`
+        // entries. If there are multiple writes for the same block number,
+        // the last one wins. Note that because of NEAR, the block numbers
+        // might have gaps.
         blocks: BTreeMap<BlockNumber, JsonBlock>,
         // We only store these many blocks.
         capacity: usize,
@@ -2130,40 +2128,7 @@ mod recent_blocks_cache {
         }
 
         fn insert_block(&mut self, block: JsonBlock) {
-            fn is_parent_of(parent: &BlockPtr, child: &JsonBlock) -> bool {
-                child.parent_hash == parent.hash
-            }
-
-            let Some(chain_head) = self.chain_head() else {
-                // We don't have anything in the cache, so we're free to store
-                // everything we want.
-                self.blocks.insert(block.ptr.number, block);
-                return;
-            };
-
-            if is_parent_of(chain_head, &block) {
-                // We have a new chain head that is a direct child of our
-                // previous chain head, so we get to keep all items in the
-                // cache.
-                self.blocks.insert(block.ptr.number, block);
-            } else if block.ptr.number > chain_head.number {
-                // We have a new chain head, but it's not a direct child of
-                // our previous chain head. This means that we must
-                // invalidate all the items in the cache before inserting
-                // this block.
-                self.blocks.clear();
-                self.blocks.insert(block.ptr.number, block);
-            } else {
-                // Unwrap: we have checked already that the cache is not empty,
-                // at the beginning of this function body.
-                let earliest_block = self.earliest_block().unwrap();
-                // Let's check if this is the parent of the earliest block in the
-                // cache.
-                if is_parent_of(&block.ptr, earliest_block) {
-                    self.blocks.insert(block.ptr.number, block);
-                }
-            }
-
+            self.blocks.insert(block.ptr.number, block);
             self.evict_if_necessary();
         }
     }
