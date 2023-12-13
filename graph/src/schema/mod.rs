@@ -52,6 +52,8 @@ impl fmt::Display for Strings {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
+    #[error("Invalid schema: {0}")]
+    InvalidSchema(String),
     #[error("Interface `{0}` not defined")]
     InterfaceUndefined(String),
 

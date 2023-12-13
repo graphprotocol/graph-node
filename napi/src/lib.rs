@@ -4,7 +4,7 @@ use napi_derive::napi;
 use graph::{data::subgraph::DeploymentHash, schema::InputSchema};
 
 #[napi]
-pub fn validate_schema(schema: String, id: String) -> n::Result<String> {
+pub fn validate_schema(schema: String, id: String) -> n::Result<Vec<String>> {
     let id = match DeploymentHash::new(id) {
         Ok(id) => id,
         Err(e) => {
@@ -14,9 +14,9 @@ pub fn validate_schema(schema: String, id: String) -> n::Result<String> {
             ))
         }
     };
-    let res = InputSchema::parse(&schema, id);
-    match res {
-        Ok(_) => Ok("ok".to_string()),
-        Err(e) => Err(n::Error::new(n::Status::GenericFailure, e.to_string())),
-    }
+    let errs = InputSchema::validate(&schema, id)
+        .into_iter()
+        .map(|e| e.to_string())
+        .collect();
+    Ok(errs)
 }
