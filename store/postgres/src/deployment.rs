@@ -2,9 +2,13 @@
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
 use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId};
+use diesel::deserialize::Queryable;
 use diesel::{
     connection::SimpleConnection,
+    deserialize::FromSql,
     dsl::{count, delete, insert_into, select, sql, update},
+    pg::Pg,
+    serialize::{Output, ToSql},
     sql_types::{Bool, Integer},
 };
 use diesel::{expression::SqlLiteral, pg::PgConnection, sql_types::Numeric};
@@ -31,6 +35,7 @@ use graph::{
     },
     schema::InputSchema,
 };
+use serde::Deserialize;
 use stable_hash_legacy::crypto::SetHasher;
 use std::{collections::BTreeSet, convert::TryFrom, ops::Bound, time::Duration};
 use std::{str::FromStr, sync::Arc};
@@ -39,8 +44,7 @@ use crate::connection_pool::ForeignServer;
 use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
-#[derive(DbEnum, Debug, Clone, Copy)]
-#[PgType = "text"]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub enum SubgraphHealth {
     Failed,
     Healthy,
@@ -52,6 +56,42 @@ impl SubgraphHealth {
         use graph::data::subgraph::schema::SubgraphHealth as H;
 
         H::from(*self).is_failed()
+    }
+    pub fn to_str(&self) -> &str {
+        match self {
+            SubgraphHealth::Failed => "failed",
+            SubgraphHealth::Healthy => "healthy",
+            SubgraphHealth::Unhealthy => "unhealthy",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "healthy" => SubgraphHealth::Healthy,
+            "unhealthy" => SubgraphHealth::Unhealthy,
+            _ => SubgraphHealth::Failed,
+        }
+    }
+}
+
+impl FromSql<Text, Pg> for SubgraphHealth {
+    fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
+        let s = <String as FromSql<Text, Pg>>::from_sql(bytes)?;
+        Ok(Self::from_str(&s))
+    }
+}
+
+impl ToSql<Text, Pg> for SubgraphHealth {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> diesel::serialize::Result {
+        let s = self.to_str().to_string();
+        <String as ToSql<Text, Pg>>::to_sql(&s, &mut out.reborrow())
+    }
+}
+
+impl Queryable<Text, Pg> for SubgraphHealth {
+    type Row = Self;
+
+    fn build(row: Self::Row) -> diesel::deserialize::Result<Self> {
+        Ok(row)
     }
 }
 
@@ -130,7 +170,7 @@ table! {
         id -> Integer,
         deployment -> Text,
         failed -> Bool,
-        health -> crate::deployment::SubgraphHealthMapping,
+        health -> Text,
         synced -> Bool,
         fatal_error -> Nullable<Text>,
         non_fatal_errors -> Array<Text>,
@@ -840,7 +880,7 @@ pub fn update_deployment_status(
     update(d::table.filter(d::deployment.eq(deployment_id.as_str())))
         .set((
             d::failed.eq(health.is_failed()),
-            d::health.eq(health),
+            d::health.eq(health.to_str()),
             d::fatal_error.eq::<Option<String>>(fatal_error),
             d::non_fatal_errors.eq::<Vec<String>>(non_fatal_errors.unwrap_or(vec![])),
         ))
@@ -898,9 +938,9 @@ fn check_health(
     update(
         d::table
             .filter(d::deployment.eq(id.as_str()))
-            .filter(d::health.eq(old)),
+            .filter(d::health.eq(old.to_str())),
     )
-    .set(d::health.eq(new))
+    .set(d::health.eq(new.to_str()))
     .execute(conn)
     .map(|_| ())
     .map_err(|e| e.into())
@@ -970,9 +1010,9 @@ pub(crate) fn revert_subgraph_errors(
         d::table
             .filter(d::deployment.eq(id.as_str()))
             .filter(d::failed.eq(true))
-            .filter(d::health.eq(SubgraphHealth::Failed)),
+            .filter(d::health.eq("failed")),
     )
-    .set((d::failed.eq(false), d::health.eq(SubgraphHealth::Healthy)))
+    .set((d::failed.eq(false), d::health.eq("healthy")))
     .execute(conn)
     .map(|_| ())
     .map_err(StoreError::from)
@@ -1115,7 +1155,7 @@ pub fn create_deployment(
         d::deployment.eq(site.deployment.as_str()),
         d::failed.eq(false),
         d::synced.eq(false),
-        d::health.eq(SubgraphHealth::Healthy),
+        d::health.eq("healthy"),
         d::fatal_error.eq::<Option<String>>(None),
         d::non_fatal_errors.eq::<Vec<String>>(vec![]),
         d::earliest_block_number.eq(earliest_block_number),

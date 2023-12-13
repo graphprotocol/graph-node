@@ -40,7 +40,7 @@ create type subgraphs."health"
 alter table
     subgraphs.subgraph_deployment
 add
-    column health text;
+    column health subgraphs.health;
 
 create index attr_subgraph_deployment_health
     on subgraphs."subgraph_deployment" using btree("health");

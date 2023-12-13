@@ -8,8 +8,6 @@ extern crate derive_more;
 extern crate diesel;
 #[macro_use]
 extern crate diesel_migrations;
-#[macro_use]
-extern crate diesel_derive_enum;
 
 mod advisory_lock;
 mod block_range;
