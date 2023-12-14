@@ -617,12 +617,17 @@ impl<'a> CopyProgress<'a> {
             .iter()
             .map(|table| table.batch.target_vid)
             .sum();
+        let current_vid = state
+            .tables
+            .iter()
+            .map(|table| table.batch.next_vid.min(table.batch.target_vid))
+            .sum();
         Self {
             logger,
             last_log: Instant::now(),
             src: state.src.site.clone(),
             dst: state.dst.site.clone(),
-            current_vid: 0,
+            current_vid,
             target_vid,
         }
     }
