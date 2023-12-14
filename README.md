@@ -37,7 +37,7 @@ The easiest way to run a Graph Node is to use the official Docker compose setup.
 This is a quick example to show a working Graph Node. It is a [subgraph for Gravatars](https://github.com/graphprotocol/example-subgraph).
 
 1. Install IPFS and run `ipfs init` followed by `ipfs daemon`.
-2. Install PostgreSQL and run `initdb -D .postgres` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
+2. Install PostgreSQL and run `initdb -D .postgres -E UTF8 --locale=C` followed by `pg_ctl -D .postgres -l logfile start` and `createdb graph-node`.
 3. If using Ubuntu, you may need to install additional packages:
    - `sudo apt-get install -y clang libpq-dev libssl-dev pkg-config`
 4. In the terminal, clone https://github.com/graphprotocol/example-subgraph, and install dependencies and generate types for contract ABIs:
