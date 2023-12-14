@@ -1,7 +1,8 @@
 alter table
     subgraphs.subgraph_deployment
 add
-    column if not exists health_new text not null default 'failed';
+    column if not exists health_new text not null default 'failed' 
+        check (health_new in ('failed', 'healthy', 'unhealthy'));
 
 update
     subgraphs.subgraph_deployment
@@ -22,3 +23,5 @@ alter table
     subgraphs.subgraph_deployment 
 rename column
     health_new to health;
+
+drop type subgraphs."health";
