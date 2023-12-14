@@ -12,12 +12,12 @@ update
 set
     health_new = health::subgraphs.health;
 
-alter table 
-    subgraphs.subgraph_deployment 
-drop column 
+alter table
+    subgraphs.subgraph_deployment
+drop column
     health;
 
-alter table 
-    subgraphs.subgraph_deployment 
+alter table
+    subgraphs.subgraph_deployment
 rename column
     health_new to health;
