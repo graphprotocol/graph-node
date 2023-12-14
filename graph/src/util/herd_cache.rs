@@ -25,9 +25,12 @@ type PinFut<R> = Pin<Box<dyn Future<Output = R> + 'static + Send>>;
 /// but more specialized. The name alludes to the fact that this data
 /// structure stops a thundering herd from causing the same work to be done
 /// repeatedly.
+#[derive(Clone)]
 pub struct HerdCache<R> {
     cache: Arc<TimedMutex<HashMap<Hash, Shared<PinFut<R>>>>>,
 }
+
+impl<R: Clone> CheapClone for HerdCache<R> {}
 
 impl<R: CheapClone> HerdCache<R> {
     pub fn new(id: impl Into<String>) -> Self {

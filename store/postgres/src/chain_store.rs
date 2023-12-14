@@ -7,6 +7,9 @@ use graph::env::ENV_VARS;
 use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
 use graph::prometheus::{CounterVec, GaugeVec};
+use graph::slog::Logger;
+use graph::stable_hash::crypto_stable_hash;
+use graph::util::herd_cache::HerdCache;
 
 use std::{
     collections::HashMap,
@@ -1483,7 +1486,13 @@ impl ChainStoreMetrics {
     }
 }
 
+#[derive(Clone)]
+struct BlocksLookupResult(Arc<Result<Vec<JsonBlock>, StoreError>>);
+
+impl CheapClone for BlocksLookupResult {}
+
 pub struct ChainStore {
+    logger: Logger,
     pool: ConnectionPool,
     pub chain: String,
     pub(crate) storage: data::Storage,
@@ -1498,10 +1507,12 @@ pub struct ChainStore {
     // with the database and to correctly implement invalidation. So, a
     // conservative approach is acceptable.
     recent_blocks_cache: RecentBlocksCache,
+    lookup_herd: HerdCache<BlocksLookupResult>,
 }
 
 impl ChainStore {
     pub(crate) fn new(
+        logger: Logger,
         chain: String,
         storage: data::Storage,
         net_identifier: &ChainIdentifier,
@@ -1513,7 +1524,9 @@ impl ChainStore {
     ) -> Self {
         let recent_blocks_cache =
             RecentBlocksCache::new(recent_blocks_cache_capacity, chain.clone(), metrics);
+        let lookup_herd = HerdCache::new(format!("chain_{}_herd_cache", chain));
         ChainStore {
+            logger,
             pool,
             chain,
             storage,
@@ -1522,6 +1535,7 @@ impl ChainStore {
             chain_head_update_sender,
             chain_identifier: net_identifier.clone(),
             recent_blocks_cache,
+            lookup_herd,
         }
     }
 
@@ -1668,7 +1682,7 @@ impl ChainStore {
     async fn blocks_from_store(
         self: &Arc<Self>,
         hashes: Vec<BlockHash>,
-    ) -> Result<Vec<JsonBlock>, Error> {
+    ) -> Result<Vec<JsonBlock>, StoreError> {
         let store = self.cheap_clone();
         let pool = self.pool.clone();
         let values = pool
@@ -1894,10 +1908,40 @@ impl ChainStoreTrait for ChainStore {
                     .filter(|hash| cached.iter().find(|(ptr, _)| &ptr.hash == *hash).is_none())
                     .cloned()
                     .collect::<Vec<_>>();
-                let stored = self.blocks_from_store(hashes).await?;
-                for block in &stored {
-                    self.recent_blocks_cache.insert_block(block.clone());
-                }
+                // We key this off the entire list of hashes, which means
+                // that concurrent attempts that look up `[h1, h2]` and
+                // `[h1, h3]` will still run two queries and duplicate the
+                // lookup of `h1`. Noticing that the two requests should be
+                // serialized would require a lot more work, and going to
+                // the database for one block hash, `h3`, is not much faster
+                // than looking up `[h1, h3]` though it would require less
+                // IO bandwidth
+                let hash = crypto_stable_hash(&hashes);
+                let this = self.clone();
+                let lookup_fut = async move {
+                    let res = this.blocks_from_store(hashes).await;
+                    BlocksLookupResult(Arc::new(res))
+                };
+                let lookup_herd = self.lookup_herd.cheap_clone();
+                let logger = self.logger.cheap_clone();
+                let (BlocksLookupResult(res), _) =
+                    lookup_herd.cached_query(hash, lookup_fut, &logger).await;
+                // Try to avoid cloning a non-concurrent lookup; it's not
+                // entirely clear whether that will actually avoid a clone
+                // since it depends on a lot of the details of how the
+                // `HerdCache` is implemented
+                let res = Arc::try_unwrap(res).unwrap_or_else(|arc| (*arc).clone());
+                let stored = match res {
+                    Ok(blocks) => {
+                        for block in &blocks {
+                            self.recent_blocks_cache.insert_block(block.clone());
+                        }
+                        blocks
+                    }
+                    Err(e) => {
+                        return Err(e.into());
+                    }
+                };
                 stored
             } else {
                 Vec::new()
