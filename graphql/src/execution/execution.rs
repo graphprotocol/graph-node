@@ -1,4 +1,4 @@
-use super::cache::{QueryBlockCache, QueryCache};
+use super::cache::QueryBlockCache;
 use async_recursion::async_recursion;
 use crossbeam::atomic::AtomicCell;
 use graph::{
@@ -8,7 +8,7 @@ use graph::{
     },
     prelude::{s, CheapClone},
     schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
-    util::{lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
+    util::{herd_cache::HerdCache, lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
 use parking_lot::MutexGuard;
@@ -42,7 +42,7 @@ lazy_static! {
             }
             caches
     };
-    static ref QUERY_HERD_CACHE: QueryCache<Arc<QueryResult>> = QueryCache::new("query_herd_cache");
+    static ref QUERY_HERD_CACHE: HerdCache<Arc<QueryResult>> = HerdCache::new("query_herd_cache");
 }
 
 struct WeightedResult {
