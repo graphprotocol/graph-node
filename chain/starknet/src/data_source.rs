@@ -380,6 +380,21 @@ fn starknet_keccak(data: &[u8]) -> [u8; 32] {
     // Remove the first 6 bits
     hash[0] &= 0b00000011;
 
-    // Because we know hash is always 32 bytes
-    *unsafe { &*(hash[..].as_ptr() as *const [u8; 32]) }
+    hash.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_starknet_keccak() {
+        let expected_hash: [u8; 32] =
+            hex::decode("016c11b0b5b808960df26f5bfc471d04c1995b0ffd2055925ad1be28d6baadfd")
+                .unwrap()
+                .try_into()
+                .unwrap();
+
+        assert_eq!(starknet_keccak("Hello world".as_bytes()), expected_hash);
+    }
 }
