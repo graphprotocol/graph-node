@@ -1338,7 +1338,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
     }
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
-    fn load_blocks(
+    async fn load_blocks(
         &self,
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
@@ -1347,7 +1347,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let block_hashes: Vec<_> = block_hashes.iter().cloned().collect();
         // Search for the block in the store first then use json-rpc as a backup.
         let mut blocks: Vec<Arc<LightEthereumBlock>> = chain_store
-            .blocks(&block_hashes.iter().map(|&b| b.into()).collect::<Vec<_>>())
+            .cheap_clone()
+            .blocks(block_hashes.iter().map(|&b| b.into()).collect::<Vec<_>>())
+            .await
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
@@ -1529,6 +1531,7 @@ pub(crate) async fn blocks_with_triggers(
 
     let blocks = eth
         .load_blocks(logger.cheap_clone(), chain_store.clone(), block_hashes)
+        .await
         .and_then(
             move |block| match triggers_by_block.remove(&(block.number() as BlockNumber)) {
                 Some(triggers) => Ok(BlockWithTriggers::new(

@@ -715,6 +715,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         self.chain_store.cheap_clone(),
                         HashSet::from_iter(Some(block.hash_as_h256())),
                     )
+                    .await
                     .collect()
                     .compat()
                     .await?;

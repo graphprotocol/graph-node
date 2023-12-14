@@ -573,7 +573,7 @@ mod data {
             conn: &PgConnection,
             chain: &str,
             hashes: &[BlockHash],
-        ) -> Result<Vec<JsonBlock>, Error> {
+        ) -> Result<Vec<JsonBlock>, StoreError> {
             use diesel::dsl::any;
 
             // We need to deal with chain stores where some entries have a
@@ -1664,6 +1664,23 @@ impl ChainStore {
         self.storage.truncate_block_cache(&conn)?;
         Ok(())
     }
+
+    async fn blocks_from_store(
+        self: &Arc<Self>,
+        hashes: Vec<BlockHash>,
+    ) -> Result<Vec<JsonBlock>, Error> {
+        let store = self.cheap_clone();
+        let pool = self.pool.clone();
+        let values = pool
+            .with_conn(move |conn, _| {
+                store
+                    .storage
+                    .blocks(&conn, &store.chain, &hashes)
+                    .map_err(CancelableError::from)
+            })
+            .await?;
+        Ok(values)
+    }
 }
 
 #[async_trait]
@@ -1860,26 +1877,24 @@ impl ChainStoreTrait for ChainStore {
         Ok(())
     }
 
-    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<json::Value>, Error> {
+    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<json::Value>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
-            let conn = self.get_conn()?;
             let values = self
-                .storage
-                .blocks(&conn, &self.chain, &hashes)?
+                .blocks_from_store(hashes)
+                .await?
                 .into_iter()
                 .filter_map(|block| block.data)
                 .collect();
             Ok(values)
         } else {
-            let cached = self.recent_blocks_cache.get_blocks_by_hash(hashes);
+            let cached = self.recent_blocks_cache.get_blocks_by_hash(&hashes);
             let stored = if cached.len() < hashes.len() {
                 let hashes = hashes
                     .iter()
                     .filter(|hash| cached.iter().find(|(ptr, _)| &ptr.hash == *hash).is_none())
                     .cloned()
                     .collect::<Vec<_>>();
-                let conn = self.get_conn()?;
-                let stored = self.storage.blocks(&conn, &self.chain, &hashes)?;
+                let stored = self.blocks_from_store(hashes).await?;
                 for block in &stored {
                     self.recent_blocks_cache.insert_block(block.clone());
                 }

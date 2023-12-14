@@ -458,7 +458,10 @@ pub trait ChainStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 
     /// Returns the blocks present in the store.
-    fn blocks(&self, hashes: &[BlockHash]) -> Result<Vec<serde_json::Value>, Error>;
+    async fn blocks(
+        self: Arc<Self>,
+        hashes: Vec<BlockHash>,
+    ) -> Result<Vec<serde_json::Value>, Error>;
 
     /// Get the `offset`th ancestor of `block_hash`, where offset=0 means the block matching
     /// `block_hash` and offset=1 means its parent. Returns None if unable to complete due to

@@ -905,7 +905,7 @@ pub trait EthereumAdapter: Send + Sync + 'static {
 
     /// Load Ethereum blocks in bulk, returning results as they come back as a Stream.
     /// May use the `chain_store` as a cache.
-    fn load_blocks(
+    async fn load_blocks(
         &self,
         logger: Logger,
         chain_store: Arc<dyn ChainStore>,
