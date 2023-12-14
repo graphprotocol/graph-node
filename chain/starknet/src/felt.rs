@@ -6,6 +6,8 @@ use std::{
 use graph::anyhow;
 use serde::{de::Visitor, Deserialize};
 
+/// Represents the primitive `FieldElement` type used in Starknet. Each `FieldElement` is 252-bit
+/// in size.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Felt([u8; 32]);
 
@@ -13,7 +15,7 @@ struct FeltVisitor;
 
 impl Debug for Felt {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{}", hex::encode(&self.0))
+        write!(f, "0x{}", hex::encode(self.0))
     }
 }
 
