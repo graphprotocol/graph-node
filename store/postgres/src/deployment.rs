@@ -40,6 +40,7 @@ use crate::{block_range::BLOCK_RANGE_COLUMN, primary::Site};
 use graph::constraint_violation;
 
 #[derive(DbEnum, Debug, Clone, Copy)]
+#[PgType = "text"]
 pub enum SubgraphHealth {
     Failed,
     Healthy,
