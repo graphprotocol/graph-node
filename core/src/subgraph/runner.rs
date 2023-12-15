@@ -88,13 +88,13 @@ where
     /// be removed. The same thing also applies to the block cache.
     /// This function must be called before continuing to process in order to avoid
     /// duplicated host insertion and POI issues with dirty entity changes.
-    fn revert_state(&mut self, block_number: BlockNumber) -> Result<(), Error> {
+    fn revert_state_to(&mut self, block_number: BlockNumber) -> Result<(), Error> {
         self.state.entity_lfu_cache = LfuCache::new();
 
-        // 1. Revert all hosts(created by DDS) up to block_number inclusively.
+        // 1. Revert all hosts(created by DDS) at a block higher than `block_number`.
         // 2. Unmark any offchain data sources that were marked done on the blocks being removed.
         // When no offchain datasources are present, 2. should be a noop.
-        self.ctx.revert_data_sources(block_number)?;
+        self.ctx.revert_data_sources(block_number + 1)?;
         Ok(())
     }
 
@@ -252,7 +252,7 @@ where
                         if let Some(store) = store.restart().await? {
                             let last_good_block =
                                 store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                            self.revert_state(last_good_block)?;
+                            self.revert_state_to(last_good_block)?;
                             self.inputs = Arc::new(self.inputs.with_store(store));
                             self.state.synced = self.inputs.store.is_deployment_synced().await?;
                         }
@@ -803,7 +803,6 @@ where
             // Handle unexpected stream errors by marking the subgraph as failed.
             Err(e) => {
                 self.metrics.stream.deployment_failed.set(1.0);
-                self.revert_state(block_ptr.block_number())?;
 
                 let message = format!("{:#}", e).replace('\n', "\t");
                 let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
@@ -1350,7 +1349,7 @@ where
             .deployment_head
             .set(subgraph_ptr.number as f64);
 
-        self.revert_state(subgraph_ptr.number)?;
+        self.revert_state_to(revert_to_ptr.number)?;
 
         let needs_restart: bool = self.needs_restart(revert_to_ptr, subgraph_ptr);
 
