@@ -1839,8 +1839,8 @@ impl ChainStoreTrait for ChainStore {
                     .filter(|hash| cached.iter().find(|(ptr, _)| &ptr.hash == *hash).is_none())
                     .cloned()
                     .collect::<Vec<_>>();
-                let conn = self.get_conn()?;
-                self.storage.blocks(&conn, &self.chain, &hashes)?
+                let mut conn = self.get_conn()?;
+                self.storage.blocks(&mut conn, &self.chain, &hashes)?
             } else {
                 Vec::new()
             };
