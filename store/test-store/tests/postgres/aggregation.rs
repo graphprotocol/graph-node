@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::{future::Future, sync::Arc};
 
 use graph::{
@@ -38,6 +39,8 @@ type Data @entity(timeseries: true) {
     token: Bytes!
     sum: BigDecimal! @aggregate(fn: "sum", arg: "price")
     max: BigDecimal! @aggregate(fn: "max", arg: "amount")
+    first: BigDecimal! @aggregate(fn: "first", arg: "amount")
+    last: BigDecimal! @aggregate(fn: "last", arg: "amount")
   }
 
   type TotalStats @aggregation(intervals: ["hour"], source: "Data") {
@@ -157,18 +160,22 @@ async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentL
 }
 
 fn stats_hour(schema: &InputSchema) -> Vec<Vec<Entity>> {
-    // Stats_hour aggregations up to BLOCKS[2]
+    // Note that an aggregation that is marked with block N will only
+    // contain data up to block N-1 since we do the aggregation at the first
+    // block after the aggregation interval has finished
+
+    // Stats_hour aggregations over BLOCKS[0..=1], i.e., at BLOCKS[2]
     let block2 = vec![
-        entity! { schema => id: 11i64, timestamp: 0i64, token: TOKEN1.clone(), sum: bd(3), max: bd(10) },
-        entity! { schema => id: 12i64, timestamp: 0i64, token: TOKEN2.clone(), sum: bd(3), max: bd(20) },
+        entity! { schema => id: 11i64, timestamp: 0i64, token: TOKEN1.clone(), sum: bd(3), max: bd(10), first: bd(10), last: bd(2) },
+        entity! { schema => id: 12i64, timestamp: 0i64, token: TOKEN2.clone(), sum: bd(3), max: bd(20), first: bd(1),  last: bd(20) },
     ];
 
     let block3 = {
         let mut v1 = block2.clone();
-        // Additional aggregations for BLOCKS[3]
+        // Stats_hour aggregations over BLOCKS[2], i.e., at BLOCKS[3]
         let mut v2 = vec![
-            entity! { schema => id: 21i64, timestamp: 3600i64, token: TOKEN1.clone(), sum: bd(3), max: bd(30) },
-            entity! { schema => id: 22i64, timestamp: 3600i64, token: TOKEN2.clone(), sum: bd(3), max: bd(3) },
+            entity! { schema => id: 21i64, timestamp: 3600i64, token: TOKEN1.clone(), sum: bd(3), max: bd(30), first: bd(30), last: bd(30) },
+            entity! { schema => id: 22i64, timestamp: 3600i64, token: TOKEN2.clone(), sum: bd(3), max: bd(3),  first: bd(3), last: bd(3) },
         ];
         v1.append(&mut v2);
         v1
@@ -235,6 +242,34 @@ where
     });
 }
 
+fn entity_diff(left: &[Entity], right: &[Entity]) -> Result<String, std::fmt::Error> {
+    let mut diff = String::new();
+    for (i, (l, r)) in left.iter().zip(right.iter()).enumerate() {
+        if l != r {
+            writeln!(
+                diff,
+                "entities #{}(left: {}, right: {}) differ:",
+                i,
+                l.id(),
+                r.id()
+            )?;
+            for (k, v) in l.clone().sorted() {
+                match r.get(&k) {
+                    None => writeln!(diff, "  {}: left: {} right: missing", k, v)?,
+                    Some(v2) if &v != v2 => writeln!(diff, "  {}: left: {} right: {}", k, v, v2)?,
+                    _ => (),
+                }
+            }
+            for (k, v) in r.clone().sorted() {
+                if !l.contains_key(&k) {
+                    writeln!(diff, "  {}: left: missing right: {}", k, v)?;
+                }
+            }
+        }
+    }
+    Ok(diff)
+}
+
 #[test]
 fn simple() {
     run_test(|env| async move {
@@ -244,6 +279,10 @@ fn simple() {
         let exp = stats_hour(&env.writable.input_schema());
         for i in 0..4 {
             let act = env.all_entities("Stats_hour", BLOCKS[i].number);
+            let diff = entity_diff(&exp[i], &act).unwrap();
+            if !diff.is_empty() {
+                panic!("entities for BLOCKS[{}] differ:\n{}", i, diff);
+            }
             assert_eq!(exp[i], act, "entities for BLOCKS[{}] are the same", i);
         }
     })

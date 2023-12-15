@@ -49,6 +49,8 @@ impl<'a> Agg<'a> {
             Sum => write!(w, "sum(\"{}\")", self.src_column.unwrap().name)?,
             Max => write!(w, "max(\"{}\")", self.src_column.unwrap().name)?,
             Min => write!(w, "min(\"{}\")", self.src_column.unwrap().name)?,
+            First => write!(w, "first(\"{}\")", self.src_column.unwrap().name)?,
+            Last => write!(w, "last(\"{}\")", self.src_column.unwrap().name)?,
             Cnt => write!(w, "count(*)")?,
         }
         write!(w, " as \"{}\"", self.agg_column.name)
