@@ -1,9 +1,10 @@
 pub mod ethereum;
 pub mod substreams;
 
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Error;
 use async_stream::stream;
@@ -578,11 +579,13 @@ pub async fn wait_for_sync(
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
     // We wait one second between checks for the subgraph to sync. That
-    // means we wait up to a minute here by default
+    // means we wait up to a 30 seconds here by default.
     lazy_static! {
-        static ref MAX_ERR_COUNT: usize = std::env::var("RUNNER_TESTS_WAIT_FOR_SYNC_SECS")
-            .map(|val| val.parse().unwrap())
-            .unwrap_or(60);
+        static ref MAX_WAIT: Duration = Duration::from_secs(
+            std::env::var("RUNNER_TESTS_WAIT_FOR_SYNC_SECS")
+                .map(|val| val.parse().unwrap())
+                .unwrap_or(30)
+        );
     }
     const WAIT_TIME: Duration = Duration::from_secs(1);
 
@@ -601,11 +604,11 @@ pub async fn wait_for_sync(
             .unwrap();
     }
 
-    let mut err_count = 0;
+    let start = Instant::now();
 
     flush(logger, &store, deployment).await;
 
-    while err_count < *MAX_ERR_COUNT {
+    while start.elapsed() < *MAX_WAIT {
         tokio::time::sleep(WAIT_TIME).await;
         flush(logger, &store, deployment).await;
 
@@ -613,7 +616,6 @@ pub async fn wait_for_sync(
             Ok(Some(ptr)) => ptr,
             res => {
                 info!(&logger, "{:?}", res);
-                err_count += 1;
                 continue;
             }
         };
@@ -621,9 +623,7 @@ pub async fn wait_for_sync(
         let status = store.status_for_id(deployment.id);
 
         if let Some(fatal_error) = status.fatal_error {
-            if fatal_error.block_ptr.as_ref().unwrap() == &stop_block {
-                return Err(fatal_error);
-            }
+            return Err(fatal_error);
         }
 
         if block_ptr == stop_block {
@@ -634,8 +634,7 @@ pub async fn wait_for_sync(
 
     // We only get here if we timed out waiting for the subgraph to reach
     // the stop block
-    crit!(logger, "TEST: sync never completed (err_count={err_count})");
-    panic!("Sync did not complete within {err_count}s");
+    panic!("Sync did not complete within {}s", MAX_WAIT.as_secs());
 }
 
 struct StaticBlockRefetcher<C: Blockchain> {
@@ -799,28 +798,47 @@ fn stream_events<C: Blockchain>(
 where
     C::TriggerData: Clone,
 {
+    struct ForkDb<B: Block> {
+        blocks: HashMap<BlockPtr, B>,
+    }
+
+    impl<B: Block> ForkDb<B> {
+        fn common_ancestor(&self, a: BlockPtr, b: BlockPtr) -> Option<&B> {
+            let mut a = self.blocks.get(&a).unwrap();
+            let mut b = self.blocks.get(&b).unwrap();
+            while a.number() > b.number() {
+                dbg!(a.ptr().number);
+                a = self.blocks.get(&a.parent_ptr()?).unwrap();
+            }
+            while b.number() > a.number() {
+                dbg!(b.ptr().number);
+                b = self.blocks.get(&b.parent_ptr()?).unwrap();
+            }
+            while a.hash() != b.hash() {
+                a = self.blocks.get(&a.parent_ptr()?).unwrap();
+                b = self.blocks.get(&b.parent_ptr()?).unwrap();
+            }
+            Some(a)
+        }
+    }
+
+    let fork_db = ForkDb {
+        blocks: blocks.iter().map(|b| (b.ptr(), b.block.clone())).collect(),
+    };
+
     // See also: static-stream-builder
     stream! {
-        let current_block = current_idx.map(|idx| &blocks[idx]);
-        let mut current_ptr = current_block.map(|b| b.ptr());
-        let mut current_parent_ptr = current_block.and_then(|b| b.parent_ptr());
+        let mut current_ptr = current_idx.map(|idx| blocks[idx].ptr());
         let skip = current_idx.map(|idx| idx + 1).unwrap_or(0);
         let mut blocks_iter = blocks.iter().skip(skip).peekable();
         while let Some(&block) = blocks_iter.peek() {
             if block.parent_ptr() == current_ptr {
                 current_ptr = Some(block.ptr());
-                current_parent_ptr = block.parent_ptr();
                 blocks_iter.next(); // Block consumed, advance the iterator.
                 yield Ok(BlockStreamEvent::ProcessBlock(block.clone(), FirehoseCursor::None));
             } else {
-                let revert_to = current_parent_ptr.unwrap();
+                let revert_to = fork_db.common_ancestor(block.ptr(), current_ptr.unwrap()).unwrap().ptr();
                 current_ptr = Some(revert_to.clone());
-                current_parent_ptr = blocks
-                    .iter()
-                    .find(|b| b.ptr() == revert_to)
-                    .unwrap()
-                    .block
-                    .parent_ptr();
                 yield Ok(BlockStreamEvent::Revert(revert_to, FirehoseCursor::None));
             }
         }

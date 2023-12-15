@@ -85,21 +85,23 @@ pub fn generate_empty_blocks_for_range(
     parent_ptr: BlockPtr,
     start: i32,
     end: i32,
-) -> Vec<BlockWithTriggers<graph_chain_ethereum::Chain>> {
-    (start + 1..end + 1).fold(
-        vec![empty_block(parent_ptr.clone(), test_ptr(start))],
-        |mut blocks, i| {
-            let parent_ptr = blocks.last().unwrap().ptr().clone();
-            blocks.push(empty_block(parent_ptr, test_ptr(i)));
-            blocks
-        },
-    )
+    add_to_hash: u64, // Use to differentiate forks
+) -> Vec<BlockWithTriggers<Chain>> {
+    let mut blocks: Vec<BlockWithTriggers<Chain>> = vec![];
+
+    for i in start..(end + 1) {
+        let parent_ptr = blocks.last().map(|b| b.ptr()).unwrap_or(parent_ptr.clone());
+        let ptr = BlockPtr {
+            number: i,
+            hash: H256::from_low_u64_be(i as u64 + add_to_hash).into(),
+        };
+        blocks.push(empty_block(parent_ptr, ptr));
+    }
+
+    blocks
 }
 
-pub fn empty_block(
-    parent_ptr: BlockPtr,
-    ptr: BlockPtr,
-) -> BlockWithTriggers<graph_chain_ethereum::Chain> {
+pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Chain> {
     assert!(ptr != parent_ptr);
     assert!(ptr.number > parent_ptr.number);
 
