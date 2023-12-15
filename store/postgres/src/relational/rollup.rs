@@ -48,6 +48,7 @@ impl<'a> Agg<'a> {
         match self.aggregate.func {
             Sum => write!(w, "sum(\"{}\")", self.src_column.unwrap().name)?,
             Max => write!(w, "max(\"{}\")", self.src_column.unwrap().name)?,
+            Min => write!(w, "min(\"{}\")", self.src_column.unwrap().name)?,
             Cnt => write!(w, "count(*)")?,
         }
         write!(w, " as \"{}\"", self.agg_column.name)

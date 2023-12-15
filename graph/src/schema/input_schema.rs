@@ -439,6 +439,7 @@ impl EnumMap {
 pub enum AggregateFn {
     Sum,
     Max,
+    Min,
     Cnt,
 }
 
@@ -449,6 +450,7 @@ impl FromStr for AggregateFn {
         match s {
             "sum" => Ok(AggregateFn::Sum),
             "max" => Ok(AggregateFn::Max),
+            "min" => Ok(AggregateFn::Min),
             "count" => Ok(AggregateFn::Cnt),
             _ => Err(anyhow!("invalid aggregate function `{}`", s)),
         }
@@ -458,7 +460,7 @@ impl FromStr for AggregateFn {
 impl AggregateFn {
     pub fn has_arg(&self) -> bool {
         match self {
-            AggregateFn::Sum | AggregateFn::Max => true,
+            AggregateFn::Sum | AggregateFn::Max | AggregateFn::Min => true,
             AggregateFn::Cnt => false,
         }
     }
@@ -467,6 +469,7 @@ impl AggregateFn {
         match self {
             AggregateFn::Sum => "sum",
             AggregateFn::Max => "max",
+            AggregateFn::Min => "min",
             AggregateFn::Cnt => "count",
         }
     }
