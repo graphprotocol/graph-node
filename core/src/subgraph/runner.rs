@@ -793,15 +793,7 @@ where
                     }
                 }
 
-                if matches!(action, Action::Restart) {
-                    // Cancel the stream for real
-                    self.ctx.instances.remove(&self.inputs.deployment.id);
-
-                    // And restart the subgraph
-                    return Ok(Action::Restart);
-                }
-
-                return Ok(Action::Continue);
+                return Ok(action);
             }
             Err(BlockProcessingError::Canceled) => {
                 debug!(self.logger, "Subgraph block stream shut down cleanly");
@@ -859,9 +851,6 @@ where
                         }
 
                         // Retry logic below:
-
-                        // Cancel the stream for real.
-                        self.ctx.instances.remove(&self.inputs.deployment.id);
 
                         let message = format!("{:#}", e).replace('\n', "\t");
                         error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
