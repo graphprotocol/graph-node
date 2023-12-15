@@ -1828,13 +1828,6 @@ impl ChainStoreTrait for ChainStore {
             .await?)
     }
 
-    async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
-        match self.recent_blocks_cache.chain_head_ptr() {
-            Some(head) => Ok(Some(head)),
-            None => self.chain_head_ptr().await,
-        }
-    }
-
     fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
         use public::ethereum_networks::dsl::*;
 
@@ -2210,11 +2203,6 @@ mod recent_blocks_cache {
                     capacity,
                 }),
             }
-        }
-
-        pub fn chain_head_ptr(&self) -> Option<BlockPtr> {
-            let inner = self.inner.read();
-            inner.chain_head().cloned()
         }
 
         pub fn clear(&self) {

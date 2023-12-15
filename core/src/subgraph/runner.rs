@@ -750,7 +750,7 @@ where
                 if !self.state.synced
                     && close_to_chain_head(
                         &block_ptr,
-                        self.inputs.chain.chain_store().cached_head_ptr().await?,
+                        self.inputs.chain.chain_store().chain_head_ptr().await?,
                         // We consider a subgraph synced when it's at most 1 block behind the
                         // chain head.
                         1,
@@ -1305,7 +1305,7 @@ where
             && !self.state.synced
             && !close_to_chain_head(
                 &block_ptr,
-                self.inputs.chain.chain_store().cached_head_ptr().await?,
+                self.inputs.chain.chain_store().chain_head_ptr().await?,
                 // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
                 // behind the chain head.
                 1000,

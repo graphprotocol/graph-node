@@ -439,9 +439,6 @@ pub trait ChainStore: Send + Sync + 'static {
     /// The head block pointer will be None on initial set up.
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
 
-    /// In-memory time cached version of `chain_head_ptr`.
-    async fn cached_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error>;
-
     /// Get the current head block cursor for this chain.
     ///
     /// The head block cursor will be None on initial set up.
