@@ -190,15 +190,14 @@ impl DataSourcesTable {
         Ok(inserted_total)
     }
 
-    pub(crate) fn revert_to(
-        &self,
-        conn: &PgConnection,
-        block: BlockNumber,
-    ) -> Result<(), StoreError> {
-        // Use `@>` to leverage the gist index.
-        // This assumes all ranges are of the form [x, +inf).
+    pub(crate) fn revert(&self, conn: &PgConnection, block: BlockNumber) -> Result<(), StoreError> {
+        // Use the 'does not extend to the left of' operator `&>` to leverage the gist index, this
+        // is equivalent to lower(block_range) >= $1.
+        //
+        // This assumes all ranges are of the form [x, +inf), and thefore no range needs to be
+        // unclamped.
         let query = format!(
-            "delete from {} where block_range @> $1 and lower(block_range) >= $1",
+            "delete from {} where block_range &> int4range($1, null)",
             self.qname
         );
         sql_query(query).bind::<Integer, _>(block).execute(conn)?;

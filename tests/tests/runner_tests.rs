@@ -205,6 +205,7 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
         blocks.extend(blocks_1_to_5_reorged);
         blocks
     };
+    let last = blocks.last().unwrap().block.ptr();
 
     let chain = chain(&test_name, blocks.clone(), &stores, None).await;
     let ctx = fixture::setup(
@@ -220,9 +221,8 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
 
     // We sync up to block 5 twice, after the first time there is a revert back to block 1.
     // This tests reverts across more than than a single block.
-    for _ in 0..2 {
-        let stop_block = test_ptr(5);
-        ctx.start_and_sync_to(stop_block).await;
+    for stop_block in [test_ptr(5), last.clone()] {
+        ctx.start_and_sync_to(stop_block.clone()).await;
 
         let query_res = ctx
             .query(r#"{ dataSourceCount(id: "5") { id, count } }"#)
@@ -237,6 +237,10 @@ async fn data_source_long_revert() -> anyhow::Result<()> {
             Some(object! { dataSourceCount: object!{ id: "5", count: 5 } })
         );
     }
+
+    // Restart the subgraph once more, which runs more consistency checks on dynamic data sources.
+    ctx.start_and_sync_to(last).await;
+
     Ok(())
 }
 

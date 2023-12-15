@@ -36,13 +36,13 @@ pub(crate) fn insert(
     }
 }
 
-pub(crate) fn revert_to(
+pub(crate) fn revert(
     conn: &PgConnection,
     site: &Site,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).revert_to(conn, block),
+        true => DataSourcesTable::new(site.namespace.clone()).revert(conn, block),
         false => shared::revert(conn, &site.deployment, block),
     }
 }
