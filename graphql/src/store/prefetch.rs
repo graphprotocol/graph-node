@@ -553,26 +553,8 @@ pub fn run(
     selection_set: &a::SelectionSet,
     graphql_metrics: &GraphQLMetrics,
 ) -> Result<(r::Value, Trace), Vec<QueryExecutionError>> {
-    execute_root_selection_set(resolver, ctx, selection_set).map(|(nodes, trace)| {
-        graphql_metrics.observe_query_result_size(nodes.weight());
-        let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
-            node.children.into_iter().map(|(key, nodes)| {
-                (
-                    Word::from(format!("prefetch:{}", key)),
-                    node_list_as_value(nodes),
-                )
-            })
-        }));
-        (r::Value::Object(obj), trace)
-    })
-}
+    let loader = Loader::new(resolver, ctx);
 
-/// Executes the root selection set of a query.
-fn execute_root_selection_set(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext,
-    selection_set: &a::SelectionSet,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
     let trace = Trace::root(
         &ctx.query.query_text,
         &ctx.query.variables_text,
@@ -580,188 +562,201 @@ fn execute_root_selection_set(
         resolver.block_number(),
         ctx.trace,
     );
+
     // Execute the root selection set against the root query type
-    execute_selection_set(resolver, ctx, make_root_node(), trace, selection_set)
+    let (nodes, trace) = loader.execute_selection_set(make_root_node(), trace, selection_set)?;
+
+    graphql_metrics.observe_query_result_size(nodes.weight());
+    let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
+        node.children.into_iter().map(|(key, nodes)| {
+            (
+                Word::from(format!("prefetch:{}", key)),
+                node_list_as_value(nodes),
+            )
+        })
+    }));
+
+    Ok((r::Value::Object(obj), trace))
 }
 
-fn check_result_size<'a>(
+struct Loader<'a> {
+    resolver: &'a StoreResolver,
     ctx: &'a ExecutionContext,
-    size: usize,
-) -> Result<(), QueryExecutionError> {
-    if size > ENV_VARS.graphql.warn_result_size {
-        warn!(ctx.logger, "Large query result"; "size" => size, "query_id" => &ctx.query.query_id);
-    }
-    if size > ENV_VARS.graphql.error_result_size {
-        return Err(QueryExecutionError::ResultTooBig(
-            size,
-            ENV_VARS.graphql.error_result_size,
-        ));
-    }
-    Ok(())
 }
 
-fn execute_selection_set<'a>(
-    resolver: &StoreResolver,
-    ctx: &'a ExecutionContext,
-    mut parents: Vec<Node>,
-    mut parent_trace: Trace,
-    selection_set: &a::SelectionSet,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let schema = &ctx.query.schema;
-    let input_schema = resolver.store.input_schema()?;
-    let mut errors: Vec<QueryExecutionError> = Vec::new();
-    let at_root = is_root_node(parents.iter());
+impl<'a> Loader<'a> {
+    fn new(resolver: &'a StoreResolver, ctx: &'a ExecutionContext) -> Self {
+        Loader { resolver, ctx }
+    }
 
-    // Process all field groups in order
-    for (object_type, fields) in selection_set.interior_fields() {
-        if let Some(deadline) = ctx.deadline {
-            if deadline < Instant::now() {
-                errors.push(QueryExecutionError::Timeout);
-                break;
+    fn execute_selection_set(
+        &self,
+        mut parents: Vec<Node>,
+        mut parent_trace: Trace,
+        selection_set: &a::SelectionSet,
+    ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
+        let schema = &self.ctx.query.schema;
+        let input_schema = self.resolver.store.input_schema()?;
+        let mut errors: Vec<QueryExecutionError> = Vec::new();
+        let at_root = is_root_node(parents.iter());
+
+        // Process all field groups in order
+        for (object_type, fields) in selection_set.interior_fields() {
+            if let Some(deadline) = self.ctx.deadline {
+                if deadline < Instant::now() {
+                    errors.push(QueryExecutionError::Timeout);
+                    break;
+                }
+            }
+
+            // Filter out parents that do not match the type condition.
+            let mut parents: Vec<&mut Node> = if at_root {
+                parents.iter_mut().collect()
+            } else {
+                parents
+                    .iter_mut()
+                    .filter(|p| object_type.name == p.typename())
+                    .collect()
+            };
+
+            if parents.is_empty() {
+                continue;
+            }
+
+            for field in fields {
+                let field_type = object_type
+                    .field(&field.name)
+                    .expect("field names are valid");
+                let child_type = schema
+                    .object_or_interface(field_type.field_type.get_base_type())
+                    .expect("we only collect fields that are objects or interfaces");
+
+                let join = if at_root {
+                    MaybeJoin::Root { child_type }
+                } else {
+                    MaybeJoin::Nested(Join::new(
+                        &input_schema,
+                        object_type,
+                        child_type,
+                        &field.name,
+                    ))
+                };
+
+                // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
+                // If this environment variable is set, the program will use an empty collection that,
+                // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
+                // queries.
+                let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
+                    SelectedAttributes(BTreeMap::new())
+                } else {
+                    SelectedAttributes::for_field(field)?
+                };
+
+                match self.fetch(&parents, &join, field, collected_columns) {
+                    Ok((children, trace)) => {
+                        match self.execute_selection_set(children, trace, &field.selection_set) {
+                            Ok((children, trace)) => {
+                                add_children(
+                                    &input_schema,
+                                    &mut parents,
+                                    children,
+                                    field.response_key(),
+                                )?;
+                                self.check_result_size(&parents)?;
+                                parent_trace.push(field.response_key(), trace);
+                            }
+                            Err(mut e) => errors.append(&mut e),
+                        }
+                    }
+                    Err(e) => {
+                        errors.push(e);
+                    }
+                };
             }
         }
 
-        // Filter out parents that do not match the type condition.
-        let mut parents: Vec<&mut Node> = if at_root {
-            parents.iter_mut().collect()
+        if errors.is_empty() {
+            Ok((parents, parent_trace))
         } else {
-            parents
-                .iter_mut()
-                .filter(|p| object_type.name == p.typename())
-                .collect()
-        };
-
-        if parents.is_empty() {
-            continue;
-        }
-
-        for field in fields {
-            let field_type = object_type
-                .field(&field.name)
-                .expect("field names are valid");
-            let child_type = schema
-                .object_or_interface(field_type.field_type.get_base_type())
-                .expect("we only collect fields that are objects or interfaces");
-
-            let join = if at_root {
-                MaybeJoin::Root { child_type }
-            } else {
-                MaybeJoin::Nested(Join::new(
-                    &input_schema,
-                    object_type,
-                    child_type,
-                    &field.name,
-                ))
-            };
-
-            // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
-            // If this environment variable is set, the program will use an empty collection that,
-            // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
-            // queries.
-            let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
-                SelectedAttributes(BTreeMap::new())
-            } else {
-                SelectedAttributes::for_field(field)?
-            };
-
-            match fetch(resolver, ctx, &parents, &join, field, collected_columns) {
-                Ok((children, trace)) => {
-                    match execute_selection_set(
-                        resolver,
-                        ctx,
-                        children,
-                        trace,
-                        &field.selection_set,
-                    ) {
-                        Ok((children, trace)) => {
-                            add_children(
-                                &input_schema,
-                                &mut parents,
-                                children,
-                                field.response_key(),
-                            )?;
-                            let weight =
-                                parents.iter().map(|parent| parent.weight()).sum::<usize>();
-                            check_result_size(ctx, weight)?;
-                            parent_trace.push(field.response_key(), trace);
-                        }
-                        Err(mut e) => errors.append(&mut e),
-                    }
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
-            };
+            Err(errors)
         }
     }
 
-    if errors.is_empty() {
-        Ok((parents, parent_trace))
-    } else {
-        Err(errors)
-    }
-}
-
-/// Query child entities for `parents` from the store. The `join` indicates
-/// in which child field to look for the parent's id/join field. When
-/// `is_single` is `true`, there is at most one child per parent.
-fn fetch(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext,
-    parents: &[&mut Node],
-    join: &MaybeJoin<'_>,
-    field: &a::Field,
-    selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
-    let input_schema = resolver.store.input_schema()?;
-    let mut query = build_query(
-        join.child_type(),
-        resolver.block_number(),
-        field,
-        ctx.query.schema.types_for_interface(),
-        ctx.max_first,
-        ctx.max_skip,
-        selected_attrs,
-        &super::query::SchemaPair {
-            api: ctx.query.schema.clone(),
-            input: input_schema.cheap_clone(),
-        },
-    )?;
-    query.trace = ctx.trace;
-    query.query_id = Some(ctx.query.query_id.clone());
-
-    if field.multiplicity == ChildMultiplicity::Single {
-        // Suppress 'order by' in lookups of scalar values since
-        // that causes unnecessary work in the database
-        query.order = EntityOrder::Unordered;
-    }
-
-    query.logger = Some(ctx.logger.cheap_clone());
-    if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
-        query.filter = Some(
-            EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
-                .and_maybe(query.filter),
-        );
-    }
-
-    if let MaybeJoin::Nested(join) = join {
-        // For anything but the root node, restrict the children we select
-        // by the parent list
-        let windows = join.windows(
-            &input_schema,
-            parents,
-            field.multiplicity,
-            &query.collection,
+    /// Query child entities for `parents` from the store. The `join` indicates
+    /// in which child field to look for the parent's id/join field. When
+    /// `is_single` is `true`, there is at most one child per parent.
+    fn fetch(
+        &self,
+        parents: &[&mut Node],
+        join: &MaybeJoin<'_>,
+        field: &a::Field,
+        selected_attrs: SelectedAttributes,
+    ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
+        let input_schema = self.resolver.store.input_schema()?;
+        let mut query = build_query(
+            join.child_type(),
+            self.resolver.block_number(),
+            field,
+            self.ctx.query.schema.types_for_interface(),
+            self.ctx.max_first,
+            self.ctx.max_skip,
+            selected_attrs,
+            &super::query::SchemaPair {
+                api: self.ctx.query.schema.clone(),
+                input: input_schema.cheap_clone(),
+            },
         )?;
-        if windows.is_empty() {
-            return Ok((vec![], Trace::None));
+        query.trace = self.ctx.trace;
+        query.query_id = Some(self.ctx.query.query_id.clone());
+
+        if field.multiplicity == ChildMultiplicity::Single {
+            // Suppress 'order by' in lookups of scalar values since
+            // that causes unnecessary work in the database
+            query.order = EntityOrder::Unordered;
         }
-        query.collection = EntityCollection::Window(windows);
+
+        query.logger = Some(self.ctx.logger.cheap_clone());
+        if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
+            query.filter = Some(
+                EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
+                    .and_maybe(query.filter),
+            );
+        }
+
+        if let MaybeJoin::Nested(join) = join {
+            // For anything but the root node, restrict the children we select
+            // by the parent list
+            let windows = join.windows(
+                &input_schema,
+                parents,
+                field.multiplicity,
+                &query.collection,
+            )?;
+            if windows.is_empty() {
+                return Ok((vec![], Trace::None));
+            }
+            query.collection = EntityCollection::Window(windows);
+        }
+        self.resolver
+            .store
+            .find_query_values(query)
+            .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
     }
-    resolver
-        .store
-        .find_query_values(query)
-        .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
+
+    fn check_result_size(&self, parents: &[&mut Node]) -> Result<(), QueryExecutionError> {
+        let size = parents.iter().map(|parent| parent.weight()).sum::<usize>();
+
+        if size > ENV_VARS.graphql.warn_result_size {
+            warn!(self.ctx.logger, "Large query result"; "size" => size, "query_id" => &self.ctx.query.query_id);
+        }
+        if size > ENV_VARS.graphql.error_result_size {
+            return Err(QueryExecutionError::ResultTooBig(
+                size,
+                ENV_VARS.graphql.error_result_size,
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default, Clone)]
