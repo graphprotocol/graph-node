@@ -664,7 +664,7 @@ fn execute_selection_set<'a>(
                 SelectedAttributes::for_field(field)?
             };
 
-            match execute_field(resolver, ctx, &parents, &join, field, collected_columns) {
+            match fetch(resolver, ctx, &parents, &join, field, collected_columns) {
                 Ok((children, trace)) => {
                     match execute_selection_set(
                         resolver,
@@ -688,8 +688,8 @@ fn execute_selection_set<'a>(
                         Err(mut e) => errors.append(&mut e),
                     }
                 }
-                Err(mut e) => {
-                    errors.append(&mut e);
+                Err(e) => {
+                    errors.push(e);
                 }
             };
         }
@@ -700,18 +700,6 @@ fn execute_selection_set<'a>(
     } else {
         Err(errors)
     }
-}
-
-/// Executes a field.
-fn execute_field(
-    resolver: &StoreResolver,
-    ctx: &ExecutionContext,
-    parents: &[&mut Node],
-    join: &MaybeJoin<'_>,
-    field: &a::Field,
-    selected_attrs: SelectedAttributes,
-) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    fetch(resolver, ctx, parents, join, field, selected_attrs).map_err(|e| vec![e])
 }
 
 /// Query child entities for `parents` from the store. The `join` indicates
