@@ -26,12 +26,16 @@ use graph::{
     },
 };
 
-use crate::execution::{ast as a, ExecutionContext, Resolver};
+use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
 use crate::store::query::build_query;
 use crate::store::StoreResolver;
 
 pub const ARG_ID: &str = "id";
+
+// Everything in this file only makes sense for an
+// `ExecutionContext<StoreResolver>`
+type ExecutionContext = crate::execution::ExecutionContext<StoreResolver>;
 
 /// Intermediate data structure to hold the results of prefetching entities
 /// and their nested associations. For each association of `entity`, `children`
@@ -545,7 +549,7 @@ fn add_children(
 /// @derivedFrom fields
 pub fn run(
     resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext,
     selection_set: &a::SelectionSet,
     graphql_metrics: &GraphQLMetrics,
 ) -> Result<(r::Value, Trace), Vec<QueryExecutionError>> {
@@ -566,7 +570,7 @@ pub fn run(
 /// Executes the root selection set of a query.
 fn execute_root_selection_set(
     resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext,
     selection_set: &a::SelectionSet,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
     let trace = Trace::root(
@@ -581,7 +585,7 @@ fn execute_root_selection_set(
 }
 
 fn check_result_size<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
+    ctx: &'a ExecutionContext,
     size: usize,
 ) -> Result<(), QueryExecutionError> {
     if size > ENV_VARS.graphql.warn_result_size {
@@ -598,7 +602,7 @@ fn check_result_size<'a>(
 
 fn execute_selection_set<'a>(
     resolver: &StoreResolver,
-    ctx: &'a ExecutionContext<impl Resolver>,
+    ctx: &'a ExecutionContext,
     mut parents: Vec<Node>,
     mut parent_trace: Trace,
     selection_set: &a::SelectionSet,
@@ -709,7 +713,7 @@ fn execute_selection_set<'a>(
 /// Executes a field.
 fn execute_field(
     resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext,
     parents: &[&mut Node],
     join: &MaybeJoin<'_>,
     field: &a::Field,
@@ -739,7 +743,7 @@ fn execute_field(
 /// `is_single` is `true`, there is at most one child per parent.
 fn fetch(
     resolver: &StoreResolver,
-    ctx: &ExecutionContext<impl Resolver>,
+    ctx: &ExecutionContext,
     parents: &[&mut Node],
     join: &MaybeJoin<'_>,
     field: &a::Field,
