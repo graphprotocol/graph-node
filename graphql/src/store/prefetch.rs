@@ -642,17 +642,7 @@ impl<'a> Loader<'a> {
                     ))
                 };
 
-                // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
-                // If this environment variable is set, the program will use an empty collection that,
-                // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
-                // queries.
-                let collected_columns = if !ENV_VARS.enable_select_by_specific_attributes {
-                    SelectedAttributes(BTreeMap::new())
-                } else {
-                    SelectedAttributes::for_field(field)?
-                };
-
-                match self.fetch(&parents, &join, field, collected_columns) {
+                match self.fetch(&parents, &join, field) {
                     Ok((children, trace)) => {
                         match self.execute_selection_set(children, trace, &field.selection_set) {
                             Ok((children, trace)) => {
@@ -690,9 +680,9 @@ impl<'a> Loader<'a> {
         parents: &[&mut Node],
         join: &MaybeJoin<'_>,
         field: &a::Field,
-        selected_attrs: SelectedAttributes,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
         let input_schema = self.resolver.store.input_schema()?;
+        let selected_attrs = SelectedAttributes::new(field)?;
         let mut query = build_query(
             join.child_type(),
             self.resolver.block_number(),
@@ -760,12 +750,20 @@ impl<'a> Loader<'a> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct SelectedAttributes(BTreeMap<String, AttributeNames>);
+pub(crate) struct SelectedAttributes<'a>(BTreeMap<&'a String, AttributeNames>);
 
-impl SelectedAttributes {
-    /// Extract the attributes we should select from `selection_set`. In
-    /// particular, disregard derived fields since they are not stored
-    fn for_field(field: &a::Field) -> Result<SelectedAttributes, Vec<QueryExecutionError>> {
+impl<'a> SelectedAttributes<'a> {
+    // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
+    // If this environment variable is set, the program will use an empty collection that,
+    // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
+    // queries.
+    fn new(field: &'a a::Field) -> Result<Self, QueryExecutionError> {
+        if !ENV_VARS.enable_select_by_specific_attributes {
+            return Ok(SelectedAttributes(BTreeMap::new()));
+        }
+
+        // Extract the attributes we should select from `selection_set`. In
+        // particular, disregard derived fields since they are not stored
         let mut map = BTreeMap::new();
         for (object_type, fields) in field.selection_set.fields() {
             let column_names = fields
@@ -784,10 +782,7 @@ impl SelectedAttributes {
                     }
                 })
                 .collect();
-            map.insert(
-                object_type.name().to_string(),
-                AttributeNames::Select(column_names),
-            );
+            map.insert(&object_type.name, AttributeNames::Select(column_names));
         }
         // We need to also select the `orderBy` field if there is one.
         // Because of how the API Schema is set up, `orderBy` can only have
@@ -800,13 +795,14 @@ impl SelectedAttributes {
                 }
             }
             Some(v) => {
-                return Err(vec![constraint_violation!(
+                return Err(constraint_violation!(
                     "'orderBy' attribute must be an enum but is {:?}",
                     v
                 )
-                .into()]);
+                .into());
             }
         }
+
         Ok(SelectedAttributes(map))
     }
 
