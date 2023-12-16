@@ -1,3 +1,4 @@
+use graph::components::store::ChildMultiplicity;
 use graph::data::graphql::DocumentExt as _;
 use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
@@ -908,6 +909,7 @@ impl Transform {
                 arguments: vec![],
                 directives: vec![],
                 selection_set: a::SelectionSet::new(vec![]),
+                multiplicity: ChildMultiplicity::Single,
             }));
         }
 
@@ -946,6 +948,7 @@ impl Transform {
             self.expand_selection_set(selection_set, &type_set, ty)?
         };
 
+        let multiplicity = ChildMultiplicity::new(field_type);
         Ok(Some(a::Field {
             position,
             alias,
@@ -953,6 +956,7 @@ impl Transform {
             arguments,
             directives,
             selection_set,
+            multiplicity,
         }))
     }
 

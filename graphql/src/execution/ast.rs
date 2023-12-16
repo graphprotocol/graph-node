@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use graph::{
+    components::store::ChildMultiplicity,
     data::graphql::ObjectOrInterface,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
     schema::{ast::ObjectType, ApiSchema},
@@ -232,6 +233,7 @@ pub struct Field {
     pub arguments: Vec<(String, r::Value)>,
     pub directives: Vec<Directive>,
     pub selection_set: SelectionSet,
+    pub multiplicity: ChildMultiplicity,
 }
 
 impl Field {

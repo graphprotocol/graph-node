@@ -790,6 +790,7 @@ pub(crate) fn collect_entities_from_query_field(
 #[cfg(test)]
 mod tests {
     use graph::{
+        components::store::ChildMultiplicity,
         data::value::Object,
         prelude::{
             r, AttributeNames, DeploymentHash, EntityCollection, EntityFilter, EntityRange, Value,
@@ -882,6 +883,7 @@ mod tests {
             arguments,
             directives: vec![],
             selection_set: a::SelectionSet::new(vec![obj_type]),
+            multiplicity: ChildMultiplicity::Single,
         }
     }
 

@@ -34,8 +34,8 @@ use crate::data::store::{Id, IdList, Value};
 use crate::data::value::Word;
 use crate::data_source::CausalityRegion;
 use crate::env::ENV_VARS;
-use crate::prelude::{Attribute, DeploymentHash, SubscriptionFilter, ValueType};
-use crate::schema::{EntityKey, EntityType, InputSchema};
+use crate::prelude::{s, Attribute, DeploymentHash, SubscriptionFilter, ValueType};
+use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -329,6 +329,16 @@ pub enum ParentLink {
 pub enum ChildMultiplicity {
     Single,
     Many,
+}
+
+impl ChildMultiplicity {
+    pub fn new(field: &s::Field) -> Self {
+        if sast::is_list_or_non_null_list_field(field) {
+            ChildMultiplicity::Many
+        } else {
+            ChildMultiplicity::Single
+        }
+    }
 }
 
 /// How to select children for their parents depending on whether the

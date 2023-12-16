@@ -664,15 +664,7 @@ fn execute_selection_set<'a>(
                 SelectedAttributes::for_field(field)?
             };
 
-            match execute_field(
-                resolver,
-                ctx,
-                &parents,
-                &join,
-                field,
-                field_type,
-                collected_columns,
-            ) {
+            match execute_field(resolver, ctx, &parents, &join, field, collected_columns) {
                 Ok((children, trace)) => {
                     match execute_selection_set(
                         resolver,
@@ -717,25 +709,9 @@ fn execute_field(
     parents: &[&mut Node],
     join: &MaybeJoin<'_>,
     field: &a::Field,
-    field_definition: &s::Field,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-    let multiplicity = if sast::is_list_or_non_null_list_field(field_definition) {
-        ChildMultiplicity::Many
-    } else {
-        ChildMultiplicity::Single
-    };
-
-    fetch(
-        resolver,
-        ctx,
-        parents,
-        join,
-        field,
-        multiplicity,
-        selected_attrs,
-    )
-    .map_err(|e| vec![e])
+    fetch(resolver, ctx, parents, join, field, selected_attrs).map_err(|e| vec![e])
 }
 
 /// Query child entities for `parents` from the store. The `join` indicates
@@ -747,7 +723,6 @@ fn fetch(
     parents: &[&mut Node],
     join: &MaybeJoin<'_>,
     field: &a::Field,
-    multiplicity: ChildMultiplicity,
     selected_attrs: SelectedAttributes,
 ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
     let input_schema = resolver.store.input_schema()?;
@@ -767,7 +742,7 @@ fn fetch(
     query.trace = ctx.trace;
     query.query_id = Some(ctx.query.query_id.clone());
 
-    if multiplicity == ChildMultiplicity::Single {
+    if field.multiplicity == ChildMultiplicity::Single {
         // Suppress 'order by' in lookups of scalar values since
         // that causes unnecessary work in the database
         query.order = EntityOrder::Unordered;
@@ -784,7 +759,12 @@ fn fetch(
     if let MaybeJoin::Nested(join) = join {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let windows = join.windows(&input_schema, parents, multiplicity, &query.collection)?;
+        let windows = join.windows(
+            &input_schema,
+            parents,
+            field.multiplicity,
+            &query.collection,
+        )?;
         if windows.is_empty() {
             return Ok((vec![], Trace::None));
         }
