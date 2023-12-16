@@ -1,10 +1,15 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use graph::{
-    components::store::ChildMultiplicity,
-    data::graphql::ObjectOrInterface,
+    components::store::{AttributeNames, ChildMultiplicity},
+    constraint_violation,
+    data::graphql::{ext::DirectiveFinder as _, ObjectOrInterface},
+    env::ENV_VARS,
     prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
-    schema::{ast::ObjectType, ApiSchema},
+    schema::{
+        ast::{self as sast, ObjectType},
+        ApiSchema,
+    },
 };
 use graphql_parser::Pos;
 
@@ -102,17 +107,24 @@ impl SelectionSet {
         &self,
         obj_type: &ObjectType,
     ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
+        self.fields_for_name(&obj_type.name)
+    }
+
+    fn fields_for_name(
+        &self,
+        name: &str,
+    ) -> Result<impl Iterator<Item = &Field>, QueryExecutionError> {
         let item = self
             .items
             .iter()
-            .find(|(our_type, _)| our_type == obj_type)
+            .find(|(our_type, _)| our_type.name == name)
             .ok_or_else(|| {
                 // see: graphql-bug-compat
                 // Once queries are validated, this can become a panic since
                 // users won't be able to trigger this any more
                 QueryExecutionError::ValidationError(
                     None,
-                    format!("invalid query: no fields for type `{}`", obj_type.name),
+                    format!("invalid query: no fields for type `{}`", name),
                 )
             })?;
         Ok(item.1.iter())
@@ -260,6 +272,58 @@ impl Field {
 
     fn is_leaf(&self) -> bool {
         self.selection_set.is_empty()
+    }
+
+    /// Return the set of attributes that should be selected for this field.
+    /// If `ENV_VARS.enable_select_by_specific_attributes` is `false`,
+    /// return `AttributeNames::All
+    pub fn selected_attrs(
+        &self,
+        object_type: &s::ObjectType,
+    ) -> Result<AttributeNames, QueryExecutionError> {
+        if !ENV_VARS.enable_select_by_specific_attributes {
+            return Ok(AttributeNames::All);
+        }
+
+        let fields = self.selection_set.fields_for_name(&object_type.name)?;
+
+        // Extract the attributes we should select from `selection_set`. In
+        // particular, disregard derived fields since they are not stored
+        let mut column_names: BTreeSet<String> = fields
+            .filter(|field| {
+                // Keep fields that are not derived and for which we
+                // can find the field type
+                sast::get_field(object_type, &field.name)
+                    .map(|field_type| !field_type.is_derived())
+                    .unwrap_or(false)
+            })
+            .filter_map(|field| {
+                if field.name.starts_with("__") {
+                    None
+                } else {
+                    Some(field.name.clone())
+                }
+            })
+            .collect();
+
+        // We need to also select the `orderBy` field if there is one.
+        // Because of how the API Schema is set up, `orderBy` can only have
+        // an enum value
+        match self.argument_value("orderBy") {
+            None => { /* nothing to do */ }
+            Some(r::Value::Enum(e)) => {
+                column_names.insert(e.clone());
+            }
+            Some(v) => {
+                return Err(constraint_violation!(
+                    "'orderBy' attribute must be an enum but is {:?}",
+                    v
+                )
+                .into());
+            }
+        }
+
+        Ok(AttributeNames::Select(column_names))
     }
 }
 

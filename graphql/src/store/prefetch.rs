@@ -1,7 +1,6 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
-use graph::constraint_violation;
 use graph::data::query::Trace;
 use graph::data::store::Id;
 use graph::data::store::IdList;
@@ -16,15 +15,11 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use graph::data::graphql::*;
-use graph::schema::{ast as sast, EntityType, InputSchema};
-use graph::{
-    data::graphql::ext::DirectiveFinder,
-    prelude::{
-        s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink,
-        EntityOrder, EntityWindow, ParentLink, QueryExecutionError, Value as StoreValue,
-        WindowAttribute, ENV_VARS,
-    },
+use graph::prelude::{
+    s, AttributeNames, ChildMultiplicity, EntityCollection, EntityFilter, EntityLink, EntityOrder,
+    EntityWindow, ParentLink, QueryExecutionError, Value as StoreValue, WindowAttribute, ENV_VARS,
 };
+use graph::schema::{ast as sast, EntityType, InputSchema};
 
 use crate::execution::ast as a;
 use crate::metrics::GraphQLMetrics;
@@ -682,7 +677,6 @@ impl<'a> Loader<'a> {
         field: &a::Field,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
         let input_schema = self.resolver.store.input_schema()?;
-        let selected_attrs = SelectedAttributes::new(field)?;
         let mut query = build_query(
             join.child_type(),
             self.resolver.block_number(),
@@ -690,7 +684,6 @@ impl<'a> Loader<'a> {
             self.ctx.query.schema.types_for_interface(),
             self.ctx.max_first,
             self.ctx.max_skip,
-            selected_attrs,
             &super::query::SchemaPair {
                 api: self.ctx.query.schema.clone(),
                 input: input_schema.cheap_clone(),
@@ -746,67 +739,5 @@ impl<'a> Loader<'a> {
             ));
         }
         Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub(crate) struct SelectedAttributes<'a>(BTreeMap<&'a String, AttributeNames>);
-
-impl<'a> SelectedAttributes<'a> {
-    // "Select by Specific Attribute Names" is an experimental feature and can be disabled completely.
-    // If this environment variable is set, the program will use an empty collection that,
-    // effectively, causes the `AttributeNames::All` variant to be used as a fallback value for all
-    // queries.
-    fn new(field: &'a a::Field) -> Result<Self, QueryExecutionError> {
-        if !ENV_VARS.enable_select_by_specific_attributes {
-            return Ok(SelectedAttributes(BTreeMap::new()));
-        }
-
-        // Extract the attributes we should select from `selection_set`. In
-        // particular, disregard derived fields since they are not stored
-        let mut map = BTreeMap::new();
-        for (object_type, fields) in field.selection_set.fields() {
-            let column_names = fields
-                .filter(|field| {
-                    // Keep fields that are not derived and for which we
-                    // can find the field type
-                    sast::get_field(object_type, &field.name)
-                        .map(|field_type| !field_type.is_derived())
-                        .unwrap_or(false)
-                })
-                .filter_map(|field| {
-                    if field.name.starts_with("__") {
-                        None
-                    } else {
-                        Some(field.name.clone())
-                    }
-                })
-                .collect();
-            map.insert(&object_type.name, AttributeNames::Select(column_names));
-        }
-        // We need to also select the `orderBy` field if there is one.
-        // Because of how the API Schema is set up, `orderBy` can only have
-        // an enum value
-        match field.argument_value("orderBy") {
-            None => { /* nothing to do */ }
-            Some(r::Value::Enum(e)) => {
-                for columns in map.values_mut() {
-                    columns.add_str(e);
-                }
-            }
-            Some(v) => {
-                return Err(constraint_violation!(
-                    "'orderBy' attribute must be an enum but is {:?}",
-                    v
-                )
-                .into());
-            }
-        }
-
-        Ok(SelectedAttributes(map))
-    }
-
-    pub fn get(&mut self, obj_type: &s::ObjectType) -> AttributeNames {
-        self.0.remove(&obj_type.name).unwrap_or(AttributeNames::All)
     }
 }

@@ -12,8 +12,6 @@ use graph::schema::{ApiSchema, EntityType, InputSchema};
 
 use crate::execution::ast as a;
 
-use super::prefetch::SelectedAttributes;
-
 #[derive(Debug)]
 enum OrderDirection {
     Ascending,
@@ -35,24 +33,23 @@ pub(crate) fn build_query<'a>(
     types_for_interface: &'a BTreeMap<String, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: SelectedAttributes,
     schema: &SchemaPair,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
-            let selected_columns = column_names.get(object);
+            let selected_columns = field.selected_attrs(object)?;
             let entity_type = schema.input.entity_type(*object).unwrap();
             vec![(entity_type, selected_columns)]
         }
         ObjectOrInterface::Interface(interface) => types_for_interface[&interface.name]
             .iter()
             .map(|o| {
-                let selected_columns = column_names.get(o);
+                let selected_columns = field.selected_attrs(o);
                 let entity_type = schema.input.entity_type(o).unwrap();
-                (entity_type, selected_columns)
+                selected_columns.map(|selected_columns| (entity_type, selected_columns))
             })
-            .collect(),
+            .collect::<Result<_, _>>()?,
     });
     let mut query = EntityQuery::new(parse_subgraph_id(entity)?, block, entity_types)
         .range(build_range(field, max_first, max_skip)?);
@@ -933,7 +930,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -951,7 +947,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -974,7 +969,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -995,7 +989,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1012,7 +1005,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1033,7 +1025,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1050,7 +1041,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1074,7 +1064,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1094,7 +1083,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema,
             )
             .unwrap()
@@ -1117,7 +1105,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1138,7 +1125,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1158,7 +1144,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1181,7 +1166,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1214,7 +1198,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
@@ -1250,7 +1233,6 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
-                Default::default(),
                 &schema
             )
             .unwrap()
