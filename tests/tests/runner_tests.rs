@@ -180,6 +180,67 @@ async fn data_source_revert() -> anyhow::Result<()> {
         Some(object! { dataSourceCount: object!{ id: "4", count: 4 } })
     );
 
+    // This is an entirely different test, but running it here conveniently avoids race conditions
+    // since it uses the same deployment id.
+    data_source_long_revert().await.unwrap();
+
+    Ok(())
+}
+
+async fn data_source_long_revert() -> anyhow::Result<()> {
+    let RunnerTestRecipe {
+        stores,
+        test_name,
+        subgraph_name,
+        hash,
+    } = RunnerTestRecipe::new("data_source_long_revert", "data-source-revert").await;
+
+    let blocks = {
+        let block0 = genesis();
+        let blocks_1_to_5 = generate_empty_blocks_for_range(block0.ptr(), 1, 5, 0);
+        let blocks_1_to_5_reorged = generate_empty_blocks_for_range(block0.ptr(), 1, 5, 1);
+
+        let mut blocks = vec![block0];
+        blocks.extend(blocks_1_to_5);
+        blocks.extend(blocks_1_to_5_reorged);
+        blocks
+    };
+    let last = blocks.last().unwrap().block.ptr();
+
+    let chain = chain(&test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup(
+        &test_name,
+        subgraph_name.clone(),
+        &hash,
+        &stores,
+        &chain,
+        None,
+        None,
+    )
+    .await;
+
+    // We sync up to block 5 twice, after the first time there is a revert back to block 1.
+    // This tests reverts across more than than a single block.
+    for stop_block in [test_ptr(5), last.clone()] {
+        ctx.start_and_sync_to(stop_block.clone()).await;
+
+        let query_res = ctx
+            .query(r#"{ dataSourceCount(id: "5") { id, count } }"#)
+            .await
+            .unwrap();
+
+        // TODO: The semantically correct value for `count` would be 6. But because the test fixture
+        // uses a `NoopTriggersAdapter` the data sources are not reprocessed in the block in which they
+        // are created.
+        assert_eq!(
+            query_res,
+            Some(object! { dataSourceCount: object!{ id: "5", count: 5 } })
+        );
+    }
+
+    // Restart the subgraph once more, which runs more consistency checks on dynamic data sources.
+    ctx.start_and_sync_to(last).await;
+
     Ok(())
 }
 
@@ -552,7 +613,6 @@ async fn end_block() -> anyhow::Result<()> {
         addr: &Address,
         should_contain_addr: bool,
     ) {
-        dbg!(block_ptr.number, should_contain_addr);
         let runner = ctx.runner(block_ptr.clone()).await;
         let runner = runner.run_for_test(false).await.unwrap();
         let filter = runner.context().filter.as_ref().unwrap();
@@ -900,7 +960,7 @@ async fn block_handlers() {
 
     let blocks = {
         let block_0 = genesis();
-        let block_1_to_3 = generate_empty_blocks_for_range(block_0.ptr(), 1, 3);
+        let block_1_to_3 = generate_empty_blocks_for_range(block_0.ptr(), 1, 3, 0);
         let block_4 = {
             let mut block = empty_block(block_1_to_3.last().unwrap().ptr(), test_ptr(4));
             push_test_polling_trigger(&mut block);
