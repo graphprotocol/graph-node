@@ -809,11 +809,9 @@ where
             let mut a = self.blocks.get(&a).unwrap();
             let mut b = self.blocks.get(&b).unwrap();
             while a.number() > b.number() {
-                dbg!(a.ptr().number);
                 a = self.blocks.get(&a.parent_ptr()?).unwrap();
             }
             while b.number() > a.number() {
-                dbg!(b.ptr().number);
                 b = self.blocks.get(&b.parent_ptr()?).unwrap();
             }
             while a.hash() != b.hash() {

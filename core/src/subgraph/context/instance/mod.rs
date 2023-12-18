@@ -1,5 +1,6 @@
 mod hosts;
 
+use anyhow::ensure;
 use futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
@@ -25,7 +26,7 @@ pub(super) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     /// Data sources with no mappings (e.g. direct substreams) have no host.
     ///
     /// Onchain hosts must be created in increasing order of block number. `fn hosts_for_trigger`
-    /// will return the onchain hosts in the same order as their were inserted.
+    /// will return the onchain hosts in the same order as they were inserted.
     onchain_hosts: OnchainHosts<C, T>,
 
     offchain_hosts: OffchainHosts<C, T>,
@@ -141,31 +142,28 @@ where
         let Some(host) = self.new_host(logger.clone(), data_source)? else { return Ok(None) };
 
         // Check for duplicates and add the host.
-        match is_onchain {
-            true => {
-                // `onchain_hosts` will remain ordered by the creation block.
-                // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
-                assert!(
-                    self.onchain_hosts
-                        .last()
-                        .and_then(|h| h.creation_block_number())
-                        <= host.data_source().creation_block()
-                );
+        if is_onchain {
+            // `onchain_hosts` will remain ordered by the creation block.
+            // See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
+            ensure!(
+                self.onchain_hosts
+                    .last()
+                    .and_then(|h| h.creation_block_number())
+                    <= host.data_source().creation_block(),
+            );
 
-                if self.onchain_hosts.contains(&host) {
-                    Ok(None)
-                } else {
-                    self.onchain_hosts.push(host.cheap_clone());
-                    Ok(Some(host))
-                }
+            if self.onchain_hosts.contains(&host) {
+                Ok(None)
+            } else {
+                self.onchain_hosts.push(host.cheap_clone());
+                Ok(Some(host))
             }
-            false => {
-                if self.offchain_hosts.contains(&host) {
-                    Ok(None)
-                } else {
-                    self.offchain_hosts.push(host.cheap_clone());
-                    Ok(Some(host))
-                }
+        } else {
+            if self.offchain_hosts.contains(&host) {
+                Ok(None)
+            } else {
+                self.offchain_hosts.push(host.cheap_clone());
+                Ok(Some(host))
             }
         }
     }

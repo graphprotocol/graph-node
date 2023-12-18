@@ -122,7 +122,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
 }
 
 /// Note that unlike `OnchainHosts`, this does not maintain the order of insertion. Ultimately, the
-/// processing order should not matter because as each offchain ds has its own causality region.
+/// processing order should not matter because each offchain ds has its own causality region.
 pub(super) struct OffchainHosts<C: Blockchain, T: RuntimeHostBuilder<C>> {
     // Indexed by creation block
     by_block: BTreeMap<Option<BlockNumber>, Vec<Arc<T::Host>>>,
