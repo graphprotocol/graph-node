@@ -16,7 +16,7 @@ graph-chain-cosmos = { path = "../../chain/cosmos" }
 graph-chain-starknet = { path = "../../chain/starknet" }
 graph-chain-substreams = { path = "../../chain/substreams" }
 graphql-parser = "0.4.0"
-http = "0.2"
+http = "1.0"
 hyper = "0.14"
 lazy_static = "1.2.0"
 serde = "1.0"

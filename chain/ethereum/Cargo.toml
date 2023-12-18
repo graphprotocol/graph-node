@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 envconfig = "0.10.0"
 futures = "0.1.21"
-http = "0.2.4"
+http = "1.0.0"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 lazy_static = "1.2.0"

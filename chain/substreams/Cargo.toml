@@ -10,7 +10,7 @@ tonic-build = { workspace = true }
 async-stream = "0.3"
 envconfig = "0.10.0"
 futures = "0.1.21"
-http = "0.2.4"
+http = "1.0.0"
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 graph-runtime-wasm = { path = "../../runtime/wasm" }
