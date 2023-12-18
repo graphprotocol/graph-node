@@ -376,7 +376,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             stopwatch_metrics,
         ));
 
-        let mut offchain_monitor = OffchainMonitor::new(
+        let offchain_monitor = OffchainMonitor::new(
             logger.cheap_clone(),
             registry.cheap_clone(),
             &manifest.id,
@@ -407,15 +407,6 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
         let instrument = self.subgraph_store.instrument(&deployment)?;
-        let instance = super::context::instance::SubgraphInstance::from_manifest(
-            &logger,
-            manifest,
-            data_sources,
-            host_builder,
-            host_metrics.clone(),
-            &mut offchain_monitor,
-            causality_region_seq,
-        )?;
 
         let inputs = IndexingInputs {
             deployment: deployment.clone(),
@@ -435,9 +426,24 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instrument,
         };
 
-        // The subgraph state tracks the state of the subgraph instance over time
-        let ctx =
-            IndexingContext::new(instance, self.instances.cheap_clone(), offchain_monitor, tp);
+        // Initialize the indexing context, including both static and dynamic data sources.
+        // The order of inclusion is the order of processing when a same trigger matches
+        // multiple data sources.
+        let ctx = {
+            let mut ctx = IndexingContext::new(
+                manifest,
+                host_builder,
+                host_metrics.clone(),
+                causality_region_seq,
+                self.instances.cheap_clone(),
+                offchain_monitor,
+                tp,
+            );
+            for data_source in data_sources {
+                ctx.add_dynamic_data_source(&logger, data_source)?;
+            }
+            ctx
+        };
 
         let metrics = RunnerMetrics {
             subgraph: subgraph_metrics,

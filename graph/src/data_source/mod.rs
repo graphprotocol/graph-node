@@ -98,6 +98,14 @@ impl<C: Blockchain> DataSource<C> {
         }
     }
 
+    pub fn is_onchain(&self) -> bool {
+        self.as_onchain().is_some()
+    }
+
+    pub fn is_offchain(&self) -> bool {
+        self.as_offchain().is_some()
+    }
+
     pub fn address(&self) -> Option<Vec<u8>> {
         match self {
             Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
@@ -441,13 +449,6 @@ impl<C: Blockchain> TriggerData<C> {
         match self {
             Self::Onchain(trigger) => trigger.error_context(),
             Self::Offchain(trigger) => format!("{:?}", trigger.source),
-        }
-    }
-
-    pub fn address_match(&self) -> Option<Vec<u8>> {
-        match self {
-            Self::Onchain(trigger) => trigger.address_match().map(|address| address.to_owned()),
-            Self::Offchain(trigger) => trigger.source.address(),
         }
     }
 }

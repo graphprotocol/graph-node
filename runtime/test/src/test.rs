@@ -1471,7 +1471,6 @@ async fn test_store_set_invalid_fields() {
     // The order of `test` and `test2` is not guranteed
     // So we just check the string contains them
     let err_string = err.to_string();
-    dbg!(err_string.as_str());
     assert!(err_string.contains("Attempted to set undefined fields [test, test2] for the entity type `User`. Make sure those fields are defined in the schema."));
 
     let err = host

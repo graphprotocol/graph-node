@@ -1242,7 +1242,7 @@ async fn retry_create_ds() {
         .run_for_test(true)
         .await
         .unwrap();
-    assert_eq!(runner.context().instance().hosts().len(), 2);
+    assert_eq!(runner.context().hosts_len(), 2);
 }
 
 #[tokio::test]
