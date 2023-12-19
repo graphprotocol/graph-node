@@ -52,8 +52,10 @@ impl SubgraphKeepAlive {
         self.sg_metrics.running_count.dec();
     }
     pub fn insert(&self, deployment_id: DeploymentId, guard: CancelGuard) {
-        self.alive_map.write().unwrap().insert(deployment_id, guard);
-        self.sg_metrics.running_count.inc();
+        let old = self.alive_map.write().unwrap().insert(deployment_id, guard);
+        if old.is_none() {
+            self.sg_metrics.running_count.inc();
+        }
     }
 }
 
