@@ -5,41 +5,41 @@ use graph::runtime::wasm::asc_abi::class::{
 
 use super::*;
 
-// Fix once https://github.com/graphprotocol/graph-node/issues/5079 is resolved.
+async fn test_unbounded_loop(api_version: Version) {
+    // Set handler timeout to 3 seconds.
+    let mut instance = test_valid_module_and_store_with_timeout(
+        "unboundedLoop",
+        mock_data_source(
+            &wasm_file_path("non_terminating.wasm", api_version.clone()),
+            api_version.clone(),
+        ),
+        api_version,
+        Some(Duration::from_secs(3)),
+    )
+    .await
+    .0;
+    let res: Result<(), _> = instance
+        .get_func("loop")
+        .typed(&mut instance.store.as_context_mut())
+        .unwrap()
+        .call(&mut instance.store.as_context_mut(), ());
+    let err = res.unwrap_err();
+    assert!(
+        format!("{err:?}").contains("wasm trap: interrupt"),
+        "{}",
+        err
+    );
+}
 
-// async fn test_unbounded_loop(api_version: Version) {
-//     // Set handler timeout to 3 seconds.
-//     let mut instance = test_valid_module_and_store_with_timeout(
-//         "unboundedLoop",
-//         mock_data_source(
-//             &wasm_file_path("non_terminating.wasm", api_version.clone()),
-//             api_version.clone(),
-//         ),
-//         api_version,
-//         Some(Duration::from_secs(3)),
-//     )
-//     .await
-//     .0;
-//     let res: Result<(), _> = instance
-//         .get_func("loop")
-//         .typed(&mut instance.store.as_context_mut())
-//         .unwrap()
-//         .call(&mut instance.store.as_context_mut(), ());
-//     assert_eq!(
-//         res.unwrap_err().to_string().lines().next().unwrap(),
-//         "wasm trap: interrupt"
-//     );
-// }
+#[tokio::test(flavor = "multi_thread")]
+async fn unbounded_loop_v0_0_4() {
+    test_unbounded_loop(API_VERSION_0_0_4).await;
+}
 
-// #[tokio::test(flavor = "multi_thread")]
-// async fn unbounded_loop_v0_0_4() {
-//     test_unbounded_loop(API_VERSION_0_0_4).await;
-// }
-
-// #[tokio::test(flavor = "multi_thread")]
-// async fn unbounded_loop_v0_0_5() {
-//     test_unbounded_loop(API_VERSION_0_0_5).await;
-// }
+#[tokio::test(flavor = "multi_thread")]
+async fn unbounded_loop_v0_0_5() {
+    test_unbounded_loop(API_VERSION_0_0_5).await;
+}
 
 async fn test_unbounded_recursion(api_version: Version) {
     let mut instance = test_module(

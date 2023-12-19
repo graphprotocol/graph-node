@@ -297,6 +297,7 @@ impl ValidModule {
         // turn off optional optimizations to be conservative.
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
+        config.epoch_interruption(true);
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
         config.cranelift_opt_level(wasmtime::OptLevel::None);
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
