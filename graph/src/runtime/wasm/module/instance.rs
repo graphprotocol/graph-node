@@ -307,6 +307,19 @@ impl WasmInstance {
             experimental_features,
         )?;
         let mut store = Store::new(engine, wasm_ctx);
+        // The epoch on the engine will only ever be incremeted if increment_epoch() is explicitly
+        // called, we only do so if a timeout has been set, otherwise 1 means it will run forever.
+        // If a timeout is provided then epoch 1 should happen roughly once the timeout duration
+        // has elapsed.
+        store.set_epoch_deadline(1);
+        if let Some(timeout) = timeout {
+            let timeout = timeout.clone();
+            let engine = engine.clone();
+            crate::spawn(async move {
+                tokio::time::sleep(timeout).await;
+                engine.increment_epoch();
+            });
+        }
 
         // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
         // host fn, they need to be separate from the rest of the context.
