@@ -144,8 +144,6 @@ pub struct AscHeapCtx {
 
     api_version: semver::Version,
 
-    // store: &'a wasmtime::Store<WasmInstanceContext<C>>,
-
     // In the future there may be multiple memories, but currently there is only one memory per
     // module. And at least AS calls it "memory". There is no uninitialized memory in Wasm, memory
     // is zeroed when initialized or grown.
@@ -213,7 +211,7 @@ fn host_export_error_from_trap(trap: Error, context: String) -> HostExportError 
 
 impl AscHeap for AscHeapCtx {
     fn raw_new(
-        &mut self,
+        &self,
         store: &mut StoreContextMut<WasmInstanceContext>,
         bytes: &[u8],
         gas: &GasCounter,

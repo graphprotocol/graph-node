@@ -10,9 +10,7 @@ pub(crate) use super::generated::*;
 impl ToAscObj<AscTag> for codec::Tag {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
-
-        heap: &mut H,
+        store: &mut StoreContextMut<H>,
         gas: &GasCounter,
     ) -> Result<AscTag, HostExportError> {
         Ok(AscTag {

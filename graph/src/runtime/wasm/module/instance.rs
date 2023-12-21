@@ -47,7 +47,7 @@ impl WasmInstance {
     {
         asc_get(
             &self.store.as_context(),
-            self.store.data().as_ref().asc_heap_ref(),
+            self.store.data().asc_heap_ref(),
             asc_ptr,
             &self.gas,
         )
@@ -58,15 +58,13 @@ impl WasmInstance {
         P: AscType + AscIndexId,
         T: ToAscObj<P>,
     {
-        let ctx = self.store.data().clone();
-        ctx.with_mut(|ctx| {
-            asc_new(
-                &mut self.store.as_context_mut(),
-                ctx.asc_heap_mut(),
-                rust_obj,
-                &self.gas,
-            )
-        })
+        let ctx = self.store.data_mut();
+        asc_new(
+            &mut self.store.as_context_mut(),
+            ctx.asc_heap_mut(),
+            rust_obj,
+            &self.gas,
+        )
     }
 }
 
@@ -77,10 +75,10 @@ impl WasmInstance {
         value: &serde_json::Value,
         user_data: &store::Value,
     ) -> Result<BlockState, anyhow::Error> {
-        let gas_metrics = self.store.data().as_ref().host_metrics.gas_metrics.clone();
+        let gas_metrics = self.store.data().host_metrics.gas_metrics.clone();
         let gas = GasCounter::new(gas_metrics);
-        let ctx = self.store.data().clone();
-        let (value, user_data) = ctx.with_mut(|ctx| {
+        let ctx = self.store.data_mut();
+        let (value, user_data) = {
             let value = asc_new(
                 &mut self.store.as_context_mut(),
                 ctx.asc_heap_mut(),
@@ -96,9 +94,9 @@ impl WasmInstance {
             );
 
             (value, user_data)
-        });
+        };
 
-        self.instance_ctx().as_mut().ctx.state.enter_handler();
+        self.instance_ctx().ctx.state.enter_handler();
 
         // Invoke the callback
         self.instance
@@ -111,10 +109,10 @@ impl WasmInstance {
             )
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
 
-        let wasm_ctx = self.store.into_data();
-        wasm_ctx.as_mut().ctx.state.exit_handler();
+        let mut wasm_ctx = self.store.into_data();
+        wasm_ctx.ctx.state.exit_handler();
 
-        Ok(wasm_ctx.take_state())
+        Ok(wasm_ctx.ctx.state)
     }
 
     pub(crate) fn handle_block(
@@ -126,14 +124,14 @@ impl WasmInstance {
         let ctx = self.store.data().clone();
         let obj = block_data.to_vec().to_asc_obj(
             &mut self.store.as_context_mut(),
-            ctx.as_mut().asc_heap_mut(),
+            ctx.asc_heap_mut(),
             &self.gas,
         )?;
 
         let obj = AscPtr::alloc_obj(
             &mut self.store.as_context_mut(),
             obj,
-            ctx.as_mut().asc_heap_mut(),
+            ctx.asc_heap_mut(),
             &self.gas,
         )?;
 
@@ -152,11 +150,8 @@ impl WasmInstance {
         let logging_extras = trigger.logging_extras().cheap_clone();
         let error_context = trigger.trigger.error_context();
         let ctx = self.store.data().clone();
-        let asc_trigger = trigger.to_asc_ptr(
-            &mut self.store.as_context_mut(),
-            ctx.as_mut().asc_heap_mut(),
-            &gas,
-        )?;
+        let asc_trigger =
+            trigger.to_asc_ptr(&mut self.store.as_context_mut(), ctx.asc_heap_mut(), &gas)?;
 
         self.invoke_handler(&handler_name, asc_trigger, logging_extras, error_context)
     }
@@ -198,18 +193,18 @@ impl WasmInstance {
             .context("wasm function has incorrect signature")?;
 
         // Caution: Make sure all exit paths from this function call `exit_handler`.
-        self.instance_ctx().as_mut().ctx.state.enter_handler();
+        self.instance_ctx().ctx.state.enter_handler();
 
         // This `match` will return early if there was a non-deterministic trap.
         let deterministic_error: Option<Error> =
             match func.call(self.store.as_context_mut(), arg.wasm_ptr()) {
                 Ok(()) => {
-                    assert!(self.instance_ctx().as_ref().possible_reorg == false);
-                    assert!(self.instance_ctx().as_ref().deterministic_host_trap == false);
+                    assert!(self.instance_ctx().possible_reorg == false);
+                    assert!(self.instance_ctx().deterministic_host_trap == false);
                     None
                 }
-                Err(trap) if self.instance_ctx().as_ref().possible_reorg => {
-                    self.instance_ctx().as_mut().ctx.state.exit_handler();
+                Err(trap) if self.instance_ctx().possible_reorg => {
+                    self.instance_ctx().ctx.state.exit_handler();
                     return Err(MappingError::PossibleReorg(trap.into()));
                 }
 
@@ -220,20 +215,20 @@ impl WasmInstance {
                         .chain()
                         .any(|e| e.downcast_ref::<Trap>() == Some(&Trap::Interrupt)) =>
                 {
-                    self.instance_ctx().as_mut().ctx.state.exit_handler();
+                    self.instance_ctx().ctx.state.exit_handler();
                     return Err(MappingError::Unknown(Error::from(trap).context(format!(
                         "Handler '{}' hit the timeout of '{}' seconds",
                         handler,
-                        self.instance_ctx().as_ref().timeout.unwrap().as_secs()
+                        self.instance_ctx().timeout.unwrap().as_secs()
                     ))));
                 }
                 Err(trap) => {
-                    let trap_is_deterministic = is_trap_deterministic(&trap)
-                        || self.instance_ctx().as_ref().deterministic_host_trap;
+                    let trap_is_deterministic =
+                        is_trap_deterministic(&trap) || self.instance_ctx().deterministic_host_trap;
                     match trap_is_deterministic {
                         true => Some(trap),
                         false => {
-                            self.instance_ctx().as_mut().ctx.state.exit_handler();
+                            self.instance_ctx().ctx.state.exit_handler();
                             return Err(MappingError::Unknown(trap));
                         }
                     }
@@ -248,36 +243,29 @@ impl WasmInstance {
             let message = format!("{:#}", deterministic_error).replace('\n', "\t");
 
             // Log the error and restore the updates snapshot, effectively reverting the handler.
-            error!(&self.instance_ctx().as_ref().ctx.logger,
+            error!(&self.instance_ctx().ctx.logger,
                 "Handler skipped due to execution failure";
                 "handler" => handler,
                 "error" => &message,
                 logging_extras
             );
             let subgraph_error = SubgraphError {
-                subgraph_id: self
-                    .instance_ctx()
-                    .as_ref()
-                    .ctx
-                    .host_exports
-                    .subgraph_id
-                    .clone(),
+                subgraph_id: self.instance_ctx().ctx.host_exports.subgraph_id.clone(),
                 message,
-                block_ptr: Some(self.instance_ctx().as_ref().ctx.block_ptr.cheap_clone()),
+                block_ptr: Some(self.instance_ctx().ctx.block_ptr.cheap_clone()),
                 handler: Some(handler.to_string()),
                 deterministic: true,
             };
             self.instance_ctx()
-                .as_mut()
                 .ctx
                 .state
                 .exit_handler_and_discard_changes_due_to_error(subgraph_error);
         } else {
-            self.instance_ctx().as_mut().ctx.state.exit_handler();
+            self.instance_ctx().ctx.state.exit_handler();
         }
 
         let gas = self.gas.get();
-        Ok((self.take_ctx().take_state(), gas))
+        Ok((self.take_ctx().ctx.state, gas))
     }
 }
 
@@ -348,7 +336,7 @@ impl WasmInstance {
                               $($param: u32),*|  {
 
                             let instance = caller.data().clone();
-                            let host_metrics = instance.as_ref().host_metrics.cheap_clone();
+                            let host_metrics = instance.host_metrics.cheap_clone();
                             let _section = host_metrics.stopwatch.start_section($section);
                             let result = instance.$rust_name(
                                 &mut caller.as_context_mut(),
@@ -361,10 +349,10 @@ impl WasmInstance {
                                     let instance = caller.data();
                                     match IntoTrap::determinism_level(&e) {
                                         DeterminismLevel::Deterministic => {
-                                            instance.as_mut().deterministic_host_trap = true;
+                                            instance.deterministic_host_trap = true;
                                         }
                                         DeterminismLevel::PossibleReorg => {
-                                            instance.as_mut().possible_reorg = true;
+                                            instance.possible_reorg = true;
                                         }
                                         DeterminismLevel::Unimplemented
                                         | DeterminismLevel::NonDeterministic => {}
@@ -397,25 +385,25 @@ impl WasmInstance {
                         let start = Instant::now();
 
                         let name_for_metrics = host_fn.name.replace('.', "_");
-                        let host_metrics = caller.data().as_ref().host_metrics.cheap_clone();
+                        let host_metrics = caller.data().host_metrics.cheap_clone();
                         let stopwatch = host_metrics.stopwatch.cheap_clone();
                         let _section =
                             stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
 
                         let ctx = HostFnCtx {
-                            logger: caller.data().as_ref().ctx.logger.cheap_clone(),
-                            block_ptr: caller.data().as_ref().ctx.block_ptr.cheap_clone(),
+                            logger: caller.data().ctx.logger.cheap_clone(),
+                            block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
                             gas: gas.cheap_clone(),
                             metrics: host_metrics.cheap_clone(),
                         };
                         let ret = (host_fn.func)(ctx, &mut caller.as_context_mut(), call_ptr)
                             .map_err(|e| match e {
                                 HostExportError::Deterministic(e) => {
-                                    caller.data().as_mut().deterministic_host_trap = true;
+                                    caller.data_mut().deterministic_host_trap = true;
                                     e
                                 }
                                 HostExportError::PossibleReorg(e) => {
-                                    caller.data().as_mut().possible_reorg = true;
+                                    caller.data_mut().possible_reorg = true;
                                     e
                                 }
                                 HostExportError::Unknown(e) => e,
@@ -571,7 +559,6 @@ impl WasmInstance {
 
         // couldn't figure out a better way to do this unfortunately.
         store.data_mut().set_asc_heap(asc_heap);
-        store.data().as_ref().asc_heap_ref();
 
         // See start_function comment for more information
         // TL;DR; we need the wasmtime::Instance to create the heap, therefore

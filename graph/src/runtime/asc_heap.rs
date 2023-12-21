@@ -1,11 +1,10 @@
 use std::mem::MaybeUninit;
 
 use semver::Version;
-use wasmtime::{StoreContext, StoreContextMut};
 
 use super::{
     gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError,
-    IndexForAscTypeId, WasmInstanceContext,
+    IndexForAscTypeId,
 };
 
 // A 128 limit is plenty for any subgraph, while the `fn recursion_limit` test ensures it is not
@@ -18,35 +17,20 @@ const MAX_RECURSION_DEPTH: usize = 128;
 /// The implementor must provide the direct Asc interface with `raw_new` and `get`.
 pub trait AscHeap {
     /// Allocate new space and write `bytes`, return the allocated address.
-    fn raw_new(
-        &mut self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
-        bytes: &[u8],
-        gas: &GasCounter,
-    ) -> Result<u32, DeterministicHostError>;
+    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
     fn read<'a>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         offset: u32,
         buffer: &'a mut [MaybeUninit<u8>],
         gas: &GasCounter,
     ) -> Result<&'a mut [u8], DeterministicHostError>;
 
-    fn read_u32(
-        &self,
-        store: &StoreContext<WasmInstanceContext>,
-        offset: u32,
-        gas: &GasCounter,
-    ) -> Result<u32, DeterministicHostError>;
+    fn read_u32(&self, offset: u32, gas: &GasCounter) -> Result<u32, DeterministicHostError>;
 
-    fn api_version(&self, store: &StoreContext<WasmInstanceContext>) -> Version;
+    fn api_version(&self) -> Version;
 
-    fn asc_type_id(
-        &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
-        type_id_index: IndexForAscTypeId,
-    ) -> Result<u32, HostExportError>;
+    fn asc_type_id(&self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError>;
 }
 
 /// Instantiate `rust_obj` as an Asc object of class `C`.
@@ -55,7 +39,6 @@ pub trait AscHeap {
 /// This operation is expensive as it requires a call to `raw_new` for every
 /// nested object.
 pub fn asc_new<C, T: ?Sized, H: AscHeap + ?Sized>(
-    store: &mut StoreContextMut<WasmInstanceContext>,
     heap: &mut H,
     rust_obj: &T,
     gas: &GasCounter,
@@ -64,13 +47,12 @@ where
     C: AscType + AscIndexId,
     T: ToAscObj<C>,
 {
-    let obj = rust_obj.to_asc_obj(store, heap, gas)?;
-    AscPtr::alloc_obj(store, obj, heap, gas)
+    let obj = rust_obj.to_asc_obj(heap, gas)?;
+    AscPtr::alloc_obj(obj, heap, gas)
 }
 
 /// Map an optional object to its Asc equivalent if Some, otherwise return a missing field error.
 pub fn asc_new_or_missing<H, O, A>(
-    store: &mut StoreContextMut<WasmInstanceContext>,
     heap: &mut H,
     object: &Option<O>,
     gas: &GasCounter,
@@ -83,14 +65,13 @@ where
     A: AscType + AscIndexId,
 {
     match object {
-        Some(o) => asc_new(store, heap, o, gas),
+        Some(o) => asc_new(heap, o, gas),
         None => Err(missing_field_error(type_name, field_name)),
     }
 }
 
 /// Map an optional object to its Asc equivalent if Some, otherwise return null.
 pub fn asc_new_or_null<H, O, A>(
-    store: &mut StoreContextMut<WasmInstanceContext>,
     heap: &mut H,
     object: &Option<O>,
     gas: &GasCounter,
@@ -101,7 +82,7 @@ where
     A: AscType + AscIndexId,
 {
     match object {
-        Some(o) => asc_new(store, heap, o, gas),
+        Some(o) => asc_new(heap, o, gas),
         None => Ok(AscPtr::null()),
     }
 }
@@ -116,7 +97,6 @@ fn missing_field_error(type_name: &str, field_name: &str) -> HostExportError {
 ///  This operation is expensive as it requires a call to `get` for every
 ///  nested object.
 pub fn asc_get<T, C, H: AscHeap + ?Sized>(
-    store: &StoreContext<WasmInstanceContext>,
     heap: &H,
     asc_ptr: AscPtr<C>,
     gas: &GasCounter,
@@ -134,20 +114,13 @@ where
         )));
     }
 
-    T::from_asc_obj(
-        asc_ptr.read_ptr(&store, heap, gas)?,
-        &store,
-        heap,
-        gas,
-        depth,
-    )
+    T::from_asc_obj(asc_ptr.read_ptr(heap, gas)?, heap, gas, depth)
 }
 
 /// Type that can be converted to an Asc object of class `C`.
 pub trait ToAscObj<C: AscType> {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<C, HostExportError>;
@@ -156,18 +129,16 @@ pub trait ToAscObj<C: AscType> {
 impl<C: AscType, T: ToAscObj<C>> ToAscObj<C> for &T {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<C, HostExportError> {
-        (*self).to_asc_obj(store, heap, gas)
+        (*self).to_asc_obj(heap, gas)
     }
 }
 
 impl ToAscObj<bool> for bool {
     fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
-        _store: &mut StoreContextMut<WasmInstanceContext>,
         _heap: &mut H,
         _gas: &GasCounter,
     ) -> Result<bool, HostExportError> {
@@ -183,7 +154,6 @@ impl ToAscObj<bool> for bool {
 pub trait FromAscObj<C: AscType>: Sized {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         obj: C,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,

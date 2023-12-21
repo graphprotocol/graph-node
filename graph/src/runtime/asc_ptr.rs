@@ -1,12 +1,11 @@
 use super::gas::GasCounter;
-use super::{padding_to_16, DeterministicHostError, HostExportError, WasmInstanceContext};
+use super::{padding_to_16, DeterministicHostError, HostExportError};
 
 use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
-use wasmtime::{AsContext, StoreContext, StoreContextMut};
 
 /// The `rt_size` field contained in an AssemblyScript header has a size of 4 bytes.
 const SIZE_OF_RT_SIZE: u32 = 4;
@@ -56,20 +55,19 @@ impl<C: AscType> AscPtr<C> {
     /// Read from `self` into the Rust struct `C`.
     pub fn read_ptr<H: AscHeap + ?Sized>(
         self,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<C, DeterministicHostError> {
-        let len = match heap.api_version(&store) {
+        let len = match heap.api_version() {
             // TODO: The version check here conflicts with the comment on C::asc_size,
             // which states "Only used for version <= 0.0.3."
-            version if version <= Version::new(0, 0, 4) => C::asc_size(&store, self, heap, gas),
-            _ => self.read_len(&store, heap, gas),
+            version if version <= Version::new(0, 0, 4) => C::asc_size(self, heap, gas),
+            _ => self.read_len(heap, gas),
         }?;
 
         let using_buffer = |buffer: &mut [MaybeUninit<u8>]| {
-            let buffer = heap.read(&store, self.0, buffer, gas)?;
-            C::from_asc_bytes(buffer, &heap.api_version(&store))
+            let buffer = heap.read(self.0, buffer, gas)?;
+            C::from_asc_bytes(buffer, &heap.api_version())
         };
 
         let len = len as usize;
@@ -85,7 +83,6 @@ impl<C: AscType> AscPtr<C> {
 
     /// Allocate `asc_obj` as an Asc object of class `C`.
     pub fn alloc_obj<H: AscHeap + ?Sized>(
-        store: &mut StoreContextMut<WasmInstanceContext>,
         asc_obj: C,
         heap: &mut H,
         gas: &GasCounter,
@@ -93,9 +90,9 @@ impl<C: AscType> AscPtr<C> {
     where
         C: AscIndexId,
     {
-        match heap.api_version(&store.as_context()) {
+        match heap.api_version() {
             version if version <= Version::new(0, 0, 4) => {
-                let heap_ptr = heap.raw_new(store, &asc_obj.to_asc_bytes()?, gas)?;
+                let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?, gas)?;
                 Ok(AscPtr::new(heap_ptr))
             }
             _ => {
@@ -107,7 +104,6 @@ impl<C: AscType> AscPtr<C> {
                 bytes.extend(std::iter::repeat(0).take(aligned_len));
 
                 let header = Self::generate_header(
-                    store,
                     heap,
                     C::INDEX_ASC_TYPE_ID,
                     asc_obj.content_len(&bytes),
@@ -115,7 +111,7 @@ impl<C: AscType> AscPtr<C> {
                 )?;
                 let header_len = header.len() as u32;
 
-                let heap_ptr = heap.raw_new(store, &[header, bytes].concat(), gas)?;
+                let heap_ptr = heap.raw_new(&[header, bytes].concat(), gas)?;
 
                 // Use header length as offset. so the AscPtr points directly at the content.
                 Ok(AscPtr::new(heap_ptr + header_len))
@@ -127,12 +123,11 @@ impl<C: AscType> AscPtr<C> {
     /// Only used for version <= 0.0.4.
     pub fn read_u32<H: AscHeap + ?Sized>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
         // Read the bytes pointed to by `self` as the bytes of a `u32`.
-        heap.read_u32(&store, self.0, gas)
+        heap.read_u32(self.0, gas)
     }
 
     /// Helper that generates an AssemblyScript header.
@@ -144,7 +139,6 @@ impl<C: AscType> AscPtr<C> {
     /// - rt_size: u32 -> content size
     /// Only used for version >= 0.0.5.
     fn generate_header<H: AscHeap + ?Sized>(
-        store: &mut StoreContextMut<WasmInstanceContext>,
         heap: &H,
         type_id_index: IndexForAscTypeId,
         content_length: usize,
@@ -154,7 +148,7 @@ impl<C: AscType> AscPtr<C> {
 
         let gc_info: [u8; 4] = (0u32).to_le_bytes();
         let gc_info2: [u8; 4] = (0u32).to_le_bytes();
-        let asc_type_id = heap.asc_type_id(store, type_id_index)?;
+        let asc_type_id = heap.asc_type_id(type_id_index)?;
         let rt_id: [u8; 4] = asc_type_id.to_le_bytes();
         let rt_size: [u8; 4] = (content_length as u32).to_le_bytes();
 
@@ -182,7 +176,6 @@ impl<C: AscType> AscPtr<C> {
     /// Only used for version >= 0.0.5.
     pub fn read_len<H: AscHeap + ?Sized>(
         &self,
-        store: &StoreContext<WasmInstanceContext>,
         heap: &H,
         gas: &GasCounter,
     ) -> Result<u32, DeterministicHostError> {
@@ -197,7 +190,7 @@ impl<C: AscType> AscPtr<C> {
             ))
         })?;
 
-        heap.read_u32(&store, start_of_rt_size, gas)
+        heap.read_u32(start_of_rt_size, gas)
     }
 
     /// Conversion to `u64` for use with `AscEnum`.

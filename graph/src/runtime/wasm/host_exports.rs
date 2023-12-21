@@ -467,9 +467,9 @@ impl HostExports {
             "Flags must contain 'json'"
         );
 
-        let host_metrics = wasm_ctx.as_ref().host_metrics.clone();
-        let valid_module = wasm_ctx.as_ref().valid_module.clone();
-        let ctx = wasm_ctx.as_ref().ctx.derive_with_empty_block_state();
+        let host_metrics = wasm_ctx.host_metrics.clone();
+        let valid_module = wasm_ctx.valid_module.clone();
+        let ctx = wasm_ctx.ctx.derive_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -491,8 +491,8 @@ impl HostExports {
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
-                    wasm_ctx.as_ref().timeout,
-                    wasm_ctx.as_ref().experimental_features,
+                    wasm_ctx.timeout,
+                    wasm_ctx.experimental_features,
                 )?;
                 let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
                 // Log progress every 15s
