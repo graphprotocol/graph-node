@@ -134,4 +134,11 @@ impl<'a> ObjectOrInterface<'a> {
             ObjectOrInterface::Interface(i) => i.is_meta(),
         }
     }
+
+    pub fn is_sql(&self) -> bool {
+        match self {
+            ObjectOrInterface::Object(o) => o.is_sql(),
+            ObjectOrInterface::Interface(i) => i.is_sql(),
+        }
+    }
 }
