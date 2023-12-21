@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::deployment_store::{DeploymentStore, ReplicaId};
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
-use graph::data::store::QueryObject;
+use graph::data::store::{QueryObject, SqlQueryObject};
 use graph::prelude::*;
 use graph::schema::{ApiSchema, InputSchema};
 
@@ -54,6 +54,17 @@ impl QueryStoreTrait for QueryStore {
                 trace.conn_wait(wait);
                 (entities, trace)
             })
+    }
+
+    fn execute_sql(
+        &self,
+        sql: &str,
+    ) -> Result<Vec<SqlQueryObject>, graph::prelude::QueryExecutionError> {
+        let conn = self
+            .store
+            .get_replica_conn(self.replica_id)
+            .map_err(|e| QueryExecutionError::SqlError(format!("SQL error: {}", e)))?;
+        self.store.execute_sql(&conn, sql)
     }
 
     /// Return true if the deployment with the given id is fully synced,
