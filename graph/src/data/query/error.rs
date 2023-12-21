@@ -75,6 +75,7 @@ pub enum QueryExecutionError {
     InvalidSubgraphManifest,
     ResultTooBig(usize, usize),
     DeploymentNotFound(String),
+    SqlError(String),
     IdMissing,
     IdNotString,
 }
@@ -136,7 +137,8 @@ impl QueryExecutionError {
             | ResultTooBig(_, _)
             | DeploymentNotFound(_)
             | IdMissing
-            | IdNotString => false,
+            | IdNotString
+            | SqlError(_) => false,
         }
     }
 }
@@ -286,6 +288,7 @@ impl fmt::Display for QueryExecutionError {
             DeploymentNotFound(id_or_name) => write!(f, "deployment `{}` does not exist", id_or_name),
             IdMissing => write!(f, "entity is missing an `id` attribute"),
             IdNotString => write!(f, "entity `id` attribute is not a string"),
+            SqlError(e) => write!(f, "sql error: {}", e),
         }
     }
 }
