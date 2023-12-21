@@ -347,6 +347,7 @@ pub(in crate::schema) fn api_schema(input_schema: &Schema) -> Result<Document, A
     // Refactor: Don't clone the schema.
     let mut schema = input_schema.clone();
     add_meta_field_type(&mut schema.document);
+    add_sql_field_type(&mut schema.document);
     add_types_for_object_types(&mut schema, &object_types)?;
     add_types_for_interface_types(&mut schema, &interface_types)?;
     add_field_arguments(&mut schema.document, &input_schema.document)?;
@@ -378,6 +379,21 @@ fn add_meta_field_type(schema: &mut Document) {
     schema
         .definitions
         .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
+}
+
+// Adds a global `_SqlQueryResult_` type to the schema. The `_sql` field
+// accepts values of this type
+fn add_sql_field_type(schema: &mut Document) {
+    lazy_static! {
+        static ref SQL_FIELD_SCHEMA: Document = {
+            let schema = include_str!("sql.graphql");
+            parse_schema(schema).expect("the schema `sql.graphql` is invalid")
+        };
+    }
+
+    schema
+        .definitions
+        .extend(SQL_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 fn add_types_for_object_types(
