@@ -7,7 +7,7 @@ use lazy_static::lazy_static;
 
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt};
 use crate::data::store::IdType;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE};
+use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SQL_FIELD_NAME, SQL_FIELD_TYPE};
 
 use crate::data::graphql::ext::{DefinitionExt, DirectiveExt, DocumentExt, ValueExt};
 use crate::prelude::s::{Value, *};
@@ -867,6 +867,7 @@ fn add_query_type(
         .collect();
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
+    fields.push(sql_field());
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -961,6 +962,7 @@ fn add_subscription_type(
         .flat_map(|name| query_fields_for_type(name))
         .collect();
     fields.push(meta_field());
+    fields.push(sql_field());
 
     let typedef = TypeDefinition::Object(ObjectType {
         position: Pos::default(),
@@ -1084,6 +1086,32 @@ fn meta_field() -> Field {
         };
     }
     META_FIELD.clone()
+}
+
+fn sql_field() -> Field {
+    lazy_static! {
+        static ref SQL_FIELD: Field = Field {
+            position: Pos::default(),
+            description: Some("Access to SQL queries".to_string()),
+            name: SQL_FIELD_NAME.to_string(),
+            arguments: vec![
+             //query: String
+                InputValue {
+                    position: Pos::default(),
+                    description: None,
+                    name: String::from("query"),
+                    value_type: Type::NonNullType(Box::new(Type::NamedType(String::from("String")))),
+                    default_value: None,
+                    directives: vec![],
+
+                }
+            ],
+            field_type: Type::NamedType(SQL_FIELD_TYPE.to_string()),
+            directives: vec![],
+        };
+    }
+
+    SQL_FIELD.clone()
 }
 
 /// Generates arguments for collection queries of a named type (e.g. User).

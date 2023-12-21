@@ -7,7 +7,7 @@ use graph::{
         value::{Object, Word},
     },
     prelude::{s, CheapClone},
-    schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
+    schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME, SQL_FIELD_NAME},
     util::{herd_cache::HerdCache, lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
@@ -261,17 +261,17 @@ pub(crate) async fn execute_root_selection_set_uncached(
     let mut data_set = a::SelectionSet::empty_from(selection_set);
     let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
+    let mut sql_items = Vec::new();
 
     for field in selection_set.fields_for(root_type)? {
         // See if this is an introspection or data field. We don't worry about
         // non-existent fields; those will cause an error later when we execute
         // the data_set SelectionSet
-        if is_introspection_field(&field.name) {
-            intro_set.push(field)?
-        } else if field.name == META_FIELD_NAME || field.name == "__typename" {
-            meta_items.push(field)
-        } else {
-            data_set.push(field)?
+        match field.name.as_str() {
+            name if is_introspection_field(name) => intro_set.push(field)?,
+            META_FIELD_NAME | "__typename" => meta_items.push(field),
+            SQL_FIELD_NAME => sql_items.push(field),
+            _ => data_set.push(field)?,
         }
     }
 
@@ -281,6 +281,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
     } else {
         let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
         data_set.push_fields(meta_items)?;
+        data_set.push_fields(sql_items)?;
         (
             execute_selection_set_to_map(ctx, &data_set, root_type, initial_data).await?,
             trace,
