@@ -276,17 +276,18 @@ pub(crate) async fn execute_root_selection_set_uncached(
     }
 
     // If we are getting regular data, prefetch it from the database
-    let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
-        (Object::default(), Trace::None)
-    } else {
-        let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
-        data_set.push_fields(meta_items)?;
-        data_set.push_fields(sql_items)?;
-        (
-            execute_selection_set_to_map(ctx, &data_set, root_type, initial_data).await?,
-            trace,
-        )
-    };
+    let (mut values, trace) =
+        if data_set.is_empty() && meta_items.is_empty() && sql_items.is_empty() {
+            (Object::default(), Trace::None)
+        } else {
+            let (initial_data, trace) = ctx.resolver.prefetch(ctx, &data_set)?;
+            data_set.push_fields(meta_items)?;
+            data_set.push_fields(sql_items)?;
+            (
+                execute_selection_set_to_map(ctx, &data_set, root_type, initial_data).await?,
+                trace,
+            )
+        };
 
     // Resolve introspection fields, if there are any
     if !intro_set.is_empty() {
