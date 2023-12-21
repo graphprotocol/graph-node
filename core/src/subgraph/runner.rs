@@ -227,10 +227,16 @@ where
 
                 // TODO: move cancel handle to the Context
                 // This will require some code refactor in how the BlockStream is created
+                let block_start = Instant::now();
                 match self
                     .handle_stream_event(event, &block_stream_cancel_handle)
-                    .await?
-                {
+                    .await
+                    .map(|res| {
+                        self.metrics
+                            .subgraph
+                            .observe_block_processed(block_start.elapsed(), res.block_finished());
+                        res
+                    })? {
                     Action::Continue => continue,
                     Action::Stop => {
                         info!(self.logger, "Stopping subgraph");
@@ -1028,6 +1034,16 @@ enum Action {
     Continue,
     Stop,
     Restart,
+}
+
+impl Action {
+    /// Return `true` if the action indicates that we are done with a block
+    fn block_finished(&self) -> bool {
+        match self {
+            Action::Continue | Action::Restart => false,
+            Action::Stop => true,
+        }
+    }
 }
 
 #[async_trait]

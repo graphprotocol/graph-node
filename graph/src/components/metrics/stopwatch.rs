@@ -102,6 +102,10 @@ impl StopwatchMetrics {
             self.inner.lock().unwrap().end_section(id)
         }
     }
+
+    pub fn shard(&self) -> String {
+        self.inner.lock().unwrap().shard.to_string()
+    }
 }
 
 /// We want to account for all subgraph indexing time, based on "wall clock" time. To do this we
