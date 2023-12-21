@@ -319,8 +319,10 @@ impl BlockRangeValue {
         if table.immutable {
             BlockRangeValue::Immutable(block)
         } else {
-            let end = end.unwrap_or_else(|| block + 1);
-            BlockRangeValue::Mutable((block..end).into())
+            match end {
+                Some(e) => BlockRangeValue::Mutable((block..e).into()),
+                None => BlockRangeValue::Mutable((block..).into()),
+            }
         }
     }
 }
