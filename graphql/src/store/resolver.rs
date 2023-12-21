@@ -295,19 +295,25 @@ impl StoreResolver {
             return Ok((prefetched_object, None));
         }
 
-        let query = field.argument_value("query").unwrap();
+        let query = field
+            .argument_value("query")
+            .ok_or_else(|| QueryExecutionError::EmptyQuery)?;
 
-        let _query = match query {
+        let query = match query {
             graph::data::value::Value::String(s) => s,
-            _ => return Err(QueryExecutionError::Unimplemented(String::new())),
+            _ => {
+                return Err(QueryExecutionError::SqlError(
+                    "Query must be a string".into(),
+                ))
+            }
         };
 
-        // TODO: Execute the query and return the results
-
+        let result = self.store.execute_sql(&query)?;
+        let result = result.into_iter().map(|q| q.0).collect::<Vec<_>>();
         let sql_result = object! {
             __typename: SQL_FIELD_TYPE,
             columns: r::Value::List(vec![]),
-            rows: r::Value::List(vec![]),
+            rows: result
         };
 
         Ok((prefetched_object, Some(sql_result)))

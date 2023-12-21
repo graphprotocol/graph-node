@@ -282,7 +282,7 @@ impl DeploymentStore {
         // Execute the provided SQL query
         let results = query
             .load::<JSONData>(conn)
-            .map_err(|e| QueryExecutionError::SqlError(format!("SQL error: {}", e)))?;
+            .map_err(|e| QueryExecutionError::SqlError(e.to_string()))?;
 
         Ok(results
             .into_iter()
