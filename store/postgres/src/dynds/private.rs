@@ -160,7 +160,9 @@ impl DataSourcesTable {
                     causality_region,
                 } = ds;
 
-                if creation_block != &Some(block) {
+                // Nested offchain data sources might not pass this check, as their `creation_block`
+                // will be their parent's `creation_block`, not necessarily `block`.
+                if causality_region == &CausalityRegion::ONCHAIN && creation_block != &Some(block) {
                     return Err(constraint_violation!(
                         "mismatching creation blocks `{:?}` and `{}`",
                         creation_block,
