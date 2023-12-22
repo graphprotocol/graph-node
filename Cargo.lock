@@ -1933,6 +1933,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-sql"
+version = "0.33.0"
+dependencies = [
+ "anyhow",
+ "sqlparser",
+]
+
+[[package]]
 name = "graph-store-postgres"
 version = "0.33.0"
 dependencies = [
@@ -4192,6 +4200,15 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "sqlparser"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c80afe31cdb649e56c0d9bb5503be9166600d68a852c38dd445636d126858e5"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "stable-hash"
