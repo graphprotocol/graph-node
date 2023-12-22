@@ -6,6 +6,10 @@ use sqlparser::ast::{
 pub struct SqlFormatter;
 
 impl SqlFormatter {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     pub fn format(&self, query: &mut Query, prefix: Option<&str>) -> String {
         self.format_query(query, prefix);
 
@@ -445,7 +449,7 @@ impl SqlFormatter {
                     self.format_expr(expr, prefix);
                 }
             }
-            
+
             Expr::Struct { values, fields: _ } => {
                 for value in values {
                     self.format_expr(value, prefix);
