@@ -1258,22 +1258,6 @@ impl DeploymentStore {
     ) -> Result<StoreEvent, StoreError> {
         let event = deployment::with_lock(conn, &site, || {
             conn.transaction(|| -> Result<_, StoreError> {
-                // Don't revert past a graft point
-                let info = self.subgraph_info_with_conn(conn, site.as_ref())?;
-                if let Some(graft_block) = info.graft_block {
-                    if graft_block > block_ptr_to.number {
-                        return Err(anyhow!(
-                            "Can not revert subgraph `{}` to block {} as it was \
-                        grafted at block {} and reverting past a graft point \
-                        is not possible",
-                            site.deployment.clone(),
-                            block_ptr_to.number,
-                            graft_block
-                        )
-                        .into());
-                    }
-                }
-
                 // The revert functions want the number of the first block that we need to get rid of
                 let block = block_ptr_to.number + 1;
 
@@ -1372,6 +1356,21 @@ impl DeploymentStore {
         // Confidence check on revert to ensure we go backward only
         if block_ptr_to.number >= deployment_head.number {
             panic!("revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}", deployment_head, block_ptr_to);
+        }
+
+        // Don't revert past a graft point
+        let info = self.subgraph_info_with_conn(&conn, site.as_ref())?;
+        if let Some(graft_block) = info.graft_block {
+            if graft_block > block_ptr_to.number {
+                return Err(constraint_violation!(
+                    "Can not revert subgraph `{}` to block {} as it was \
+                        grafted at block {} and reverting past a graft point \
+                        is not possible",
+                    site.deployment.clone(),
+                    block_ptr_to.number,
+                    graft_block
+                ));
+            }
         }
 
         self.rewind_or_truncate_with_conn(&conn, site, block_ptr_to, firehose_cursor, false)
