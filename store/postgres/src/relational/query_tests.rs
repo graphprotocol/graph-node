@@ -66,22 +66,22 @@ fn prefix() {
     let filter = EntityFilter::Equal("name".to_string(), "Bibi".into());
     filter_contains(
         filter,
-        r#"left("name", 256) = left($1, 256) -- binds: ["Bibi"]"#,
+        r#"left(c."name", 256) = left($1, 256) -- binds: ["Bibi"]"#,
     );
 
     let filter = EntityFilter::In("name".to_string(), vec!["Bibi".into(), "Julian".into()]);
     filter_contains(
         filter,
-        r#"left("name", 256) in ($1, $2) -- binds: ["Bibi", "Julian"]"#,
+        r#"c."name" in ($1, $2) -- binds: ["Bibi", "Julian"]"#,
     );
 
     // Bytes prefixes
     let filter = EntityFilter::Equal("address".to_string(), "0xbeef".into());
     filter_contains(
         filter,
-        r#"substring("address", 1, 64) = substring($1, 1, 64)"#,
+        r#"substring(c."address", 1, 64) = substring($1, 1, 64)"#,
     );
 
     let filter = EntityFilter::In("address".to_string(), vec!["0xbeef".into()]);
-    filter_contains(filter, r#"substring("address", 1, 64) in ($1)"#);
+    filter_contains(filter, r#"c."address" in ($1)"#);
 }

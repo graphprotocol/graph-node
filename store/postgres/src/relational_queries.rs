@@ -952,7 +952,9 @@ impl PrefixType {
 
         match (self, &qv.value) {
             (PrefixType::String, S::String(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
+            (PrefixType::String, S::Text(s)) => Ok(s.len() > STRING_PREFIX_SIZE - 1),
             (PrefixType::Bytes, S::Bytes(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
+            (PrefixType::Bytes, S::Binary(b)) => Ok(b.len() > BYTE_ARRAY_PREFIX_SIZE - 1),
             (PrefixType::Bytes, S::String(s)) => {
                 let len = if s.starts_with("0x") {
                     (s.len() - 2) / 2
