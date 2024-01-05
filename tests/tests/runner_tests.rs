@@ -126,17 +126,20 @@ async fn data_source_revert() -> anyhow::Result<()> {
     };
 
     let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
-    {
-        let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
-        let stop_block = test_ptr(2);
-        ctx.start_and_sync_to(stop_block).await;
-        ctx.provider.stop(ctx.deployment.clone()).await.unwrap();
+    let base_ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
 
-        // Test loading data sources from DB.
-        let stop_block = test_ptr(3);
-        ctx.start_and_sync_to(stop_block).await;
-    }
+    let stop_block = test_ptr(2);
+    base_ctx.start_and_sync_to(stop_block).await;
+    base_ctx
+        .provider
+        .stop(base_ctx.deployment.clone())
+        .await
+        .unwrap();
+
+    // Test loading data sources from DB.
+    let stop_block = test_ptr(3);
+    base_ctx.start_and_sync_to(stop_block).await;
 
     // Test grafted version
     let subgraph_name = SubgraphName::new("data-source-revert-grafted").unwrap();
@@ -154,11 +157,11 @@ async fn data_source_revert() -> anyhow::Result<()> {
     };
 
     let graft_block = Some(test_ptr(3));
-    let ctx = fixture::setup(&test_info, &stores, &chain, graft_block, None).await;
+    let grafted_ctx = fixture::setup(&test_info, &stores, &chain, graft_block, None).await;
     let stop_block = test_ptr(4);
-    ctx.start_and_sync_to(stop_block).await;
+    grafted_ctx.start_and_sync_to(stop_block).await;
 
-    let query_res = ctx
+    let query_res = grafted_ctx
         .query(r#"{ dataSourceCount(id: "4") { id, count } }"#)
         .await
         .unwrap();
